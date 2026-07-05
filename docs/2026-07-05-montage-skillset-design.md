@@ -51,7 +51,8 @@ montage/
 │   └── ffmpeg-recipes/SKILL.md         # reference + landmine registry
 ├── references/
 │   ├── editing-canon.md                # classic editing rules + grid library (thirds/phi/golden-canon-grid)
-│   └── landmines.md                    # learned failures (see §12)
+│   ├── landmines.md                    # learned failures (see §12)
+│   └── montage-debugging.md            # phased stage-failure debugging (patterned on systematic-debugging)
 ├── scripts/
 │   ├── intake.py  beats.py  track.py  extract.py  reframe.py  storyboard.py
 │   ├── check_episode.py  check_reel.py  mix.py  assemble.py  deliver.py  trends.py
@@ -154,7 +155,7 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 **Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored.
 
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
-Thin adapter: invokes `superpowers:brainstorming` with a montage-brief template (see §14.1). Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
+Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
 **Gate:** mood + platform/canvas + length + hook locked.
 
 ### 5.4 trend-scan → `TRENDS.md` (cache TTL 7–10d)
@@ -173,7 +174,7 @@ A shared artifact read by **both** music-and-mood **and** edit-plan. Episode ord
 **Gate:** order+length+energy pinned to the music.
 
 ### 5.7 edit-plan → `EDL.md` (= writing-plans)
-Thin adapter: invokes `superpowers:writing-plans` with the EDL template (see §14.1). Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
+Our own skill that copies the writing-plans format (checkbox steps, exact file lists, no placeholders) — see §14. Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
 **Gate:** every episode has source+window+shot-type+beat-slot.
 
 ### 5.8 extract → `segments/<ep>_raw.mp4`
@@ -353,10 +354,20 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 
 ---
 
-## 11. Nice-to-have (included)
+## 11. Base effects palette + nice-to-have
 
-- **Transitions vocab**: beyond hard-cut — match-cut, whip, J/L audio cuts; choice driven by trend.
-- **Speed-ramp to beat**: slow-mo punch on drops (`setpts=SLOW*PTS`; output length = srcdur×slow).
+**Base effects palette (soft baseline, not a hard constraint).** A small starting toolbox available from the start — shipped in `ffmpeg-recipes` + `editing-canon`. The default is still the hard-cut (the verified 2026 trend), but these are on the table from day one and picked by trend/taste per episode:
+
+- **hard-cut** — default, on-beat (§5.5).
+- **crossfade** — `xfade` / audio `acrossfade`, short; for soft/atmospheric joins.
+- **slow-mo when apt** — `setpts=SLOW*PTS` (output length = srcdur×slow); punch on drops / to stretch a peak moment.
+- **whip / match-cut** — a couple of dynamic transitions for energy/continuity.
+- **J/L audio cuts** — audio leads/lags the picture across a cut.
+
+The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more, the editor can override. `reel-final-check` doesn't fail a reel for using or not using any of these; it only flags jarring/overused transitions.
+
+**Nice-to-have:**
+- **Speed-ramp to beat**: ramped slow-mo timed to the drop (extends the slow-mo palette item).
 - **Version log**: changelog of versions (the session ran v2→v18); diff between versions, lock registry.
 
 ---
@@ -385,25 +396,24 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 
 ---
 
-## 14. Superpowers conventions to carry over
+## 14. Conventions adapted from superpowers (independent set)
 
-Survey of the superpowers skill set (v5.1.0). The point: **don't reimplement the process skills — depend on superpowers for them, author only the montage-domain skills**, and adopt its authoring conventions so distribution stays consistent with the ecosystem.
+video-grid installs as a **self-contained, independent** skill set — no runtime dependency on the superpowers plugin. But the superpowers *approach* is excellent, so we **copy the conventions and process patterns into our own montage skills** and credit the inspiration (each skill's description + the README: "approach adapted from superpowers"). Survey of superpowers v5.1.0 below; §14.2–14.6 are the concrete patterns we replicate.
 
-### 14.1 Reuse superpowers as-is vs author fresh
+### 14.1 Which superpowers patterns we replicate (baked into our own skills)
 
-| Reuse from superpowers (depend, don't rewrite) | Author fresh (montage domain) |
-|---|---|
-| `using-superpowers` (router entry / "1% → invoke") | `using-montage` (thin router that hands into the flow below) |
-| `brainstorming` → **reel-brief = invoke it** with a montage-brief template | `footage-intake`, `trend-scan` |
-| `writing-plans` → **edit-plan = invoke it** with the EDL template | `music-and-mood`, `pacing` |
-| `dispatching-parallel-agents` (process-episode fan-out) | `extract`, `assemble-draft` |
-| `subagent-driven-development` (per-episode dispatch + review loop) | `process-episode`, `episode-postcheck` |
-| `verification-before-completion` (checks discipline) | `audio-mix`, `reel-final-check`, `deliver` |
-| `systematic-debugging` (when a stage fails) | `ffmpeg-recipes`, `editing-canon`, `landmines` |
-| `requesting-code-review` / `receiving-code-review` (editorial review) | |
-| `using-git-worktrees`, `finishing-a-development-branch` | |
+| superpowers skill | Pattern we copy | Lands in our skill |
+|---|---|---|
+| `brainstorming` | context recon → one-question-at-a-time → HARD-GATE → spec self-review → user-review gate | `reel-brief` |
+| `writing-plans` | Goal/Arch/Stack header, checkbox steps, exact file lists, no placeholders | `edit-plan` |
+| `subagent-driven-development` | per-episode dispatch, full task inline, self-review, two-stage review | `process-episode` + `episode-postcheck` |
+| `dispatching-parallel-agents` | independent-domains → parallel fan-out | `process-episode ×N` |
+| `verification-before-completion` | no claim without fresh evidence (Iron Law) + claim table | `episode-postcheck`, `reel-final-check` |
+| `systematic-debugging` | phased root-cause; 3+ fails → escalate | `montage-debugging` reference (§14.6) |
+| `requesting`/`receiving-code-review` | editorial review loop | the editorial half of both checks |
+| `using-superpowers` | "1% → invoke" router + announce + TodoWrite | `using-montage` |
 
-`reel-brief` and `edit-plan` are **thin adapters**: a domain template + `**REQUIRED SUB-SKILL:** Use superpowers:brainstorming` / `superpowers:writing-plans`. Not reimplementations.
+Cross-skill refs point to **our own** skills (`video-grid:<skill>`), never to superpowers — the set stands alone.
 
 ### 14.2 SKILL.md authoring conventions (mirror exactly)
 
@@ -411,7 +421,7 @@ Survey of the superpowers skill set (v5.1.0). The point: **don't reimplement the
 - **Section order:** Overview (core principle 1–2 lines) → When to Use (+ small flowchart if a decision is non-obvious) → The Process (flowchart or numbered steps) → Red Flags → Rationalization table → domain sections. Ref `writing-skills/SKILL.md:113–137`.
 - **Flowcharts in Graphviz dot:** `shape=box` action, `shape=diamond` decision, `shape=doublecircle` terminal; edge labels for branches. Ref `test-driven-development/SKILL.md:48–69`.
 - **Announce on entry:** `"Using <skill> to <purpose>."` then, if the skill has a checklist, **one TodoWrite item per checklist item, done in order**. Ref `using-superpowers/SKILL.md:56–60`.
-- **Cross-skill refs:** `**REQUIRED SUB-SKILL:** Use superpowers:<skill>` — name only, **never `@`-links** (force-load burns context). Ref `writing-skills/SKILL.md:282–287`.
+- **Cross-skill refs:** `**REQUIRED SUB-SKILL:** Use video-grid:<skill>` — name only, **never `@`-links** (force-load burns context). Ref `writing-skills/SKILL.md:282–287`.
 - **No placeholders** in plans/specs: no "TBD", "tweak later", "optimize bitrate later". Ref `writing-plans/SKILL.md:106`.
 
 ### 14.3 Gates, terminal states, hand-off
@@ -441,7 +451,7 @@ From `subagent-driven-development/implementer-prompt.md:6–98`:
 
 ### 14.6 Stage-failure debugging
 
-When a stage fails (encode error, sync drift, black frames, tracker loss), run `systematic-debugging` phases: root-cause → pattern → single hypothesis → minimal fix; **3+ fixes fail → question the approach / escalate**, don't brute-force. Ref `systematic-debugging/SKILL.md:46–213`. The `landmines.md` registry (§12) is the "working examples / known differences" input for Phase 2.
+A `montage-debugging` reference (patterned on superpowers `systematic-debugging`, copied in, not depended on) drives stage failures (encode error, sync drift, black frames, tracker loss): root-cause → pattern → single hypothesis → minimal fix; **3+ fixes fail → question the approach / escalate**, don't brute-force. Ref `systematic-debugging/SKILL.md:46–213`. The `landmines.md` registry (§12) is the "working examples / known differences" input for the pattern phase.
 
 ---
 
