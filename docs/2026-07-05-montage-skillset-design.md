@@ -154,7 +154,7 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 **Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored.
 
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
-Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
+Thin adapter: invokes `superpowers:brainstorming` with a montage-brief template (see §14.1). Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
 **Gate:** mood + platform/canvas + length + hook locked.
 
 ### 5.4 trend-scan → `TRENDS.md` (cache TTL 7–10d)
@@ -173,7 +173,7 @@ A shared artifact read by **both** music-and-mood **and** edit-plan. Episode ord
 **Gate:** order+length+energy pinned to the music.
 
 ### 5.7 edit-plan → `EDL.md` (= writing-plans)
-Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
+Thin adapter: invokes `superpowers:writing-plans` with the EDL template (see §14.1). Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
 **Gate:** every episode has source+window+shot-type+beat-slot.
 
 ### 5.8 extract → `segments/<ep>_raw.mp4`
@@ -385,6 +385,66 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 
 ---
 
-## 14. What's next
+## 14. Superpowers conventions to carry over
+
+Survey of the superpowers skill set (v5.1.0). The point: **don't reimplement the process skills — depend on superpowers for them, author only the montage-domain skills**, and adopt its authoring conventions so distribution stays consistent with the ecosystem.
+
+### 14.1 Reuse superpowers as-is vs author fresh
+
+| Reuse from superpowers (depend, don't rewrite) | Author fresh (montage domain) |
+|---|---|
+| `using-superpowers` (router entry / "1% → invoke") | `using-montage` (thin router that hands into the flow below) |
+| `brainstorming` → **reel-brief = invoke it** with a montage-brief template | `footage-intake`, `trend-scan` |
+| `writing-plans` → **edit-plan = invoke it** with the EDL template | `music-and-mood`, `pacing` |
+| `dispatching-parallel-agents` (process-episode fan-out) | `extract`, `assemble-draft` |
+| `subagent-driven-development` (per-episode dispatch + review loop) | `process-episode`, `episode-postcheck` |
+| `verification-before-completion` (checks discipline) | `audio-mix`, `reel-final-check`, `deliver` |
+| `systematic-debugging` (when a stage fails) | `ffmpeg-recipes`, `editing-canon`, `landmines` |
+| `requesting-code-review` / `receiving-code-review` (editorial review) | |
+| `using-git-worktrees`, `finishing-a-development-branch` | |
+
+`reel-brief` and `edit-plan` are **thin adapters**: a domain template + `**REQUIRED SUB-SKILL:** Use superpowers:brainstorming` / `superpowers:writing-plans`. Not reimplementations.
+
+### 14.2 SKILL.md authoring conventions (mirror exactly)
+
+- **Frontmatter:** `name: kebab-case`; `description: "Use when <triggers/symptoms only — NEVER the workflow>"` (≤500 chars). Ref `writing-skills/SKILL.md:95–102`.
+- **Section order:** Overview (core principle 1–2 lines) → When to Use (+ small flowchart if a decision is non-obvious) → The Process (flowchart or numbered steps) → Red Flags → Rationalization table → domain sections. Ref `writing-skills/SKILL.md:113–137`.
+- **Flowcharts in Graphviz dot:** `shape=box` action, `shape=diamond` decision, `shape=doublecircle` terminal; edge labels for branches. Ref `test-driven-development/SKILL.md:48–69`.
+- **Announce on entry:** `"Using <skill> to <purpose>."` then, if the skill has a checklist, **one TodoWrite item per checklist item, done in order**. Ref `using-superpowers/SKILL.md:56–60`.
+- **Cross-skill refs:** `**REQUIRED SUB-SKILL:** Use superpowers:<skill>` — name only, **never `@`-links** (force-load burns context). Ref `writing-skills/SKILL.md:282–287`.
+- **No placeholders** in plans/specs: no "TBD", "tweak later", "optimize bitrate later". Ref `writing-plans/SKILL.md:106`.
+
+### 14.3 Gates, terminal states, hand-off
+
+- Each skill names its **ONE official next skill** — no branching hand-offs. `brainstorming`'s "the ONLY next skill is writing-plans" (`brainstorming/SKILL.md:65`) → mirror per stage in the §4 flow.
+- **HARD-GATE blocks** wrap the no-go rule + explicit loophole closure. Ref `brainstorming/SKILL.md:12–18`. For montage: *no episode processing / encoding until the EDL + draft are approved.*
+- **Two-stage review** (already our two-layer checks): spec/editorial compliance ✓ **before** technical quality ✓. Ref `subagent-driven-development/SKILL.md:42–87` → maps to `episode-postcheck` (editorial then mechanical) and `reel-final-check`.
+
+### 14.4 Subagent prompt discipline (for `process-episode`)
+
+From `subagent-driven-development/implementer-prompt.md:6–98`:
+- **Full task text inline** in the subagent prompt — never "read the plan file". Our episode manifest (§5.10) already does this; keep it self-contained.
+- **Self-review gate** before returning: completeness / quality / discipline / verification — the subagent fixes issues before reporting. Add this to the `process-episode` loop.
+- Ask clarifying questions **before** starting if the manifest is ambiguous.
+
+### 14.5 Verification Iron Law (adopt in both checks)
+
+`verification-before-completion/SKILL.md:17–61`: **no completion claim without fresh evidence** — IDENTIFY→RUN→READ→VERIFY→CLAIM. Add a montage claim table to `reel-final-check`:
+
+| Claim | Requires (fresh evidence) | Not sufficient |
+|-------|---------------------------|----------------|
+| Reel complete | ffprobe: exit 0 + duration = SPEC ±0.5s | "script finished" |
+| On beat | cut timestamps vs detected beats, all within ±60ms | "feels on beat" |
+| No black frames | `blackdetect` output empty | "looked fine on scrub" |
+| Loudness ok | `loudnorm` measured −14 LUFS ±1 | "sounds loud enough" |
+| Subject framed | `check_episode` numeric pass per grid | "looks centered" |
+
+### 14.6 Stage-failure debugging
+
+When a stage fails (encode error, sync drift, black frames, tracker loss), run `systematic-debugging` phases: root-cause → pattern → single hypothesis → minimal fix; **3+ fixes fail → question the approach / escalate**, don't brute-force. Ref `systematic-debugging/SKILL.md:46–213`. The `landmines.md` registry (§12) is the "working examples / known differences" input for Phase 2.
+
+---
+
+## 15. What's next
 
 The deliverable is this specification only. Next step: `writing-plans` → a detailed implementation plan (per skill/script, with TDD where applicable). Implementation in a separate session. Flagship for the first implementation if we trim scope: `extract` + `process-episode` + `reframe.py` + `ffmpeg-recipes` + `episode-postcheck` — the core; everything else as scaffolding.
