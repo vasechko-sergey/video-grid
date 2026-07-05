@@ -55,7 +55,8 @@ montage/
 │   └── montage-debugging.md            # phased stage-failure debugging (patterned on systematic-debugging)
 ├── scripts/
 │   ├── intake.py  beats.py  track.py  extract.py  reframe.py  storyboard.py
-│   ├── check_episode.py  check_reel.py  mix.py  assemble.py  deliver.py  trends.py
+│   ├── music_find.py  music_fetch.py  check_episode.py  check_reel.py
+│   ├── mix.py  assemble.py  deliver.py  trends.py
 ├── requirements.txt
 ├── setup.sh                            # creates .venv, installs deps, downloads weights
 ├── models/                             # YOLO weight cache (downloaded once)
@@ -73,7 +74,7 @@ python3 -m venv "$SKILL_DIR/.venv"
 
 - All scripts run **only** via `.venv/bin/python`, never system python.
 - `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
-- `requirements.txt`: `ultralytics` (YOLOv11 + ByteTrack), `pyscenedetect`, `madmom`, `essentia`, `numpy`, `scipy`, `imagehash`, `Pillow`. ffmpeg/ffprobe are system (external).
+- `requirements.txt`: `ultralytics` (YOLOv11 + ByteTrack), `pyscenedetect`, `madmom`, `essentia`, `numpy`, `scipy`, `imagehash`, `Pillow`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external).
 
 ---
 
@@ -84,9 +85,9 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 | File | Written by | Contents |
 |------|-----------|----------|
 | `FOOTAGE.md` | footage-intake | per clip: who, what, quality, shaky flag, scene-cuts; **list of moments** (one clip → several windows), each window with its own shot-type guess, description, score |
-| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, hook, text, ending, style-lean |
+| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, **music.mode** (local/free/any, default free), hook, text, ending, style-lean |
 | `TRENDS.md` | trend-scan | trend cache (fetch date, TTL 7–10d): cut-style, transitions, hook patterns, text-style, composition deviations, trending-sound candidates |
-| `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-vector, cut-map, **start_offset** (chosen track fragment), **vocal-map** (phrase boundaries for start snapping) |
+| `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-vector, cut-map, **start_offset** (chosen track fragment), **vocal-map** (phrase boundaries for start snapping), **source** (url/artist/title/license), **delivery** (baked/platform-sound) |
 | `PACING.md` | pacing | **energy spine**: episode order + target length + energy level, pinned to music sections, hook first |
 | `EDL.md` | edit-plan | ordered episodes: source+window, shot-type, layout, composition, grid, motion, processing-notes, beat-slot |
 | `SOURCES.md` | process-episode | lock file (🔒 per episode) — the session's `REEL_SOURCES.md` promoted to a contract; **one source may feed multiple episodes** (different windows) |
@@ -166,8 +167,13 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 `beats.py`: **madmom** (RNN+DBN) → beats + downbeats + drop; **essentia** → sections, RMS energy-curve, mood-vector (valence/arousal). **Mood-match**: the track's mood is matched against the reel's mood (cosine distance between mood-vectors), and the track's energy sections (build/drop/release) are aligned to the visual energy — music and picture are **one arc**, not two glued halves. Cut-map: cut points ↔ beats/downbeats.
 **Track-fragment selection:** the track **need not start at 0:00** — pick the strongest segment of the melody (by sections/energy/drop) for the reel length, don't force 0:00 (session: ODESZA `-ss 15`, Billie `-ss 13`). Record `start_offset`.
 **Vocal-aware start:** if the chosen window has vocals, the in-point **snaps to a vocal phrase boundary**, never mid-word. Detection: stem separation (demucs, optional) or VAD → RMS of the vocal stem → phrase gaps = valid in-points; the start snaps to the nearest boundary. No vocals → snap to a downbeat.
-Mode D: online — the agent searches/downloads the track; offline — a local track folder + `TRENDS.md`. Beat detection is **always local**.
-**Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word.
+**Autonomous find + download** — the skill can source the track itself, in three stages:
+- **Discovery** (`music_find.py`): trend-sound candidates from `TRENDS.md` (TikTok/IG trending sounds) + mood-match against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit × trend-presence → shortlist. Metadata + 30s previews only at this stage.
+- **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
+- **`SPEC.music.mode` (default `free`, overridable at skill invocation)** — the rights lane: `local` (user's own folder) · `free` (royalty-free APIs: YouTube Audio Library, Pixabay, Uppbeat, Free Music Archive, ccMixter — legal search+download; safe default for distribution) · `any` (full autonomous discovery+download incl. copyrighted via yt-dlp; user accepts responsibility — auto-downloading copyrighted audio is legally gray and jurisdiction-dependent, so this is a responsibility switch, not a baked-in default). Beat detection is **always local**.
+
+**Delivery interaction** (see §5.14): `baked` (default) muxes the audio into the export; `platform-sound` exports with the music stem ducked/removed + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
+**Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word, track sourced (per `music.mode`).
 
 ### 5.6 pacing → `PACING.md` (energy spine)
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
@@ -206,7 +212,7 @@ Two parts:
 **Gate:** both parts green.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
-`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request.
+`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`): `baked` (default) muxes the audio; `platform-sound` exports with the music stem removed + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app.
 **Gate:** platform params correct.
 
 ### 5.15 ffmpeg-recipes (reference)
@@ -393,6 +399,8 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 5. **essentia mood models** — which ones exactly (valence/arousal regressors) and their weight in mood-match.
 6. **Thresholds §9** — starting values, calibrate on the first reels.
 7. **Vocal detection for start snapping** — demucs (more accurate, heavier) vs a light spectral VAD; is a stem needed at all or is vocal-activity enough.
+8. **Music discovery APIs** — Spotify needs client creds (optional; iTunes/Deezer keyless); how to degrade gracefully when no creds.
+9. **yt-dlp fragility** — source availability/format churn; retry + fallback source order for `music_fetch.py`.
 
 ---
 
