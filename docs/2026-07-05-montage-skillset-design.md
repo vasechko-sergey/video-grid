@@ -1,390 +1,390 @@
 # Montage Skill Set — Design Spec
 
-**Дата:** 2026-07-05
-**Автор:** Sergei (vasechkoss@gmail.com) + Claude
-**Статус:** design approved, ready for `writing-plans`
-**Deliverable этого документа:** только спецификация (кода нет; реализация — отдельной сессией)
+**Date:** 2026-07-05
+**Author:** Sergei (vasechkoss@gmail.com) + Claude
+**Status:** design approved, ready for `writing-plans`
+**Deliverable of this document:** specification only (no code; implementation in a separate session)
 
 ---
 
-## 1. Цель
+## 1. Goal
 
-Полный набор скилов (по образцу [superpowers](https://github.com/obra/superpowers)) для монтажа **одного ролика из кучи сырого видео** — под любую платформу. Не привязан к серфингу: серф — первый проверенный юзкейс, но конвейер общий (трэвел, спорт, влог, промо).
+A full skill set (modeled on [superpowers](https://github.com/obra/superpowers)) for editing **one video reel out of a pile of raw footage** — for any platform. Not surf-specific: surfing is the first proven use case, but the pipeline is general (travel, sports, vlog, promo).
 
-Конвейер повторяет superpowers-поток: **идея → спецификация → план → черновик → поэпизодная обработка → проверки**. Каждый этап = отдельный скил с чётким входом/выходом (артефакт) и жёстким гейтом на выходе.
+The pipeline mirrors the superpowers flow: **idea → spec → plan → draft → per-episode processing → checks**. Each stage is a separate skill with a clear input/output (an artifact) and a hard gate at its exit.
 
-Дизайн выведен обратной разработкой из реальной сессии (Jul 3–5 2026), где собраны два рилса: Reel A (ODESZA «Say My Name», v10 финал) и Reel B (Billie Eilish «Birds of a Feather», v18). Все технические параметры, формулы и «грабли» ниже — из той сессии, не выдуманы.
+The design was reverse-engineered from a real session (Jul 3–5 2026) that produced two reels: Reel A (ODESZA "Say My Name", v10 final) and Reel B (Billie Eilish "Birds of a Feather", v18). Every technical parameter, formula, and "landmine" below comes from that session — not invented.
 
-### Принципы
+### Principles
 
-1. **Скрипты делают тяжёлую работу, агент заполняет маленький манифест.** Каждый этап = детерминированный python/ffmpeg-скрипт. Агент не рассуждает над каждым вызовом ffmpeg — он готовит параметры, скрипт исполняет. Экономит контекст и убирает ошибки.
-2. **Артефакты = контракты между скилами.** Простой markdown/json в `docs/montage/<project>/`, под git. Сырьё не трогается.
-3. **Каждый параметр — настраиваемый дефолт, не хардкод.** Canvas, layout, композиция, движение, style-lean, пороги, источники трендов.
-4. **Правила = классический канон как база ⊕ тренд как лёгкий сдвиг.** Строго там, где нужна консистентность; гибко там, где нужен вкус.
-5. **Поэпизодная обработка — в сабагентах.** Эпизоды независимы → параллельно; главный поток не грузит детали каждого эпизода.
-6. **Две проверки на каждом уровне:** механическая (числовые пороги) + редакторская (соответствие исходной идее, как код-ревью).
-7. **Самодостаточное окружение.** Скил ставит свой venv, не мусорит в общем.
+1. **Scripts do the heavy lifting; the agent fills a tiny manifest.** Each stage is a deterministic python/ffmpeg script. The agent doesn't reason over every ffmpeg call — it prepares parameters, the script executes. Saves context and removes errors.
+2. **Artifacts are the contracts between skills.** Plain markdown/json in `docs/montage/<project>/`, under git. Raw footage is never touched.
+3. **Every parameter is a tunable default, not a hardcode.** Canvas, layout, composition, motion, style-lean, thresholds, trend sources.
+4. **Rules = classic canon as base ⊕ trend as a light lean.** Strict where consistency is needed; flexible where taste is needed.
+5. **Per-episode processing runs in subagents.** Episodes are independent → parallel; the main thread never loads per-episode detail.
+6. **Two checks at every level:** mechanical (numeric thresholds) + editorial (matches the original idea, like code review).
+7. **Self-contained environment.** The skill installs its own venv; it never pollutes the shared environment.
 
 ---
 
-## 2. Раскладка скила
+## 2. Skill layout
 
-Запуск в режиме Claude Code (есть доступ к окружению). Скил изолирован через локальный venv.
+Runs in Claude Code mode (environment access available). The skill is isolated via a local venv.
 
 ```
 montage/
 ├── SKILLS/
-│   ├── using-montage/SKILL.md          # роутер (правило «1% → вызывай»)
+│   ├── using-montage/SKILL.md          # router ("1% → invoke" rule)
 │   ├── footage-intake/SKILL.md
 │   ├── reel-brief/SKILL.md
 │   ├── trend-scan/SKILL.md
 │   ├── music-and-mood/SKILL.md
 │   ├── pacing/SKILL.md
 │   ├── edit-plan/SKILL.md
-│   ├── extract/SKILL.md                # режет окна EDL в отдельные фрагменты
+│   ├── extract/SKILL.md                # cuts EDL windows into standalone fragments
 │   ├── assemble-draft/SKILL.md
-│   ├── process-episode/SKILL.md        # сабагент, коронка
-│   ├── episode-postcheck/SKILL.md      # гейт
+│   ├── process-episode/SKILL.md        # subagent, crown jewel
+│   ├── episode-postcheck/SKILL.md      # gate
 │   ├── audio-mix/SKILL.md
-│   ├── reel-final-check/SKILL.md       # гейт
+│   ├── reel-final-check/SKILL.md       # gate
 │   ├── deliver/SKILL.md
-│   └── ffmpeg-recipes/SKILL.md         # референс + реестр граблей
+│   └── ffmpeg-recipes/SKILL.md         # reference + landmine registry
 ├── references/
-│   ├── editing-canon.md                # классич. правила монтажа + библиотека сеток (thirds/phi/golden-canon-grid)
-│   └── landmines.md                    # выученные провалы (см. §12)
+│   ├── editing-canon.md                # classic editing rules + grid library (thirds/phi/golden-canon-grid)
+│   └── landmines.md                    # learned failures (see §12)
 ├── scripts/
 │   ├── intake.py  beats.py  track.py  extract.py  reframe.py  storyboard.py
 │   ├── check_episode.py  check_reel.py  mix.py  assemble.py  deliver.py  trends.py
 ├── requirements.txt
-├── setup.sh                            # создаёт .venv, ставит зависимости, качает веса
-├── models/                             # кэш весов YOLO (скачивается один раз)
-└── .venv/                              # локальный, в .gitignore
+├── setup.sh                            # creates .venv, installs deps, downloads weights
+├── models/                             # YOLO weight cache (downloaded once)
+└── .venv/                              # local, gitignored
 ```
 
-### Окружение (venv, без мусора в системе)
+### Environment (venv, no system pollution)
 
 ```bash
-# setup.sh (идемпотентный)
+# setup.sh (idempotent)
 python3 -m venv "$SKILL_DIR/.venv"
 "$SKILL_DIR/.venv/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# качаем веса YOLO в models/ если нет
+# download YOLO weights into models/ if missing
 ```
 
-- Все скрипты запускаются **только** через `.venv/bin/python`, никогда через системный python.
-- `using-montage` шаг 0 = ensure-env: если `.venv` нет → запустить `setup.sh`. Само-восстанавливается.
-- `requirements.txt`: `ultralytics` (YOLOv11 + ByteTrack), `pyscenedetect`, `madmom`, `essentia`, `numpy`, `scipy`, `imagehash`, `Pillow`. ffmpeg/ffprobe — системные (внешние).
+- All scripts run **only** via `.venv/bin/python`, never system python.
+- `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
+- `requirements.txt`: `ultralytics` (YOLOv11 + ByteTrack), `pyscenedetect`, `madmom`, `essentia`, `numpy`, `scipy`, `imagehash`, `Pillow`. ffmpeg/ffprobe are system (external).
 
 ---
 
-## 3. Артефакты (папка docs/, отдельно от сырья)
+## 3. Artifacts (docs/ folder, separate from raw footage)
 
-Всё в `docs/montage/<project>/` — под git, сырьё нетронуто:
+Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 
-| Файл | Кто пишет | Что внутри |
-|------|-----------|------------|
-| `FOOTAGE.md` | footage-intake | по каждому клипу: кто, что, качество, флаг shaky, scene-cuts; **список моментов** (один клип → несколько окон), у каждого окна свои shot-type-догадка, описание, score |
-| `SPEC.md` | reel-brief | кол-во роликов, платформа+canvas, длина, настроение, музыка, hook, текст, ending, style-lean |
-| `TRENDS.md` | trend-scan | кэш трендов (дата фетча, TTL 7–10д): cut-style, transitions, hook-паттерны, text-style, композиц. сдвиги, кандидаты трендовых звуков |
-| `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-вектор, cut-map, **start_offset** (выбранный фрагмент трека), **vocal-map** (границы фраз для снапа старта) |
-| `PACING.md` | pacing | **энергетический хребет**: порядок эпизодов + целевая длина + уровень энергии, привязанные к секциям музыки, hook первым |
-| `EDL.md` | edit-plan | упорядоченные эпизоды: source+window, shot-type, layout, composition, motion, processing-notes, beat-slot |
-| `SOURCES.md` | process-episode | lock-файл (🔒 на эпизод) — промоут `REEL_SOURCES.md` из сессии до контракта; **один источник может кормить несколько эпизодов** (разные окна) |
-| `segments/<ep>_raw.mp4` | extract | **вырезанные фрагменты** по окнам EDL — вход для draft и process-episode (не полные ролики) |
-| `checks/*.json` | *-check | отчёты механических проверок |
-| `storyboards/*.jpg` | storyboard | контактные листы с сеткой (трети + phi; для hero/статики — полная golden-canon армата) — **артефакт проверки** |
-| `out/*.mp4` | process/assemble/deliver | эпизоды 🔒, аудио, финал |
+| File | Written by | Contents |
+|------|-----------|----------|
+| `FOOTAGE.md` | footage-intake | per clip: who, what, quality, shaky flag, scene-cuts; **list of moments** (one clip → several windows), each window with its own shot-type guess, description, score |
+| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, hook, text, ending, style-lean |
+| `TRENDS.md` | trend-scan | trend cache (fetch date, TTL 7–10d): cut-style, transitions, hook patterns, text-style, composition deviations, trending-sound candidates |
+| `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-vector, cut-map, **start_offset** (chosen track fragment), **vocal-map** (phrase boundaries for start snapping) |
+| `PACING.md` | pacing | **energy spine**: episode order + target length + energy level, pinned to music sections, hook first |
+| `EDL.md` | edit-plan | ordered episodes: source+window, shot-type, layout, composition, grid, motion, processing-notes, beat-slot |
+| `SOURCES.md` | process-episode | lock file (🔒 per episode) — the session's `REEL_SOURCES.md` promoted to a contract; **one source may feed multiple episodes** (different windows) |
+| `segments/<ep>_raw.mp4` | extract | **cut fragments** per EDL window — input for draft and process-episode (not full clips) |
+| `checks/*.json` | *-check | mechanical-check reports |
+| `storyboards/*.jpg` | storyboard | contact sheets with a grid (thirds + phi; for hero/static — the full golden-canon armature) — **verification artifact** |
+| `out/*.mp4` | process/assemble/deliver | locked episodes 🔒, audio, final |
 
 ---
 
-## 4. Поток конвейера
+## 4. Pipeline flow
 
 ```
-using-montage (роутер, ensure-env)
+using-montage (router, ensure-env)
       │
       ▼
 footage-intake ──► FOOTAGE.md
       │
       ▼
-reel-brief ──────► SPEC.md            (brainstorming для рилсов)
+reel-brief ──────► SPEC.md            (brainstorming for reels)
       │
       ▼
-trend-scan ──────► TRENDS.md          (кэш TTL 7–10д)
+trend-scan ──────► TRENDS.md          (cache TTL 7–10d)
       │
       ▼
-music-and-mood ──► MUSIC.json         (mood-match + энергия + биты)
+music-and-mood ──► MUSIC.json         (mood-match + energy + beats)
       │
       ▼
-pacing ──────────► PACING.md          (энергетический хребет — общий для music и edit-plan)
+pacing ──────────► PACING.md          (energy spine — shared by music and edit-plan)
       │
       ▼
-edit-plan ───────► EDL.md             (writing-plans для рилсов; карта source+window, без резки)
+edit-plan ───────► EDL.md             (writing-plans for reels; source+window map, no cutting)
       │
       ▼
-extract ─────────► segments/<ep>_raw.mp4   (режем окна в отдельные файлы — ОДИН раз, верные seek-аргументы)
+extract ─────────► segments/<ep>_raw.mp4   (cut windows into files — ONCE, correct seek args)
       │
       ▼
-assemble-draft ──► draft.mp4 + burnt-in метки «что где обрабатывать»  (конкат сегментов)
+assemble-draft ──► draft.mp4 + burnt-in "process here" labels  (concat of segments)
       │
-      ▼   (после утверждения плана/черновика сегменты = рабочий вход)
+      ▼   (after plan/draft approval, segments are the working input)
       ▼
-process-episode ×N  ◄── САБАГЕНТЫ, параллельно, по одному на эпизод
-   (вход = segments/<ep>_raw.mp4 → track → reframe → storyboard → episode-postcheck → retry/lock 🔒)
-      │
-      ▼
-audio-mix ───────► audio (музыка + дак эмбиента + loudnorm −14 LUFS)
+process-episode ×N  ◄── SUBAGENTS, parallel, one per episode
+   (input = segments/<ep>_raw.mp4 → track → reframe → storyboard → episode-postcheck → retry/lock 🔒)
       │
       ▼
-reel-final-check ──► механика + редакторское ревью (как код-ревью)
+audio-mix ───────► audio (music + ducked ambient + loudnorm −14 LUFS)
       │
       ▼
-deliver ─────────► out/REEL_*.mp4  (кодек/fps/битрейт под платформу)
+reel-final-check ──► mechanical + editorial review (like code review)
+      │
+      ▼
+deliver ─────────► out/REEL_*.mp4  (codec/fps/bitrate per platform)
 ```
 
-Гейты жёсткие: этап не выходит, пока не выполнены условия выхода. Проваленный чек → петля назад, не вперёд.
+Gates are hard: a stage does not exit until its exit conditions are met. A failed check → loop back, not forward.
 
 ---
 
-## 5. Скилы — детально
+## 5. Skills — in detail
 
-### 5.1 using-montage (роутер)
-Вход-точка. Правило «есть 1% что скил применим → вызывай». Шаг 0: ensure-env (venv). Направляет по этапам 1–13. Аналог `using-superpowers`.
+### 5.1 using-montage (router)
+Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. Step 0: ensure-env (venv). Routes through stages 1–13. Analogous to `using-superpowers`.
 
 ### 5.2 footage-intake → `FOOTAGE.md`
-`intake.py`: ffprobe (длина/разрешение/fps) + PySceneDetect (границы сцен) + YOLO-сэмпл (кто/сколько людей) + оценка тряски (магнитуда vidstabdetect). **Один клип → несколько окон-моментов**, не одно: длинный проезд/дубль содержит разные фрагменты (grounding: MVI_3739 = один 22с проезд → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → два hang-five). intake сегментирует клип на кандидат-окна (sub-сцены + движение/люди) и **скорит каждое окно отдельно**. Шаг **отбора/куллинга**: ранжируем окна по всему сырью, метим лучшие моменты — несколько могут быть из одного источника.
-**Гейт:** каждый клип залогирован, лица/люди помечены, окна-моменты выделены и заскорены.
+`intake.py`: ffprobe (duration/resolution/fps) + PySceneDetect (scene boundaries) + YOLO sample (who/how many people) + shake estimate (vidstabdetect magnitude). **One clip → several moment-windows**, not one: a long ride/take contains distinct fragments (grounding: MVI_3739 = one 22s ride → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → two hang-fives). intake segments each clip into candidate windows (sub-scenes + motion/people) and **scores each window separately**. Cull/selection step: rank windows across all footage, mark the best moments — several may come from one source.
+**Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored.
 
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
-Диалог об идее: сколько роликов, платформа(ы)+canvas, длина, настроение, трек, hook-интент, текст, ending, **style-lean** (классика↔тренд). Разные ролики = разные клипы (минимум повторов), заканчиваются по-разному.
-**Гейт:** mood + platform/canvas + length + hook зафиксированы.
+Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
+**Gate:** mood + platform/canvas + length + hook locked.
 
-### 5.4 trend-scan → `TRENDS.md` (кэш TTL 7–10д)
-`trends.py`. Слоёный источник (см. §8). Кэш с датой фетча: свежий → переиспользуем; старше 7–10д → перефетч. Выход — **короткий список проверяемых директив**, не блоб. Ручной оверрайд: юзер вписывает строки, агент считает их locked.
-**Гейт:** свежий кэш или ручной ввод.
+### 5.4 trend-scan → `TRENDS.md` (cache TTL 7–10d)
+`trends.py`. Layered source (see §8). Cache stamped with fetch date: fresh → reuse; older than 7–10d → refetch. Output is a **short list of checkable directives**, not a blob. Manual override: user writes lines in, the agent treats them as locked.
+**Gate:** fresh cache or manual input.
 
 ### 5.5 music-and-mood → `MUSIC.json`
-`beats.py`: **madmom** (RNN+DBN) → биты + даунбиты + drop; **essentia** → секции, RMS-energy-curve, mood-вектор (valence/arousal). **Mood-match**: настроение трека сопоставляется с настроением ролика (косинус между mood-векторами), и энергетические секции трека (build/drop/release) выравниваются на визуальную энергию — музыка и картинка = **одна дуга**, не две склеенные части. Cut-map: точки резов ↔ биты/даунбиты.
-**Выбор фрагмента трека:** трек **не обязан идти с начала** — выбираем сильнейший сегмент мелодии (по секциям/энергии/drop) под длину ролика, а не форсим 0:00 (в сессии: ODESZA `-ss 15`, Billie `-ss 13`). Записываем `start_offset`.
-**Вокал-осознанный старт:** если в выбранном окне есть вокал — точка входа **привязывается к границе вокальной фразы**, никогда не с середины слова. Детект: разделение стемов (demucs, опц.) или VAD → RMS вокал-стема → фразовые паузы = валидные in-points; старт снапится к ближайшей границе. Нет вокала → снап к даунбиту.
-Режим D: онлайн — агент ищет/качает трек; оффлайн — локальная папка треков + `TRENDS.md`. Beat-детект **всегда локально**.
-**Гейт:** настроение матчит SPEC, cut-map построен, `start_offset` выбран, старт не рвёт слово.
+`beats.py`: **madmom** (RNN+DBN) → beats + downbeats + drop; **essentia** → sections, RMS energy-curve, mood-vector (valence/arousal). **Mood-match**: the track's mood is matched against the reel's mood (cosine distance between mood-vectors), and the track's energy sections (build/drop/release) are aligned to the visual energy — music and picture are **one arc**, not two glued halves. Cut-map: cut points ↔ beats/downbeats.
+**Track-fragment selection:** the track **need not start at 0:00** — pick the strongest segment of the melody (by sections/energy/drop) for the reel length, don't force 0:00 (session: ODESZA `-ss 15`, Billie `-ss 13`). Record `start_offset`.
+**Vocal-aware start:** if the chosen window has vocals, the in-point **snaps to a vocal phrase boundary**, never mid-word. Detection: stem separation (demucs, optional) or VAD → RMS of the vocal stem → phrase gaps = valid in-points; the start snaps to the nearest boundary. No vocals → snap to a downbeat.
+Mode D: online — the agent searches/downloads the track; offline — a local track folder + `TRENDS.md`. Beat detection is **always local**.
+**Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word.
 
-### 5.6 pacing → `PACING.md` (энергетический хребет)
-Общий артефакт, который читают **и** music-and-mood, **и** edit-plan. Порядок эпизодов + целевая длина каждого + уровень энергии, приколотые к секциям музыки. Hook — первым. Это делает «настроение совпадает, не две части» **структурным**, а не на глаз. Длина эпизода — переменная (короткие врезки где нужен ритм, длинные где нужно показать манёвр/проезд).
-**Гейт:** порядок+длина+энергия привязаны к музыке.
+### 5.6 pacing → `PACING.md` (energy spine)
+A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
+**Gate:** order+length+energy pinned to the music.
 
 ### 5.7 edit-plan → `EDL.md` (= writing-plans)
-Каждый эпизод биндится к слоту в `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. См. §6 (композиция) и §7 (layout). Это **карта** (в каком файле что лежит и с каких моментов смотреть) — без резки.
-**Гейт:** у каждого эпизода есть source+window+shot-type+beat-slot.
+Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
+**Gate:** every episode has source+window+shot-type+beat-slot.
 
 ### 5.8 extract → `segments/<ep>_raw.mp4`
-`extract.py`: по окнам из `EDL` **вырезает каждый эпизод в отдельный файл** — один раз, с **верными seek-аргументами** (см. §12; проблема была в аргументах вызова, не в 4K). Кадрово-точный рез (re-encode короткого окна). Дальше и черновик, и `process-episode` работают с этими маленькими фрагментами — не сикают по 300МБ, не сканируют весь файл. 4K режем нативно (без прокси/даунскейла — качество сохраняется).
-**Гейт:** каждый эпизод из `EDL` имеет свой `segments/<ep>_raw.mp4`, длина совпадает с окном.
+`extract.py`: using the windows from `EDL`, **cut each episode into a standalone file** — once, with **correct seek arguments** (see §12; the bug was in the call args, not in 4K). Frame-accurate cut (re-encode of the short window). From here on both the draft and `process-episode` work on these small fragments — no seeking through 300MB, no scanning the whole file. 4K is cut natively (no proxy/downscale — quality preserved).
+**Gate:** every episode from `EDL` has its own `segments/<ep>_raw.mp4`, length matches the window.
 
 ### 5.9 assemble-draft → `draft.mp4`
-`assemble.py`: конкат **сегментов** (`segments/*_raw.mp4`) в **весь черновик сразу**, почти без обработки, с **выжженными метками** — что и где будет обрабатываться (по processing-notes из EDL). Проверка формы целиком до полировки. После утверждения плана/черновика сегменты фиксируются как рабочий вход.
-**Гейт:** полная длина, попадает в биты, воспроизводится.
+`assemble.py`: concat of the **segments** (`segments/*_raw.mp4`) into the **whole draft at once**, almost no processing, with **burnt-in labels** — what will be processed and where (from the EDL processing-notes). A check of the whole shape before polishing. After plan/draft approval the segments are locked as the working input.
+**Gate:** full length, lands on beats, plays.
 
-### 5.10 process-episode → `out/<ep>.mp4` 🔒 (сабагент, коронка)
-См. §6. Запускается **как сабагент, по одному на эпизод**, параллельно (через `dispatching-parallel-agents`). Контекст сабагента = только `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`. Вход — **вырезанный фрагмент**, не полный ролик (маленький файл, никакого поиска по 300МБ). Петля: track → reframe → storyboard → episode-postcheck → (провал? retry) → вернуть 🔒 клип + отчёт. Главный поток деталей эпизода не грузит.
-**Гейт:** episode-postcheck пройден.
+### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
+See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail.
+**Gate:** episode-postcheck passes.
 
-### 5.11 episode-postcheck (гейт)
-Обязательный шаг. Две части:
-- **Механика** (`check_episode.py`): пороги §9 — по declared composition intent эпизода (не по глобальному закону третей).
-- **Редакторская**: «этот эпизод читается хорошо?» — соответствие интенту эпизода.
-Оба должны пройти. Провал → назад в reframe.
+### 5.11 episode-postcheck (gate)
+Mandatory step. Two parts:
+- **Mechanical** (`check_episode.py`): thresholds §9 — against the episode's declared composition intent (not against a global rule-of-thirds law).
+- **Editorial**: "does this episode read well?" — matches the episode's intent.
+Both must pass. Fail → back to reframe.
 
 ### 5.12 audio-mix → `out/audio`
-`mix.py`: музыка + **дак эмбиента** (sidechaincompress) + SFX (whoosh на переходах) + **loudnorm −14 LUFS** (EBU R128). afade in/out.
-**Гейт:** громкость в диапазоне.
+`mix.py`: music + **ambient ducking** (sidechaincompress) + SFX (whoosh on transitions) + **loudnorm −14 LUFS** (EBU R128). afade in/out.
+**Gate:** loudness in range.
 
-### 5.13 reel-final-check (гейт) — обязательная проверка всего ролика
-Две части:
-- **Механика** (`check_reel.py`): чёрные кадры (blackdetect), громкость (loudnorm measure), резы-на-битах, дельты цвета между резами, **variety-guard** (перцептивный хэш — нет почти-дублей подряд), длина, safe-zones.
-- **Редакторская** (агент, как `requesting-code-review`): доставляет ли ролик исходную идею SPEC? Настроение/история? Hook сильный? Ending правильный? Pacing по хребту? Что-то из EDL пропущено/слабо? Классическая база **и** трендовый вкус (не пресно, не гимик). → findings → фикс-петля → ре-чек.
-**Гейт:** обе части зелёные.
+### 5.13 reel-final-check (gate) — mandatory whole-reel check
+Two parts:
+- **Mechanical** (`check_reel.py`): black frames (blackdetect), loudness (loudnorm measure), cuts-on-beat, color deltas across cuts, **variety-guard** (perceptual hash — no near-duplicates back to back), length, safe-zones.
+- **Editorial** (agent, like `requesting-code-review`): does the reel deliver SPEC's original idea? Mood/story? Hook strong? Ending right? Pacing along the spine? Anything from EDL missing/weak? Classic base **and** trend flavor (not bland, not gimmicky). → findings → fix loop → re-check.
+**Gate:** both parts green.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
-`deliver.py`: экспорт под платформу (кодек/битрейт/fps/разрешение/контейнер). SPEC выбирает **primary canvas**; deliver опционально **пере-рефреймит** во вторичные аспекты (хороший 9:16 ≠ хороший 16:9 → пере-прогон, не просто леттербокс). Дефолт: только primary; доп. аспекты по запросу.
-**Гейт:** параметры под платформу верны.
+`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request.
+**Gate:** platform params correct.
 
-### 5.15 ffmpeg-recipes (референс)
-Не этап — библиотека. Сниппеты crop/color/vidstab/seek/concat + **реестр граблей** (§12). Используется extract, assemble-draft, process-episode, audio-mix, deliver. Цель — «не изобретать ffmpeg заново».
+### 5.15 ffmpeg-recipes (reference)
+Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **landmine registry** (§12). Used by extract, assemble-draft, process-episode, audio-mix, deliver. Goal: "don't reinvent ffmpeg."
 
 ---
 
-## 6. Алгоритм следования и композиции (коронка)
+## 6. Follow and composition algorithm (crown jewel)
 
-### 6.1 Следование: трекер авторит, сториборд проверяет
+### 6.1 Following: the tracker authors, the storyboard verifies
 
-Ручной сториборд 0.1с из сессии был **обходом отсутствия надёжного трекера**. С YOLO+ByteTrack переворачиваем:
+The manual 0.1s storyboard from the session was a **workaround for having no reliable tracker**. With YOLO+ByteTrack we flip it:
 
-1. **Трекинг** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** на **вырезанном фрагменте** (`segments/<ep>_raw.mp4`, не полный ролик) → `subject_x(t), y(t)` **на каждом кадре** (не сэмпл 0.1с). Устойчив к пене/чужим серферам (класс person + удержание ID) — там где OpenCV HSV-блоб проваливался.
-2. **Правило третей/направления** применяется **непрерывно** (см. 6.2).
-3. **Нелинейный путь = демпфированное следование за скоростью.** Оптимизатор пути (Savitzky-Golay / min-jerk сглаживание + max-step-per-frame демпфирование) **сам** держит кадр на медленном старте и разгоняется вместе с объектом — ровно то, что вручную подбиралось («медленный старт → подержать дольше, не линейно»). Оптимизатор заменяет ручные кейфреймы.
-4. **Сториборд 0.1с с сеткой третей демотирован до проверки** — `check_episode.py` читает `subject_x(t)` против целевой линии численно. Контактный лист — артефакт для гейта и человеческого ревью.
+1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed.
+2. **The thirds/direction rule** applies **continuously** (see 6.2).
+3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay / min-jerk smoothing + max-step-per-frame damping) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing.
+4. **The 0.1s thirds-grid storyboard is demoted to verification** — `check_episode.py` reads `subject_x(t)` against the target line numerically. The contact sheet is an artifact for the gate and for human review.
 
-**Итог:** ручной боттлнек убран, но **правила композиции = параметры оптимизатора** — вкус не потерян.
+**Net:** the manual bottleneck is gone, but **the composition rules become the optimizer's parameters** — no taste lost.
 
-**Переиспользование:** берём стек (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), пишем свой glue (`reframe.py`) под наши правила + цвет + стабилизация. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) — референс/фолбэк (его path-optimizer, но CLI не гнём: он не умеет thirds-bias и наш цвет).
+**Reuse:** take the stack (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), write our own glue (`reframe.py`) for our rules + color + stabilization. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) is a reference/fallback (its path optimizer, but we don't bend its CLI: it can't do thirds-bias or our color).
 
-### 6.2 Композиция = интент на эпизод (канон ⊕ тренд, оверрайдится)
+### 6.2 Composition = per-episode intent (canon ⊕ trend, overridable)
 
-Композиция — **дефолт, не закон**. Каждый эпизод получает `composition` + `grid` + `motion`:
+Composition is a **default, not a law**. Each episode gets `composition` + `grid` + `motion`:
 
-| `composition` | Когда | reframe.py путь | postcheck |
+| `composition` | When | reframe.py path | postcheck |
 |---|---|---|---|
-| `lead` (дефолт, латеральный экшн) | проезд — объект на «хвостовой» линии, воздух впереди по ходу | трекинг-кроп + directional lead offset к линии сетки | численно: на нужной линии |
-| `center` | атмосфера / симметрия / **движение на камеру** / **заход-выход в воду** | объект по центру, без латерального lead | численно: у центра ±tol |
-| `break` | намеренный выход за стандарт ради красоты | трекинг, но правило ослаблено / крайнее кадрирование разрешено | **только редакторски**, без численного фейла |
+| `lead` (default, lateral action) | a ride — subject on the "trailing" line, air ahead in the direction of travel | tracked crop + directional lead offset to the grid line | numeric: on the correct line |
+| `center` | atmospheric / symmetric / **moving toward camera** / **wade in-out of water** | subject centered, no lateral lead | numeric: near center ±tol |
+| `break` | intentional departure from the standard for beauty | tracked, but the rule is relaxed / extreme framing allowed | **editorial only**, no numeric fail |
 
-**`grid` = line-target для `lead`/`center`** (см. §6.5 «библиотека сеток»):
-- **`thirds` (дефолт)** — линии 0.333/0.667. Line-target для непрерывного трекинга движущегося объекта.
-- **`phi`** — линии 0.382/0.618 (золотое сечение), опция на эпизод где нужна утончённость.
-- **Почему трети дефолт для трекинга** (решено мной): проверено в сессии (дало «прекрасен»); совпадает с safe-zones платформ; phi на ~5% ближе к центру → у ведущего края меньше воздуха, а правило направления как раз хочет воздух впереди. phi доступен явно; golden-canon-grid — отдельный статичный слой (§6.5), не line-target трекинга.
+**`grid` = line-target for `lead`/`center`** (see §6.5 "grid library"):
+- **`thirds` (default)** — lines at 0.333/0.667. The line-target for continuous tracking of a moving subject.
+- **`phi`** — lines at 0.382/0.618 (golden ratio), a per-episode option where refinement is wanted.
+- **Why thirds is the tracking default** (my call): proven in the session (produced a result the user called perfect); matches platform safe-zones; phi sits ~5% closer to center → less air at the leading edge, and the direction rule specifically wants air ahead. phi is available explicitly; golden-canon-grid is a separate static layer (§6.5), not a tracking line-target.
 
-`motion` (авто-классификация из трека, оверрайдится):
-- **латеральное L/R** → правило направления работает
-- **на камеру** (bbox растёт, x стабилен) → правило направления **N/A**; держим центр, трекаем масштаб/зум, не X
-- **статика** → фикс-кадр / медленный пан
+`motion` (auto-classified from the track, overridable):
+- **lateral L/R** → the direction rule applies
+- **toward camera** (bbox grows, x stable) → direction rule **N/A**; hold center, track scale/zoom, not X
+- **static** → fixed frame / slow pan
 
-**Ключ:** postcheck проверяет против **задекларированной сетки+интента эпизода**, не против глобального закона. `break` = только человеческое суждение — механика отходит, намеренный слом никогда не фейлит гейт.
+**Key:** postcheck verifies against the episode's **declared grid+intent**, not against a global law. `break` = human judgment only — the mechanical check steps aside, an intentional departure never fails the gate.
 
-Дефолты от shot-type (оверрайдятся): action-follow→`lead`+`thirds` · establishing/atmospheric/wade→`center` · помеченное тобой→`break`.
+Defaults from shot-type (overridable): action-follow→`lead`+`thirds` · establishing/atmospheric/wade→`center` · anything you flag→`break`.
 
-### 6.3 Правила = классический канон ⊕ трендовый сдвиг
+### 6.3 Rules = classic canon ⊕ trend lean
 
-- **База — `references/editing-canon.md`** (в скиле): трети, headroom, lead room, правило 180°, cut-on-action, match cut, J/L-cuts, continuity, контраст. Читается edit-plan, process-episode, чеками.
-- **Тренд-слой — `TRENDS.md`** (композиц. секция): текущие отклонения (центральные punch-in, jump cuts, крайние кропы, whip-переходы, hook-паттерны, text-style).
-- **Смешение:** интент эпизода = канон-дефолт → сдвинут трендовыми директивами → оверрайдится тобой. Легко («чуть отходил») — регулируется одним кноб: **`SPEC.style-lean`** (классика↔тренд, напр. 70/30).
-- **Редакторский чек судит оба:** «крепкая классическая база **и** трендовый вкус» — всё-канон = пресно, всё-тренд = гимик; ревью флагует оба провала.
+- **Base — `references/editing-canon.md`** (in the skill): thirds, headroom, lead room, the 180° rule, cut-on-action, match cut, J/L cuts, continuity, contrast. Read by edit-plan, process-episode, the checks.
+- **Trend layer — `TRENDS.md`** (composition section): current deviations (center punch-ins, jump cuts, extreme crops, whip transitions, hook patterns, text style).
+- **Blend:** the episode's intent = canon default → nudged by trend directives → overridable by you. Lightly ("a slight lean") — controlled by one knob: **`SPEC.style-lean`** (classic↔trend, e.g. 70/30).
+- **The editorial check judges both:** "a solid classic base **and** trend flavor" — all-canon reads dated, all-trend reads gimmicky; the review flags either failure.
 
-Grounding: в сессии уже так — классические трети/lead как база, но hard-cuts vs crossfades сверены с трендом 2026 и выбран тренд.
+Grounding: the session already did this — classic thirds/lead as base, but hard-cuts vs crossfades were verified against 2026 trends and the trend was chosen.
 
-### 6.4 Формулы кропа (из сессии, обобщить)
+### 6.4 Crop formulas (from the session, generalized)
 
-- 9:16 ширина из 1920-широкого = 607px (`int(H×9/16)`). **Обобщить**: crop-размер = функция от `canvas` и source-аспекта, не хардкод.
-- lead offset: вправо → левая линия сетки → `center = subject_x + lead`; влево → правая → `subject_x − lead`. Целевая линия = линия выбранной `grid` (трети 0.333/0.667 или phi 0.382/0.618). **Обобщить**: `lead` как **доля ширины кадра**, не пиксели (в сессии было +91/−97 на 1080-ширине ≈ 0.084/−0.090·W).
-- `crop_x = center − crop_w/2`, зажать в `[0, W−crop_w]`.
+- 9:16 width from a 1920-wide source = 607px (`int(H×9/16)`). **Generalize**: crop size = a function of `canvas` and source aspect, not a hardcode.
+- lead offset: moving right → left grid line → `center = subject_x + lead`; moving left → right line → `subject_x − lead`. The target line = the line of the chosen `grid` (thirds 0.333/0.667 or phi 0.382/0.618). **Generalize**: `lead` as a **fraction of frame width**, not pixels (the session used +91/−97 on a 1080-wide frame ≈ 0.084/−0.090·W).
+- `crop_x = center − crop_w/2`, clamped to `[0, W−crop_w]`.
 
-### 6.5 Библиотека композиц-сеток (`references/editing-canon.md`)
+### 6.5 Composition-grid library (`references/editing-canon.md`)
 
-Три инструмента разной сложности, разнесены по слоям — **линия для движения, армата для статики**:
+Three tools of increasing complexity, split across layers — **a line for motion, an armature for static**:
 
-| Сетка | Что | Где применяется |
-|-------|-----|-----------------|
-| `thirds` | 2+2 линии 0.333/0.667 | **line-target непрерывного трекинга** (дефолт) |
-| `phi` | 2+2 линии 0.382/0.618 (золотое сечение) | line-target трекинга, опция на эпизод |
-| `golden-canon-grid` | **армата динамической симметрии**: корневой прямоугольник + 2 диагонали (барокко/sinister) + 4 реципрокали (⊥ к диагоналям) + горизонтали/вертикали через «глаза» пересечений + phi-деления | **статичный/редакторский слой**, не line-target |
+| Grid | What | Where it's used |
+|------|------|-----------------|
+| `thirds` | 2+2 lines at 0.333/0.667 | **line-target for continuous tracking** (default) |
+| `phi` | 2+2 lines at 0.382/0.618 (golden ratio) | tracking line-target, per-episode option |
+| `golden-canon-grid` | **dynamic-symmetry armature**: root rectangle + 2 diagonals (baroque/sinister) + 4 reciprocals (⊥ to the diagonals) + horizontals/verticals through the "eyes" of the intersections + phi divisions | **static/editorial layer**, not a line-target |
 
-**Golden Canon Grid — не цель покадрового трекинга** (армата привязана к аспекту и статична; плавно вести движущийся объект на барокко-диагональ покадрово нельзя). Три статичных применения:
-1. **Hero/статичные/`center`/`break` кадры** — кадрирование под аромату: объект на «глазу», линии горизонта/волны по реципрокалям, движение вдоль диагонали.
-2. **Редакторский оверлей** — `storyboard.py` рисует полную аромату (диагонали+реципрокали+глаза+phi); editorial-чек судит сильнейшие кадры против неё.
-3. **Скоринг при отборе** — intake/edit-plan бонусят моменты, чья естественная композиция уже легла на диагональ арматуры (линия волны вдоль барокко-диагонали).
+**Golden Canon Grid is not a per-frame tracking target** (the armature is aspect-locked and static; you can't smoothly pan a moving subject onto a baroque diagonal frame-by-frame). Three static uses:
+1. **Hero/static/`center`/`break` frames** — frame to honor the armature: subject on an "eye", horizon/wave lines along the reciprocals, motion along a diagonal.
+2. **Editorial overlay** — `storyboard.py` draws the full armature (diagonals + reciprocals + eyes + phi); the editorial check judges the strongest frames against it.
+3. **Selection scoring** — intake/edit-plan bonus for moments whose natural composition already lands on an armature diagonal (a wave line along the baroque diagonal).
 
-Storyboard-оверлей для проверки движения рисует **трети + phi** линии; для hero/статики — плюс полную аромату. `check_episode` проверяет против **выбранной** `grid` эпизода.
-
----
-
-## 7. Аспект и layout (платформы разные)
-
-Аспект — **параметр**, не хардкод 9:16. Layout — **на эпизод** (горизонтальное видео можно класть и в вертикаль, если ложится в историю/визуал).
-
-- **`SPEC.canvas`** = целевые WxH под платформу (9:16 reel, 4:5 feed, 1:1, 16:9 YouTube…).
-- **`EDL.layout`** на эпизод:
-
-| Layout | Когда | reframe.py |
-|--------|-------|-----------|
-| `fill` | экшн, объект движется — проезд | YOLO-трекинг кроп-to-fill (алгоритм §6) |
-| `fit-blur` | широкий/горизонтальный кадр целиком | scale-inside + **размытый фон-пад** |
-| `fit-solid` | чистый/графичный вид | scale-inside + сплошной/градиент пад |
-| `insert` | горизонтальный клип карточкой в вертикали | scale в размещённый прямоугольник над фоном |
-| `split` | два клипа стопкой | стек + пад |
-| `pan` | статичный объект, медленный ревил | медленный пан с пост. скоростью |
-
-Проверено в сессии: заход в воду = `fit-blur` («широкий кадр + размытый фон сверху/снизу»), проезды = `fill`.
-
-- **Композиц. правила применяются к видимой области кадра** — та же математика относительно framed-прямоугольника, не всего canvas.
-- **Safe-zones** по платформе+canvas (IG UI снизу/справа).
-- **reel-final-check:** смешанный аспект/layout = **намеренно**, не дефект. Проверяет: пад-полосы чистые, объект в safe-zone, ключевой экшн не обрезан, переходы layout не рвут.
-- **deliver:** primary canvas + опц. вторичные аспекты через пере-рефрейм.
+The storyboard overlay for motion verification draws **thirds + phi** lines; for hero/static — plus the full armature. `check_episode` verifies against the episode's **chosen** `grid`.
 
 ---
 
-## 8. Источники трендов (дефолт, оверрайдится)
+## 7. Aspect and layout (platforms differ)
 
-Юзер не уверен откуда смотреть → предложенный дефолт, слоями, кэш `TRENDS.md` (TTL 7–10д):
+Aspect is a **parameter**, not a hardcoded 9:16. Layout is **per-episode** (horizontal footage can go into a vertical canvas if it fits the story/visual).
 
-1. **Primary — TikTok Creative Center** (публичный: трендовые звуки, хэштеги, топ-видео; регион → Индонезия). Лучший сигнал по трендовому аудио + формату.
-2. **Secondary — месячные обзоры** через WebSearch (Metricool / Buffer / Later «Reels trends {месяц}») → монтажные конвенции (hook, cut-style, переходы, текст).
-3. **Niche** — WebSearch «{тема} reels {год}» (напр. surf edits).
-4. **Ручной оверрайд** — строки в `TRENDS.md` считаются locked.
+- **`SPEC.canvas`** = target WxH per platform (9:16 reel, 4:5 feed, 1:1, 16:9 YouTube…).
+- **`EDL.layout`** per episode:
 
-Выход = проверяемые директивы: `hook ≤Xс`, cut-style, набор переходов, целевой диапазон длины, text-style, кандидаты трендовых звуков, композиц. сдвиги. Потребляют pacing/edit-plan; проверяет reel-final-check. Источник недоступен → фолбэк на ручное/последний кэш.
+| Layout | When | reframe.py |
+|--------|------|-----------|
+| `fill` | action, subject moves — a ride | YOLO-tracked crop-to-fill (algorithm §6) |
+| `fit-blur` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** |
+| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad |
+| `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background |
+| `split` | two clips stacked | stack + pad |
+| `pan` | static subject, slow reveal | slow constant-velocity pan |
 
----
+Proven in the session: the wade-in = `fit-blur` ("wide frame + blurred background top/bottom"), the rides = `fill`.
 
-## 9. Пороги проверок (стартовые дефолты, тюнятся)
-
-Числа делают обязательные чеки **автоматическими**, а не на глаз. По declared composition intent эпизода:
-
-| Чек | Правило прохождения |
-|-----|---------------------|
-| On-line (composition=lead) | центр объекта в пределах ±5% ширины от линии выбранной `grid` (трети 0.333/0.667 или phi 0.382/0.618), правильная сторона по направлению |
-| Centered (composition=center) | центр объекта у центра кадра ±5% ширины |
-| Head power-point | голова в верхней трети, ±8% |
-| Horizon | наклон < 1.5°; вертикальный подскок между кадрами < 1% высоты |
-| Jitter | нет разворота центра-кропа > ~0.5% ширины против направления движения |
-| break | численные комп-чеки пропущены (редакторски) |
-| Color (в эпизоде) | средний RGB в пределах ±8 от цели R105/G122/B137 |
-| Color (между резами) | дельта среднего RGB через рез < 12 |
-| Чёрные кадры | средняя яркость > 8 на первых/последних 3 кадрах эпизода |
-| Длина | в пределах ±0.5с от цели SPEC |
-| Beat | каждый hard cut в пределах ±60мс от детектированного бита |
-| Loudness | интеграл −14 LUFS ±1 |
-| Variety | нет пары соседних эпизодов с расстоянием перцептивного хэша < порога. **Один источник ≠ дубль**: несколько окон одного клипа ок, если визуально различны (гард по картинке, не по имени файла) |
+- **Composition rules apply to the visible frame region** — the same math relative to the framed rectangle, not the whole canvas.
+- **Safe-zones** keyed to platform+canvas (IG UI bottom/right).
+- **reel-final-check:** mixed aspect/layout is **intentional**, not a defect. It checks: pad bars clean, subject in safe-zone, key action not clipped, layout transitions not jarring.
+- **deliver:** primary canvas + optional secondary aspects via re-reframe.
 
 ---
 
-## 10. Цвет / стабилизация (из сессии)
+## 8. Trend sources (default, overridable)
 
-- **Цвет:** нормализация «мягко к середине». Цель R105/G122/B137. `gain = 1 + 0.55×(цель/измеренное − 1)`, зажать `[0.7, 1.5]`. Через `colorchannelmixer=rr=R:gg=G:bb=B`. **`lutrgb` запрещён** (давал чёрные кадры). Финальный match-grade проход для консистентности между эпизодами; опц. mood-LUT.
-- **Стабилизация:** vidstab 2-прохода на **исходнике до кропа**: `vidstabdetect=shakiness=8:accuracy=15:result=FILE.trf` → `vidstabtransform=input=FILE.trf:smoothing=40:optzoom=1:zoom=2:crop=black,unsharp=5:5:0.4`. **Не стабилизировать заход/выход в воду** — даёт «качение земли». Флаг `stabilize?` на эпизод.
+The user is unsure where to look → a proposed default, layered, cached in `TRENDS.md` (TTL 7–10d):
 
----
+1. **Primary — TikTok Creative Center** (public: trending sounds, hashtags, top videos; region-settable → Indonesia). Best signal for trending audio + format.
+2. **Secondary — monthly roundups** via WebSearch (Metricool / Buffer / Later "Reels trends {month}") → editing conventions (hook, cut-style, transitions, text).
+3. **Niche** — WebSearch "{topic} reels {year}" (e.g. surf edits).
+4. **Manual override** — lines in `TRENDS.md` are treated as locked.
 
-## 11. Nice-to-have (включены)
-
-- **Transitions-vocab**: помимо hard-cut — match-cut, whip, J/L аудио-резы; выбор по тренду.
-- **Speed-ramp to beat**: слоу-мо панч на дропах (`setpts=SLOW*PTS`; выходная длина = srcdur×slow).
-- **Version-log**: чейнджлог версий (сессия шла v2→v18); diff между версиями, реестр локов.
+Output = checkable directives: `hook ≤Xs`, cut-style, transition set, target length band, text-style, trending-sound candidates, composition deviations. Consumed by pacing/edit-plan; verified by reel-final-check. Source unreachable → fall back to manual / last cache.
 
 ---
 
-## 12. Реестр граблей (`references/landmines.md`, из сессии)
+## 9. Check thresholds (starting defaults, tunable)
 
-- `lutrgb` → чёрные кадры. Использовать `colorchannelmixer`.
-- Чёрные кадры при вырезке — **грабля в аргументах вызова seek, НЕ в 4K**. Фикс: верный порядок seek-аргументов (`-ss` после `-i` / output-seek, `-accurate_seek`, re-encode окна для кадровой точности), **не** даунскейл в 1080. 4K режем и обрабатываем нативно.
-- Авто-трекер OpenCV HSV ловит пену/чужих серферов → YOLO person + ByteTrack.
-- Стабилизация захода в воду → «качение земли». Не стабилизировать.
-- ImageMagick `montage` переставляет тайлы → ложные «пилы» движения. Проверять порядок.
-- Загрузка всех кадров в память → OOM. Обрабатывать покадрово.
-- `vidstabdetect` warning «cannot read frame local motions… got 255» — косметика, стабилизация работает.
+Numbers make the mandatory checks **automatic** rather than eyeballed. Against the episode's declared composition intent:
 
----
-
-## 13. Открытые вопросы (решить при реализации)
-
-1. **Веса моделей** — какую именно версию YOLOv11-seg паковать/качать; размер (n/s/m) под скорость vs точность.
-2. **madmom vs librosa** — madmom точнее по даунбитам, но тяжелее ставится (нужен старый numpy). Возможно librosa как лёгкий дефолт + madmom опционально.
-3. **TikTok Creative Center** — насколько стабилен публичный доступ без API; фолбэк-скрейпинг хрупок.
-4. **style-lean дефолт** — 70/30 предложен, откалибровать на реальных прогонах.
-5. **essentia mood-модели** — какие именно (valence/arousal регрессоры) и их вес в mood-match.
-7. **Вокал-детект для снапа старта** — demucs (точнее, тяжелее) vs лёгкий VAD по спектру; нужен ли стем вообще или хватит вокал-activity.
-6. **Пороги §9** — стартовые, откалибровать на первых роликах.
+| Check | Pass rule |
+|-------|-----------|
+| On-line (composition=lead) | subject center within ±5% of frame width from the chosen `grid` line (thirds 0.333/0.667 or phi 0.382/0.618), correct side for the direction |
+| Centered (composition=center) | subject center near frame center ±5% of width |
+| Head power-point | head in the upper third, ±8% |
+| Horizon | tilt < 1.5°; vertical bounce between frames < 1% of height |
+| Jitter | no crop-center reversal > ~0.5% of width against the direction of travel |
+| break | numeric composition checks skipped (editorial) |
+| Color (in-episode) | mean RGB within ±8 of target R105/G122/B137 |
+| Color (across cuts) | mean-RGB delta across a cut < 12 |
+| Black frames | mean luma > 8 on the first/last 3 frames of each episode |
+| Length | within ±0.5s of the SPEC target |
+| Beat | each hard cut within ±60ms of a detected beat |
+| Loudness | integrated −14 LUFS ±1 |
+| Variety | no pair of adjacent episodes with perceptual-hash distance < threshold. **Same source ≠ duplicate**: several windows of one clip are fine if visually distinct (guard by image, not by filename) |
 
 ---
 
-## 14. Что дальше
+## 10. Color / stabilization (from the session)
 
-Deliverable — только эта спецификация. Следующий шаг: `writing-plans` → детальный план реализации (по скилам/скриптам, с TDD где применимо). Реализация — отдельной сессией. Флагман для первой реализации, если решим резать объём: `extract` + `process-episode` + `reframe.py` + `ffmpeg-recipes` + `episode-postcheck` — ядро; остальное каркасом.
+- **Color:** normalize "softly to the middle". Target R105/G122/B137. `gain = 1 + 0.55×(target/measured − 1)`, clamped `[0.7, 1.5]`. Via `colorchannelmixer=rr=R:gg=G:bb=B`. **`lutrgb` is banned** (produced black frames). A final match-grade pass for consistency across episodes; optional mood LUT.
+- **Stabilization:** vidstab two-pass on the **source before crop**: `vidstabdetect=shakiness=8:accuracy=15:result=FILE.trf` → `vidstabtransform=input=FILE.trf:smoothing=40:optzoom=1:zoom=2:crop=black,unsharp=5:5:0.4`. **Do not stabilize the wade in/out shots** — it produces "rolling ground". `stabilize?` flag per episode.
+
+---
+
+## 11. Nice-to-have (included)
+
+- **Transitions vocab**: beyond hard-cut — match-cut, whip, J/L audio cuts; choice driven by trend.
+- **Speed-ramp to beat**: slow-mo punch on drops (`setpts=SLOW*PTS`; output length = srcdur×slow).
+- **Version log**: changelog of versions (the session ran v2→v18); diff between versions, lock registry.
+
+---
+
+## 12. Landmine registry (`references/landmines.md`, from the session)
+
+- `lutrgb` → black frames. Use `colorchannelmixer`.
+- Black frames on cut — the **landmine is in the seek-argument order, NOT in 4K**. Fix: correct seek-arg order (`-ss` after `-i` / output seek, `-accurate_seek`, re-encode the window for frame accuracy), **not** a downscale to 1080. Cut and process 4K natively.
+- OpenCV HSV auto-tracker catches foam/other surfers → YOLO person + ByteTrack.
+- Stabilizing the wade-in → "rolling ground". Don't stabilize.
+- ImageMagick `montage` reorders tiles → false "sawtooth" motion readings. Verify order.
+- Loading all frames into memory → OOM. Process frame by frame.
+- `vidstabdetect` warning "cannot read frame local motions… got 255" — cosmetic, stabilization still works.
+
+---
+
+## 13. Open questions (resolve at implementation)
+
+1. **Model weights** — which exact YOLOv11-seg version to ship/download; size (n/s/m) for speed vs accuracy.
+2. **madmom vs librosa** — madmom is more accurate on downbeats but heavier to install (needs old numpy). Possibly librosa as a light default + madmom optional.
+3. **TikTok Creative Center** — how stable is public access without an API; scraping fallback is fragile.
+4. **style-lean default** — 70/30 proposed, calibrate on real runs.
+5. **essentia mood models** — which ones exactly (valence/arousal regressors) and their weight in mood-match.
+6. **Thresholds §9** — starting values, calibrate on the first reels.
+7. **Vocal detection for start snapping** — demucs (more accurate, heavier) vs a light spectral VAD; is a stem needed at all or is vocal-activity enough.
+
+---
+
+## 14. What's next
+
+The deliverable is this specification only. Next step: `writing-plans` → a detailed implementation plan (per skill/script, with TDD where applicable). Implementation in a separate session. Flagship for the first implementation if we trim scope: `extract` + `process-episode` + `reframe.py` + `ffmpeg-recipes` + `episode-postcheck` — the core; everything else as scaffolding.

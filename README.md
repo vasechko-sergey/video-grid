@@ -1,6 +1,6 @@
 # video-grid
 
-Набор скилов для монтажа одного ролика из кучи сырого видео — по образцу superpowers
-(идея → спека → план → черновик → поэпизодная обработка → проверки), под любую платформу.
+A skill set for editing one video reel out of a pile of raw footage — modeled on
+superpowers (idea → spec → plan → draft → per-episode processing → checks), for any platform.
 
-Статус: дизайн. См. [docs/2026-07-05-montage-skillset-design.md](docs/2026-07-05-montage-skillset-design.md).
+Status: design. See [docs/2026-07-05-montage-skillset-design.md](docs/2026-07-05-montage-skillset-design.md).
