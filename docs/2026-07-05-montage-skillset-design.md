@@ -150,6 +150,7 @@ Gates are hard: a stage does not exit until its exit conditions are met. A faile
 
 ### 5.1 using-montage (router)
 Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. Step 0: ensure-env (venv). Routes through stages 1–13. Analogous to `using-superpowers`.
+**Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "more classic"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, style-lean, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags.
 
 ### 5.2 footage-intake → `FOOTAGE.md`
 `intake.py`: ffprobe (duration/resolution/fps) + PySceneDetect (scene boundaries) + YOLO sample (who/how many people) + shake estimate (vidstabdetect magnitude). **One clip → several moment-windows**, not one: a long ride/take contains distinct fragments (grounding: MVI_3739 = one 22s ride → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → two hang-fives). intake segments each clip into candidate windows (sub-scenes + motion/people) and **scores each window separately**. Cull/selection step: rank windows across all footage, mark the best moments — several may come from one source.
@@ -172,7 +173,7 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 - **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
 - **`SPEC.music.mode` (default `free`, overridable at skill invocation)** — the rights lane: `local` (user's own folder) · `free` (royalty-free APIs: YouTube Audio Library, Pixabay, Uppbeat, Free Music Archive, ccMixter — legal search+download; safe default for distribution) · `any` (full autonomous discovery+download incl. copyrighted via yt-dlp; user accepts responsibility — auto-downloading copyrighted audio is legally gray and jurisdiction-dependent, so this is a responsibility switch, not a baked-in default). Beat detection is **always local**.
 
-**Delivery interaction** (see §5.14): default is `baked` — the with-music export; a runtime argument (`--no-music` / `delivery=platform-sound`) additionally emits a music-less version + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
+**Delivery interaction** (see §5.14): default is `baked` — the with-music export; saying it in the invocation (e.g. "without music") additionally emits a music-less version + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
 **Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word, track sourced (per `music.mode`).
 
 ### 5.6 pacing → `PACING.md` (energy spine)
@@ -212,7 +213,7 @@ Two parts:
 **Gate:** both parts green.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
-`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`, **overridable at skill invocation**): `baked` (default) muxes the audio — the with-music export; passing the no-music argument (`delivery=platform-sound` / `--no-music`) emits a music-less version (music stem removed, ambient/SFX kept) + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app. Can emit both in one run.
+`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`, **set from the invocation text**): `baked` (default) muxes the audio — the with-music export; saying it in the prompt (e.g. "without music" / "без музыки" / "platform sound") emits a music-less version (music stem removed, ambient/SFX kept) + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app. Can emit both in one run. (The scripts take explicit args; the user just says it in natural language — `using-montage` parses intent into params, see §5.1.)
 **Gate:** platform params correct.
 
 ### 5.15 ffmpeg-recipes (reference)
