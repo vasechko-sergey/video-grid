@@ -172,7 +172,7 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 - **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
 - **`SPEC.music.mode` (default `free`, overridable at skill invocation)** — the rights lane: `local` (user's own folder) · `free` (royalty-free APIs: YouTube Audio Library, Pixabay, Uppbeat, Free Music Archive, ccMixter — legal search+download; safe default for distribution) · `any` (full autonomous discovery+download incl. copyrighted via yt-dlp; user accepts responsibility — auto-downloading copyrighted audio is legally gray and jurisdiction-dependent, so this is a responsibility switch, not a baked-in default). Beat detection is **always local**.
 
-**Delivery interaction** (see §5.14): `baked` (default) muxes the audio into the export; `platform-sound` exports with the music stem ducked/removed + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
+**Delivery interaction** (see §5.14): default is `baked` — the with-music export; a runtime argument (`--no-music` / `delivery=platform-sound`) additionally emits a music-less version + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
 **Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word, track sourced (per `music.mode`).
 
 ### 5.6 pacing → `PACING.md` (energy spine)
@@ -212,7 +212,7 @@ Two parts:
 **Gate:** both parts green.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
-`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`): `baked` (default) muxes the audio; `platform-sound` exports with the music stem removed + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app.
+`deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`, **overridable at skill invocation**): `baked` (default) muxes the audio — the with-music export; passing the no-music argument (`delivery=platform-sound` / `--no-music`) emits a music-less version (music stem removed, ambient/SFX kept) + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app. Can emit both in one run.
 **Gate:** platform params correct.
 
 ### 5.15 ffmpeg-recipes (reference)
