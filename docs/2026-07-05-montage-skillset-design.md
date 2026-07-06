@@ -94,7 +94,7 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 | `PACING.md` | pacing | **energy spine**: episode order + target length + energy level, pinned to music sections, hook first |
 | `EDL.md` | edit-plan | ordered episodes: source+window, shot-type, layout, composition, grid, motion, processing-notes, beat-slot |
 | `SOURCES.md` | process-episode | lock file (🔒 per episode) — the session's `REEL_SOURCES.md` promoted to a contract; **one source may feed multiple episodes** (different windows) |
-| `segments/<ep>_raw.mp4` | extract | **cut fragments** per EDL window — input for draft and process-episode (not full clips) |
+| `segments/<ep>_raw.mp4` | extract | **cut fragments** per EDL window, video + original audio (the ambient bed for §5.12) — input for draft and process-episode (not full clips) |
 | `work/<ep>/{route,path,report}.json` | process-episode | tracker route, smoothed crop path, check report (`attempt`, `fail_reasons[]` — feeds the §4.1 escalation) |
 | `checks/*.json` | *-check | mechanical-check reports |
 | `storyboards/*.jpg` | storyboard | contact sheets with a grid (thirds + phi; for hero/static — the full golden-canon armature) — **verification artifact** |
@@ -212,16 +212,17 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 **Gate:** every episode has source+window+shot-type+beat-slot.
 
 ### 5.8 extract → `segments/<ep>_raw.mp4`
-`extract.py`: using the windows from `EDL`, **cut each episode into a standalone file** — once, with **correct seek arguments** (see §12; the bug was in the call args, not in 4K). Frame-accurate cut (re-encode of the short window). From here on both the draft and `process-episode` work on these small fragments — no seeking through 300MB, no scanning the whole file. 4K is cut natively (no proxy/downscale — quality preserved).
+`extract.py`: using the windows from `EDL`, **cut each episode into a standalone file** — once, with **correct seek arguments** (see §12; the bug was in the call args, not in 4K). Frame-accurate cut (re-encode of the short window). **Audio is preserved** in the segment (`aac`) — it is the ambient bed for §5.12; dropping it at extract would orphan the mix. From here on both the draft and `process-episode` work on these small fragments — no seeking through 300MB, no scanning the whole file. 4K is cut natively (no proxy/downscale — quality preserved).
 **Gate:** every episode from `EDL` has its own `segments/<ep>_raw.mp4`, length matches the window.
 
 ### 5.9 assemble-draft → `draft.mp4`
 `assemble.py`: concat of the **segments** (`segments/*_raw.mp4`) into the **whole draft at once**, almost no processing, with **burnt-in labels** — what will be processed and where (from the EDL processing-notes). A check of the whole shape before polishing. After plan/draft approval the segments are locked as the working input.
-"Almost no processing" = no *creative* processing; concat still demands uniform streams, so assemble scale-fits every segment into the SPEC canvas and unifies fps/codec first (§12). Labels via `drawtext` with an explicit `fontfile=` — macOS has no reliable fontconfig default.
+"Almost no processing" = no *creative* processing; concat still demands uniform streams, so assemble scale-fits every segment into the SPEC canvas and unifies fps/codec first (§12). Labels via `drawtext` with an explicit `fontfile=` — macOS has no reliable fontconfig default. The draft muxes a **rough music bed** — the chosen fragment from `MUSIC.json` at `start_offset` — otherwise the "lands on beats" gate has nothing to land on; segment audio stays out of the draft (it returns as ducked ambient in §5.12).
 **Gate:** full length, lands on beats, plays.
 
 ### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
-See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
+See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, hero?, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`.
+**`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px) or a rule (`largest` / `leftmost` / explicit track id). `track.py` picks the track matching the pin (max IoU with the seed over the first frames); no pin → most-frames heuristic. This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
 **Gate:** episode-postcheck passes.
 
 ### 5.11 episode-postcheck (gate)
@@ -231,7 +232,7 @@ Mandatory step. Two parts:
 Both must pass. Fail → back to reframe.
 
 ### 5.12 audio-mix → `out/audio`
-`mix.py`: music + **ambient ducking** (sidechaincompress) + SFX (whoosh on transitions) + **loudnorm −14 LUFS** (EBU R128). afade in/out.
+`mix.py`: music + **ambient ducking** (sidechaincompress) + SFX (whoosh on transitions) + **loudnorm −14 LUFS** (EBU R128). afade in/out. **Ambient source:** the original audio of `segments/<ep>_raw.mp4` (preserved by extract, §5.8), trimmed and ordered per the EDL so it stays in sync with the final picture.
 **Gate:** loudness in range.
 
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
@@ -255,7 +256,7 @@ Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **l
 
 The manual 0.1s storyboard from the session was a **workaround for having no reliable tracker**. With YOLO+ByteTrack we flip it:
 
-1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far.
+1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far. Hero selection: most-frames track by default; an explicit `hero` pin from the manifest (seed bbox / rule) overrides it (§5.10).
 2. **The thirds/direction rule** applies **continuously** (see 6.2).
 3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay smoothing + a crop-speed cap in **px/sec** — frame-rate independent, so 60fps sources get the same on-screen speed; the session's 25 px/frame @30fps ≡ 750 px/s) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing; the path is clamped to the frame **after** smoothing (savgol overshoots on ramps), then simplified (Douglas-Peucker) into a few linear segments for a short, smooth ffmpeg crop expression.
 4. **The 0.1s thirds-grid storyboard is demoted to verification** — `check_episode.py` reads `subject_x(t)` against the target line numerically. The contact sheet is an artifact for the gate and for human review.
@@ -304,6 +305,7 @@ Grounding: the session already did this — classic thirds/lead as base, but har
 - 9:16 width from a 1920-wide source = 607px (`int(H×9/16)`). **Generalize**: crop size = a function of `canvas` and source aspect, not a hardcode.
 - lead offset **emerges from the grid line, not a separate parameter**: moving right → subject pinned to the LEFT line of the chosen `grid` (thirds 0.333/0.667 or phi 0.382/0.618) → `crop_x = subject_x − line·crop_w`, air ahead = `(1 − line)·crop_w`. The session's hand-tuned +91/−97px offsets ≈ the thirds-line placement (`crop_w/6` from centre) — the grid formalizes what was tuned by eye.
 - `crop_x = center − crop_w/2`, clamped to `[0, W−crop_w]`.
+- **Y axis (v1):** when the crop uses full source height (vertical canvas from horizontal source — the main case), `y = 0`, nothing to decide. When the crop has Y freedom (canvas wider than the source aspect: 16:9 out of vertical footage, 1:1 out of 9:16), Y is **static per episode** — no y-tracking; the §9 vertical-bounce check guards. Rule: headroom canon — the subject's head near the upper-third line (`head_y ≈ 0.30·crop_h`); no head data → subject centre at `0.45·crop_h`; clamped to `[0, H−crop_h]`.
 
 ### 6.5 Composition-grid library (`references/editing-canon.md`)
 

@@ -686,12 +686,14 @@ import argparse, subprocess
 
 
 def extract(src, start, dur, out, crf=18):
-    # output-seek (-ss after -i) + re-encode → frame-accurate, no black frames
+    # output-seek (-ss after -i) + re-encode → frame-accurate, no black frames.
+    # Audio is PRESERVED (spec §5.8): segments are the ambient bed for audio-mix;
+    # sources without an audio stream simply produce video-only segments.
     cmd = [
         "ffmpeg", "-y", "-i", src,
         "-ss", f"{start}", "-t", f"{dur}",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
-        "-pix_fmt", "yuv420p", "-an", out,
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
     ]
     subprocess.run(cmd, check=True, capture_output=True)
     return out
@@ -749,6 +751,17 @@ def test_route_from_frames(monkeypatch, tmp_path):
     assert len(route) == 10
     assert route[0]["x"] == 300 and route[-1]["x"] == 300 + 9 * 50
     assert json.loads(out.read_text())[0]["x"] == 300
+
+def test_route_seed_pin(monkeypatch, tmp_path):
+    # two persistent tracks; the seed bbox must pin the RIGHT one as hero
+    frames = [[_FakeBox([300, 500, 140, 320], 1),
+               _FakeBox([1500, 500, 120, 300], 2)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    out = tmp_path / "route.json"
+    route = track.build_route(src="ignored.mp4", fps=30, out=str(out),
+                              seed_bbox=(1500, 500, 120, 300))
+    assert all(pt["x"] == 1500 for pt in route)
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -786,8 +799,28 @@ def _iter_detections(src, model_path=MODEL):
         yield i, (res.boxes if res.boxes is not None else [])
 
 
-def build_route(src, fps, out, model_path=MODEL):
-    # pick the track id that appears in the most frames (the hero)
+def _seed_track(per_frame, seed, first_n=5):
+    """Track id with max IoU vs the seed bbox (centre-format) over first frames.
+
+    The manifest's hero-pin (spec §5.10): resolves "which person" explicitly.
+    """
+    sx, sy, sw, sh = seed
+    sl, st = sx - sw / 2, sy - sh / 2
+    best, best_iou = None, 0.0
+    for _, dets in per_frame[:first_n]:
+        for tid, x, y, w, h in dets:
+            l, t = x - w / 2, y - h / 2
+            ix = max(0.0, min(sl + sw, l + w) - max(sl, l))
+            iy = max(0.0, min(st + sh, t + h) - max(st, t))
+            inter = ix * iy
+            union = sw * sh + w * h - inter
+            if union > 0 and inter / union > best_iou:
+                best, best_iou = tid, inter / union
+    return best
+
+
+def build_route(src, fps, out, model_path=MODEL, seed_bbox=None):
+    # hero = explicit seed pin when given (spec §5.10), else most-frames track
     per_frame = []
     counts = {}
     for idx, boxes in _iter_detections(src, model_path=model_path):
@@ -798,7 +831,11 @@ def build_route(src, fps, out, model_path=MODEL):
             dets.append((tid, x, y, w, h))
             counts[tid] = counts.get(tid, 0) + 1
         per_frame.append((idx, dets))
-    hero = max(counts, key=counts.get) if counts else None
+    hero = None
+    if seed_bbox is not None:
+        hero = _seed_track(per_frame, seed_bbox)
+    if hero is None:
+        hero = max(counts, key=counts.get) if counts else None
 
     route = []
     for idx, dets in per_frame:
@@ -818,14 +855,17 @@ if __name__ == "__main__":
     ap.add_argument("--model", default=MODEL,
                     help="yolo11n-seg.pt (default) / yolo11s-seg.pt / "
                          "yolo11m-seg.pt for small/far subjects")
+    ap.add_argument("--seed", default=None,
+                    help="hero pin: first-frame centre bbox 'x,y,w,h' in source px")
     a = ap.parse_args()
-    build_route(a.src, a.fps, a.out, model_path=a.model)
+    seed = tuple(float(v) for v in a.seed.split(",")) if a.seed else None
+    build_route(a.src, a.fps, a.out, model_path=a.model, seed_bbox=seed)
 ```
 
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -q`
-Expected: PASS (1 passed)
+Expected: PASS (2 passed)
 
 - [ ] **Step 5: Commit**
 
