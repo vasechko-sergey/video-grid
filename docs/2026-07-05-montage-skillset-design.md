@@ -88,7 +88,8 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 | File | Written by | Contents |
 |------|-----------|----------|
 | `FOOTAGE.md` | footage-intake | per clip: who, what, quality, shaky flag, scene-cuts; **list of moments** (one clip → several windows), each window with its own shot-type guess, description, score |
-| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, **music.mode** (local/free/any, default free), hook, text, ending, style-lean |
+| `cast.json` | footage-intake | hero registry (§6.1a): name → appearance descriptor (color hist over seg-mask pixels from 1–3 reference crops) + notes; one interactive naming pass; referenced by `SPEC.cast` and episode manifests |
+| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, **music.mode** (local/free/any, default free), hook, text, ending, style-lean, **cast** (who the reel is about, → `cast.json`) |
 | `TRENDS.md` | trend-scan | trend cache (fetch date, TTL 7–10d): cut-style, transitions, hook patterns, text-style, composition deviations, trending-sound candidates |
 | `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-vector, cut-map, **start_offset** (chosen track fragment), **vocal-map** (phrase boundaries for start snapping), **source** (url/artist/title/license), **delivery** (baked/platform-sound) |
 | `PACING.md` | pacing | **energy spine**: episode order + target length + energy level, pinned to music sections, hook first |
@@ -181,7 +182,8 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 
 ### 5.2 footage-intake → `FOOTAGE.md`
 `intake.py`: ffprobe (duration/resolution/fps) + PySceneDetect (scene boundaries) + YOLO sample (who/how many people) + shake estimate (vidstabdetect magnitude). **One clip → several moment-windows**, not one: a long ride/take contains distinct fragments (grounding: MVI_3739 = one 22s ride → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → two hang-fives). intake segments each clip into candidate windows (sub-scenes + motion/people) and **scores each window separately**. Cull/selection step: rank windows across all footage, mark the best moments — several may come from one source.
-**Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored.
+**Cast pass (when people matter to the reel):** intake surfaces top-N person crops across the footage; the user names the heroes once — any domain (family, athletes, friends, a vlogger). Each name stores an appearance descriptor into `cast.json` (§6.1a); `SPEC.cast` lists who the reel is about.
+**Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored, cast named (when applicable).
 
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
 Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
@@ -222,7 +224,7 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 
 ### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
 See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, hero?, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`.
-**`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px) or a rule (`largest` / `leftmost` / explicit track id). `track.py` picks the track matching the pin (max IoU with the seed over the first frames); no pin → most-frames heuristic. This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
+**`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px), a rule (`largest` / `leftmost` / explicit track id), or a **cast name** resolved through `cast.json` descriptors (§6.1a). `track.py` picks the track matching the pin (max IoU with the seed over the first frames); no pin → intent-conditioned scoring (§6.1a). This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
 **Gate:** episode-postcheck passes.
 
 ### 5.11 episode-postcheck (gate)
@@ -256,7 +258,7 @@ Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **l
 
 The manual 0.1s storyboard from the session was a **workaround for having no reliable tracker**. With YOLO+ByteTrack we flip it:
 
-1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far. Hero selection: most-frames track by default; an explicit `hero` pin from the manifest (seed bbox / rule) overrides it (§5.10).
+1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far. Hero selection: intent-conditioned candidate scoring with a margin rule — §6.1a; an explicit `hero` pin from the manifest overrides (§5.10).
 2. **The thirds/direction rule** applies **continuously** (see 6.2).
 3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay smoothing + a crop-speed cap in **px/sec** — frame-rate independent, so 60fps sources get the same on-screen speed; the session's 25 px/frame @30fps ≡ 750 px/s) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing; the path is clamped to the frame **after** smoothing (savgol overshoots on ramps), then simplified (Douglas-Peucker) into a few linear segments for a short, smooth ffmpeg crop expression.
 4. **The 0.1s thirds-grid storyboard is demoted to verification** — `check_episode.py` reads `subject_x(t)` against the target line numerically. The contact sheet is an artifact for the gate and for human review.
@@ -264,6 +266,19 @@ The manual 0.1s storyboard from the session was a **workaround for having no rel
 **Net:** the manual bottleneck is gone, but **the composition rules become the optimizer's parameters** — no taste lost.
 
 **Degradation ladder (tracking):** ultralytics unavailable or the track is garbage → optical-flow centroid tracker (OpenCV, no ML deps) → manual storyboard keyframes + interpolation (the session's proven method). Each step down is recorded in the episode report as `degraded: <level>` — the pipeline still delivers.
+
+### 6.1a Hero identity — who exactly is being followed
+
+Identity errors were real in the source session, and they have **four distinct failure modes**: (1) intake mislabels who is in a clip (similar outfits, distance, backlight); (2) the most-frames heuristic picks a **loitering bystander over the actual subject** — the subject of an action shot crosses the frame in seconds while a bystander stands in frame the whole clip, so the bias points exactly the wrong way; (3) tracker ID switches on occlusion silently swap the followed person mid-episode — and the postcheck can't see it (it verifies crop vs route, not route vs the right human); (4) nothing ties "the person picked in clip A" to "the person picked in clip B" across the reel. Domain-agnostic: the "subject" is any person — a surfer, a runner, a kid, a dancer. Four layers close the modes:
+
+1. **Cast registry (`cast.json`)** — one interactive pass at intake: the user names the heroes from surfaced crops, once per project. Each name stores an **appearance descriptor**: a color histogram over the person's **segmentation-mask pixels** (clothing/gear only — the mask cuts the background away; YOLO-seg masks are already in the stack). Closes modes 1 and 4. Note the inversion vs the session: HSV failed as a *tracker* (grabbed sea foam), but over a seg mask it is the right *identity descriptor*.
+2. **Candidate scoring** — replaces bare most-frames. Per track: frame count, mean area, lateral displacement, mean speed, border share, descriptor. The score is conditioned on the episode's intent: action/follow → **motion dominates** (static bystanders penalized — closes mode 2); static/atmospheric → size + centrality + duration; a cast name in the manifest → **descriptor similarity outranks kinematics**. **Margin rule:** top-2 scores within ~20% → ambiguity → stop-and-report **with both candidates' crops** — this makes §4.1 concrete: *when* to ask = the margin; *what* to show = the crops; the answer = a `hero` pin, optionally saved into the cast.
+3. **Continuity guard** — along the chosen track: a descriptor jump + an x-teleport (per-frame |Δx| above a physical cap) + an area jump ⇒ suspected ID switch at time t → split the route, re-match the pieces against the descriptor; unresolved → stop-and-report with the storyboard around t (closes mode 3). The cheap numeric side is a §9 check: **route-continuity** (no teleports in the followed route).
+4. **Storyboard marker** — the contact sheet draws a marker on the followed subject in every sampled frame; the editorial gate confirms "right person" at a glance. The human eye stays the final identity oracle, at zero added review cost.
+
+Out of scope, documented: face recognition (faces are small/wet/blurred in action footage; heavy dependency — the layers above make it unnecessary).
+
+**Plan split:** core plan = intent-conditioned scoring + margin flag, route-continuity check, storyboard marker. Ingestion plan = cast registry + interactive naming + descriptor wiring into manifests. process-episode plan = descriptor-based continuity re-match.
 
 **Reuse:** take the stack (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), write our own glue (`reframe.py`) for our rules + color + stabilization. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) is a reference/fallback (its path optimizer, but we don't bend its CLI: it can't do thirds-bias or our color).
 
@@ -375,6 +390,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Head power-point | head in the upper third, ±8% |
 | Horizon | tilt < 1.5°; vertical bounce between frames < 1% of height |
 | Jitter | no crop-center reversal > max(2px, 0.5% of width) against the direction of travel — the 2px floor absorbs int-rounding flicker |
+| Route continuity | no x-teleport in the followed route: per-frame \|Δx\| ≤ ~4% of source width; descriptor/area jumps flag a suspected ID switch (§6.1a) |
 | break | numeric composition checks skipped (editorial) |
 | Color (in-episode) | mean RGB within ±8 of target R105/G122/B137 |
 | Color (across cuts) | mean-RGB delta across a cut < 12 |
@@ -385,7 +401,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Variety | no pair of adjacent episodes with perceptual-hash distance < threshold. **Same source ≠ duplicate**: several windows of one clip are fine if visually distinct (guard by image, not by filename) |
 
 **Status (which plan implements what):**
-- **Core plan (`check_episode`):** on-line/centered, jitter, length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
+- **Core plan (`check_episode`):** on-line/centered, jitter, route-continuity (teleport side), length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
 - **process-episode plan:** color (in-episode) — reframe applies the gain; its verification lands with that plan.
 - **Assembly plan (`check_reel`):** color across cuts, beat, loudness, variety, safe-zones.
 

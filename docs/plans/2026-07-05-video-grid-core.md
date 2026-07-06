@@ -582,6 +582,16 @@ def test_jitter_pass_monotonic():
 def test_length_within_tolerance():
     assert ck.length(actual=5.3, target=5.0, tol=0.5)["pass"] is True
     assert ck.length(actual=6.0, target=5.0, tol=0.5)["pass"] is False
+
+def test_continuity_flags_teleport():
+    # an ID switch reads as an x-teleport in the followed route (spec §6.1a)
+    route = [dict(x=100.0 + i * 10) for i in range(10)]
+    route[5]["x"] = 900.0
+    assert ck.continuity(route, src_w=1920)["pass"] is False
+
+def test_continuity_pass_smooth():
+    route = [dict(x=100.0 + i * 10) for i in range(30)]
+    assert ck.continuity(route, src_w=1920)["pass"] is True
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -609,6 +619,16 @@ def centered(route, path, crop_w, tol=0.05):
     return on_line(route, path, crop_w, target_frac=0.5, tol=tol)
 
 
+def continuity(route, src_w, max_step_frac=0.04):
+    """No x-teleports in the followed route (spec §6.1a): a tracker ID switch
+    shows up as a per-frame |dx| far above any physical subject speed."""
+    worst = 0.0
+    for a, b in zip(route, route[1:]):
+        worst = max(worst, abs(b["x"] - a["x"]))
+    cap = max_step_frac * src_w
+    return {"pass": worst <= cap, "worst_dx": worst, "cap": cap}
+
+
 def jitter(path, direction, max_reversal):
     sign = 1 if direction == "right" else -1
     worst = 0.0
@@ -628,7 +648,7 @@ def length(actual, target, tol=0.5):
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
-Expected: PASS (5 passed)
+Expected: PASS (7 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -762,6 +782,33 @@ def test_route_seed_pin(monkeypatch, tmp_path):
     route = track.build_route(src="ignored.mp4", fps=30, out=str(out),
                               seed_bbox=(1500, 500, 120, 300))
     assert all(pt["x"] == 1500 for pt in route)
+
+def test_action_intent_prefers_mover_over_bystander(monkeypatch, tmp_path):
+    # bystander in ALL 20 frames (static); mover in 12 frames, crosses frame.
+    # most-frames would pick the bystander — scoring must pick the mover.
+    frames = []
+    for i in range(20):
+        dets = [_FakeBox([960, 700, 150, 340], 7)]              # bystander
+        if 4 <= i < 16:
+            dets.append(_FakeBox([200 + (i - 4) * 120, 500, 140, 320], 9))
+        frames.append(dets)
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    route = track.build_route(src="ignored.mp4", fps=30,
+                              out=str(tmp_path / "route.json"))
+    xs = [pt["x"] for pt in route]
+    assert xs[0] == 200 and xs[-1] == 200 + 11 * 120
+
+def test_meta_flags_ambiguity(monkeypatch, tmp_path):
+    # two indistinguishable static tracks → margin rule fires (spec §6.1a)
+    frames = [[_FakeBox([500, 500, 140, 320], 1),
+               _FakeBox([1400, 500, 140, 320], 2)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    out = tmp_path / "route.json"
+    track.build_route(src="ignored.mp4", fps=30, out=str(out))
+    meta = json.loads((tmp_path / "route.meta.json").read_text())
+    assert meta["ambiguous"] is True
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -819,28 +866,76 @@ def _seed_track(per_frame, seed, first_n=5):
     return best
 
 
-def build_route(src, fps, out, model_path=MODEL, seed_bbox=None):
-    # hero = explicit seed pin when given (spec §5.10), else most-frames track
+def _track_features(per_frame):
+    """Per-track: frame count, first→last displacement, mean bbox area."""
+    feats = {}
+    for _, dets in per_frame:
+        for tid, x, y, w, h in dets:
+            f = feats.setdefault(tid, {"n": 0, "x0": x, "x1": x, "area": 0.0})
+            f["n"] += 1
+            f["x1"] = x
+            f["area"] += w * h
+    for f in feats.values():
+        f["disp"] = abs(f["x1"] - f["x0"])
+        f["area"] /= max(1, f["n"])
+    return feats
+
+
+def _pick_hero(feats, intent):
+    """Intent-conditioned scoring (spec §6.1a) — NOT most-frames: the subject
+    of an action shot crosses the frame in seconds while a bystander stands in
+    frame the whole clip, so raw frame count is biased the wrong way.
+
+    intent: "action" (motion dominates) | "static" (size + duration dominate).
+    Returns (hero_id, ambiguous) — ambiguous when top-2 scores within 20%.
+    """
+    if not feats:
+        return None, False
+    mx = {k: (max(f[k] for f in feats.values()) or 1.0)
+          for k in ("disp", "n", "area")}
+    wd, wn, wa = (2.0, 0.5, 0.3) if intent == "action" else (0.0, 1.0, 1.0)
+
+    def score(f):
+        return (wd * f["disp"] / mx["disp"] + wn * f["n"] / mx["n"]
+                + wa * f["area"] / mx["area"])
+
+    ranked = sorted(feats.items(), key=lambda kv: score(kv[1]), reverse=True)
+    ambiguous = (len(ranked) > 1
+                 and score(ranked[1][1]) >= 0.8 * score(ranked[0][1]))
+    return ranked[0][0], ambiguous
+
+
+def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
+                intent="action"):
+    # hero priority: explicit seed pin (spec §5.10) > intent-conditioned scoring
     per_frame = []
-    counts = {}
     for idx, boxes in _iter_detections(src, model_path=model_path):
         dets = []
         for b in boxes:
             x, y, w, h = [float(v) for v in b.xywh[0]]
             tid = int(b.id[0]) if b.id is not None else -1
             dets.append((tid, x, y, w, h))
-            counts[tid] = counts.get(tid, 0) + 1
         per_frame.append((idx, dets))
-    hero = None
+
+    feats = _track_features(per_frame)
+    hero, ambiguous = None, False
     if seed_bbox is not None:
         hero = _seed_track(per_frame, seed_bbox)
     if hero is None:
-        hero = max(counts, key=counts.get) if counts else None
+        hero, ambiguous = _pick_hero(feats, intent)
+    # sidecar meta: the orchestrator reads `ambiguous` to fire the §4.1
+    # stop-and-report (margin rule) with both candidates' crops
+    meta = {"hero": hero, "ambiguous": ambiguous, "intent": intent,
+            "features": {str(k): {kk: f[kk] for kk in ("n", "disp", "area")}
+                         for k, f in feats.items()}}
+    Path(out).with_suffix(".meta.json").write_text(json.dumps(meta))
 
     route = []
     for idx, dets in per_frame:
-        pick = next((d for d in dets if d[0] == hero), None) or (
-            max(dets, key=lambda d: d[3] * d[4]) if dets else None)
+        # hero only — NO largest-in-frame fallback: it would splice strangers'
+        # coordinates into the route (false teleports for the continuity check);
+        # a frame gap is fine, smoothing bridges it
+        pick = next((d for d in dets if d[0] == hero), None)
         if pick:
             _, x, y, w, h = pick
             route.append(dict(t=idx / fps, x=x, y=y, w=w, h=h))
@@ -857,21 +952,24 @@ if __name__ == "__main__":
                          "yolo11m-seg.pt for small/far subjects")
     ap.add_argument("--seed", default=None,
                     help="hero pin: first-frame centre bbox 'x,y,w,h' in source px")
+    ap.add_argument("--intent", default="action", choices=["action", "static"],
+                    help="hero scoring mode (spec §6.1a)")
     a = ap.parse_args()
     seed = tuple(float(v) for v in a.seed.split(",")) if a.seed else None
-    build_route(a.src, a.fps, a.out, model_path=a.model, seed_bbox=seed)
+    build_route(a.src, a.fps, a.out, model_path=a.model, seed_bbox=seed,
+                intent=a.intent)
 ```
 
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -q`
-Expected: PASS (2 passed)
+Expected: PASS (4 passed)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/integration/test_track.py
-git commit -m "feat: subject tracking (YOLO+ByteTrack) -> route.json, hero-track selection"
+git commit -m "feat: subject tracking -> route.json (intent scoring, seed pin, ambiguity meta)"
 ```
 
 ---
@@ -1099,6 +1197,7 @@ def test_check_episode_reports(sample_clip, tmp_path):
                                grid="thirds", target_dur=3.0,
                                out=str(tmp_path / "report.json"))
     assert report["checks"]["centered"]["pass"] is True
+    assert report["checks"]["continuity"]["pass"] is True
     assert "black_frames" in report["checks"]
     assert report["checks"]["horizon"] == {"status": "not-implemented"}
     assert report["attempt"] == 1 and "fail_reasons" in report
@@ -1137,7 +1236,7 @@ def _sample_frames(src, n, tmp):
     return sorted(Path(tmp).glob("f*.png"))
 
 
-def _overlay(img, grids):
+def _overlay(img, grids, mark=None):
     d = ImageDraw.Draw(img); w, h = img.size
     palette = {"thirds": (0, 255, 255), "phi": (255, 128, 0)}
     for grid in grids:
@@ -1146,13 +1245,21 @@ def _overlay(img, grids):
             d.line([(fx * w, 0), (fx * w, h)], fill=palette.get(grid), width=2)
         for fy in (left, right):   # horizontals at the grid's OWN fractions (phi != 1/3)
             d.line([(0, fy * h), (w, fy * h)], fill=palette.get(grid), width=1)
+    if mark is not None:           # hero marker (spec §6.1a): (fx, fy) fractions
+        mx, my, r = mark[0] * w, mark[1] * h, max(6, w // 60)
+        d.ellipse([mx - r, my - r, mx + r, my + r], outline=(0, 255, 0), width=3)
     return img
 
 
-def build(src, out, n=8, grids=("thirds",)):
+def build(src, out, n=8, grids=("thirds",), marks=None):
+    """marks: optional per-sampled-frame (fx, fy) subject fractions in the
+    OUTPUT frame — the caller derives them from route+path ((x-crop_x)/crop_w).
+    The editorial gate then confirms "right person" at a glance."""
     with tempfile.TemporaryDirectory() as tmp:
         frames = _sample_frames(src, n, tmp)
-        imgs = [_overlay(Image.open(f).convert("RGB"), grids) for f in frames]
+        imgs = [_overlay(Image.open(f).convert("RGB"), grids,
+                         mark=(marks[i] if marks and i < len(marks) else None))
+                for i, f in enumerate(frames)]
         if not imgs:
             raise RuntimeError("no frames sampled")
         cols = min(len(imgs), 4)
@@ -1218,6 +1325,7 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
         results["on_line"] = checks.on_line(route, path, crop_w, tf)
     results["jitter"] = checks.jitter(path, direction,
                                       max_reversal=max(2.0, crop_w * 0.005))
+    results["continuity"] = checks.continuity(route, src_dims[0])
     results["length"] = checks.length(_duration(clip), target_dur)
     results["black_frames"] = {"pass": _black_frames(clip) == 0}
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
@@ -1322,6 +1430,7 @@ def test_golden_ride_pipeline(tmp_path):
     assert report["checks"]["black_frames"]["pass"] is True
     assert report["checks"]["on_line"]["pass"] is True    # real composition holds
     assert report["checks"]["jitter"]["pass"] is True
+    assert report["checks"]["continuity"]["pass"] is True  # no ID-switch teleports
 ```
 
 - [ ] **Step 4: Run to verify pass**
@@ -1427,8 +1536,8 @@ git commit -m "test: end-to-end core pipeline smoke (extract->reframe->storyboar
 
 Each is its own spec→plan→build cycle, and each produces working software on its own:
 
-1. **process-episode subagent** — wraps this engine in the subagent loop (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`. Implements the §4.1 protocol: ask-before-start on ambiguous manifests, stop-and-report on mid-task contradictions, `attempt`/`fail_reasons[]` escalation; concurrency cap 3; tracking degradation ladder (YOLO → optical-flow → manual keyframes) with `degraded:` marks.
-2. **Ingestion** — footage-intake (`intake.py`), reel-brief, trend-scan.
+1. **process-episode subagent** — wraps this engine in the subagent loop (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`. Implements the §4.1 protocol: ask-before-start on ambiguous manifests, stop-and-report on mid-task contradictions (incl. the §6.1a margin rule → candidates' crops), `attempt`/`fail_reasons[]` escalation; concurrency cap 3; tracking degradation ladder (YOLO → optical-flow → manual keyframes) with `degraded:` marks; descriptor side of the §6.1a continuity guard (split/re-match on suspected ID switch).
+2. **Ingestion** — footage-intake (`intake.py`), reel-brief, trend-scan. Builds `cast.json` (§6.1a): one interactive naming pass, seg-mask color descriptors; wires `SPEC.cast` → episode manifests (`hero` by name).
 3. **Music** — music-and-mood (`beats.py`, `music_find.py`, `music_fetch.py`), pacing. librosa-first (design §5.5): madmom/demucs optional upgrades, essentia out; pacing↔music back-edge via `start_offset` re-pick.
 4. **Assembly & delivery** — edit-plan, assemble-draft, audio-mix, reel-final-check, deliver. Draft concat normalizes segments to canvas+fps; `drawtext` with explicit fontfile; version log (`REEL_v{n}` + changelog); executable landmine lint (grep for `lutrgb`, `-ss` before `-i`).
 5. **Router & checks discipline** — using-montage, montage-debugging, the Verification Iron Law tables. Resumability: stages skip when artifacts exist and input hashes match; wall-time per stage in every report.
