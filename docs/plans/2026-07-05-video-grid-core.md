@@ -6,7 +6,9 @@
 
 **Architecture:** Pure-logic core (geometry, path smoothing, color, checks) is unit-tested with TDD and holds no ffmpeg/ML dependency. Thin integration wrappers (`extract`, `track`, `reframe`, `storyboard`) shell out to ffmpeg / Ultralytics and are covered by integration tests on a synthetic clip fixture. `process-episode` (the subagent) and all upstream/downstream skills are separate follow-on plans; this plan delivers the runnable engine they orchestrate.
 
-**Tech Stack:** Python 3.11 in a skill-local venv; ffmpeg/ffprobe (system); Ultralytics YOLOv11-seg + ByteTrack; numpy, scipy (Savitzky-Golay smoothing), Pillow (contact sheet), pytest. All ML/heavy deps installed into `.venv` by `setup.sh` — never the shared environment.
+**Tech Stack:** Python **3.13** in a skill-local venv (`PYTHON` env overrides); ffmpeg/ffprobe (system — must include vidstab filters); Ultralytics YOLOv11-seg + ByteTrack; numpy, scipy (Savitzky-Golay smoothing), Pillow (contact sheet), pytest. **One `requirements.txt` for the whole pipeline** — tests mock the heavy parts, the conveyor needs everything. Installed into `.venv` by `setup.sh` — never the shared environment.
+
+**CLI convention:** scripts run as modules — `.venv/bin/python -m scripts.reframe …` (plain `python scripts/reframe.py` breaks `scripts.lib` imports); every script takes explicit paths, never assumes cwd.
 
 This plan implements §5.8 (extract), §5.10 tracking/reframe internals, §6 (follow + composition), §9 (thresholds), §10 (color/stab), and the `ffmpeg-recipes`/`landmines`/`editing-canon` references from the design spec (`docs/2026-07-05-montage-skillset-design.md`).
 
@@ -31,6 +33,7 @@ references/
 └── landmines.md
 tests/
 ├── conftest.py          # synthetic-clip fixture
+├── fixtures/            # golden real clip + frozen route (Task 9.5)
 ├── lib/ (unit tests)
 └── integration/ (ffmpeg/YOLO tests)
 setup.sh
@@ -53,14 +56,21 @@ pytest.ini
 - [ ] **Step 1: Write `requirements.txt`**
 
 ```text
-ultralytics==8.3.0
-numpy>=1.26,<2.0
+numpy>=1.26
 scipy>=1.11
 Pillow>=10.0
 pytest>=8.0
+librosa>=0.10
+ultralytics>=8.3
+scenedetect>=0.6
+imagehash>=4.3
+yt-dlp
+requests>=2.31
 ```
 
-(madmom/essentia/yt-dlp belong to the music plan, not this core plan.)
+One file, the full pipeline set (user decision): tests mock the detector and lazy-import the heavy deps, but the conveyor needs them all installed. No `<2.0` numpy pin — python 3.13 wheels are numpy 2.x. madmom/essentia/demucs are deliberately absent: essentia is out of v1, madmom/demucs are documented optional upgrades (design §5.5).
+
+**Migration note (repo reality):** commit `618be74` split deps into `requirements.txt` + `requirements-ml.txt` — merge back into one `requirements.txt` and `git rm requirements-ml.txt`. The existing `.venv` was created with python 3.10 — delete and recreate with 3.13.
 
 - [ ] **Step 2: Write `setup.sh` (idempotent venv bootstrap)**
 
@@ -69,14 +79,21 @@ pytest>=8.0
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$SKILL_DIR/.venv"
+PYTHON="${PYTHON:-python3.13}"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
+
+command -v "$PYTHON" >/dev/null || { echo "ERROR: $PYTHON not found -> brew install python@3.13 (or set PYTHON=...)"; exit 1; }
+command -v ffmpeg >/dev/null || { echo "ERROR: ffmpeg not found -> brew install ffmpeg"; exit 1; }
+ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab || { echo "ERROR: ffmpeg lacks vidstab filters -> brew install ffmpeg (homebrew build ships libvidstab)"; exit 1; }
+
 if [ ! -d "$VENV" ]; then
-  python3 -m venv "$VENV"
+  "$PYTHON" -m venv "$VENV"
 fi
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# YOLO weights cached into models/ on first track.py run (ultralytics auto-download)
+# YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"
-echo "venv ready: $VENV"
+echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
 ```
 
 - [ ] **Step 3: Make it executable and write `pytest.ini`**
@@ -85,9 +102,12 @@ echo "venv ready: $VENV"
 ```ini
 [pytest]
 testpaths = tests
+pythonpath = .
 markers =
     integration: requires ffmpeg and/or model weights (slow)
 ```
+
+`pythonpath = .` is load-bearing: there is no `tests/__init__.py`, so without it every `from scripts.lib import …` fails with `ModuleNotFoundError` (landmine, design §12).
 
 - [ ] **Step 4: Write `scripts/lib/__init__.py` (empty) and `tests/integration/__init__.py` (empty)**
 
@@ -119,7 +139,7 @@ def sample_clip(tmp_path_factory):
 - [ ] **Step 6: Run the harness to confirm collection works**
 
 Run: `.venv/bin/python -m pytest -q` (after `bash setup.sh`)
-Expected: `no tests ran` (0 tests collected) with exit 0.
+Expected: `no tests ran` — pytest exits **5** when zero tests are collected; that IS the pass condition here (exit 0 arrives once Task 1 adds tests).
 
 - [ ] **Step 7: Commit**
 
@@ -147,7 +167,8 @@ import math
 from scripts.lib import geometry as g
 
 def test_crop_size_9x16_from_1080p():
-    # 9:16 crop out of a 1920x1080 source: full height, width = round(1080*9/16)
+    # 9:16 crop out of a 1920x1080 source: full height, width = int(1080*9/16)
+    # = 607 (the session value). round() would give 608 — wrong on purpose here.
     assert g.crop_size(9, 16, 1920, 1080) == (607, 1080)
 
 def test_crop_size_1x1_from_1080p():
@@ -206,10 +227,10 @@ def crop_size(canvas_w, canvas_h, src_w, src_h):
     """Largest crop of canvas aspect that fits inside the source (fill mode)."""
     if canvas_w / canvas_h <= src_w / src_h:
         h = src_h
-        w = round(src_h * canvas_w / canvas_h)
+        w = int(src_h * canvas_w / canvas_h)   # floor: 1080*9/16 -> 607 (session value)
     else:
         w = src_w
-        h = round(src_w * canvas_h / canvas_w)
+        h = int(src_w * canvas_h / canvas_w)
     return (w, h)
 
 
@@ -243,6 +264,8 @@ def crop_x(subject_x, composition, direction, grid, crop_w, src_w):
     x = round(subject_x - frac * crop_w)
     return clamp(x, 0, src_w - crop_w)
 ```
+
+Odd crop widths (607) are fine: the crop is always scaled to the even canvas size before encode, so yuv420p never sees an odd dimension.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -600,6 +623,8 @@ def length(actual, target, tol=0.5):
     return {"pass": abs(actual - target) <= tol, "delta": actual - target}
 ```
 
+`max_reversal` is the caller's choice; `check_episode` passes `max(2.0, 0.005 * crop_w)` — the 2px floor absorbs int-rounding flicker after savgol (design §9).
+
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
@@ -652,6 +677,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.extract'`
 - [ ] **Step 3: Write `scripts/extract.py`**
 
 Correct seek: `-ss` AFTER `-i` (output seek) + re-encode → frame-accurate, no black frames (the landmine was arg order, not 4K).
+
+Pure output-seek decodes from stream start — fine for typical sources. For windows deep inside long (>60s) sources, the documented upgrade is a hybrid: coarse input-seek to `max(0, start-2)` **plus** the accurate output-seek for the remainder — frame accuracy is preserved by the re-encode. v1 ships the simple form.
 
 ```python
 """Cut an EDL window into a standalone fragment (spec §5.8, §12)."""
@@ -738,7 +765,10 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.track'`
 import argparse, json
 from pathlib import Path
 
-MODEL = str(Path(__file__).resolve().parent.parent / "models" / "yolo11n-seg.pt")
+# Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
+# path would NOT auto-download (landmine, design §12). setup.sh redirects the
+# weight cache into models/.
+MODEL = "yolo11n-seg.pt"
 
 
 def _iter_detections(src, model_path=MODEL):
@@ -748,9 +778,11 @@ def _iter_detections(src, model_path=MODEL):
     """
     from ultralytics import YOLO
     model = YOLO(model_path)
+    # imgsz=960: detect on downscaled frames (~10x faster on 4K); ultralytics
+    # rescales box coords back to source resolution itself.
     for i, res in enumerate(model.track(src, stream=True, persist=True,
                                         classes=[0], tracker="bytetrack.yaml",
-                                        verbose=False)):
+                                        imgsz=960, verbose=False)):
         yield i, (res.boxes if res.boxes is not None else [])
 
 
@@ -783,8 +815,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument("--model", default=MODEL,
+                    help="yolo11n-seg.pt (default) / yolo11s-seg.pt / "
+                         "yolo11m-seg.pt for small/far subjects")
     a = ap.parse_args()
-    build_route(a.src, a.fps, a.out)
+    build_route(a.src, a.fps, a.out, model_path=a.model)
 ```
 
 - [ ] **Step 4: Run to verify pass**
@@ -875,34 +910,81 @@ def compute_path(route, composition, grid, canvas, src, motion, max_step):
         # center / head-on / static: aim crop centre at subject, no lead
         raw = [g.clamp(round(pt["x"] - crop_w / 2), 0, src[0] - crop_w)
                for pt in route]
-    return [int(round(x)) for x in pathsmooth.smooth(raw, max_step=max_step)]
+    smoothed = pathsmooth.smooth(raw, max_step=max_step)
+    # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame
+    return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
+
+
+def _simplify(path, fps, eps=2.0):
+    """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
+
+    Keeps the crop expression short (nested per-frame if() hits ffmpeg's
+    expression parser limits on 60fps clips) and makes motion piecewise-linear
+    — smoother than piecewise-constant per-frame steps.
+    """
+    pts = [(i / fps, float(x)) for i, x in enumerate(path)]
+
+    def dp(lo, hi):
+        if hi - lo < 2:
+            return []
+        (t0, x0), (t1, x1) = pts[lo], pts[hi]
+        worst, wi = 0.0, None
+        for i in range(lo + 1, hi):
+            t, x = pts[i]
+            xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
+            if abs(x - xh) > worst:
+                worst, wi = abs(x - xh), i
+        if worst <= eps:
+            return []
+        return dp(lo, wi) + [wi] + dp(wi, hi)
+
+    keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
+    return [pts[i] for i in keep]
 
 
 def _xexpr(path, fps):
-    # piecewise-constant ffmpeg x(t) expression from per-frame crop_x
-    # nested if(lt(t,..)) — compact enough for a short episode
-    expr = str(path[-1])
-    for i in range(len(path) - 1, 0, -1):
-        expr = f"if(lt(t,{i/fps:.4f}),{path[i-1]},{expr})"
+    # piecewise-LINEAR x(t) over simplified knots: lerp inside each segment
+    knots = _simplify(path, fps)
+    if len(knots) == 1:
+        return f"{knots[0][1]:.1f}"
+    expr = f"{knots[-1][1]:.1f}"
+    for (t0, x0), (t1, x1) in zip(knots[-2::-1], knots[:0:-1]):
+        slope = (x1 - x0) / max(1e-9, t1 - t0)
+        seg = f"({x0:.1f}+({slope:.3f})*(t-{t0:.4f}))"
+        expr = f"if(lt(t,{t1:.4f}),{seg},{expr})"
     return expr
 
 
+def _probe(src):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height,avg_frame_rate",
+         "-of", "json", src], capture_output=True, text=True, check=True)
+    s = json.loads(out.stdout)["streams"][0]
+    num, den = s["avg_frame_rate"].split("/")
+    return int(s["width"]), int(s["height"]), float(num) / (float(den) or 1.0)
+
+
 def reframe(src, route_path, out, composition, grid, canvas,
-            color_means, stabilize, path_out, fps=30, src_dims=(1920, 1080)):
+            color_means, stabilize, path_out, max_speed=750.0):
+    """max_speed: crop-x speed cap in px/sec — frame-rate independent
+    (25 px/frame at the session's 30fps ≡ 750 px/s)."""
+    src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
+    src_dims = (src_w, src_h)
     route = json.loads(Path(route_path).read_text())
-    motion = classify(route, src_dims[0], src_dims[1])
+    motion = classify(route, src_w, src_h)
     path = compute_path(route, composition, grid, canvas, src_dims, motion,
-                        max_step=25)
+                        max_step=max_speed / fps)
     Path(path_out).write_text(json.dumps(path))
 
-    crop_w, crop_h = g.crop_size(canvas[0], canvas[1], src_dims[0], src_dims[1])
+    crop_w, crop_h = g.crop_size(canvas[0], canvas[1], src_w, src_h)
     out_w = 1080 if canvas == (9, 16) else crop_w
     out_h = 1920 if canvas == (9, 16) else crop_h
     rr, gg, bb = color.gains_for_means(color_means)
     xexpr = _xexpr(path, fps)
     vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y=0,"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
-          f"fps={fps},format=yuv420p")
+          f"fps={fps:.6g},format=yuv420p")
     cmd = ["ffmpeg", "-y", "-i", src, "-vf", vf,
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -978,6 +1060,8 @@ def test_check_episode_reports(sample_clip, tmp_path):
                                out=str(tmp_path / "report.json"))
     assert report["checks"]["centered"]["pass"] is True
     assert "black_frames" in report["checks"]
+    assert report["checks"]["horizon"] == {"status": "not-implemented"}
+    assert report["attempt"] == 1 and "fail_reasons" in report
     assert report["overall"] in (True, False)
 ```
 
@@ -1020,7 +1104,8 @@ def _overlay(img, grids):
         left, right = grid_lines(grid)
         for fx in (left, right):
             d.line([(fx * w, 0), (fx * w, h)], fill=palette.get(grid), width=2)
-        d.line([(0, (1/3) * h), (w, (1/3) * h)], fill=palette.get(grid), width=1)
+        for fy in (left, right):   # horizontals at the grid's OWN fractions (phi != 1/3)
+            d.line([(0, fy * h), (w, fy * h)], fill=palette.get(grid), width=1)
     return img
 
 
@@ -1052,10 +1137,11 @@ if __name__ == "__main__":
 - [ ] **Step 4: Write `scripts/check_episode.py`**
 
 ```python
-"""Run mechanical episode checks → report.json (spec §9)."""
+"""Run mechanical episode checks → report.json (spec §9, §4.1)."""
 import argparse, json, subprocess, re
 from pathlib import Path
 from scripts.lib import checks, geometry
+from scripts.lib.motion import classify
 
 
 def _duration(clip):
@@ -1074,9 +1160,14 @@ def _black_frames(clip):
 
 
 def run(clip, route_path, path_path, composition, grid, target_dur, out,
-        crop_w=607, direction="right"):
+        canvas=(9, 16), src_dims=(1920, 1080), attempt=1):
+    """crop_w derives from canvas+src; direction from the route itself —
+    no hardcoded 607 / "right" (left-moving and non-9:16 episodes exist)."""
     route = json.loads(Path(route_path).read_text())
     path = json.loads(Path(path_path).read_text())
+    crop_w, _ = geometry.crop_size(canvas[0], canvas[1], src_dims[0], src_dims[1])
+    _, direction = classify(route, src_dims[0], src_dims[1])
+    direction = direction or "right"
     results = {}
 
     if composition == "center":
@@ -1085,12 +1176,18 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
         left, right = geometry.grid_lines(grid)
         tf = left if direction == "right" else right
         results["on_line"] = checks.on_line(route, path, crop_w, tf)
-    results["jitter"] = checks.jitter(path, direction, max_reversal=crop_w * 0.005)
+    results["jitter"] = checks.jitter(path, direction,
+                                      max_reversal=max(2.0, crop_w * 0.005))
     results["length"] = checks.length(_duration(clip), target_dur)
     results["black_frames"] = {"pass": _black_frames(clip) == 0}
+    # spec'd but not yet implementable (§9): report honestly, never silent-pass
+    results["horizon"] = {"status": "not-implemented"}
+    results["head_power_point"] = {"status": "not-implemented"}
 
     overall = all(v.get("pass", True) for v in results.values())
-    report = {"checks": results, "overall": overall}
+    fail_reasons = [k for k, v in results.items() if v.get("pass") is False]
+    report = {"checks": results, "overall": overall,
+              "attempt": attempt, "fail_reasons": fail_reasons}
     Path(out).write_text(json.dumps(report, indent=2))
     return report
 
@@ -1102,8 +1199,15 @@ if __name__ == "__main__":
     ap.add_argument("--composition", default="lead")
     ap.add_argument("--grid", default="thirds")
     ap.add_argument("--target-dur", type=float, required=True)
+    ap.add_argument("--canvas", default="9:16")
+    ap.add_argument("--src-dims", default="1920x1080",
+                    help="source WxH the route coords live in")
+    ap.add_argument("--attempt", type=int, default=1)
     a = ap.parse_args()
-    run(a.clip, a.route, a.path, a.composition, a.grid, a.target_dur, a.out)
+    cw, ch = (int(v) for v in a.canvas.split(":"))
+    sw, sh = (int(v) for v in a.src_dims.split("x"))
+    run(a.clip, a.route, a.path, a.composition, a.grid, a.target_dur, a.out,
+        canvas=(cw, ch), src_dims=(sw, sh), attempt=a.attempt)
 ```
 
 - [ ] **Step 5: Run to verify pass**
@@ -1116,6 +1220,80 @@ Expected: PASS (2 passed)
 ```bash
 git add scripts/storyboard.py scripts/check_episode.py tests/integration/test_verify.py
 git commit -m "feat: storyboard overlay + episode checks (on-line/centered/jitter/length/black)"
+```
+
+---
+
+## Task 9.5: Golden fixture — real footage in the loop
+
+Synthetic white-box tests prove plumbing, not composition. This task commits a tiny REAL clip + a frozen route so the engine is never synthetic-only (design §15). Runs right after Task 9 because it exercises `storyboard` + `check_episode`. If `on_line` fails here, tune HERE — that is the point: numbers meet reality before process-episode is built on top.
+
+**Files:**
+- Create: `tests/fixtures/golden_ride.mp4` (~2–3s, 720p, ≤2 MB, committed to the private repo)
+- Create: `tests/fixtures/golden_route.json` (frozen subject route for that clip)
+- Create: `tests/integration/test_golden.py`
+
+- [ ] **Step 1: Cut the fixture from session footage**
+
+Source: the Jul 3–5 session footage (e.g. MVI_3739 — the long ride; exact path/window from the session's REEL_SOURCES.md at execution time). Pick a 2–3s window with clear lateral motion:
+
+```bash
+ffmpeg -i /path/to/MVI_3739.MP4 -ss <t0> -t 2.5 -vf scale=-2:720 \
+  -c:v libx264 -crf 23 -preset slow -an tests/fixtures/golden_ride.mp4
+```
+
+Keep the file ≤2 MB (bump crf if needed).
+
+- [ ] **Step 2: Freeze the route**
+
+Preferred: one real tracker run — `.venv/bin/python -m scripts.track tests/fixtures/golden_ride.mp4 tests/fixtures/golden_route.json --fps <fps>` — eyeball the storyboard, commit the JSON.
+Fallback (no weights/network): hand-label the subject centre every ~0.5s from a contact sheet, interpolate linearly to per-frame, same JSON shape.
+
+- [ ] **Step 3: Write `tests/integration/test_golden.py`**
+
+```python
+import json
+from pathlib import Path
+import pytest
+from scripts import reframe, storyboard, check_episode
+
+FIX = Path(__file__).parent.parent / "fixtures"
+
+@pytest.mark.integration
+def test_golden_ride_pipeline(tmp_path):
+    src = FIX / "golden_ride.mp4"
+    route = json.loads((FIX / "golden_route.json").read_text())
+    rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
+    ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"
+
+    reframe.reframe(str(src), str(rp), str(ep), composition="lead",
+                    grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), stabilize=False,
+                    path_out=str(pp))
+    storyboard.build(str(ep), str(tmp_path / "sheet.jpg"), n=6,
+                     grids=("thirds",))
+
+    src_w, src_h, _ = reframe._probe(str(src))
+    dur = check_episode._duration(str(ep))
+    report = check_episode.run(str(ep), str(rp), str(pp),
+                               composition="lead", grid="thirds",
+                               target_dur=dur, out=str(tmp_path / "r.json"),
+                               src_dims=(src_w, src_h))
+    assert report["checks"]["black_frames"]["pass"] is True
+    assert report["checks"]["on_line"]["pass"] is True    # real composition holds
+    assert report["checks"]["jitter"]["pass"] is True
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+Run: `.venv/bin/python -m pytest tests/integration/test_golden.py -q`
+Expected: PASS (1 passed).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/fixtures/ tests/integration/test_golden.py
+git commit -m "test: golden fixture — real ride clip + frozen route through the full engine"
 ```
 
 ---
@@ -1209,8 +1387,8 @@ git commit -m "test: end-to-end core pipeline smoke (extract->reframe->storyboar
 
 Each is its own spec→plan→build cycle, and each produces working software on its own:
 
-1. **process-episode subagent** — wraps this engine in the subagent loop (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`.
+1. **process-episode subagent** — wraps this engine in the subagent loop (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`. Implements the §4.1 protocol: ask-before-start on ambiguous manifests, stop-and-report on mid-task contradictions, `attempt`/`fail_reasons[]` escalation; concurrency cap 3; tracking degradation ladder (YOLO → optical-flow → manual keyframes) with `degraded:` marks.
 2. **Ingestion** — footage-intake (`intake.py`), reel-brief, trend-scan.
-3. **Music** — music-and-mood (`beats.py`, `music_find.py`, `music_fetch.py`), pacing.
-4. **Assembly & delivery** — edit-plan, assemble-draft, audio-mix, reel-final-check, deliver.
-5. **Router & checks discipline** — using-montage, montage-debugging, the Verification Iron Law tables.
+3. **Music** — music-and-mood (`beats.py`, `music_find.py`, `music_fetch.py`), pacing. librosa-first (design §5.5): madmom/demucs optional upgrades, essentia out; pacing↔music back-edge via `start_offset` re-pick.
+4. **Assembly & delivery** — edit-plan, assemble-draft, audio-mix, reel-final-check, deliver. Draft concat normalizes segments to canvas+fps; `drawtext` with explicit fontfile; version log (`REEL_v{n}` + changelog); executable landmine lint (grep for `lutrgb`, `-ss` before `-i`).
+5. **Router & checks discipline** — using-montage, montage-debugging, the Verification Iron Law tables. Resumability: stages skip when artifacts exist and input hashes match; wall-time per stage in every report.

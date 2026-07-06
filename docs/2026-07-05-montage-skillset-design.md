@@ -3,6 +3,7 @@
 **Date:** 2026-07-05
 **Author:** Sergei (vasechkoss@gmail.com) + Claude
 **Status:** design approved, ready for `writing-plans`
+**Amended:** 2026-07-06 — hardening round: env (python 3.13, single requirements, pypi index), librosa-first music, §4.1 questions/go-back protocol, golden fixture, degradation ladders
 **Deliverable of this document:** specification only (no code; implementation in a separate session)
 
 ---
@@ -24,6 +25,8 @@ The design was reverse-engineered from a real session (Jul 3–5 2026) that prod
 5. **Per-episode processing runs in subagents.** Episodes are independent → parallel; the main thread never loads per-episode detail.
 6. **Two checks at every level:** mechanical (numeric thresholds) + editorial (matches the original idea, like code review).
 7. **Self-contained environment.** The skill installs its own venv; it never pollutes the shared environment.
+8. **Fail loud with a remedy.** Every script exits non-zero with an actionable message ("ffmpeg not found → brew install ffmpeg") — no silent fallbacks, no half-results.
+9. **Explicit project dir.** Every script receives the project directory as an explicit argument; nothing resolves against the caller's cwd.
 
 ---
 
@@ -67,14 +70,17 @@ montage/
 
 ```bash
 # setup.sh (idempotent)
-python3 -m venv "$SKILL_DIR/.venv"
+PYTHON="${PYTHON:-python3.13}"                                     # explicit version, fail loud if absent
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
+"$PYTHON" -m venv "$SKILL_DIR/.venv"
 "$SKILL_DIR/.venv/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# download YOLO weights into models/ if missing
+# preflight: ffmpeg on PATH AND built with vidstab filters; YOLO weights into models/ if missing
 ```
 
-- All scripts run **only** via `.venv/bin/python`, never system python.
+- All scripts run **only** via `.venv/bin/python`, never system python. Python **3.13** (`PYTHON` env overrides).
 - `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
-- `requirements.txt`: `ultralytics` (YOLOv11 + ByteTrack), `pyscenedetect`, `madmom`, `essentia`, `numpy`, `scipy`, `imagehash`, `Pillow`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external).
+- **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup verifies ffmpeg exists **and** lists `vidstab` filters (the brew build does) — otherwise fail loud with the brew remedy.
+- **Lazy heavy imports:** `ultralytics`/`librosa` import inside functions, never at module top — test collection stays fast, the detector stays mockable.
 
 ---
 
@@ -142,7 +148,30 @@ reel-final-check ──► mechanical + editorial review (like code review)
 deliver ─────────► out/REEL_*.mp4  (codec/fps/bitrate per platform)
 ```
 
-Gates are hard: a stage does not exit until its exit conditions are met. A failed check → loop back, not forward.
+Gates are hard: a stage does not exit until its exit conditions are met. A failed check → loop back, not forward. Built-in back-edge: when the pacing gate can't fit the spine onto the chosen track fragment, it first re-picks `MUSIC.start_offset`; only if that loop dries out does music selection itself reopen.
+
+### 4.1 Questions and going back (adapted from superpowers)
+
+**When to ask questions:**
+- **reel-brief** is the only stage that interrogates the user — one question at a time (brainstorming pattern).
+- **process-episode subagents** ask clarifying questions **before starting** if the manifest is ambiguous — never mid-encode guesses. When mid-task reality contradicts the manifest (EDL says "moving right", tracker sees left; two people, unclear hero; stabilize flag on a wade shot) → **stop and return a structured finding** to the orchestrator. No improvising past the manifest.
+- Other stages never ask the user directly; questions travel up the escalation ladder. **User-facing checkpoints are exactly three: SPEC approval, EDL+draft approval, final review.** Everything else is machine gates.
+
+**Going back (fail → backward, never forward):**
+- A failed gate retries in its own stage first.
+- **The same failure 3× → escalate one level UP the artifact chain** — question the input artifact, not the implementation (systematic-debugging: repeated fixes failing means the approach is wrong):
+
+| Failure | Retry in place | 3× → escalate to |
+|---------|----------------|------------------|
+| episode-postcheck | reframe params | edit-plan: that episode's composition/grid/window is wrong |
+| pacing gate (spine won't fit) | re-pick `start_offset` | music-and-mood: different fragment/track |
+| draft gate (beats don't land) | segment trims | pacing/EDL |
+| reel-final mechanical | the failing episode | that episode's EDL row |
+| reel-final editorial (structural) | — | pacing/EDL directly |
+| top of the ladder | — | reel-brief + the user |
+
+- **No fixing forward:** a bad crop is never masked in assemble; bad pacing is never rescued in deliver.
+- Check reports carry `attempt` and machine-readable `fail_reasons[]` so the orchestrator can count retries and route escalation.
 
 ---
 
@@ -150,7 +179,7 @@ Gates are hard: a stage does not exit until its exit conditions are met. A faile
 
 ### 5.1 using-montage (router)
 Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. Step 0: ensure-env (venv). Routes through stages 1–13. Analogous to `using-superpowers`.
-**Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "more classic"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, style-lean, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags.
+**Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "more classic"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, style-lean, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags. Scripts always get the project dir explicitly (`--project-dir`); nothing assumes the caller's cwd.
 
 ### 5.2 footage-intake → `FOOTAGE.md`
 `intake.py`: ffprobe (duration/resolution/fps) + PySceneDetect (scene boundaries) + YOLO sample (who/how many people) + shake estimate (vidstabdetect magnitude). **One clip → several moment-windows**, not one: a long ride/take contains distinct fragments (grounding: MVI_3739 = one 22s ride → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → two hang-fives). intake segments each clip into candidate windows (sub-scenes + motion/people) and **scores each window separately**. Cull/selection step: rank windows across all footage, mark the best moments — several may come from one source.
@@ -165,9 +194,9 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 **Gate:** fresh cache or manual input.
 
 ### 5.5 music-and-mood → `MUSIC.json`
-`beats.py`: **madmom** (RNN+DBN) → beats + downbeats + drop; **essentia** → sections, RMS energy-curve, mood-vector (valence/arousal). **Mood-match**: the track's mood is matched against the reel's mood (cosine distance between mood-vectors), and the track's energy sections (build/drop/release) are aligned to the visual energy — music and picture are **one arc**, not two glued halves. Cut-map: cut points ↔ beats/downbeats.
+`beats.py`: **librosa** (v1 primary — clean wheels on every platform): beat grid + tempo, section boundaries (recurrence/novelty), RMS energy-curve, spectral features; downbeats v1 = strong-beat estimate from the beat grid + onset strength. **Mood-match v1**: tempo + energy curve + spectral stats → coarse mood vector matched against the reel's mood; the agent makes the final mood call on the shortlist — numbers narrow, judgment picks. The track's energy sections (build/drop/release) are aligned to the visual energy — music and picture are **one arc**, not two glued halves. Cut-map: cut points ↔ beats/downbeats. Loudness measurement stays ffmpeg (`ebur128`). **Optional upgrades — documented, NOT wired in v1 (one code path = simple tests):** madmom for RNN+DBN downbeats (git master only; the 2018 PyPI release is broken on modern python/numpy), demucs for true vocal stems. essentia is **out of v1** entirely (no macOS arm64 wheels).
 **Track-fragment selection:** the track **need not start at 0:00** — pick the strongest segment of the melody (by sections/energy/drop) for the reel length, don't force 0:00 (session: ODESZA `-ss 15`, Billie `-ss 13`). Record `start_offset`.
-**Vocal-aware start:** if the chosen window has vocals, the in-point **snaps to a vocal phrase boundary**, never mid-word. Detection: stem separation (demucs, optional) or VAD → RMS of the vocal stem → phrase gaps = valid in-points; the start snaps to the nearest boundary. No vocals → snap to a downbeat.
+**Vocal-aware start:** if the chosen window has vocals, the in-point must never land mid-word. **v1 rule:** snap the in-point to a section boundary's downbeat — section starts almost never begin mid-word; no vocals → any downbeat. **Optional upgrade (not v1):** demucs vocal stem → RMS phrase gaps → snap to the nearest phrase boundary.
 **Autonomous find + download** — the skill can source the track itself, in three stages:
 - **Discovery** (`music_find.py`): trend-sound candidates from `TRENDS.md` (TikTok/IG trending sounds) + mood-match against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit × trend-presence → shortlist. Metadata + 30s previews only at this stage.
 - **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
@@ -190,10 +219,11 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 
 ### 5.9 assemble-draft → `draft.mp4`
 `assemble.py`: concat of the **segments** (`segments/*_raw.mp4`) into the **whole draft at once**, almost no processing, with **burnt-in labels** — what will be processed and where (from the EDL processing-notes). A check of the whole shape before polishing. After plan/draft approval the segments are locked as the working input.
+"Almost no processing" = no *creative* processing; concat still demands uniform streams, so assemble scale-fits every segment into the SPEC canvas and unifies fps/codec first (§12). Labels via `drawtext` with an explicit `fontfile=` — macOS has no reliable fontconfig default.
 **Gate:** full length, lands on beats, plays.
 
 ### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
-See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail.
+See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
 **Gate:** episode-postcheck passes.
 
 ### 5.11 episode-postcheck (gate)
@@ -227,12 +257,14 @@ Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **l
 
 The manual 0.1s storyboard from the session was a **workaround for having no reliable tracker**. With YOLO+ByteTrack we flip it:
 
-1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed.
+1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far.
 2. **The thirds/direction rule** applies **continuously** (see 6.2).
 3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay / min-jerk smoothing + max-step-per-frame damping) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing.
 4. **The 0.1s thirds-grid storyboard is demoted to verification** — `check_episode.py` reads `subject_x(t)` against the target line numerically. The contact sheet is an artifact for the gate and for human review.
 
 **Net:** the manual bottleneck is gone, but **the composition rules become the optimizer's parameters** — no taste lost.
+
+**Degradation ladder (tracking):** ultralytics unavailable or the track is garbage → optical-flow centroid tracker (OpenCV, no ML deps) → manual storyboard keyframes + interpolation (the session's proven method). Each step down is recorded in the episode report as `degraded: <level>` — the pipeline still delivers.
 
 **Reuse:** take the stack (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), write our own glue (`reframe.py`) for our rules + color + stabilization. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) is a reference/fallback (its path optimizer, but we don't bend its CLI: it can't do thirds-bias or our color).
 
@@ -342,7 +374,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Centered (composition=center) | subject center near frame center ±5% of width |
 | Head power-point | head in the upper third, ±8% |
 | Horizon | tilt < 1.5°; vertical bounce between frames < 1% of height |
-| Jitter | no crop-center reversal > ~0.5% of width against the direction of travel |
+| Jitter | no crop-center reversal > max(2px, 0.5% of width) against the direction of travel — the 2px floor absorbs int-rounding flicker |
 | break | numeric composition checks skipped (editorial) |
 | Color (in-episode) | mean RGB within ±8 of target R105/G122/B137 |
 | Color (across cuts) | mean-RGB delta across a cut < 12 |
@@ -351,6 +383,8 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Beat | each hard cut within ±60ms of a detected beat |
 | Loudness | integrated −14 LUFS ±1 |
 | Variety | no pair of adjacent episodes with perceptual-hash distance < threshold. **Same source ≠ duplicate**: several windows of one clip are fine if visually distinct (guard by image, not by filename) |
+
+**Status:** every check above is v1-implemented except **Head power-point** (needs pose keypoints) and **Horizon** (needs line detection) — those are `planned`; reports print them as `not-implemented`, **never** a silent pass.
 
 ---
 
@@ -375,7 +409,12 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 
 **Nice-to-have:**
 - **Speed-ramp to beat**: ramped slow-mo timed to the drop (extends the slow-mo palette item).
-- **Version log**: changelog of versions (the session ran v2→v18); diff between versions, lock registry.
+
+**Requirements for the follow-on plans (binding, not nice-to-have):**
+- **Version log** (assembly/deliver plan): `REEL_v{n}` naming + one-line changelog per version, lock registry — the session ran v2→v18; iteration is the norm.
+- **Resumability** (router plan): every stage skips itself when its artifact exists and the input hash is unchanged — a dead session resumes for free.
+- **Executable landmine lint** (recipes plan): lint generated ffmpeg commands — grep for `lutrgb`, for `-ss` before `-i`. Machine-checked landmines don't recur.
+- **Wall-time per stage** (checks plans): recorded in every check report — where the minutes burn stays visible.
 
 ---
 
@@ -388,18 +427,25 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - ImageMagick `montage` reorders tiles → false "sawtooth" motion readings. Verify order.
 - Loading all frames into memory → OOM. Process frame by frame.
 - `vidstabdetect` warning "cannot read frame local motions… got 255" — cosmetic, stabilization still works.
+- pip behind a corporate mirror (`nexus.*`) times out off-VPN → `setup.sh` pins `PIP_INDEX_URL=https://pypi.org/simple` (env-overridable).
+- `drawtext` without an explicit `fontfile=` fails or picks garbage on macOS → always pass a font path.
+- concat of non-uniform segments (size/fps/codec) breaks or desyncs → normalize before concat (§5.9).
+- pytest without `pythonpath = .` in `pytest.ini` can't import `scripts.*` (no `tests/__init__.py`) → keep it set.
+- ultralytics downloads weights by model **name** (`yolo11n-seg.pt`), not into an arbitrary path → pass names; cache lives in `models/`.
+- madmom 0.16.1 from PyPI is broken on python ≥3.10 / numpy ≥1.24 → git master only, and only as an optional extra.
+- essentia has no macOS arm64 wheels → out of v1 (§5.5).
 
 ---
 
 ## 13. Open questions (resolve at implementation)
 
-1. **Model weights** — which exact YOLOv11-seg version to ship/download; size (n/s/m) for speed vs accuracy.
-2. **madmom vs librosa** — madmom is more accurate on downbeats but heavier to install (needs old numpy). Possibly librosa as a light default + madmom optional.
+1. ~~Model weights~~ **Resolved (2026-07-06):** model size is a runtime parameter — `yolo11n-seg` default, `s`/`m` for small/far subjects; weights auto-download by name, cached in `models/`; detection at `imgsz≈960`.
+2. ~~madmom vs librosa~~ **Resolved (2026-07-06):** librosa is the v1 stack; madmom (git master) documented as an optional upgrade, not wired in.
 3. **TikTok Creative Center** — how stable is public access without an API; scraping fallback is fragile.
 4. **style-lean default** — 70/30 proposed, calibrate on real runs.
-5. **essentia mood models** — which ones exactly (valence/arousal regressors) and their weight in mood-match.
+5. ~~essentia mood models~~ **Resolved (2026-07-06):** essentia dropped from v1; mood v1 = librosa features + agent judgment (§5.5).
 6. **Thresholds §9** — starting values, calibrate on the first reels.
-7. **Vocal detection for start snapping** — demucs (more accurate, heavier) vs a light spectral VAD; is a stem needed at all or is vocal-activity enough.
+7. ~~Vocal detection for start snapping~~ **Resolved for v1 (2026-07-06):** snap to a section-boundary downbeat; demucs phrase-boundary snapping is the documented upgrade.
 8. **Music discovery APIs** — Spotify needs client creds (optional; iTunes/Deezer keyless); how to degrade gracefully when no creds.
 9. **yt-dlp fragility** — source availability/format churn; retry + fallback source order for `music_fetch.py`.
 
@@ -467,3 +513,5 @@ A `montage-debugging` reference (patterned on superpowers `systematic-debugging`
 ## 15. What's next
 
 The deliverable is this specification only. Next step: `writing-plans` → a detailed implementation plan (per skill/script, with TDD where applicable). Implementation in a separate session. Flagship for the first implementation if we trim scope: `extract` + `process-episode` + `reframe.py` + `ffmpeg-recipes` + `episode-postcheck` — the core; everything else as scaffolding.
+
+Real-footage validation is user-driven: the Jul 3–5 footage gets re-edited with the pipeline when its owner re-montages — a natural acceptance run, not a blocking milestone. The core plan instead carries a small committed **golden fixture** (2–3s real clip + frozen route) so the engine is never synthetic-only.
