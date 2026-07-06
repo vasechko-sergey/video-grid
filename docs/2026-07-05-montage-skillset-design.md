@@ -35,34 +35,31 @@ The design was reverse-engineered from a real session (Jul 3–5 2026) that prod
 Runs in Claude Code mode (environment access available). The skill is isolated via a local venv.
 
 ```
-montage/
-├── SKILLS/
+video-grid/                             # the skill-set repo (github.com/vasechko-sergey/video-grid)
+├── SKILLS/                             # skill entry points (follow-on plans)
 │   ├── using-montage/SKILL.md          # router ("1% → invoke" rule)
-│   ├── footage-intake/SKILL.md
-│   ├── reel-brief/SKILL.md
-│   ├── trend-scan/SKILL.md
-│   ├── music-and-mood/SKILL.md
-│   ├── pacing/SKILL.md
-│   ├── edit-plan/SKILL.md
-│   ├── extract/SKILL.md                # cuts EDL windows into standalone fragments
-│   ├── assemble-draft/SKILL.md
+│   ├── footage-intake/  reel-brief/  trend-scan/  music-and-mood/  pacing/
+│   ├── edit-plan/  extract/  assemble-draft/
 │   ├── process-episode/SKILL.md        # subagent, crown jewel
 │   ├── episode-postcheck/SKILL.md      # gate
-│   ├── audio-mix/SKILL.md
-│   ├── reel-final-check/SKILL.md       # gate
-│   ├── deliver/SKILL.md
+│   ├── audio-mix/  reel-final-check/  deliver/
 │   └── ffmpeg-recipes/SKILL.md         # reference + landmine registry
+├── docs/                               # this repo's own design + implementation plans
+│   └── plans/
 ├── references/
 │   ├── editing-canon.md                # classic editing rules + grid library (thirds/phi/golden-canon-grid)
 │   ├── landmines.md                    # learned failures (see §12)
 │   └── montage-debugging.md            # phased stage-failure debugging (patterned on systematic-debugging)
 ├── scripts/
-│   ├── intake.py  beats.py  track.py  extract.py  reframe.py  storyboard.py
-│   ├── music_find.py  music_fetch.py  check_episode.py  check_reel.py
-│   ├── mix.py  assemble.py  deliver.py  trends.py
-├── requirements.txt
-├── setup.sh                            # creates .venv, installs deps, downloads weights
-├── models/                             # YOLO weight cache (downloaded once)
+│   ├── lib/                            # pure logic, unit-tested: geometry, motion, pathsmooth, color, checks
+│   ├── extract.py  track.py  reframe.py  storyboard.py  check_episode.py    # core engine (current plan)
+│   ├── intake.py  beats.py  music_find.py  music_fetch.py  trends.py        # follow-on plans
+│   └── check_reel.py  mix.py  assemble.py  deliver.py                       # follow-on plans
+├── tests/                              # unit (lib/) + integration + golden fixtures (real clip + frozen route)
+├── requirements.txt                    # ONE file — the full pipeline set (§ Environment)
+├── pytest.ini                          # pythonpath = . (landmine §12)
+├── setup.sh                            # venv (python 3.13) + preflights, idempotent
+├── models/                             # YOLO weight cache (downloaded once, by model name)
 └── .venv/                              # local, gitignored
 ```
 
@@ -77,7 +74,7 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 # preflight: ffmpeg on PATH AND built with vidstab filters; YOLO weights into models/ if missing
 ```
 
-- All scripts run **only** via `.venv/bin/python`, never system python. Python **3.13** (`PYTHON` env overrides).
+- All scripts run **only** via `.venv/bin/python`, never system python, and **as modules** — `.venv/bin/python -m scripts.<name>` (plain `python scripts/<name>.py` breaks `scripts.lib` imports). Python **3.13** (`PYTHON` env overrides).
 - `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
 - **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup verifies ffmpeg exists **and** lists `vidstab` filters (the brew build does) — otherwise fail loud with the brew remedy.
 - **Lazy heavy imports:** `ultralytics`/`librosa` import inside functions, never at module top — test collection stays fast, the detector stays mockable.
@@ -98,6 +95,7 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 | `EDL.md` | edit-plan | ordered episodes: source+window, shot-type, layout, composition, grid, motion, processing-notes, beat-slot |
 | `SOURCES.md` | process-episode | lock file (🔒 per episode) — the session's `REEL_SOURCES.md` promoted to a contract; **one source may feed multiple episodes** (different windows) |
 | `segments/<ep>_raw.mp4` | extract | **cut fragments** per EDL window — input for draft and process-episode (not full clips) |
+| `work/<ep>/{route,path,report}.json` | process-episode | tracker route, smoothed crop path, check report (`attempt`, `fail_reasons[]` — feeds the §4.1 escalation) |
 | `checks/*.json` | *-check | mechanical-check reports |
 | `storyboards/*.jpg` | storyboard | contact sheets with a grid (thirds + phi; for hero/static — the full golden-canon armature) — **verification artifact** |
 | `out/*.mp4` | process/assemble/deliver | locked episodes 🔒, audio, final |
@@ -259,7 +257,7 @@ The manual 0.1s storyboard from the session was a **workaround for having no rel
 
 1. **Tracking** — `track.py`: Ultralytics **YOLOv11-seg (person) + ByteTrack** on the **cut fragment** (`segments/<ep>_raw.mp4`, not the full clip) → `subject_x(t), y(t)` **per frame** (not a 0.1s sample). Robust to foam/other surfers (person class + ID retention) — where the OpenCV HSV blob failed. Detection runs on **downscaled frames** (`imgsz≈960`; ultralytics rescales boxes to source coords) — ~10× faster on 4K, negligible loss for a person-sized subject. Model size is a parameter: `yolo11n-seg` default, `s`/`m` when the subject is small/far.
 2. **The thirds/direction rule** applies **continuously** (see 6.2).
-3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay / min-jerk smoothing + max-step-per-frame damping) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing.
+3. **Non-linear path = damped velocity following.** A path optimizer (Savitzky-Golay smoothing + a crop-speed cap in **px/sec** — frame-rate independent, so 60fps sources get the same on-screen speed; the session's 25 px/frame @30fps ≡ 750 px/s) **naturally** holds the frame on a slow start and accelerates with the subject — exactly what was hand-tuned ("slow start → hold longer, not linear"). The optimizer replaces manual keyframing; the path is clamped to the frame **after** smoothing (savgol overshoots on ramps), then simplified (Douglas-Peucker) into a few linear segments for a short, smooth ffmpeg crop expression.
 4. **The 0.1s thirds-grid storyboard is demoted to verification** — `check_episode.py` reads `subject_x(t)` against the target line numerically. The contact sheet is an artifact for the gate and for human review.
 
 **Net:** the manual bottleneck is gone, but **the composition rules become the optimizer's parameters** — no taste lost.
@@ -304,7 +302,7 @@ Grounding: the session already did this — classic thirds/lead as base, but har
 ### 6.4 Crop formulas (from the session, generalized)
 
 - 9:16 width from a 1920-wide source = 607px (`int(H×9/16)`). **Generalize**: crop size = a function of `canvas` and source aspect, not a hardcode.
-- lead offset: moving right → left grid line → `center = subject_x + lead`; moving left → right line → `subject_x − lead`. The target line = the line of the chosen `grid` (thirds 0.333/0.667 or phi 0.382/0.618). **Generalize**: `lead` as a **fraction of frame width**, not pixels (the session used +91/−97 on a 1080-wide frame ≈ 0.084/−0.090·W).
+- lead offset **emerges from the grid line, not a separate parameter**: moving right → subject pinned to the LEFT line of the chosen `grid` (thirds 0.333/0.667 or phi 0.382/0.618) → `crop_x = subject_x − line·crop_w`, air ahead = `(1 − line)·crop_w`. The session's hand-tuned +91/−97px offsets ≈ the thirds-line placement (`crop_w/6` from centre) — the grid formalizes what was tuned by eye.
 - `crop_x = center − crop_w/2`, clamped to `[0, W−crop_w]`.
 
 ### 6.5 Composition-grid library (`references/editing-canon.md`)
@@ -322,7 +320,7 @@ Three tools of increasing complexity, split across layers — **a line for motio
 2. **Editorial overlay** — `storyboard.py` draws the full armature (diagonals + reciprocals + eyes + phi); the editorial check judges the strongest frames against it.
 3. **Selection scoring** — intake/edit-plan bonus for moments whose natural composition already lands on an armature diagonal (a wave line along the baroque diagonal).
 
-The storyboard overlay for motion verification draws **thirds + phi** lines; for hero/static — plus the full armature. `check_episode` verifies against the episode's **chosen** `grid`.
+The storyboard overlay for motion verification draws **thirds + phi** lines (horizontals at each grid's own fractions — phi's at 0.382/0.618, not 1/3); for hero/static — plus the full armature. The armature overlay ships with the process-episode plan; the core engine draws the line grids. `check_episode` verifies against the episode's **chosen** `grid`.
 
 ---
 
@@ -370,8 +368,8 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 
 | Check | Pass rule |
 |-------|-----------|
-| On-line (composition=lead) | subject center within ±5% of frame width from the chosen `grid` line (thirds 0.333/0.667 or phi 0.382/0.618), correct side for the direction |
-| Centered (composition=center) | subject center near frame center ±5% of width |
+| On-line (composition=lead) | subject center within ±5% of frame width from the chosen `grid` line (thirds 0.333/0.667 or phi 0.382/0.618), correct side for the direction, on **≥90% of frames** |
+| Centered (composition=center) | subject center near frame center ±5% of width, on **≥90% of frames** |
 | Head power-point | head in the upper third, ±8% |
 | Horizon | tilt < 1.5°; vertical bounce between frames < 1% of height |
 | Jitter | no crop-center reversal > max(2px, 0.5% of width) against the direction of travel — the 2px floor absorbs int-rounding flicker |
@@ -384,7 +382,10 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Loudness | integrated −14 LUFS ±1 |
 | Variety | no pair of adjacent episodes with perceptual-hash distance < threshold. **Same source ≠ duplicate**: several windows of one clip are fine if visually distinct (guard by image, not by filename) |
 
-**Status:** every check above is v1-implemented except **Head power-point** (needs pose keypoints) and **Horizon** (needs line detection) — those are `planned`; reports print them as `not-implemented`, **never** a silent pass.
+**Status (which plan implements what):**
+- **Core plan (`check_episode`):** on-line/centered, jitter, length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
+- **process-episode plan:** color (in-episode) — reframe applies the gain; its verification lands with that plan.
+- **Assembly plan (`check_reel`):** color across cuts, beat, loudness, variety, safe-zones.
 
 ---
 
