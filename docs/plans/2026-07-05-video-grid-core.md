@@ -1491,13 +1491,13 @@ Spec §6.3, §6.5, §10, §12. These are consumed by process-episode and the che
 - Create: `references/ffmpeg-recipes.md`
 - Create: `references/landmines.md`
 
-- [ ] **Step 1: Write `references/landmines.md`** — copy the §12 registry verbatim (lutrgb→black; seek-arg order not 4K; OpenCV HSV→YOLO; wade-in stabilization→rolling ground; ImageMagick montage tile reorder; load-all-frames OOM; vidstabdetect 255 warning cosmetic).
+- [x] **Step 1: Write `references/landmines.md`** — copy the §12 registry verbatim (lutrgb→black; seek-arg order not 4K; OpenCV HSV→YOLO; wade-in stabilization→rolling ground; ImageMagick montage tile reorder; load-all-frames OOM; vidstabdetect 255 warning cosmetic).
 
-- [ ] **Step 2: Write `references/ffmpeg-recipes.md`** — the exact command snippets used by the scripts: output-seek extract, crop+scale+colorchannelmixer, vidstab two-pass (`vidstabdetect`→`vidstabtransform`, with the "not on wade-in" note), blackdetect, concat. Each with a one-line "why".
+- [x] **Step 2: Write `references/ffmpeg-recipes.md`** — the exact command snippets used by the scripts: output-seek extract, crop+scale+colorchannelmixer, vidstab two-pass (`vidstabdetect`→`vidstabtransform`, with the "not on wade-in" note), blackdetect, concat. Each with a one-line "why".
 
-- [ ] **Step 3: Write `references/editing-canon.md`** — classic canon (thirds, headroom, lead room, 180°, cut-on-action, match/J/L cuts, continuity, contrast) + the grid library table (thirds 0.333/0.667, phi 0.382/0.618, golden-canon-grid armature) from §6.5. Mark thirds as the tracking default and golden-canon-grid as the static/editorial layer.
+- [x] **Step 3: Write `references/editing-canon.md`** — classic canon (thirds, headroom, lead room, 180°, cut-on-action, match/J/L cuts, continuity, contrast) + the grid library table (thirds 0.333/0.667, phi 0.382/0.618, golden-canon-grid armature) from §6.5. Mark thirds as the tracking default and golden-canon-grid as the static/editorial layer.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add references/
