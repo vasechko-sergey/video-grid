@@ -30,6 +30,8 @@ def continuity(route, src_w, max_step_frac=0.04):
 
 
 def jitter(path, direction, max_reversal):
+    if direction not in ("left", "right"):
+        raise ValueError(f"jitter: direction must be 'left' or 'right', got {direction!r}")
     sign = 1 if direction == "right" else -1
     worst = 0.0
     for i in range(1, len(path)):

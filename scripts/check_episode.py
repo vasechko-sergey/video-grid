@@ -1,5 +1,5 @@
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
-import argparse, json, subprocess, re
+import argparse, json
 from pathlib import Path
 from scripts.lib import checks, geometry, proc
 from scripts.lib.motion import classify
@@ -12,11 +12,23 @@ def _duration(clip):
     return float(out.stdout.strip())
 
 
-def _black_frames(clip):
-    out = subprocess.run(
-        ["ffmpeg", "-i", clip, "-vf", "blackdetect=d=0.05:pic_th=0.98",
-         "-an", "-f", "null", "-"], capture_output=True, text=True)
-    return len(re.findall(r"black_start", out.stderr))
+def _boundary_luma(clip, n_frames=3):
+    """Mean luma of the first/last n frames (spec §9: black-frame check is
+    boundary-only — the seek landmine bites at cut edges; a dark mid-shot
+    is legitimate footage, not a defect)."""
+    import tempfile
+    from PIL import Image, ImageStat
+    lumas = []
+    with tempfile.TemporaryDirectory() as tmp:
+        proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", str(n_frames),
+                  f"{tmp}/head%02d.png"])
+        proc.run(["ffmpeg", "-y", "-sseof", "-0.5", "-i", clip,
+                  f"{tmp}/tail%02d.png"])
+        heads = sorted(Path(tmp).glob("head*.png"))
+        tails = sorted(Path(tmp).glob("tail*.png"))[-n_frames:]
+        for f in heads + tails:
+            lumas.append(ImageStat.Stat(Image.open(f).convert("L")).mean[0])
+    return lumas
 
 
 def run(clip, route_path, path_path, composition, grid, target_dur, out,
@@ -27,6 +39,9 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
     path = json.loads(Path(path_path).read_text())
     crop_w, _ = geometry.crop_size(canvas[0], canvas[1], src_dims[0], src_dims[1])
     _, direction = classify(route, src_dims[0], src_dims[1])
+    # static/head-on routes have no direction; "right" is an arbitrary but
+    # deterministic default for the lead-line pick (spec has no answer here —
+    # a lead composition over non-lateral motion is already a soft mismatch)
     direction = direction or "right"
     results = {}
 
@@ -36,11 +51,19 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
         left, right = geometry.grid_lines(grid)
         tf = left if direction == "right" else right
         results["on_line"] = checks.on_line(route, path, crop_w, tf)
+    elif composition == "break":
+        # spec §6.2: break is tracked but relaxed — postcheck editorial only,
+        # no numeric fail; no "pass" key so it can't fail `overall`
+        results["framing"] = {"status": "editorial-only"}
+    else:
+        raise ValueError(f"unknown composition: {composition!r} — expected lead/center/break")
     results["jitter"] = checks.jitter(path, direction,
                                       max_reversal=max(2.0, crop_w * 0.005))
     results["continuity"] = checks.continuity(route, src_dims[0])
     results["length"] = checks.length(_duration(clip), target_dur)
-    results["black_frames"] = {"pass": _black_frames(clip) == 0}
+    lumas = _boundary_luma(clip)
+    results["black_frames"] = {"pass": all(l > 8 for l in lumas),
+                               "boundary_lumas": [round(l, 1) for l in lumas]}
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
     results["horizon"] = {"status": "not-implemented"}
     results["head_power_point"] = {"status": "not-implemented"}

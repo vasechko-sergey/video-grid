@@ -46,3 +46,7 @@ def test_on_line_rejects_length_mismatch():
     path = [200] * 9
     with pytest.raises(ValueError, match="length mismatch"):
         ck.on_line(route, path, crop_w=600, target_frac=1/3)
+
+def test_jitter_rejects_invalid_direction():
+    with pytest.raises(ValueError, match="direction"):
+        ck.jitter([100, 110], direction=None, max_reversal=10)
