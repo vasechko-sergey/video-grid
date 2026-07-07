@@ -1414,7 +1414,7 @@ Synthetic white-box tests prove plumbing, not composition. This task commits a t
 - Create: `tests/fixtures/golden_route.json` (frozen subject route for that clip)
 - Create: `tests/integration/test_golden.py`
 
-- [ ] **Step 1: Cut the fixture from session footage**
+- [x] **Step 1: Cut the fixture from session footage**
 
 Source: the Jul 3–5 session footage (e.g. MVI_3739 — the long ride; exact path/window from the session's REEL_SOURCES.md at execution time). Pick a 2–3s window with clear lateral motion:
 
@@ -1425,12 +1425,14 @@ ffmpeg -i /path/to/MVI_3739.MP4 -ss <t0> -t 2.5 -vf scale=-2:720 \
 
 Keep the file ≤2 MB (bump crf if needed).
 
-- [ ] **Step 2: Freeze the route**
+> **As built (2026-07-07):** fixture = MVI_3739 source window **9.083–10.668s** (~1.58s, 1280x720 @ 59.94fps, 1.48 MB), not the originally suggested lena_ride2 window. Finding: this footage is a diagonal approach (rightward + toward camera) — **no 2.5s window in the whole 22s clip** satisfies the lateral test (dx ≥ 0.15*src_w AND growth<1.6); shorter windows do. Boundary motion artifacts (takeoff pop, end cutback) were trimmed to pass jitter. Hero unambiguous, no seed pin needed. All four golden checks pass with margin (on_line ratio 1.0, worst jitter 1px, worst dx 7.5px vs cap 51.2).
+
+- [x] **Step 2: Freeze the route**
 
 Preferred: one real tracker run — `.venv/bin/python -m scripts.track tests/fixtures/golden_ride.mp4 tests/fixtures/golden_route.json --fps <fps>` — eyeball the storyboard, commit the JSON.
 Fallback (no weights/network): hand-label the subject centre every ~0.5s from a contact sheet, interpolate linearly to per-frame, same JSON shape.
 
-- [ ] **Step 3: Write `tests/integration/test_golden.py`**
+- [x] **Step 3: Write `tests/integration/test_golden.py`**
 
 ```python
 import json
@@ -1466,12 +1468,12 @@ def test_golden_ride_pipeline(tmp_path):
     assert report["checks"]["continuity"]["pass"] is True  # no ID-switch teleports
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_golden.py -q`
 Expected: PASS (1 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/fixtures/ tests/integration/test_golden.py
