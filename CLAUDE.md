@@ -16,11 +16,9 @@ AI-assisted video-montage skill set (approach inspired by superpowers; fully ind
 
 ## Status (update after every task)
 
-- **Done:** design + plan hardened and synced (commits `50350b6`, `c12f992`, `e9be488`, `00cede0`). Task 0 **PARTIAL** (`618be74`) — source files committed, but:
-  - `.venv` was created with python 3.10 and is **empty** (install died against a corporate pip mirror) → delete it; `bash setup.sh` recreates with python 3.13 and `PIP_INDEX_URL=https://pypi.org/simple` (both fixes already in the plan's Task 0 setup.sh — write that version first).
-  - requirements are still split (`requirements.txt` + `requirements-ml.txt`) → **merge into one** `requirements.txt`, `git rm requirements-ml.txt` — see the plan's Task 0 migration note.
-- **Next action:** rewrite Task 0 files per the amended plan → `bash setup.sh` → `.venv/bin/python -m pytest -q` (exit **5** = pass while zero tests exist) → mark Task 0 done → Tasks 1→11 in order (9.5 after 9).
-- **Deferred / open:** push `feat/core-engine` to origin as backup (ask Sergei); heavy deps (`ultralytics`) need a normal network — the index-url fix should make pip work anywhere.
+- **Done:** design + plan hardened and synced (`50350b6`…`00cede0`). Task 0 **DONE** (`1fcb96a`): py3.13 venv, merged requirements, full deps installed, `pytest -q` exit 5. vidstab preflight softened to a warning (`07d2e68`) — homebrew-core ffmpeg ships without libvidstab; core never calls vidstab; process-episode re-checks it hard.
+- **Next action:** Tasks 1→11 in order (9.5 after 9) via subagent-driven-development.
+- **Deferred / open:** push `feat/core-engine` to origin as backup (ask Sergei); vidstab-capable ffmpeg needed before process-episode stabilization (homebrew-ffmpeg tap).
 
 ## External assets (outside this repo)
 

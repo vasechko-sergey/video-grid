@@ -53,7 +53,7 @@ pytest.ini
 - Create: `tests/conftest.py`
 - Create: `tests/integration/__init__.py`
 
-- [ ] **Step 1: Write `requirements.txt`**
+- [x] **Step 1: Write `requirements.txt`**
 
 ```text
 numpy>=1.26
@@ -72,7 +72,7 @@ One file, the full pipeline set (user decision): tests mock the detector and laz
 
 **Migration note (repo reality):** commit `618be74` split deps into `requirements.txt` + `requirements-ml.txt` — merge back into one `requirements.txt` and `git rm requirements-ml.txt`. The existing `.venv` was created with python 3.10 — delete and recreate with 3.13.
 
-- [ ] **Step 2: Write `setup.sh` (idempotent venv bootstrap)**
+- [x] **Step 2: Write `setup.sh` (idempotent venv bootstrap)**
 
 ```bash
 #!/usr/bin/env bash
@@ -96,7 +96,7 @@ mkdir -p "$SKILL_DIR/models"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
 ```
 
-- [ ] **Step 3: Make it executable and write `pytest.ini`**
+- [x] **Step 3: Make it executable and write `pytest.ini`**
 
 `pytest.ini`:
 ```ini
@@ -109,9 +109,9 @@ markers =
 
 `pythonpath = .` is load-bearing: there is no `tests/__init__.py`, so without it every `from scripts.lib import …` fails with `ModuleNotFoundError` (landmine, design §12).
 
-- [ ] **Step 4: Write `scripts/lib/__init__.py` (empty) and `tests/integration/__init__.py` (empty)**
+- [x] **Step 4: Write `scripts/lib/__init__.py` (empty) and `tests/integration/__init__.py` (empty)**
 
-- [ ] **Step 5: Write `tests/conftest.py` — synthetic clip fixture**
+- [x] **Step 5: Write `tests/conftest.py` — synthetic clip fixture**
 
 A moving bright box on dark background: gives `extract`/`reframe`/`storyboard`/color checks a real clip without needing footage or person detection.
 
@@ -136,12 +136,12 @@ def sample_clip(tmp_path_factory):
     return out
 ```
 
-- [ ] **Step 6: Run the harness to confirm collection works**
+- [x] **Step 6: Run the harness to confirm collection works**
 
 Run: `.venv/bin/python -m pytest -q` (after `bash setup.sh`)
 Expected: `no tests ran` — pytest exits **5** when zero tests are collected; that IS the pass condition here (exit 0 arrives once Task 1 adds tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add requirements.txt setup.sh pytest.ini scripts/lib/__init__.py tests/conftest.py tests/integration/__init__.py
