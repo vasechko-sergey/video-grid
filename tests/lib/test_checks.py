@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.lib import checks as ck
 
 def test_on_line_pass_when_subject_on_third():
@@ -38,3 +40,9 @@ def test_continuity_flags_teleport():
 def test_continuity_pass_smooth():
     route = [dict(x=100.0 + i * 10) for i in range(30)]
     assert ck.continuity(route, src_w=1920)["pass"] is True
+
+def test_on_line_rejects_length_mismatch():
+    route = [dict(x=400)] * 10
+    path = [200] * 9
+    with pytest.raises(ValueError, match="length mismatch"):
+        ck.on_line(route, path, crop_w=600, target_frac=1/3)

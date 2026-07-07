@@ -2,6 +2,10 @@
 
 
 def on_line(route, path, crop_w, target_frac, tol=0.05):
+    if len(route) != len(path):
+        raise ValueError(
+            f"route/path length mismatch: {len(route)} vs {len(path)} — "
+            "route and crop path must be parallel arrays from the same reframe run")
     ok = 0
     for pt, cx in zip(route, path):
         frac = (pt["x"] - cx) / crop_w

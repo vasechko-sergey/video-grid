@@ -6,6 +6,10 @@ LO, HI = 0.7, 1.5
 
 
 def gain(measured, target, strength=STRENGTH, lo=LO, hi=HI):
+    if measured <= 0:
+        raise ValueError(
+            f"channel mean {measured} is not positive — all-black frames? "
+            "check the extracted segment (blackdetect) before color normalization")
     g = 1 + strength * (target / measured - 1)
     return max(lo, min(hi, g))
 

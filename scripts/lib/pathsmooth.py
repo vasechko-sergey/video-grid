@@ -22,10 +22,12 @@ def smooth(raw, max_step, window=7, polyorder=2):
     max_step: max crop-x change per frame (px) — the damping.
     window:   savgol window (odd, >polyorder). window<=1 skips savgol.
     """
+    if not raw:
+        return []
     limited = _rate_limit(list(raw), max_step)
-    if window is None or window <= 1 or len(limited) < window:
+    if window is None or window <= 1:
         return limited
     win = window if window % 2 == 1 else window + 1
-    if win <= polyorder:
+    if len(limited) < win or win <= polyorder:
         return limited
     return list(savgol_filter(np.asarray(limited), win, polyorder))

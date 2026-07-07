@@ -20,3 +20,11 @@ def test_reaches_target_eventually():
 def test_length_preserved():
     raw = [float(i) for i in range(50)]
     assert len(p.smooth(raw, max_step=10, window=7)) == 50
+
+def test_empty_input_returns_empty():
+    assert p.smooth([], max_step=10, window=7) == []
+
+def test_even_window_at_input_length_does_not_crash():
+    raw = [float(i) for i in range(6)]
+    out = p.smooth(raw, max_step=10, window=6)
+    assert len(out) == 6

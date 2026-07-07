@@ -18,4 +18,6 @@ def classify(route, src_w, src_h, lateral_frac=LATERAL_FRAC,
         return ("lateral", "right" if dx > 0 else "left")
     if growth >= growth_ratio and abs(dx) < lateral_frac * src_w:
         return ("head-on", None)
+    # ambiguous zone (large dx AND large growth, e.g. diagonal approach):
+    # fall through to static on purpose — centered crop is the safe framing
     return ("static", None)

@@ -25,3 +25,8 @@ def test_targets_from_means():
     assert math.isclose(rr, c.gain(90, 105), abs_tol=1e-6)
     assert math.isclose(gg, c.gain(118, 122), abs_tol=1e-6)
     assert math.isclose(bb, c.gain(130, 137), abs_tol=1e-6)
+
+def test_gain_rejects_nonpositive_measured():
+    import pytest
+    with pytest.raises(ValueError, match="not positive"):
+        c.gain(measured=0, target=105)
