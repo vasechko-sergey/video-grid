@@ -1015,7 +1015,7 @@ Spec §5.10, §6. Ties geometry + motion + pathsmooth + color into an ffmpeg cro
 - Create: `scripts/reframe.py`
 - Create: `tests/integration/test_reframe.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/integration/test_reframe.py`:
 ```python
@@ -1056,12 +1056,12 @@ def test_reframe_output_dims(sample_clip, tmp_path):
     assert (tmp_path / "path.json").exists()
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.reframe'`
 
-- [ ] **Step 3: Write `scripts/reframe.py`**
+- [x] **Step 3: Write `scripts/reframe.py`**
 
 ```python
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
@@ -1180,12 +1180,12 @@ if __name__ == "__main__":
 
 Note: stabilization (vidstab two-pass, §10) and layout modes beyond `fill` (§7) are deliberately out of this core task — they extend `reframe.py` in the follow-on process-episode plan. The `stabilize` flag is threaded now but only `False` is exercised here.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py -q`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reframe.py tests/integration/test_reframe.py
