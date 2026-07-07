@@ -783,7 +783,7 @@ Spec §6.1 point 1. Integration; unit-tested via a monkeypatched detector so the
 - Create: `scripts/track.py`
 - Create: `tests/integration/test_track.py`
 
-- [ ] **Step 1: Write the failing test (monkeypatched detector)**
+- [x] **Step 1: Write the failing test (monkeypatched detector)**
 
 `tests/integration/test_track.py`:
 ```python
@@ -844,12 +844,12 @@ def test_meta_flags_ambiguity(monkeypatch, tmp_path):
     assert meta["ambiguous"] is True
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.track'`
 
-- [ ] **Step 3: Write `scripts/track.py`**
+- [x] **Step 3: Write `scripts/track.py`**
 
 `_iter_detections` isolates the Ultralytics call so tests can patch it; `build_route` picks the largest persistent person track and records its centre + bbox per frame.
 
@@ -993,12 +993,12 @@ if __name__ == "__main__":
                 intent=a.intent)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -q`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/integration/test_track.py
