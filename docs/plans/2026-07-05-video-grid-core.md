@@ -289,7 +289,7 @@ Spec §6.2 `motion`. Pure, TDD.
 - Create: `tests/lib/test_motion.py`
 - Create: `scripts/lib/motion.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_motion.py`:
 ```python
@@ -321,12 +321,12 @@ def test_static():
     assert m.classify(r, src_w=1920, src_h=1080) == ("static", None)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_motion.py -q`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scripts/lib/motion.py`**
+- [x] **Step 3: Write `scripts/lib/motion.py`**
 
 ```python
 """Classify a subject route into motion type (spec §6.2)."""
@@ -352,12 +352,12 @@ def classify(route, src_w, src_h, lateral_frac=LATERAL_FRAC,
     return ("static", None)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_motion.py -q`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_motion.py scripts/lib/motion.py
