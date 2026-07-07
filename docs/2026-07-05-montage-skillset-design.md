@@ -71,12 +71,13 @@ PYTHON="${PYTHON:-python3.13}"                                     # explicit ve
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
 "$PYTHON" -m venv "$SKILL_DIR/.venv"
 "$SKILL_DIR/.venv/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# preflight: ffmpeg on PATH AND built with vidstab filters; YOLO weights into models/ if missing
+# preflight: ffmpeg on PATH (hard fail); vidstab filters → WARNING only (core never calls vidstab;
+# stabilization lands in process-episode); YOLO weights into models/ if missing
 ```
 
 - All scripts run **only** via `.venv/bin/python`, never system python, and **as modules** — `.venv/bin/python -m scripts.<name>` (plain `python scripts/<name>.py` breaks `scripts.lib` imports). Python **3.13** (`PYTHON` env overrides).
 - `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
-- **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup verifies ffmpeg exists **and** lists `vidstab` filters (the brew build does) — otherwise fail loud with the brew remedy.
+- **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup verifies ffmpeg exists (hard fail with brew remedy). `vidstab` filters are a **warning**, not a blocker: current homebrew-core ffmpeg bottles ship **without** libvidstab, the core engine never invokes vidstab, and stabilization arrives with process-episode — remedy when needed: `brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libvidstab`. process-episode's own preflight re-checks vidstab as a hard requirement before any `stabilize: true` episode.
 - **Lazy heavy imports:** `ultralytics`/`librosa` import inside functions, never at module top — test collection stays fast, the detector stays mockable.
 
 ---

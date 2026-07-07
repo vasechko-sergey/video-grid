@@ -84,7 +84,7 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 
 command -v "$PYTHON" >/dev/null || { echo "ERROR: $PYTHON not found -> brew install python@3.13 (or set PYTHON=...)"; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ERROR: ffmpeg not found -> brew install ffmpeg"; exit 1; }
-ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab || { echo "ERROR: ffmpeg lacks vidstab filters -> brew install ffmpeg (homebrew build ships libvidstab)"; exit 1; }
+ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab || echo "WARNING: ffmpeg lacks vidstab filters (unused by core; needed for stabilization in process-episode) -> brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libvidstab"
 
 if [ ! -d "$VENV" ]; then
   "$PYTHON" -m venv "$VENV"

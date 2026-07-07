@@ -1,4 +1,0 @@
-# Heavy ML deps — only needed to run real subject tracking (scripts/track.py).
-# The test suite mocks the detector, so these are NOT required for tests.
-# Install on demand: .venv/bin/pip install -r requirements-ml.txt
-ultralytics==8.3.0
