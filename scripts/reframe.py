@@ -20,14 +20,19 @@ def compute_path(route, composition, grid, canvas, src, motion, max_step):
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
-def _simplify(path, fps, eps=2.0):
+def _simplify(path, times, eps=2.0):
     """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
 
     Keeps the crop expression short (nested per-frame if() hits ffmpeg's
     expression parser limits on 60fps clips) and makes motion piecewise-linear
     — smoother than piecewise-constant per-frame steps.
+
+    The time axis comes from the route's real timestamps (`times`), not from
+    the path index — routes may have tracking gaps (hero occluded; spec
+    §6.1a), so index-derived time would desync the crop expression from the
+    true video timeline once a gap has occurred.
     """
-    pts = [(i / fps, float(x)) for i, x in enumerate(path)]
+    pts = [(float(t), float(x)) for t, x in zip(times, path)]
 
     def dp(lo, hi):
         if hi - lo < 2:
@@ -47,9 +52,9 @@ def _simplify(path, fps, eps=2.0):
     return [pts[i] for i in keep]
 
 
-def _xexpr(path, fps):
+def _xexpr(path, times):
     # piecewise-LINEAR x(t) over simplified knots: lerp inside each segment
-    knots = _simplify(path, fps)
+    knots = _simplify(path, times)
     if len(knots) == 1:
         return f"{knots[0][1]:.1f}"
     expr = f"{knots[-1][1]:.1f}"
@@ -77,6 +82,10 @@ def reframe(src, route_path, out, composition, grid, canvas,
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
     src_dims = (src_w, src_h)
     route = json.loads(Path(route_path).read_text())
+    if not route:
+        raise ValueError(
+            f"route {route_path} is empty — tracker found no hero frames; "
+            "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
     motion = classify(route, src_w, src_h)
     path = compute_path(route, composition, grid, canvas, src_dims, motion,
                         max_step=max_speed / fps)
@@ -86,7 +95,8 @@ def reframe(src, route_path, out, composition, grid, canvas,
     out_w = 1080 if canvas == (9, 16) else crop_w
     out_h = 1920 if canvas == (9, 16) else crop_h
     rr, gg, bb = color.gains_for_means(color_means)
-    xexpr = _xexpr(path, fps)
+    times = [pt["t"] for pt in route]
+    xexpr = _xexpr(path, times)
     vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y=0,"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
           f"fps={fps:.6g},format=yuv420p")

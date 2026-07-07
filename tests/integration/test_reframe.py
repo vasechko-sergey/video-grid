@@ -33,3 +33,37 @@ def test_reframe_output_dims(sample_clip, tmp_path):
                     path_out=str(tmp_path / "path.json"))
     assert _dims(out) == (1080, 1920)
     assert (tmp_path / "path.json").exists()
+
+def test_xexpr_uses_route_times_across_gap():
+    # 10 frames, then a 10-frame tracking gap, then 10 more frames (30fps).
+    # The expression's last knot must sit at the route's REAL last t (~0.966s),
+    # not at index-derived (len(path)-1)/fps (~0.633s) — the desync bug.
+    times = [i / 30 for i in range(10)] + [(i + 20) / 30 for i in range(10)]
+    path = list(range(0, 100, 10)) + list(range(300, 400, 10))
+    knots = reframe._simplify(path, times)
+    assert abs(knots[-1][0] - times[-1]) < 1e-9
+    assert abs(knots[0][0] - times[0]) < 1e-9
+
+def test_reframe_rejects_empty_route(sample_clip, tmp_path):
+    rp = tmp_path / "route.json"; rp.write_text("[]")
+    with pytest.raises(ValueError, match="empty"):
+        reframe.reframe(src=str(sample_clip), route_path=str(rp),
+                        out=str(tmp_path / "ep.mp4"), composition="lead",
+                        grid="thirds", canvas=(9, 16),
+                        color_means=(105, 122, 137), stabilize=False,
+                        path_out=str(tmp_path / "path.json"))
+
+@pytest.mark.integration
+def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
+    # gappy route (subject lost frames 30-59) must still produce a valid clip
+    route = ([dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+              for i in range(30)]
+             + [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+                for i in range(60, 90)])
+    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
+    out = tmp_path / "ep.mp4"
+    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
+                    composition="lead", grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), stabilize=False,
+                    path_out=str(tmp_path / "path.json"))
+    assert _dims(out) == (1080, 1920)
