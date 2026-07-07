@@ -465,7 +465,7 @@ Spec §10. Pure, TDD.
 - Create: `tests/lib/test_color.py`
 - Create: `scripts/lib/color.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_color.py`:
 ```python
@@ -498,12 +498,12 @@ def test_targets_from_means():
     assert math.isclose(bb, c.gain(130, 137), abs_tol=1e-6)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -q`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scripts/lib/color.py`**
+- [x] **Step 3: Write `scripts/lib/color.py`**
 
 ```python
 """Soft normalize-to-middle color (spec §10). lutrgb is banned; use mixer."""
@@ -526,12 +526,12 @@ def mixer_arg(rr, gg, bb):
     return f"colorchannelmixer=rr={rr:.3f}:gg={gg:.3f}:bb={bb:.3f}"
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -q`
 Expected: PASS (6 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_color.py scripts/lib/color.py
