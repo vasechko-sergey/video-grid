@@ -16,9 +16,13 @@ AI-assisted video-montage skill set (approach inspired by superpowers; fully ind
 
 ## Status (update after every task)
 
-- **Done:** design + plan hardened and synced (`50350b6`…`00cede0`). Task 0 **DONE** (`1fcb96a`): py3.13 venv, merged requirements, full deps installed, `pytest -q` exit 5. vidstab preflight softened to a warning (`07d2e68`) — homebrew-core ffmpeg ships without libvidstab; core never calls vidstab; process-episode re-checks it hard.
-- **Next action:** Tasks 1→11 in order (9.5 after 9) via subagent-driven-development.
-- **Deferred / open:** push `feat/core-engine` to origin as backup (ask Sergei); vidstab-capable ffmpeg needed before process-episode stabilization (homebrew-ffmpeg tap).
+- **Done:** core plan Tasks 0–11 ALL COMPLETE, final review verdict READY (2026-07-07). 49 tests green (incl. golden fixture: real MVI_3739 footage @59.94fps through the full engine). Notable amendments beyond plan-verbatim code:
+  - vidstab preflight = warning, not blocker (`07d2e68`) — homebrew-core ffmpeg lacks libvidstab; core never calls it; process-episode re-checks hard.
+  - lib hardening (`341d059`): smooth([])→[], savgol odd-window ordering, on_line raises on route/path desync, gain(≤0) raises with remedy.
+  - **route-gap desync fix (`a19937f`)**: crop x(t) built from route timestamps, not frame index — occlusion gaps no longer desync crop from video timeline; empty route fails loud.
+  - Golden fixture as-built: window 9.083–10.668s (not lena_ride2) — diagonal motion means no 2.5s window in MVI_3739 classifies lateral; see plan Task 9.5 note.
+- **Next action:** follow-on plans (plan tail): process-episode subagent first — mind the canvas/src_dims contract note in the plan's follow-on section.
+- **Deferred / open:** push `feat/core-engine` to origin as backup (ask Sergei); vidstab-capable ffmpeg before process-episode stabilization (homebrew-ffmpeg tap).
 
 ## External assets (outside this repo)
 
