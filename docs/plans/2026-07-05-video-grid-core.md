@@ -1203,7 +1203,7 @@ Spec §6.1 point 4 + §9 (frame-level black/color checks + wire pure checks). In
 - Create: `scripts/check_episode.py`
 - Create: `tests/integration/test_verify.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_verify.py`:
 ```python
@@ -1237,12 +1237,12 @@ def test_check_episode_reports(sample_clip, tmp_path):
     assert report["overall"] in (True, False)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_verify.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.storyboard'`
 
-- [ ] **Step 3: Write `scripts/storyboard.py`**
+- [x] **Step 3: Write `scripts/storyboard.py`**
 
 ```python
 """Contact sheet with grid overlays for verification/editorial (spec §6.1)."""
@@ -1314,7 +1314,7 @@ if __name__ == "__main__":
     build(a.src, a.out, a.n, tuple(a.grids.split(",")))
 ```
 
-- [ ] **Step 4: Write `scripts/check_episode.py`**
+- [x] **Step 4: Write `scripts/check_episode.py`**
 
 ```python
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
@@ -1391,12 +1391,12 @@ if __name__ == "__main__":
         canvas=(cw, ch), src_dims=(sw, sh), attempt=a.attempt)
 ```
 
-- [ ] **Step 5: Run to verify pass**
+- [x] **Step 5: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_verify.py -q`
 Expected: PASS (2 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/storyboard.py scripts/check_episode.py tests/integration/test_verify.py
