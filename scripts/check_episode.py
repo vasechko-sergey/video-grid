@@ -1,15 +1,14 @@
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
 import argparse, json, subprocess, re
 from pathlib import Path
-from scripts.lib import checks, geometry
+from scripts.lib import checks, geometry, proc
 from scripts.lib.motion import classify
 
 
 def _duration(clip):
-    out = subprocess.run(
+    out = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nk=1:nw=1", clip], capture_output=True, text=True,
-        check=True)
+         "-of", "default=nk=1:nw=1", clip], text=True)
     return float(out.stdout.strip())
 
 

@@ -1,5 +1,6 @@
 """Cut an EDL window into a standalone fragment (spec §5.8, §12)."""
-import argparse, subprocess
+import argparse
+from scripts.lib import proc
 
 
 def extract(src, start, dur, out, crf=18):
@@ -12,7 +13,7 @@ def extract(src, start, dur, out, crf=18):
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    proc.run(cmd)
     return out
 
 

@@ -1,24 +1,24 @@
 """Contact sheet with grid overlays for verification/editorial (spec §6.1)."""
-import argparse, subprocess, tempfile
+import argparse, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw
 from scripts.lib.geometry import grid_lines
+from scripts.lib import proc
 
 
 def _duration(src):
     import json as _j
-    r = subprocess.run(
+    r = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", src], capture_output=True, text=True, check=True)
+         "-of", "json", src], text=True)
     return float(_j.loads(r.stdout)["format"]["duration"])
 
 
 def _sample_frames(src, n, tmp):
     rate = max(1, n) / max(0.001, _duration(src))
-    subprocess.run(
+    proc.run(
         ["ffmpeg", "-y", "-i", src, "-vf", f"fps={rate}",
-         "-frames:v", str(n), f"{tmp}/f%02d.png"],
-        check=True, capture_output=True)
+         "-frames:v", str(n), f"{tmp}/f%02d.png"])
     return sorted(Path(tmp).glob("f*.png"))
 
 

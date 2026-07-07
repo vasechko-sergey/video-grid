@@ -1,8 +1,8 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
-import argparse, json, subprocess
+import argparse, json
 from pathlib import Path
 from scripts.lib import geometry as g
-from scripts.lib import pathsmooth, color
+from scripts.lib import pathsmooth, color, proc
 from scripts.lib.motion import classify
 
 
@@ -66,10 +66,10 @@ def _xexpr(path, times):
 
 
 def _probe(src):
-    out = subprocess.run(
+    out = proc.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height,avg_frame_rate",
-         "-of", "json", src], capture_output=True, text=True, check=True)
+         "-of", "json", src], text=True)
     s = json.loads(out.stdout)["streams"][0]
     num, den = s["avg_frame_rate"].split("/")
     return int(s["width"]), int(s["height"]), float(num) / (float(den) or 1.0)
@@ -102,7 +102,7 @@ def reframe(src, route_path, out, composition, grid, canvas,
           f"fps={fps:.6g},format=yuv420p")
     cmd = ["ffmpeg", "-y", "-i", src, "-vf", vf,
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
-    subprocess.run(cmd, check=True, capture_output=True)
+    proc.run(cmd)
     return out
 
 
