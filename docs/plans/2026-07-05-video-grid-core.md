@@ -548,7 +548,7 @@ Spec §9 (the parts computable from route + crop-path, no video decode). On-line
 - Create: `tests/lib/test_checks.py`
 - Create: `scripts/lib/checks.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_checks.py`:
 ```python
@@ -594,12 +594,12 @@ def test_continuity_pass_smooth():
     assert ck.continuity(route, src_w=1920)["pass"] is True
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scripts/lib/checks.py`**
+- [x] **Step 3: Write `scripts/lib/checks.py`**
 
 ```python
 """Pure numeric checks over route + crop path (spec §9)."""
@@ -645,12 +645,12 @@ def length(actual, target, tol=0.5):
 
 `max_reversal` is the caller's choice; `check_episode` passes `max(2.0, 0.005 * crop_w)` — the 2px floor absorbs int-rounding flicker after savgol (design §9).
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
 Expected: PASS (7 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_checks.py scripts/lib/checks.py
