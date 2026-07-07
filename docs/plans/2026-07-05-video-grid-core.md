@@ -159,7 +159,7 @@ This is the pure heart of the follow algorithm (spec §6.2, §6.4, §6.5). Fully
 - Create: `tests/lib/test_geometry.py`
 - Create: `scripts/lib/geometry.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_geometry.py`:
 ```python
@@ -210,12 +210,12 @@ def test_crop_x_clamped_high():
     assert x == 1920 - 607
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.geometry'`
 
-- [ ] **Step 3: Write `scripts/lib/geometry.py`**
+- [x] **Step 3: Write `scripts/lib/geometry.py`**
 
 ```python
 """Pure crop geometry for the follow algorithm (spec §6.2, §6.4, §6.5)."""
@@ -267,12 +267,12 @@ def crop_x(subject_x, composition, direction, grid, crop_w, src_w):
 
 Odd crop widths (607) are fine: the crop is always scaled to the even canvas size before encode, so yuv420p never sees an odd dimension.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py -q`
 Expected: PASS (10 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/__init__.py tests/lib/test_geometry.py scripts/lib/geometry.py
