@@ -1513,7 +1513,7 @@ Prove the whole slice runs: extract → track (mocked) → reframe → storyboar
 **Files:**
 - Create: `tests/integration/test_e2e_core.py`
 
-- [ ] **Step 1: Write the end-to-end test**
+- [x] **Step 1: Write the end-to-end test**
 
 `tests/integration/test_e2e_core.py`:
 ```python
@@ -1548,17 +1548,17 @@ def test_core_pipeline(sample_clip, tmp_path):
     assert "on_line" in report["checks"]
 ```
 
-- [ ] **Step 2: Run to verify it passes**
+- [x] **Step 2: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_e2e_core.py -q`
 Expected: PASS (1 passed)
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all unit tests pass; integration tests pass (or skip cleanly if ffmpeg absent).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_e2e_core.py
