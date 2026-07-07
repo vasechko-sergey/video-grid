@@ -374,7 +374,7 @@ Spec §6.1 point 3: the smoother that reproduces the hand-tuned "hold on slow st
 - Create: `tests/lib/test_pathsmooth.py`
 - Create: `scripts/lib/pathsmooth.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_pathsmooth.py`:
 ```python
@@ -402,12 +402,12 @@ def test_length_preserved():
     assert len(p.smooth(raw, max_step=10, window=7)) == 50
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pathsmooth.py -q`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scripts/lib/pathsmooth.py`**
+- [x] **Step 3: Write `scripts/lib/pathsmooth.py`**
 
 ```python
 """Damped velocity-following smoothing of a raw crop-x path (spec §6.1)."""
@@ -443,12 +443,12 @@ def smooth(raw, max_step, window=7, polyorder=2):
     return list(savgol_filter(np.asarray(limited), win, polyorder))
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pathsmooth.py -q`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_pathsmooth.py scripts/lib/pathsmooth.py
