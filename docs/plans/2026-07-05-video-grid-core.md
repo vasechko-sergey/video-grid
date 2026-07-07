@@ -349,6 +349,8 @@ def classify(route, src_w, src_h, lateral_frac=LATERAL_FRAC,
         return ("lateral", "right" if dx > 0 else "left")
     if growth >= growth_ratio and abs(dx) < lateral_frac * src_w:
         return ("head-on", None)
+    # ambiguous zone (large dx AND large growth, e.g. diagonal approach):
+    # fall through to static on purpose — centered crop is the safe framing
     return ("static", None)
 ```
 
@@ -400,6 +402,14 @@ def test_reaches_target_eventually():
 def test_length_preserved():
     raw = [float(i) for i in range(50)]
     assert len(p.smooth(raw, max_step=10, window=7)) == 50
+
+def test_empty_input_returns_empty():
+    assert p.smooth([], max_step=10, window=7) == []
+
+def test_even_window_at_input_length_does_not_crash():
+    raw = [float(i) for i in range(6)]
+    out = p.smooth(raw, max_step=10, window=6)
+    assert len(out) == 6
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -434,11 +444,13 @@ def smooth(raw, max_step, window=7, polyorder=2):
     max_step: max crop-x change per frame (px) — the damping.
     window:   savgol window (odd, >polyorder). window<=1 skips savgol.
     """
+    if not raw:
+        return []
     limited = _rate_limit(list(raw), max_step)
-    if window is None or window <= 1 or len(limited) < window:
+    if window is None or window <= 1:
         return limited
     win = window if window % 2 == 1 else window + 1
-    if win <= polyorder:
+    if len(limited) < win or win <= polyorder:
         return limited
     return list(savgol_filter(np.asarray(limited), win, polyorder))
 ```
@@ -446,7 +458,7 @@ def smooth(raw, max_step, window=7, polyorder=2):
 - [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pathsmooth.py -q`
-Expected: PASS (4 passed)
+Expected: PASS (6 passed)
 
 - [x] **Step 5: Commit**
 
@@ -496,6 +508,11 @@ def test_targets_from_means():
     assert math.isclose(rr, c.gain(90, 105), abs_tol=1e-6)
     assert math.isclose(gg, c.gain(118, 122), abs_tol=1e-6)
     assert math.isclose(bb, c.gain(130, 137), abs_tol=1e-6)
+
+def test_gain_rejects_nonpositive_measured():
+    import pytest
+    with pytest.raises(ValueError, match="not positive"):
+        c.gain(measured=0, target=105)
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -514,6 +531,10 @@ LO, HI = 0.7, 1.5
 
 
 def gain(measured, target, strength=STRENGTH, lo=LO, hi=HI):
+    if measured <= 0:
+        raise ValueError(
+            f"channel mean {measured} is not positive — all-black frames? "
+            "check the extracted segment (blackdetect) before color normalization")
     g = 1 + strength * (target / measured - 1)
     return max(lo, min(hi, g))
 
@@ -529,7 +550,7 @@ def mixer_arg(rr, gg, bb):
 - [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -q`
-Expected: PASS (6 passed)
+Expected: PASS (7 passed)
 
 - [x] **Step 5: Commit**
 
@@ -552,6 +573,8 @@ Spec §9 (the parts computable from route + crop-path, no video decode). On-line
 
 `tests/lib/test_checks.py`:
 ```python
+import pytest
+
 from scripts.lib import checks as ck
 
 def test_on_line_pass_when_subject_on_third():
@@ -592,6 +615,12 @@ def test_continuity_flags_teleport():
 def test_continuity_pass_smooth():
     route = [dict(x=100.0 + i * 10) for i in range(30)]
     assert ck.continuity(route, src_w=1920)["pass"] is True
+
+def test_on_line_rejects_length_mismatch():
+    route = [dict(x=400)] * 10
+    path = [200] * 9
+    with pytest.raises(ValueError, match="length mismatch"):
+        ck.on_line(route, path, crop_w=600, target_frac=1/3)
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -606,6 +635,10 @@ Expected: FAIL — `ModuleNotFoundError`
 
 
 def on_line(route, path, crop_w, target_frac, tol=0.05):
+    if len(route) != len(path):
+        raise ValueError(
+            f"route/path length mismatch: {len(route)} vs {len(path)} — "
+            "route and crop path must be parallel arrays from the same reframe run")
     ok = 0
     for pt, cx in zip(route, path):
         frac = (pt["x"] - cx) / crop_w
@@ -648,7 +681,7 @@ def length(actual, target, tol=0.5):
 - [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
-Expected: PASS (7 passed)
+Expected: PASS (8 passed)
 
 - [x] **Step 5: Commit**
 
