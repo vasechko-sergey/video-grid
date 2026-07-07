@@ -1054,6 +1054,40 @@ def test_reframe_output_dims(sample_clip, tmp_path):
                     path_out=str(tmp_path / "path.json"))
     assert _dims(out) == (1080, 1920)
     assert (tmp_path / "path.json").exists()
+
+def test_xexpr_uses_route_times_across_gap():
+    # 10 frames, then a 10-frame tracking gap, then 10 more frames (30fps).
+    # The expression's last knot must sit at the route's REAL last t (~0.966s),
+    # not at index-derived (len(path)-1)/fps (~0.633s) — the desync bug.
+    times = [i / 30 for i in range(10)] + [(i + 20) / 30 for i in range(10)]
+    path = list(range(0, 100, 10)) + list(range(300, 400, 10))
+    knots = reframe._simplify(path, times)
+    assert abs(knots[-1][0] - times[-1]) < 1e-9
+    assert abs(knots[0][0] - times[0]) < 1e-9
+
+def test_reframe_rejects_empty_route(sample_clip, tmp_path):
+    rp = tmp_path / "route.json"; rp.write_text("[]")
+    with pytest.raises(ValueError, match="empty"):
+        reframe.reframe(src=str(sample_clip), route_path=str(rp),
+                        out=str(tmp_path / "ep.mp4"), composition="lead",
+                        grid="thirds", canvas=(9, 16),
+                        color_means=(105, 122, 137), stabilize=False,
+                        path_out=str(tmp_path / "path.json"))
+
+@pytest.mark.integration
+def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
+    # gappy route (subject lost frames 30-59) must still produce a valid clip
+    route = ([dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+              for i in range(30)]
+             + [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+                for i in range(60, 90)])
+    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
+    out = tmp_path / "ep.mp4"
+    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
+                    composition="lead", grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), stabilize=False,
+                    path_out=str(tmp_path / "path.json"))
+    assert _dims(out) == (1080, 1920)
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -1086,14 +1120,19 @@ def compute_path(route, composition, grid, canvas, src, motion, max_step):
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
-def _simplify(path, fps, eps=2.0):
+def _simplify(path, times, eps=2.0):
     """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
 
     Keeps the crop expression short (nested per-frame if() hits ffmpeg's
     expression parser limits on 60fps clips) and makes motion piecewise-linear
     — smoother than piecewise-constant per-frame steps.
+
+    The time axis comes from the route's real timestamps (`times`), not from
+    the path index — routes may have tracking gaps (hero occluded; spec
+    §6.1a), so index-derived time would desync the crop expression from the
+    true video timeline once a gap has occurred.
     """
-    pts = [(i / fps, float(x)) for i, x in enumerate(path)]
+    pts = [(float(t), float(x)) for t, x in zip(times, path)]
 
     def dp(lo, hi):
         if hi - lo < 2:
@@ -1113,9 +1152,9 @@ def _simplify(path, fps, eps=2.0):
     return [pts[i] for i in keep]
 
 
-def _xexpr(path, fps):
+def _xexpr(path, times):
     # piecewise-LINEAR x(t) over simplified knots: lerp inside each segment
-    knots = _simplify(path, fps)
+    knots = _simplify(path, times)
     if len(knots) == 1:
         return f"{knots[0][1]:.1f}"
     expr = f"{knots[-1][1]:.1f}"
@@ -1143,6 +1182,10 @@ def reframe(src, route_path, out, composition, grid, canvas,
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
     src_dims = (src_w, src_h)
     route = json.loads(Path(route_path).read_text())
+    if not route:
+        raise ValueError(
+            f"route {route_path} is empty — tracker found no hero frames; "
+            "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
     motion = classify(route, src_w, src_h)
     path = compute_path(route, composition, grid, canvas, src_dims, motion,
                         max_step=max_speed / fps)
@@ -1152,7 +1195,8 @@ def reframe(src, route_path, out, composition, grid, canvas,
     out_w = 1080 if canvas == (9, 16) else crop_w
     out_h = 1920 if canvas == (9, 16) else crop_h
     rr, gg, bb = color.gains_for_means(color_means)
-    xexpr = _xexpr(path, fps)
+    times = [pt["t"] for pt in route]
+    xexpr = _xexpr(path, times)
     vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y=0,"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
           f"fps={fps:.6g},format=yuv420p")
@@ -1183,7 +1227,7 @@ Note: stabilization (vidstab two-pass, §10) and layout modes beyond `fill` (§7
 - [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py -q`
-Expected: PASS (2 passed)
+Expected: PASS (5 passed)
 
 - [x] **Step 5: Commit**
 
@@ -1571,7 +1615,7 @@ git commit -m "test: end-to-end core pipeline smoke (extract->reframe->storyboar
 
 Each is its own spec→plan→build cycle, and each produces working software on its own:
 
-1. **process-episode subagent** — wraps this engine in the subagent loop (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`. Implements the §4.1 protocol: ask-before-start on ambiguous manifests, stop-and-report on mid-task contradictions (incl. the §6.1a margin rule → candidates' crops), `attempt`/`fail_reasons[]` escalation; concurrency cap 3; tracking degradation ladder (YOLO → optical-flow → manual keyframes) with `degraded:` marks; descriptor side of the §6.1a continuity guard (split/re-match on suspected ID switch).
+1. **process-episode subagent** — wraps this engine in the subagent loop. **Contract note (final review 2026-07-07):** `check_episode.run` re-derives `crop_w` from caller-supplied `canvas`/`src_dims` (defaults 9:16 / 1920x1080) while `reframe` probes the real source — the orchestrator MUST pass the probed values through (or better: extend reframe to write canvas/src_dims into a path sidecar that check_episode reads back); CLI defaults (`track --fps 30`, `check_episode --src-dims 1920x1080`) are placeholders that are silently wrong on 4K/59.94 footage (manifest in, retry until postcheck passes, self-review gate); adds vidstab stabilization + layout modes (`fit-blur`, `insert`, `split`, `pan`) + `break`/`phi`/`golden-canon` handling to `reframe.py`. Implements the §4.1 protocol: ask-before-start on ambiguous manifests, stop-and-report on mid-task contradictions (incl. the §6.1a margin rule → candidates' crops), `attempt`/`fail_reasons[]` escalation; concurrency cap 3; tracking degradation ladder (YOLO → optical-flow → manual keyframes) with `degraded:` marks; descriptor side of the §6.1a continuity guard (split/re-match on suspected ID switch).
 2. **Ingestion** — footage-intake (`intake.py`), reel-brief, trend-scan. Builds `cast.json` (§6.1a): one interactive naming pass, seg-mask color descriptors; wires `SPEC.cast` → episode manifests (`hero` by name).
 3. **Music** — music-and-mood (`beats.py`, `music_find.py`, `music_fetch.py`), pacing. librosa-first (design §5.5): madmom/demucs optional upgrades, essentia out; pacing↔music back-edge via `start_offset` re-pick.
 4. **Assembly & delivery** — edit-plan, assemble-draft, audio-mix, reel-final-check, deliver. Draft concat normalizes segments to canvas+fps; `drawtext` with explicit fontfile; version log (`REEL_v{n}` + changelog); executable landmine lint (grep for `lutrgb`, `-ss` before `-i`).
