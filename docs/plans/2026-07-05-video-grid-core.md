@@ -700,7 +700,7 @@ Spec §5.8 + §12 landmine. Integration (needs ffmpeg + the sample fixture).
 - Create: `scripts/extract.py`
 - Create: `tests/integration/test_extract.py`
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 `tests/integration/test_extract.py`:
 ```python
@@ -722,12 +722,12 @@ def test_extract_window_duration(sample_clip, tmp_path):
     assert abs(_duration(out) - 1.5) < 0.15   # frame-accurate re-encode
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_extract.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.extract'`
 
-- [ ] **Step 3: Write `scripts/extract.py`**
+- [x] **Step 3: Write `scripts/extract.py`**
 
 Correct seek: `-ss` AFTER `-i` (output seek) + re-encode → frame-accurate, no black frames (the landmine was arg order, not 4K).
 
@@ -761,12 +761,12 @@ if __name__ == "__main__":
     extract(a.src, a.start, a.dur, a.out)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_extract.py -q`
 Expected: PASS (1 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/extract.py tests/integration/test_extract.py
