@@ -312,7 +312,7 @@ git commit -m "feat: episode manifest + machine-checkable validation (process-ep
 
 ## Task 1: `orchestration.py` — contradiction detection (§4.1 no-improvising)
 
-Pure, TDD. Machine-detectable "mid-task reality contradicts the manifest" cases → structured findings. Non-empty ⇒ the shell returns `stop_and_report`.
+Pure, TDD. **Hardened post-review (`8f...`):** `hero-ambiguous` uses truthiness (`not hero`) so an empty pin ('' / () / []) still fires; `track_meta` tolerates None. Machine-detectable "mid-task reality contradicts the manifest" cases → structured findings. Non-empty ⇒ the shell returns `stop_and_report`.
 
 **Files:**
 - Create: `tests/lib/test_orchestration.py`
@@ -368,6 +368,23 @@ def test_empty_route_is_a_contradiction():
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080)
     assert any(f["reason"] == "no-track" for f in findings)
+
+
+def test_ambiguous_hero_with_empty_pin_is_a_contradiction():
+    # a falsy-but-present hero ("" / () / []) is no pin at all → still ambiguous
+    for empty in ("", (), []):
+        findings = orch.detect_contradictions(motion=None, hero=empty,
+                                              route=_route_right(),
+                                              track_meta={"ambiguous": True},
+                                              src_w=1920, src_h=1080)
+        assert any(f["reason"] == "hero-ambiguous" for f in findings), empty
+
+
+def test_missing_track_meta_does_not_crash():
+    findings = orch.detect_contradictions(motion=None, hero=None,
+                                          route=_route_right(), track_meta=None,
+                                          src_w=1920, src_h=1080)
+    assert findings == []
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -398,7 +415,8 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
                          "detail": "tracker produced an empty route — hero never "
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
-    if track_meta.get("ambiguous") and hero is None:
+    if (track_meta or {}).get("ambiguous") and not hero:
+        # not hero (vs `is None`): an empty pin ("" / () / []) is no pin at all
         findings.append({"reason": "hero-ambiguous",
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
                                    "pin a hero (seed bbox / rule / cast name) and retry"})
@@ -423,7 +441,7 @@ def _motion_conflicts(declared, observed):
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
-Expected: PASS (5 passed)
+Expected: PASS (7 passed — 5 + 2 hardening)
 
 - [ ] **Step 5: Commit**
 
