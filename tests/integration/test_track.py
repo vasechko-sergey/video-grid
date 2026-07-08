@@ -53,3 +53,42 @@ def test_meta_flags_ambiguity(monkeypatch, tmp_path):
     track.build_route(src="ignored.mp4", fps=30, out=str(out))
     meta = json.loads((tmp_path / "route.meta.json").read_text())
     assert meta["ambiguous"] is True
+
+def test_unconfirmed_detections_never_become_hero(monkeypatch, tmp_path):
+    # id=None detections (two DIFFERENT people) must not merge into a fake
+    # track that outscores the real confirmed hero
+    class _NoneBox:
+        def __init__(self, xywh):
+            self.xywh = [xywh]; self.id = None; self.cls = [0]
+    frames = []
+    for i in range(20):
+        dets = [_FakeBox([600 + i * 20, 500, 140, 320], 3)]      # real hero
+        dets.append(_NoneBox([200, 500, 100, 300] if i % 2 else [1700, 500, 100, 300]))
+        frames.append(dets)
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    out = tmp_path / "route.json"
+    route = track.build_route(src="ignored.mp4", fps=30, out=str(out))
+    meta = json.loads((tmp_path / "route.meta.json").read_text())
+    assert meta["hero"] == 3
+    assert "-1" not in meta["features"]
+    assert [pt["x"] for pt in route] == [600 + i * 20 for i in range(20)]
+
+def test_features_include_speed_and_border(monkeypatch, tmp_path):
+    frames = [[_FakeBox([300 + i * 50, 500, 140, 320], 1)] for i in range(10)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    track.build_route(src="ignored.mp4", fps=30, out=str(tmp_path / "route.json"))
+    feats = json.loads((tmp_path / "route.meta.json").read_text())["features"]["1"]
+    assert abs(feats["speed"] - 50.0) < 1e-6      # 50 px/frame
+    assert feats["border"] is None                # dims unknown in mocked run
+
+def test_fps_probe_when_not_given(monkeypatch, tmp_path, sample_clip):
+    # fps=None → probed from the real file (sample fixture is 30fps 1920x1080)
+    frames = [[_FakeBox([300, 500, 140, 320], 1)] for _ in range(5)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    route = track.build_route(src=str(sample_clip), out=str(tmp_path / "route.json"))
+    assert abs(route[1]["t"] - 1 / 30) < 1e-6
+    feats = json.loads((tmp_path / "route.meta.json").read_text())["features"]["1"]
+    assert feats["border"] is not None            # dims known from probe

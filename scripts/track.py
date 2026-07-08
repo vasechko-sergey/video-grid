@@ -2,10 +2,27 @@
 import argparse, json
 from pathlib import Path
 
+from scripts.lib import proc
+
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
 # path would NOT auto-download (landmine, design §12). setup.sh redirects the
 # weight cache into models/.
 MODEL = "yolo11n-seg.pt"
+
+
+def _probe_meta(src):
+    """fps + dims from the source — never trust a caller-supplied default (4K/59.94 footage is the norm)."""
+    import json as _j
+    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                  "-show_entries", "stream=width,height,avg_frame_rate",
+                  "-of", "json", src], text=True)
+    s = _j.loads(r.stdout)["streams"][0]
+    num, den = s["avg_frame_rate"].split("/")
+    den = float(den) or 1.0
+    fps = float(num) / den
+    if fps <= 0:
+        raise ValueError(f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
+    return fps, int(s["width"]), int(s["height"])
 
 
 def _iter_detections(src, model_path=MODEL):
@@ -43,18 +60,38 @@ def _seed_track(per_frame, seed, first_n=5):
     return best
 
 
-def _track_features(per_frame):
-    """Per-track: frame count, first→last displacement, mean bbox area."""
+def _track_features(per_frame, src_w=None, src_h=None):
+    """Per-track: frame count, first→last displacement, mean bbox area,
+    mean speed (px/frame), border share (spec §6.1a candidate discriminators).
+    """
     feats = {}
     for _, dets in per_frame:
         for tid, x, y, w, h in dets:
-            f = feats.setdefault(tid, {"n": 0, "x0": x, "x1": x, "area": 0.0})
+            f = feats.setdefault(tid, {"n": 0, "x0": x, "x1": x, "area": 0.0,
+                                        "_prev_x": None, "_speed_sum": 0.0,
+                                        "_speed_n": 0, "_border_n": 0})
             f["n"] += 1
             f["x1"] = x
             f["area"] += w * h
+            if f["_prev_x"] is not None:
+                f["_speed_sum"] += abs(x - f["_prev_x"])
+                f["_speed_n"] += 1
+            f["_prev_x"] = x
+            if src_w is not None and src_h is not None:
+                l, t = x - w / 2, y - h / 2
+                r, b = x + w / 2, y + h / 2
+                margin_x, margin_y = 0.02 * src_w, 0.02 * src_h
+                if (l <= margin_x or r >= src_w - margin_x
+                        or t <= margin_y or b >= src_h - margin_y):
+                    f["_border_n"] += 1
     for f in feats.values():
         f["disp"] = abs(f["x1"] - f["x0"])
         f["area"] /= max(1, f["n"])
+        f["speed"] = f["_speed_sum"] / f["_speed_n"] if f["_speed_n"] else 0.0
+        f["border"] = (f["_border_n"] / f["n"]) if (src_w is not None
+                                                      and src_h is not None) else None
+        for k in ("_prev_x", "_speed_sum", "_speed_n", "_border_n"):
+            del f[k]
     return feats
 
 
@@ -82,19 +119,30 @@ def _pick_hero(feats, intent):
     return ranked[0][0], ambiguous
 
 
-def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
+def build_route(src, fps=None, out=None, model_path=MODEL, seed_bbox=None,
                 intent="action"):
     # hero priority: explicit seed pin (spec §5.10) > intent-conditioned scoring
+    src_w = src_h = None
+    if fps is None:
+        # never trust a caller-supplied default (4K/59.94 footage is the norm) —
+        # a wrong fps silently desyncs route t, the crop expression's time axis
+        fps, src_w, src_h = _probe_meta(src)
+
     per_frame = []
     for idx, boxes in _iter_detections(src, model_path=model_path):
         dets = []
         for b in boxes:
+            if b.id is None:
+                # unconfirmed ByteTrack detection (normal in first frames /
+                # after occlusion) — do NOT fabricate a shared tid=-1 track,
+                # it would merge unrelated people into one fake "hero"
+                continue
             x, y, w, h = [float(v) for v in b.xywh[0]]
-            tid = int(b.id[0]) if b.id is not None else -1
+            tid = int(b.id[0])
             dets.append((tid, x, y, w, h))
         per_frame.append((idx, dets))
 
-    feats = _track_features(per_frame)
+    feats = _track_features(per_frame, src_w=src_w, src_h=src_h)
     hero, ambiguous = None, False
     if seed_bbox is not None:
         hero = _seed_track(per_frame, seed_bbox)
@@ -103,7 +151,8 @@ def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
     # sidecar meta: the orchestrator reads `ambiguous` to fire the §4.1
     # stop-and-report (margin rule) with both candidates' crops
     meta = {"hero": hero, "ambiguous": ambiguous, "intent": intent,
-            "features": {str(k): {kk: f[kk] for kk in ("n", "disp", "area")}
+            "features": {str(k): {kk: f[kk] for kk in
+                                   ("n", "disp", "area", "speed", "border")}
                          for k, f in feats.items()}}
     Path(out).with_suffix(".meta.json").write_text(json.dumps(meta))
 
@@ -123,7 +172,9 @@ def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
-    ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument("--fps", type=float, default=None,
+                    help="override probed fps (default: probe the source — "
+                         "never trust a caller-supplied default)")
     ap.add_argument("--model", default=MODEL,
                     help="yolo11n-seg.pt (default) / yolo11s-seg.pt / "
                          "yolo11m-seg.pt for small/far subjects")
