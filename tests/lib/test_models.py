@@ -199,6 +199,14 @@ def test_spec_type_errors_are_value_errors():
         m.StoryboardSpec(grids="thirds")     # bare string, not a list
 
 
+def test_storyboardspec_grids_nonlist_is_value_error():
+    for bad in (None, 5, 3.14):
+        with pytest.raises(ValueError, match="grids"):
+            m.StoryboardSpec(grids=bad)
+    with pytest.raises(ValueError, match="grids"):
+        m.StoryboardSpec(grids="thirds")     # bare string still rejected
+
+
 def test_trackspec_empty_src_and_checkspec_structural():
     with pytest.raises(ValueError, match="src"):
         m.TrackSpec(src="")

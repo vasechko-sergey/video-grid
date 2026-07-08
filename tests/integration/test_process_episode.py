@@ -113,6 +113,20 @@ def test_invalid_manifest_returns_needs_input(monkeypatch, tmp_path):
     assert result["attempt"] == 0
 
 
+def test_malformed_manifest_returns_needs_input(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path)
+    # missing required field → KeyError inside from_dict, must become needs_input
+    d = _manifest(tmp_path); del d["composition"]
+    r = pe.process_episode(d, project_dir=str(tmp_path))
+    assert r["status"] == "needs_input" and r["attempt"] == 0
+    # unknown/typo'd field → KeyError
+    r = pe.process_episode(_manifest(tmp_path, stablize=True), project_dir=str(tmp_path))
+    assert r["status"] == "needs_input"
+    # wrong-type canvas (bare int) → TypeError
+    r = pe.process_episode(_manifest(tmp_path, canvas=9), project_dir=str(tmp_path))
+    assert r["status"] == "needs_input"
+
+
 def test_creates_missing_project_dir(monkeypatch, tmp_path):
     # first real run: a fresh per-episode scratch dir must be created, not crash
     _stub_engine(monkeypatch, tmp_path)

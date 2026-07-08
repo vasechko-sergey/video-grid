@@ -1,7 +1,7 @@
 # Engine dataclass-hardening + resolution/aspect-agnostic — Design
 
 **Date:** 2026-07-08
-**Status:** BUILT (2026-07-09, feat/engine-hardening commits `78e0fb9`..`4509cd6`, 166 tests green incl. 3 real-ffmpeg goldens). All 5 review bugs (#1–5) + both holes (#F/#G) closed; engine is resolution/aspect-agnostic; full dataclass model in `scripts/lib/models.py`.
+**Status:** BUILT (2026-07-09, feat/engine-hardening commits `78e0fb9`..`4509cd6`, 168 tests green incl. 3 real-ffmpeg integration tests (2 on the golden ride)). All 5 review bugs (#1–5) + both holes (#F/#G) closed; engine is resolution/aspect-agnostic; full dataclass model in `scripts/lib/models.py`.
 **Scope:** Plan 1 of a two-plan split. Plan 2 (`project-init` purpose→aspect) is previewed here (§D) but **not** built by this design.
 
 ## Context

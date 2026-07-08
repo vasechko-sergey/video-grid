@@ -40,7 +40,10 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     files are written flat and would clobber a sibling episode sharing the dir."""
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
-    m = manifest_lib.Manifest.from_dict(manifest_dict)
+    try:
+        m = manifest_lib.Manifest.from_dict(manifest_dict)
+    except (KeyError, TypeError, ValueError) as e:
+        return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
     problems = manifest_lib.validate(m)
     if problems:
         return {"status": "needs_input", "problems": problems, "attempt": 0}

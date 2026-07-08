@@ -275,7 +275,7 @@ class StoryboardSpec:
     def __post_init__(self):
         if not isinstance(self.n, int) or self.n < 1:
             raise ValueError(f"StoryboardSpec.n must be an int >= 1, got {self.n!r}")
-        if isinstance(self.grids, str) or not all(isinstance(g, str) for g in self.grids):
+        if not isinstance(self.grids, (tuple, list)) or not all(isinstance(g, str) for g in self.grids):
             raise ValueError(f"StoryboardSpec.grids must be a list/tuple of grid names, got {self.grids!r}")
         for g in self.grids:
             if g not in GRIDS:

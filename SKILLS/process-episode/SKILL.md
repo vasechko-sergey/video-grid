@@ -1,6 +1,6 @@
 ---
 name: process-episode
-description: Use when turning one approved EDL episode manifest into a checked, reframed 9:16 clip — driving track→reframe→storyboard→postcheck for a single fragment, asking before starting only if the manifest is ambiguous, and stopping to report when the tracker contradicts the manifest. One subagent per episode.
+description: Use when turning one approved EDL episode manifest into a checked, reframed clip at the manifest's chosen canvas/delivery — driving track→reframe→storyboard→postcheck for a single fragment, asking before starting only if the manifest is ambiguous, and stopping to report when the tracker contradicts the manifest. One subagent per episode.
 ---
 
 # process-episode
