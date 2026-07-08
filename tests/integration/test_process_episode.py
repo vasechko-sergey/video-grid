@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import pytest
 from scripts import process_episode as pe
+from scripts.lib import models
 
 
 def _manifest(tmp_path, **over):
@@ -11,38 +12,58 @@ def _manifest(tmp_path, **over):
     return d
 
 
+def _report(overall, fail_reasons, attempt=1):
+    """A real models.Report whose derived .overall/.fail_reasons match the
+    given values — Report computes both FROM `checks` now (no more storing
+    overall/fail_reasons directly), so the fake must build real CheckResults."""
+    checks = {name: models.CheckResult(name, False, {}) for name in fail_reasons}
+    assert overall == (not fail_reasons), (
+        "_report: overall must be False iff fail_reasons is non-empty")
+    return models.Report(checks=checks, attempt=attempt)
+
+
 def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 1080, 30.0)):
     """Patch track/reframe/storyboard/check_episode with canned behavior and
-    record the args the shell passes (to assert the contract threading)."""
+    record the args the shell passes (to assert the contract threading). The
+    fakes mirror the REAL typed signatures (TrackSpec/ReframeSpec/CheckSpec/
+    StoryboardSpec in, a genuine models.Report out of check_episode.run) —
+    a mocked green suite is only meaningful if the mocks match the engine."""
     calls = {}
     route = route or [dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320) for i in range(10)]
 
-    def fake_build_route(src, out=None, **k):
+    def fake_build_route(spec, out):
+        calls["track_intent"] = spec.intent
+        calls["track_seed_bbox"] = spec.seed_bbox
         Path(out).write_text(json.dumps(route))
         Path(out).with_suffix(".meta.json").write_text(json.dumps({"ambiguous": False}))
-        return route
+        return [models.RoutePoint.from_dict(d) for d in route]
     monkeypatch.setattr(pe.track, "build_route", fake_build_route)
 
     monkeypatch.setattr(pe.reframe, "_probe", lambda src: dims)
 
-    def fake_reframe(src, route_path, out, composition, grid, canvas, color_means,
-                     stabilize, path_out, max_speed=750.0):
-        calls["reframe"] = dict(canvas=canvas, max_speed=max_speed)
+    def fake_reframe(spec, src, route_path, out, path_out):
+        calls["reframe"] = dict(canvas=spec.canvas, max_speed=spec.max_speed)
+        calls["reframe_delivery"] = spec.delivery
         Path(out).write_text("clip")
+        # path length must match the route (real reframe invariant) — the shell
+        # reads it back to compute hero marks for the storyboard
         Path(path_out).write_text(json.dumps([100] * len(route)))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 
-    monkeypatch.setattr(pe.storyboard, "build",
-                        lambda src, out, **k: (Path(out).write_text("sheet"), out)[1])
+    def fake_storyboard_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
+        calls["storyboard"] = dict(route=route, path=path, crop_w=crop_w, src_h=src_h)
+        Path(out).write_text("sheet")
+        return out, None
+    monkeypatch.setattr(pe.storyboard, "build", fake_storyboard_build)
 
-    default_report = {"checks": {}, "overall": True, "attempt": 1, "fail_reasons": []}
+    default_report = _report(True, [])
 
-    def fake_run(clip, route_path, path_path, composition, grid, target_dur, out,
-                 canvas=(9, 16), src_dims=(1920, 1080), attempt=1):
-        calls["check"] = dict(canvas=canvas, src_dims=src_dims, attempt=attempt)
-        r = dict(report or default_report); r["attempt"] = attempt
-        Path(out).write_text(json.dumps(r))
+    def fake_run(clip, route_path, path_path, spec, out):
+        calls["check"] = dict(canvas=spec.canvas, src_dims=spec.src_dims, attempt=spec.attempt)
+        src_report = report if report is not None else default_report
+        r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
+        r.write(out)
         return r
     monkeypatch.setattr(pe.check_episode, "run", fake_run)
     return calls
@@ -109,25 +130,33 @@ def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
 
 def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
     # §6.1a layer 4: the storyboard must carry per-frame hero marks so the
-    # editorial gate can confirm "right person" — the SKILL promises this artifact
+    # editorial gate can confirm "right person" — the SKILL promises this
+    # artifact. marks are now computed INSIDE storyboard.build from the
+    # route/path/crop_w/src_h ingredients the shell passes in — assert the
+    # shell hands over well-shaped ingredients, then prove the real
+    # marks_at_times can turn them into 6 valid (fx, fy) hero marks.
     _stub_engine(monkeypatch, tmp_path)
     captured = {}
 
-    def capture_build(src, out, **k):
-        captured["marks"] = k.get("marks")
+    def capture_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
+        captured.update(route=route, path=path, crop_w=crop_w, src_h=src_h)
         Path(out).write_text("sheet")
-        return out
+        return out, None
     monkeypatch.setattr(pe.storyboard, "build", capture_build)
 
     result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
-    marks = captured["marks"]
-    assert marks is not None and len(marks) == 6
+
+    route, path, crop_w, src_h = (captured["route"], captured["path"],
+                                  captured["crop_w"], captured["src_h"])
+    assert route and isinstance(route[0], models.RoutePoint)
+    assert isinstance(path, models.CropPath) and len(path) == len(route)
+    assert crop_w > 0 and src_h > 0
+
+    times = [route[i].t for i in range(6)]
+    marks = pe.storyboard.marks_at_times(route, path, crop_w, src_h, times)
+    assert len(marks) == 6
     assert all(len(pair) == 2 for pair in marks)   # (fx, fy) fractions
-
-
-def _report(overall, fail_reasons):
-    return {"checks": {}, "overall": overall, "attempt": 1, "fail_reasons": fail_reasons}
 
 
 def test_retry_then_pass(monkeypatch, tmp_path):
@@ -136,16 +165,14 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     seq = [_report(False, ["on_line"]), _report(True, [])]
     speeds = []
 
-    def fake_run(clip, route_path, path_path, composition, grid, target_dur, out,
-                 canvas=(9, 16), src_dims=(1920, 1080), attempt=1):
-        r = dict(seq[attempt - 1]); r["attempt"] = attempt
-        Path(out).write_text(json.dumps(r))
+    def fake_run(clip, route_path, path_path, spec, out):
+        r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
+        r.write(out)
         return r
     monkeypatch.setattr(pe.check_episode, "run", fake_run)
 
-    def fake_reframe(src, route_path, out, composition, grid, canvas, color_means,
-                     stabilize, path_out, max_speed=750.0):
-        speeds.append(max_speed)
+    def fake_reframe(spec, src, route_path, out, path_out):
+        speeds.append(spec.max_speed)
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
         Path(out).write_text("clip"); Path(path_out).write_text(json.dumps([100] * 10))
@@ -190,7 +217,7 @@ def test_motion_mismatch_stops_and_reports(monkeypatch, tmp_path):
 
 def test_ambiguous_hero_stops_and_reports(monkeypatch, tmp_path):
     _stub_engine(monkeypatch, tmp_path)
-    def fake_build_route(src, out=None, **k):
+    def fake_build_route(spec, out):
         Path(out).write_text(json.dumps(
             [dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320) for i in range(10)]))
         Path(out).with_suffix(".meta.json").write_text(json.dumps({"ambiguous": True}))
@@ -210,6 +237,33 @@ def test_corrupt_meta_sidecar_fails_loud(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="corrupt"):
         pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
                            route_path=str(rp))
+
+
+def test_intent_derived_for_center(monkeypatch, tmp_path):
+    # §6.1a / #1: intent must be derived from the manifest and threaded into
+    # the TrackSpec BEFORE tracking runs (it picks the hero during tracking)
+    calls = _stub_engine(monkeypatch, tmp_path)
+    pe.process_episode(_manifest(tmp_path, composition="center"), project_dir=str(tmp_path))
+    assert calls["track_intent"] == "static"
+
+
+def test_delivery_threaded_to_reframe(monkeypatch, tmp_path):
+    # #F: the manifest's delivery spec must reach ReframeSpec, not be dropped
+    calls = _stub_engine(monkeypatch, tmp_path)
+    pe.process_episode(_manifest(tmp_path, delivery="exact:1080x1920"),
+                       project_dir=str(tmp_path))
+    assert calls["reframe_delivery"].mode == "exact"
+
+
+def test_lead_nonlateral_stops(monkeypatch, tmp_path):
+    # a static route under a lead manifest → composition-motion-mismatch, no reframe
+    _stub_engine(monkeypatch, tmp_path,
+                 route=[dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)])
+    def boom(*a, **k): raise AssertionError("reframe must not run on composition mismatch")
+    monkeypatch.setattr(pe.reframe, "reframe", boom)
+    result = pe.process_episode(_manifest(tmp_path, composition="lead"), project_dir=str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert any(f["reason"] == "composition-motion-mismatch" for f in result["findings"])
 
 
 FIX = Path(__file__).parent.parent / "fixtures"

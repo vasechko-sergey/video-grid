@@ -16,6 +16,8 @@ from scripts import track, reframe, storyboard, check_episode
 from scripts.lib import geometry
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
+from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
+                                Delivery, route_from_json, CropPath)
 
 
 def _load_route(route_path):
@@ -52,13 +54,16 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
         timings[name] = round(time.monotonic() - t0, 3)
         return out
 
+    intent = orch.derive_intent(m.composition, m.motion)
+    delivery = Delivery.from_spec(m.delivery)
+
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
     if route_path is None:
         rp = str(Path(project_dir) / "route.json")
-        _timed("track", lambda: track.build_route(
-            m.segment, out=rp,
-            seed_bbox=m.hero if orch.is_seed_pin(m.hero) else None,
-            model_path=m.model))
+        tspec = TrackSpec(src=m.segment, model=m.model,
+                          seed_bbox=m.hero if orch.is_seed_pin(m.hero) else None,
+                          intent=intent)
+        _timed("track", lambda: track.build_route(tspec, rp))
         route, track_meta = _load_route(rp)
     else:
         route, track_meta = _load_route(route_path)
@@ -69,7 +74,8 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     src_w, src_h, _fps = reframe._probe(m.segment)
 
     # 2. contradiction gate (§4.1: no improvising past the manifest)
-    findings = orch.detect_contradictions(m.motion, m.hero, route, track_meta, src_w, src_h)
+    findings = orch.detect_contradictions(m.motion, m.hero, route, track_meta,
+                                          src_w, src_h, composition=m.composition)
     if findings:
         return {"status": "stop_and_report", "findings": findings, "attempt": 0,
                 "timings": timings, "route": rp}
@@ -79,35 +85,40 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     path_out = str(Path(project_dir) / "path.json")
     report = None
     for attempt in range(1, max_attempts + 1):
-        _timed("reframe", lambda: reframe.reframe(
-            m.segment, rp, m.out_path, m.composition, m.grid, m.canvas,
-            m.color_means, m.stabilize, path_out, max_speed=params["max_speed"]))
+        rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
+                            color_means=m.color_means, delivery=delivery,
+                            max_speed=params["max_speed"])
+        _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
+        cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
+                          canvas=m.canvas, src_dims=(src_w, src_h), attempt=attempt)
         report = _timed("check", lambda: check_episode.run(
-            m.out_path, rp, path_out, m.composition, m.grid, m.target_dur,
-            str(Path(project_dir) / "report.json"),
-            canvas=m.canvas, src_dims=(src_w, src_h), attempt=attempt))
-        if report["overall"]:
+            m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json")))
+        if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every
             # sampled frame so the editorial gate can confirm "right person" —
-            # without marks the SKILL's marker check has nothing to look at
+            # without marks the SKILL's marker check has nothing to look at.
+            # storyboard.build computes marks INTERNALLY from these ingredients.
             crop_w, _ = geometry.crop_size(m.canvas[0], m.canvas[1], src_w, src_h)
-            path = json.loads(Path(path_out).read_text())
-            marks = storyboard.marks_from_route_path(route, path, crop_w, src_h, n=6)
-            _timed("storyboard", lambda: storyboard.build(m.out_path, sheet,
-                                                          n=6, grids=(m.grid,), marks=marks))
-            return {"status": "mechanical_pass", "clip": m.out_path, "report": report,
+            route_pts = route_from_json(rp)
+            path_obj = CropPath.from_json(path_out)
+            sspec = StoryboardSpec(n=6, grids=(m.grid,))
+            _timed("storyboard", lambda: storyboard.build(
+                m.out_path, sheet, sspec, route=route_pts, path=path_obj,
+                crop_w=crop_w, src_h=src_h))
+            return {"status": "mechanical_pass", "clip": m.out_path, "report": report.to_dict(),
                     "storyboard": sheet, "attempt": attempt, "timings": timings,
                     "degraded": None}
-        esc = orch.escalation(attempt, report["fail_reasons"], max_attempts)
+        esc = orch.escalation(attempt, report.fail_reasons, max_attempts)
         if esc:
-            return {"status": "escalate", **esc, "report": report,
+            return {"status": "escalate", **esc, "report": report.to_dict(),
                     "attempt": attempt, "timings": timings}
-        params = orch.adjust_reframe_params(params, report["fail_reasons"])
+        params = orch.adjust_reframe_params(params, report.fail_reasons)
 
     # defensive: escalation() fires at max_attempts, so this is unreachable
     return {"status": "escalate", "escalate_to": "edit-plan", "reason": "max-retries",
-            "fail_reasons": report["fail_reasons"] if report else [], "report": report,
+            "fail_reasons": report.fail_reasons if report else [],
+            "report": report.to_dict() if report else None,
             "attempt": max_attempts, "timings": timings}
 
 
