@@ -94,3 +94,14 @@ def test_fixable_fail_retries_until_cap():
     assert orch.escalation(attempt=2, fail_reasons=["on_line"], max_attempts=3) is None
     esc = orch.escalation(attempt=3, fail_reasons=["on_line"], max_attempts=3)
     assert esc is not None and esc["reason"] == "max-retries"
+
+
+def test_centered_fail_adjusts_like_on_line():
+    # centered is on_line at target_frac=0.5 — same crop-lag signal (center comp)
+    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["centered"])
+    assert p["max_speed"] > 750.0
+
+
+def test_centered_jitter_conflict_escalates():
+    esc = orch.escalation(attempt=1, fail_reasons=["centered", "jitter"], max_attempts=3)
+    assert esc is not None and esc["reason"] == "conflicting-framing-fails"

@@ -47,10 +47,16 @@ DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps
 _UNFIXABLE = ("length", "continuity", "black_frames")
 
 
+def _lags_line(fail_reasons):
+    # centered is on_line at target_frac=0.5 (checks.centered) and reframe
+    # rate-limits center/break identically to lead — same crop-lag signal
+    return "on_line" in fail_reasons or "centered" in fail_reasons
+
+
 def adjust_reframe_params(params, fail_reasons):
     """One documented nudge per mechanical fail (§4.1 retry-in-place)."""
     p = dict(params)
-    if "on_line" in fail_reasons:
+    if _lags_line(fail_reasons):
         p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
     if "jitter" in fail_reasons:
         p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
@@ -61,12 +67,12 @@ def escalation(attempt, fail_reasons, max_attempts=3):
     """None ⇒ keep retrying; a finding dict ⇒ escalate up the artifact chain.
 
     Escalate immediately when the failure can't be fixed by reframe params
-    (unfixable reasons, or on_line+jitter which pull speed in opposite
-    directions); otherwise after max_attempts (§4.1: same failure 3× → up)."""
+    (unfixable reasons, or a line-lag + jitter combo which pull speed in
+    opposite directions); otherwise after max_attempts (§4.1: 3× → up)."""
     if any(r in _UNFIXABLE for r in fail_reasons):
         return {"escalate_to": "edit-plan", "reason": "unfixable-by-reframe",
                 "fail_reasons": fail_reasons}
-    if "on_line" in fail_reasons and "jitter" in fail_reasons:
+    if _lags_line(fail_reasons) and "jitter" in fail_reasons:
         return {"escalate_to": "edit-plan", "reason": "conflicting-framing-fails",
                 "fail_reasons": fail_reasons}
     if attempt >= max_attempts:
