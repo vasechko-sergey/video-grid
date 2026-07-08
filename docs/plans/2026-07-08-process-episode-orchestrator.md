@@ -714,6 +714,7 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import geometry
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 
@@ -787,8 +788,14 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
             canvas=m.canvas, src_dims=(src_w, src_h), attempt=attempt))
         if report["overall"]:
             sheet = str(Path(project_dir) / "storyboard.jpg")
+            # hero marker (§6.1a layer 4): draw the followed subject on every
+            # sampled frame so the editorial gate can confirm "right person" —
+            # without marks the SKILL's marker check has nothing to look at
+            crop_w, _ = geometry.crop_size(m.canvas[0], m.canvas[1], src_w, src_h)
+            path = json.loads(Path(path_out).read_text())
+            marks = storyboard.marks_from_route_path(route, path, crop_w, src_h, n=6)
             _timed("storyboard", lambda: storyboard.build(m.out_path, sheet,
-                                                          n=6, grids=(m.grid,)))
+                                                          n=6, grids=(m.grid,), marks=marks))
             return {"status": "mechanical_pass", "clip": m.out_path, "report": report,
                     "storyboard": sheet, "attempt": attempt, "timings": timings,
                     "degraded": None}
@@ -988,7 +995,7 @@ git commit -m "test: golden fixture through the full process-episode orchestrato
 
 ## Task 6: `SKILLS/process-episode/SKILL.md` — the crown-jewel subagent prompt
 
-The agent layer. Authored to the §14.2 conventions; its "test" is structural (frontmatter + required sections + no force-links + video-grid self-references). The editorial gate and ask-before-start judgment live here, wrapping the Python shell.
+The agent layer. **Post-review (`b4dc7e4`): the SKILL's editorial gate checks a hero marker on the storyboard — the shell (Task 3) was wired to compute it via `storyboard.marks_from_route_path` and pass `marks=` to `storyboard.build`, closing a gap where the promised marker was never drawn (§6.1a layer 4 bystander defense).** Authored to the §14.2 conventions; its "test" is structural (frontmatter + required sections + no force-links + video-grid self-references). The editorial gate and ask-before-start judgment live here, wrapping the Python shell.
 
 **Files:**
 - Create: `SKILLS/process-episode/SKILL.md`
