@@ -3,7 +3,7 @@ import argparse, json
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, proc
 from scripts.lib.motion import classify
-from scripts.lib.models import ReframeSpec, RoutePoint, CropPath, route_from_json, Delivery
+from scripts.lib.models import ReframeSpec, CropPath, route_from_json, Delivery
 
 
 def compute_path(route, composition, grid, canvas, src, motion, max_step):
@@ -56,6 +56,8 @@ def _simplify(path, times, eps=2.0, max_knots=80):
             worst, wi = 0.0, None
             for i in range(lo + 1, hi):
                 t, x = pts[i]
+                # duplicate lo/hi timestamps would divide by zero → fall back to x0
+                # (unreachable on real routes: RoutePoint.t is strictly increasing)
                 xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0)) if t1 != t0 else x0
                 if abs(x - xh) > worst:
                     worst, wi = abs(x - xh), i
