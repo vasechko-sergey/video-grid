@@ -125,3 +125,38 @@ def test_centered_fail_adjusts_like_on_line():
 def test_centered_jitter_conflict_escalates():
     esc = orch.escalation(attempt=1, fail_reasons=["centered", "jitter"], max_attempts=3)
     assert esc is not None and esc["reason"] == "conflicting-framing-fails"
+
+
+def test_derive_intent_from_manifest():
+    # center or declared static/head-on → static; lateral or infer+lead → action
+    assert orch.derive_intent("center", None) == "static"
+    assert orch.derive_intent("lead", "static") == "static"
+    assert orch.derive_intent("lead", "head-on") == "static"
+    assert orch.derive_intent("lead", "lateral:right") == "action"
+    assert orch.derive_intent("lead", None) == "action"          # infer → lateral-action default
+    assert orch.derive_intent("break", None) == "action"
+
+
+def test_lead_over_nonlateral_is_a_contradiction():
+    # lead composition but the tracker route is not lateral → stop_and_report, no wasted reframes
+    static_route = [dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)]  # no dx
+    findings = orch.detect_contradictions(motion=None, hero=None, route=static_route,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert any(f["reason"] == "composition-motion-mismatch" for f in findings)
+
+
+def test_lead_over_lateral_is_fine():
+    route = _route_right()
+    findings = orch.detect_contradictions(motion=None, hero=None, route=route,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert all(f["reason"] != "composition-motion-mismatch" for f in findings)
+
+
+def test_center_over_nonlateral_is_fine():
+    static_route = [dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)]
+    findings = orch.detect_contradictions(motion=None, hero=None, route=static_route,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="center")
+    assert findings == []

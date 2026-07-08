@@ -9,6 +9,18 @@ only wires these to the engine scripts.
 from scripts.lib.motion import classify
 
 
+def derive_intent(composition, motion):
+    """Hero-scoring intent from MANIFEST signal only (§6.1a). Must be manifest-
+    only: intent picks the hero DURING tracking, before a hero route exists to
+    classify(). center, or a declared static/head-on motion → 'static' (size +
+    duration win); lateral, or infer with a lead/break composition → 'action'."""
+    if composition == "center":
+        return "static"
+    if motion in ("static", "head-on"):
+        return "static"
+    return "action"
+
+
 def is_seed_pin(hero):
     """True iff `hero` is a hero value the tracker can ACTUALLY be seeded with
     this slice: a non-empty seed-bbox tuple. A cast name / rule / empty value is
@@ -19,7 +31,7 @@ def is_seed_pin(hero):
     return isinstance(hero, tuple) and len(hero) > 0
 
 
-def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
+def detect_contradictions(motion, hero, route, track_meta, src_w, src_h, composition=None):
     """Machine-detectable manifest-vs-reality conflicts (§4.1). Returns a list
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
     findings = []
@@ -35,6 +47,13 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
                                    "pin a hero (seed bbox [x,y,w,h]; cast name / rule "
                                    "needs the ingestion plan) and retry"})
+    if composition == "lead":
+        obs_type, _ = classify(route, src_w, src_h)
+        if obs_type != "lateral":
+            findings.append({"reason": "composition-motion-mismatch",
+                             "detail": f"composition 'lead' needs lateral motion, but the "
+                                       f"tracker sees {obs_type} — set composition to "
+                                       f"'center', or fix the window/segment"})
     if motion:
         obs_type, obs_dir = classify(route, src_w, src_h)
         observed = obs_type + (f":{obs_dir}" if obs_dir else "")
