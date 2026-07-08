@@ -39,3 +39,37 @@ def _motion_conflicts(declared, observed):
     if declared.startswith("lateral:") and observed.startswith("lateral:"):
         return declared != observed          # right vs left
     return False
+
+
+DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps)
+
+# reframe can't fix these by re-cropping — the fault is upstream (window/segment)
+_UNFIXABLE = ("length", "continuity", "black_frames")
+
+
+def adjust_reframe_params(params, fail_reasons):
+    """One documented nudge per mechanical fail (§4.1 retry-in-place)."""
+    p = dict(params)
+    if "on_line" in fail_reasons:
+        p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
+    if "jitter" in fail_reasons:
+        p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
+    return p
+
+
+def escalation(attempt, fail_reasons, max_attempts=3):
+    """None ⇒ keep retrying; a finding dict ⇒ escalate up the artifact chain.
+
+    Escalate immediately when the failure can't be fixed by reframe params
+    (unfixable reasons, or on_line+jitter which pull speed in opposite
+    directions); otherwise after max_attempts (§4.1: same failure 3× → up)."""
+    if any(r in _UNFIXABLE for r in fail_reasons):
+        return {"escalate_to": "edit-plan", "reason": "unfixable-by-reframe",
+                "fail_reasons": fail_reasons}
+    if "on_line" in fail_reasons and "jitter" in fail_reasons:
+        return {"escalate_to": "edit-plan", "reason": "conflicting-framing-fails",
+                "fail_reasons": fail_reasons}
+    if attempt >= max_attempts:
+        return {"escalate_to": "edit-plan", "reason": "max-retries",
+                "fail_reasons": fail_reasons}
+    return None

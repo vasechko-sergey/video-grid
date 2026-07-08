@@ -61,3 +61,36 @@ def test_missing_track_meta_does_not_crash():
                                           route=_route_right(), track_meta=None,
                                           src_w=1920, src_h=1080)
     assert findings == []
+
+
+def test_default_params():
+    assert orch.DEFAULT_PARAMS["max_speed"] == 750.0
+
+
+def test_on_line_fail_raises_speed():
+    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["on_line"])
+    assert p["max_speed"] > 750.0          # crop lagged the line → let it catch up
+
+
+def test_jitter_fail_lowers_speed():
+    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["jitter"])
+    assert p["max_speed"] < 750.0          # too twitchy → damp harder
+
+
+def test_unfixable_reasons_escalate_immediately():
+    # length/continuity/black_frames can't be fixed by reframe params
+    esc = orch.escalation(attempt=1, fail_reasons=["length"], max_attempts=3)
+    assert esc is not None and esc["escalate_to"] == "edit-plan"
+
+
+def test_conflicting_fails_escalate_immediately():
+    # on_line wants faster, jitter wants slower — unsatisfiable by speed alone
+    esc = orch.escalation(attempt=1, fail_reasons=["on_line", "jitter"], max_attempts=3)
+    assert esc is not None
+
+
+def test_fixable_fail_retries_until_cap():
+    assert orch.escalation(attempt=1, fail_reasons=["on_line"], max_attempts=3) is None
+    assert orch.escalation(attempt=2, fail_reasons=["on_line"], max_attempts=3) is None
+    esc = orch.escalation(attempt=3, fail_reasons=["on_line"], max_attempts=3)
+    assert esc is not None and esc["reason"] == "max-retries"
