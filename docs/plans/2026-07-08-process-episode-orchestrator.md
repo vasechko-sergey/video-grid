@@ -964,7 +964,7 @@ def test_golden_ride_through_orchestrator(tmp_path):
     assert result["timings"]["reframe"] > 0
 ```
 
-Note: the golden route JSON has no `.meta.json` sidecar committed. `_load_route` already defaults `meta` to `{"ambiguous": False}` when the sidecar is absent — so the frozen-route path works without one. If Task 3's `_load_route` was written differently, reconcile here (the default-when-absent behavior is required; do not commit a fake meta sidecar).
+Note (corrected 2026-07-08): the core plan's Task 9.5 DID commit `golden_route.meta.json` (real tracker output, `ambiguous: false`) — so `_load_route` reads the real sidecar here, not the absent-default path (that path is covered by the mocked-frozen tests instead). Either way the frozen-route path works; do NOT fabricate a meta sidecar.
 
 - [ ] **Step 2: Run to verify pass**
 
@@ -975,7 +975,7 @@ If `length` fails, adjust `target_dur` to the actual golden clip duration (probe
 - [ ] **Step 3: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
-Expected: all pass (68 core + 11 manifest + 11 orchestration + 10 process_episode = 100), integration green or cleanly skipped without ffmpeg.
+Expected: all pass (~68 core + 11 manifest + 11 orchestration + 10 process_episode = 100), integration green or cleanly skipped without ffmpeg.
 
 - [ ] **Step 4: Commit**
 

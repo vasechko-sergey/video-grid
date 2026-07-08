@@ -200,7 +200,7 @@ def test_golden_ride_through_orchestrator(tmp_path):
     manifest = dict(segment=str(FIX / "golden_ride.mp4"),
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16],
-                    target_dur=1.58)
+                    target_dur=1.58)   # golden clip is ~1.585s; length check tol is ±0.5s
     result = pe.process_episode(manifest, project_dir=str(tmp_path),
                                 route_path=str(FIX / "golden_route.json"))
     assert result["status"] == "mechanical_pass", result
