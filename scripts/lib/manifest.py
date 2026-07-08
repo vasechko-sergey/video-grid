@@ -8,13 +8,11 @@ instead of guessing.
 """
 from dataclasses import dataclass
 
+from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery
+
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model")
-COMPOSITIONS = ("lead", "center", "break")
-GRIDS = ("thirds", "phi")
+OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model", "delivery")
 LAYOUTS_SUPPORTED = ("fill",)          # fit-blur/insert/split/pan → layouts plan
-MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
-MODELS = ("yolo11n-seg.pt", "yolo11s-seg.pt", "yolo11m-seg.pt")
 DEFAULT_COLOR = (105, 122, 137)
 DEFAULT_MODEL = "yolo11n-seg.pt"
 
@@ -33,6 +31,7 @@ class Manifest:
     color_means: tuple = DEFAULT_COLOR
     stabilize: bool = False
     model: str = DEFAULT_MODEL
+    delivery: str = "native"
 
     @classmethod
     def from_dict(cls, d):
@@ -50,6 +49,7 @@ class Manifest:
             hero = tuple(hero)          # JSON arrays → tuple so the seed-bbox pin survives
         model = d.get("model")
         layout = d.get("layout")        # explicit null → default, like model/color_means
+        delivery = d.get("delivery")
         return cls(
             segment=d["segment"], out_path=d["out_path"],
             composition=d["composition"], grid=d["grid"],
@@ -59,6 +59,7 @@ class Manifest:
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             stabilize=bool(d.get("stabilize", False)),
             model=model if model is not None else DEFAULT_MODEL,
+            delivery=delivery if delivery is not None else "native",
         )
 
 
@@ -84,12 +85,18 @@ def validate(m):
     if not (isinstance(m.canvas, tuple) and len(m.canvas) == 2
             and all(isinstance(v, (int, float)) and v > 0 for v in m.canvas)):
         problems.append(f"canvas must be [w, h] with positive numbers; got {m.canvas!r}")
-    if not (isinstance(m.color_means, tuple) and len(m.color_means) == 3):
-        problems.append(f"color_means must be 3 channel means [R, G, B]; got {m.color_means!r}")
+    if not (isinstance(m.color_means, tuple) and len(m.color_means) == 3
+            and all(isinstance(v, (int, float)) and v > 0 for v in m.color_means)):
+        problems.append(f"color_means must be 3 positive channel means [R, G, B]; "
+                        f"got {m.color_means!r}")
     if m.target_dur <= 0:
         problems.append(f"target_dur must be positive; got {m.target_dur}")
     if m.motion is not None and m.motion not in MOTIONS:
         problems.append(f"motion {m.motion!r} unknown — expected one of {MOTIONS} or null")
     if m.model not in MODELS:
         problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
+    try:
+        Delivery.from_spec(m.delivery)
+    except (ValueError, TypeError) as e:
+        problems.append(f"delivery {m.delivery!r} invalid — {e}")
     return problems

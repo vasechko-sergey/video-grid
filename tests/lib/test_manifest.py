@@ -115,3 +115,24 @@ def test_validate_canvas_nonpositive():
 def test_validate_empty_segment():
     problems = mf.validate(mf.Manifest.from_dict(_ok_dict(segment="")))
     assert any("segment" in p for p in problems)
+
+
+def test_delivery_defaults_native():
+    m = mf.Manifest.from_dict(_ok_dict())
+    assert m.delivery == "native"
+
+
+def test_delivery_passthrough():
+    m = mf.Manifest.from_dict(_ok_dict(delivery="short_edge:1080"))
+    assert m.delivery == "short_edge:1080"
+    assert mf.validate(m) == []
+
+
+def test_validate_bad_delivery():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(delivery="huge:9999x")))
+    assert any("delivery" in p for p in problems)
+
+
+def test_validate_color_means_nonpositive():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(color_means=[0, 122, 137])))
+    assert any("color_means" in p for p in problems)
