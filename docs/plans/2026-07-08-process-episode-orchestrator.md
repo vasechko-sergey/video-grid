@@ -62,7 +62,7 @@ tests/
 
 ## Task 0: `manifest.py` — episode manifest + validation
 
-Pure, TDD. The machine-checkable half of §4.1 "ask before starting if the manifest is ambiguous": missing/contradictory/unsupported fields are caught here before any ffmpeg/YOLO runs.
+Pure, TDD. **Hardened post-review (commits `0cdfb97`, `dda4ae4`):** explicit JSON `null` on any field is treated as absent (defaults, not a `TypeError`); unknown/typo'd keys raise `KeyError`; `model` (enum), `color_means` length, `canvas` positivity, and non-empty `segment`/`out_path` are validated; a `hero` seed-bbox arriving as a JSON list is coerced to a tuple so the orchestrator's `isinstance(m.hero, tuple)` pin check works. The machine-checkable half of §4.1 "ask before starting if the manifest is ambiguous": missing/contradictory/unsupported fields are caught here before any ffmpeg/YOLO runs.
 
 **Files:**
 - Create: `tests/lib/test_manifest.py`
@@ -140,6 +140,55 @@ def test_validate_bad_motion_string():
 def test_validate_accepts_known_motion():
     for good in ("lateral:right", "lateral:left", "head-on", "static"):
         assert mf.validate(mf.Manifest.from_dict(_ok_dict(motion=good))) == []
+
+
+def test_explicit_null_required_raises():
+    d = _ok_dict(canvas=None)
+    with pytest.raises(KeyError, match="canvas"):
+        mf.Manifest.from_dict(d)
+
+
+def test_explicit_null_optional_uses_default_not_crash():
+    m = mf.Manifest.from_dict(_ok_dict(color_means=None, model=None, layout=None))
+    assert m.color_means == (105, 122, 137)
+    assert m.model == "yolo11n-seg.pt"
+    assert m.layout == "fill"          # explicit null → default, not a needs_input
+
+
+def test_unknown_key_raises():
+    with pytest.raises(KeyError, match="stablize"):
+        mf.Manifest.from_dict(_ok_dict(stablize=True))   # typo of stabilize
+
+
+def test_hero_list_coerced_to_tuple():
+    m = mf.Manifest.from_dict(_ok_dict(hero=[900, 500, 120, 300]))
+    assert m.hero == (900, 500, 120, 300)
+    assert isinstance(m.hero, tuple)
+
+
+def test_hero_string_rule_kept():
+    m = mf.Manifest.from_dict(_ok_dict(hero="largest"))
+    assert m.hero == "largest"
+
+
+def test_validate_bad_model():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(model="yolo11n-set.pt")))
+    assert any("model" in p for p in problems)
+
+
+def test_validate_color_means_wrong_length():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(color_means=[255, 10])))
+    assert any("color_means" in p for p in problems)
+
+
+def test_validate_canvas_nonpositive():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(canvas=[0, 16])))
+    assert any("canvas" in p for p in problems)
+
+
+def test_validate_empty_segment():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(segment="")))
+    assert any("segment" in p for p in problems)
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -161,10 +210,12 @@ instead of guessing.
 from dataclasses import dataclass
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
+OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model")
 COMPOSITIONS = ("lead", "center", "break")
 GRIDS = ("thirds", "phi")
 LAYOUTS_SUPPORTED = ("fill",)          # fit-blur/insert/split/pan → layouts plan
 MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
+MODELS = ("yolo11n-seg.pt", "yolo11s-seg.pt", "yolo11m-seg.pt")
 DEFAULT_COLOR = (105, 122, 137)
 DEFAULT_MODEL = "yolo11n-seg.pt"
 
@@ -186,24 +237,39 @@ class Manifest:
 
     @classmethod
     def from_dict(cls, d):
+        # explicit null counts as absent — LLM-authored JSON emits null for "no value"
         for k in REQUIRED:
-            if k not in d:
+            if d.get(k) is None:
                 raise KeyError(f"manifest missing required field: {k}")
+        unknown = set(d) - set(REQUIRED) - set(OPTIONAL)
+        if unknown:
+            raise KeyError(f"manifest has unknown field(s) {sorted(unknown)} — typo? "
+                           f"optional fields are {OPTIONAL}")
+        cm = d.get("color_means")
+        hero = d.get("hero")
+        if isinstance(hero, list):
+            hero = tuple(hero)          # JSON arrays → tuple so the seed-bbox pin survives
+        model = d.get("model")
+        layout = d.get("layout")        # explicit null → default, like model/color_means
         return cls(
             segment=d["segment"], out_path=d["out_path"],
             composition=d["composition"], grid=d["grid"],
             canvas=tuple(d["canvas"]), target_dur=float(d["target_dur"]),
-            layout=d.get("layout", "fill"), motion=d.get("motion"),
-            hero=d.get("hero"),
-            color_means=tuple(d.get("color_means", DEFAULT_COLOR)),
+            layout=layout if layout is not None else "fill", motion=d.get("motion"),
+            hero=hero,
+            color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             stabilize=bool(d.get("stabilize", False)),
-            model=d.get("model", DEFAULT_MODEL),
+            model=model if model is not None else DEFAULT_MODEL,
         )
 
 
 def validate(m):
     """Return a list of human-readable problem strings (empty = ok)."""
     problems = []
+    if not (isinstance(m.segment, str) and m.segment):
+        problems.append("segment must be a non-empty path")
+    if not (isinstance(m.out_path, str) and m.out_path):
+        problems.append("out_path must be a non-empty path")
     if m.composition not in COMPOSITIONS:
         problems.append(f"composition {m.composition!r} unknown — expected {COMPOSITIONS}")
     if m.grid not in GRIDS:
@@ -216,19 +282,24 @@ def validate(m):
         problems.append("stabilize=true not supported yet — vidstab lands in the "
                         "reframe-extensions plan (and needs a vidstab-enabled ffmpeg, "
                         "see setup.sh --with-vidstab)")
-    if not (isinstance(m.canvas, tuple) and len(m.canvas) == 2):
-        problems.append(f"canvas must be [w, h]; got {m.canvas!r}")
+    if not (isinstance(m.canvas, tuple) and len(m.canvas) == 2
+            and all(isinstance(v, (int, float)) and v > 0 for v in m.canvas)):
+        problems.append(f"canvas must be [w, h] with positive numbers; got {m.canvas!r}")
+    if not (isinstance(m.color_means, tuple) and len(m.color_means) == 3):
+        problems.append(f"color_means must be 3 channel means [R, G, B]; got {m.color_means!r}")
     if m.target_dur <= 0:
         problems.append(f"target_dur must be positive; got {m.target_dur}")
     if m.motion is not None and m.motion not in MOTIONS:
         problems.append(f"motion {m.motion!r} unknown — expected one of {MOTIONS} or null")
+    if m.model not in MODELS:
+        problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
     return problems
 ```
 
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q`
-Expected: PASS (11 passed)
+Expected: PASS (20 passed — 11 original + 9 hardening)
 
 - [ ] **Step 5: Commit**
 
