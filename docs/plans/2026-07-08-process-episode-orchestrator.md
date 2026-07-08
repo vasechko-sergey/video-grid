@@ -572,7 +572,7 @@ git commit -m "feat: retry-param ladder + escalation for process-episode (§4.1)
 
 ## Task 3: `process_episode.py` — the orchestrator shell (mocked-engine happy path)
 
-The imperative shell. This task covers the success path with the engine scripts monkeypatched, so the wiring/contract/timing are tested without YOLO or ffmpeg. Task 4 adds the failure paths; Task 5 runs it for real on the golden fixture.
+The imperative shell. **Hardened post-review (`f33005b`):** creates `project_dir` (mkdir parents/exist_ok — the first real run otherwise faceplants on FileNotFoundError from inside track), guards `max_attempts<1`, fails loud on a corrupt meta sidecar, docstrings the status-branch contract. This task covers the success path with the engine scripts monkeypatched, so the wiring/contract/timing are tested without YOLO or ffmpeg. Task 4 adds the failure paths; Task 5 runs it for real on the golden fixture.
 
 **Files:**
 - Create: `scripts/process_episode.py`
@@ -673,6 +673,22 @@ def test_invalid_manifest_returns_needs_input(monkeypatch, tmp_path):
     assert result["status"] == "needs_input"
     assert any("stabilize" in p for p in result["problems"])
     assert result["attempt"] == 0
+
+
+def test_creates_missing_project_dir(monkeypatch, tmp_path):
+    # first real run: a fresh per-episode scratch dir must be created, not crash
+    _stub_engine(monkeypatch, tmp_path)
+    proj = tmp_path / "work" / "ep01"          # does not exist yet
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(proj))
+    assert result["status"] == "mechanical_pass"
+    assert proj.is_dir()
+
+
+def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="max_attempts"):
+        pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
+                           max_attempts=0)
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -705,15 +721,28 @@ from scripts.lib import orchestration as orch
 def _load_route(route_path):
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {"ambiguous": False}
-    return route, meta
+    if not meta_path.exists():
+        return route, {"ambiguous": False}          # sidecar optional; absent = unambiguous
+    try:
+        return route, json.loads(meta_path.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{meta_path} is corrupt ({e}) — delete it and re-track, "
+                         "or fix the sidecar; it drives the §6.1a hero-ambiguity gate") from e
 
 
 def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3):
+    """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
+    callers MUST branch on result["status"] before reading status-specific keys
+    (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
+    do not). One fresh project_dir per episode — its route/path/report/storyboard
+    files are written flat and would clobber a sibling episode sharing the dir."""
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
     m = manifest_lib.Manifest.from_dict(manifest_dict)
     problems = manifest_lib.validate(m)
     if problems:
         return {"status": "needs_input", "problems": problems, "attempt": 0}
+    Path(project_dir).mkdir(parents=True, exist_ok=True)   # scratch for route/path/report
 
     timings = {}
 
@@ -790,7 +819,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
-Expected: PASS (4 passed)
+Expected: PASS (6 passed — incl. project_dir + max_attempts guards)
 
 - [ ] **Step 5: Commit**
 
