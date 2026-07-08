@@ -49,11 +49,12 @@ class Manifest:
         if isinstance(hero, list):
             hero = tuple(hero)          # JSON arrays → tuple so the seed-bbox pin survives
         model = d.get("model")
+        layout = d.get("layout")        # explicit null → default, like model/color_means
         return cls(
             segment=d["segment"], out_path=d["out_path"],
             composition=d["composition"], grid=d["grid"],
             canvas=tuple(d["canvas"]), target_dur=float(d["target_dur"]),
-            layout=d.get("layout", "fill"), motion=d.get("motion"),
+            layout=layout if layout is not None else "fill", motion=d.get("motion"),
             hero=hero,
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             stabilize=bool(d.get("stabilize", False)),

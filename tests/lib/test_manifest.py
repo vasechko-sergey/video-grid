@@ -75,9 +75,10 @@ def test_explicit_null_required_raises():
 
 
 def test_explicit_null_optional_uses_default_not_crash():
-    m = mf.Manifest.from_dict(_ok_dict(color_means=None, model=None))
+    m = mf.Manifest.from_dict(_ok_dict(color_means=None, model=None, layout=None))
     assert m.color_means == (105, 122, 137)
     assert m.model == "yolo11n-seg.pt"
+    assert m.layout == "fill"          # explicit null → default, not a needs_input
 
 
 def test_unknown_key_raises():
