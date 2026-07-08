@@ -1,6 +1,7 @@
 import json
 import pytest
 from scripts import storyboard, check_episode
+from scripts.lib import models
 
 @pytest.mark.integration
 def test_storyboard_creates_sheet(sample_clip, tmp_path):
@@ -16,16 +17,17 @@ def test_check_episode_reports(sample_clip, tmp_path):
     path = [540 - 607 // 2] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.0,
+                            canvas=(9, 16), src_dims=(1920, 1080))
     report = check_episode.run(clip=str(sample_clip), route_path=str(rp),
-                               path_path=str(pp), composition="center",
-                               grid="thirds", target_dur=3.0,
+                               path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))
-    assert report["checks"]["centered"]["pass"] is True
-    assert report["checks"]["continuity"]["pass"] is True
-    assert "black_frames" in report["checks"]
-    assert report["checks"]["horizon"] == {"status": "not-implemented"}
-    assert report["attempt"] == 1 and "fail_reasons" in report
-    assert report["overall"] in (True, False)
+    assert report.checks["centered"].passed is True
+    assert report.checks["continuity"].passed is True
+    assert "black_frames" in report.checks
+    assert report.checks["horizon"].to_dict() == {"status": "not-implemented"}
+    assert report.attempt == 1 and isinstance(report.fail_reasons, list)
+    assert report.overall in (True, False)
 
 @pytest.mark.integration
 def test_check_episode_rejects_unknown_composition(sample_clip, tmp_path):
@@ -33,10 +35,13 @@ def test_check_episode_rejects_unknown_composition(sample_clip, tmp_path):
     path = [200] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
-    with pytest.raises(ValueError, match="unknown composition"):
+    # composition validity is now guarded by CheckSpec itself (raises before
+    # check_episode.run is ever called) — a bad value must still fail loud
+    with pytest.raises(ValueError, match="composition"):
+        spec = models.CheckSpec(composition="Lead", grid="thirds", target_dur=3.0,
+                                canvas=(9, 16), src_dims=(1920, 1080))
         check_episode.run(clip=str(sample_clip), route_path=str(rp),
-                          path_path=str(pp), composition="Lead",
-                          grid="thirds", target_dur=3.0,
+                          path_path=str(pp), spec=spec,
                           out=str(tmp_path / "report.json"))
 
 @pytest.mark.integration
@@ -46,12 +51,41 @@ def test_check_episode_break_is_editorial_only(sample_clip, tmp_path):
     path = [50] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    spec = models.CheckSpec(composition="break", grid="thirds", target_dur=3.0,
+                            canvas=(9, 16), src_dims=(1920, 1080))
     report = check_episode.run(clip=str(sample_clip), route_path=str(rp),
-                               path_path=str(pp), composition="break",
-                               grid="thirds", target_dur=3.0,
+                               path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))
-    assert report["checks"]["framing"] == {"status": "editorial-only"}
-    assert "on_line" not in report["checks"]
+    assert report.checks["framing"].to_dict() == {"status": "editorial-only"}
+    assert "on_line" not in report.checks
+
+def test_boundary_black_relative_passes_uniformly_dark(monkeypatch):
+    # dark night clip: boundary ~10, body ~12 -> NOT a defect
+    monkeypatch.setattr(check_episode, "_frame_lumas",
+                        lambda clip, where, n=3: [10.0, 11.0] if where == "boundary" else [12.0, 12.0])
+    res = check_episode._black_frames_check("clip.mp4", black_floor=6.0, black_rel=0.35)
+    assert res["pass"] is True
+
+def test_boundary_black_relative_fails_black_cut(monkeypatch):
+    # seek-landmine: boundary ~0, body ~120 -> defect
+    monkeypatch.setattr(check_episode, "_frame_lumas",
+                        lambda clip, where, n=3: [0.5, 0.2] if where == "boundary" else [120.0, 118.0])
+    res = check_episode._black_frames_check("clip.mp4", black_floor=6.0, black_rel=0.35)
+    assert res["pass"] is False
+
+def test_run_returns_report(monkeypatch, tmp_path):
+    route = [models.RoutePoint(i / 30, 300 + i * 90, 500, 140, 320) for i in range(10)]
+    models.route_to_json(route, tmp_path / "route.json")
+    models.CropPath([300 + i * 90 - 200 for i in range(10)]).to_json(tmp_path / "path.json")
+    monkeypatch.setattr(check_episode, "_duration", lambda clip: 3.0)
+    monkeypatch.setattr(check_episode, "_black_frames_check",
+                        lambda clip, **k: {"pass": True, "boundary_lumas": [120.0]})
+    spec = models.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
+                            canvas=(9, 16), src_dims=(1920, 1080))
+    report = check_episode.run(str(tmp_path / "clip.mp4"), str(tmp_path / "route.json"),
+                               str(tmp_path / "path.json"), spec, str(tmp_path / "report.json"))
+    assert isinstance(report, models.Report)
+    assert "on_line" in report.checks and report.attempt == 1
 
 def test_marks_from_route_path():
     route = [dict(t=i/30, x=400 + i, y=540, w=140, h=320) for i in range(30)]
@@ -83,9 +117,10 @@ def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip
     path = [540 - 607 // 2] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.5,
+                            canvas=(9, 16), src_dims=(1920, 1080))
     report = check_episode.run(clip=str(bad), route_path=str(rp),
-                               path_path=str(pp), composition="center",
-                               grid="thirds", target_dur=3.5,
+                               path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))
-    assert report["checks"]["black_frames"]["pass"] is False
-    assert "black_frames" in report["fail_reasons"]
+    assert report.checks["black_frames"].passed is False
+    assert "black_frames" in report.fail_reasons

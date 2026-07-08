@@ -1,7 +1,8 @@
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
-import argparse, json
+import argparse
 from pathlib import Path
-from scripts.lib import checks, geometry, proc
+from scripts.lib import checks as checks_mod, geometry, proc
+from scripts.lib.models import CheckResult, CheckSpec, Report, route_from_json, CropPath
 from scripts.lib.motion import classify
 
 
@@ -12,67 +13,93 @@ def _duration(clip):
     return float(out.stdout.strip())
 
 
-def _boundary_luma(clip, n_frames=3):
-    """Mean luma of the first/last n frames (spec §9: black-frame check is
-    boundary-only — the seek landmine bites at cut edges; a dark mid-shot
-    is legitimate footage, not a defect)."""
+def _frame_lumas(clip, where, n=3):
+    """Mean luma of n frames at 'boundary' (head+tail) or 'body' (interior)."""
     import tempfile
     from PIL import Image, ImageStat
     lumas = []
     with tempfile.TemporaryDirectory() as tmp:
-        proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", str(n_frames),
-                  f"{tmp}/head%02d.png"])
-        proc.run(["ffmpeg", "-y", "-sseof", "-0.5", "-i", clip,
-                  f"{tmp}/tail%02d.png"])
-        heads = sorted(Path(tmp).glob("head*.png"))
-        tails = sorted(Path(tmp).glob("tail*.png"))[-n_frames:]
-        for f in heads + tails:
+        if where == "boundary":
+            proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", str(n), f"{tmp}/head%02d.png"])
+            proc.run(["ffmpeg", "-y", "-sseof", "-0.5", "-i", clip, f"{tmp}/tail%02d.png"])
+            files = sorted(Path(tmp).glob("head*.png")) + sorted(Path(tmp).glob("tail*.png"))[-n:]
+        else:  # body: sample the interior via an even fps grab, drop the extremes
+            # fps normalized to the clip's own duration so the n+2 grabs land
+            # spread across the WHOLE clip — fps=(n+2)/1 would instead cap at
+            # -frames:v and only ever sample the first ~1s, letting a leading
+            # defect (e.g. a black lead-in) contaminate the body reference itself
+            dur = max(_duration(clip), 0.001)
+            proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"fps={n + 2}/{dur}",
+                      "-frames:v", str(n + 2), f"{tmp}/b%02d.png"])
+            files = sorted(Path(tmp).glob("b*.png"))[1:-1]
+        for f in files:
             lumas.append(ImageStat.Stat(Image.open(f).convert("L")).mean[0])
     return lumas
 
 
-def run(clip, route_path, path_path, composition, grid, target_dur, out,
-        canvas=(9, 16), src_dims=(1920, 1080), attempt=1):
+def _median(xs):
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _black_frames_check(clip, black_floor=6.0, black_rel=0.35):
+    """Spec §9: boundary-only — the seek landmine bites at cut edges. Bug #3:
+    the gate is now RELATIVE to the clip body, not an absolute floor — a
+    boundary frame is a defect only if it's BOTH near-black AND far below the
+    clip's own median luma, so a legitimately dark/night clip still passes."""
+    boundary = _frame_lumas(clip, "boundary")
+    body = _frame_lumas(clip, "body") or boundary
+    ref = _median(body)
+    worst = min(boundary) if boundary else ref
+    is_black = worst < black_floor and worst < black_rel * ref
+    return {"pass": not is_black, "boundary_lumas": [round(l, 1) for l in boundary],
+            "body_median": round(ref, 1)}
+
+
+def run(clip, route_path, path_path, spec, out):
     """crop_w derives from canvas+src; direction from the route itself —
     no hardcoded 607 / "right" (left-moving and non-9:16 episodes exist)."""
-    route = json.loads(Path(route_path).read_text())
-    path = json.loads(Path(path_path).read_text())
-    crop_w, _ = geometry.crop_size(canvas[0], canvas[1], src_dims[0], src_dims[1])
-    _, direction = classify(route, src_dims[0], src_dims[1])
+    route = [p.to_dict() for p in route_from_json(route_path)]
+    path = CropPath.from_json(path_path).xs
+    crop_w, _ = geometry.crop_size(spec.canvas[0], spec.canvas[1],
+                                   spec.src_dims[0], spec.src_dims[1])
+    _, direction = classify(route, spec.src_dims[0], spec.src_dims[1])
     # static/head-on routes have no direction; "right" is an arbitrary but
     # deterministic default for the lead-line pick (spec has no answer here —
     # a lead composition over non-lateral motion is already a soft mismatch)
     direction = direction or "right"
-    results = {}
+    checks = {}
 
-    if composition == "center":
-        results["centered"] = checks.centered(route, path, crop_w)
-    elif composition == "lead":
-        left, right = geometry.grid_lines(grid)
+    if spec.composition == "center":
+        d = checks_mod.centered(route, path, crop_w)
+        checks["centered"] = CheckResult("centered", d["pass"], {k: v for k, v in d.items() if k != "pass"})
+    elif spec.composition == "lead":
+        left, right = geometry.grid_lines(spec.grid)
         tf = left if direction == "right" else right
-        results["on_line"] = checks.on_line(route, path, crop_w, tf)
-    elif composition == "break":
+        d = checks_mod.on_line(route, path, crop_w, tf)
+        checks["on_line"] = CheckResult("on_line", d["pass"], {k: v for k, v in d.items() if k != "pass"})
+    elif spec.composition == "break":
         # spec §6.2: break is tracked but relaxed — postcheck editorial only,
-        # no numeric fail; no "pass" key so it can't fail `overall`
-        results["framing"] = {"status": "editorial-only"}
+        # no numeric fail; passed=None so it can't fail `overall`
+        checks["framing"] = CheckResult("framing", None, {"status": "editorial-only"})
     else:
-        raise ValueError(f"unknown composition: {composition!r} — expected lead/center/break")
-    results["jitter"] = checks.jitter(path, direction,
-                                      max_reversal=max(2.0, crop_w * 0.005))
-    results["continuity"] = checks.continuity(route, src_dims[0])
-    results["length"] = checks.length(_duration(clip), target_dur)
-    lumas = _boundary_luma(clip)
-    results["black_frames"] = {"pass": all(l > 8 for l in lumas),
-                               "boundary_lumas": [round(l, 1) for l in lumas]}
-    # spec'd but not yet implementable (§9): report honestly, never silent-pass
-    results["horizon"] = {"status": "not-implemented"}
-    results["head_power_point"] = {"status": "not-implemented"}
+        raise ValueError(f"unknown composition: {spec.composition!r}")
 
-    overall = all(v.get("pass", True) for v in results.values())
-    fail_reasons = [k for k, v in results.items() if v.get("pass") is False]
-    report = {"checks": results, "overall": overall,
-              "attempt": attempt, "fail_reasons": fail_reasons}
-    Path(out).write_text(json.dumps(report, indent=2))
+    dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005))
+    checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
+    dc = checks_mod.continuity(route, spec.src_dims[0])
+    checks["continuity"] = CheckResult("continuity", dc["pass"], {k: v for k, v in dc.items() if k != "pass"})
+    dl = checks_mod.length(_duration(clip), spec.target_dur)
+    checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
+    bf = _black_frames_check(clip, black_floor=spec.black_floor, black_rel=spec.black_rel)
+    checks["black_frames"] = CheckResult("black_frames", bf["pass"], {k: v for k, v in bf.items() if k != "pass"})
+    # spec'd but not yet implementable (§9): report honestly, never silent-pass
+    checks["horizon"] = CheckResult("horizon", None, {"status": "not-implemented"})
+    checks["head_power_point"] = CheckResult("head_power_point", None, {"status": "not-implemented"})
+
+    report = Report(checks=checks, attempt=spec.attempt)
+    report.write(out)
     return report
 
 
@@ -90,5 +117,6 @@ if __name__ == "__main__":
     a = ap.parse_args()
     cw, ch = (int(v) for v in a.canvas.split(":"))
     sw, sh = (int(v) for v in a.src_dims.split("x"))
-    run(a.clip, a.route, a.path, a.composition, a.grid, a.target_dur, a.out,
-        canvas=(cw, ch), src_dims=(sw, sh), attempt=a.attempt)
+    spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
+                     canvas=(cw, ch), src_dims=(sw, sh), attempt=a.attempt)
+    run(a.clip, a.route, a.path, spec, a.out)
