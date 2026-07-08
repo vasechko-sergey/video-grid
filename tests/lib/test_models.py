@@ -77,3 +77,41 @@ def test_report_from_dict_roundtrip(tmp_path):
     fp = tmp_path / "report.json"
     r.write(fp)
     assert json.loads(fp.read_text())["checks"]["on_line"]["pass"] is True
+
+
+def test_delivery_short_edge_across_aspects():
+    # crop aspect drives the derived edge; short edge pinned to 1080; even dims
+    assert m.Delivery("short_edge", 1080).dims(1215, 2160) == (1080, 1920)   # 9:16
+    assert m.Delivery("short_edge", 1080).dims(1920, 1080) == (1920, 1080)   # 16:9
+    assert m.Delivery("short_edge", 1080).dims(1000, 1000) == (1080, 1080)   # 1:1
+    assert m.Delivery("short_edge", 1080).dims(864, 1080) == (1080, 1350)    # 4:5
+
+
+def test_delivery_long_edge():
+    assert m.Delivery("long_edge", 2160).dims(1215, 2160) == (1214, 2160)    # long=height
+    assert m.Delivery("long_edge", 1920).dims(1920, 1080) == (1920, 1080)
+
+
+def test_delivery_native_even_no_upscale():
+    assert m.Delivery("native").dims(1215, 2160) == (1214, 2160)   # even-adjusted, no scale
+    assert m.Delivery("native").dims(607, 1080) == (606, 1080)
+
+
+def test_delivery_exact():
+    assert m.Delivery("exact", (1080, 1920)).dims(999, 999) == (1080, 1920)
+
+
+def test_delivery_from_spec():
+    assert m.Delivery.from_spec(None).mode == "native"
+    assert m.Delivery.from_spec("native").mode == "native"
+    assert m.Delivery.from_spec("short_edge:1080") == m.Delivery("short_edge", 1080)
+    assert m.Delivery.from_spec("exact:1080x1920") == m.Delivery("exact", (1080, 1920))
+
+
+def test_delivery_rejects_bad():
+    with pytest.raises(ValueError, match="mode"):
+        m.Delivery("weird")
+    with pytest.raises(ValueError, match="short_edge"):
+        m.Delivery("short_edge", -5)
+    with pytest.raises(ValueError, match="exact"):
+        m.Delivery("exact", (1080,))
