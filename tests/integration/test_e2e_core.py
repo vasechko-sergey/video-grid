@@ -1,6 +1,7 @@
 import json
 import pytest
 from scripts import extract, reframe, storyboard, check_episode
+from scripts.lib import models
 
 @pytest.mark.integration
 def test_core_pipeline(sample_clip, tmp_path):
@@ -13,17 +14,18 @@ def test_core_pipeline(sample_clip, tmp_path):
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
 
     ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"
-    reframe.reframe(str(seg), str(rp), str(ep), composition="lead",
-                    grid="thirds", canvas=(9, 16), color_means=(105, 122, 137),
-                    stabilize=False, path_out=str(pp))
+    src_w, src_h, _ = reframe._probe(str(seg))
+    rspec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                               color_means=(105, 122, 137), delivery=models.Delivery("native"))
+    reframe.reframe(rspec, str(seg), str(rp), str(ep), str(pp))
 
-    storyboard.build(str(ep), str(tmp_path / "sheet.jpg"), n=6,
-                     grids=("thirds", "phi"))
+    storyboard.build(str(ep), str(tmp_path / "sheet.jpg"),
+                     models.StoryboardSpec(n=6, grids=("thirds", "phi")))
 
-    report = check_episode.run(str(ep), str(rp), str(pp), composition="lead",
-                               grid="thirds", target_dur=2.0,
-                               out=str(tmp_path / "report.json"))
+    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=2.0,
+                             canvas=(9, 16), src_dims=(src_w, src_h))
+    report = check_episode.run(str(ep), str(rp), str(pp), cspec, str(tmp_path / "report.json"))
     assert ep.exists()
     assert (tmp_path / "sheet.jpg").exists()
-    assert report["checks"]["black_frames"]["pass"] is True
-    assert "on_line" in report["checks"]
+    assert report.checks["black_frames"].passed is True
+    assert "on_line" in report.checks

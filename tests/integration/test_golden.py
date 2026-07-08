@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import pytest
 from scripts import reframe, storyboard, check_episode
+from scripts.lib import models
 
 FIX = Path(__file__).parent.parent / "fixtures"
 
@@ -12,20 +13,18 @@ def test_golden_ride_pipeline(tmp_path):
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"
 
-    reframe.reframe(str(src), str(rp), str(ep), composition="lead",
-                    grid="thirds", canvas=(9, 16),
-                    color_means=(105, 122, 137), stabilize=False,
-                    path_out=str(pp))
-    storyboard.build(str(ep), str(tmp_path / "sheet.jpg"), n=6,
-                     grids=("thirds",))
-
     src_w, src_h, _ = reframe._probe(str(src))
+    rspec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                               color_means=(105, 122, 137), delivery=models.Delivery("native"))
+    reframe.reframe(rspec, str(src), str(rp), str(ep), str(pp))
+    storyboard.build(str(ep), str(tmp_path / "sheet.jpg"),
+                     models.StoryboardSpec(n=6, grids=("thirds",)))
+
     dur = check_episode._duration(str(ep))
-    report = check_episode.run(str(ep), str(rp), str(pp),
-                               composition="lead", grid="thirds",
-                               target_dur=dur, out=str(tmp_path / "r.json"),
-                               src_dims=(src_w, src_h))
-    assert report["checks"]["black_frames"]["pass"] is True
-    assert report["checks"]["on_line"]["pass"] is True    # real composition holds
-    assert report["checks"]["jitter"]["pass"] is True
-    assert report["checks"]["continuity"]["pass"] is True  # no ID-switch teleports
+    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=dur,
+                             canvas=(9, 16), src_dims=(src_w, src_h))
+    report = check_episode.run(str(ep), str(rp), str(pp), cspec, str(tmp_path / "r.json"))
+    assert report.checks["black_frames"].passed is True
+    assert report.checks["on_line"].passed is True    # real composition holds
+    assert report.checks["jitter"].passed is True
+    assert report.checks["continuity"].passed is True  # no ID-switch teleports

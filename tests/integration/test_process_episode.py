@@ -284,7 +284,8 @@ def test_golden_ride_through_orchestrator(tmp_path):
     manifest = dict(segment=str(FIX / "golden_ride.mp4"),
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16],
-                    target_dur=1.58)   # golden clip is ~1.585s; length check tol is ±0.5s
+                    target_dur=1.58,   # golden clip is ~1.585s; length check tol is ±0.5s
+                    delivery="exact:1080x1920")
     result = pe.process_episode(manifest, project_dir=str(tmp_path),
                                 route_path=str(FIX / "golden_route.json"))
     assert result["status"] == "mechanical_pass", result
@@ -293,3 +294,10 @@ def test_golden_ride_through_orchestrator(tmp_path):
     assert Path(result["clip"]).exists()
     assert Path(result["storyboard"]).exists()
     assert result["timings"]["reframe"] > 0
+
+    import json as _j
+    probe = _j.loads(pe.check_episode.proc.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "json", result["clip"]],
+        text=True).stdout)["streams"][0]
+    assert (probe["width"], probe["height"]) == (1080, 1920)
