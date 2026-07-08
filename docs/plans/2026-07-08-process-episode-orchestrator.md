@@ -68,7 +68,7 @@ Pure, TDD. **Hardened post-review (commits `0cdfb97`, `dda4ae4`):** explicit JSO
 - Create: `tests/lib/test_manifest.py`
 - Create: `scripts/lib/manifest.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_manifest.py`:
 ```python
@@ -191,12 +191,12 @@ def test_validate_empty_segment():
     assert any("segment" in p for p in problems)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.manifest'`
 
-- [ ] **Step 3: Write `scripts/lib/manifest.py`**
+- [x] **Step 3: Write `scripts/lib/manifest.py`**
 
 ```python
 """Episode manifest + machine-checkable validation (§5.10, §4.1).
@@ -296,12 +296,12 @@ def validate(m):
     return problems
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q`
 Expected: PASS (20 passed — 11 original + 9 hardening)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_manifest.py scripts/lib/manifest.py
@@ -318,7 +318,7 @@ Pure, TDD. **Hardened post-review (`8f...`):** `hero-ambiguous` uses truthiness 
 - Create: `tests/lib/test_orchestration.py`
 - Create: `scripts/lib/orchestration.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_orchestration.py`:
 ```python
@@ -387,12 +387,12 @@ def test_missing_track_meta_does_not_crash():
     assert findings == []
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.orchestration'`
 
-- [ ] **Step 3: Write `scripts/lib/orchestration.py` (contradiction part)**
+- [x] **Step 3: Write `scripts/lib/orchestration.py` (contradiction part)**
 
 ```python
 """Pure orchestration decisions for process-episode (§4.1).
@@ -438,12 +438,12 @@ def _motion_conflicts(declared, observed):
     return False
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: PASS (7 passed — 5 + 2 hardening)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/lib/test_orchestration.py scripts/lib/orchestration.py
@@ -460,7 +460,7 @@ Pure, TDD. **Hardened post-review (`190d26c`):** `_lags_line()` aliases `centere
 - Modify: `scripts/lib/orchestration.py`
 - Modify: `tests/lib/test_orchestration.py`
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 Append to `tests/lib/test_orchestration.py`:
 ```python
@@ -508,12 +508,12 @@ def test_centered_jitter_conflict_escalates():
     assert esc is not None and esc["reason"] == "conflicting-framing-fails"
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.orchestration' has no attribute 'DEFAULT_PARAMS'`
 
-- [ ] **Step 3: Append to `scripts/lib/orchestration.py`**
+- [x] **Step 3: Append to `scripts/lib/orchestration.py`**
 
 ```python
 DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps)
@@ -556,12 +556,12 @@ def escalation(attempt, fail_reasons, max_attempts=3):
     return None
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: PASS (15 passed — 9 orchestration + 6 new, incl. centered alias)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/orchestration.py tests/lib/test_orchestration.py
@@ -578,7 +578,7 @@ The imperative shell. **Hardened post-review (`f33005b`):** creates `project_dir
 - Create: `scripts/process_episode.py`
 - Create: `tests/integration/test_process_episode.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/integration/test_process_episode.py`:
 ```python
@@ -691,12 +691,12 @@ def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
                            max_attempts=0)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.process_episode'`
 
-- [ ] **Step 3: Write `scripts/process_episode.py`**
+- [x] **Step 3: Write `scripts/process_episode.py`**
 
 ```python
 """process-episode orchestrator shell (§5.10, crown jewel).
@@ -823,12 +823,12 @@ if __name__ == "__main__":
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: PASS (6 passed — incl. project_dir + max_attempts guards)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/integration/test_process_episode.py
@@ -844,7 +844,7 @@ Append tests that drive the non-happy branches through the mocked engine. **Post
 **Files:**
 - Modify: `tests/integration/test_process_episode.py`
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 Append to `tests/integration/test_process_episode.py`:
 ```python
@@ -921,12 +921,12 @@ def test_ambiguous_hero_stops_and_reports(monkeypatch, tmp_path):
     assert any(f["reason"] == "hero-ambiguous" for f in result["findings"])
 ```
 
-- [ ] **Step 2: Run to verify (expect a mix — some may fail if the shell has a gap)**
+- [x] **Step 2: Run to verify (expect a mix — some may fail if the shell has a gap)**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: PASS (12 passed — 7 from Task 3 + 5 new + corrupt-meta coverage). If any fail, the shell logic (not the tests) is wrong — fix `process_episode.py` only.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_process_episode.py
@@ -942,7 +942,7 @@ Run `process_episode` through the *real* engine on the committed golden fixture 
 **Files:**
 - Modify: `tests/integration/test_process_episode.py`
 
-- [ ] **Step 1: Append the golden test**
+- [x] **Step 1: Append the golden test**
 
 Append to `tests/integration/test_process_episode.py`:
 ```python
@@ -973,18 +973,18 @@ def test_golden_ride_through_orchestrator(tmp_path):
 
 Note (corrected 2026-07-08): the core plan's Task 9.5 DID commit `golden_route.meta.json` (real tracker output, `ambiguous: false`) — so `_load_route` reads the real sidecar here, not the absent-default path (that path is covered by the mocked-frozen tests instead). Either way the frozen-route path works; do NOT fabricate a meta sidecar.
 
-- [ ] **Step 2: Run to verify pass**
+- [x] **Step 2: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py::test_golden_ride_through_orchestrator -q`
 Expected: PASS (1 passed).
 If `length` fails, adjust `target_dur` to the actual golden clip duration (probe it: `.venv/bin/python -c "from scripts import check_episode; print(check_episode._duration('tests/fixtures/golden_ride.mp4'))"`) — the fixture, not the code, sets this number. Record the value used.
 
-- [ ] **Step 3: Full suite**
+- [x] **Step 3: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all pass (~68 core + 11 manifest + 11 orchestration + 10 process_episode = 100), integration green or cleanly skipped without ffmpeg.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_process_episode.py
@@ -1001,7 +1001,7 @@ The agent layer. **Post-review (`b4dc7e4`): the SKILL's editorial gate checks a 
 - Create: `SKILLS/process-episode/SKILL.md`
 - Create: `tests/integration/test_skill_process_episode.py`
 
-- [ ] **Step 1: Write the structural test**
+- [x] **Step 1: Write the structural test**
 
 `tests/integration/test_skill_process_episode.py`:
 ```python
@@ -1049,12 +1049,12 @@ def test_no_force_links_and_self_referential():
     assert "video-grid:" in text
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_skill_process_episode.py -q`
 Expected: FAIL — `test_skill_exists` fails (file absent).
 
-- [ ] **Step 3: Write `SKILLS/process-episode/SKILL.md`**
+- [x] **Step 3: Write `SKILLS/process-episode/SKILL.md`**
 
 ```markdown
 ---
@@ -1153,12 +1153,12 @@ Before returning DONE, confirm with fresh evidence (Iron Law, §14.5): the clip 
 - Escalation ladder and the three user-facing checkpoints: design §4.1.
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_skill_process_episode.py -q`
 Expected: PASS (5 passed). If `test_no_force_links_and_self_referential` trips on an unintended `@`, fix the SKILL text (no `@`-force-links per §14.2), not the test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add SKILLS/process-episode/SKILL.md tests/integration/test_skill_process_episode.py
@@ -1177,22 +1177,22 @@ Land the docs so the follow-on plans (router, ingestion) can reference stable fi
 - Modify: `CLAUDE.md` (Status + Next action)
 - Modify: `README.md` (one line: the engine now has an autonomous single-episode driver)
 
-- [ ] **Step 1: Update the design spec**
+- [x] **Step 1: Update the design spec**
 
 In `docs/2026-07-05-montage-skillset-design.md` §5.10, append a build note after the "Gate" line:
 ```markdown
 > **Built (2026-07-08, orchestrator-first slice):** `scripts/process_episode.py` drives the loop for one episode (`fill`/9:16), threading the probed `canvas`/`src_dims` into `check_episode` (closes the core-plan contract note); `SKILLS/process-episode/SKILL.md` is the subagent (ask-before-start, editorial gate, stop-and-report). Layouts/stab, the optical-flow/manual degradation rungs, descriptor continuity re-match, and the cap-3 parallel fan-out are their own follow-on plans.
 ```
 
-- [ ] **Step 2: Update CLAUDE.md Status**
+- [x] **Step 2: Update CLAUDE.md Status**
 
 Set the **Status** and **Next action** bullets to reflect: core engine + process-episode orchestrator slice done (N tests green); next = reframe-extensions plan (layouts + vidstab + optical-flow degradation) OR ingestion, per the follow-on order.
 
-- [ ] **Step 3: One-line README update**
+- [x] **Step 3: One-line README update**
 
 Add under the engine description: "An autonomous single-episode driver (`process_episode.py` + the `process-episode` skill) wraps the engine in the §4.1 retry/escalation protocol."
 
-- [ ] **Step 4: Full suite + commit**
+- [x] **Step 4: Full suite + commit**
 
 Run: `.venv/bin/python -m pytest -q` (expect all green).
 ```bash
