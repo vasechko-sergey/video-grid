@@ -72,7 +72,7 @@ class CheckResult:
     def to_dict(self):
         if self.passed is None:
             return dict(self.detail)               # status-only ({"status": ...})
-        return {**self.detail, "pass": self.passed}
+        return {**{k: v for k, v in self.detail.items() if k != "pass"}, "pass": self.passed}
 
 
 @dataclass

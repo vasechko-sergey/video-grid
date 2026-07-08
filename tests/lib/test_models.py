@@ -39,6 +39,12 @@ def test_croppath_json_roundtrip(tmp_path):
     assert len(m.CropPath([1, 2, 3])) == 3
 
 
+def test_checkresult_detail_pass_key_does_not_clobber():
+    # detail carrying a stale "pass" must not override the real passed flag
+    d = m.CheckResult("on_line", True, {"pass": "stale", "ratio": 0.9}).to_dict()
+    assert d == {"ratio": 0.9, "pass": True}
+
+
 def test_report_overall_and_fail_reasons():
     checks = {
         "on_line": m.CheckResult("on_line", True, {"ratio": 0.95}),
