@@ -4,6 +4,8 @@
 
 **Goal:** Build the flagship vertical slice of video-grid — take one raw video fragment plus a rules manifest and produce a composed, numerically-checked 9:16 (or any-canvas) episode clip, with the tracker authoring the crop path and the storyboard verifying it.
 
+> **Hardening round (2026-07-07, post-completion fresh-eyes audit):** commits `27e3571` (proc.run stderr surfacing), `51aed46` (composition validation, boundary-luma black check, jitter guard), `2ac39a2` (drop id=None detections, fps/dims probe, speed+border features), `e59cdea` (knot cap, even dims for all canvases, §6.4 Y headroom, loud stabilize/fps guards), `0c8c283` (break center-tracks, hero-marks helper). Suite: **68 passed**. Code blocks below are synced to the hardened versions; per-task "Expected: N passed" counts reflect the original TDD sequence and are historical.
+
 **Architecture:** Pure-logic core (geometry, path smoothing, color, checks) is unit-tested with TDD and holds no ffmpeg/ML dependency. Thin integration wrappers (`extract`, `track`, `reframe`, `storyboard`) shell out to ffmpeg / Ultralytics and are covered by integration tests on a synthetic clip fixture. `process-episode` (the subagent) and all upstream/downstream skills are separate follow-on plans; this plan delivers the runnable engine they orchestrate.
 
 **Tech Stack:** Python **3.13** in a skill-local venv (`PYTHON` env overrides); ffmpeg/ffprobe (system — must include vidstab filters); Ultralytics YOLOv11-seg + ByteTrack; numpy, scipy (Savitzky-Golay smoothing), Pillow (contact sheet), pytest. **One `requirements.txt` for the whole pipeline** — tests mock the heavy parts, the conveyor needs everything. Installed into `.venv` by `setup.sh` — never the shared environment.
@@ -208,6 +210,17 @@ def test_crop_x_clamped_high():
     x = g.crop_x(subject_x=1900, composition="lead", direction="left",
                  grid="thirds", crop_w=607, src_w=1920)
     assert x == 1920 - 607
+
+def test_crop_y_no_freedom_is_zero():
+    assert g.crop_y(subject_y=500, crop_h=1080, src_h=1080) == 0
+
+def test_crop_y_headroom_045():
+    # crop_h=608 out of 1080: subject centre at 0.45*608=273.6 from crop top
+    assert g.crop_y(subject_y=500, crop_h=608, src_h=1080) == round(500 - 0.45 * 608)
+
+def test_crop_y_clamped():
+    assert g.crop_y(subject_y=20, crop_h=608, src_h=1080) == 0
+    assert g.crop_y(subject_y=1070, crop_h=608, src_h=1080) == 1080 - 608
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -263,6 +276,15 @@ def crop_x(subject_x, composition, direction, grid, crop_w, src_w):
     frac = target_frac(composition, direction, grid)
     x = round(subject_x - frac * crop_w)
     return clamp(x, 0, src_w - crop_w)
+
+
+def crop_y(subject_y, crop_h, src_h):
+    """Static per-episode Y (spec §6.4): no head data in v1, so put the
+    subject centre at 0.45*crop_h (slightly above centre = headroom canon).
+    No Y freedom (crop_h == src_h) → 0."""
+    if crop_h >= src_h:
+        return 0
+    return clamp(round(subject_y - 0.45 * crop_h), 0, src_h - crop_h)
 ```
 
 Odd crop widths (607) are fine: the crop is always scaled to the even canvas size before encode, so yuv420p never sees an odd dimension.
@@ -621,6 +643,10 @@ def test_on_line_rejects_length_mismatch():
     path = [200] * 9
     with pytest.raises(ValueError, match="length mismatch"):
         ck.on_line(route, path, crop_w=600, target_frac=1/3)
+
+def test_jitter_rejects_invalid_direction():
+    with pytest.raises(ValueError, match="direction"):
+        ck.jitter([100, 110], direction=None, max_reversal=10)
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -663,6 +689,8 @@ def continuity(route, src_w, max_step_frac=0.04):
 
 
 def jitter(path, direction, max_reversal):
+    if direction not in ("left", "right"):
+        raise ValueError(f"jitter: direction must be 'left' or 'right', got {direction!r}")
     sign = 1 if direction == "right" else -1
     worst = 0.0
     for i in range(1, len(path)):
@@ -735,7 +763,8 @@ Pure output-seek decodes from stream start — fine for typical sources. For win
 
 ```python
 """Cut an EDL window into a standalone fragment (spec §5.8, §12)."""
-import argparse, subprocess
+import argparse
+from scripts.lib import proc
 
 
 def extract(src, start, dur, out, crf=18):
@@ -748,7 +777,7 @@ def extract(src, start, dur, out, crf=18):
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    proc.run(cmd)
     return out
 
 
@@ -842,6 +871,45 @@ def test_meta_flags_ambiguity(monkeypatch, tmp_path):
     track.build_route(src="ignored.mp4", fps=30, out=str(out))
     meta = json.loads((tmp_path / "route.meta.json").read_text())
     assert meta["ambiguous"] is True
+
+def test_unconfirmed_detections_never_become_hero(monkeypatch, tmp_path):
+    # id=None detections (two DIFFERENT people) must not merge into a fake
+    # track that outscores the real confirmed hero
+    class _NoneBox:
+        def __init__(self, xywh):
+            self.xywh = [xywh]; self.id = None; self.cls = [0]
+    frames = []
+    for i in range(20):
+        dets = [_FakeBox([600 + i * 20, 500, 140, 320], 3)]      # real hero
+        dets.append(_NoneBox([200, 500, 100, 300] if i % 2 else [1700, 500, 100, 300]))
+        frames.append(dets)
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    out = tmp_path / "route.json"
+    route = track.build_route(src="ignored.mp4", fps=30, out=str(out))
+    meta = json.loads((tmp_path / "route.meta.json").read_text())
+    assert meta["hero"] == 3
+    assert "-1" not in meta["features"]
+    assert [pt["x"] for pt in route] == [600 + i * 20 for i in range(20)]
+
+def test_features_include_speed_and_border(monkeypatch, tmp_path):
+    frames = [[_FakeBox([300 + i * 50, 500, 140, 320], 1)] for i in range(10)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    track.build_route(src="ignored.mp4", fps=30, out=str(tmp_path / "route.json"))
+    feats = json.loads((tmp_path / "route.meta.json").read_text())["features"]["1"]
+    assert abs(feats["speed"] - 50.0) < 1e-6      # 50 px/frame
+    assert feats["border"] is None                # dims unknown in mocked run
+
+def test_fps_probe_when_not_given(monkeypatch, tmp_path, sample_clip):
+    # fps=None → probed from the real file (sample fixture is 30fps 1920x1080)
+    frames = [[_FakeBox([300, 500, 140, 320], 1)] for _ in range(5)]
+    monkeypatch.setattr(track, "_iter_detections",
+                        lambda src, **k: iter(enumerate(frames)))
+    route = track.build_route(src=str(sample_clip), out=str(tmp_path / "route.json"))
+    assert abs(route[1]["t"] - 1 / 30) < 1e-6
+    feats = json.loads((tmp_path / "route.meta.json").read_text())["features"]["1"]
+    assert feats["border"] is not None            # dims known from probe
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -858,10 +926,27 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.track'`
 import argparse, json
 from pathlib import Path
 
+from scripts.lib import proc
+
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
 # path would NOT auto-download (landmine, design §12). setup.sh redirects the
 # weight cache into models/.
 MODEL = "yolo11n-seg.pt"
+
+
+def _probe_meta(src):
+    """fps + dims from the source — never trust a caller-supplied default (4K/59.94 footage is the norm)."""
+    import json as _j
+    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                  "-show_entries", "stream=width,height,avg_frame_rate",
+                  "-of", "json", src], text=True)
+    s = _j.loads(r.stdout)["streams"][0]
+    num, den = s["avg_frame_rate"].split("/")
+    den = float(den) or 1.0
+    fps = float(num) / den
+    if fps <= 0:
+        raise ValueError(f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
+    return fps, int(s["width"]), int(s["height"])
 
 
 def _iter_detections(src, model_path=MODEL):
@@ -899,18 +984,38 @@ def _seed_track(per_frame, seed, first_n=5):
     return best
 
 
-def _track_features(per_frame):
-    """Per-track: frame count, first→last displacement, mean bbox area."""
+def _track_features(per_frame, src_w=None, src_h=None):
+    """Per-track: frame count, first→last displacement, mean bbox area,
+    mean speed (px/frame), border share (spec §6.1a candidate discriminators).
+    """
     feats = {}
     for _, dets in per_frame:
         for tid, x, y, w, h in dets:
-            f = feats.setdefault(tid, {"n": 0, "x0": x, "x1": x, "area": 0.0})
+            f = feats.setdefault(tid, {"n": 0, "x0": x, "x1": x, "area": 0.0,
+                                        "_prev_x": None, "_speed_sum": 0.0,
+                                        "_speed_n": 0, "_border_n": 0})
             f["n"] += 1
             f["x1"] = x
             f["area"] += w * h
+            if f["_prev_x"] is not None:
+                f["_speed_sum"] += abs(x - f["_prev_x"])
+                f["_speed_n"] += 1
+            f["_prev_x"] = x
+            if src_w is not None and src_h is not None:
+                l, t = x - w / 2, y - h / 2
+                r, b = x + w / 2, y + h / 2
+                margin_x, margin_y = 0.02 * src_w, 0.02 * src_h
+                if (l <= margin_x or r >= src_w - margin_x
+                        or t <= margin_y or b >= src_h - margin_y):
+                    f["_border_n"] += 1
     for f in feats.values():
         f["disp"] = abs(f["x1"] - f["x0"])
         f["area"] /= max(1, f["n"])
+        f["speed"] = f["_speed_sum"] / f["_speed_n"] if f["_speed_n"] else 0.0
+        f["border"] = (f["_border_n"] / f["n"]) if (src_w is not None
+                                                      and src_h is not None) else None
+        for k in ("_prev_x", "_speed_sum", "_speed_n", "_border_n"):
+            del f[k]
     return feats
 
 
@@ -938,19 +1043,30 @@ def _pick_hero(feats, intent):
     return ranked[0][0], ambiguous
 
 
-def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
+def build_route(src, fps=None, out=None, model_path=MODEL, seed_bbox=None,
                 intent="action"):
     # hero priority: explicit seed pin (spec §5.10) > intent-conditioned scoring
+    src_w = src_h = None
+    if fps is None:
+        # never trust a caller-supplied default (4K/59.94 footage is the norm) —
+        # a wrong fps silently desyncs route t, the crop expression's time axis
+        fps, src_w, src_h = _probe_meta(src)
+
     per_frame = []
     for idx, boxes in _iter_detections(src, model_path=model_path):
         dets = []
         for b in boxes:
+            if b.id is None:
+                # unconfirmed ByteTrack detection (normal in first frames /
+                # after occlusion) — do NOT fabricate a shared tid=-1 track,
+                # it would merge unrelated people into one fake "hero"
+                continue
             x, y, w, h = [float(v) for v in b.xywh[0]]
-            tid = int(b.id[0]) if b.id is not None else -1
+            tid = int(b.id[0])
             dets.append((tid, x, y, w, h))
         per_frame.append((idx, dets))
 
-    feats = _track_features(per_frame)
+    feats = _track_features(per_frame, src_w=src_w, src_h=src_h)
     hero, ambiguous = None, False
     if seed_bbox is not None:
         hero = _seed_track(per_frame, seed_bbox)
@@ -959,7 +1075,8 @@ def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
     # sidecar meta: the orchestrator reads `ambiguous` to fire the §4.1
     # stop-and-report (margin rule) with both candidates' crops
     meta = {"hero": hero, "ambiguous": ambiguous, "intent": intent,
-            "features": {str(k): {kk: f[kk] for kk in ("n", "disp", "area")}
+            "features": {str(k): {kk: f[kk] for kk in
+                                   ("n", "disp", "area", "speed", "border")}
                          for k, f in feats.items()}}
     Path(out).with_suffix(".meta.json").write_text(json.dumps(meta))
 
@@ -979,7 +1096,9 @@ def build_route(src, fps, out, model_path=MODEL, seed_bbox=None,
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
-    ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument("--fps", type=float, default=None,
+                    help="override probed fps (default: probe the source — "
+                         "never trust a caller-supplied default)")
     ap.add_argument("--model", default=MODEL,
                     help="yolo11n-seg.pt (default) / yolo11s-seg.pt / "
                          "yolo11m-seg.pt for small/far subjects")
@@ -1088,6 +1207,56 @@ def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
                     color_means=(105, 122, 137), stabilize=False,
                     path_out=str(tmp_path / "path.json"))
     assert _dims(out) == (1080, 1920)
+
+def test_simplify_caps_knots_on_long_noisy_path():
+    # ~83s at 60fps with residual tracker jitter: must stay under the knot cap
+    import math
+    times = [i / 60 for i in range(5000)]
+    path = [int(200 + i * 0.15 + 2.5 * math.sin(i * 1.7)) for i in range(5000)]
+    knots = reframe._simplify(path, times)
+    assert len(knots) <= 80
+    expr = reframe._xexpr(path, times)
+    assert len(expr) < 8000        # comfortably inside ffmpeg's parser budget
+
+def test_stabilize_true_fails_loud(sample_clip, tmp_path):
+    rp = tmp_path / "route.json"
+    rp.write_text(json.dumps([dict(t=0, x=500, y=540, w=140, h=320),
+                              dict(t=0.1, x=510, y=540, w=140, h=320)]))
+    with pytest.raises(NotImplementedError, match="process-episode"):
+        reframe.reframe(src=str(sample_clip), route_path=str(rp),
+                        out=str(tmp_path / "ep.mp4"), composition="lead",
+                        grid="thirds", canvas=(9, 16),
+                        color_means=(105, 122, 137), stabilize=True,
+                        path_out=str(tmp_path / "path.json"))
+
+def test_compute_path_break_center_tracks():
+    route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
+    path = reframe.compute_path(route, composition="break", grid="thirds",
+                                canvas=(9, 16), src=(1920, 1080),
+                                motion=("lateral", "right"), max_step=25)
+    assert len(path) == 20
+    assert all(0 <= x <= 1920 - 607 for x in path)
+
+def test_compute_path_unknown_composition_fails_loud():
+    route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(5)]
+    with pytest.raises(ValueError, match="unknown composition"):
+        reframe.compute_path(route, composition="Lead", grid="thirds",
+                             canvas=(9, 16), src=(1920, 1080),
+                             motion=("lateral", "right"), max_step=25)
+
+@pytest.mark.integration
+def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
+    # canvas 5:8 from 1080p → crop 675x1080 (odd) — output must be even and encode
+    route = [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+             for i in range(90)]
+    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
+    out = tmp_path / "ep58.mp4"
+    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
+                    composition="lead", grid="thirds", canvas=(5, 8),
+                    color_means=(105, 122, 137), stabilize=False,
+                    path_out=str(tmp_path / "path.json"))
+    w, h = _dims(out)
+    assert w % 2 == 0 and h % 2 == 0
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -1099,28 +1268,31 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.reframe'`
 
 ```python
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
-import argparse, json, subprocess
+import argparse, json
 from pathlib import Path
 from scripts.lib import geometry as g
-from scripts.lib import pathsmooth, color
+from scripts.lib import pathsmooth, color, proc
 from scripts.lib.motion import classify
 
 
 def compute_path(route, composition, grid, canvas, src, motion, max_step):
     crop_w, _ = g.crop_size(canvas[0], canvas[1], src[0], src[1])
     _, direction = motion if motion[0] == "lateral" else (motion[0], "right")
-    raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
-           for pt in route]
-    if composition == "center" or motion[0] != "lateral":
-        # center / head-on / static: aim crop centre at subject, no lead
+    if composition in ("center", "break") or motion[0] != "lateral":
+        # center / head-on / static: aim crop centre at subject, no lead.
+        # break (spec §6.2): tracked but relaxed — v1 center-tracks; extreme
+        # framing is editorial territory, checks are editorial-only.
         raw = [g.clamp(round(pt["x"] - crop_w / 2), 0, src[0] - crop_w)
+               for pt in route]
+    else:
+        raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
                for pt in route]
     smoothed = pathsmooth.smooth(raw, max_step=max_step)
     # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
-def _simplify(path, times, eps=2.0):
+def _simplify(path, times, eps=2.0, max_knots=80):
     """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
 
     Keeps the crop expression short (nested per-frame if() hits ffmpeg's
@@ -1131,25 +1303,37 @@ def _simplify(path, times, eps=2.0):
     the path index — routes may have tracking gaps (hero occluded; spec
     §6.1a), so index-derived time would desync the crop expression from the
     true video timeline once a gap has occurred.
+
+    Real footage (thousands of frames, ±px post-smoothing jitter) can still
+    produce far more knots than ffmpeg's expression parser can swallow — cap
+    the count adaptively by doubling eps until we're under max_knots. eps
+    growth always terminates (a huge eps collapses to the 2 endpoint knots).
     """
     pts = [(float(t), float(x)) for t, x in zip(times, path)]
 
-    def dp(lo, hi):
-        if hi - lo < 2:
-            return []
-        (t0, x0), (t1, x1) = pts[lo], pts[hi]
-        worst, wi = 0.0, None
-        for i in range(lo + 1, hi):
-            t, x = pts[i]
-            xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
-            if abs(x - xh) > worst:
-                worst, wi = abs(x - xh), i
-        if worst <= eps:
-            return []
-        return dp(lo, wi) + [wi] + dp(wi, hi)
+    def run(eps):
+        def dp(lo, hi):
+            if hi - lo < 2:
+                return []
+            (t0, x0), (t1, x1) = pts[lo], pts[hi]
+            worst, wi = 0.0, None
+            for i in range(lo + 1, hi):
+                t, x = pts[i]
+                xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
+                if abs(x - xh) > worst:
+                    worst, wi = abs(x - xh), i
+            if worst <= eps:
+                return []
+            return dp(lo, wi) + [wi] + dp(wi, hi)
 
-    keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
-    return [pts[i] for i in keep]
+        keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
+        return [pts[i] for i in keep]
+
+    knots = run(eps)
+    while len(knots) > max_knots:
+        eps *= 2
+        knots = run(eps)
+    return knots
 
 
 def _xexpr(path, times):
@@ -1166,19 +1350,27 @@ def _xexpr(path, times):
 
 
 def _probe(src):
-    out = subprocess.run(
+    out = proc.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height,avg_frame_rate",
-         "-of", "json", src], capture_output=True, text=True, check=True)
+         "-of", "json", src], text=True)
     s = json.loads(out.stdout)["streams"][0]
     num, den = s["avg_frame_rate"].split("/")
-    return int(s["width"]), int(s["height"]), float(num) / (float(den) or 1.0)
+    fps = float(num) / (float(den) or 1.0)
+    if fps <= 0:
+        raise ValueError(
+            f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
+    return int(s["width"]), int(s["height"]), fps
 
 
 def reframe(src, route_path, out, composition, grid, canvas,
             color_means, stabilize, path_out, max_speed=750.0):
     """max_speed: crop-x speed cap in px/sec — frame-rate independent
     (25 px/frame at the session's 30fps ≡ 750 px/s)."""
+    if stabilize:
+        raise NotImplementedError(
+            "stabilize=true is not wired in the core engine yet — vidstab lands in the "
+            "process-episode plan (and needs a vidstab-enabled ffmpeg, see setup.sh warning)")
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
     src_dims = (src_w, src_h)
     route = json.loads(Path(route_path).read_text())
@@ -1192,17 +1384,21 @@ def reframe(src, route_path, out, composition, grid, canvas,
     Path(path_out).write_text(json.dumps(path))
 
     crop_w, crop_h = g.crop_size(canvas[0], canvas[1], src_w, src_h)
-    out_w = 1080 if canvas == (9, 16) else crop_w
-    out_h = 1920 if canvas == (9, 16) else crop_h
+    if canvas == (9, 16):
+        out_w, out_h = 1080, 1920          # session-standard vertical delivery
+    else:
+        out_w, out_h = crop_w - crop_w % 2, crop_h - crop_h % 2   # yuv420p needs even dims
     rr, gg, bb = color.gains_for_means(color_means)
     times = [pt["t"] for pt in route]
     xexpr = _xexpr(path, times)
-    vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y=0,"
+    mean_y = sum(pt["y"] for pt in route) / len(route)
+    cy = g.crop_y(mean_y, crop_h, src_h)
+    vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y={cy},"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
           f"fps={fps:.6g},format=yuv420p")
     cmd = ["ffmpeg", "-y", "-i", src, "-vf", vf,
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
-    subprocess.run(cmd, check=True, capture_output=True)
+    proc.run(cmd)
     return out
 
 
@@ -1279,6 +1475,69 @@ def test_check_episode_reports(sample_clip, tmp_path):
     assert report["checks"]["horizon"] == {"status": "not-implemented"}
     assert report["attempt"] == 1 and "fail_reasons" in report
     assert report["overall"] in (True, False)
+
+@pytest.mark.integration
+def test_check_episode_rejects_unknown_composition(sample_clip, tmp_path):
+    route = [dict(t=i/30, x=540, y=540, w=140, h=320) for i in range(30)]
+    path = [200] * 30
+    rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
+    pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    with pytest.raises(ValueError, match="unknown composition"):
+        check_episode.run(clip=str(sample_clip), route_path=str(rp),
+                          path_path=str(pp), composition="Lead",
+                          grid="thirds", target_dur=3.0,
+                          out=str(tmp_path / "report.json"))
+
+@pytest.mark.integration
+def test_check_episode_break_is_editorial_only(sample_clip, tmp_path):
+    # break: crop pinned far from any line must NOT fail numerically
+    route = [dict(t=i/30, x=900, y=540, w=140, h=320) for i in range(30)]
+    path = [50] * 30
+    rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
+    pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    report = check_episode.run(clip=str(sample_clip), route_path=str(rp),
+                               path_path=str(pp), composition="break",
+                               grid="thirds", target_dur=3.0,
+                               out=str(tmp_path / "report.json"))
+    assert report["checks"]["framing"] == {"status": "editorial-only"}
+    assert "on_line" not in report["checks"]
+
+def test_marks_from_route_path():
+    route = [dict(t=i/30, x=400 + i, y=540, w=140, h=320) for i in range(30)]
+    path = [200] * 30
+    marks = storyboard.marks_from_route_path(route, path, crop_w=600,
+                                             src_h=1080, n=6)
+    assert len(marks) == 6
+    fx0, fy0 = marks[0]
+    assert abs(fx0 - (400 - 200) / 600) < 1e-9
+    assert abs(fy0 - 0.5) < 1e-9
+
+def test_marks_rejects_desync():
+    route = [dict(x=400, y=540)] * 10
+    with pytest.raises(ValueError, match="parallel"):
+        storyboard.marks_from_route_path(route, [100] * 9, crop_w=600,
+                                         src_h=1080, n=4)
+
+@pytest.mark.integration
+def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip):
+    # prepend 0.5s of pure black to the sample clip → boundary check must fail
+    import subprocess
+    bad = tmp_path / "bad.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1920x1080:d=0.5:r=30",
+         "-i", str(sample_clip), "-filter_complex",
+         "[0:v][1:v]concat=n=2:v=1:a=0", "-pix_fmt", "yuv420p", str(bad)],
+        check=True, capture_output=True)
+    route = [dict(t=i/30, x=540, y=540, w=140, h=320) for i in range(30)]
+    path = [540 - 607 // 2] * 30
+    rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
+    pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
+    report = check_episode.run(clip=str(bad), route_path=str(rp),
+                               path_path=str(pp), composition="center",
+                               grid="thirds", target_dur=3.5,
+                               out=str(tmp_path / "report.json"))
+    assert report["checks"]["black_frames"]["pass"] is False
+    assert "black_frames" in report["fail_reasons"]
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -1290,26 +1549,26 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.storyboard'`
 
 ```python
 """Contact sheet with grid overlays for verification/editorial (spec §6.1)."""
-import argparse, subprocess, tempfile
+import argparse, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw
 from scripts.lib.geometry import grid_lines
+from scripts.lib import proc
 
 
 def _duration(src):
     import json as _j
-    r = subprocess.run(
+    r = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", src], capture_output=True, text=True, check=True)
+         "-of", "json", src], text=True)
     return float(_j.loads(r.stdout)["format"]["duration"])
 
 
 def _sample_frames(src, n, tmp):
     rate = max(1, n) / max(0.001, _duration(src))
-    subprocess.run(
+    proc.run(
         ["ffmpeg", "-y", "-i", src, "-vf", f"fps={rate}",
-         "-frames:v", str(n), f"{tmp}/f%02d.png"],
-        check=True, capture_output=True)
+         "-frames:v", str(n), f"{tmp}/f%02d.png"])
     return sorted(Path(tmp).glob("f*.png"))
 
 
@@ -1326,6 +1585,20 @@ def _overlay(img, grids, mark=None):
         mx, my, r = mark[0] * w, mark[1] * h, max(6, w // 60)
         d.ellipse([mx - r, my - r, mx + r, my + r], outline=(0, 255, 0), width=3)
     return img
+
+
+def marks_from_route_path(route, path, crop_w, src_h, n):
+    """(fx, fy) subject fractions in the OUTPUT frame for n sampled frames —
+    the hero marker (spec §6.1a): sample route/path uniformly, fx=(x-crop_x)/crop_w."""
+    if not route or len(route) != len(path):
+        raise ValueError(
+            f"route/path must be non-empty parallel arrays, got {len(route)} vs {len(path)}")
+    idxs = [round(i * (len(route) - 1) / max(1, n - 1)) for i in range(n)]
+    marks = []
+    for i in idxs:
+        pt, cx = route[i], path[i]
+        marks.append(((pt["x"] - cx) / crop_w, pt["y"] / src_h))
+    return marks
 
 
 def build(src, out, n=8, grids=("thirds",), marks=None):
@@ -1362,25 +1635,36 @@ if __name__ == "__main__":
 
 ```python
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
-import argparse, json, subprocess, re
+import argparse, json
 from pathlib import Path
-from scripts.lib import checks, geometry
+from scripts.lib import checks, geometry, proc
 from scripts.lib.motion import classify
 
 
 def _duration(clip):
-    out = subprocess.run(
+    out = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nk=1:nw=1", clip], capture_output=True, text=True,
-        check=True)
+         "-of", "default=nk=1:nw=1", clip], text=True)
     return float(out.stdout.strip())
 
 
-def _black_frames(clip):
-    out = subprocess.run(
-        ["ffmpeg", "-i", clip, "-vf", "blackdetect=d=0.05:pic_th=0.98",
-         "-an", "-f", "null", "-"], capture_output=True, text=True)
-    return len(re.findall(r"black_start", out.stderr))
+def _boundary_luma(clip, n_frames=3):
+    """Mean luma of the first/last n frames (spec §9: black-frame check is
+    boundary-only — the seek landmine bites at cut edges; a dark mid-shot
+    is legitimate footage, not a defect)."""
+    import tempfile
+    from PIL import Image, ImageStat
+    lumas = []
+    with tempfile.TemporaryDirectory() as tmp:
+        proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", str(n_frames),
+                  f"{tmp}/head%02d.png"])
+        proc.run(["ffmpeg", "-y", "-sseof", "-0.5", "-i", clip,
+                  f"{tmp}/tail%02d.png"])
+        heads = sorted(Path(tmp).glob("head*.png"))
+        tails = sorted(Path(tmp).glob("tail*.png"))[-n_frames:]
+        for f in heads + tails:
+            lumas.append(ImageStat.Stat(Image.open(f).convert("L")).mean[0])
+    return lumas
 
 
 def run(clip, route_path, path_path, composition, grid, target_dur, out,
@@ -1391,6 +1675,9 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
     path = json.loads(Path(path_path).read_text())
     crop_w, _ = geometry.crop_size(canvas[0], canvas[1], src_dims[0], src_dims[1])
     _, direction = classify(route, src_dims[0], src_dims[1])
+    # static/head-on routes have no direction; "right" is an arbitrary but
+    # deterministic default for the lead-line pick (spec has no answer here —
+    # a lead composition over non-lateral motion is already a soft mismatch)
     direction = direction or "right"
     results = {}
 
@@ -1400,11 +1687,19 @@ def run(clip, route_path, path_path, composition, grid, target_dur, out,
         left, right = geometry.grid_lines(grid)
         tf = left if direction == "right" else right
         results["on_line"] = checks.on_line(route, path, crop_w, tf)
+    elif composition == "break":
+        # spec §6.2: break is tracked but relaxed — postcheck editorial only,
+        # no numeric fail; no "pass" key so it can't fail `overall`
+        results["framing"] = {"status": "editorial-only"}
+    else:
+        raise ValueError(f"unknown composition: {composition!r} — expected lead/center/break")
     results["jitter"] = checks.jitter(path, direction,
                                       max_reversal=max(2.0, crop_w * 0.005))
     results["continuity"] = checks.continuity(route, src_dims[0])
     results["length"] = checks.length(_duration(clip), target_dur)
-    results["black_frames"] = {"pass": _black_frames(clip) == 0}
+    lumas = _boundary_luma(clip)
+    results["black_frames"] = {"pass": all(l > 8 for l in lumas),
+                               "boundary_lumas": [round(l, 1) for l in lumas]}
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
     results["horizon"] = {"status": "not-implemented"}
     results["head_power_point"] = {"status": "not-implemented"}

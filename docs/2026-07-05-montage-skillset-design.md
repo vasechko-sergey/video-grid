@@ -303,6 +303,10 @@ Composition is a **default, not a law**. Each episode gets `composition` + `grid
 - **toward camera** (bbox grows, x stable) → direction rule **N/A**; hold center, track scale/zoom, not X
 - **static** → fixed frame / slow pan
 
+v1 classifier (`lib/motion.py`): lateral = net |dx| ≥ 15% of source width AND bbox-area growth < 1.6x; head-on = growth ≥ 1.6x AND |dx| below the lateral bar; everything else → static. **Diagonal movers (large dx AND large growth) deliberately fall through to static/center** — centered crop is the safe framing; MVI_3739 (golden fixture source) is exactly this case. Editorial correctness of center-vs-lead for diagonals = open question (§13).
+
+`break` in v1 center-tracks (relaxed = no line target); extreme framing is editorial territory — postcheck stays editorial-only.
+
 **Key:** postcheck verifies against the episode's **declared grid+intent**, not against a global law. `break` = human judgment only — the mechanical check steps aside, an intentional departure never fails the gate.
 
 Defaults from shot-type (overridable): action-follow→`lead`+`thirds` · establishing/atmospheric/wade→`center` · anything you flag→`break`.
@@ -390,7 +394,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 | Centered (composition=center) | subject center near frame center ±5% of width, on **≥90% of frames** |
 | Head power-point | head in the upper third, ±8% |
 | Horizon | tilt < 1.5°; vertical bounce between frames < 1% of height |
-| Jitter | no crop-center reversal > max(2px, 0.5% of width) against the direction of travel — the 2px floor absorbs int-rounding flicker |
+| Jitter | no crop-center reversal > max(2px, 0.5% of **crop** width) against the direction of travel — the 2px floor absorbs int-rounding flicker (crop width, not source width: consistent with on-line normalization, keeps the floor meaningful) |
 | Route continuity | no x-teleport in the followed route: per-frame \|Δx\| ≤ ~4% of source width; descriptor/area jumps flag a suspected ID switch (§6.1a) |
 | break | numeric composition checks skipped (editorial) |
 | Color (in-episode) | mean RGB within ±8 of target R105/G122/B137 |
@@ -454,6 +458,9 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - ultralytics downloads weights by model **name** (`yolo11n-seg.pt`), not into an arbitrary path → pass names; cache lives in `models/`.
 - madmom 0.16.1 from PyPI is broken on python ≥3.10 / numpy ≥1.24 → git master only, and only as an optional extra.
 - essentia has no macOS arm64 wheels → out of v1 (§5.5).
+- ffmpeg expression parser chokes on long crop-x expressions ("Missing ')' or too many args") — a realistic-length noisy path can produce 1000+ Douglas-Peucker knots → cap knots (~80) by doubling eps; never emit per-frame if() chains.
+- odd output dimensions + yuv420p → libx264 "width not divisible by 2" → force even scale targets for EVERY canvas, not just 9:16 (floor-truncated crop widths are odd half the time).
+- ByteTrack unconfirmed detections carry `id=None` → bucketing them under one sentinel id splices different people into a fake track that can win hero scoring → drop id=None detections; the gap is bridged by smoothing.
 
 ---
 
