@@ -182,3 +182,29 @@ def test_storyboardspec_validation():
         m.StoryboardSpec(n=0)
     with pytest.raises(ValueError, match="grid"):
         m.StoryboardSpec(grids=("golden",))
+
+
+def test_spec_type_errors_are_value_errors():
+    # wrong TYPE (not just wrong value) must raise ValueError-with-remedy, not TypeError
+    with pytest.raises(ValueError, match="color_means"):
+        m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                      color_means=None, delivery=m.Delivery("native"))
+    with pytest.raises(ValueError, match="max_speed"):
+        m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                      color_means=(105, 122, 137), delivery=m.Delivery("native"), max_speed=None)
+    with pytest.raises(ValueError, match="target_dur"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=None,
+                    canvas=(9, 16), src_dims=(1920, 1080))
+    with pytest.raises(ValueError, match="grids"):
+        m.StoryboardSpec(grids="thirds")     # bare string, not a list
+
+
+def test_trackspec_empty_src_and_checkspec_structural():
+    with pytest.raises(ValueError, match="src"):
+        m.TrackSpec(src="")
+    with pytest.raises(ValueError, match="src_dims"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
+                    canvas=(9, 16), src_dims=(1920, 0))
+    with pytest.raises(ValueError, match="delivery"):
+        m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                      color_means=(105, 122, 137), delivery="native")   # str, not Delivery

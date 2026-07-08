@@ -187,8 +187,8 @@ class Delivery:
         return self._even(w), self._even(h)
 
 
-def _positive_pair(v):
-    return (isinstance(v, (tuple, list)) and len(v) == 2
+def _positive_seq(v, n):
+    return (isinstance(v, (tuple, list)) and len(v) == n
             and all(isinstance(x, (int, float)) and x > 0 for x in v))
 
 
@@ -228,16 +228,15 @@ class ReframeSpec:
             raise ValueError(f"ReframeSpec.composition {self.composition!r} not in {COMPOSITIONS}")
         if self.grid not in GRIDS:
             raise ValueError(f"ReframeSpec.grid {self.grid!r} not in {GRIDS}")
-        if not _positive_pair(self.canvas):
+        if not _positive_seq(self.canvas, 2):
             raise ValueError(f"ReframeSpec.canvas must be [w, h] positive, got {self.canvas!r}")
-        if not (len(self.color_means) == 3
-                and all(isinstance(v, (int, float)) and v > 0 for v in self.color_means)):
+        if not _positive_seq(self.color_means, 3):
             raise ValueError(f"ReframeSpec.color_means must be 3 positive means, "
                              f"got {self.color_means!r}")
         if not isinstance(self.delivery, Delivery):
             raise ValueError("ReframeSpec.delivery must be a Delivery")
-        if self.max_speed <= 0:
-            raise ValueError(f"ReframeSpec.max_speed must be positive, got {self.max_speed}")
+        if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
+            raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
         if self.stabilize:
             raise ValueError("ReframeSpec.stabilize must be False — the manifest refuses "
                              "stabilize upstream (needs_input); a True here is a bug")
@@ -259,11 +258,11 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.composition {self.composition!r} not in {COMPOSITIONS}")
         if self.grid not in GRIDS:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
-        if self.target_dur <= 0:
-            raise ValueError(f"CheckSpec.target_dur must be positive, got {self.target_dur}")
-        if not _positive_pair(self.canvas):
+        if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
+            raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
+        if not _positive_seq(self.canvas, 2):
             raise ValueError(f"CheckSpec.canvas must be [w, h] positive, got {self.canvas!r}")
-        if not _positive_pair(self.src_dims):
+        if not _positive_seq(self.src_dims, 2):
             raise ValueError(f"CheckSpec.src_dims must be [w, h] positive, got {self.src_dims!r}")
 
 
@@ -274,8 +273,10 @@ class StoryboardSpec:
     marks: object = None
 
     def __post_init__(self):
-        if self.n < 1:
-            raise ValueError(f"StoryboardSpec.n must be >= 1, got {self.n}")
+        if not isinstance(self.n, int) or self.n < 1:
+            raise ValueError(f"StoryboardSpec.n must be an int >= 1, got {self.n!r}")
+        if isinstance(self.grids, str) or not all(isinstance(g, str) for g in self.grids):
+            raise ValueError(f"StoryboardSpec.grids must be a list/tuple of grid names, got {self.grids!r}")
         for g in self.grids:
             if g not in GRIDS:
                 raise ValueError(f"StoryboardSpec.grid {g!r} not in {GRIDS}")
