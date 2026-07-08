@@ -1,6 +1,7 @@
 import json, subprocess
 import pytest
 from scripts import reframe
+from scripts.lib import models
 
 def _dims(path):
     out = subprocess.run(
@@ -27,10 +28,13 @@ def test_reframe_output_dims(sample_clip, tmp_path):
              for i in range(90)]
     rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
     out = tmp_path / "ep.mp4"
-    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
-                    composition="lead", grid="thirds", canvas=(9, 16),
-                    color_means=(105, 122, 137), stabilize=False,
-                    path_out=str(tmp_path / "path.json"))
+    # explicit exact:1080x1920 delivery — the engine has no aspect/res hardcode
+    # anymore (#F), so the session-standard vertical size is now spec'd, not implied
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137),
+                              delivery=models.Delivery.from_spec("exact:1080x1920"))
+    reframe.reframe(spec, str(sample_clip), str(rpath), str(out),
+                    str(tmp_path / "path.json"))
     assert _dims(out) == (1080, 1920)
     assert (tmp_path / "path.json").exists()
 
@@ -44,30 +48,6 @@ def test_xexpr_uses_route_times_across_gap():
     assert abs(knots[-1][0] - times[-1]) < 1e-9
     assert abs(knots[0][0] - times[0]) < 1e-9
 
-def test_reframe_rejects_empty_route(sample_clip, tmp_path):
-    rp = tmp_path / "route.json"; rp.write_text("[]")
-    with pytest.raises(ValueError, match="empty"):
-        reframe.reframe(src=str(sample_clip), route_path=str(rp),
-                        out=str(tmp_path / "ep.mp4"), composition="lead",
-                        grid="thirds", canvas=(9, 16),
-                        color_means=(105, 122, 137), stabilize=False,
-                        path_out=str(tmp_path / "path.json"))
-
-@pytest.mark.integration
-def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
-    # gappy route (subject lost frames 30-59) must still produce a valid clip
-    route = ([dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
-              for i in range(30)]
-             + [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
-                for i in range(60, 90)])
-    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
-    out = tmp_path / "ep.mp4"
-    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
-                    composition="lead", grid="thirds", canvas=(9, 16),
-                    color_means=(105, 122, 137), stabilize=False,
-                    path_out=str(tmp_path / "path.json"))
-    assert _dims(out) == (1080, 1920)
-
 def test_simplify_caps_knots_on_long_noisy_path():
     # ~83s at 60fps with residual tracker jitter: must stay under the knot cap
     import math
@@ -78,16 +58,36 @@ def test_simplify_caps_knots_on_long_noisy_path():
     expr = reframe._xexpr(path, times)
     assert len(expr) < 8000        # comfortably inside ffmpeg's parser budget
 
-def test_stabilize_true_fails_loud(sample_clip, tmp_path):
-    rp = tmp_path / "route.json"
-    rp.write_text(json.dumps([dict(t=0, x=500, y=540, w=140, h=320),
-                              dict(t=0.1, x=510, y=540, w=140, h=320)]))
-    with pytest.raises(NotImplementedError, match="process-episode"):
-        reframe.reframe(src=str(sample_clip), route_path=str(rp),
-                        out=str(tmp_path / "ep.mp4"), composition="lead",
-                        grid="thirds", canvas=(9, 16),
-                        color_means=(105, 122, 137), stabilize=True,
-                        path_out=str(tmp_path / "path.json"))
+def test_simplify_iterative_no_recursion_on_long_path():
+    # a saw-tooth 5000-frame path would blow Python's recursion limit if DP recursed
+    times = [i / 30 for i in range(5000)]
+    path = [i % 7 for i in range(5000)]
+    knots = reframe._simplify(path, times)          # must not raise RecursionError
+    assert knots[0][0] == times[0] and knots[-1][0] == times[-1]
+
+def test_reframe_rejects_empty_route(sample_clip, tmp_path):
+    rp = tmp_path / "route.json"; rp.write_text("[]")
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=models.Delivery())
+    with pytest.raises(ValueError, match="empty"):
+        reframe.reframe(spec, str(sample_clip), str(rp), str(tmp_path / "ep.mp4"),
+                        str(tmp_path / "path.json"))
+
+@pytest.mark.integration
+def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
+    # gappy route (subject lost frames 30-59) must still produce a valid clip
+    route = ([dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+              for i in range(30)]
+             + [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+                for i in range(60, 90)])
+    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
+    out = tmp_path / "ep.mp4"
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137),
+                              delivery=models.Delivery.from_spec("exact:1080x1920"))
+    reframe.reframe(spec, str(sample_clip), str(rpath), str(out),
+                    str(tmp_path / "path.json"))
+    assert _dims(out) == (1080, 1920)
 
 def test_compute_path_break_center_tracks():
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
@@ -106,14 +106,29 @@ def test_compute_path_unknown_composition_fails_loud():
 
 @pytest.mark.integration
 def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
-    # canvas 5:8 from 1080p → crop 675x1080 (odd) — output must be even and encode
+    # canvas 5:8 from 1080p → crop 675x1080 (odd) — output must be even and encode.
+    # native delivery (default): Delivery.dims owns the even-ification now (#F).
     route = [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
              for i in range(90)]
     rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
     out = tmp_path / "ep58.mp4"
-    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
-                    composition="lead", grid="thirds", canvas=(5, 8),
-                    color_means=(105, 122, 137), stabilize=False,
-                    path_out=str(tmp_path / "path.json"))
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(5, 8),
+                              color_means=(105, 122, 137), delivery=models.Delivery())
+    reframe.reframe(spec, str(sample_clip), str(rpath), str(out),
+                    str(tmp_path / "path.json"))
     w, h = _dims(out)
     assert w % 2 == 0 and h % 2 == 0
+
+def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
+    # native delivery on a 4K source → crop-native even dims, NOT 1080x1920
+    route = [models.RoutePoint(i / 30, 1900 + i * 5, 1080, 200, 480) for i in range(10)]
+    models.route_to_json(route, tmp_path / "r.json")
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0))
+    captured = {}
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: captured.setdefault("cmd", cmd))
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=models.Delivery("native"))
+    reframe.reframe(spec, "src.mp4", str(tmp_path / "r.json"), str(tmp_path / "out.mp4"),
+                    str(tmp_path / "path.json"))
+    vf = captured["cmd"][captured["cmd"].index("-vf") + 1]
+    assert "scale=1214:2160" in vf          # 4K 9:16 crop 1215x2160 → even native, no upscale

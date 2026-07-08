@@ -1,9 +1,9 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
 import argparse, json
-from pathlib import Path
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, proc
 from scripts.lib.motion import classify
+from scripts.lib.models import ReframeSpec, RoutePoint, CropPath, route_from_json, Delivery
 
 
 def compute_path(route, composition, grid, canvas, src, motion, max_step):
@@ -42,23 +42,28 @@ def _simplify(path, times, eps=2.0, max_knots=80):
     """
     pts = [(float(t), float(x)) for t, x in zip(times, path)]
 
+    # Iterative (explicit stack) — a recursive dp() blows Python's recursion
+    # limit on long real routes (thousands of frames); same split rule, just
+    # a non-recursive traversal of the identical divide-and-conquer tree (#5).
     def run(eps):
-        def dp(lo, hi):
+        keep = {0, len(pts) - 1}
+        stack = [(0, len(pts) - 1)]
+        while stack:
+            lo, hi = stack.pop()
             if hi - lo < 2:
-                return []
+                continue
             (t0, x0), (t1, x1) = pts[lo], pts[hi]
             worst, wi = 0.0, None
             for i in range(lo + 1, hi):
                 t, x = pts[i]
-                xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
+                xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0)) if t1 != t0 else x0
                 if abs(x - xh) > worst:
                     worst, wi = abs(x - xh), i
-            if worst <= eps:
-                return []
-            return dp(lo, wi) + [wi] + dp(wi, hi)
-
-        keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
-        return [pts[i] for i in keep]
+            if worst > eps and wi is not None:
+                keep.add(wi)
+                stack.append((lo, wi))
+                stack.append((wi, hi))
+        return [pts[i] for i in sorted(keep)]
 
     knots = run(eps)
     while len(knots) > max_knots:
@@ -94,35 +99,33 @@ def _probe(src):
     return int(s["width"]), int(s["height"]), fps
 
 
-def reframe(src, route_path, out, composition, grid, canvas,
-            color_means, stabilize, path_out, max_speed=750.0):
-    """max_speed: crop-x speed cap in px/sec — frame-rate independent
-    (25 px/frame at the session's 30fps ≡ 750 px/s)."""
-    if stabilize:
-        raise NotImplementedError(
-            "stabilize=true is not wired in the core engine yet — vidstab lands in the "
-            "process-episode plan (and needs a vidstab-enabled ffmpeg, see setup.sh warning)")
+def reframe(spec, src, route_path, out, path_out):
+    """Compose one episode from a tracked route (spec §6): crop/scale/color per `spec`.
+
+    spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
+    delivery/max_speed. src/route_path/out/path_out stay explicit per-call I/O paths,
+    not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate independent
+    (25 px/frame at the session's 30fps ≡ 750 px/s). stabilize is refused upstream
+    (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
+    """
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
-    src_dims = (src_w, src_h)
-    route = json.loads(Path(route_path).read_text())
+    route = route_from_json(route_path)               # list[RoutePoint]
     if not route:
         raise ValueError(
             f"route {route_path} is empty — tracker found no hero frames; "
             "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
-    motion = classify(route, src_w, src_h)
-    path = compute_path(route, composition, grid, canvas, src_dims, motion,
-                        max_step=max_speed / fps)
-    Path(path_out).write_text(json.dumps(path))
+    route_dicts = [p.to_dict() for p in route]        # compute_path/classify still take dicts
+    motion = classify(route_dicts, src_w, src_h)
+    path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
+                        (src_w, src_h), motion, max_step=spec.max_speed / fps)
+    CropPath(path).to_json(path_out)
 
-    crop_w, crop_h = g.crop_size(canvas[0], canvas[1], src_w, src_h)
-    if canvas == (9, 16):
-        out_w, out_h = 1080, 1920          # session-standard vertical delivery
-    else:
-        out_w, out_h = crop_w - crop_w % 2, crop_h - crop_h % 2   # yuv420p needs even dims
-    rr, gg, bb = color.gains_for_means(color_means)
-    times = [pt["t"] for pt in route]
+    crop_w, crop_h = g.crop_size(spec.canvas[0], spec.canvas[1], src_w, src_h)
+    out_w, out_h = spec.delivery.dims(crop_w, crop_h)      # #F: was hardcoded 1080x1920
+    rr, gg, bb = color.gains_for_means(spec.color_means)
+    times = [p.t for p in route]
     xexpr = _xexpr(path, times)
-    mean_y = sum(pt["y"] for pt in route) / len(route)
+    mean_y = sum(p.y for p in route) / len(route)
     cy = g.crop_y(mean_y, crop_h, src_h)
     vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y={cy},"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
@@ -140,10 +143,12 @@ if __name__ == "__main__":
     ap.add_argument("--grid", default="thirds")
     ap.add_argument("--canvas", default="9:16")
     ap.add_argument("--color", default="105,122,137")
-    ap.add_argument("--stabilize", action="store_true")
+    ap.add_argument("--delivery", default=None,
+                    help="native (default) | short_edge:N | long_edge:N | exact:WxH")
     ap.add_argument("--path-out", required=True)
     a = ap.parse_args()
     cw, ch = (int(v) for v in a.canvas.split(":"))
     means = tuple(float(v) for v in a.color.split(","))
-    reframe(a.src, a.route, a.out, a.composition, a.grid, (cw, ch),
-            means, a.stabilize, a.path_out)
+    spec = ReframeSpec(composition=a.composition, grid=a.grid, canvas=(cw, ch),
+                       color_means=means, delivery=Delivery.from_spec(a.delivery))
+    reframe(spec, a.src, a.route, a.out, a.path_out)
