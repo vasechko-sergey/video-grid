@@ -115,3 +115,27 @@ def test_delivery_rejects_bad():
         m.Delivery("short_edge", -5)
     with pytest.raises(ValueError, match="exact"):
         m.Delivery("exact", (1080,))
+
+
+def test_delivery_long_edge_real_scaling():
+    assert m.Delivery("long_edge", 2160).dims(608, 1080) == (1216, 2160)   # 2x upscale
+    assert m.Delivery("long_edge", 540).dims(540, 1080) == (270, 540)      # downscale
+    assert m.Delivery.from_spec("long_edge:2160") == m.Delivery("long_edge", 2160)
+
+
+def test_delivery_dims_rejects_nonpositive_crop():
+    with pytest.raises(ValueError, match="positive crop"):
+        m.Delivery("short_edge", 1080).dims(1080, 0)
+    with pytest.raises(ValueError, match="positive crop"):
+        m.Delivery("native").dims(-10, 100)
+
+
+def test_delivery_from_spec_malformed_raises_clean():
+    for bad in ("short_edge:", "exact:1080", "exact:axb"):
+        with pytest.raises(ValueError, match="unparseable"):
+            m.Delivery.from_spec(bad)
+    with pytest.raises(ValueError, match="string"):
+        m.Delivery.from_spec(123)
+    # a bad MODE still gets its own specific message, not "unparseable"
+    with pytest.raises(ValueError, match="mode"):
+        m.Delivery.from_spec("bogus:5")

@@ -128,20 +128,30 @@ class Delivery:
                     and all(isinstance(x, int) and x > 0 for x in v)):
                 raise ValueError(f"Delivery exact needs (w, h) positive ints, got {v!r}")
             self.value = (int(v[0]), int(v[1]))
+        if self.mode == "native":
+            self.value = None
 
     @classmethod
     def from_spec(cls, s):
         # None | "native" | "short_edge:1080" | "long_edge:2160" | "exact:1080x1920"
         if s is None or s == "native":
             return cls("native", None)
-        if ":" in s:
-            mode, v = s.split(":", 1)
+        if not isinstance(s, str):
+            raise ValueError(f"delivery spec must be a string or None, got {s!r}")
+        if ":" not in s:
+            raise ValueError(f"delivery spec {s!r} unparseable — "
+                             "native|short_edge:N|long_edge:N|exact:WxH")
+        mode, v = s.split(":", 1)
+        try:
             if mode == "exact":
                 w, h = (int(x) for x in v.lower().split("x"))
-                return cls("exact", (w, h))
-            return cls(mode, int(v))
-        raise ValueError(f"delivery spec {s!r} unparseable — "
-                         "native|short_edge:N|long_edge:N|exact:WxH")
+                value = (w, h)
+            else:
+                value = int(v)
+        except ValueError as e:
+            raise ValueError(f"delivery spec {s!r} unparseable — "
+                             "native|short_edge:N|long_edge:N|exact:WxH") from e
+        return cls(mode, value)
 
     @staticmethod
     def _even(n):
@@ -150,6 +160,8 @@ class Delivery:
 
     def dims(self, crop_w, crop_h):
         """Even (out_w, out_h) for a crop of size (crop_w, crop_h)."""
+        if crop_w <= 0 or crop_h <= 0:
+            raise ValueError(f"Delivery.dims needs a positive crop, got ({crop_w}, {crop_h})")
         if self.mode == "native":
             return self._even(crop_w), self._even(crop_h)
         if self.mode == "exact":
