@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+COMPOSITIONS = ("lead", "center", "break")
+GRIDS = ("thirds", "phi")
+MODELS = ("yolo11n-seg.pt", "yolo11s-seg.pt", "yolo11m-seg.pt")
+MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
+INTENTS = ("action", "static")
+
+
 @dataclass(frozen=True)
 class RoutePoint:
     t: float
@@ -178,3 +185,97 @@ class Delivery:
             else:
                 h, w = self.value, self.value * ar
         return self._even(w), self._even(h)
+
+
+def _positive_pair(v):
+    return (isinstance(v, (tuple, list)) and len(v) == 2
+            and all(isinstance(x, (int, float)) and x > 0 for x in v))
+
+
+@dataclass
+class TrackSpec:
+    src: str
+    model: str = "yolo11n-seg.pt"
+    seed_bbox: object = None
+    intent: str = "action"
+    fps: object = None
+
+    def __post_init__(self):
+        if not (isinstance(self.src, str) and self.src):
+            raise ValueError("TrackSpec.src must be a non-empty path")
+        if self.model not in MODELS:
+            raise ValueError(f"TrackSpec.model {self.model!r} not in {MODELS}")
+        if self.intent not in INTENTS:
+            raise ValueError(f"TrackSpec.intent {self.intent!r} not in {INTENTS}")
+        if self.seed_bbox is not None and not (
+                isinstance(self.seed_bbox, tuple) and len(self.seed_bbox) == 4):
+            raise ValueError(f"TrackSpec.seed_bbox must be a 4-tuple or None, "
+                             f"got {self.seed_bbox!r}")
+
+
+@dataclass
+class ReframeSpec:
+    composition: str
+    grid: str
+    canvas: tuple
+    color_means: tuple
+    delivery: Delivery
+    max_speed: float = 750.0
+    stabilize: bool = False
+
+    def __post_init__(self):
+        if self.composition not in COMPOSITIONS:
+            raise ValueError(f"ReframeSpec.composition {self.composition!r} not in {COMPOSITIONS}")
+        if self.grid not in GRIDS:
+            raise ValueError(f"ReframeSpec.grid {self.grid!r} not in {GRIDS}")
+        if not _positive_pair(self.canvas):
+            raise ValueError(f"ReframeSpec.canvas must be [w, h] positive, got {self.canvas!r}")
+        if not (len(self.color_means) == 3
+                and all(isinstance(v, (int, float)) and v > 0 for v in self.color_means)):
+            raise ValueError(f"ReframeSpec.color_means must be 3 positive means, "
+                             f"got {self.color_means!r}")
+        if not isinstance(self.delivery, Delivery):
+            raise ValueError("ReframeSpec.delivery must be a Delivery")
+        if self.max_speed <= 0:
+            raise ValueError(f"ReframeSpec.max_speed must be positive, got {self.max_speed}")
+        if self.stabilize:
+            raise ValueError("ReframeSpec.stabilize must be False — the manifest refuses "
+                             "stabilize upstream (needs_input); a True here is a bug")
+
+
+@dataclass
+class CheckSpec:
+    composition: str
+    grid: str
+    target_dur: float
+    canvas: tuple
+    src_dims: tuple
+    attempt: int = 1
+    black_floor: float = 6.0
+    black_rel: float = 0.35
+
+    def __post_init__(self):
+        if self.composition not in COMPOSITIONS:
+            raise ValueError(f"CheckSpec.composition {self.composition!r} not in {COMPOSITIONS}")
+        if self.grid not in GRIDS:
+            raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
+        if self.target_dur <= 0:
+            raise ValueError(f"CheckSpec.target_dur must be positive, got {self.target_dur}")
+        if not _positive_pair(self.canvas):
+            raise ValueError(f"CheckSpec.canvas must be [w, h] positive, got {self.canvas!r}")
+        if not _positive_pair(self.src_dims):
+            raise ValueError(f"CheckSpec.src_dims must be [w, h] positive, got {self.src_dims!r}")
+
+
+@dataclass
+class StoryboardSpec:
+    n: int = 6
+    grids: tuple = ("thirds",)
+    marks: object = None
+
+    def __post_init__(self):
+        if self.n < 1:
+            raise ValueError(f"StoryboardSpec.n must be >= 1, got {self.n}")
+        for g in self.grids:
+            if g not in GRIDS:
+                raise ValueError(f"StoryboardSpec.grid {g!r} not in {GRIDS}")

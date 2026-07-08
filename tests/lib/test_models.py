@@ -139,3 +139,46 @@ def test_delivery_from_spec_malformed_raises_clean():
     # a bad MODE still gets its own specific message, not "unparseable"
     with pytest.raises(ValueError, match="mode"):
         m.Delivery.from_spec("bogus:5")
+
+
+def test_trackspec_defaults_and_validation():
+    s = m.TrackSpec(src="seg.mp4")
+    assert s.model == "yolo11n-seg.pt" and s.intent == "action" and s.seed_bbox is None
+    with pytest.raises(ValueError, match="model"):
+        m.TrackSpec(src="s.mp4", model="bogus.pt")
+    with pytest.raises(ValueError, match="intent"):
+        m.TrackSpec(src="s.mp4", intent="cinematic")
+    with pytest.raises(ValueError, match="seed_bbox"):
+        m.TrackSpec(src="s.mp4", seed_bbox=(1, 2, 3))
+    m.TrackSpec(src="s.mp4", seed_bbox=(1, 2, 3, 4))   # 4-tuple ok
+
+
+def test_reframespec_validation():
+    ok = dict(composition="lead", grid="thirds", canvas=(9, 16),
+              color_means=(105, 122, 137), delivery=m.Delivery("native"))
+    m.ReframeSpec(**ok)
+    with pytest.raises(ValueError, match="composition"):
+        m.ReframeSpec(**{**ok, "composition": "hero"})
+    with pytest.raises(ValueError, match="color_means"):
+        m.ReframeSpec(**{**ok, "color_means": (105, 0, 137)})     # #G positivity
+    with pytest.raises(ValueError, match="stabilize"):
+        m.ReframeSpec(**{**ok, "stabilize": True})
+    with pytest.raises(ValueError, match="canvas"):
+        m.ReframeSpec(**{**ok, "canvas": (9, 0)})
+
+
+def test_checkspec_defaults():
+    s = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
+                    canvas=(9, 16), src_dims=(1920, 1080))
+    assert s.attempt == 1 and s.black_floor == 6.0 and s.black_rel == 0.35
+    with pytest.raises(ValueError, match="target_dur"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=0,
+                    canvas=(9, 16), src_dims=(1920, 1080))
+
+
+def test_storyboardspec_validation():
+    assert m.StoryboardSpec().n == 6
+    with pytest.raises(ValueError, match="n"):
+        m.StoryboardSpec(n=0)
+    with pytest.raises(ValueError, match="grid"):
+        m.StoryboardSpec(grids=("golden",))
