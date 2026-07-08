@@ -21,6 +21,7 @@ AI-assisted video-montage skill set (approach inspired by superpowers; fully ind
   - lib hardening (`341d059`): smooth([])→[], savgol odd-window ordering, on_line raises on route/path desync, gain(≤0) raises with remedy.
   - **route-gap desync fix (`a19937f`)**: crop x(t) built from route timestamps, not frame index — occlusion gaps no longer desync crop from video timeline; empty route fails loud.
   - Golden fixture as-built: window 9.083–10.668s (not lena_ride2) — diagonal motion means no 2.5s window in MVI_3739 classifies lateral; see plan Task 9.5 note.
+  - **Hardening round (2026-07-07, fresh-eyes audit, 5 commits `27e3571`→`0c8c283`):** proc.run surfaces ffmpeg stderr; check_episode validates composition (+`break`=editorial-only) and uses spec-§9 boundary-luma black check; track drops id=None frankentracks, probes fps/dims, adds speed+border features; reframe caps expr knots (~80), even dims for all canvases, §6.4 Y headroom, loud stabilize/fps guards; storyboard hero-marks helper. **68 tests green.** Spec/plan/landmines synced same round.
 - **Next action:** follow-on plans (plan tail): process-episode subagent first — mind the canvas/src_dims contract note in the plan's follow-on section.
 - **Deferred / open:** push `feat/core-engine` to origin as backup (ask Sergei); vidstab-capable ffmpeg before process-episode stabilization (homebrew-ffmpeg tap).
 
