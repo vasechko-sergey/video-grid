@@ -189,3 +189,23 @@ def test_corrupt_meta_sidecar_fails_loud(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="corrupt"):
         pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
                            route_path=str(rp))
+
+
+FIX = Path(__file__).parent.parent / "fixtures"
+
+
+@pytest.mark.integration
+def test_golden_ride_through_orchestrator(tmp_path):
+    # real 59.94fps clip + frozen route → the whole orchestrator, real ffmpeg
+    manifest = dict(segment=str(FIX / "golden_ride.mp4"),
+                    out_path=str(tmp_path / "ep.mp4"),
+                    composition="lead", grid="thirds", canvas=[9, 16],
+                    target_dur=1.58)
+    result = pe.process_episode(manifest, project_dir=str(tmp_path),
+                                route_path=str(FIX / "golden_route.json"))
+    assert result["status"] == "mechanical_pass", result
+    assert result["report"]["checks"]["on_line"]["pass"] is True
+    assert result["report"]["checks"]["continuity"]["pass"] is True
+    assert Path(result["clip"]).exists()
+    assert Path(result["storyboard"]).exists()
+    assert result["timings"]["reframe"] > 0
