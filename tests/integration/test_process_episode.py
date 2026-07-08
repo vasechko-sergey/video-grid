@@ -178,3 +178,14 @@ def test_ambiguous_hero_stops_and_reports(monkeypatch, tmp_path):
     result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert result["status"] == "stop_and_report"
     assert any(f["reason"] == "hero-ambiguous" for f in result["findings"])
+
+
+def test_corrupt_meta_sidecar_fails_loud(monkeypatch, tmp_path):
+    # a present-but-malformed .meta.json drives the hero gate → fail loud, not a raw JSONDecodeError
+    _stub_engine(monkeypatch, tmp_path)
+    rp = tmp_path / "frozen.json"
+    rp.write_text(json.dumps([dict(t=0, x=500, y=540, w=140, h=320)]))
+    (tmp_path / "frozen.meta.json").write_text("{not valid json")
+    with pytest.raises(ValueError, match="corrupt"):
+        pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
+                           route_path=str(rp))
