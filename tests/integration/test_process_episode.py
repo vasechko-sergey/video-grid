@@ -105,3 +105,76 @@ def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="max_attempts"):
         pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
                            max_attempts=0)
+
+
+def _report(overall, fail_reasons):
+    return {"checks": {}, "overall": overall, "attempt": 1, "fail_reasons": fail_reasons}
+
+
+def test_retry_then_pass(monkeypatch, tmp_path):
+    # first check fails on_line, second passes → attempt 2, two reframe calls
+    _stub_engine(monkeypatch, tmp_path)
+    seq = [_report(False, ["on_line"]), _report(True, [])]
+    speeds = []
+
+    def fake_run(clip, route_path, path_path, composition, grid, target_dur, out,
+                 canvas=(9, 16), src_dims=(1920, 1080), attempt=1):
+        r = dict(seq[attempt - 1]); r["attempt"] = attempt
+        Path(out).write_text(json.dumps(r))
+        return r
+    monkeypatch.setattr(pe.check_episode, "run", fake_run)
+
+    def fake_reframe(src, route_path, out, composition, grid, canvas, color_means,
+                     stabilize, path_out, max_speed=750.0):
+        speeds.append(max_speed)
+        Path(out).write_text("clip"); Path(path_out).write_text("[]")
+        return out
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert result["attempt"] == 2
+    assert speeds[1] > speeds[0]          # on_line fail raised max_speed on retry
+
+
+def test_three_fails_escalate(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path,
+                 report=_report(False, ["on_line"]))
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "escalate"
+    assert result["escalate_to"] == "edit-plan"
+    assert result["reason"] == "max-retries"
+    assert result["attempt"] == 3
+
+
+def test_unfixable_fail_escalates_first_attempt(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path, report=_report(False, ["length"]))
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "escalate"
+    assert result["reason"] == "unfixable-by-reframe"
+    assert result["attempt"] == 1
+
+
+def test_motion_mismatch_stops_and_reports(monkeypatch, tmp_path):
+    # tracker route goes right; manifest declares left → stop_and_report, no reframe
+    _stub_engine(monkeypatch, tmp_path)
+    def boom(*a, **k):
+        raise AssertionError("reframe must not run when the manifest is contradicted")
+    monkeypatch.setattr(pe.reframe, "reframe", boom)
+    result = pe.process_episode(_manifest(tmp_path, motion="lateral:left"),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert any(f["reason"] == "motion-mismatch" for f in result["findings"])
+
+
+def test_ambiguous_hero_stops_and_reports(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path)
+    def fake_build_route(src, out=None, **k):
+        Path(out).write_text(json.dumps(
+            [dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320) for i in range(10)]))
+        Path(out).with_suffix(".meta.json").write_text(json.dumps({"ambiguous": True}))
+        return []
+    monkeypatch.setattr(pe.track, "build_route", fake_build_route)
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert any(f["reason"] == "hero-ambiguous" for f in result["findings"])
