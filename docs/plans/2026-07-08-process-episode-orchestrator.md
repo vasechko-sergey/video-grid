@@ -454,7 +454,7 @@ git commit -m "feat: contradiction detection for process-episode (§4.1 no-impro
 
 ## Task 2: `orchestration.py` — retry-param adjust + escalation
 
-Pure, TDD. The §4.1 "retry in place: reframe params" ladder and the "same failure 3× → escalate one level up" rule.
+Pure, TDD. **Hardened post-review (`190d26c`):** `_lags_line()` aliases `centered`→`on_line` (checks.centered is on_line@0.5; center composition is in scope) so the ladder isn't a no-op for center episodes. The §4.1 "retry in place: reframe params" ladder and the "same failure 3× → escalate one level up" rule.
 
 **Files:**
 - Modify: `scripts/lib/orchestration.py`
@@ -495,6 +495,17 @@ def test_fixable_fail_retries_until_cap():
     assert orch.escalation(attempt=2, fail_reasons=["on_line"], max_attempts=3) is None
     esc = orch.escalation(attempt=3, fail_reasons=["on_line"], max_attempts=3)
     assert esc is not None and esc["reason"] == "max-retries"
+
+
+def test_centered_fail_adjusts_like_on_line():
+    # centered is on_line at target_frac=0.5 — same crop-lag signal (center comp)
+    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["centered"])
+    assert p["max_speed"] > 750.0
+
+
+def test_centered_jitter_conflict_escalates():
+    esc = orch.escalation(attempt=1, fail_reasons=["centered", "jitter"], max_attempts=3)
+    assert esc is not None and esc["reason"] == "conflicting-framing-fails"
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -511,10 +522,16 @@ DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps
 _UNFIXABLE = ("length", "continuity", "black_frames")
 
 
+def _lags_line(fail_reasons):
+    # centered is on_line at target_frac=0.5 (checks.centered) and reframe
+    # rate-limits center/break identically to lead — same crop-lag signal
+    return "on_line" in fail_reasons or "centered" in fail_reasons
+
+
 def adjust_reframe_params(params, fail_reasons):
     """One documented nudge per mechanical fail (§4.1 retry-in-place)."""
     p = dict(params)
-    if "on_line" in fail_reasons:
+    if _lags_line(fail_reasons):
         p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
     if "jitter" in fail_reasons:
         p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
@@ -525,12 +542,12 @@ def escalation(attempt, fail_reasons, max_attempts=3):
     """None ⇒ keep retrying; a finding dict ⇒ escalate up the artifact chain.
 
     Escalate immediately when the failure can't be fixed by reframe params
-    (unfixable reasons, or on_line+jitter which pull speed in opposite
-    directions); otherwise after max_attempts (§4.1: same failure 3× → up)."""
+    (unfixable reasons, or a line-lag + jitter combo which pull speed in
+    opposite directions); otherwise after max_attempts (§4.1: 3× → up)."""
     if any(r in _UNFIXABLE for r in fail_reasons):
         return {"escalate_to": "edit-plan", "reason": "unfixable-by-reframe",
                 "fail_reasons": fail_reasons}
-    if "on_line" in fail_reasons and "jitter" in fail_reasons:
+    if _lags_line(fail_reasons) and "jitter" in fail_reasons:
         return {"escalate_to": "edit-plan", "reason": "conflicting-framing-fails",
                 "fail_reasons": fail_reasons}
     if attempt >= max_attempts:
@@ -542,7 +559,7 @@ def escalation(attempt, fail_reasons, max_attempts=3):
 - [ ] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
-Expected: PASS (11 passed — 5 from Task 1 + 6 new)
+Expected: PASS (15 passed — 9 orchestration + 6 new, incl. centered alias)
 
 - [ ] **Step 5: Commit**
 
