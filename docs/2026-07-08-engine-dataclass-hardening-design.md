@@ -1,7 +1,7 @@
 # Engine dataclass-hardening + resolution/aspect-agnostic — Design
 
 **Date:** 2026-07-08
-**Status:** approved (brainstorming) → next: writing-plans
+**Status:** BUILT (2026-07-09, feat/engine-hardening commits `78e0fb9`..`4509cd6`, 166 tests green incl. 3 real-ffmpeg goldens). All 5 review bugs (#1–5) + both holes (#F/#G) closed; engine is resolution/aspect-agnostic; full dataclass model in `scripts/lib/models.py`.
 **Scope:** Plan 1 of a two-plan split. Plan 2 (`project-init` purpose→aspect) is previewed here (§D) but **not** built by this design.
 
 ## Context
@@ -181,8 +181,8 @@ problem, no ffmpeg run.
 engine now imposes **zero** delivery limits — `ReframeSpec.delivery` decides:
 
 - **`native`** (default when unset) — deliver the crop at its own pixels
-  (even-adjusted), no upscale, no quality loss. A 4K source's 9:16 crop delivers
-  at 1215×2160.
+  (even-adjusted), no upscale, no quality loss. A 4K source's 9:16 crop (1215×2160)
+  delivers at 1214×2160 (`_even` floors the odd width).
 - **`short_edge = N`** / **`long_edge = N`** — scale so that edge is N, the other
   derived from the crop aspect, both rounded even.
 - **`exact = (W, H)`** — explicit dims (must be even).

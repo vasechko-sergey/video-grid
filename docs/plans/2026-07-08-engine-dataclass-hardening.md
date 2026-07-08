@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: COMPLETE (2026-07-09)** — all 11 tasks executed via strict subagent-driven-development on branch `feat/engine-hardening` (commits `78e0fb9`..`4509cd6`), **166 tests green incl. 3 real-ffmpeg goldens**. The committed code is the source of truth; the code blocks below are the pre-implementation guide and differ where two-stage review hardened them. **Review-driven deltas beyond the verbatim blocks:** Task 0 — `CheckResult.to_dict` strips a stale `"pass"` key from `detail`. Task 1 — the `long_edge` test expects `(1214,2160)` not `(1216,2160)` (a plan typo; `_even` floors), plus `dims` guards a non-positive crop, `from_spec` raises the module's own "unparseable"/"string" errors, and `native` normalizes a stray value. Task 2 — `_positive_pair`→`_positive_seq(v,n)` (also covers `color_means`), and `max_speed`/`target_dur`/`n`/`grids` type-guard so wrong-type input raises `ValueError` not `TypeError`. Task 3 — `OPTIONAL` gained `"delivery"` (unknown-key guard). Task 5 — the fake `_iter_detections` yields `_FakeBox` objects (box shape), not bare tuples. Task 7 — body-luma sampling uses `fps=(n+2)/duration` (the plan's `/1` only sampled ~1s → `body_median`=0 defeated the gate). Tasks 5–8 landed their tests in the existing `tests/integration/test_{track,reframe,verify}.py`, not new top-level files. **Known limitation:** the storyboard hero-marker's vertical fraction is `y/src_h` (exact only for `crop_h==src_h`, i.e. 9:16-from-landscape); `fx` is always correct — follow-up can thread `crop_h`/`cy`.
+
 **Goal:** Retype the shipped video engine onto typed dataclasses (config-specs that raise on bad state; wire-contracts that own their JSON), fix the 5 integration-seam bugs + 2 validate holes found in review, and make delivery resolution/aspect fully general (zero hardcoded 9:16 / 1080×1920).
 
 **Architecture:** A new `scripts/lib/models.py` holds every cross-script contract — wire types (`RoutePoint`, `TrackMeta`, `CropPath`, `CheckResult`, `Report`) with `from_dict`/`to_dict` that preserve the current JSON schema, and config-specs (`TrackSpec`, `ReframeSpec`, `CheckSpec`, `StoryboardSpec`, `Delivery`) that validate in `__post_init__` and raise. Each engine script (`track`, `reframe`, `check_episode`, `storyboard`, `process_episode`) is retyped to take a spec / return a dataclass instead of positional primitives and raw dicts, with the matching fix woven in. The manifest gate stays **soft** (`validate()` → `needs_input`); everything below it is **hard** (raises). Design spec: `docs/2026-07-08-engine-dataclass-hardening-design.md`.
@@ -53,7 +55,7 @@ Pure, TDD. The typed JSON contracts. `to_dict`/`from_dict` round-trip the schema
 - Create: `scripts/lib/models.py`
 - Create: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `tests/lib/test_models.py`:
 ```python
@@ -132,12 +134,12 @@ def test_report_from_dict_roundtrip(tmp_path):
     assert json.loads(fp.read_text())["checks"]["on_line"]["pass"] is True
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: FAIL (`module 'scripts.lib.models' has no attribute ...`).
 
-- [ ] **Step 3: Implement wire-contracts**
+- [x] **Step 3: Implement wire-contracts**
 
 `scripts/lib/models.py`:
 ```python
@@ -251,12 +253,12 @@ class Report:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: PASS (8 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -273,7 +275,7 @@ Pure, TDD. The zero-limit delivery policy. Any aspect; `native` never upscales.
 - Modify: `scripts/lib/models.py`
 - Modify: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Append to `tests/lib/test_models.py`:
 ```python
@@ -315,12 +317,12 @@ def test_delivery_rejects_bad():
         m.Delivery("exact", (1080,))
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k delivery -q`
 Expected: FAIL (`Delivery` undefined).
 
-- [ ] **Step 3: Implement `Delivery`**
+- [x] **Step 3: Implement `Delivery`**
 
 Append to `scripts/lib/models.py`:
 ```python
@@ -384,12 +386,12 @@ class Delivery:
         return self._even(w), self._even(h)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -406,7 +408,7 @@ Pure, TDD. `TrackSpec`, `ReframeSpec`, `CheckSpec`, `StoryboardSpec` + the share
 - Modify: `scripts/lib/models.py`
 - Modify: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Append to `tests/lib/test_models.py`:
 ```python
@@ -453,12 +455,12 @@ def test_storyboardspec_validation():
         m.StoryboardSpec(grids=("golden",))
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k spec -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement enums + specs**
+- [x] **Step 3: Implement enums + specs**
 
 Prepend the enum tuples near the top of `scripts/lib/models.py` (after imports):
 ```python
@@ -565,12 +567,12 @@ class StoryboardSpec:
                 raise ValueError(f"StoryboardSpec.grid {g!r} not in {GRIDS}")
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -587,7 +589,7 @@ DRY the enums (single source in `models`), add the optional `delivery` field (de
 - Modify: `scripts/lib/manifest.py`
 - Modify: `tests/lib/test_manifest.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Append to `tests/lib/test_manifest.py`:
 ```python
@@ -612,12 +614,12 @@ def test_validate_color_means_nonpositive():
     assert any("color_means" in p for p in problems)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -k "delivery or color_means" -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/manifest.py`, replace the local enum block with an import from `models` and delete the now-duplicated tuples (`COMPOSITIONS`, `GRIDS`, `MODELS`, `MOTIONS`):
 ```python
@@ -651,12 +653,12 @@ In `validate`, add the two checks (append before `return problems`):
 
 (Delete the old `color_means` length-only check so there is one positivity check, not two.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q`
 Expected: PASS (existing + 4 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/manifest.py tests/lib/test_manifest.py
@@ -673,7 +675,7 @@ Pure, TDD. The two orchestration decisions that fix wrong-hero (#1) and lead-vs-
 - Modify: `scripts/lib/orchestration.py`
 - Modify: `tests/lib/test_orchestration.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Append to `tests/lib/test_orchestration.py`:
 ```python
@@ -712,12 +714,12 @@ def test_center_over_nonlateral_is_fine():
     assert findings == []
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -k "intent or nonlateral or composition" -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add `derive_intent` to `scripts/lib/orchestration.py`:
 ```python
@@ -747,12 +749,12 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h, composi
     ...
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: PASS (existing + new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/orchestration.py tests/lib/test_orchestration.py
@@ -769,7 +771,7 @@ git commit -m "feat: derive_intent (#1) + lead-over-nonlateral contradiction (#2
 - Modify: `scripts/track.py`
 - Modify/Create: `tests/test_track.py` (migrate existing track tests)
 
-- [ ] **Step 1: Write/adjust the failing test**
+- [x] **Step 1: Write/adjust the failing test**
 
 In `tests/test_track.py`, add a test that pins the spec API + `RoutePoint` return (keep existing `_pick_hero`/`_seed_track` unit tests unchanged):
 ```python
@@ -792,12 +794,12 @@ def test_build_route_uses_spec_and_returns_routepoints(monkeypatch, tmp_path):
     assert meta.hero == 1                      # static intent → the still, large subject
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_track.py -q`
 Expected: FAIL (`build_route` signature).
 
-- [ ] **Step 3: Implement the retype**
+- [x] **Step 3: Implement the retype**
 
 Change `build_route` to take a `TrackSpec`. New signature + body wiring (keep `_iter_detections`, `_seed_track`, `_track_features`, `_pick_hero`, `_probe_meta` as-is):
 ```python
@@ -848,12 +850,12 @@ Update `__main__` to build a `TrackSpec` from argv (the `--seed`/`--intent`/`--m
     build_route(spec, a.out)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_track.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/test_track.py
@@ -870,7 +872,7 @@ Three changes in one file: make Douglas-Peucker iterative (no recursion limit), 
 - Modify: `scripts/reframe.py`
 - Modify/Create: `tests/test_reframe.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 In `tests/test_reframe.py`:
 ```python
@@ -900,12 +902,12 @@ def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
     assert "scale=1214:2160" in vf          # 4K 9:16 crop 1215x2160 → even native, no upscale
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_reframe.py -k "iterative or delivery" -q`
 Expected: FAIL.
 
-- [ ] **Step 3a: Iterative `_simplify` (#5)**
+- [x] **Step 3a: Iterative `_simplify` (#5)**
 
 Replace the recursive `dp` inside `_simplify` with an explicit stack (same eps-cap loop around it):
 ```python
@@ -930,7 +932,7 @@ Replace the recursive `dp` inside `_simplify` with an explicit stack (same eps-c
         return [pts[i] for i in sorted(keep)]
 ```
 
-- [ ] **Step 3b: `Delivery` dims (#F) + `ReframeSpec` retype**
+- [x] **Step 3b: `Delivery` dims (#F) + `ReframeSpec` retype**
 
 `src`/`route_path`/`out`/`path_out` stay explicit args (per-call I/O, not config); only the tuning primitives live in `spec`. New signature and changed body (keep `compute_path`, `_xexpr`, `_probe`, `color`, `geometry`):
 ```python
@@ -975,12 +977,12 @@ Update `__main__` to build a `ReframeSpec` + `Delivery` from argv:
 ```
 Add `--delivery` (default `None`) to the argparser; drop `--stabilize`.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_reframe.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reframe.py tests/test_reframe.py
@@ -997,7 +999,7 @@ git commit -m "refactor: reframe takes ReframeSpec; iterative DP (#5); Delivery 
 - Modify: `scripts/check_episode.py`
 - Modify/Create: `tests/test_check_episode.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 from scripts.lib import models
@@ -1034,12 +1036,12 @@ def test_run_returns_report(monkeypatch, tmp_path):
     assert "on_line" in report.checks and report.attempt == 1
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_check_episode.py -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add luma helpers + the relative gate, replacing `_boundary_luma`:
 ```python
@@ -1121,12 +1123,12 @@ def run(clip, route_path, path_path, spec, out):
 ```
 Import the numeric module under an alias to avoid the name clash: `from scripts.lib import checks as checks_mod`. Update `__main__` to build a `CheckSpec` from argv and pass it.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_check_episode.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_episode.py tests/test_check_episode.py
@@ -1143,7 +1145,7 @@ git commit -m "refactor: check_episode takes CheckSpec, returns Report; relative
 - Modify: `scripts/storyboard.py`
 - Modify/Create: `tests/test_storyboard.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 from scripts.lib import models
@@ -1184,12 +1186,12 @@ def test_build_marks_align_to_sampled_frames(monkeypatch, tmp_path):
 
 (Provide a tiny `_Img` stub in the test module with `.convert`, `.size`, paste no-ops as needed, or assert only on `seen["times"]` and skip the PIL path with an early return in `build` when `route`/`path` given but frames are stubs. Keep the stub minimal.)
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_storyboard.py -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add time-interpolated marks and make sampling time-driven:
 ```python
@@ -1270,12 +1272,12 @@ def build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
 
 Sampling and marking now live in one place (the point of #4): `build` computes `times` once, derives `marks` at those same times when `route`/`path`/`crop_w`/`src_h` are supplied, and returns `(out, times)`. Update `__main__` to build a `StoryboardSpec` (`--n`/`--grids`), and **delete the old index-based `marks_from_route_path`** — Task 9 no longer calls it.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_storyboard.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/storyboard.py tests/test_storyboard.py
@@ -1292,7 +1294,7 @@ The shell now constructs the typed specs, derives `intent` (#1), passes `composi
 - Modify: `scripts/process_episode.py`
 - Modify: `tests/integration/test_process_episode.py`
 
-- [ ] **Step 1: Adjust the failing tests**
+- [x] **Step 1: Adjust the failing tests**
 
 Update the stubs in `tests/integration/test_process_episode.py` to the new signatures (the shell drives `track.build_route(spec, out=...)`, `reframe.reframe(spec, src, route, out, path_out)`, `check_episode.run(clip, route, path, spec, out) -> Report`, `storyboard.build(src, out, spec, route=, path=, crop_w=, src_h=)`), and add:
 ```python
@@ -1321,12 +1323,12 @@ def test_lead_nonlateral_stops(monkeypatch, tmp_path):
 ```
 (Extend `_stub_engine` to capture `TrackSpec.intent`, the `ReframeSpec.delivery`, and to return a `Report` from the fake `check_episode.run`.)
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the shell wiring**
+- [x] **Step 3: Implement the shell wiring**
 
 Rewrite the body of `process_episode` to build specs (imports: `from scripts.lib.models import TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec, Delivery, route_from_json, CropPath`). Key changed sections:
 
@@ -1385,12 +1387,12 @@ Reframe/check loop with specs (note `_load_route` still returns route as list-of
 ```
 (`report.to_dict()` on the way out preserves the existing return contract — callers/tests still see a dict under `result["report"]`.) `storyboard.build` now returns `(out, times)`; ignore the tuple's second element (or capture and discard).
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: PASS (mocked paths; golden runs in Task 10).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/integration/test_process_episode.py
@@ -1407,7 +1409,7 @@ Pin the golden manifest's `delivery` so its numeric checks stay deterministic, r
 - Modify: `tests/integration/test_process_episode.py` (golden manifest)
 - Modify: `docs/2026-07-08-engine-dataclass-hardening-design.md` (mark Built), `CLAUDE.md`, `README.md`
 
-- [ ] **Step 1: Pin the golden delivery + assert dims**
+- [x] **Step 1: Pin the golden delivery + assert dims**
 
 In `test_golden_ride_through_orchestrator`, add `delivery="exact:1080x1920"` to the manifest and assert the delivered clip dims via ffprobe:
 ```python
@@ -1425,23 +1427,23 @@ In `test_golden_ride_through_orchestrator`, add `delivery="exact:1080x1920"` to 
     assert (probe["width"], probe["height"]) == (1080, 1920)
 ```
 
-- [ ] **Step 2: Run the full suite (incl. integration)**
+- [x] **Step 2: Run the full suite (incl. integration)**
 
 Run: `.venv/bin/python -m pytest -q -m "integration or not integration"`
 Expected: PASS (all — migrated unit + mocked shell + real-ffmpeg golden). If the golden's numeric checks drift, confirm `on_line`/`continuity` are computed in route space and unaffected; only fix a genuine regression.
 
-- [ ] **Step 3: Grep for dead hardcodes**
+- [x] **Step 3: Grep for dead hardcodes**
 
 Run: `grep -rn "1080\|1920\|lutrgb\|\.split(\":\")\|\.split(\"x\")" scripts/ | grep -v test`
 Expected: no `1080`/`1920` literal in `scripts/` (delivery owns dims); no `lutrgb`; no ad-hoc `.split(":")`/`.split("x")` outside argparse `__main__` blocks that build a spec. Fix any stragglers.
 
-- [ ] **Step 4: Sync docs**
+- [x] **Step 4: Sync docs**
 
 - `docs/2026-07-08-engine-dataclass-hardening-design.md`: add a short "Built (YYYY-MM-DD, commit)" note at the top.
 - `CLAUDE.md` Status: new bullet — engine dataclass-hardening done, N tests green, the 5 fixes + 2 holes closed, engine aspect/resolution-agnostic; **Next action** → Plan 2 (ingestion / project-init purpose→aspect).
 - `README.md`: note the engine is now general-purpose (any aspect/resolution), driven by typed specs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_process_episode.py docs/ CLAUDE.md README.md
