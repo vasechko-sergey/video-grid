@@ -89,3 +89,19 @@ def test_invalid_manifest_returns_needs_input(monkeypatch, tmp_path):
     assert result["status"] == "needs_input"
     assert any("stabilize" in p for p in result["problems"])
     assert result["attempt"] == 0
+
+
+def test_creates_missing_project_dir(monkeypatch, tmp_path):
+    # first real run: a fresh per-episode scratch dir must be created, not crash
+    _stub_engine(monkeypatch, tmp_path)
+    proj = tmp_path / "work" / "ep01"          # does not exist yet
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(proj))
+    assert result["status"] == "mechanical_pass"
+    assert proj.is_dir()
+
+
+def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
+    _stub_engine(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="max_attempts"):
+        pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
+                           max_attempts=0)

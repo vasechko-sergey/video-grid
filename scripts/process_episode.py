@@ -20,15 +20,28 @@ from scripts.lib import orchestration as orch
 def _load_route(route_path):
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {"ambiguous": False}
-    return route, meta
+    if not meta_path.exists():
+        return route, {"ambiguous": False}          # sidecar optional; absent = unambiguous
+    try:
+        return route, json.loads(meta_path.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{meta_path} is corrupt ({e}) — delete it and re-track, "
+                         "or fix the sidecar; it drives the §6.1a hero-ambiguity gate") from e
 
 
 def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3):
+    """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
+    callers MUST branch on result["status"] before reading status-specific keys
+    (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
+    do not). One fresh project_dir per episode — its route/path/report/storyboard
+    files are written flat and would clobber a sibling episode sharing the dir."""
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
     m = manifest_lib.Manifest.from_dict(manifest_dict)
     problems = manifest_lib.validate(m)
     if problems:
         return {"status": "needs_input", "problems": problems, "attempt": 0}
+    Path(project_dir).mkdir(parents=True, exist_ok=True)   # scratch for route/path/report
 
     timings = {}
 
