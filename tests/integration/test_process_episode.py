@@ -42,7 +42,6 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
     monkeypatch.setattr(pe.reframe, "_probe", lambda src: dims)
 
     def fake_reframe(spec, src, route_path, out, path_out):
-        calls["reframe"] = dict(canvas=spec.canvas, max_speed=spec.max_speed)
         calls["reframe_delivery"] = spec.delivery
         Path(out).write_text("clip")
         # path length must match the route (real reframe invariant) — the shell
@@ -52,7 +51,6 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 
     def fake_storyboard_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
-        calls["storyboard"] = dict(route=route, path=path, crop_w=crop_w, src_h=src_h)
         Path(out).write_text("sheet")
         return out, None
     monkeypatch.setattr(pe.storyboard, "build", fake_storyboard_build)
@@ -76,6 +74,9 @@ def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
     assert result["attempt"] == 1
     assert Path(result["clip"]).exists()
     assert Path(result["storyboard"]).exists()
+    # wire contract: the shell returns report.to_dict(), not a raw Report —
+    # catches a regression that dropped .to_dict() without the slow golden
+    assert isinstance(result["report"], dict) and result["report"]["overall"] is True
     # contract: check_episode gets the PROBED dims, not the 1920x1080 default
     assert calls["check"]["src_dims"] == (3840, 2160)
     assert calls["check"]["canvas"] == (9, 16)
@@ -253,6 +254,14 @@ def test_delivery_threaded_to_reframe(monkeypatch, tmp_path):
     pe.process_episode(_manifest(tmp_path, delivery="exact:1080x1920"),
                        project_dir=str(tmp_path))
     assert calls["reframe_delivery"].mode == "exact"
+
+
+def test_seed_bbox_threaded_to_track(monkeypatch, tmp_path):
+    # a tuple hero pin must reach the TrackSpec as the tracker seed
+    calls = _stub_engine(monkeypatch, tmp_path)
+    pe.process_episode(_manifest(tmp_path, hero=[900, 500, 120, 300]),
+                       project_dir=str(tmp_path))
+    assert calls["track_seed_bbox"] == (900, 500, 120, 300)
 
 
 def test_lead_nonlateral_stops(monkeypatch, tmp_path):
