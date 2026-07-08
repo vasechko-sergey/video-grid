@@ -43,3 +43,14 @@ def test_crop_x_clamped_high():
     x = g.crop_x(subject_x=1900, composition="lead", direction="left",
                  grid="thirds", crop_w=607, src_w=1920)
     assert x == 1920 - 607
+
+def test_crop_y_no_freedom_is_zero():
+    assert g.crop_y(subject_y=500, crop_h=1080, src_h=1080) == 0
+
+def test_crop_y_headroom_045():
+    # crop_h=608 out of 1080: subject centre at 0.45*608=273.6 from crop top
+    assert g.crop_y(subject_y=500, crop_h=608, src_h=1080) == round(500 - 0.45 * 608)
+
+def test_crop_y_clamped():
+    assert g.crop_y(subject_y=20, crop_h=608, src_h=1080) == 0
+    assert g.crop_y(subject_y=1070, crop_h=608, src_h=1080) == 1080 - 608

@@ -20,7 +20,7 @@ def compute_path(route, composition, grid, canvas, src, motion, max_step):
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
-def _simplify(path, times, eps=2.0):
+def _simplify(path, times, eps=2.0, max_knots=80):
     """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
 
     Keeps the crop expression short (nested per-frame if() hits ffmpeg's
@@ -31,25 +31,37 @@ def _simplify(path, times, eps=2.0):
     the path index — routes may have tracking gaps (hero occluded; spec
     §6.1a), so index-derived time would desync the crop expression from the
     true video timeline once a gap has occurred.
+
+    Real footage (thousands of frames, ±px post-smoothing jitter) can still
+    produce far more knots than ffmpeg's expression parser can swallow — cap
+    the count adaptively by doubling eps until we're under max_knots. eps
+    growth always terminates (a huge eps collapses to the 2 endpoint knots).
     """
     pts = [(float(t), float(x)) for t, x in zip(times, path)]
 
-    def dp(lo, hi):
-        if hi - lo < 2:
-            return []
-        (t0, x0), (t1, x1) = pts[lo], pts[hi]
-        worst, wi = 0.0, None
-        for i in range(lo + 1, hi):
-            t, x = pts[i]
-            xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
-            if abs(x - xh) > worst:
-                worst, wi = abs(x - xh), i
-        if worst <= eps:
-            return []
-        return dp(lo, wi) + [wi] + dp(wi, hi)
+    def run(eps):
+        def dp(lo, hi):
+            if hi - lo < 2:
+                return []
+            (t0, x0), (t1, x1) = pts[lo], pts[hi]
+            worst, wi = 0.0, None
+            for i in range(lo + 1, hi):
+                t, x = pts[i]
+                xh = x0 + (x1 - x0) * ((t - t0) / (t1 - t0))
+                if abs(x - xh) > worst:
+                    worst, wi = abs(x - xh), i
+            if worst <= eps:
+                return []
+            return dp(lo, wi) + [wi] + dp(wi, hi)
 
-    keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
-    return [pts[i] for i in keep]
+        keep = sorted(set([0] + dp(0, len(pts) - 1) + [len(pts) - 1]))
+        return [pts[i] for i in keep]
+
+    knots = run(eps)
+    while len(knots) > max_knots:
+        eps *= 2
+        knots = run(eps)
+    return knots
 
 
 def _xexpr(path, times):
@@ -72,13 +84,21 @@ def _probe(src):
          "-of", "json", src], text=True)
     s = json.loads(out.stdout)["streams"][0]
     num, den = s["avg_frame_rate"].split("/")
-    return int(s["width"]), int(s["height"]), float(num) / (float(den) or 1.0)
+    fps = float(num) / (float(den) or 1.0)
+    if fps <= 0:
+        raise ValueError(
+            f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
+    return int(s["width"]), int(s["height"]), fps
 
 
 def reframe(src, route_path, out, composition, grid, canvas,
             color_means, stabilize, path_out, max_speed=750.0):
     """max_speed: crop-x speed cap in px/sec — frame-rate independent
     (25 px/frame at the session's 30fps ≡ 750 px/s)."""
+    if stabilize:
+        raise NotImplementedError(
+            "stabilize=true is not wired in the core engine yet — vidstab lands in the "
+            "process-episode plan (and needs a vidstab-enabled ffmpeg, see setup.sh warning)")
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
     src_dims = (src_w, src_h)
     route = json.loads(Path(route_path).read_text())
@@ -92,12 +112,16 @@ def reframe(src, route_path, out, composition, grid, canvas,
     Path(path_out).write_text(json.dumps(path))
 
     crop_w, crop_h = g.crop_size(canvas[0], canvas[1], src_w, src_h)
-    out_w = 1080 if canvas == (9, 16) else crop_w
-    out_h = 1920 if canvas == (9, 16) else crop_h
+    if canvas == (9, 16):
+        out_w, out_h = 1080, 1920          # session-standard vertical delivery
+    else:
+        out_w, out_h = crop_w - crop_w % 2, crop_h - crop_h % 2   # yuv420p needs even dims
     rr, gg, bb = color.gains_for_means(color_means)
     times = [pt["t"] for pt in route]
     xexpr = _xexpr(path, times)
-    vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y=0,"
+    mean_y = sum(pt["y"] for pt in route) / len(route)
+    cy = g.crop_y(mean_y, crop_h, src_h)
+    vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y={cy},"
           f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
           f"fps={fps:.6g},format=yuv420p")
     cmd = ["ffmpeg", "-y", "-i", src, "-vf", vf,

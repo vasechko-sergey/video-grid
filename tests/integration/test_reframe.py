@@ -67,3 +67,38 @@ def test_reframe_with_route_gap_still_renders(sample_clip, tmp_path):
                     color_means=(105, 122, 137), stabilize=False,
                     path_out=str(tmp_path / "path.json"))
     assert _dims(out) == (1080, 1920)
+
+def test_simplify_caps_knots_on_long_noisy_path():
+    # ~83s at 60fps with residual tracker jitter: must stay under the knot cap
+    import math
+    times = [i / 60 for i in range(5000)]
+    path = [int(200 + i * 0.15 + 2.5 * math.sin(i * 1.7)) for i in range(5000)]
+    knots = reframe._simplify(path, times)
+    assert len(knots) <= 80
+    expr = reframe._xexpr(path, times)
+    assert len(expr) < 8000        # comfortably inside ffmpeg's parser budget
+
+def test_stabilize_true_fails_loud(sample_clip, tmp_path):
+    rp = tmp_path / "route.json"
+    rp.write_text(json.dumps([dict(t=0, x=500, y=540, w=140, h=320),
+                              dict(t=0.1, x=510, y=540, w=140, h=320)]))
+    with pytest.raises(NotImplementedError, match="process-episode"):
+        reframe.reframe(src=str(sample_clip), route_path=str(rp),
+                        out=str(tmp_path / "ep.mp4"), composition="lead",
+                        grid="thirds", canvas=(9, 16),
+                        color_means=(105, 122, 137), stabilize=True,
+                        path_out=str(tmp_path / "path.json"))
+
+@pytest.mark.integration
+def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
+    # canvas 5:8 from 1080p → crop 675x1080 (odd) — output must be even and encode
+    route = [dict(t=i/30, x=270 + (i/30)*430, y=540, w=140, h=320)
+             for i in range(90)]
+    rpath = tmp_path / "route.json"; rpath.write_text(json.dumps(route))
+    out = tmp_path / "ep58.mp4"
+    reframe.reframe(src=str(sample_clip), route_path=str(rpath), out=str(out),
+                    composition="lead", grid="thirds", canvas=(5, 8),
+                    color_means=(105, 122, 137), stabilize=False,
+                    path_out=str(tmp_path / "path.json"))
+    w, h = _dims(out)
+    assert w % 2 == 0 and h % 2 == 0
