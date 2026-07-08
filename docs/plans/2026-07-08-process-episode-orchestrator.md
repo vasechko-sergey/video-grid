@@ -832,7 +832,7 @@ git commit -m "feat: process-episode orchestrator shell — loop, contract threa
 
 ## Task 4: `process_episode.py` — failure paths (retry, escalate, stop-and-report)
 
-Append tests that drive the non-happy branches through the mocked engine.
+Append tests that drive the non-happy branches through the mocked engine. **Post-review: added a corrupt-meta-sidecar loud-fail test covering the Task-3 hardening branch (`ce...`).** Full suite → 115 passed.
 
 **Files:**
 - Modify: `tests/integration/test_process_episode.py`
@@ -917,7 +917,7 @@ def test_ambiguous_hero_stops_and_reports(monkeypatch, tmp_path):
 - [ ] **Step 2: Run to verify (expect a mix — some may fail if the shell has a gap)**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
-Expected: PASS (9 passed — 4 from Task 3 + 5 new). If any fail, the shell logic (not the tests) is wrong — fix `process_episode.py` only.
+Expected: PASS (12 passed — 7 from Task 3 + 5 new + corrupt-meta coverage). If any fail, the shell logic (not the tests) is wrong — fix `process_episode.py` only.
 
 - [ ] **Step 3: Commit**
 
