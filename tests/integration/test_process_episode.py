@@ -107,6 +107,25 @@ def test_max_attempts_zero_rejected(monkeypatch, tmp_path):
                            max_attempts=0)
 
 
+def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
+    # §6.1a layer 4: the storyboard must carry per-frame hero marks so the
+    # editorial gate can confirm "right person" — the SKILL promises this artifact
+    _stub_engine(monkeypatch, tmp_path)
+    captured = {}
+
+    def capture_build(src, out, **k):
+        captured["marks"] = k.get("marks")
+        Path(out).write_text("sheet")
+        return out
+    monkeypatch.setattr(pe.storyboard, "build", capture_build)
+
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    marks = captured["marks"]
+    assert marks is not None and len(marks) == 6
+    assert all(len(pair) == 2 for pair in marks)   # (fx, fy) fractions
+
+
 def _report(overall, fail_reasons):
     return {"checks": {}, "overall": overall, "attempt": 1, "fail_reasons": fail_reasons}
 
@@ -127,7 +146,9 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     def fake_reframe(src, route_path, out, composition, grid, canvas, color_means,
                      stabilize, path_out, max_speed=750.0):
         speeds.append(max_speed)
-        Path(out).write_text("clip"); Path(path_out).write_text("[]")
+        # path length must match the route (real reframe invariant) — the shell
+        # reads it back to compute hero marks for the storyboard
+        Path(out).write_text("clip"); Path(path_out).write_text(json.dumps([100] * 10))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 

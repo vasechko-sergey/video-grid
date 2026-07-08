@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import geometry
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 
@@ -86,8 +87,14 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
             canvas=m.canvas, src_dims=(src_w, src_h), attempt=attempt))
         if report["overall"]:
             sheet = str(Path(project_dir) / "storyboard.jpg")
+            # hero marker (§6.1a layer 4): draw the followed subject on every
+            # sampled frame so the editorial gate can confirm "right person" —
+            # without marks the SKILL's marker check has nothing to look at
+            crop_w, _ = geometry.crop_size(m.canvas[0], m.canvas[1], src_w, src_h)
+            path = json.loads(Path(path_out).read_text())
+            marks = storyboard.marks_from_route_path(route, path, crop_w, src_h, n=6)
             _timed("storyboard", lambda: storyboard.build(m.out_path, sheet,
-                                                          n=6, grids=(m.grid,)))
+                                                          n=6, grids=(m.grid,), marks=marks))
             return {"status": "mechanical_pass", "clip": m.out_path, "report": report,
                     "storyboard": sheet, "attempt": attempt, "timings": timings,
                     "degraded": None}
