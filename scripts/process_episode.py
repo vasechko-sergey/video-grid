@@ -55,9 +55,10 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
     if route_path is None:
         rp = str(Path(project_dir) / "route.json")
-        _timed("track", lambda: track.build_route(m.segment, out=rp, seed_bbox=m.hero
-                                                   if isinstance(m.hero, tuple) else None,
-                                                   model_path=m.model))
+        _timed("track", lambda: track.build_route(
+            m.segment, out=rp,
+            seed_bbox=m.hero if orch.is_seed_pin(m.hero) else None,
+            model_path=m.model))
         route, track_meta = _load_route(rp)
     else:
         route, track_meta = _load_route(route_path)

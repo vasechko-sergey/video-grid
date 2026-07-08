@@ -9,6 +9,16 @@ only wires these to the engine scripts.
 from scripts.lib.motion import classify
 
 
+def is_seed_pin(hero):
+    """True iff `hero` is a hero value the tracker can ACTUALLY be seeded with
+    this slice: a non-empty seed-bbox tuple. A cast name / rule / empty value is
+    not applicable until the ingestion plan's cast.json lands — the shell only
+    passes a tuple as `seed_bbox`, so only a tuple resolves §6.1a ambiguity. The
+    ambiguity gate and the shell's seed gate MUST share this one predicate or a
+    named-but-unseeded hero silently suppresses stop-and-report."""
+    return isinstance(hero, tuple) and len(hero) > 0
+
+
 def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
     """Machine-detectable manifest-vs-reality conflicts (§4.1). Returns a list
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
@@ -18,11 +28,13 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
                          "detail": "tracker produced an empty route — hero never "
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
-    if (track_meta or {}).get("ambiguous") and not hero:
-        # not hero (vs `is None`): an empty pin ("" / () / []) is no pin at all
+    if (track_meta or {}).get("ambiguous") and not is_seed_pin(hero):
+        # only an applicable seed pin resolves ambiguity — an empty pin ("" / ()
+        # / []) OR a not-yet-supported cast name / rule is no seed at all
         findings.append({"reason": "hero-ambiguous",
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
-                                   "pin a hero (seed bbox / rule / cast name) and retry"})
+                                   "pin a hero (seed bbox [x,y,w,h]; cast name / rule "
+                                   "needs the ingestion plan) and retry"})
     if motion:
         obs_type, obs_dir = classify(route, src_w, src_h)
         observed = obs_type + (f":{obs_dir}" if obs_dir else "")

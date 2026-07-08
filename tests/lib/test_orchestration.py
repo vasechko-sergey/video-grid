@@ -63,6 +63,26 @@ def test_missing_track_meta_does_not_crash():
     assert findings == []
 
 
+def test_named_or_rule_hero_does_not_resolve_ambiguity():
+    # a cast name / rule / garbage hero is truthy but is NOT an applicable seed
+    # this slice (cast.json is the ingestion plan) — the shell only seeds a tuple
+    # bbox, so a non-tuple hero must NOT silently suppress the §6.1a gate
+    for named in ("Lena", {"rule": "largest"}, 42):
+        findings = orch.detect_contradictions(motion=None, hero=named,
+                                              route=_route_right(),
+                                              track_meta={"ambiguous": True},
+                                              src_w=1920, src_h=1080)
+        assert any(f["reason"] == "hero-ambiguous" for f in findings), named
+
+
+def test_is_seed_pin_only_true_for_nonempty_tuple():
+    assert orch.is_seed_pin((900, 500, 120, 300)) is True
+    assert orch.is_seed_pin(()) is False          # empty tuple is no pin
+    assert orch.is_seed_pin(None) is False
+    assert orch.is_seed_pin("Lena") is False       # cast name → ingestion plan
+    assert orch.is_seed_pin({"rule": "largest"}) is False
+
+
 def test_default_params():
     assert orch.DEFAULT_PARAMS["max_speed"] == 750.0
 

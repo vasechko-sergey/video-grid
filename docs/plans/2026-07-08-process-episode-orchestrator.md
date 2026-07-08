@@ -312,7 +312,7 @@ git commit -m "feat: episode manifest + machine-checkable validation (process-ep
 
 ## Task 1: `orchestration.py` — contradiction detection (§4.1 no-improvising)
 
-Pure, TDD. **Hardened post-review (`8f...`):** `hero-ambiguous` uses truthiness (`not hero`) so an empty pin ('' / () / []) still fires; `track_meta` tolerates None. Machine-detectable "mid-task reality contradicts the manifest" cases → structured findings. Non-empty ⇒ the shell returns `stop_and_report`.
+Pure, TDD. **Hardened post-review (`8f...`, and final-review fix):** `hero-ambiguous` fires unless the hero is an *applicable* seed pin — `not is_seed_pin(hero)`, a shared predicate (non-empty tuple) that the shell's `seed_bbox` gate reuses, so a not-yet-supported cast name / rule (or an empty pin '' / () / []) can no longer silently suppress the §6.1a gate while going un-seeded; `track_meta` tolerates None. Machine-detectable "mid-task reality contradicts the manifest" cases → structured findings. Non-empty ⇒ the shell returns `stop_and_report`.
 
 **Files:**
 - Create: `tests/lib/test_orchestration.py`
@@ -385,6 +385,26 @@ def test_missing_track_meta_does_not_crash():
                                           route=_route_right(), track_meta=None,
                                           src_w=1920, src_h=1080)
     assert findings == []
+
+
+def test_named_or_rule_hero_does_not_resolve_ambiguity():
+    # a cast name / rule / garbage hero is truthy but is NOT an applicable seed
+    # this slice (cast.json is the ingestion plan) — the shell only seeds a tuple
+    # bbox, so a non-tuple hero must NOT silently suppress the §6.1a gate
+    for named in ("Lena", {"rule": "largest"}, 42):
+        findings = orch.detect_contradictions(motion=None, hero=named,
+                                              route=_route_right(),
+                                              track_meta={"ambiguous": True},
+                                              src_w=1920, src_h=1080)
+        assert any(f["reason"] == "hero-ambiguous" for f in findings), named
+
+
+def test_is_seed_pin_only_true_for_nonempty_tuple():
+    assert orch.is_seed_pin((900, 500, 120, 300)) is True
+    assert orch.is_seed_pin(()) is False          # empty tuple is no pin
+    assert orch.is_seed_pin(None) is False
+    assert orch.is_seed_pin("Lena") is False       # cast name → ingestion plan
+    assert orch.is_seed_pin({"rule": "largest"}) is False
 ```
 
 - [x] **Step 2: Run to verify failure**
@@ -406,6 +426,16 @@ only wires these to the engine scripts.
 from scripts.lib.motion import classify
 
 
+def is_seed_pin(hero):
+    """True iff `hero` is a hero value the tracker can ACTUALLY be seeded with
+    this slice: a non-empty seed-bbox tuple. A cast name / rule / empty value is
+    not applicable until the ingestion plan's cast.json lands — the shell only
+    passes a tuple as `seed_bbox`, so only a tuple resolves §6.1a ambiguity. The
+    ambiguity gate and the shell's seed gate MUST share this one predicate or a
+    named-but-unseeded hero silently suppresses stop-and-report."""
+    return isinstance(hero, tuple) and len(hero) > 0
+
+
 def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
     """Machine-detectable manifest-vs-reality conflicts (§4.1). Returns a list
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
@@ -415,11 +445,13 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
                          "detail": "tracker produced an empty route — hero never "
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
-    if (track_meta or {}).get("ambiguous") and not hero:
-        # not hero (vs `is None`): an empty pin ("" / () / []) is no pin at all
+    if (track_meta or {}).get("ambiguous") and not is_seed_pin(hero):
+        # only an applicable seed pin resolves ambiguity — an empty pin ("" / ()
+        # / []) OR a not-yet-supported cast name / rule is no seed at all
         findings.append({"reason": "hero-ambiguous",
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
-                                   "pin a hero (seed bbox / rule / cast name) and retry"})
+                                   "pin a hero (seed bbox [x,y,w,h]; cast name / rule "
+                                   "needs the ingestion plan) and retry"})
     if motion:
         obs_type, obs_dir = classify(route, src_w, src_h)
         observed = obs_type + (f":{obs_dir}" if obs_dir else "")
@@ -756,9 +788,10 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
     if route_path is None:
         rp = str(Path(project_dir) / "route.json")
-        _timed("track", lambda: track.build_route(m.segment, out=rp, seed_bbox=m.hero
-                                                   if isinstance(m.hero, tuple) else None,
-                                                   model_path=m.model))
+        _timed("track", lambda: track.build_route(
+            m.segment, out=rp,
+            seed_bbox=m.hero if orch.is_seed_pin(m.hero) else None,
+            model_path=m.model))
         route, track_meta = _load_route(rp)
     else:
         route, track_meta = _load_route(route_path)
