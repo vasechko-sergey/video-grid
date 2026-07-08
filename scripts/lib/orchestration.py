@@ -18,7 +18,8 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h):
                          "detail": "tracker produced an empty route — hero never "
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
-    if track_meta.get("ambiguous") and hero is None:
+    if (track_meta or {}).get("ambiguous") and not hero:
+        # not hero (vs `is None`): an empty pin ("" / () / []) is no pin at all
         findings.append({"reason": "hero-ambiguous",
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
                                    "pin a hero (seed bbox / rule / cast name) and retry"})
