@@ -53,6 +53,22 @@ def test_check_episode_break_is_editorial_only(sample_clip, tmp_path):
     assert report["checks"]["framing"] == {"status": "editorial-only"}
     assert "on_line" not in report["checks"]
 
+def test_marks_from_route_path():
+    route = [dict(t=i/30, x=400 + i, y=540, w=140, h=320) for i in range(30)]
+    path = [200] * 30
+    marks = storyboard.marks_from_route_path(route, path, crop_w=600,
+                                             src_h=1080, n=6)
+    assert len(marks) == 6
+    fx0, fy0 = marks[0]
+    assert abs(fx0 - (400 - 200) / 600) < 1e-9
+    assert abs(fy0 - 0.5) < 1e-9
+
+def test_marks_rejects_desync():
+    route = [dict(x=400, y=540)] * 10
+    with pytest.raises(ValueError, match="parallel"):
+        storyboard.marks_from_route_path(route, [100] * 9, crop_w=600,
+                                         src_h=1080, n=4)
+
 @pytest.mark.integration
 def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip):
     # prepend 0.5s of pure black to the sample clip → boundary check must fail

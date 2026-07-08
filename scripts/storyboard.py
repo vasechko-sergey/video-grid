@@ -37,6 +37,20 @@ def _overlay(img, grids, mark=None):
     return img
 
 
+def marks_from_route_path(route, path, crop_w, src_h, n):
+    """(fx, fy) subject fractions in the OUTPUT frame for n sampled frames —
+    the hero marker (spec §6.1a): sample route/path uniformly, fx=(x-crop_x)/crop_w."""
+    if not route or len(route) != len(path):
+        raise ValueError(
+            f"route/path must be non-empty parallel arrays, got {len(route)} vs {len(path)}")
+    idxs = [round(i * (len(route) - 1) / max(1, n - 1)) for i in range(n)]
+    marks = []
+    for i in idxs:
+        pt, cx = route[i], path[i]
+        marks.append(((pt["x"] - cx) / crop_w, pt["y"] / src_h))
+    return marks
+
+
 def build(src, out, n=8, grids=("thirds",), marks=None):
     """marks: optional per-sampled-frame (fx, fy) subject fractions in the
     OUTPUT frame — the caller derives them from route+path ((x-crop_x)/crop_w).

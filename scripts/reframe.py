@@ -9,11 +9,14 @@ from scripts.lib.motion import classify
 def compute_path(route, composition, grid, canvas, src, motion, max_step):
     crop_w, _ = g.crop_size(canvas[0], canvas[1], src[0], src[1])
     _, direction = motion if motion[0] == "lateral" else (motion[0], "right")
-    raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
-           for pt in route]
-    if composition == "center" or motion[0] != "lateral":
-        # center / head-on / static: aim crop centre at subject, no lead
+    if composition in ("center", "break") or motion[0] != "lateral":
+        # center / head-on / static: aim crop centre at subject, no lead.
+        # break (spec §6.2): tracked but relaxed — v1 center-tracks; extreme
+        # framing is editorial territory, checks are editorial-only.
         raw = [g.clamp(round(pt["x"] - crop_w / 2), 0, src[0] - crop_w)
+               for pt in route]
+    else:
+        raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
                for pt in route]
     smoothed = pathsmooth.smooth(raw, max_step=max_step)
     # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame

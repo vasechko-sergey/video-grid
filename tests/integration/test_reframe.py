@@ -89,6 +89,21 @@ def test_stabilize_true_fails_loud(sample_clip, tmp_path):
                         color_means=(105, 122, 137), stabilize=True,
                         path_out=str(tmp_path / "path.json"))
 
+def test_compute_path_break_center_tracks():
+    route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
+    path = reframe.compute_path(route, composition="break", grid="thirds",
+                                canvas=(9, 16), src=(1920, 1080),
+                                motion=("lateral", "right"), max_step=25)
+    assert len(path) == 20
+    assert all(0 <= x <= 1920 - 607 for x in path)
+
+def test_compute_path_unknown_composition_fails_loud():
+    route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(5)]
+    with pytest.raises(ValueError, match="unknown composition"):
+        reframe.compute_path(route, composition="Lead", grid="thirds",
+                             canvas=(9, 16), src=(1920, 1080),
+                             motion=("lateral", "right"), max_step=25)
+
 @pytest.mark.integration
 def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
     # canvas 5:8 from 1080p → crop 675x1080 (odd) — output must be even and encode
