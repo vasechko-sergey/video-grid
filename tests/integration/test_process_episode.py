@@ -336,10 +336,12 @@ def test_project_inherits_canvas_and_delivery(monkeypatch, tmp_path):
 def test_project_episode_canvas_overrides(monkeypatch, tmp_path):
     calls = _stub_engine(monkeypatch, tmp_path)
     cfg = pj.resolve_project("youtube")                 # project says 16:9
-    result = pe.process_episode(_manifest(tmp_path, canvas=[9, 16]),  # episode says 9:16
+    # episode canvas differs from BOTH the project (16:9) and the _manifest default
+    # (9:16), so this can only pass if the episode's explicit value actually wins
+    result = pe.process_episode(_manifest(tmp_path, canvas=[21, 9]),
                                 project_dir=str(tmp_path), project=cfg)
     assert result["status"] == "mechanical_pass"
-    assert calls["reframe_canvas"] == (9, 16)           # episode wins
+    assert calls["reframe_canvas"] == (21, 9)           # episode wins
 
 
 def test_project_from_json_path(monkeypatch, tmp_path):
