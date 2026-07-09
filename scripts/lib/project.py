@@ -78,3 +78,15 @@ def resolve_project(purpose, quality="native", canvas=None, delivery=None, notes
         raise ValueError(f"quality {quality!r} unknown — one of {sorted(QUALITY_DELIVERY)} "
                          "or pass an explicit delivery=")
     return ProjectConfig(purpose=purpose, canvas=cv, delivery=dv, notes=notes)
+
+
+def resolve_manifest(episode_dict, config):
+    """Fill canvas/delivery from the project when the episode omits them (missing
+    OR explicit JSON null → inherit, matching the manifest's null-is-absent rule);
+    an explicit episode value wins (override). Returns a NEW dict; never mutates."""
+    out = dict(episode_dict)
+    if out.get("canvas") is None:
+        out["canvas"] = list(config.canvas)
+    if out.get("delivery") is None:
+        out["delivery"] = config.delivery
+    return out

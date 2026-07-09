@@ -55,3 +55,32 @@ def test_projectconfig_json_roundtrip(tmp_path):
                        "delivery": "long_edge:2160", "notes": "tv cut"}
     back = pj.ProjectConfig.from_json(fp)
     assert back.canvas == (16, 9) and back.delivery == "long_edge:2160"
+
+
+def test_resolve_manifest_fills_absent():
+    cfg = pj.resolve_project("square")             # (1,1), native
+    ep = {"segment": "s.mp4", "out_path": "o.mp4", "composition": "lead",
+          "grid": "thirds", "target_dur": 3.0}     # no canvas / delivery
+    out = pj.resolve_manifest(ep, cfg)
+    assert out["canvas"] == [1, 1] and out["delivery"] == "native"
+
+
+def test_resolve_manifest_episode_overrides():
+    cfg = pj.resolve_project("reel")               # (9,16), native
+    ep = {"canvas": [16, 9], "delivery": "short_edge:1080"}
+    out = pj.resolve_manifest(ep, cfg)
+    assert out["canvas"] == [16, 9] and out["delivery"] == "short_edge:1080"
+
+
+def test_resolve_manifest_null_inherits():
+    cfg = pj.resolve_project("reel")
+    out = pj.resolve_manifest({"canvas": None, "delivery": None}, cfg)
+    assert out["canvas"] == [9, 16] and out["delivery"] == "native"
+
+
+def test_resolve_manifest_does_not_mutate_input():
+    cfg = pj.resolve_project("reel")
+    ep = {"segment": "s.mp4"}
+    out = pj.resolve_manifest(ep, cfg)
+    assert "canvas" not in ep                       # input untouched
+    assert out["canvas"] == [9, 16] and out is not ep
