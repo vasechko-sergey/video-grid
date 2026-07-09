@@ -52,7 +52,11 @@ class ProjectConfig:
 
     @classmethod
     def from_json(cls, path):
-        return cls.from_dict(json.loads(Path(path).read_text()))
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is corrupt ({e}) — re-run project-init to regenerate it") from e
+        return cls.from_dict(d)
 
     def write(self, path):
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))

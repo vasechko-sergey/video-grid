@@ -84,3 +84,43 @@ def test_resolve_manifest_does_not_mutate_input():
     out = pj.resolve_manifest(ep, cfg)
     assert "canvas" not in ep                       # input untouched
     assert out["canvas"] == [9, 16] and out is not ep
+
+
+def test_project_init_cli_writes_json(tmp_path, monkeypatch, capsys):
+    import sys
+    from scripts import project_init
+    argv = ["project_init", "--purpose", "youtube", "--quality", "4k",
+            "--project-dir", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+    project_init.main()
+    out = tmp_path / "project.json"
+    assert out.exists()
+    cfg = pj.ProjectConfig.from_json(out)
+    assert cfg.canvas == (16, 9) and cfg.delivery == "long_edge:2160"
+    assert capsys.readouterr().out.strip().endswith("project.json")
+
+
+def test_project_init_cli_custom(tmp_path, monkeypatch):
+    import sys
+    from scripts import project_init
+    monkeypatch.setattr(sys, "argv",
+                        ["project_init", "--purpose", "custom", "--canvas", "4:5",
+                         "--project-dir", str(tmp_path)])
+    project_init.main()
+    assert pj.ProjectConfig.from_json(tmp_path / "project.json").canvas == (4, 5)
+
+
+def test_project_init_cli_bad_purpose_raises(tmp_path, monkeypatch):
+    import sys
+    from scripts import project_init
+    monkeypatch.setattr(sys, "argv",
+                        ["project_init", "--purpose", "bogus", "--project-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match="purpose"):
+        project_init.main()
+
+
+def test_from_json_corrupt_fails_loud(tmp_path):
+    fp = tmp_path / "project.json"
+    fp.write_text("{not valid json")
+    with pytest.raises(ValueError, match="corrupt"):
+        pj.ProjectConfig.from_json(fp)
