@@ -352,3 +352,23 @@ def test_project_from_json_path(monkeypatch, tmp_path):
     result = pe.process_episode(d, project_dir=str(tmp_path),
                                 project=str(tmp_path / "project.json"))
     assert result["status"] == "mechanical_pass"
+
+
+@pytest.mark.integration
+def test_project_native_delivery_end_to_end(tmp_path):
+    # a reel (9:16) project with NATIVE delivery + an episode omitting canvas/delivery →
+    # inherits → the golden ride renders at the source's native 9:16 crop, not a pinned
+    # 1080×1920. Proves the project front-door drives the engine end-to-end through real ffmpeg.
+    cfg = pj.resolve_project("reel")                    # (9,16), native
+    manifest = dict(segment=str(FIX / "golden_ride.mp4"), out_path=str(tmp_path / "ep.mp4"),
+                    composition="lead", grid="thirds", target_dur=1.58)   # no canvas/delivery
+    result = pe.process_episode(manifest, project_dir=str(tmp_path),
+                                route_path=str(FIX / "golden_route.json"), project=cfg)
+    assert result["status"] == "mechanical_pass", result
+    import json as _j
+    probe = _j.loads(pe.check_episode.proc.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "json", result["clip"]],
+        text=True).stdout)["streams"][0]
+    # golden source 1280×720 → 9:16 crop 405×720 → even native → 404×720
+    assert (probe["width"], probe["height"]) == (404, 720)
