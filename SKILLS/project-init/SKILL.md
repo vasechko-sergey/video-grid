@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Use ONCE at the very start of a montage project to learn what the video is for and set its aspect + delivery quality. Asks the purpose (reel / youtube / square / cinema / custom) and quality (native-best / social-1080 / 4K / custom), writes project.json; every episode then inherits canvas/delivery unless it overrides. Run before any episode processing.
+description: Use ONCE at the very start of a montage project to learn what the video is for and set its aspect + delivery quality. Asks the purpose (reel / youtube / square / cinema / custom) and quality (native-best / social-1080 / 4K, or an explicit delivery spec), writes project.json; every episode then inherits canvas/delivery unless it overrides. Run before any episode processing.
 ---
 
 # project-init
