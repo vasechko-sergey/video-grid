@@ -53,8 +53,10 @@ Announce on entry: **"Using process-episode to process `<ep>`."**
 Run the orchestrator (never re-implement its loop in prose):
 
 ```bash
-.venv/bin/python -m scripts.process_episode <manifest.json> --project-dir <scratch>
+.venv/bin/python -m scripts.process_episode <manifest.json> --project-dir <scratch> [--project <project.json>]
 ```
+
+Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project.
 
 ## Ask-before-start (§4.1)
 

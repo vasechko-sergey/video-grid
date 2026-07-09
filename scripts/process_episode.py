@@ -134,8 +134,10 @@ if __name__ == "__main__":
     ap.add_argument("manifest", help="path to a JSON manifest file (§5.10)")
     ap.add_argument("--project-dir", required=True, help="scratch dir for route/path/report")
     ap.add_argument("--route", default=None, help="frozen route.json (skip tracking)")
+    ap.add_argument("--project", default=None,
+                    help="path to project.json — the episode inherits its canvas/delivery")
     a = ap.parse_args()
     md = json.loads(Path(a.manifest).read_text())
-    result = process_episode(md, a.project_dir, route_path=a.route)
+    result = process_episode(md, a.project_dir, route_path=a.route, project=a.project)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)

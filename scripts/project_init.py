@@ -20,7 +20,13 @@ def main():
     ap.add_argument("--notes", default="")
     ap.add_argument("--project-dir", required=True, help="dir to write project.json into")
     a = ap.parse_args()
-    canvas = tuple(int(v) for v in a.canvas.split(":")) if a.canvas else None
+    if a.canvas:
+        try:
+            canvas = tuple(int(v) for v in a.canvas.split(":"))
+        except ValueError:
+            raise ValueError(f"--canvas {a.canvas!r} must be W:H integers, e.g. 4:5") from None
+    else:
+        canvas = None
     cfg = resolve_project(a.purpose, quality=a.quality, canvas=canvas,
                           delivery=a.delivery, notes=a.notes)
     Path(a.project_dir).mkdir(parents=True, exist_ok=True)

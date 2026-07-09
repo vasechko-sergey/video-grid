@@ -124,3 +124,30 @@ def test_from_json_corrupt_fails_loud(tmp_path):
     fp.write_text("{not valid json")
     with pytest.raises(ValueError, match="corrupt"):
         pj.ProjectConfig.from_json(fp)
+
+
+def test_from_dict_incomplete_raises_valueerror(tmp_path):
+    # a syntactically-valid but incomplete/legacy project.json must raise a clean
+    # ValueError (from __post_init__), not a bare KeyError/TypeError
+    with pytest.raises(ValueError, match="canvas"):
+        pj.ProjectConfig.from_dict({"purpose": "reel", "delivery": "native"})
+    with pytest.raises(ValueError, match="canvas"):
+        pj.ProjectConfig.from_dict({"purpose": "reel", "canvas": None, "delivery": "native"})
+    with pytest.raises(ValueError, match="purpose"):
+        pj.ProjectConfig.from_dict({"canvas": [9, 16], "delivery": "native"})
+
+
+def test_delivery_null_normalizes_to_native():
+    c = pj.ProjectConfig.from_dict({"purpose": "reel", "canvas": [9, 16], "delivery": None})
+    assert c.delivery == "native"
+    assert c.to_dict()["delivery"] == "native"
+
+
+def test_project_init_cli_bad_canvas_raises(tmp_path, monkeypatch):
+    import sys
+    from scripts import project_init
+    monkeypatch.setattr(sys, "argv",
+                        ["project_init", "--purpose", "custom", "--canvas", "foo:bar",
+                         "--project-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match="W:H"):
+        project_init.main()

@@ -36,6 +36,8 @@ class ProjectConfig:
                 and all(isinstance(v, (int, float)) and v > 0 for v in self.canvas)):
             raise ValueError(f"ProjectConfig.canvas must be [w, h] positive, got {self.canvas!r}")
         self.canvas = tuple(self.canvas)
+        if self.delivery is None:
+            self.delivery = "native"
         try:
             Delivery.from_spec(self.delivery)
         except (ValueError, TypeError) as e:
@@ -43,8 +45,10 @@ class ProjectConfig:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(purpose=d["purpose"], canvas=tuple(d["canvas"]),
-                   delivery=d["delivery"], notes=d.get("notes") or "")
+        # pass raw values through; __post_init__ produces clean ValueError-with-remedy
+        # for missing/None/garbage (never a bare KeyError/TypeError)
+        return cls(purpose=d.get("purpose"), canvas=d.get("canvas"),
+                   delivery=d.get("delivery"), notes=d.get("notes") or "")
 
     def to_dict(self):
         return {"purpose": self.purpose, "canvas": list(self.canvas),
