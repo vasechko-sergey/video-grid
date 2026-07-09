@@ -1,6 +1,8 @@
 """Track the primary subject → route.json (spec §6.1)."""
 import argparse, json
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from scripts.lib import proc
 from scripts.lib.models import RoutePoint, TrackMeta, TrackSpec, route_to_json
@@ -10,14 +12,16 @@ from scripts.lib.models import RoutePoint, TrackMeta, TrackSpec, route_to_json
 # weight cache into models/.
 MODEL = "yolo11n-seg.pt"
 
+_Det = tuple[int, float, float, float, float]
+_Frame = tuple[int, list[_Det]]
 
-def _probe_meta(src):
+
+def _probe_meta(src: str) -> tuple[float, int, int]:
     """fps + dims from the source — never trust a caller-supplied default (4K/59.94 footage is the norm)."""
-    import json as _j
     r = proc.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
                   "-show_entries", "stream=width,height,avg_frame_rate",
                   "-of", "json", src], text=True)
-    s = _j.loads(r.stdout)["streams"][0]
+    s = json.loads(r.stdout)["streams"][0]
     num, den = s["avg_frame_rate"].split("/")
     den = float(den) or 1.0
     fps = float(num) / den
@@ -26,11 +30,12 @@ def _probe_meta(src):
     return fps, int(s["width"]), int(s["height"])
 
 
-def _iter_detections(src, model_path=MODEL):
+def _iter_detections(src: str, model_path: str = MODEL) -> Iterator[tuple[int, Any]]:
     """Yield (frame_index, [boxes]) using Ultralytics YOLO+ByteTrack.
 
     Isolated for testability; boxes expose .xywh, .id, .cls like ultralytics.
     """
+    # lazy import: heavy optional dep (ultralytics/torch)
     from ultralytics import YOLO
     model = YOLO(model_path)
     # imgsz=960: detect on downscaled frames (~10x faster on 4K); ultralytics
@@ -41,7 +46,7 @@ def _iter_detections(src, model_path=MODEL):
         yield i, (res.boxes if res.boxes is not None else [])
 
 
-def _seed_track(per_frame, seed, first_n=5):
+def _seed_track(per_frame: list[_Frame], seed: tuple[float, ...], first_n: int = 5) -> int | None:
     """Track id with max IoU vs the seed bbox (centre-format) over first frames.
 
     The manifest's hero-pin (spec §5.10): resolves "which person" explicitly.
@@ -61,7 +66,8 @@ def _seed_track(per_frame, seed, first_n=5):
     return best
 
 
-def _track_features(per_frame, src_w=None, src_h=None):
+def _track_features(per_frame: list[_Frame], src_w: int | None = None,
+                    src_h: int | None = None) -> dict[int, dict]:
     """Per-track: frame count, first→last displacement, mean bbox area,
     mean speed (px/frame), border share (spec §6.1a candidate discriminators).
     """
@@ -96,7 +102,7 @@ def _track_features(per_frame, src_w=None, src_h=None):
     return feats
 
 
-def _pick_hero(feats, intent):
+def _pick_hero(feats: dict[int, dict], intent: str) -> tuple[int | None, bool]:
     """Intent-conditioned scoring (spec §6.1a) — NOT most-frames: the subject
     of an action shot crosses the frame in seconds while a bystander stands in
     frame the whole clip, so raw frame count is biased the wrong way.
@@ -110,7 +116,7 @@ def _pick_hero(feats, intent):
           for k in ("disp", "n", "area")}
     wd, wn, wa = (2.0, 0.5, 0.3) if intent == "action" else (0.0, 1.0, 1.0)
 
-    def score(f):
+    def score(f: dict) -> float:
         return (wd * f["disp"] / mx["disp"] + wn * f["n"] / mx["n"]
                 + wa * f["area"] / mx["area"])
 
@@ -120,7 +126,7 @@ def _pick_hero(feats, intent):
     return ranked[0][0], ambiguous
 
 
-def build_route(spec, out):
+def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     """Track the hero subject → list[RoutePoint] + a TrackMeta sidecar (spec §6.1).
 
     spec: a TrackSpec (scripts/lib/models.py) — carries src/model/seed_bbox/

@@ -1205,14 +1205,14 @@ git commit -m "feat: process-episode SKILL — subagent prompt with §4.1 protoc
 Land the docs so the follow-on plans (router, ingestion) can reference stable files, and record the contract fix as paid down.
 
 **Files:**
-- Modify: `docs/2026-07-05-montage-skillset-design.md` (mark the canvas/src_dims contract closed; note the orchestrator-first slice)
+- Modify: `docs/specs/2026-07-05-montage-skillset-design.md` (mark the canvas/src_dims contract closed; note the orchestrator-first slice)
 - Modify: `docs/plans/2026-07-05-video-grid-core.md` (tick the follow-on #1 contract note as addressed by this plan)
 - Modify: `CLAUDE.md` (Status + Next action)
 - Modify: `README.md` (one line: the engine now has an autonomous single-episode driver)
 
 - [x] **Step 1: Update the design spec**
 
-In `docs/2026-07-05-montage-skillset-design.md` §5.10, append a build note after the "Gate" line:
+In `docs/specs/2026-07-05-montage-skillset-design.md` §5.10, append a build note after the "Gate" line:
 ```markdown
 > **Built (2026-07-08, orchestrator-first slice):** `scripts/process_episode.py` drives the loop for one episode (`fill`/9:16), threading the probed `canvas`/`src_dims` into `check_episode` (closes the core-plan contract note); `SKILLS/process-episode/SKILL.md` is the subagent (ask-before-start, editorial gate, stop-and-report). Layouts/stab, the optical-flow/manual degradation rungs, descriptor continuity re-match, and the cap-3 parallel fan-out are their own follow-on plans.
 ```

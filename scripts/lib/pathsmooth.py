@@ -3,7 +3,7 @@ import numpy as np
 from scipy.signal import savgol_filter
 
 
-def _rate_limit(raw, max_step):
+def _rate_limit(raw: list[float], max_step: float) -> list[float]:
     out = [float(raw[0])]
     for target in raw[1:]:
         prev = out[-1]
@@ -16,7 +16,8 @@ def _rate_limit(raw, max_step):
     return out
 
 
-def smooth(raw, max_step, window=7, polyorder=2):
+def smooth(raw: list[float], max_step: float, window: int | None = 7,
+           polyorder: int = 2) -> list[float]:
     """Rate-limit then (optionally) Savitzky-Golay smooth the path.
 
     max_step: max crop-x change per frame (px) — the damping.

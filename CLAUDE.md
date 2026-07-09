@@ -1,44 +1,46 @@
 # video-grid
 
-AI-assisted video-montage skill set (approach inspired by superpowers; fully independent). All docs and code in English — built for distribution.
+AI-assisted video-montage skill set (approach inspired by superpowers; fully
+independent). All docs and code in English — built for distribution.
+
+Guidance for Claude Code working in this repo. **This file is a registry:** the
+Quick Reference table points to focused docs; detail lives there, not here. The
+Known Troubles below stay inline because they fail *silently* — bad pixels, not
+a crash — so they must always be in context.
+
+## Quick Reference
+
+| Topic | File | Description |
+|-------|------|-------------|
+| Design spec | [2026-07-05-montage-skillset-design.md](docs/specs/2026-07-05-montage-skillset-design.md) | The montage skillset design — env, librosa-first music, §4.1 questions/go-back, §6.1a hero identity, golden fixture, degradation ladders, **§12 landmine registry**. |
+| Engine hardening design | [2026-07-08-engine-dataclass-hardening-design.md](docs/specs/2026-07-08-engine-dataclass-hardening-design.md) | Typed wire-contracts + config-specs; aspect/resolution-agnostic `Delivery`; soft-manifest / hard-engine validation. |
+| Project-init design | [2026-07-09-project-init-design.md](docs/specs/2026-07-09-project-init-design.md) | `purpose→canvas` / `quality→delivery` maps; episode inheritance; `native` default. |
+| Core implementation plan | [2026-07-05-video-grid-core.md](docs/plans/2026-07-05-video-grid-core.md) | Tasks 0–11 (+9.5 golden); follow-on plans at its tail. |
+| All plans | [docs/plans/](docs/plans/) | One plan per subsystem (core, orchestrator, engine-hardening, project-init). |
+| Coding standards | [coding-standards.md](docs/coding-standards.md) | Fail-loud contract, imports-at-top, typing, dataclass conventions, banned patterns. |
+| Testing guide | [testing-guide.md](docs/testing-guide.md) | TDD, whole-object asserts, real-ffmpeg golden fixtures, markers/layout. |
+| Development workflow | [development-workflow.md](docs/development-workflow.md) | Env, commands, superpowers execution protocol, branches/commits, doc standards. |
+| Build status & next action | [build-status.md](docs/build-status.md) | What's built, what's next, external assets — **update after every task**. |
 
 ## Source of truth
 
-- **Design spec:** `docs/2026-07-05-montage-skillset-design.md` — amended 2026-07-06: env (python 3.13, single requirements, pypi index), librosa-first music, §4.1 questions/go-back protocol, §6.1a hero identity, golden fixture, degradation ladders.
-- **Core implementation plan:** `docs/plans/2026-07-05-video-grid-core.md` — Tasks 0–11 (+9.5 golden); follow-on plans listed at its tail.
-- Spec and plan are in sync as of commit `00cede0`. If they drift, fix **both**, not one.
+- The design spec + core plan are the source of truth; **spec and plan stay in
+  sync** — if they drift, fix **both**, not one.
+- Current status and the next action live in
+  [docs/build-status.md](docs/build-status.md); update it (and the plan's
+  checkboxes) in the same commit after every task.
+- How new work is built (brainstorm → plan → subagent-driven TDD, two-stage
+  review) is in [development-workflow.md](docs/development-workflow.md).
 
-## Execution protocol
+## Known troubles (silent-corruption landmines — full registry: design spec §12)
 
-- Execute the core plan with **superpowers:subagent-driven-development**: fresh implementer per task, TDD (test first, watch it fail), two-stage review per task (spec compliance → code quality), continuous — no check-ins between tasks.
-- Branch: `feat/core-engine`. Commit per task step exactly as the plan specifies.
-- After finishing a task: tick its checkboxes in the plan file and update **Status** below; commit both.
+These do **not** fail loud — they quietly corrupt the output, so they live here
+in always-loaded context. The conventions that *do* fail loud (fail-loud
+contract, scripts-as-modules, `pythonpath = .`, typing) live in
+[coding-standards.md](docs/coding-standards.md) and
+[testing-guide.md](docs/testing-guide.md).
 
-## Status (update after every task)
-
-- **Done:** core plan Tasks 0–11 ALL COMPLETE, final review verdict READY (2026-07-07). 49 tests green (incl. golden fixture: real MVI_3739 footage @59.94fps through the full engine). Notable amendments beyond plan-verbatim code:
-  - vidstab preflight = warning, not blocker (`07d2e68`) — homebrew-core ffmpeg lacks libvidstab; core never calls it; process-episode re-checks hard.
-  - lib hardening (`341d059`): smooth([])→[], savgol odd-window ordering, on_line raises on route/path desync, gain(≤0) raises with remedy.
-  - **route-gap desync fix (`a19937f`)**: crop x(t) built from route timestamps, not frame index — occlusion gaps no longer desync crop from video timeline; empty route fails loud.
-  - Golden fixture as-built: window 9.083–10.668s (not lena_ride2) — diagonal motion means no 2.5s window in MVI_3739 classifies lateral; see plan Task 9.5 note.
-  - **Hardening round (2026-07-07, fresh-eyes audit, 5 commits `27e3571`→`0c8c283`):** proc.run surfaces ffmpeg stderr; check_episode validates composition (+`break`=editorial-only) and uses spec-§9 boundary-luma black check; track drops id=None frankentracks, probes fps/dims, adds speed+border features; reframe caps expr knots (~80), even dims for all canvases, §6.4 Y headroom, loud stabilize/fps guards; storyboard hero-marks helper. **68 tests green.** Spec/plan/landmines synced same round.
-- **process-episode orchestrator slice DONE (2026-07-08)** — plan `docs/plans/2026-07-08-process-episode-orchestrator.md`, Tasks 0–7 via strict subagent-driven-development (implementer → spec-review → code-quality-review + fix loops per task). **122 tests green.** Built: `scripts/lib/manifest.py` (validate gate), `scripts/lib/orchestration.py` (contradiction detect + retry-ladder + escalation), `scripts/lib/proc.py`, `scripts/process_episode.py` (deterministic loop: track→reframe→storyboard→check, threads probed canvas/src_dims — **closes the contract note** — times stages, hero marks on storyboard), `SKILLS/process-episode/SKILL.md` (subagent: ask-before-start, editorial gate, stop-and-report). Golden fixture runs the whole orchestrator through real ffmpeg. Review-driven fixes: manifest null/unknown-key/model/color/canvas hardening, hero truthiness, centered→on_line alias, project_dir mkdir, hero-marks wiring. **Final whole-slice review (2026-07-08, `5da32b2`):** verdict READY after one Important fix — a named/rule hero (non-tuple) silently suppressed the §6.1a hero-ambiguity stop-and-report while never being seeded; introduced `orch.is_seed_pin` (non-empty tuple), the single predicate shared by the ambiguity gate and the shell's `seed_bbox` gate. **124 tests green.**
-- **engine dataclass-hardening DONE (2026-07-09)** — plan `docs/plans/2026-07-08-engine-dataclass-hardening.md` + design `docs/2026-07-08-engine-dataclass-hardening-design.md`, Tasks 0–10 via strict subagent-driven-development (implementer → spec-review → code-quality-review + fix loops per task; branch `feat/engine-hardening`, commits `78e0fb9`..`4509cd6`). **168 tests green incl. 3 real-ffmpeg integration tests (2 on the golden ride).** Built `scripts/lib/models.py` — typed wire-contracts (`RoutePoint`/`TrackMeta`/`CropPath`/`CheckResult`/`Report`, JSON schema-compatible round-trip) + config-specs (`TrackSpec`/`ReframeSpec`/`CheckSpec`/`StoryboardSpec`/`Delivery`) that raise on bad construction. Every engine script retyped onto specs; `check_episode.run` returns a `Report`, `track.build_route`/`reframe.reframe`/`storyboard.build` take specs. **Validation principle:** manifest gate stays SOFT (`validate()`→`needs_input`); everything below it is HARD (raises). **Fixes:** #1 hero `intent` derived from composition/motion (was always "action" → wrong hero on static/center); #2 lead-over-nonlateral → `stop_and_report` before wasting reframes; #3 `black_frames` relative gate (near-black AND < 0.35×body-median — dark footage no longer false-fails); #4 hero marks computed at frame-SAMPLE times (was route-index, desynced on gaps); #5 Douglas-Peucker iterative (no RecursionError on long routes); #F engine resolution/aspect-agnostic — `Delivery` (native/short_edge/long_edge/exact), no 9:16/1080×1920 hardcode; #G `color_means` positivity. Review-driven fixes: `CheckResult.to_dict` strips stale pass-key; `Delivery` guards non-positive crop + clean `from_spec` errors; specs raise `ValueError` (not `TypeError`) on wrong-type; `check_episode` body-luma sampling spread across clip (was first ~1s → `body_median`=0 defeated the gate). **Known limitation:** the storyboard hero-marker's vertical fraction uses `y/src_h` (exact only when `crop_h==src_h`, i.e. 9:16-from-landscape); horizontal `fx` is always correct — a follow-up can thread `crop_h`/`cy` for landscape/square delivery.
-- **project-init DONE (2026-07-09)** — plan `docs/plans/2026-07-09-project-init.md` + design `docs/2026-07-09-project-init-design.md`, Tasks 0–4 via strict subagent-driven-development (branch `feat/project-init`, commits `af3753a`..`54dfa35`). **188 tests green incl. a real-ffmpeg native-inheritance golden.** The front-door that drives the aspect/resolution-agnostic engine: `scripts/lib/project.py` — `ProjectConfig` (raises on bad), `PURPOSE_CANVAS`/`QUALITY_DELIVERY` maps (**delivery defaults to `native`** — no silent downscale; a 1080 cap is a deliberate social opt-in), `resolve_project`, and `resolve_manifest` (episode inherits absent canvas/delivery, explicit episode value overrides, null=inherit, no mutation). `scripts/process_episode.py` gains `project=` (a `ProjectConfig` or a `project.json` path) applied before validation. `scripts/project_init.py` CLI writes `project.json`; `SKILLS/project-init/SKILL.md` is the one-time interactive "what's this video for" pass. Review-driven: override integration test made load-bearing (21:9), `ProjectConfig.from_json` corrupt→ValueError-with-remedy, SKILL description fixed ('custom' quality is an explicit `--delivery`). **Reconciliation note:** `project.json` is the machine `{canvas, delivery}` subset; the fuller `SPEC.md` reel-brief (music/mood/hook/cast) will later populate/supersede it — no conflict. cast.json/SPEC.md-brief/router/footage-intake stayed out of scope.
-- **Next action:** **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one interactive naming pass from surfaced crops → name + seg-mask appearance descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today `orch.is_seed_pin` only accepts a bbox tuple). OR **reframe-extensions** (layouts fit-blur/insert/split/pan + vidstab + optical-flow degradation; removes the matching `validate()` refusals) / **router** (cap-3 fan-out — resolve project → resolve_manifest per episode → fan out `process_episode`).
-- **Deferred / open:** vidstab-capable ffmpeg before stabilization (`bash setup.sh --with-vidstab`); descriptor continuity re-match needs ingestion's cast.json; cap-3 parallel fan-out is the router's job.
-
-## External assets (outside this repo)
-
-- **Golden fixture source (plan Task 9.5):** session footage + window map at
-  `/Users/serg/Downloads/untitled folder/REEL_SOURCES.md` — footage (`MVI_*.MP4`, `DJI_*.MP4`, ~128 files) sits in that same folder. `MVI_3739.MP4` (the long ride) is the suggested fixture source.
-- The Jul 3–5 montage session that this design was reverse-engineered from produced Reel A (ODESZA) and Reel B (Billie Eilish); real-footage validation happens when Sergei re-montages that footage — user-driven, not a milestone.
-
-## Hard rules (full registry: design spec §12)
-
-- ffmpeg seek: `-ss` **after** `-i` for frame-accurate cuts (the black-frames landmine was arg order, not 4K).
+- ffmpeg seek: `-ss` **after** `-i` for frame-accurate cuts (the black-frames
+  landmine was arg order, not 4K).
 - `lutrgb` is **banned** (black frames) — `colorchannelmixer` only.
-- Scripts run as modules — `.venv/bin/python -m scripts.<name>`; explicit paths always, never cwd.
-- `pytest.ini` must keep `pythonpath = .` (no `tests/__init__.py`).
 - Never stabilize wade-in/out shots ("rolling ground").
-- Every script fails loud with a remedy ("ffmpeg not found → brew install ffmpeg").

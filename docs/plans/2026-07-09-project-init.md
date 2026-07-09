@@ -6,7 +6,7 @@
 
 **Goal:** Add the project-level front-door that drives the now-aspect/resolution-agnostic engine — a `project.json` learned once at project start (purpose→canvas, quality→delivery, delivery defaults to `native`), which episode manifests inherit unless they override.
 
-**Architecture:** All determinism in a new pure `scripts/lib/project.py` (a `ProjectConfig` dataclass that raises on bad construction, the `purpose→canvas`/`quality→delivery` maps, `resolve_project`, and the `resolve_manifest` inheritance merge), TDD'd like the rest of `scripts/lib/`. A thin CLI `scripts/project_init.py` writes `project.json`; `process_episode` gains an optional `project=` that applies inheritance before manifest validation; a thin `SKILLS/project-init/SKILL.md` does the interactive asking. Design spec: `docs/2026-07-09-project-init-design.md`.
+**Architecture:** All determinism in a new pure `scripts/lib/project.py` (a `ProjectConfig` dataclass that raises on bad construction, the `purpose→canvas`/`quality→delivery` maps, `resolve_project`, and the `resolve_manifest` inheritance merge), TDD'd like the rest of `scripts/lib/`. A thin CLI `scripts/project_init.py` writes `project.json`; `process_episode` gains an optional `project=` that applies inheritance before manifest validation; a thin `SKILLS/project-init/SKILL.md` does the interactive asking. Design spec: `docs/specs/2026-07-09-project-init-design.md`.
 
 **Tech Stack:** Python 3.13 (existing `.venv`), stdlib `dataclasses`/`json`, the shipped `scripts/lib/models.Delivery`, pytest. No new third-party deps.
 
@@ -500,7 +500,7 @@ The interactive agent layer + the end-to-end proof that the project front-door d
 - Create: `SKILLS/project-init/SKILL.md`
 - Create: `tests/integration/test_skill_project_init.py`
 - Modify: `tests/integration/test_process_episode.py` (real-ffmpeg inheritance test)
-- Modify: `CLAUDE.md`, `README.md`, `docs/2026-07-09-project-init-design.md`
+- Modify: `CLAUDE.md`, `README.md`, `docs/specs/2026-07-09-project-init-design.md`
 
 - [x] **Step 1: Write the SKILL**
 
@@ -596,14 +596,14 @@ Expected: PASS. If the golden's crop dims differ from `(404, 720)` because the f
 - [x] **Step 4: Full suite + docs sync**
 
 Run: `.venv/bin/python -m pytest -q` — expect full green (report the count).
-- `docs/2026-07-09-project-init-design.md`: add a "Built (2026-07-09, commit)" note at the top.
+- `docs/specs/2026-07-09-project-init-design.md`: add a "Built (2026-07-09, commit)" note at the top.
 - `CLAUDE.md` Status: new bullet — project-init done, N tests, `project.json` + `resolve_manifest` + `process_episode(project=)` + the SKILL; **Next action** → cast.json ingestion or router.
 - `README.md`: note that a project's aspect/delivery is set once via `project-init` and episodes inherit.
 
 - [x] **Step 5: Commit**
 
 ```bash
-git add SKILLS/project-init/SKILL.md tests/integration/test_skill_project_init.py tests/integration/test_process_episode.py CLAUDE.md README.md docs/2026-07-09-project-init-design.md
+git add SKILLS/project-init/SKILL.md tests/integration/test_skill_project_init.py tests/integration/test_process_episode.py CLAUDE.md README.md docs/specs/2026-07-09-project-init-design.md
 git commit -m "feat: project-init SKILL + end-to-end native-inheritance golden; docs sync
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

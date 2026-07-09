@@ -2,13 +2,13 @@
 
 **Date:** 2026-07-09
 **Status:** BUILT (2026-07-09, feat/project-init commits `af3753a`..`54dfa35`, 188 tests green incl. a real-ffmpeg native-inheritance golden). `project.json` + `ProjectConfig` + `resolve_project`/`resolve_manifest` + `process_episode(project=)` + `scripts/project_init.py` CLI + `SKILLS/project-init/SKILL.md`. Delivery defaults to `native` (no silent downscale).
-**Scope:** The project-level "front door" that drives the now-aspect/resolution-agnostic engine (design `docs/2026-07-08-engine-dataclass-hardening-design.md`). One plan, one subsystem.
+**Scope:** The project-level "front door" that drives the now-aspect/resolution-agnostic engine (design `docs/specs/2026-07-08-engine-dataclass-hardening-design.md`). One plan, one subsystem.
 
 ## Context
 
 The engine is resolution/aspect-agnostic: `reframe`/`check_episode` take any `canvas` and a `Delivery` (native/short_edge/long_edge/exact), no 9:16/1080×1920 hardcode. But nothing yet *drives* that generality — every episode manifest must repeat `canvas`/`delivery`, and there is no step that learns "what is this video for" and derives the aspect. This plan adds that step: a project config learned once at project start (purpose→aspect, quality→delivery), which episode manifests inherit.
 
-**Source-of-truth reconciliation:** the montage design (`docs/2026-07-05-montage-skillset-design.md`) puts platform+canvas in `SPEC.md` (the human reel-brief, §-line 96) and defines the "ingestion plan" as `cast.json` + interactive naming (§-line 287). This plan builds neither of those: it delivers a **minimal machine config** (`project.json`) carrying just `{purpose, canvas, delivery}`. When the fuller `SPEC.md` brief phase is later built, its platform+canvas populates (or supersedes) `project.json` — they reconcile, they do not conflict. Hero identity (`cast.json`) is a separate axis and a separate plan.
+**Source-of-truth reconciliation:** the montage design (`docs/specs/2026-07-05-montage-skillset-design.md`) puts platform+canvas in `SPEC.md` (the human reel-brief, §-line 96) and defines the "ingestion plan" as `cast.json` + interactive naming (§-line 287). This plan builds neither of those: it delivers a **minimal machine config** (`project.json`) carrying just `{purpose, canvas, delivery}`. When the fuller `SPEC.md` brief phase is later built, its platform+canvas populates (or supersedes) `project.json` — they reconcile, they do not conflict. Hero identity (`cast.json`) is a separate axis and a separate plan.
 
 ## Goals
 

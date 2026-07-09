@@ -6,7 +6,9 @@ from scripts.lib.motion import classify
 from scripts.lib.models import ReframeSpec, CropPath, route_from_json, Delivery
 
 
-def compute_path(route, composition, grid, canvas, src, motion, max_step):
+def compute_path(route: list[dict[str, float]], composition: str, grid: str,
+                 canvas: tuple[int, int], src: tuple[int, int],
+                 motion: tuple[str, str | None], max_step: float) -> list[int]:
     crop_w, _ = g.crop_size(canvas[0], canvas[1], src[0], src[1])
     _, direction = motion if motion[0] == "lateral" else (motion[0], "right")
     if composition in ("center", "break") or motion[0] != "lateral":
@@ -23,7 +25,8 @@ def compute_path(route, composition, grid, canvas, src, motion, max_step):
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
-def _simplify(path, times, eps=2.0, max_knots=80):
+def _simplify(path: list[int], times: list[float], eps: float = 2.0,
+              max_knots: int = 80) -> list[tuple[float, float]]:
     """Douglas-Peucker over (t, x): per-frame path → a few linear knots.
 
     Keeps the crop expression short (nested per-frame if() hits ffmpeg's
@@ -45,7 +48,7 @@ def _simplify(path, times, eps=2.0, max_knots=80):
     # Iterative (explicit stack) — a recursive dp() blows Python's recursion
     # limit on long real routes (thousands of frames); same split rule, just
     # a non-recursive traversal of the identical divide-and-conquer tree (#5).
-    def run(eps):
+    def run(eps: float) -> list[tuple[float, float]]:
         keep = {0, len(pts) - 1}
         stack = [(0, len(pts) - 1)]
         while stack:
@@ -74,7 +77,7 @@ def _simplify(path, times, eps=2.0, max_knots=80):
     return knots
 
 
-def _xexpr(path, times):
+def _xexpr(path: list[int], times: list[float]) -> str:
     # piecewise-LINEAR x(t) over simplified knots: lerp inside each segment
     knots = _simplify(path, times)
     if len(knots) == 1:
@@ -87,7 +90,7 @@ def _xexpr(path, times):
     return expr
 
 
-def _probe(src):
+def _probe(src: str) -> tuple[int, int, float]:
     out = proc.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height,avg_frame_rate",
@@ -101,7 +104,7 @@ def _probe(src):
     return int(s["width"]), int(s["height"]), fps
 
 
-def reframe(spec, src, route_path, out, path_out):
+def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: str) -> str:
     """Compose one episode from a tracked route (spec §6): crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/

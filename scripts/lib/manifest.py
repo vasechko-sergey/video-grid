@@ -27,14 +27,14 @@ class Manifest:
     target_dur: float
     layout: str = "fill"
     motion: str | None = None
-    hero: object = None
+    hero: tuple | str | None = None
     color_means: tuple = DEFAULT_COLOR
     stabilize: bool = False
     model: str = DEFAULT_MODEL
     delivery: str = "native"
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "Manifest":
         # explicit null counts as absent — LLM-authored JSON emits null for "no value"
         for k in REQUIRED:
             if d.get(k) is None:
@@ -63,7 +63,7 @@ class Manifest:
         )
 
 
-def validate(m):
+def validate(m: Manifest) -> list[str]:
     """Return a list of human-readable problem strings (empty = ok)."""
     problems = []
     if not (isinstance(m.segment, str) and m.segment):

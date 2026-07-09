@@ -1,22 +1,22 @@
 """Run mechanical episode checks → report.json (spec §9, §4.1)."""
 import argparse
+import tempfile
 from pathlib import Path
+from PIL import Image, ImageStat
 from scripts.lib import checks as checks_mod, geometry, proc
 from scripts.lib.models import CheckResult, CheckSpec, Report, route_from_json, CropPath
 from scripts.lib.motion import classify
 
 
-def _duration(clip):
+def _duration(clip: str) -> float:
     out = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=nk=1:nw=1", clip], text=True)
     return float(out.stdout.strip())
 
 
-def _frame_lumas(clip, where, n=3):
+def _frame_lumas(clip: str, where: str, n: int = 3) -> list[float]:
     """Mean luma of n frames at 'boundary' (head+tail) or 'body' (interior)."""
-    import tempfile
-    from PIL import Image, ImageStat
     lumas = []
     with tempfile.TemporaryDirectory() as tmp:
         if where == "boundary":
@@ -37,13 +37,13 @@ def _frame_lumas(clip, where, n=3):
     return lumas
 
 
-def _median(xs):
+def _median(xs: list[float]) -> float:
     s = sorted(xs)
     n = len(s)
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
 
 
-def _black_frames_check(clip, black_floor=6.0, black_rel=0.35):
+def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 0.35) -> dict:
     """Spec §9: boundary-only — the seek landmine bites at cut edges. Bug #3:
     the gate is now RELATIVE to the clip body, not an absolute floor — a
     boundary frame is a defect only if it's BOTH near-black AND far below the
@@ -57,7 +57,7 @@ def _black_frames_check(clip, black_floor=6.0, black_rel=0.35):
             "body_median": round(ref, 1)}
 
 
-def run(clip, route_path, path_path, spec, out):
+def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -> Report:
     """crop_w derives from canvas+src; direction from the route itself —
     no hardcoded 607 / "right" (left-moving and non-9:16 episodes exist)."""
     route = [p.to_dict() for p in route_from_json(route_path)]

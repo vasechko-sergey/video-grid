@@ -12,7 +12,7 @@
 
 **CLI convention:** scripts run as modules — `.venv/bin/python -m scripts.reframe …` (plain `python scripts/reframe.py` breaks `scripts.lib` imports); every script takes explicit paths, never assumes cwd.
 
-This plan implements §5.8 (extract), §5.10 tracking/reframe internals, §6 (follow + composition), §9 (thresholds), §10 (color/stab), and the `ffmpeg-recipes`/`landmines`/`editing-canon` references from the design spec (`docs/2026-07-05-montage-skillset-design.md`).
+This plan implements §5.8 (extract), §5.10 tracking/reframe internals, §6 (follow + composition), §9 (thresholds), §10 (color/stab), and the `ffmpeg-recipes`/`landmines`/`editing-canon` references from the design spec (`docs/specs/2026-07-05-montage-skillset-design.md`).
 
 **Repo layout produced by this plan:**
 ```

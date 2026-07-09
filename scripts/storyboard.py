@@ -1,25 +1,24 @@
 """Contact sheet with grid overlays for verification/editorial (spec §6.1)."""
-import argparse, tempfile
+import argparse, json, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw
 from scripts.lib.geometry import grid_lines
 from scripts.lib import proc
-from scripts.lib.models import StoryboardSpec
+from scripts.lib.models import StoryboardSpec, RoutePoint, CropPath
 
 
-def _duration(src):
-    import json as _j
+def _duration(src: str) -> float:
     r = proc.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "json", src], text=True)
-    return float(_j.loads(r.stdout)["format"]["duration"])
+    return float(json.loads(r.stdout)["format"]["duration"])
 
 
-def _sample_times(dur, n):
+def _sample_times(dur: float, n: int) -> list[float]:
     return [(k + 0.5) * dur / n for k in range(n)]
 
 
-def _sample_frames(src, n, tmp, times):
+def _sample_frames(src: str, n: int, tmp: str, times: list[float]) -> list[Path]:
     # one still per explicit TIME — input-side -ss is a fast, keyframe-near
     # seek (fine for a preview thumbnail; the design §12 "-ss after -i"
     # landmine is about black frames on a CUT/re-encode boundary, not about
@@ -33,7 +32,8 @@ def _sample_frames(src, n, tmp, times):
     return files
 
 
-def _overlay(img, grids, mark=None):
+def _overlay(img: Image.Image, grids: tuple[str, ...],
+             mark: tuple[float, float] | None = None) -> Image.Image:
     d = ImageDraw.Draw(img); w, h = img.size
     palette = {"thirds": (0, 255, 255), "phi": (255, 128, 0)}
     for grid in grids:
@@ -48,7 +48,7 @@ def _overlay(img, grids, mark=None):
     return img
 
 
-def _interp(ts, xs, t):
+def _interp(ts: list[float], xs: list[float], t: float) -> float:
     if t <= ts[0]:
         return xs[0]
     if t >= ts[-1]:
@@ -60,7 +60,8 @@ def _interp(ts, xs, t):
     return xs[-1]
 
 
-def marks_at_times(route, path, crop_w, src_h, times):
+def marks_at_times(route: list[RoutePoint], path: CropPath, crop_w: int, src_h: int,
+                   times: list[float]) -> list[tuple[float, float]]:
     """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME —
     interpolate route x/y and crop-x on t, so marks align with the frames
     storyboard samples by time (fixes index/time desync on gappy routes, #4)."""
@@ -80,7 +81,9 @@ def marks_at_times(route, path, crop_w, src_h, times):
     return marks
 
 
-def build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
+def build(src: str, out: str, spec: StoryboardSpec, route: list[RoutePoint] | None = None,
+          path: CropPath | None = None, crop_w: int | None = None,
+          src_h: int | None = None) -> tuple[str, list[float]]:
     """Contact sheet + grid/hero-mark overlays (spec §6.1). `spec` is a
     StoryboardSpec (n, grids, marks). When route/path/crop_w/src_h are ALL
     given, marks are computed at the SAME sample times as the frames (fixes

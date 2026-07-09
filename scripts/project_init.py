@@ -10,7 +10,7 @@ from pathlib import Path
 from scripts.lib.project import resolve_project
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="write project.json (purpose→aspect/delivery)")
     ap.add_argument("--purpose", required=True,
                     help="reel/shorts/tiktok/youtube/landscape/square/feed/cinema/wide/custom")

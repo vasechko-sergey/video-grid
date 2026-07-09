@@ -22,61 +22,61 @@ class RoutePoint:
     h: float
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "RoutePoint":
         return cls(float(d["t"]), float(d["x"]), float(d["y"]),
                    float(d["w"]), float(d["h"]))
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {"t": self.t, "x": self.x, "y": self.y, "w": self.w, "h": self.h}
 
 
-def route_from_json(path):
+def route_from_json(path: str | Path) -> list[RoutePoint]:
     return [RoutePoint.from_dict(d) for d in json.loads(Path(path).read_text())]
 
 
-def route_to_json(points, path):
+def route_to_json(points: list[RoutePoint], path: str | Path) -> None:
     Path(path).write_text(json.dumps([p.to_dict() for p in points]))
 
 
 @dataclass
 class TrackMeta:
-    hero: object = None            # int track id or None
+    hero: int | None = None        # int track id or None
     ambiguous: bool = False
     intent: str = "action"
     features: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "TrackMeta":
         return cls(hero=d.get("hero"), ambiguous=bool(d.get("ambiguous", False)),
                    intent=d.get("intent", "action"), features=d.get("features", {}))
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {"hero": self.hero, "ambiguous": self.ambiguous,
                 "intent": self.intent, "features": self.features}
 
 
 @dataclass
 class CropPath:
-    xs: list                       # list[int], parallel to the route
+    xs: list[int]                  # list[int], parallel to the route
 
     @classmethod
-    def from_json(cls, path):
+    def from_json(cls, path: str | Path) -> "CropPath":
         return cls([int(x) for x in json.loads(Path(path).read_text())])
 
-    def to_json(self, path):
+    def to_json(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps([int(x) for x in self.xs]))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.xs)
 
 
 @dataclass
 class CheckResult:
     name: str
-    passed: object                 # bool, or None for editorial/not-implemented
+    passed: bool | None            # bool, or None for editorial/not-implemented
     detail: dict = field(default_factory=dict)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         if self.passed is None:
             return dict(self.detail)               # status-only ({"status": ...})
         return {**{k: v for k, v in self.detail.items() if k != "pass"}, "pass": self.passed}
@@ -84,24 +84,24 @@ class CheckResult:
 
 @dataclass
 class Report:
-    checks: dict                   # {name: CheckResult}
+    checks: dict[str, CheckResult]  # {name: CheckResult}
     attempt: int = 1
 
     @property
-    def overall(self):
+    def overall(self) -> bool:
         return all(c.passed is not False for c in self.checks.values())
 
     @property
-    def fail_reasons(self):
+    def fail_reasons(self) -> list[str]:
         return [n for n, c in self.checks.items() if c.passed is False]
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {"checks": {n: c.to_dict() for n, c in self.checks.items()},
                 "overall": self.overall, "attempt": self.attempt,
                 "fail_reasons": self.fail_reasons}
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "Report":
         checks = {}
         for n, cd in d["checks"].items():
             if "pass" in cd:
@@ -111,7 +111,7 @@ class Report:
                 checks[n] = CheckResult(n, None, dict(cd))
         return cls(checks=checks, attempt=d.get("attempt", 1))
 
-    def write(self, path):
+    def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 
 
@@ -120,9 +120,9 @@ class Delivery:
     """Output-dims policy — imposes NO hardcoded resolution or aspect.
     mode: native | short_edge | long_edge | exact."""
     mode: str = "native"
-    value: object = None           # int for edges, (w, h) for exact, None for native
+    value: int | tuple[int, int] | None = None   # int for edges, (w, h) exact, None native
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.mode not in ("native", "short_edge", "long_edge", "exact"):
             raise ValueError(f"Delivery.mode {self.mode!r} invalid — "
                              "native/short_edge/long_edge/exact")
@@ -139,7 +139,7 @@ class Delivery:
             self.value = None
 
     @classmethod
-    def from_spec(cls, s):
+    def from_spec(cls, s: str | None) -> "Delivery":
         # None | "native" | "short_edge:1080" | "long_edge:2160" | "exact:1080x1920"
         if s is None or s == "native":
             return cls("native", None)
@@ -161,11 +161,11 @@ class Delivery:
         return cls(mode, value)
 
     @staticmethod
-    def _even(n):
+    def _even(n: float) -> int:
         n = int(round(n))
         return n - (n % 2)
 
-    def dims(self, crop_w, crop_h):
+    def dims(self, crop_w: int, crop_h: int) -> tuple[int, int]:
         """Even (out_w, out_h) for a crop of size (crop_w, crop_h)."""
         if crop_w <= 0 or crop_h <= 0:
             raise ValueError(f"Delivery.dims needs a positive crop, got ({crop_w}, {crop_h})")
@@ -187,7 +187,7 @@ class Delivery:
         return self._even(w), self._even(h)
 
 
-def _positive_seq(v, n):
+def _positive_seq(v: object, n: int) -> bool:
     return (isinstance(v, (tuple, list)) and len(v) == n
             and all(isinstance(x, (int, float)) and x > 0 for x in v))
 
@@ -196,11 +196,11 @@ def _positive_seq(v, n):
 class TrackSpec:
     src: str
     model: str = "yolo11n-seg.pt"
-    seed_bbox: object = None
+    seed_bbox: tuple[float, float, float, float] | None = None
     intent: str = "action"
-    fps: object = None
+    fps: float | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not (isinstance(self.src, str) and self.src):
             raise ValueError("TrackSpec.src must be a non-empty path")
         if self.model not in MODELS:
@@ -223,7 +223,7 @@ class ReframeSpec:
     max_speed: float = 750.0
     stabilize: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
             raise ValueError(f"ReframeSpec.composition {self.composition!r} not in {COMPOSITIONS}")
         if self.grid not in GRIDS:
@@ -253,7 +253,7 @@ class CheckSpec:
     black_floor: float = 6.0
     black_rel: float = 0.35
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
             raise ValueError(f"CheckSpec.composition {self.composition!r} not in {COMPOSITIONS}")
         if self.grid not in GRIDS:
@@ -270,9 +270,9 @@ class CheckSpec:
 class StoryboardSpec:
     n: int = 6
     grids: tuple = ("thirds",)
-    marks: object = None
+    marks: list[tuple[float, float]] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.n, int) or self.n < 1:
             raise ValueError(f"StoryboardSpec.n must be an int >= 1, got {self.n!r}")
         if not isinstance(self.grids, (tuple, list)) or not all(isinstance(g, str) for g in self.grids):

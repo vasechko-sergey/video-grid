@@ -2,7 +2,7 @@
 import subprocess
 
 
-def run(cmd, **kwargs):
+def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     """subprocess.run with check+capture; on failure re-raise with stderr tail.
 
     Keeps the last 30 lines of stderr — enough to see ffmpeg's actual error
@@ -13,6 +13,10 @@ def run(cmd, **kwargs):
     kwargs.setdefault("capture_output", True)
     try:
         return subprocess.run(cmd, **kwargs)
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"{cmd[0]!r} not found on PATH — install it "
+            "(ffmpeg/ffprobe: `brew install ffmpeg`)") from e
     except subprocess.CalledProcessError as e:
         err = e.stderr or b""
         if isinstance(err, bytes):

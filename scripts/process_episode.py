@@ -21,7 +21,7 @@ from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpe
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
-def _load_route(route_path):
+def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")
     if not meta_path.exists():
@@ -33,7 +33,9 @@ def _load_route(route_path):
                          "or fix the sidecar; it drives the §6.1a hero-ambiguity gate") from e
 
 
-def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3, project=None):
+def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: str | None = None,
+                    max_attempts: int = 3,
+                    project: ProjectConfig | str | Path | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report

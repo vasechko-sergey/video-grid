@@ -3,7 +3,7 @@ import argparse
 from scripts.lib import proc
 
 
-def extract(src, start, dur, out, crf=18):
+def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     # output-seek (-ss after -i) + re-encode → frame-accurate, no black frames.
     # Audio is PRESERVED (spec §5.8): segments are the ambient bed for audio-mix;
     # sources without an audio stream simply produce video-only segments.

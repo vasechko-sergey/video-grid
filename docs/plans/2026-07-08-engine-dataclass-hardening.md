@@ -6,7 +6,7 @@
 
 **Goal:** Retype the shipped video engine onto typed dataclasses (config-specs that raise on bad state; wire-contracts that own their JSON), fix the 5 integration-seam bugs + 2 validate holes found in review, and make delivery resolution/aspect fully general (zero hardcoded 9:16 / 1080×1920).
 
-**Architecture:** A new `scripts/lib/models.py` holds every cross-script contract — wire types (`RoutePoint`, `TrackMeta`, `CropPath`, `CheckResult`, `Report`) with `from_dict`/`to_dict` that preserve the current JSON schema, and config-specs (`TrackSpec`, `ReframeSpec`, `CheckSpec`, `StoryboardSpec`, `Delivery`) that validate in `__post_init__` and raise. Each engine script (`track`, `reframe`, `check_episode`, `storyboard`, `process_episode`) is retyped to take a spec / return a dataclass instead of positional primitives and raw dicts, with the matching fix woven in. The manifest gate stays **soft** (`validate()` → `needs_input`); everything below it is **hard** (raises). Design spec: `docs/2026-07-08-engine-dataclass-hardening-design.md`.
+**Architecture:** A new `scripts/lib/models.py` holds every cross-script contract — wire types (`RoutePoint`, `TrackMeta`, `CropPath`, `CheckResult`, `Report`) with `from_dict`/`to_dict` that preserve the current JSON schema, and config-specs (`TrackSpec`, `ReframeSpec`, `CheckSpec`, `StoryboardSpec`, `Delivery`) that validate in `__post_init__` and raise. Each engine script (`track`, `reframe`, `check_episode`, `storyboard`, `process_episode`) is retyped to take a spec / return a dataclass instead of positional primitives and raw dicts, with the matching fix woven in. The manifest gate stays **soft** (`validate()` → `needs_input`); everything below it is **hard** (raises). Design spec: `docs/specs/2026-07-08-engine-dataclass-hardening-design.md`.
 
 **Tech Stack:** Python 3.13 (existing `.venv`), stdlib `dataclasses`/`json`, the shipped engine + `scripts/lib/*`, pytest. No new third-party deps.
 
@@ -1407,7 +1407,7 @@ Pin the golden manifest's `delivery` so its numeric checks stay deterministic, r
 
 **Files:**
 - Modify: `tests/integration/test_process_episode.py` (golden manifest)
-- Modify: `docs/2026-07-08-engine-dataclass-hardening-design.md` (mark Built), `CLAUDE.md`, `README.md`
+- Modify: `docs/specs/2026-07-08-engine-dataclass-hardening-design.md` (mark Built), `CLAUDE.md`, `README.md`
 
 - [x] **Step 1: Pin the golden delivery + assert dims**
 
@@ -1439,7 +1439,7 @@ Expected: no `1080`/`1920` literal in `scripts/` (delivery owns dims); no `lutrg
 
 - [x] **Step 4: Sync docs**
 
-- `docs/2026-07-08-engine-dataclass-hardening-design.md`: add a short "Built (YYYY-MM-DD, commit)" note at the top.
+- `docs/specs/2026-07-08-engine-dataclass-hardening-design.md`: add a short "Built (YYYY-MM-DD, commit)" note at the top.
 - `CLAUDE.md` Status: new bullet — engine dataclass-hardening done, N tests green, the 5 fixes + 2 holes closed, engine aspect/resolution-agnostic; **Next action** → Plan 2 (ingestion / project-init purpose→aspect).
 - `README.md`: note the engine is now general-purpose (any aspect/resolution), driven by typed specs.
 

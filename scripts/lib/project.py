@@ -29,7 +29,7 @@ class ProjectConfig:
     delivery: str
     notes: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.purpose not in PURPOSE_CANVAS:
             raise ValueError(f"ProjectConfig.purpose {self.purpose!r} not in {sorted(PURPOSE_CANVAS)}")
         if not (isinstance(self.canvas, (tuple, list)) and len(self.canvas) == 2
@@ -44,29 +44,31 @@ class ProjectConfig:
             raise ValueError(f"ProjectConfig.delivery {self.delivery!r} invalid — {e}") from e
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "ProjectConfig":
         # pass raw values through; __post_init__ produces clean ValueError-with-remedy
         # for missing/None/garbage (never a bare KeyError/TypeError)
         return cls(purpose=d.get("purpose"), canvas=d.get("canvas"),
                    delivery=d.get("delivery"), notes=d.get("notes") or "")
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {"purpose": self.purpose, "canvas": list(self.canvas),
                 "delivery": self.delivery, "notes": self.notes}
 
     @classmethod
-    def from_json(cls, path):
+    def from_json(cls, path: str | Path) -> "ProjectConfig":
         try:
             d = json.loads(Path(path).read_text())
         except json.JSONDecodeError as e:
             raise ValueError(f"{path} is corrupt ({e}) — re-run project-init to regenerate it") from e
         return cls.from_dict(d)
 
-    def write(self, path):
+    def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 
 
-def resolve_project(purpose, quality="native", canvas=None, delivery=None, notes=""):
+def resolve_project(purpose: str, quality: str = "native",
+                    canvas: tuple[int, int] | None = None, delivery: str | None = None,
+                    notes: str = "") -> ProjectConfig:
     """Deterministic purpose+quality → ProjectConfig. `custom` purpose requires an
     explicit `canvas=(w, h)`; an explicit `delivery` overrides the quality map.
     Raises ValueError-with-remedy on unknown purpose/quality or a missing custom canvas."""
@@ -88,7 +90,7 @@ def resolve_project(purpose, quality="native", canvas=None, delivery=None, notes
     return ProjectConfig(purpose=purpose, canvas=cv, delivery=dv, notes=notes)
 
 
-def resolve_manifest(episode_dict, config):
+def resolve_manifest(episode_dict: dict, config: ProjectConfig) -> dict:
     """Fill canvas/delivery from the project when the episode omits them (missing
     OR explicit JSON null → inherit, matching the manifest's null-is-absent rule);
     an explicit episode value wins (override). Returns a NEW dict; never mutates."""

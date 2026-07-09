@@ -9,7 +9,7 @@ only wires these to the engine scripts.
 from scripts.lib.motion import classify
 
 
-def derive_intent(composition, motion):
+def derive_intent(composition: str, motion: str | None) -> str:
     """Hero-scoring intent from MANIFEST signal only (§6.1a). Must be manifest-
     only: intent picks the hero DURING tracking, before a hero route exists to
     classify(). center, or a declared static/head-on motion → 'static' (size +
@@ -21,7 +21,7 @@ def derive_intent(composition, motion):
     return "action"
 
 
-def is_seed_pin(hero):
+def is_seed_pin(hero: object) -> bool:
     """True iff `hero` is a hero value the tracker can ACTUALLY be seeded with
     this slice: a non-empty seed-bbox tuple. A cast name / rule / empty value is
     not applicable until the ingestion plan's cast.json lands — the shell only
@@ -31,7 +31,9 @@ def is_seed_pin(hero):
     return isinstance(hero, tuple) and len(hero) > 0
 
 
-def detect_contradictions(motion, hero, route, track_meta, src_w, src_h, composition=None):
+def detect_contradictions(motion: str | None, hero: object, route: list[dict],
+                          track_meta: dict, src_w: int, src_h: int,
+                          composition: str | None = None) -> list[dict]:
     """Machine-detectable manifest-vs-reality conflicts (§4.1). Returns a list
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
     findings = []
@@ -63,7 +65,7 @@ def detect_contradictions(motion, hero, route, track_meta, src_w, src_h, composi
     return findings
 
 
-def _motion_conflicts(declared, observed):
+def _motion_conflicts(declared: str, observed: str) -> bool:
     """A hard conflict is a lateral DIRECTION reversal (right vs left) — the
     §4.1 example. Type drift (lateral vs static/head-on) is a soft mismatch we
     let the numeric gate judge, not a stop-and-report."""
@@ -78,13 +80,13 @@ DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps
 _UNFIXABLE = ("length", "continuity", "black_frames")
 
 
-def _lags_line(fail_reasons):
+def _lags_line(fail_reasons: list[str]) -> bool:
     # centered is on_line at target_frac=0.5 (checks.centered) and reframe
     # rate-limits center/break identically to lead — same crop-lag signal
     return "on_line" in fail_reasons or "centered" in fail_reasons
 
 
-def adjust_reframe_params(params, fail_reasons):
+def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str]) -> dict[str, float]:
     """One documented nudge per mechanical fail (§4.1 retry-in-place)."""
     p = dict(params)
     if _lags_line(fail_reasons):
@@ -94,7 +96,7 @@ def adjust_reframe_params(params, fail_reasons):
     return p
 
 
-def escalation(attempt, fail_reasons, max_attempts=3):
+def escalation(attempt: int, fail_reasons: list[str], max_attempts: int = 3) -> dict | None:
     """None ⇒ keep retrying; a finding dict ⇒ escalate up the artifact chain.
 
     Escalate immediately when the failure can't be fixed by reframe params

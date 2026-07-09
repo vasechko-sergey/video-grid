@@ -1,7 +1,8 @@
 """Pure numeric checks over route + crop path (spec §9)."""
 
 
-def on_line(route, path, crop_w, target_frac, tol=0.05):
+def on_line(route: list[dict[str, float]], path: list[int], crop_w: int,
+            target_frac: float, tol: float = 0.05) -> dict:
     if len(route) != len(path):
         raise ValueError(
             f"route/path length mismatch: {len(route)} vs {len(path)} — "
@@ -15,11 +16,12 @@ def on_line(route, path, crop_w, target_frac, tol=0.05):
     return {"pass": ratio >= 0.9, "ratio": ratio}
 
 
-def centered(route, path, crop_w, tol=0.05):
+def centered(route: list[dict[str, float]], path: list[int], crop_w: int,
+             tol: float = 0.05) -> dict:
     return on_line(route, path, crop_w, target_frac=0.5, tol=tol)
 
 
-def continuity(route, src_w, max_step_frac=0.04):
+def continuity(route: list[dict[str, float]], src_w: int, max_step_frac: float = 0.04) -> dict:
     """No x-teleports in the followed route (spec §6.1a): a tracker ID switch
     shows up as a per-frame |dx| far above any physical subject speed."""
     worst = 0.0
@@ -29,7 +31,7 @@ def continuity(route, src_w, max_step_frac=0.04):
     return {"pass": worst <= cap, "worst_dx": worst, "cap": cap}
 
 
-def jitter(path, direction, max_reversal):
+def jitter(path: list[int], direction: str, max_reversal: float) -> dict:
     if direction not in ("left", "right"):
         raise ValueError(f"jitter: direction must be 'left' or 'right', got {direction!r}")
     sign = 1 if direction == "right" else -1
@@ -41,5 +43,5 @@ def jitter(path, direction, max_reversal):
     return {"pass": worst <= max_reversal, "worst_reversal": worst}
 
 
-def length(actual, target, tol=0.5):
+def length(actual: float, target: float, tol: float = 0.5) -> dict:
     return {"pass": abs(actual - target) <= tol, "delta": actual - target}

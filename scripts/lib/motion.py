@@ -4,8 +4,9 @@ LATERAL_FRAC = 0.15   # net |dx| > 15% of width → lateral
 GROWTH_RATIO = 1.6    # bbox area grows ≥1.6x → head-on
 
 
-def classify(route, src_w, src_h, lateral_frac=LATERAL_FRAC,
-             growth_ratio=GROWTH_RATIO):
+def classify(route: list[dict[str, float]], src_w: int, src_h: int,
+             lateral_frac: float = LATERAL_FRAC,
+             growth_ratio: float = GROWTH_RATIO) -> tuple[str, str | None]:
     if len(route) < 2:
         return ("static", None)
     first, last = route[0], route[-1]
