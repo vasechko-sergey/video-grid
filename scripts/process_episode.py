@@ -18,6 +18,7 @@ from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, route_from_json, CropPath)
+from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
 def _load_route(route_path):
@@ -32,7 +33,7 @@ def _load_route(route_path):
                          "or fix the sidecar; it drives the §6.1a hero-ambiguity gate") from e
 
 
-def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3):
+def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3, project=None):
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
@@ -40,6 +41,9 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3)
     files are written flat and would clobber a sibling episode sharing the dir."""
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    if project is not None:
+        cfg = project if isinstance(project, ProjectConfig) else ProjectConfig.from_json(project)
+        manifest_dict = resolve_manifest(manifest_dict, cfg)
     try:
         m = manifest_lib.Manifest.from_dict(manifest_dict)
     except (KeyError, TypeError, ValueError) as e:

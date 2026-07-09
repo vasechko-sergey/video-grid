@@ -43,6 +43,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
 
     def fake_reframe(spec, src, route_path, out, path_out):
         calls["reframe_delivery"] = spec.delivery
+        calls["reframe_canvas"] = spec.canvas
         Path(out).write_text("clip")
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
@@ -315,3 +316,37 @@ def test_golden_ride_through_orchestrator(tmp_path):
          "-show_entries", "stream=width,height", "-of", "json", result["clip"]],
         text=True).stdout)["streams"][0]
     assert (probe["width"], probe["height"]) == (1080, 1920)
+
+
+from scripts.lib import project as pj
+
+
+def test_project_inherits_canvas_and_delivery(monkeypatch, tmp_path):
+    # a youtube (16:9) project + an episode WITHOUT canvas/delivery → inherits;
+    # the non-9:16 canvas + native delivery reach the ReframeSpec (mocked engine)
+    calls = _stub_engine(monkeypatch, tmp_path)
+    cfg = pj.resolve_project("youtube")                 # (16,9), native
+    d = _manifest(tmp_path); del d["canvas"]            # omit canvas → inherit
+    result = pe.process_episode(d, project_dir=str(tmp_path), project=cfg)
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_canvas"] == (16, 9)
+    assert calls["reframe_delivery"].mode == "native"
+
+
+def test_project_episode_canvas_overrides(monkeypatch, tmp_path):
+    calls = _stub_engine(monkeypatch, tmp_path)
+    cfg = pj.resolve_project("youtube")                 # project says 16:9
+    result = pe.process_episode(_manifest(tmp_path, canvas=[9, 16]),  # episode says 9:16
+                                project_dir=str(tmp_path), project=cfg)
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_canvas"] == (9, 16)           # episode wins
+
+
+def test_project_from_json_path(monkeypatch, tmp_path):
+    # project= may be a path to project.json, not just a ProjectConfig
+    _stub_engine(monkeypatch, tmp_path)
+    pj.resolve_project("square").write(tmp_path / "project.json")
+    d = _manifest(tmp_path); del d["canvas"]
+    result = pe.process_episode(d, project_dir=str(tmp_path),
+                                project=str(tmp_path / "project.json"))
+    assert result["status"] == "mechanical_pass"
