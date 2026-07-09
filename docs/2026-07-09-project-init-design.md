@@ -1,7 +1,7 @@
 # Project-init: purpose→aspect/delivery + episode inheritance — Design
 
 **Date:** 2026-07-09
-**Status:** approved (brainstorming) → next: writing-plans
+**Status:** BUILT (2026-07-09, feat/project-init commits `af3753a`..`54dfa35`, 188 tests green incl. a real-ffmpeg native-inheritance golden). `project.json` + `ProjectConfig` + `resolve_project`/`resolve_manifest` + `process_episode(project=)` + `scripts/project_init.py` CLI + `SKILLS/project-init/SKILL.md`. Delivery defaults to `native` (no silent downscale).
 **Scope:** The project-level "front door" that drives the now-aspect/resolution-agnostic engine (design `docs/2026-07-08-engine-dataclass-hardening-design.md`). One plan, one subsystem.
 
 ## Context

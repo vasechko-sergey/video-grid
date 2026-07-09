@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: COMPLETE (2026-07-09)** — all 5 tasks via strict subagent-driven-development on branch `feat/project-init` (commits `af3753a`..`54dfa35`), **188 tests green incl. a real-ffmpeg native-inheritance golden**. Code is the source of truth; the blocks below are the pre-implementation guide. **Review-driven deltas:** the override integration test uses `21:9` (distinct from both the default and the project) so it's load-bearing, not vacuous; `ProjectConfig.from_json` catches a corrupt file → `ValueError`-with-remedy; the SKILL description says 'custom' quality is an explicit `--delivery`, not a preset. Golden fixture is 1280×720 → native 9:16 crop `404×720`.
+
 **Goal:** Add the project-level front-door that drives the now-aspect/resolution-agnostic engine — a `project.json` learned once at project start (purpose→canvas, quality→delivery, delivery defaults to `native`), which episode manifests inherit unless they override.
 
 **Architecture:** All determinism in a new pure `scripts/lib/project.py` (a `ProjectConfig` dataclass that raises on bad construction, the `purpose→canvas`/`quality→delivery` maps, `resolve_project`, and the `resolve_manifest` inheritance merge), TDD'd like the rest of `scripts/lib/`. A thin CLI `scripts/project_init.py` writes `project.json`; `process_episode` gains an optional `project=` that applies inheritance before manifest validation; a thin `SKILLS/project-init/SKILL.md` does the interactive asking. Design spec: `docs/2026-07-09-project-init-design.md`.
@@ -45,7 +47,7 @@ Pure, TDD. The typed config + the deterministic purpose/quality resolution.
 - Create: `scripts/lib/project.py`
 - Create: `tests/lib/test_project.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_project.py`:
 ```python
@@ -108,12 +110,12 @@ def test_projectconfig_json_roundtrip(tmp_path):
     assert back.canvas == (16, 9) and back.delivery == "long_edge:2160"
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -q`
 Expected: FAIL (`module 'scripts.lib.project' has no attribute ...`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/lib/project.py`:
 ```python
@@ -199,12 +201,12 @@ def resolve_project(purpose, quality="native", canvas=None, delivery=None, notes
     return ProjectConfig(purpose=purpose, canvas=cv, delivery=dv, notes=notes)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -q`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/project.py tests/lib/test_project.py
@@ -223,7 +225,7 @@ Pure, TDD. The inheritance merge: episode inherits absent canvas/delivery; expli
 - Modify: `scripts/lib/project.py`
 - Modify: `tests/lib/test_project.py`
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 Append to `tests/lib/test_project.py`:
 ```python
@@ -256,12 +258,12 @@ def test_resolve_manifest_does_not_mutate_input():
     assert out["canvas"] == [9, 16] and out is not ep
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -k resolve_manifest -q`
 Expected: FAIL (`resolve_manifest` undefined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/project.py`:
 ```python
@@ -277,12 +279,12 @@ def resolve_manifest(episode_dict, config):
     return out
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -q`
 Expected: PASS (all — Task 0 + the 4 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/project.py tests/lib/test_project.py
@@ -301,7 +303,7 @@ Wire the inheritance into the shell: an optional `project=` (a `ProjectConfig` o
 - Modify: `scripts/process_episode.py`
 - Modify: `tests/integration/test_process_episode.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/integration/test_process_episode.py` (the file has `_stub_engine`, `_manifest(tmp_path, **over)`, `pe`; `_stub_engine` records `calls["reframe_delivery"]` from the fake `ReframeSpec`; add a `calls["reframe_canvas"]` capture in the fake reframe if not present — see note):
 ```python
@@ -341,12 +343,12 @@ def test_project_from_json_path(monkeypatch, tmp_path):
 
 Note: if `_stub_engine`'s fake `reframe` does not already capture the canvas, add `calls["reframe_canvas"] = spec.canvas` inside it (alongside the existing `calls["reframe_delivery"] = spec.delivery`).
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -k project -q`
 Expected: FAIL (`process_episode() got an unexpected keyword argument 'project'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/process_episode.py`, add the import near the other `scripts.lib` imports:
 ```python
@@ -369,12 +371,12 @@ def process_episode(manifest_dict, project_dir, route_path=None, max_attempts=3,
 ```
 (The `try/except` around `from_dict` already exists from the engine-hardening branch — keep it; only add the `project` param + the `if project is not None:` resolve block above it.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_process_episode.py -q`
 Expected: PASS (existing + the 3 new). Then the full suite `.venv/bin/python -m pytest -q` — no regression.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/integration/test_process_episode.py
@@ -393,7 +395,7 @@ The CLI that turns purpose+quality into `project.json`. Thin wrapper over `resol
 - Create: `scripts/project_init.py`
 - Modify: `tests/lib/test_project.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_project.py`:
 ```python
@@ -430,12 +432,12 @@ def test_project_init_cli_bad_purpose_raises(tmp_path, monkeypatch):
         project_init.main()
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -k cli -q`
 Expected: FAIL (`No module named 'scripts.project_init'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/project_init.py`:
 ```python
@@ -474,12 +476,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py -q`
 Expected: PASS (all).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/project_init.py tests/lib/test_project.py
@@ -500,7 +502,7 @@ The interactive agent layer + the end-to-end proof that the project front-door d
 - Modify: `tests/integration/test_process_episode.py` (real-ffmpeg inheritance test)
 - Modify: `CLAUDE.md`, `README.md`, `docs/2026-07-09-project-init-design.md`
 
-- [ ] **Step 1: Write the SKILL**
+- [x] **Step 1: Write the SKILL**
 
 `SKILLS/project-init/SKILL.md`:
 ```markdown
@@ -541,7 +543,7 @@ If the purpose is genuinely mixed (e.g. "a reel AND a youtube cut") or the platf
 - How episodes consume it: `scripts/process_episode.py` `process_episode(project=)`.
 ```
 
-- [ ] **Step 2: Write the structural + integration tests**
+- [x] **Step 2: Write the structural + integration tests**
 
 `tests/integration/test_skill_project_init.py`:
 ```python
@@ -586,19 +588,19 @@ def test_project_native_delivery_end_to_end(tmp_path):
 ```
 (Import `from scripts.lib import project as pj` at the top of the test module if not already added in Task 2. `FIX` is the fixtures path already defined in the file.)
 
-- [ ] **Step 3: Run to verify**
+- [x] **Step 3: Run to verify**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_skill_project_init.py tests/integration/test_process_episode.py -q`
 Expected: PASS. If the golden's crop dims differ from `(404, 720)` because the fixture source isn't 1280×720, probe the fixture (`ffprobe` its width/height), recompute `crop_size(9, 16, W, H)` floored even, and use that value — the point is native == the crop's own even dims, not a specific literal.
 
-- [ ] **Step 4: Full suite + docs sync**
+- [x] **Step 4: Full suite + docs sync**
 
 Run: `.venv/bin/python -m pytest -q` — expect full green (report the count).
 - `docs/2026-07-09-project-init-design.md`: add a "Built (2026-07-09, commit)" note at the top.
 - `CLAUDE.md` Status: new bullet — project-init done, N tests, `project.json` + `resolve_manifest` + `process_episode(project=)` + the SKILL; **Next action** → cast.json ingestion or router.
 - `README.md`: note that a project's aspect/delivery is set once via `project-init` and episodes inherit.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add SKILLS/project-init/SKILL.md tests/integration/test_skill_project_init.py tests/integration/test_process_episode.py CLAUDE.md README.md docs/2026-07-09-project-init-design.md
