@@ -216,3 +216,17 @@ def test_trackspec_empty_src_and_checkspec_structural():
     with pytest.raises(ValueError, match="delivery"):
         m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                       color_means=(105, 122, 137), delivery="native")   # str, not Delivery
+
+
+def test_delivery_dims_takes_floats_and_evens_each_side():
+    d = m.Delivery("native", None)
+    # the fill case: canvas floats equal the crop, and the answer is today's output
+    assert d.dims(405.0, 720.0) == (404, 720)
+    # the fit-blur case: 1280 wide, 16/9 tall
+    assert d.dims(1280.0, 1280.0 * 16 / 9) == (1280, 2276)
+
+
+def test_delivery_dims_rejects_a_nonpositive_canvas():
+    d = m.Delivery("native", None)
+    with pytest.raises(ValueError, match="positive crop"):
+        d.dims(0.0, 720.0)

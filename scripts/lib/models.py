@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.lib.geometry import even
+
 
 COMPOSITIONS = ("lead", "center", "break")
 GRIDS = ("thirds", "phi")
@@ -160,17 +162,16 @@ class Delivery:
                              "native|short_edge:N|long_edge:N|exact:WxH") from e
         return cls(mode, value)
 
-    @staticmethod
-    def _even(n: float) -> int:
-        n = int(round(n))
-        return n - (n % 2)
+    def dims(self, crop_w: float, crop_h: float) -> tuple[int, int]:
+        """Even (out_w, out_h) for a composite of size (crop_w, crop_h).
 
-    def dims(self, crop_w: int, crop_h: int) -> tuple[int, int]:
-        """Even (out_w, out_h) for a crop of size (crop_w, crop_h)."""
+        Takes floats: the native canvas height is `canvas_w * ah / aw` and
+        evening either side before the other is derived would drift it.
+        """
         if crop_w <= 0 or crop_h <= 0:
             raise ValueError(f"Delivery.dims needs a positive crop, got ({crop_w}, {crop_h})")
         if self.mode == "native":
-            return self._even(crop_w), self._even(crop_h)
+            return even(crop_w), even(crop_h)
         if self.mode == "exact":
             return int(self.value[0]), int(self.value[1])
         ar = crop_w / crop_h
@@ -184,7 +185,7 @@ class Delivery:
                 w, h = self.value, self.value / ar
             else:
                 h, w = self.value, self.value * ar
-        return self._even(w), self._even(h)
+        return even(w), even(h)
 
 
 def _positive_seq(v: object, n: int) -> bool:
