@@ -26,17 +26,39 @@ def test_marks_for_fill_are_unchanged():
     assert marks == [((400.0 - 100) / 405, 360.0 / 720)]
 
 
+_FIT_BLUR = PathMeta(mode="fit-blur", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
+                     canvas=(9, 16), out_dims=(1280, 2276), rect_px=(0, 778, 1280, 720),
+                     freedom=0)
+
+
 def test_marks_for_a_composite_land_inside_the_rect():
     route, path = _route_and_path()
     # fit-blur: the whole 1280x720 frame sits at y=778 in a 1280x2276 canvas
-    meta = PathMeta(mode="fit-blur", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
-                    canvas=(9, 16), out_dims=(1280, 2276), rect_px=(0, 778, 1280, 720), freedom=0)
-    (fx, fy), = storyboard.marks_at_times(route, path, meta, [0.0])
+    (fx, fy), = storyboard.marks_at_times(route, path, _FIT_BLUR, [0.0])
     # x: the subject is 400px into a 1280px-wide rect that spans the full canvas
     assert fx == pytest.approx((0 + 1280 * (400.0 - 100) / 1280) / 1280)
     # y: the subject is halfway down a 720px rect that starts 778px down a 2276px canvas
     assert fy == pytest.approx((778 + 720 * (360.0 / 720)) / 2276)
     assert 0.0 < fx < 1.0 and 0.0 < fy < 1.0
+
+
+def test_a_subject_near_the_frame_top_does_not_land_on_the_background():
+    """The case above cannot fail: fit-blur's rect spans the full width at rx=0,
+    and a subject at the crop's vertical centre maps to the canvas centre either
+    way — so the old `y / src_h` formula produces the identical numbers.
+
+    Move the subject to the top of the frame and the two part company. The
+    picture begins 778px down a 2276px canvas, i.e. at fy=0.342. The old formula
+    puts a subject at y=50 at fy=0.069 — above the picture, on the blurred
+    background, where §6.1a's layer-4 reviewer would be reading noise.
+    """
+    route = [RoutePoint(t=i / 10, x=400.0 + i * 10, y=50.0, w=60.0, h=160.0) for i in range(5)]
+    path = CropPath([100 + i * 10 for i in range(5)])
+    (_, fy), = storyboard.marks_at_times(route, path, _FIT_BLUR, [0.0])
+    top, bottom = 778 / 2276, (778 + 720) / 2276
+    assert fy == pytest.approx((778 + 720 * (50.0 / 720)) / 2276)
+    assert top < fy < bottom                       # on the picture
+    assert 50.0 / 720 < top                        # ...where the old formula was not
 
 
 def test_marks_for_a_bordered_insert_land_on_the_picture_not_the_border():
