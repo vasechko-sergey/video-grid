@@ -365,3 +365,48 @@ def test_path_meta_from_dict_reports_an_unusable_field_with_a_remedy():
              canvas=[9, 16], out_dims=[404, 720], rect_px=[0, 0, 404, 720], freedom=875)
     with pytest.raises(RuntimeError, match="unusable field"):
         m.PathMeta.from_dict(d)
+
+
+def test_export_profile_defaults_are_the_silent_reel():
+    p = m.REEL_H264
+    assert (p.vcodec, p.crf, p.pix_fmt, p.container) == ("libx264", 18, "yuv420p", "mp4")
+    assert p.faststart is True and p.acodec is None
+
+
+def test_export_profile_silent_args_use_an_and_faststart():
+    a = m.REEL_H264.args()
+    assert "-an" in a
+    assert a[a.index("-movflags") + 1] == "+faststart"
+    assert "-c:v" in a and a[a.index("-c:v") + 1] == "libx264"
+    assert "scale=" not in " ".join(a)          # deliver never re-scales
+
+
+def test_export_profile_maxrate_adds_bufsize():
+    a = m.ExportProfile(maxrate_kbps=9000).args()
+    assert a[a.index("-maxrate") + 1] == "9000k"
+    assert a[a.index("-bufsize") + 1] == "18000k"
+
+
+def test_export_profile_audio_args_when_voiced():
+    a = m.ExportProfile(acodec="aac", abitrate_kbps=192).args()
+    assert "-an" not in a
+    assert a[a.index("-c:a") + 1] == "aac" and a[a.index("-b:a") + 1] == "192k"
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(crf=60), "0..51"),
+    (dict(crf=-1), "0..51"),
+    (dict(crf=True), "0..51"),
+    (dict(pix_fmt=""), "pixel format"),
+    (dict(vcodec=""), "codec name"),
+    (dict(container=""), "container"),
+    (dict(fps=0), "positive number or None"),
+    (dict(fps=True), "positive number or None"),
+    (dict(maxrate_kbps=0), "positive int or None"),
+    (dict(maxrate_kbps=True), "positive int or None"),
+    (dict(abitrate_kbps=192), "acodec is None"),
+    (dict(acodec="aac", abitrate_kbps=True), "positive int or None"),
+])
+def test_export_profile_rejects_bad_construction(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.ExportProfile(**kw)

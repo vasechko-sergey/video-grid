@@ -443,3 +443,68 @@ class StoryboardSpec:
         for g in self.grids:
             if g not in GRIDS:
                 raise ValueError(f"StoryboardSpec.grid {g!r} not in {GRIDS}")
+
+
+@dataclass
+class ExportProfile:
+    """One typed export profile (design §2). New platforms are new instances,
+    not new code. Silent by default (acodec None → -an); Phase B sets acodec."""
+    vcodec: str = "libx264"
+    crf: int = 18
+    preset: str = "medium"
+    pix_fmt: str = "yuv420p"
+    container: str = "mp4"
+    faststart: bool = True
+    fps: float | None = None
+    maxrate_kbps: int | None = None
+    acodec: str | None = None
+    abitrate_kbps: int | None = None
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.vcodec, str) and self.vcodec):
+            raise ValueError("ExportProfile.vcodec must be a non-empty codec name")
+        if isinstance(self.crf, bool) or not isinstance(self.crf, int) or not 0 <= self.crf <= 51:
+            raise ValueError(f"ExportProfile.crf must be an int in 0..51, got {self.crf!r}")
+        if not (isinstance(self.pix_fmt, str) and self.pix_fmt):
+            raise ValueError("ExportProfile.pix_fmt must be a non-empty pixel format")
+        if not (isinstance(self.container, str) and self.container):
+            raise ValueError("ExportProfile.container must be a non-empty container name")
+        if self.fps is not None and not (isinstance(self.fps, (int, float))
+                                         and not isinstance(self.fps, bool) and self.fps > 0):
+            raise ValueError(f"ExportProfile.fps must be a positive number or None, got {self.fps!r}")
+        if self.maxrate_kbps is not None and not (isinstance(self.maxrate_kbps, int)
+                                                  and not isinstance(self.maxrate_kbps, bool)
+                                                  and self.maxrate_kbps > 0):
+            raise ValueError(f"ExportProfile.maxrate_kbps must be a positive int or None, got {self.maxrate_kbps!r}")
+        if self.acodec is not None and not (isinstance(self.acodec, str) and self.acodec):
+            raise ValueError("ExportProfile.acodec must be a non-empty codec name or None")
+        if self.abitrate_kbps is not None:
+            if self.acodec is None:
+                raise ValueError("ExportProfile.abitrate_kbps is set but acodec is None — a bitrate "
+                                 "with no audio codec cannot be applied; set acodec or clear abitrate_kbps")
+            if isinstance(self.abitrate_kbps, bool) or not isinstance(self.abitrate_kbps, int) \
+                    or self.abitrate_kbps <= 0:
+                raise ValueError(f"ExportProfile.abitrate_kbps must be a positive int or None, got {self.abitrate_kbps!r}")
+
+    def args(self) -> list[str]:
+        """ffmpeg OUTPUT args (no -i, no output path). The one place the encode
+        landmines live — yuv420p, faststart; deliver adds no scale (even dims come
+        in from the master by construction)."""
+        a = ["-c:v", self.vcodec, "-crf", str(self.crf), "-preset", self.preset,
+             "-pix_fmt", self.pix_fmt]
+        if self.maxrate_kbps is not None:
+            a += ["-maxrate", f"{self.maxrate_kbps}k", "-bufsize", f"{2 * self.maxrate_kbps}k"]
+        if self.fps is not None:
+            a += ["-r", str(self.fps)]
+        if self.acodec is None:
+            a += ["-an"]
+        else:
+            a += ["-c:a", self.acodec]
+            if self.abitrate_kbps is not None:
+                a += ["-b:a", f"{self.abitrate_kbps}k"]
+        if self.faststart:
+            a += ["-movflags", "+faststart"]
+        return a
+
+
+REEL_H264 = ExportProfile()
