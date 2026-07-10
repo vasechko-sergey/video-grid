@@ -3,7 +3,7 @@
 Testing philosophy and the patterns that matter for video-grid. Adapted from the
 anna-auth testing guide to a pytest + real-ffmpeg codebase.
 
-_Last updated: 2026-07-09._
+_Last updated: 2026-07-11._
 
 ## Philosophy
 
@@ -35,6 +35,13 @@ _Last updated: 2026-07-09._
   through the real ffmpeg/ffprobe binaries — not mocked. A geometry/aspect change
   is proven cheaply with a mocked-engine shell test; a "does ffmpeg actually
   produce these pixels/dims" claim needs the golden.
+- **ffmpeg `drawbox` position expressions are inert under ffmpeg 8.1.1.**
+  `drawbox=x='...t...'` evaluates `t` as a constant (`INT32_MAX`), not the frame
+  time, so the box never moves/renders — the clip comes out flat. The shared
+  `sample_clip` fixture (`tests/conftest.py`) therefore composites its moving box
+  with `overlay` (whose position expressions DO evaluate per-frame). Don't
+  reintroduce the `drawbox` form. This is a test-fixture issue only; the
+  production pipeline doesn't use `drawbox`.
 - **Assert on delivered dimensions, not on a hardcoded resolution.** The engine
   is aspect/resolution-agnostic; a delivery test pins the *derived* dims
   (e.g. native 9:16-from-720 → `404×720`), never a stale `1080×1920`.

@@ -89,3 +89,32 @@ ffmpeg -y -i <src> -vf "fps=<rate>" -frames:v <n> <tmp>/f%02d.png
 the contact sheet; `-frames:v` caps output count so rounding in `fps=` never
 over/under-shoots. Frames get thirds/phi grid + hero-marker overlays drawn
 in Pillow, not ffmpeg (spec §6.1a, §6.5).
+
+## Final concat (`scripts/lib/assembly.py`)
+
+```
+# probe each locked episode; all match (dims,fps,pix_fmt=yuv420p,codec=h264)? →
+ffmpeg -y -f concat -safe 0 -i <concat.txt> -c copy <master.mp4>
+# an outlier → normalize ONLY it, then concat-copy:
+ffmpeg -y -i <outlier> -vf "scale=W:H,fps=FPS,format=yuv420p" \
+  -c:v libx264 -crf 18 -preset medium -an <norm.mp4>
+```
+
+**Why:** locked episodes share a delivery, so the common path is lossless `-c copy`
+(no re-encode). The §12 landmine is concat of non-uniform streams — the probe makes
+normalization surgical, touching only a mismatched clip. `concat.txt` uses absolute
+paths with `-safe 0`, and single quotes in paths are escaped (`'` → `'\''`) so a
+client dir like `O'Brien` cannot mis-tokenize.
+
+## Deliver encode (`scripts/deliver.py`)
+
+```
+ffmpeg -y -i <master.mp4> -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p \
+  [-maxrate Kk -bufsize 2Kk] [-r FPS] -an -movflags +faststart <REEL_v{n}.mp4>
+```
+
+**Why:** the ONE encode of the back half — `ExportProfile.args()` is the single place
+these flags live, so they cannot drift across callers. No `scale`: the master's dims
+are already even by construction, so deliver cannot reintroduce the odd-dim landmine.
+`-an` while the reel is silent (Phase A); Phase B sets an audio codec. `+faststart`
+moves the moov atom for social streaming.

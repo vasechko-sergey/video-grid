@@ -429,7 +429,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 **Status (which plan implements what):**
 - **Core plan (`check_episode`):** on-line/centered, jitter, route-continuity (teleport side), length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
 - **process-episode plan:** color (in-episode) — reframe applies the gain; its verification lands with that plan.
-- **Assembly plan (`check_reel`):** color across cuts, beat, loudness, variety, safe-zones.
+- **Reel back half (`check_reel`):** black, color-across-cuts (median-attributed culprit), variety (phash), length — implemented; **beat**, **loudness**, **safe-zones** report `not-implemented` (Phase B / §7 defer), **never** a silent pass.
 
 ---
 

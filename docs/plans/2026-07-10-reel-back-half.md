@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: COMPLETE (2026-07-11)** — all tasks landed on branch `feat/reel-back-half`.
+
 **Goal:** Turn N locked `process-episode` outputs into one delivered silent reel — `assemble` (lossless master) → `check_reel` (mechanical gate + failure attribution) → `deliver` (one encode, versioned).
 
 **Architecture:** Three thin entry scripts over one shared `scripts/lib/assembly.py` concat core, plus typed contracts in `scripts/lib/models.py` (`ExportProfile`, `ReelCheckSpec`, `ReelFailure`, `ReelReport`). Exactly one encode, at deliver; a hard gate refuses a failed reel. Silent phase — audio/safe-zone checks report `passed=None`, never a silent pass. The retry *loop* is the Phase A.5 follow-on, not this plan.
@@ -35,7 +37,7 @@
 - Modify: `scripts/lib/models.py` (append after `StoryboardSpec`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_models.py`:
 
@@ -86,12 +88,12 @@ def test_export_profile_rejects_bad_construction(kw, msg):
 
 `import pytest` is already at the top of `tests/lib/test_models.py`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k export_profile -q`
 Expected: FAIL — `ImportError: cannot import name 'ExportProfile'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/models.py`:
 
@@ -160,12 +162,12 @@ class ExportProfile:
 REEL_H264 = ExportProfile()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k export_profile -q`
 Expected: PASS (12 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -180,7 +182,7 @@ git commit -m "feat: ExportProfile typed delivery profile (reel back half Task 0
 - Modify: `scripts/lib/models.py`
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 from scripts.lib.models import ReelCheckSpec
@@ -201,12 +203,12 @@ def test_reel_check_spec_rejects_bad(kw, msg):
         ReelCheckSpec(**kw)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_check_spec -q`
 Expected: FAIL — `ImportError: cannot import name 'ReelCheckSpec'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/models.py`:
 
@@ -227,12 +229,12 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_check_spec -q`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -247,7 +249,7 @@ git commit -m "feat: ReelCheckSpec thresholds (reel back half Task 1)"
 - Modify: `scripts/lib/models.py`
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 from scripts.lib.models import ReelFailure, ReelReport, CheckResult
@@ -287,12 +289,12 @@ def test_reel_report_writes_json(tmp_path):
 
 `import json` is already at the top of `tests/lib/test_models.py`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_report -q`
 Expected: FAIL — `ImportError: cannot import name 'ReelFailure'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/models.py`:
 
@@ -351,12 +353,12 @@ class ReelReport:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_report -q`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -371,7 +373,7 @@ git commit -m "feat: ReelFailure + ReelReport wire-contracts (reel back half Tas
 - Create: `scripts/lib/assembly.py`
 - Test: `tests/lib/test_assembly.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_assembly.py`:
 
@@ -416,12 +418,12 @@ def test_probe_stream_parses_fps_ratio(tmp_path, monkeypatch):
     assert info.w == 606 and info.h == 1080 and abs(info.fps - 29.97) < 0.01
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.assembly'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/lib/assembly.py`:
 
@@ -470,12 +472,12 @@ def matches(info: StreamInfo, dims: tuple[int, int], fps: float,
             and info.pix_fmt == pix_fmt and info.vcodec == vcodec)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py -q`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py tests/lib/test_assembly.py
@@ -491,7 +493,7 @@ git commit -m "feat: assembly.probe_stream + uniformity match (reel back half Ta
 - Create: `scripts/assemble.py`
 - Test: `tests/lib/test_assembly.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_assembly.py`:
 
@@ -537,12 +539,12 @@ def test_assemble_zero_episodes_fails_loud(tmp_path):
         assembly.assemble([], (606, 1080), 30.0, str(tmp_path / "m.mp4"))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py -k "assemble or outlier or uniform" -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.assembly' has no attribute 'assemble'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/assembly.py`:
 
@@ -606,12 +608,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py -q`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py scripts/assemble.py tests/lib/test_assembly.py
@@ -626,7 +628,7 @@ git commit -m "feat: assemble() concat-copy | normalize-outlier + CLI (reel back
 - Create: `scripts/check_reel.py`
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_check_reel.py`:
 
@@ -697,12 +699,12 @@ def test_audio_and_safezone_checks_are_not_implemented(tmp_path, monkeypatch):
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.check_reel'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/check_reel.py`:
 
@@ -774,12 +776,12 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
 
 Note: `_frame_mean`, `_phash_bits`, `_hamming` are stubbed by the test now and added in Tasks 6–7; the boundary/mid helpers arrive with them.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -q`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -794,7 +796,7 @@ git commit -m "feat: check_reel black + length + not-implemented stubs (reel bac
 - Modify: `scripts/check_reel.py`
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_check_reel.py`:
 
@@ -829,12 +831,12 @@ def test_color_across_cuts_is_not_applicable_for_a_single_episode(tmp_path, monk
     assert rep.checks["color_across_cuts"].passed is None      # no cut to judge
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -k color -q`
 Expected: FAIL — `KeyError: 'color_across_cuts'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/check_reel.py`, add a `tempfile`/`os` import block and the helpers, then wire the check.
 
@@ -910,12 +912,12 @@ Inside `run`, after the length block and **before** the `_NOT_IMPL` loop, insert
                                                   {"status": "n/a", "reason": "single episode, no cut"})
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -q`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -931,7 +933,7 @@ git commit -m "feat: check_reel color-across-cuts + median attribution (reel bac
 - Create: (CLI at the tail of `scripts/check_reel.py`)
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_check_reel.py`:
 
@@ -953,12 +955,12 @@ def test_variety_passes_for_distinct_episodes(tmp_path, monkeypatch):
     assert rep.checks["variety"].passed is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -k variety -q`
 Expected: FAIL — `KeyError: 'variety'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add helpers above `run` in `scripts/check_reel.py`:
 
@@ -1015,12 +1017,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -q`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -1035,7 +1037,7 @@ git commit -m "feat: check_reel variety phash + CLI (reel back half Task 7)"
 - Create: `scripts/deliver.py`
 - Test: `tests/lib/test_deliver.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_deliver.py`:
 
@@ -1063,12 +1065,12 @@ def test_log_version_creates_header_then_appends(tmp_path):
     assert "| first cut" in text and "- v2 |" in text and "| regraded ep1" in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.deliver'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/deliver.py`:
 
@@ -1100,12 +1102,12 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
         f.write(f"- v{n} | {stamp} | {changelog}\n")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py -q`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deliver.py tests/lib/test_deliver.py
@@ -1120,7 +1122,7 @@ git commit -m "feat: deliver version naming + VERSIONS.md log (reel back half Ta
 - Modify: `scripts/deliver.py`
 - Test: `tests/lib/test_deliver.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_deliver.py`:
 
@@ -1163,12 +1165,12 @@ def test_deliver_second_run_is_v2(tmp_path, monkeypatch):
     assert out2.endswith("REEL_v2.mp4")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py -k "refuses or encodes or v2" -q`
 Expected: FAIL — `AttributeError: module 'scripts.deliver' has no attribute 'deliver'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/deliver.py`:
 
@@ -1206,12 +1208,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py -q`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deliver.py tests/lib/test_deliver.py
@@ -1225,7 +1227,7 @@ git commit -m "feat: deliver() encode + hard gate + CLI (reel back half Task 9)"
 **Files:**
 - Create: `tests/integration/test_reel_backhalf.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/integration/test_reel_backhalf.py`:
 
@@ -1291,14 +1293,14 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
     assert v2.endswith("REEL_v2.mp4")
 ```
 
-- [ ] **Step 2: Run test to verify it fails, then passes**
+- [x] **Step 2: Run test to verify it fails, then passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reel_backhalf.py -q`
 Expected: PASS (the scripts exist by now). If `variety` flakes (both grey-dominant crops hash close), the crops differ by box position — but if it fails, confirm the two `_episode` x-values produce visibly different frames before lowering `variety_min`.
 
 If it fails on import or a helper name, reconcile against Tasks 3–9 (this task adds no production code — it only exercises it).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_reel_backhalf.py
@@ -1315,7 +1317,7 @@ git commit -m "test: real-ffmpeg reel back-half golden (reel back half Task 10)"
 - Modify: `docs/specs/2026-07-05-montage-skillset-design.md` (§9 status line)
 - Modify: `CLAUDE.md` (Quick Reference)
 
-- [ ] **Step 1: Add ffmpeg recipes**
+- [x] **Step 1: Add ffmpeg recipes**
 
 Append to `references/ffmpeg-recipes.md`:
 
@@ -1349,7 +1351,7 @@ odd-dim landmine. `-an` while the reel is silent (Phase A); Phase B sets an audi
 codec. `+faststart` moves the moov atom for social streaming.
 ```
 
-- [ ] **Step 2: Sync build-status, montage §9, and CLAUDE.md**
+- [x] **Step 2: Sync build-status, montage §9, and CLAUDE.md**
 
 In `docs/build-status.md`, add a `## Done` bullet (dated 2026-07-10) recording
 the reel back half: `assemble`/`check_reel`/`deliver`, the typed contracts
@@ -1368,12 +1370,12 @@ In `CLAUDE.md` Quick Reference, add two rows:
 - Reel back-half design → `docs/specs/2026-07-10-reel-back-half-design.md`
 - Reel back-half plan → `docs/plans/2026-07-10-reel-back-half.md`
 
-- [ ] **Step 3: Verify the whole suite is green**
+- [x] **Step 3: Verify the whole suite is green**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS — 286 prior + the new unit tests + 1 integration golden, no regressions.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add references/ffmpeg-recipes.md docs/build-status.md \

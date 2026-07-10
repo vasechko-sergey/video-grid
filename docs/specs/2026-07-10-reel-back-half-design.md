@@ -145,7 +145,7 @@ subject data. Cut boundaries = cumulative episode durations (probe each).
 | Check | Rule (§9) | Fail attribution |
 |-------|-----------|------------------|
 | `black` | `blackdetect=d=0.05:pic_th=0.98` on master; any `black_start` → fail | episode owning the black timestamp (via boundaries); `escalate_to="reprocess"` |
-| `color_across_cuts` | mean-RGB Δ sampled each side of every cut < `color_delta_max` | of the two adjacent, the one whose mean deviates more from the reel median; `escalate_to="reprocess"` |
+| `color_across_cuts` | mean-RGB Δ sampled each side of every cut < `color_delta_max` | of the two adjacent, the one whose mean deviates more from the reel median (a tie — e.g. every 2-episode reel, whose 2-value median is equidistant from both spans — blames the LATER episode, matching `variety`'s "second of the pair"); `escalate_to="reprocess"` |
 | `variety` | phash of one representative frame (episode midpoint) per episode; every adjacent pair Hamming ≥ `variety_min` (image, not filename — §427) | the second of the near-duplicate pair; `escalate_to="edit-plan"` |
 | `length` | master duration within ±0.5s of `target_dur` | none (whole-reel); `escalate_to="pacing"` |
 | `beat`, `loudness` | `CheckResult(passed=None, detail={"status":"not-implemented","reason":"silent reel — Phase B"})` | — |
