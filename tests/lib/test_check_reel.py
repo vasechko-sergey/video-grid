@@ -1,6 +1,7 @@
 import json
 
 import imagehash
+import pytest
 
 from scripts import check_reel
 from scripts.lib.models import ReelCheckSpec
@@ -173,3 +174,10 @@ def test_variety_failure_report_is_json_serializable_with_real_hamming(tmp_path,
     reloaded = json.loads(out.read_text())             # must parse → proves json.dumps didn't crash
     assert reloaded["checks"]["variety"]["pass"] is False
     assert isinstance(rep.fail_reasons[0].detail["distance"], int)
+
+
+def test_probe_dur_fails_loud_on_a_durationless_probe(monkeypatch):
+    monkeypatch.setattr(check_reel.proc, "run",
+                        lambda cmd, **k: type("C", (), {"stdout": b"N/A\n"})())
+    with pytest.raises(RuntimeError, match="no usable duration"):
+        check_reel._probe_dur("x.mp4")

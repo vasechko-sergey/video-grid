@@ -24,7 +24,11 @@ _NOT_IMPL = {"beat": "silent reel — lands in Phase B (music)",
 def _probe_dur(video: str) -> float:
     out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                     "-of", "default=nk=1:nw=1", video]).stdout.decode().strip()
-    return float(out)
+    try:
+        return float(out)
+    except ValueError:
+        raise RuntimeError(f"{video} reports no usable duration (ffprobe gave {out!r}) — the file "
+                           "may be truncated or durationless; re-render it") from None
 
 
 def _black_hits(master: str) -> list[float]:
