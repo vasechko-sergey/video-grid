@@ -12,6 +12,15 @@ def _manifest(tmp_path, **over):
     return d
 
 
+def _frozen_route(tmp_path):
+    """A route on disk, so process_episode skips tracking (the answer channel)."""
+    rp = tmp_path / "frozen.json"
+    rp.write_text(json.dumps([dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320)
+                              for i in range(10)]))
+    (tmp_path / "frozen.meta.json").write_text(json.dumps({"ambiguous": False}))
+    return str(rp)
+
+
 def _report(overall, fail_reasons, attempt=1):
     """A real models.Report whose derived .overall/.fail_reasons match the
     given values — Report computes both FROM `checks` now (no more storing
@@ -303,6 +312,42 @@ def test_lead_nonlateral_stops(monkeypatch, tmp_path):
     result = pe.process_episode(_manifest(tmp_path, composition="lead"), project_dir=str(tmp_path))
     assert result["status"] == "stop_and_report"
     assert any(f["reason"] == "composition-motion-mismatch" for f in result["findings"])
+
+
+def test_manifest_layout_fields_reach_the_reframe_spec(monkeypatch, tmp_path):
+    # the orchestrator's job here is threading, not geometry: whatever the
+    # manifest says about the layout must arrive at reframe intact, including
+    # the JSON-array-to-tuple conversion the manifest performs.
+    seen = {}
+
+    def fake_reframe(spec, src, route_path, out, path_out):
+        seen["layout"] = spec.layout
+        raise RuntimeError("stop — this test only cares about the spec we were handed")
+
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+    manifest = _manifest(tmp_path, composition="break", layout="insert",
+                         crop_aspect=[1, 1], rect=[0.05, 0.25, 0.9], border_px=8)
+    with pytest.raises(RuntimeError, match="this test only cares"):
+        pe.process_episode(manifest, project_dir=str(tmp_path),
+                           route_path=_frozen_route(tmp_path))
+    assert seen["layout"] == models.LayoutSpec(mode="insert", crop_aspect=(1, 1),
+                                               rect=(0.05, 0.25, 0.9), border_px=8)
+
+
+def test_a_fill_manifest_still_gets_the_default_layout(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_reframe(spec, src, route_path, out, path_out):
+        seen["layout"] = spec.layout
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+    with pytest.raises(RuntimeError, match="stop"):
+        pe.process_episode(_manifest(tmp_path, composition="break"),
+                           project_dir=str(tmp_path), route_path=_frozen_route(tmp_path))
+    assert seen["layout"] == models.LayoutSpec(mode="fill")
 
 
 FIX = Path(__file__).parent.parent / "fixtures"

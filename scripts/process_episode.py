@@ -16,7 +16,7 @@ from scripts import track, reframe, storyboard, check_episode
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
-                                Delivery, route_from_json, CropPath, PathMeta)
+                                Delivery, LayoutSpec, route_from_json, CropPath, PathMeta)
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -92,9 +92,14 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     params = dict(orch.DEFAULT_PARAMS)
     path_out = str(Path(project_dir) / "path.json")
     report = None
+    # the layout is editorial intent, not a retry parameter: it does not change
+    # between attempts, so build it once. validate() already proved it constructs.
+    lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
+                       rect=m.rect, background=m.background,
+                       border_px=m.border_px, border_color=m.border_color)
     for attempt in range(1, max_attempts + 1):
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
-                            color_means=m.color_means, delivery=delivery,
+                            color_means=m.color_means, delivery=delivery, layout=lspec,
                             max_speed=params["max_speed"])
         _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
