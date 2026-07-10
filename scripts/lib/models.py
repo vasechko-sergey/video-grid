@@ -214,6 +214,72 @@ class TrackSpec:
                              f"got {self.seed_bbox!r}")
 
 
+LAYOUT_MODES = ("fill", "fit-blur", "insert")
+BACKGROUNDS = ("blur",)
+
+
+@dataclass
+class LayoutSpec:
+    """Where the source lands in the canvas (spec §7). Three parameters, not
+    three code paths: what to cut (aspect + scale), where to put it (rect), and
+    what fills the rest (background).
+
+    `rect` is (x, y, w) in canvas fractions — its HEIGHT is derived from the crop
+    aspect, so a rect cannot disagree with what is placed inside it. None means
+    full width, vertically centred.
+    """
+    mode: str
+    crop_aspect: str | tuple[int, int] = "canvas"
+    crop_scale: float = 1.0
+    rect: tuple[float, float, float] | None = None
+    background: str = "blur"
+
+    def __post_init__(self) -> None:
+        if self.mode not in LAYOUT_MODES:
+            raise ValueError(f"LayoutSpec.mode {self.mode!r} unknown — fill/fit-blur/insert "
+                             "(split and pan are separate plans)")
+        if self.background not in BACKGROUNDS:
+            raise ValueError(f"LayoutSpec.background {self.background!r} unknown — "
+                             f"{BACKGROUNDS}; solid lands with fit-solid")
+        if not isinstance(self.crop_scale, (int, float)) or not 0.0 < self.crop_scale <= 1.0:
+            raise ValueError(f"LayoutSpec.crop_scale must be in (0.0, 1.0], got "
+                             f"{self.crop_scale!r} — 1.0 is the largest crop that fits")
+        if isinstance(self.crop_aspect, str):
+            if self.crop_aspect not in ("canvas", "source"):
+                raise ValueError(f"LayoutSpec.crop_aspect {self.crop_aspect!r} unknown — "
+                                 "'canvas', 'source', or a (w, h) pair of positive ints")
+        elif not (isinstance(self.crop_aspect, tuple) and len(self.crop_aspect) == 2
+                  and all(isinstance(v, int) and v > 0 for v in self.crop_aspect)):
+            raise ValueError(f"LayoutSpec.crop_aspect {self.crop_aspect!r} invalid — "
+                             "'canvas', 'source', or a (w, h) pair of positive ints")
+        if self.rect is not None:
+            if not (isinstance(self.rect, tuple) and len(self.rect) == 3
+                    and all(isinstance(v, (int, float)) for v in self.rect)):
+                raise ValueError(f"LayoutSpec.rect must be (x, y, w) canvas fractions or None, "
+                                 f"got {self.rect!r} — height derives from the crop aspect")
+            x, y, w = self.rect
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.0 < w <= 1.0):
+                raise ValueError(f"LayoutSpec.rect {self.rect!r}: x/y must be fractions in "
+                                 "[0, 1] and w must be in (0, 1]")
+            if x + w > 1.0:
+                raise ValueError(f"LayoutSpec.rect {self.rect!r}: x + w = {x + w:.3f} > 1.0 — "
+                                 "the rect runs off the right edge of the canvas")
+        if self.mode == "fill":
+            if self.crop_aspect != "canvas":
+                raise ValueError("LayoutSpec: fill must use crop_aspect 'canvas' — a fill that "
+                                 "crops to another aspect needs a background, i.e. it is fit-blur")
+            if self.rect not in (None, (0.0, 0.0, 1.0)):
+                raise ValueError(f"LayoutSpec: fill covers the whole canvas, but rect is "
+                                 f"{self.rect!r} — a fill with a smaller rect is an insert, "
+                                 "and must say so")
+        if self.mode == "fit-blur" and self.rect is not None:
+            raise ValueError(f"LayoutSpec: fit-blur spans the full canvas width, so rect must "
+                             f"be None, got {self.rect!r} — use insert to place a smaller rect")
+        if self.mode == "insert" and self.rect is None:
+            raise ValueError("LayoutSpec: insert needs a rect (x, y, w) in canvas fractions — "
+                             "without one it is fit-blur")
+
+
 @dataclass
 class ReframeSpec:
     composition: str

@@ -225,3 +225,58 @@ def test_delivery_dims_takes_floats_and_evens_each_side():
     # the fit-blur case: 1280 wide, 16/9 tall. Evening the width first and
     # deriving the height from it would give 718, not 720 — hence floats.
     assert d.dims(1280.0, 1280.0 * 16 / 9) == (1280, 2276)
+
+
+def test_layout_spec_fill_defaults():
+    s = m.LayoutSpec(mode="fill")
+    assert (s.mode, s.crop_aspect, s.crop_scale, s.rect) == ("fill", "canvas", 1.0, None)
+
+
+def test_layout_spec_fit_blur_and_insert_construct():
+    assert m.LayoutSpec(mode="fit-blur", crop_aspect="source").rect is None
+    s = m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    assert s.rect == (0.05, 0.25, 0.90)
+
+
+def test_layout_spec_rejects_unknown_mode():
+    with pytest.raises(ValueError, match="fill/fit-blur/insert"):
+        m.LayoutSpec(mode="split")
+
+
+def test_layout_spec_rejects_unknown_background():
+    with pytest.raises(ValueError, match="solid lands with fit-solid"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", background="solid")
+
+
+def test_layout_spec_rejects_bad_scale():
+    with pytest.raises(ValueError, match=r"\(0.0, 1.0\]"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", crop_scale=0.0)
+
+
+def test_layout_spec_rejects_bad_aspect():
+    with pytest.raises(ValueError, match="canvas.*source.*pair"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="wide")
+
+
+def test_layout_spec_fill_must_be_canvas_aspect_and_full_rect():
+    with pytest.raises(ValueError, match="an insert, and must say so"):
+        m.LayoutSpec(mode="fill", rect=(0.1, 0.1, 0.5))
+    with pytest.raises(ValueError, match="crop_aspect 'canvas'"):
+        m.LayoutSpec(mode="fill", crop_aspect="source")
+
+
+def test_layout_spec_fit_blur_takes_no_rect():
+    with pytest.raises(ValueError, match="fit-blur spans the full canvas width"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", rect=(0.0, 0.1, 0.8))
+
+
+def test_layout_spec_insert_needs_a_rect():
+    with pytest.raises(ValueError, match="insert needs a rect"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1))
+
+
+def test_layout_spec_rejects_a_rect_off_the_canvas():
+    with pytest.raises(ValueError, match=r"x \+ w"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.5, 0.1, 0.8))
+    with pytest.raises(ValueError, match="fractions"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.0, 0.1, 0.0))
