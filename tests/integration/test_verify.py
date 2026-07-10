@@ -100,17 +100,22 @@ def test_marks_at_times_interpolates_on_t():
              models.RoutePoint(0.1, 200, 500, 100, 200),
              models.RoutePoint(1.0, 1000, 500, 100, 200)]   # big gap in t
     path = models.CropPath([0, 100, 900])
-    marks = storyboard.marks_at_times(route, path, crop_w=200, src_h=1000,
-                                      times=[0.0, 0.5, 1.0])
+    # fill meta: rect is the whole output, so fx=(x-cx)/crop_w, fy=(y-0)/crop_h
+    meta = models.PathMeta(mode="fill", crop_w=200, crop_h=1000, crop_y=0,
+                           src_dims=(200, 1000), canvas=(1, 5), out_dims=(200, 1000),
+                           rect_px=(0, 0, 200, 1000), freedom=0)
+    marks = storyboard.marks_at_times(route, path, meta, [0.0, 0.5, 1.0])
     # at t=1.0: x=1000, crop_x=900 -> fx=(1000-900)/200=0.5 ; fy=500/1000=0.5
     assert abs(marks[-1][0] - 0.5) < 1e-6 and abs(marks[-1][1] - 0.5) < 1e-6
     assert len(marks) == 3
 
 def test_marks_at_times_rejects_desync():
     route = [models.RoutePoint(i / 30, 400, 540, 140, 320) for i in range(10)]
+    meta = models.PathMeta(mode="fill", crop_w=600, crop_h=1080, crop_y=0,
+                           src_dims=(1920, 1080), canvas=(9, 16), out_dims=(600, 1080),
+                           rect_px=(0, 0, 600, 1080), freedom=0)
     with pytest.raises(ValueError, match="parallel"):
-        storyboard.marks_at_times(route, models.CropPath([100] * 9), crop_w=600,
-                                  src_h=1080, times=[0.0, 0.5])
+        storyboard.marks_at_times(route, models.CropPath([100] * 9), meta, [0.0, 0.5])
 
 def test_build_computes_marks_at_sample_times(monkeypatch, tmp_path):
     # behavioral pin for #4: build() must sample frames BY TIME and compute the
@@ -141,17 +146,19 @@ def test_build_computes_marks_at_sample_times(monkeypatch, tmp_path):
              models.RoutePoint(1.5, 700, 540, 100, 200),
              models.RoutePoint(3.0, 1000, 540, 100, 200)]
     path = models.CropPath([200, 400, 700])
+    meta = models.PathMeta(mode="fill", crop_w=600, crop_h=1080, crop_y=0,
+                           src_dims=(1920, 1080), canvas=(9, 16), out_dims=(600, 1080),
+                           rect_px=(0, 0, 600, 1080), freedom=0)
     spec = models.StoryboardSpec(n=3, grids=("thirds",))
     out = tmp_path / "sheet.jpg"
 
     result = storyboard.build(str(tmp_path / "clip.mp4"), str(out), spec,
-                              route=route, path=path, crop_w=600, src_h=1080)
+                              route=route, path=path, meta=meta)
 
     times = captured["times"]
     assert len(times) == spec.n == 3
     assert result == (str(out), times)
-    expected_marks = storyboard.marks_at_times(route, path, crop_w=600,
-                                               src_h=1080, times=times)
+    expected_marks = storyboard.marks_at_times(route, path, meta, times)
     assert overlay_marks == expected_marks
     assert out.exists() and out.stat().st_size > 0
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 from scripts.lib.geometry import grid_lines
 from scripts.lib import proc
-from scripts.lib.models import StoryboardSpec, RoutePoint, CropPath
+from scripts.lib.models import StoryboardSpec, RoutePoint, CropPath, PathMeta
 
 
 def _duration(src: str) -> float:
@@ -60,11 +60,18 @@ def _interp(ts: list[float], xs: list[float], t: float) -> float:
     return xs[-1]
 
 
-def marks_at_times(route: list[RoutePoint], path: CropPath, crop_w: int, src_h: int,
+def marks_at_times(route: list[RoutePoint], path: CropPath, meta: PathMeta,
                    times: list[float]) -> list[tuple[float, float]]:
-    """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME —
-    interpolate route x/y and crop-x on t, so marks align with the frames
-    storyboard samples by time (fixes index/time desync on gappy routes, #4)."""
+    """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME.
+
+    The crop is placed inside `meta.rect_px`, which for `fill` is the whole
+    output — so this reduces to the old (x - cx) / crop_w there, and stays
+    correct when the crop is a card in a larger canvas. fy divides by crop_h
+    and honours meta.crop_y, so a canvas with vertical freedom maps right too.
+
+    Route x/y and crop-x are interpolated on t so the marks align with the
+    frames storyboard samples BY TIME (fixes index/time desync on a gappy
+    route, #4)."""
     if not route or len(route) != len(path):
         raise ValueError(f"route/path must be non-empty parallel arrays, "
                          f"got {len(route)} vs {len(path)}")
@@ -72,29 +79,33 @@ def marks_at_times(route: list[RoutePoint], path: CropPath, crop_w: int, src_h: 
     xs = [p.x for p in route]
     ys = [p.y for p in route]
     cxs = path.xs
+    rx, ry, rw, rh = meta.rect_px
+    out_w, out_h = meta.out_dims
     marks = []
     for t in times:
         x = _interp(ts, xs, t)
         y = _interp(ts, ys, t)
         cx = _interp(ts, cxs, t)
-        marks.append(((x - cx) / crop_w, y / src_h))
+        fx = (rx + rw * (x - cx) / meta.crop_w) / out_w
+        fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
+        marks.append((fx, fy))
     return marks
 
 
 def build(src: str, out: str, spec: StoryboardSpec, route: list[RoutePoint] | None = None,
-          path: CropPath | None = None, crop_w: int | None = None,
-          src_h: int | None = None) -> tuple[str, list[float]]:
+          path: CropPath | None = None, meta: PathMeta | None = None) -> tuple[str, list[float]]:
     """Contact sheet + grid/hero-mark overlays (spec §6.1). `spec` is a
-    StoryboardSpec (n, grids, marks). When route/path/crop_w/src_h are ALL
-    given, marks are computed at the SAME sample times as the frames (fixes
-    #4 — the old index-sampled marker could drift onto the wrong frame on a
-    gappy route); otherwise spec.marks (if any) is used positionally.
+    StoryboardSpec (n, grids, marks). When route/path/meta are ALL given, marks
+    are computed at the SAME sample times as the frames (fixes #4 — the old
+    index-sampled marker could drift onto the wrong frame on a gappy route) and
+    mapped into canvas coords via meta.rect_px; otherwise spec.marks (if any) is
+    used positionally.
     Returns (out, times) — times lets the caller reuse the exact sample points."""
     dur = _duration(src)
     times = _sample_times(dur, spec.n)
     marks = spec.marks
-    if None not in (route, path, crop_w, src_h):
-        marks = marks_at_times(route, path, crop_w, src_h, times)
+    if None not in (route, path, meta):
+        marks = marks_at_times(route, path, meta, times)
     with tempfile.TemporaryDirectory() as tmp:
         frames = _sample_frames(src, spec.n, tmp, times)
         imgs = [_overlay(Image.open(f).convert("RGB"), spec.grids,

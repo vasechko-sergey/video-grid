@@ -48,10 +48,17 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
         Path(path_out).write_text(json.dumps([100] * len(route)))
+        # ...and reframe writes path.meta.json beside path.json; the shell reads
+        # it to hand storyboard the SAME crop the checks see (Task 8 layouts).
+        sw, sh, _ = dims
+        models.PathMeta(mode="fill", crop_w=sw, crop_h=sh, crop_y=0, src_dims=(sw, sh),
+                        canvas=tuple(spec.canvas), out_dims=(sw, sh),
+                        rect_px=(0, 0, sw, sh), freedom=0).write(
+            Path(path_out).with_suffix(".meta.json"))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 
-    def fake_storyboard_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
+    def fake_storyboard_build(src, out, spec, route=None, path=None, meta=None):
         Path(out).write_text("sheet")
         return out, None
     monkeypatch.setattr(pe.storyboard, "build", fake_storyboard_build)
@@ -151,14 +158,15 @@ def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
     # §6.1a layer 4: the storyboard must carry per-frame hero marks so the
     # editorial gate can confirm "right person" — the SKILL promises this
     # artifact. marks are now computed INSIDE storyboard.build from the
-    # route/path/crop_w/src_h ingredients the shell passes in — assert the
-    # shell hands over well-shaped ingredients, then prove the real
-    # marks_at_times can turn them into 6 valid (fx, fy) hero marks.
+    # route/path/meta ingredients the shell passes in (meta = the path.meta.json
+    # sidecar reframe wrote) — assert the shell hands over well-shaped
+    # ingredients, then prove the real marks_at_times can turn them into 6 valid
+    # (fx, fy) hero marks.
     _stub_engine(monkeypatch, tmp_path)
     captured = {}
 
-    def capture_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
-        captured.update(route=route, path=path, crop_w=crop_w, src_h=src_h)
+    def capture_build(src, out, spec, route=None, path=None, meta=None):
+        captured.update(route=route, path=path, meta=meta)
         Path(out).write_text("sheet")
         return out, None
     monkeypatch.setattr(pe.storyboard, "build", capture_build)
@@ -166,14 +174,13 @@ def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
     result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
 
-    route, path, crop_w, src_h = (captured["route"], captured["path"],
-                                  captured["crop_w"], captured["src_h"])
+    route, path, meta = captured["route"], captured["path"], captured["meta"]
     assert route and isinstance(route[0], models.RoutePoint)
     assert isinstance(path, models.CropPath) and len(path) == len(route)
-    assert crop_w > 0 and src_h > 0
+    assert isinstance(meta, models.PathMeta) and meta.crop_w > 0
 
     times = [route[i].t for i in range(6)]
-    marks = pe.storyboard.marks_at_times(route, path, crop_w, src_h, times)
+    marks = pe.storyboard.marks_at_times(route, path, meta, times)
     assert len(marks) == 6
     assert all(len(pair) == 2 for pair in marks)   # (fx, fy) fractions
 
@@ -193,8 +200,13 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     def fake_reframe(spec, src, route_path, out, path_out):
         speeds.append(spec.max_speed)
         # path length must match the route (real reframe invariant) — the shell
-        # reads it back to compute hero marks for the storyboard
+        # reads it back to compute hero marks for the storyboard; reframe also
+        # writes path.meta.json, which the shell reads for the marker mapping
         Path(out).write_text("clip"); Path(path_out).write_text(json.dumps([100] * 10))
+        models.PathMeta(mode="fill", crop_w=1920, crop_h=1080, crop_y=0,
+                        src_dims=(1920, 1080), canvas=(9, 16), out_dims=(1920, 1080),
+                        rect_px=(0, 0, 1920, 1080), freedom=0).write(
+            Path(path_out).with_suffix(".meta.json"))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 

@@ -13,11 +13,10 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
-from scripts.lib import geometry
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
-                                Delivery, route_from_json, CropPath)
+                                Delivery, route_from_json, CropPath, PathMeta)
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -107,14 +106,17 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             # hero marker (§6.1a layer 4): draw the followed subject on every
             # sampled frame so the editorial gate can confirm "right person" —
             # without marks the SKILL's marker check has nothing to look at.
-            # storyboard.build computes marks INTERNALLY from these ingredients.
-            crop_w, _ = geometry.crop_size(m.canvas[0], m.canvas[1], src_w, src_h)
+            # storyboard.build computes marks INTERNALLY from these ingredients,
+            # reading the SAME path.meta.json sidecar the checks read so the
+            # marker maps into canvas coords under any layout (Task 8), not just
+            # fill.
             route_pts = route_from_json(rp)
             path_obj = CropPath.from_json(path_out)
+            path_meta = PathMeta.from_json(Path(path_out).with_suffix(".meta.json"))
             sspec = StoryboardSpec(n=6, grids=(m.grid,))
             _timed("storyboard", lambda: storyboard.build(
                 m.out_path, sheet, sspec, route=route_pts, path=path_obj,
-                crop_w=crop_w, src_h=src_h))
+                meta=path_meta))
             return {"status": "mechanical_pass", "clip": m.out_path, "report": report.to_dict(),
                     "storyboard": sheet, "attempt": attempt, "timings": timings,
                     "degraded": None}
