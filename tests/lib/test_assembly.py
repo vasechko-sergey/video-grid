@@ -1,5 +1,9 @@
 import json
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
+
 from scripts.lib import assembly
 from scripts.lib.assembly import StreamInfo
 
@@ -50,3 +54,52 @@ def test_probe_stream_zero_denominator_fails_loud(tmp_path, monkeypatch):
                         lambda cmd, **k: type("C", (), {"stdout": payload})())
     with pytest.raises(RuntimeError, match="unusable"):
         assembly.probe_stream(str(f))
+
+
+def _capture(monkeypatch, infos):
+    """Mock probe_stream (per-path StreamInfo) + proc.run (record cmds)."""
+    calls = []
+    monkeypatch.setattr(assembly, "probe_stream", lambda p: infos[str(Path(p).name)])
+    monkeypatch.setattr(assembly.proc, "run",
+                        lambda cmd, **k: calls.append(cmd) or SimpleNamespace(stdout=b""))
+    return calls
+
+
+def _uniform():
+    return StreamInfo(606, 1080, 30.0, "yuv420p", "h264")
+
+
+def test_uniform_episodes_concat_copy_without_reencode(tmp_path, monkeypatch):
+    eps = [str(tmp_path / f"e{i}.mp4") for i in range(3)]
+    calls = _capture(monkeypatch, {f"e{i}.mp4": _uniform() for i in range(3)})
+    assembly.assemble(eps, (606, 1080), 30.0, str(tmp_path / "w" / "master.mp4"))
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert "scale=" not in joined                    # nothing re-encoded
+    assert "concat" in joined and "-c copy" in joined
+
+
+def test_one_fps_outlier_is_normalized_alone(tmp_path, monkeypatch):
+    eps = [str(tmp_path / f"e{i}.mp4") for i in range(3)]
+    infos = {f"e{i}.mp4": _uniform() for i in range(3)}
+    infos["e1.mp4"] = StreamInfo(606, 1080, 59.94, "yuv420p", "h264")
+    calls = _capture(monkeypatch, infos)
+    assembly.assemble(eps, (606, 1080), 30.0, str(tmp_path / "w" / "master.mp4"))
+    scale_cmds = [c for c in calls if any("scale=606:1080" in str(x) for x in c)]
+    assert len(scale_cmds) == 1                       # only the outlier
+
+
+def test_assemble_zero_episodes_fails_loud(tmp_path):
+    with pytest.raises(RuntimeError, match=">= 1 locked episode"):
+        assembly.assemble([], (606, 1080), 30.0, str(tmp_path / "m.mp4"))
+
+
+def test_concat_list_escapes_single_quotes_in_paths(tmp_path, monkeypatch):
+    d = tmp_path / "O'Brien"
+    d.mkdir()
+    ep = d / "e0.mp4"
+    _capture(monkeypatch, {"e0.mp4": _uniform()})
+    assembly.assemble([str(ep)], (606, 1080), 30.0, str(tmp_path / "w" / "master.mp4"))
+    listtext = (tmp_path / "w" / "_concat.txt").read_text()
+    esc = str(ep.resolve()).replace("'", "'\\''")
+    assert f"file '{esc}'" in listtext
+    assert "'\\''" in listtext          # the ffmpeg-style escape is present
