@@ -19,11 +19,17 @@ def _sample_times(dur: float, n: int) -> list[float]:
 
 
 def _sample_frames(src: str, n: int, tmp: str, times: list[float]) -> list[Path]:
-    # one still per explicit TIME — input-side -ss is a fast, keyframe-near
-    # seek (fine for a preview thumbnail; the design §12 "-ss after -i"
-    # landmine is about black frames on a CUT/re-encode boundary, not about
-    # grabbing a single still deep inside a clip). n kept for call-site
-    # symmetry; times already fixes the count.
+    # one still per explicit TIME. Input-side -ss is the fast seek, but it is NOT
+    # keyframe-approximate: ffmpeg's accurate_seek is on by default, so it lands on
+    # the keyframe and then decodes forward to the exact timestamp. Verified against
+    # the golden fixture, which carries a single keyframe — a keyframe-near seek
+    # would return frame 0 for every t, and the hero marks (drawn from the route at
+    # time t) would sit on the wrong frame entirely. They do not: input-seek and
+    # output-seek produce byte-identical stills at t = 0.4, 0.75, 1.2.
+    #
+    # The design §12 "-ss after -i" landmine is a different failure: black frames at
+    # a CUT/re-encode boundary. Grabbing one still deep inside a clip is not a cut.
+    # n kept for call-site symmetry; times already fixes the count.
     files = []
     for i, t in enumerate(times):
         f = f"{tmp}/f{i:02d}.png"
