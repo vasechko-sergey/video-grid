@@ -12,6 +12,15 @@ def _manifest(tmp_path, **over):
     return d
 
 
+def _frozen_route(tmp_path):
+    """A route on disk, so process_episode skips tracking (the answer channel)."""
+    rp = tmp_path / "frozen.json"
+    rp.write_text(json.dumps([dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320)
+                              for i in range(10)]))
+    (tmp_path / "frozen.meta.json").write_text(json.dumps({"ambiguous": False}))
+    return str(rp)
+
+
 def _report(overall, fail_reasons, attempt=1):
     """A real models.Report whose derived .overall/.fail_reasons match the
     given values — Report computes both FROM `checks` now (no more storing
@@ -48,10 +57,17 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
         Path(path_out).write_text(json.dumps([100] * len(route)))
+        # ...and reframe writes path.meta.json beside path.json; the shell reads
+        # it to hand storyboard the SAME crop the checks see (Task 8 layouts).
+        sw, sh, _ = dims
+        models.PathMeta(mode="fill", crop_w=sw, crop_h=sh, crop_y=0, src_dims=(sw, sh),
+                        canvas=tuple(spec.canvas), out_dims=(sw, sh),
+                        rect_px=(0, 0, sw, sh), freedom=0).write(
+            Path(path_out).with_suffix(".meta.json"))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 
-    def fake_storyboard_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
+    def fake_storyboard_build(src, out, spec, route=None, path=None, meta=None):
         Path(out).write_text("sheet")
         return out, None
     monkeypatch.setattr(pe.storyboard, "build", fake_storyboard_build)
@@ -59,7 +75,8 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
     default_report = _report(True, [])
 
     def fake_run(clip, route_path, path_path, spec, out):
-        calls["check"] = dict(canvas=spec.canvas, src_dims=spec.src_dims, attempt=spec.attempt)
+        calls["check"] = dict(attempt=spec.attempt, composition=spec.composition,
+                              grid=spec.grid, target_dur=spec.target_dur)
         src_report = report if report is not None else default_report
         r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
         r.write(out)
@@ -78,9 +95,11 @@ def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
     # wire contract: the shell returns report.to_dict(), not a raw Report —
     # catches a regression that dropped .to_dict() without the slow golden
     assert isinstance(result["report"], dict) and result["report"]["overall"] is True
-    # contract: check_episode gets the PROBED dims, not the 1920x1080 default
-    assert calls["check"]["src_dims"] == (3840, 2160)
-    assert calls["check"]["canvas"] == (9, 16)
+    # the shell still threads the manifest's editorial intent into CheckSpec.
+    # It no longer threads canvas/src_dims: check_episode reads those from the
+    # sidecar reframe wrote, which is the point of the layouts work.
+    assert calls["check"] == dict(attempt=1, composition="lead", grid="thirds",
+                                  target_dur=3.0)
 
 
 def test_timings_recorded_per_stage(monkeypatch, tmp_path):
@@ -148,14 +167,15 @@ def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
     # §6.1a layer 4: the storyboard must carry per-frame hero marks so the
     # editorial gate can confirm "right person" — the SKILL promises this
     # artifact. marks are now computed INSIDE storyboard.build from the
-    # route/path/crop_w/src_h ingredients the shell passes in — assert the
-    # shell hands over well-shaped ingredients, then prove the real
-    # marks_at_times can turn them into 6 valid (fx, fy) hero marks.
+    # route/path/meta ingredients the shell passes in (meta = the path.meta.json
+    # sidecar reframe wrote) — assert the shell hands over well-shaped
+    # ingredients, then prove the real marks_at_times can turn them into 6 valid
+    # (fx, fy) hero marks.
     _stub_engine(monkeypatch, tmp_path)
     captured = {}
 
-    def capture_build(src, out, spec, route=None, path=None, crop_w=None, src_h=None):
-        captured.update(route=route, path=path, crop_w=crop_w, src_h=src_h)
+    def capture_build(src, out, spec, route=None, path=None, meta=None):
+        captured.update(route=route, path=path, meta=meta)
         Path(out).write_text("sheet")
         return out, None
     monkeypatch.setattr(pe.storyboard, "build", capture_build)
@@ -163,14 +183,13 @@ def test_storyboard_gets_hero_marks(monkeypatch, tmp_path):
     result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
 
-    route, path, crop_w, src_h = (captured["route"], captured["path"],
-                                  captured["crop_w"], captured["src_h"])
+    route, path, meta = captured["route"], captured["path"], captured["meta"]
     assert route and isinstance(route[0], models.RoutePoint)
     assert isinstance(path, models.CropPath) and len(path) == len(route)
-    assert crop_w > 0 and src_h > 0
+    assert isinstance(meta, models.PathMeta) and meta.crop_w > 0
 
     times = [route[i].t for i in range(6)]
-    marks = pe.storyboard.marks_at_times(route, path, crop_w, src_h, times)
+    marks = pe.storyboard.marks_at_times(route, path, meta, times)
     assert len(marks) == 6
     assert all(len(pair) == 2 for pair in marks)   # (fx, fy) fractions
 
@@ -190,8 +209,13 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     def fake_reframe(spec, src, route_path, out, path_out):
         speeds.append(spec.max_speed)
         # path length must match the route (real reframe invariant) — the shell
-        # reads it back to compute hero marks for the storyboard
+        # reads it back to compute hero marks for the storyboard; reframe also
+        # writes path.meta.json, which the shell reads for the marker mapping
         Path(out).write_text("clip"); Path(path_out).write_text(json.dumps([100] * 10))
+        models.PathMeta(mode="fill", crop_w=1920, crop_h=1080, crop_y=0,
+                        src_dims=(1920, 1080), canvas=(9, 16), out_dims=(1920, 1080),
+                        rect_px=(0, 0, 1920, 1080), freedom=0).write(
+            Path(path_out).with_suffix(".meta.json"))
         return out
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
 
@@ -288,6 +312,42 @@ def test_lead_nonlateral_stops(monkeypatch, tmp_path):
     result = pe.process_episode(_manifest(tmp_path, composition="lead"), project_dir=str(tmp_path))
     assert result["status"] == "stop_and_report"
     assert any(f["reason"] == "composition-motion-mismatch" for f in result["findings"])
+
+
+def test_manifest_layout_fields_reach_the_reframe_spec(monkeypatch, tmp_path):
+    # the orchestrator's job here is threading, not geometry: whatever the
+    # manifest says about the layout must arrive at reframe intact, including
+    # the JSON-array-to-tuple conversion the manifest performs.
+    seen = {}
+
+    def fake_reframe(spec, src, route_path, out, path_out):
+        seen["layout"] = spec.layout
+        raise RuntimeError("stop — this test only cares about the spec we were handed")
+
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+    manifest = _manifest(tmp_path, composition="break", layout="insert",
+                         crop_aspect=[1, 1], rect=[0.05, 0.25, 0.9], border_px=8)
+    with pytest.raises(RuntimeError, match="this test only cares"):
+        pe.process_episode(manifest, project_dir=str(tmp_path),
+                           route_path=_frozen_route(tmp_path))
+    assert seen["layout"] == models.LayoutSpec(mode="insert", crop_aspect=(1, 1),
+                                               rect=(0.05, 0.25, 0.9), border_px=8)
+
+
+def test_a_fill_manifest_still_gets_the_default_layout(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_reframe(spec, src, route_path, out, path_out):
+        seen["layout"] = spec.layout
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+    with pytest.raises(RuntimeError, match="stop"):
+        pe.process_episode(_manifest(tmp_path, composition="break"),
+                           project_dir=str(tmp_path), route_path=_frozen_route(tmp_path))
+    assert seen["layout"] == models.LayoutSpec(mode="fill")
 
 
 FIX = Path(__file__).parent.parent / "fixtures"

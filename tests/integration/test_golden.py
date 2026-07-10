@@ -13,7 +13,6 @@ def test_golden_ride_pipeline(tmp_path):
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"
 
-    src_w, src_h, _ = reframe._probe(str(src))
     rspec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                                color_means=(105, 122, 137), delivery=models.Delivery("native"))
     reframe.reframe(rspec, str(src), str(rp), str(ep), str(pp))
@@ -21,8 +20,7 @@ def test_golden_ride_pipeline(tmp_path):
                      models.StoryboardSpec(n=6, grids=("thirds",)))
 
     dur = check_episode._duration(str(ep))
-    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=dur,
-                             canvas=(9, 16), src_dims=(src_w, src_h))
+    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=dur)
     report = check_episode.run(str(ep), str(rp), str(pp), cspec, str(tmp_path / "r.json"))
     assert report.checks["black_frames"].passed is True
     assert report.checks["on_line"].passed is True    # real composition holds

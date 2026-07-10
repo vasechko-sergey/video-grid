@@ -14,7 +14,6 @@ def test_core_pipeline(sample_clip, tmp_path):
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
 
     ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"
-    src_w, src_h, _ = reframe._probe(str(seg))
     rspec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                                color_means=(105, 122, 137), delivery=models.Delivery("native"))
     reframe.reframe(rspec, str(seg), str(rp), str(ep), str(pp))
@@ -22,8 +21,7 @@ def test_core_pipeline(sample_clip, tmp_path):
     storyboard.build(str(ep), str(tmp_path / "sheet.jpg"),
                      models.StoryboardSpec(n=6, grids=("thirds", "phi")))
 
-    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=2.0,
-                             canvas=(9, 16), src_dims=(src_w, src_h))
+    cspec = models.CheckSpec(composition="lead", grid="thirds", target_dur=2.0)
     report = check_episode.run(str(ep), str(rp), str(pp), cspec, str(tmp_path / "report.json"))
     assert ep.exists()
     assert (tmp_path / "sheet.jpg").exists()

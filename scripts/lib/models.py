@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.lib.geometry import even
+
 
 COMPOSITIONS = ("lead", "center", "break")
 GRIDS = ("thirds", "phi")
@@ -68,6 +70,74 @@ class CropPath:
 
     def __len__(self) -> int:
         return len(self.xs)
+
+
+@dataclass
+class PathMeta:
+    """What reframe ACTUALLY cut and where it put it — written beside path.json,
+    exactly as track.py writes route.meta.json beside route.json.
+
+    check_episode and storyboard read this instead of re-deriving the crop from
+    the canvas. Under a non-fill layout the re-derivation is silently wrong: it
+    returns the canvas-aspect crop width, divides by it, and reports a verdict
+    about a composition that never happened.
+    """
+    mode: str
+    crop_w: int
+    crop_h: int
+    crop_y: int
+    src_dims: tuple[int, int]
+    canvas: tuple[int, int]
+    out_dims: tuple[int, int]
+    rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels
+    freedom: int
+
+    def to_dict(self) -> dict:
+        return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
+                "crop_y": self.crop_y, "src_dims": list(self.src_dims),
+                "canvas": list(self.canvas), "out_dims": list(self.out_dims),
+                "rect_px": list(self.rect_px), "freedom": self.freedom}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PathMeta":
+        try:
+            return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
+                       crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
+                       canvas=tuple(d["canvas"]), out_dims=tuple(d["out_dims"]),
+                       rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]))
+        except KeyError as e:
+            raise RuntimeError(
+                f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
+                "in one call, so a partial one means that run died mid-write") from e
+        except (TypeError, ValueError) as e:
+            # a field is present but unusable: crop_w="abc", src_dims=null. int()
+            # and tuple() raise bare, and the caller cannot tell which file to blame
+            raise RuntimeError(
+                f"path.meta.json holds an unusable field ({e}) — re-run reframe; the "
+                "sidecar is machine-written, so a bad type means it was hand-edited "
+                "or truncated") from e
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "PathMeta":
+        p = Path(path)
+        if not p.exists():
+            raise RuntimeError(
+                f"{p} is missing — re-run reframe; it writes path.meta.json beside "
+                "path.json, and the checks read what was actually cropped from it")
+        try:
+            d = json.loads(p.read_text())
+        except json.JSONDecodeError as e:
+            # the exact case from_dict's message names: reframe died mid-write, so
+            # the file is truncated and never parses. Without this, the caller gets
+            # a bare JSONDecodeError naming a column, not a file and not a remedy.
+            raise RuntimeError(
+                f"{p} is corrupt ({e}) — delete it and re-run reframe; it writes the "
+                "sidecar in one call, so an unparseable one means that run died "
+                "mid-write") from e
+        return cls.from_dict(d)
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 
 
 @dataclass
@@ -160,17 +230,16 @@ class Delivery:
                              "native|short_edge:N|long_edge:N|exact:WxH") from e
         return cls(mode, value)
 
-    @staticmethod
-    def _even(n: float) -> int:
-        n = int(round(n))
-        return n - (n % 2)
+    def dims(self, crop_w: float, crop_h: float) -> tuple[int, int]:
+        """Even (out_w, out_h) for a composite of size (crop_w, crop_h).
 
-    def dims(self, crop_w: int, crop_h: int) -> tuple[int, int]:
-        """Even (out_w, out_h) for a crop of size (crop_w, crop_h)."""
+        Takes floats: the native canvas height is `canvas_w * ah / aw` and
+        evening either side before the other is derived would drift it.
+        """
         if crop_w <= 0 or crop_h <= 0:
             raise ValueError(f"Delivery.dims needs a positive crop, got ({crop_w}, {crop_h})")
         if self.mode == "native":
-            return self._even(crop_w), self._even(crop_h)
+            return even(crop_w), even(crop_h)
         if self.mode == "exact":
             return int(self.value[0]), int(self.value[1])
         ar = crop_w / crop_h
@@ -184,7 +253,7 @@ class Delivery:
                 w, h = self.value, self.value / ar
             else:
                 h, w = self.value, self.value * ar
-        return self._even(w), self._even(h)
+        return even(w), even(h)
 
 
 def _positive_seq(v: object, n: int) -> bool:
@@ -213,6 +282,96 @@ class TrackSpec:
                              f"got {self.seed_bbox!r}")
 
 
+LAYOUT_MODES = ("fill", "fit-blur", "insert")
+BACKGROUNDS = ("blur",)
+
+
+@dataclass
+class LayoutSpec:
+    """Where the source lands in the canvas (spec §7). Three parameters, not
+    three code paths: what to cut (aspect + scale), where to put it (rect), and
+    what fills the rest (background).
+
+    `rect` is (x, y, w) in canvas fractions — its HEIGHT is derived from the crop
+    aspect, so a rect cannot disagree with what is placed inside it. None means
+    full width, vertically centred.
+
+    `fill` constrains crop_aspect and rect but deliberately not crop_scale: a
+    scaled-down fill still fills the canvas, trading resolution for the
+    horizontal freedom the tracker needs — the same trade fit-blur makes.
+
+    `border_px` may be any non-negative int: the outer card width is already even,
+    so the content width `ow - 2*border_px` is even whatever the border's parity.
+    """
+    mode: str
+    crop_aspect: str | tuple[int, int] = "canvas"
+    crop_scale: float = 1.0
+    rect: tuple[float, float, float] | None = None
+    background: str = "blur"
+    border_px: int = 0
+    border_color: str = "white"
+
+    def __post_init__(self) -> None:
+        if self.mode not in LAYOUT_MODES:
+            raise ValueError(f"LayoutSpec.mode {self.mode!r} unknown — fill/fit-blur/insert "
+                             "(split and pan are separate plans)")
+        if self.background not in BACKGROUNDS:
+            raise ValueError(f"LayoutSpec.background {self.background!r} unknown — "
+                             f"{BACKGROUNDS}; solid lands with fit-solid")
+        if not isinstance(self.crop_scale, (int, float)) or not 0.0 < self.crop_scale <= 1.0:
+            raise ValueError(f"LayoutSpec.crop_scale must be in (0.0, 1.0], got "
+                             f"{self.crop_scale!r} — 1.0 is the largest crop that fits")
+        if isinstance(self.crop_aspect, str):
+            if self.crop_aspect not in ("canvas", "source"):
+                raise ValueError(f"LayoutSpec.crop_aspect {self.crop_aspect!r} unknown — "
+                                 "'canvas', 'source', or a (w, h) pair of positive ints")
+        elif not (isinstance(self.crop_aspect, tuple) and len(self.crop_aspect) == 2
+                  and all(isinstance(v, int) and v > 0 for v in self.crop_aspect)):
+            raise ValueError(f"LayoutSpec.crop_aspect {self.crop_aspect!r} invalid — "
+                             "'canvas', 'source', or a (w, h) pair of positive ints")
+        if self.rect is not None:
+            if not (isinstance(self.rect, tuple) and len(self.rect) == 3
+                    and all(isinstance(v, (int, float)) for v in self.rect)):
+                raise ValueError(f"LayoutSpec.rect must be (x, y, w) canvas fractions or None, "
+                                 f"got {self.rect!r} — height derives from the crop aspect")
+            x, y, w = self.rect
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.0 < w <= 1.0):
+                raise ValueError(f"LayoutSpec.rect {self.rect!r}: x/y must be fractions in "
+                                 "[0, 1] and w must be in (0, 1]")
+            if x + w > 1.0:
+                raise ValueError(f"LayoutSpec.rect {self.rect!r}: x + w = {x + w:.3f} > 1.0 — "
+                                 "the rect runs off the right edge of the canvas")
+        if isinstance(self.border_px, bool) or not isinstance(self.border_px, int) \
+                or self.border_px < 0:
+            raise ValueError(f"LayoutSpec.border_px must be a non-negative int, got "
+                             f"{self.border_px!r} — 0 means no border")
+        if not isinstance(self.border_color, str) or not self.border_color:
+            raise ValueError(f"LayoutSpec.border_color must be a non-empty ffmpeg colour "
+                             f"name or hex, got {self.border_color!r} — e.g. 'white', '#ffffff'")
+        if any(c in self.border_color for c in ",:;'[]\\"):
+            raise ValueError(f"LayoutSpec.border_color {self.border_color!r} contains a "
+                             "character that would break the ffmpeg filtergraph — use a "
+                             "colour name like 'white' or a hex literal like '#ffffff'")
+        if self.mode == "fill":
+            if self.crop_aspect != "canvas":
+                raise ValueError("LayoutSpec: fill must use crop_aspect 'canvas' — a fill that "
+                                 "crops to another aspect needs a background, i.e. it is fit-blur")
+            if self.rect not in (None, (0.0, 0.0, 1.0)):
+                raise ValueError(f"LayoutSpec: fill covers the whole canvas, but rect is "
+                                 f"{self.rect!r} — a fill with a smaller rect is an insert, "
+                                 "and must say so")
+            if self.border_px:
+                raise ValueError(f"LayoutSpec: fill covers the canvas edge to edge, so a "
+                                 f"border has nothing to sit on, got border_px="
+                                 f"{self.border_px} — a bordered frame is an insert")
+        if self.mode == "fit-blur" and self.rect is not None:
+            raise ValueError(f"LayoutSpec: fit-blur spans the full canvas width, so rect must "
+                             f"be None, got {self.rect!r} — use insert to place a smaller rect")
+        if self.mode == "insert" and self.rect is None:
+            raise ValueError("LayoutSpec: insert needs a rect (x, y, w) in canvas fractions — "
+                             "without one it is fit-blur")
+
+
 @dataclass
 class ReframeSpec:
     composition: str
@@ -220,6 +379,7 @@ class ReframeSpec:
     canvas: tuple
     color_means: tuple
     delivery: Delivery
+    layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
     stabilize: bool = False
 
@@ -235,6 +395,9 @@ class ReframeSpec:
                              f"got {self.color_means!r}")
         if not isinstance(self.delivery, Delivery):
             raise ValueError("ReframeSpec.delivery must be a Delivery")
+        if not isinstance(self.layout, LayoutSpec):
+            raise ValueError("ReframeSpec.layout must be a LayoutSpec — "
+                             "build it from the manifest's layout fields")
         if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
             raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
         if self.stabilize:
@@ -247,8 +410,6 @@ class CheckSpec:
     composition: str
     grid: str
     target_dur: float
-    canvas: tuple
-    src_dims: tuple
     attempt: int = 1
     black_floor: float = 6.0
     black_rel: float = 0.35
@@ -260,10 +421,6 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
             raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
-        if not _positive_seq(self.canvas, 2):
-            raise ValueError(f"CheckSpec.canvas must be [w, h] positive, got {self.canvas!r}")
-        if not _positive_seq(self.src_dims, 2):
-            raise ValueError(f"CheckSpec.src_dims must be [w, h] positive, got {self.src_dims!r}")
 
 
 @dataclass

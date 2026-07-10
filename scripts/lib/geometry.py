@@ -6,15 +6,51 @@ _Num = TypeVar("_Num", int, float)
 PHI = 1.618033988749895
 
 
-def crop_size(canvas_w: float, canvas_h: float, src_w: int, src_h: int) -> tuple[int, int]:
-    """Largest crop of canvas aspect that fits inside the source (fill mode)."""
-    if canvas_w / canvas_h <= src_w / src_h:
+def even(n: float) -> int:
+    """Round, then floor to even. Odd dimensions + yuv420p make libx264 fail
+    with 'width not divisible by 2' (spec §12) — and floor-truncated crop
+    widths are odd half the time."""
+    i = int(round(n))
+    return i - (i % 2)
+
+
+def crop_for(aspect: tuple[int, int], scale: float, src_w: int, src_h: int) -> tuple[int, int]:
+    """Largest crop of `aspect` that fits the source, times `scale`.
+
+    NOT forced even: ffmpeg's crop filter takes odd sizes, and `fill` genuinely
+    cuts 405px wide today. Evenness constrains what is scaled and encoded, and
+    is applied at the output.
+    """
+    aw, ah = aspect
+    if aw <= 0 or ah <= 0:
+        raise ValueError(f"crop aspect must be positive, got {aspect!r} — "
+                         "pass 'canvas', 'source', or a (w, h) pair of positive ints")
+    if not 0.0 < scale <= 1.0:
+        raise ValueError(f"crop_scale must be in (0.0, 1.0], got {scale!r} — "
+                         "1.0 is the largest crop of this aspect that fits the source")
+    if src_w <= 0 or src_h <= 0:
+        raise ValueError(f"crop source must be positive, got ({src_w}, {src_h}) — "
+                         "a corrupt probe or a caller bug upstream")
+    if aw / ah <= src_w / src_h:
         h = src_h
-        w = int(src_h * canvas_w / canvas_h)   # floor: 1080*9/16 -> 607 (session value)
+        w = int(src_h * aw / ah)
     else:
         w = src_w
-        h = int(src_w * canvas_h / canvas_w)
-    return (w, h)
+        h = int(src_w * ah / aw)
+    return (int(w * scale), int(h * scale))
+
+
+def freedom(crop_w: int, src_w: int) -> int:
+    """Horizontal room the crop can travel in. Zero ⇒ nobody controls composition."""
+    if crop_w > src_w:
+        raise ValueError(f"crop {crop_w}px is wider than the source {src_w}px — "
+                         "crop_for() clamps to the source, so this is a caller bug")
+    return src_w - crop_w
+
+
+def crop_size(canvas_w: float, canvas_h: float, src_w: int, src_h: int) -> tuple[int, int]:
+    """Largest crop of canvas aspect that fits inside the source (fill mode)."""
+    return crop_for((int(canvas_w), int(canvas_h)), 1.0, src_w, src_h)
 
 
 def grid_lines(grid: str) -> tuple[float, float]:

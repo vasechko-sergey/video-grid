@@ -168,12 +168,16 @@ def test_reframespec_validation():
 
 
 def test_checkspec_defaults():
-    s = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+    s = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     assert s.attempt == 1 and s.black_floor == 6.0 and s.black_rel == 0.35
     with pytest.raises(ValueError, match="target_dur"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=0,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=0)
+
+
+def test_check_spec_no_longer_carries_canvas_or_src_dims():
+    spec = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+    assert not hasattr(spec, "canvas")
+    assert not hasattr(spec, "src_dims")
 
 
 def test_storyboardspec_validation():
@@ -193,8 +197,7 @@ def test_spec_type_errors_are_value_errors():
         m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                       color_means=(105, 122, 137), delivery=m.Delivery("native"), max_speed=None)
     with pytest.raises(ValueError, match="target_dur"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=None,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=None)
     with pytest.raises(ValueError, match="grids"):
         m.StoryboardSpec(grids="thirds")     # bare string, not a list
 
@@ -207,12 +210,140 @@ def test_storyboardspec_grids_nonlist_is_value_error():
         m.StoryboardSpec(grids="thirds")     # bare string still rejected
 
 
-def test_trackspec_empty_src_and_checkspec_structural():
+def test_trackspec_empty_src_and_reframespec_delivery_type():
     with pytest.raises(ValueError, match="src"):
         m.TrackSpec(src="")
-    with pytest.raises(ValueError, match="src_dims"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
-                    canvas=(9, 16), src_dims=(1920, 0))
     with pytest.raises(ValueError, match="delivery"):
         m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                       color_means=(105, 122, 137), delivery="native")   # str, not Delivery
+
+
+def test_delivery_dims_takes_floats_and_evens_each_side():
+    d = m.Delivery("native", None)
+    # the fill case: canvas floats equal the crop, and the answer is today's output
+    assert d.dims(405.0, 720.0) == (404, 720)
+    # the fit-blur case: 1280 wide, 16/9 tall. Evening the width first and
+    # deriving the height from it would give 718, not 720 — hence floats.
+    assert d.dims(1280.0, 1280.0 * 16 / 9) == (1280, 2276)
+
+
+def test_layout_spec_fill_defaults():
+    s = m.LayoutSpec(mode="fill")
+    assert (s.mode, s.crop_aspect, s.crop_scale, s.rect) == ("fill", "canvas", 1.0, None)
+
+
+def test_layout_spec_fit_blur_and_insert_construct():
+    assert m.LayoutSpec(mode="fit-blur", crop_aspect="source").rect is None
+    s = m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    assert s.rect == (0.05, 0.25, 0.90)
+
+
+def test_layout_spec_rejects_unknown_mode():
+    with pytest.raises(ValueError, match="fill/fit-blur/insert"):
+        m.LayoutSpec(mode="split")
+
+
+def test_layout_spec_rejects_unknown_background():
+    with pytest.raises(ValueError, match="solid lands with fit-solid"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", background="solid")
+
+
+def test_layout_spec_rejects_bad_scale():
+    with pytest.raises(ValueError, match=r"\(0.0, 1.0\]"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", crop_scale=0.0)
+
+
+def test_layout_spec_rejects_bad_aspect():
+    with pytest.raises(ValueError, match="canvas.*source.*pair"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="wide")
+
+
+def test_layout_spec_fill_must_be_canvas_aspect_and_full_rect():
+    with pytest.raises(ValueError, match="an insert, and must say so"):
+        m.LayoutSpec(mode="fill", rect=(0.1, 0.1, 0.5))
+    with pytest.raises(ValueError, match="crop_aspect 'canvas'"):
+        m.LayoutSpec(mode="fill", crop_aspect="source")
+
+
+def test_layout_spec_fit_blur_takes_no_rect():
+    with pytest.raises(ValueError, match="fit-blur spans the full canvas width"):
+        m.LayoutSpec(mode="fit-blur", crop_aspect="source", rect=(0.0, 0.1, 0.8))
+
+
+def test_layout_spec_insert_needs_a_rect():
+    with pytest.raises(ValueError, match="insert needs a rect"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1))
+
+
+def test_layout_spec_rejects_a_rect_off_the_canvas():
+    with pytest.raises(ValueError, match=r"x \+ w"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.5, 0.1, 0.8))
+    # "fractions" appears in three of LayoutSpec's messages; pin the bounds one
+    with pytest.raises(ValueError, match="w must be in"):
+        m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.0, 0.1, 0.0))
+
+
+def test_layout_spec_border_defaults_to_off():
+    s = m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    assert (s.border_px, s.border_color) == (0, "white")
+
+
+def test_layout_spec_rejects_a_bad_border():
+    ok = dict(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    with pytest.raises(ValueError, match="non-negative int"):
+        m.LayoutSpec(**ok, border_px=-2)
+    with pytest.raises(ValueError, match="non-empty ffmpeg colour"):
+        m.LayoutSpec(**ok, border_color="")
+    with pytest.raises(ValueError, match="break the ffmpeg filtergraph"):
+        m.LayoutSpec(**ok, border_color="white,drawbox=t=fill")
+
+
+def test_layout_spec_fill_refuses_a_border():
+    with pytest.raises(ValueError, match="a bordered frame is an insert"):
+        m.LayoutSpec(mode="fill", border_px=8)
+
+
+def test_path_meta_round_trips_through_json(tmp_path):
+    # every field distinct: a from_dict that read crop_w out of src_dims would
+    # survive a fixture where crop_w happened to equal the source width
+    pm = m.PathMeta(mode="insert", crop_w=720, crop_h=648, crop_y=36,
+                    src_dims=(1280, 720), canvas=(9, 16), out_dims=(800, 1422),
+                    rect_px=(40, 356, 720, 648), freedom=560)
+    p = tmp_path / "path.meta.json"
+    pm.write(p)
+    assert m.PathMeta.from_json(p) == pm
+
+
+def test_path_meta_from_json_reports_a_missing_file_with_a_remedy(tmp_path):
+    with pytest.raises(RuntimeError, match="re-run reframe"):
+        m.PathMeta.from_json(tmp_path / "absent.meta.json")
+
+
+def test_path_meta_from_dict_reports_a_truncated_sidecar_with_a_remedy():
+    # a run that died mid-write leaves a parseable file with fields missing;
+    # a bare KeyError('crop_w') is not something a stranger can act on
+    with pytest.raises(RuntimeError, match="has no field"):
+        m.PathMeta.from_dict({"mode": "fill", "crop_h": 720})
+
+
+def test_path_meta_from_json_reports_an_unparseable_sidecar_with_a_remedy(tmp_path):
+    """The case the message above only *names*: a run that died mid-write leaves
+    a file that does not parse at all, so from_dict is never reached. Before this
+    was handled, json.loads raised a bare JSONDecodeError pointing at a column
+    number — no file, no remedy, and nothing to tell the reader that `reframe`
+    is what regenerates it."""
+    p = tmp_path / "path.meta.json"
+    p.write_text('{"mode": "fill", "crop_w": 405')       # truncated mid-write
+    with pytest.raises(RuntimeError, match="is corrupt"):
+        m.PathMeta.from_json(p)
+    with pytest.raises(RuntimeError, match="re-run reframe"):
+        m.PathMeta.from_json(p)
+
+
+def test_path_meta_from_dict_reports_an_unusable_field_with_a_remedy():
+    # present but the wrong type: int("abc") raises a bare ValueError that names
+    # neither the sidecar nor the fix
+    d = dict(mode="fill", crop_w="abc", crop_h=720, crop_y=0, src_dims=[1280, 720],
+             canvas=[9, 16], out_dims=[404, 720], rect_px=[0, 0, 404, 720], freedom=875)
+    with pytest.raises(RuntimeError, match="unusable field"):
+        m.PathMeta.from_dict(d)
