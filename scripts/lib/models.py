@@ -205,6 +205,12 @@ class Delivery:
                     and all(isinstance(x, int) and x > 0 for x in v)):
                 raise ValueError(f"Delivery exact needs (w, h) positive ints, got {v!r}")
             self.value = (int(v[0]), int(v[1]))
+            if self.value[0] % 2 or self.value[1] % 2:
+                ew, eh = self.value[0] & ~1, self.value[1] & ~1
+                raise ValueError(
+                    f"Delivery exact needs even dimensions, got {self.value} — "
+                    f"h.264 requires both sides divisible by 2 under yuv420p; "
+                    f"use ({ew}, {eh}) or ({ew + 2}, {eh + 2})")
         if self.mode == "native":
             self.value = None
 
