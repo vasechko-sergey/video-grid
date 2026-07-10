@@ -238,10 +238,16 @@ def test_reframe_spec_defaults_to_a_fill_layout():
 
 
 def test_compute_path_takes_crop_w_from_the_caller():
-    route = [dict(t=i / 30, x=300 + i * 40, y=500, w=140, h=320) for i in range(20)]
+    # A stationary subject makes the path constant, and its one value names the
+    # crop_w that produced it: the subject sits on the left third of the window,
+    # so x - crop_w/3. crop_w=960 gives 640; the canvas-derived 607 gives 758.
+    # A bounds-only assertion would pass under either, and this test exists
+    # precisely to catch a compute_path that went back to deriving crop_w itself.
+    route = [dict(t=i / 30, x=960.0, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="lead", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
                                 motion=("lateral", "right"), max_step=25, crop_w=960)
+    assert path == [640] * 20
     assert all(0 <= x <= 1920 - 960 for x in path)
 
 
