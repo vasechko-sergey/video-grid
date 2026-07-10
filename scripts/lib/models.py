@@ -227,6 +227,10 @@ class LayoutSpec:
     `rect` is (x, y, w) in canvas fractions — its HEIGHT is derived from the crop
     aspect, so a rect cannot disagree with what is placed inside it. None means
     full width, vertically centred.
+
+    `fill` constrains crop_aspect and rect but deliberately not crop_scale: a
+    scaled-down fill still fills the canvas, trading resolution for the
+    horizontal freedom the tracker needs — the same trade fit-blur makes.
     """
     mode: str
     crop_aspect: str | tuple[int, int] = "canvas"

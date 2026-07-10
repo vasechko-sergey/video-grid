@@ -278,5 +278,6 @@ def test_layout_spec_insert_needs_a_rect():
 def test_layout_spec_rejects_a_rect_off_the_canvas():
     with pytest.raises(ValueError, match=r"x \+ w"):
         m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.5, 0.1, 0.8))
-    with pytest.raises(ValueError, match="fractions"):
+    # "fractions" appears in three of LayoutSpec's messages; pin the bounds one
+    with pytest.raises(ValueError, match="w must be in"):
         m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.0, 0.1, 0.0))
