@@ -1,3 +1,7 @@
+import json
+
+import imagehash
+
 from scripts import check_reel
 from scripts.lib.models import ReelCheckSpec
 
@@ -54,7 +58,10 @@ def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
 
 
 def test_audio_and_safezone_checks_are_not_implemented(tmp_path, monkeypatch):
-    _Stub([3.0, 3.0]).install(monkeypatch)
+    # distinct hashes: this test is about beat/loudness/safe_zones, not variety —
+    # without them the _Stub default (identical hash 0 at both midpoints) trips
+    # the variety check (distance 0 < variety_min) and overall flips to False.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     for name in ("beat", "loudness", "safe_zones"):
@@ -123,3 +130,46 @@ def test_color_across_cuts_uses_median_not_mean_so_a_far_outlier_does_not_mislea
     assert rep.checks["color_across_cuts"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "color_across_cuts" and x.detail["cut"] == 0][0]
     assert f.episode_idx == 1     # median → ep1 (correct); a mean would say ep0
+
+
+def test_variety_flags_a_near_duplicate_pair(tmp_path, monkeypatch):
+    # ep0 and ep1 identical hash (distance 0 < variety_min) → fail, blame ep1
+    _Stub([3.0, 3.0], hashes={1.5: 100, 4.5: 100}).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
+    assert rep.checks["variety"].passed is False
+    f = [x for x in rep.fail_reasons if x.check == "variety"][0]
+    assert f.episode_idx == 1 and f.escalate_to == "edit-plan"
+
+
+def test_variety_passes_for_distinct_episodes(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
+    assert rep.checks["variety"].passed is True
+
+
+def test_variety_passes_at_exactly_the_threshold(tmp_path, monkeypatch):
+    # distance == variety_min must PASS (spec: Hamming >= variety_min); guards the < boundary
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 8}).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
+    assert rep.checks["variety"].passed is True
+
+
+def test_variety_failure_report_is_json_serializable_with_real_hamming(tmp_path, monkeypatch):
+    # regression: the REAL _hamming (numpy.int64) must survive rep.write()'s json.dumps.
+    # Stub everything EXCEPT _hamming, and feed real ImageHash objects via _phash_bits.
+    durs = iter([3.0, 3.0, 6.0])                       # ep0, ep1, then master
+    monkeypatch.setattr(check_reel, "_probe_dur", lambda v: next(durs))
+    monkeypatch.setattr(check_reel, "_black_hits", lambda m: [])
+    monkeypatch.setattr(check_reel, "_frame_mean", lambda v, t: (100.0, 120.0, 130.0))
+    same = imagehash.hex_to_hash("0000000000000000")   # identical → distance 0 < variety_min → fail
+    monkeypatch.setattr(check_reel, "_phash_bits", lambda v, t: same)
+    # _hamming is intentionally NOT stubbed → the real numpy-returning path runs
+    out = tmp_path / "r.json"
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0), str(out))
+    assert rep.checks["variety"].passed is False
+    reloaded = json.loads(out.read_text())             # must parse → proves json.dumps didn't crash
+    assert reloaded["checks"]["variety"]["pass"] is False
+    assert isinstance(rep.fail_reasons[0].detail["distance"], int)

@@ -1,6 +1,7 @@
 """Whole-reel mechanical gate (design §4, montage §5.13 mechanical half). Silent
 phase: audio/safe-zone checks report passed=None, never a silent pass. Returns a
 ReelReport with attributed fail_reasons for the Phase A.5 driver."""
+import argparse
 import os
 import re
 import statistics
@@ -8,6 +9,7 @@ import tempfile
 import time
 from itertools import accumulate
 
+import imagehash
 import numpy as np
 from PIL import Image
 
@@ -73,6 +75,16 @@ def _channel_median(means: list[tuple[float, float, float]]) -> tuple[float, flo
     return tuple(statistics.median(m[c] for m in means) for c in range(3))
 
 
+def _phash_bits(video: str, t: float) -> imagehash.ImageHash:
+    with tempfile.TemporaryDirectory() as d:
+        f = _sample_frame(video, t, os.path.join(d, "f.png"))
+        return imagehash.phash(Image.open(f))
+
+
+def _hamming(a: imagehash.ImageHash, b: imagehash.ImageHash) -> int:
+    return int(a - b)          # imagehash __sub__ returns numpy.int64; coerce so detail stays JSON-serializable
+
+
 def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
@@ -120,6 +132,23 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
         checks["color_across_cuts"] = CheckResult("color_across_cuts", None,
                                                   {"status": "n/a", "reason": "single episode, no cut"})
 
+    if len(episodes) > 1:
+        hashes = [_phash_bits(master, m) for m in mids]
+        var_ok = True
+        worst = None
+        for i in range(len(hashes) - 1):
+            dist = _hamming(hashes[i], hashes[i + 1])
+            if dist < spec.variety_min:
+                var_ok = False
+                fails.append(ReelFailure("variety", "edit-plan", i + 1,
+                                         {"pair": [i, i + 1], "distance": dist}))
+                worst = dist if worst is None else min(worst, dist)
+        checks["variety"] = CheckResult("variety", var_ok,
+                                        {"min_distance": worst} if worst is not None else {})
+    else:
+        checks["variety"] = CheckResult("variety", None,
+                                        {"status": "n/a", "reason": "single episode"})
+
     for name, reason in _NOT_IMPL.items():
         checks[name] = CheckResult(name, None, {"status": "not-implemented", "reason": reason})
 
@@ -127,3 +156,18 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
                      wall_s=round(time.monotonic() - t0, 3))
     rep.write(out_report)
     return rep
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Whole-reel mechanical check.")
+    ap.add_argument("master")
+    ap.add_argument("episodes", nargs="+", help="ordered locked episode paths")
+    ap.add_argument("--target-dur", type=float, required=True)
+    ap.add_argument("--report", required=True)
+    a = ap.parse_args()
+    rep = run(a.master, a.episodes, ReelCheckSpec(target_dur=a.target_dur), a.report)
+    raise SystemExit(0 if rep.overall else 1)
+
+
+if __name__ == "__main__":
+    main()
