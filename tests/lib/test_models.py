@@ -281,3 +281,17 @@ def test_layout_spec_rejects_a_rect_off_the_canvas():
     # "fractions" appears in three of LayoutSpec's messages; pin the bounds one
     with pytest.raises(ValueError, match="w must be in"):
         m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.0, 0.1, 0.0))
+
+
+def test_path_meta_round_trips_through_json(tmp_path):
+    pm = m.PathMeta(mode="fit-blur", crop_w=1280, crop_h=720, crop_y=0,
+                     src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                     rect_px=(0, 778, 1280, 720), freedom=0)
+    p = tmp_path / "path.meta.json"
+    pm.write(p)
+    assert m.PathMeta.from_json(p) == pm
+
+
+def test_path_meta_from_json_reports_a_missing_file_with_a_remedy(tmp_path):
+    with pytest.raises(RuntimeError, match="re-run reframe"):
+        m.PathMeta.from_json(tmp_path / "absent.meta.json")

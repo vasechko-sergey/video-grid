@@ -73,6 +73,52 @@ class CropPath:
 
 
 @dataclass
+class PathMeta:
+    """What reframe ACTUALLY cut and where it put it — written beside path.json,
+    exactly as track.py writes route.meta.json beside route.json.
+
+    check_episode and storyboard read this instead of re-deriving the crop from
+    the canvas. Under a non-fill layout the re-derivation is silently wrong: it
+    returns the canvas-aspect crop width, divides by it, and reports a verdict
+    about a composition that never happened.
+    """
+    mode: str
+    crop_w: int
+    crop_h: int
+    crop_y: int
+    src_dims: tuple[int, int]
+    canvas: tuple[int, int]
+    out_dims: tuple[int, int]
+    rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels
+    freedom: int
+
+    def to_dict(self) -> dict:
+        return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
+                "crop_y": self.crop_y, "src_dims": list(self.src_dims),
+                "canvas": list(self.canvas), "out_dims": list(self.out_dims),
+                "rect_px": list(self.rect_px), "freedom": self.freedom}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PathMeta":
+        return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
+                   crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
+                   canvas=tuple(d["canvas"]), out_dims=tuple(d["out_dims"]),
+                   rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "PathMeta":
+        p = Path(path)
+        if not p.exists():
+            raise RuntimeError(
+                f"{p} is missing — re-run reframe; it writes path.meta.json beside "
+                "path.json, and the checks read what was actually cropped from it")
+        return cls.from_dict(json.loads(p.read_text()))
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+
+@dataclass
 class CheckResult:
     name: str
     passed: bool | None            # bool, or None for editorial/not-implemented
