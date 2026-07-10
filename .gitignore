@@ -3,3 +3,6 @@ models/
 __pycache__/
 *.pyc
 .DS_Store
+
+# visual brainstorming companion (mockups, not source)
+.superpowers/
