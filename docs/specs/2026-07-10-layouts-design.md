@@ -227,8 +227,16 @@ cannot change it silently.
   knots, capped at ~80 knots (§12: the ffmpeg expression parser chokes past that).
   It lives in source coordinates, and `crop` in the composite path applies to the
   source stream, so it is reused unchanged.
-- `R = max(2, canvas_w_px // 60)`. Tying the radius to canvas width keeps the
-  background equally soft at 1080p and 4K; a constant radius is nearly sharp on 4K.
+- `R = min(max(2, canvas_w_px // 60), min(out_w, out_h) // 4)`. Tying the radius to
+  canvas width keeps the background equally soft at 1080p and 4K; a constant radius
+  is nearly sharp on 4K. The second term is not cosmetic: `boxblur` refuses a radius
+  above half the chroma plane, and `yuv420p` halves that plane again, so
+  `min(out_w, out_h) // 4` is a hard ceiling — a 3840×200 cover crashes real ffmpeg
+  at 64 and survives at 50. **The ceiling is applied last.** Written the other way
+  round, as `max(2, min(w // 60, ceiling))`, the floor wins whenever the ceiling is
+  0 or 1, and a canvas under 8px on its short side asks for exactly the radius the
+  ceiling exists to forbid. Below 8px the blur is meaningless anyway; radius 0 is a
+  legal no-op.
 - `colorchannelmixer` sits **after** `overlay`, so the normalization covers the
   background too — which is correct, the background is made of the same frame.
 - `lutrgb` appears nowhere (§12: black frames). A unit test asserts its absence
@@ -344,6 +352,18 @@ contradiction and belongs to the gate.
 `process_episode` builds a `LayoutSpec` from the manifest, hands it to
 `ReframeSpec` (which gains a `layout: LayoutSpec` field), and builds a `CheckSpec`
 with two fields fewer.
+
+**The preflight.** Three of `resolve()`'s refusals — a rect that overflows its
+canvas, a border wider than its own card, and a native canvas past `MAX_SIDE` —
+depend on the source dimensions, so `validate()` cannot reach them and the soft
+gate lets them through. Left alone they surface as a `ValueError` out of attempt 1,
+which contradicts the shell's own contract that a manifest problem comes back as a
+finding. So `process_episode` probes the source, resolves the layout **once** before
+tracking, and converts the refusal into `needs_input` on the same channel every
+other manifest problem uses. `resolve()` itself keeps raising: the gate is soft, the
+engine is hard, and the shell is where one becomes the other. Probing before
+tracking also means a rect typo fails in milliseconds rather than after YOLO has
+walked the segment.
 
 ## 8. Errors
 

@@ -97,8 +97,8 @@ _Last updated: 2026-07-10._
 
 - **layouts DONE (2026-07-10)** — plan `docs/plans/2026-07-10-layouts.md` + design
   `docs/specs/2026-07-10-layouts-design.md`, Tasks 0–12 via strict
-  subagent-driven-development (branch `feat/layouts`, commits `7543d95`..`1f67db6`).
-  **273 tests green incl. 10 real-ffmpeg layout goldens.** `fit-blur` and `insert`
+  subagent-driven-development (branch `feat/layouts`, commits `7543d95`..`93c0a4d`).
+  **284 tests green incl. 14 real-ffmpeg layout goldens.** `fit-blur` and `insert`
   ship, and `fill` still delivers exactly 404×720 on the golden ride from a
   whole-string-pinned filtergraph. Built `scripts/lib/layout.py` — `LayoutSpec`
   (in `models.py`, to avoid a `models→layout→models` cycle) resolves to a frozen
@@ -128,10 +128,28 @@ _Last updated: 2026-07-10._
   real ffmpeg dies at 64 on a 3840×200 cover); `fill`'s canvas **is** its crop and
   re-deriving it drifted 21:9-of-4K by 2px; a native canvas can explode
   (`rect_w=0.02` → 36000×64000, 2.3 Gpx) so `layout.MAX_SIDE = 8192` guards right
-  after `delivery.dims`. **Latent defect flagged, not fixed:**
-  `check_episode._black_frames_check` returns `pass=True` on a *uniformly* black
-  clip — `worst < black_rel * ref` is `0 < 0` — so the layout goldens measure
-  boundary luma against an absolute bar themselves.
+  after `delivery.dims`. **Final review (two reviewers + a mutation battery over
+  production code, `72da96f`/`93c0a4d`):** every one of nine mutations was killed
+  by a test — except one, and it was the test *named for* this plan's headline
+  defect. `test_crop_w_comes_from_the_sidecar_not_the_canvas` used a zero-freedom
+  fixture, where `check_episode` short-circuits to `editorial-only` and never
+  reaches the `crop_w` arithmetic; it is rebuilt against an `insert` with 840px of
+  freedom, where re-deriving the width drops `on_line`'s ratio from 1.0 to 0.0.
+  Four error-path holes closed: a manifest that `validate()` accepted could still
+  crash the orchestrator (rect overflow / border-eats-card / `MAX_SIDE` all need
+  the source dims, so the soft gate cannot see them) — `process_episode` now
+  resolves the layout as a **preflight** right after the probe and returns
+  `needs_input`, and probes before tracking so a typo fails in ms, not after YOLO;
+  the `boxblur` floor `max(2, min(w//60, ceiling))` **defeated its own ceiling**
+  when the ceiling was 0 or 1, so the ceiling is applied last (no real canvas
+  changes: golden fit-blur 21, insert 13, wide cover 50); `PathMeta.from_json`
+  raised a bare `JSONDecodeError` on the truncated sidecar its own message names;
+  and two raises named remedies their caller could not act on (an `exact` delivery
+  told to "pin the output", a `fit-blur` told to shrink a `rect` it forbids).
+  **Latent defect flagged, not fixed:** `check_episode._black_frames_check` returns
+  `pass=True` on a *uniformly* black clip — `worst < black_rel * ref` is `0 < 0` —
+  so the layout goldens measure boundary luma against an absolute bar themselves.
+  Also filed: `Delivery("exact", …)` does not enforce even dims.
 
 - **docs registry + coding standards (2026-07-09)** — specs moved to
   [`docs/specs/`](./spec/); anna-auth-style standards adopted
