@@ -50,15 +50,24 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
     canvas_h = canvas_w * canvas[1] / canvas[0]
     out_w, out_h = delivery.dims(canvas_w, canvas_h)
 
-    rw = geometry.even(rw_f * out_w)
-    rh = geometry.even(rw * crop_h / crop_w)
-    rx = int(round(rx_f * out_w))
-    ry = (out_h - rh) // 2 if spec.rect is None else int(round(ry_f * out_h))
-    if rx + rw > out_w or ry + rh > out_h:
-        raise ValueError(
-            f"layout rect {spec.rect} at crop aspect {aspect[0]}:{aspect[1]} derives a "
-            f"{rw}x{rh}px card at ({rx}, {ry}), which overflows the {out_w}x{out_h} "
-            "canvas — shrink rect w, move rect y up, or pick a taller crop aspect")
+    if spec.mode == "fill":
+        # the fast path is a single scale={out_w}:{out_h} — an anisotropic squash
+        # onto the full canvas, with no background to letterbox into. The crop
+        # lands edge to edge, whatever its aspect, so the rect IS the canvas. An
+        # aspect-preserving rh (even(404 * 720 / 405) = 718) would centre a 2px
+        # letterbox that nothing fills, and every hero mark mapped through it
+        # would drift — on the one path this plan promised would not change.
+        rx, ry, rw, rh = 0, 0, out_w, out_h
+    else:
+        rw = geometry.even(rw_f * out_w)
+        rh = geometry.even(rw * crop_h / crop_w)
+        rx = int(round(rx_f * out_w))
+        ry = (out_h - rh) // 2 if spec.rect is None else int(round(ry_f * out_h))
+        if rx + rw > out_w or ry + rh > out_h:
+            raise ValueError(
+                f"layout rect {spec.rect} at crop aspect {aspect[0]}:{aspect[1]} derives a "
+                f"{rw}x{rh}px card at ({rx}, {ry}), which overflows the {out_w}x{out_h} "
+                "canvas — shrink rect w, move rect y up, or pick a taller crop aspect")
 
     return ResolvedLayout(mode=spec.mode, crop_aspect=aspect, crop_w=crop_w, crop_h=crop_h,
                           freedom=free, out_w=out_w, out_h=out_h, rect_px=(rx, ry, rw, rh),

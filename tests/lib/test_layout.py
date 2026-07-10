@@ -11,8 +11,17 @@ def test_fill_resolves_to_todays_numbers():
     rl = layout.resolve(LayoutSpec(mode="fill"), CANVAS, GOLDEN, NATIVE)
     assert (rl.crop_w, rl.crop_h) == (405, 720)
     assert (rl.out_w, rl.out_h) == (404, 720)      # exactly what Delivery gives today
+    assert rl.rect_px == (0, 0, 404, 720)          # the squash covers the whole canvas
     assert rl.freedom == 875
     assert rl.fast_path is True
+
+
+def test_fill_rect_is_the_whole_canvas_however_it_is_spelled():
+    # the fast path stretches the crop onto the canvas; an aspect-preserving
+    # rect would letterbox 2px that no background fills
+    a = layout.resolve(LayoutSpec(mode="fill"), CANVAS, GOLDEN, NATIVE)
+    b = layout.resolve(LayoutSpec(mode="fill", rect=(0.0, 0.0, 1.0)), CANVAS, GOLDEN, NATIVE)
+    assert a.rect_px == b.rect_px == (0, 0, a.out_w, a.out_h)
 
 
 def test_fit_blur_shows_the_whole_frame_at_native_resolution():
