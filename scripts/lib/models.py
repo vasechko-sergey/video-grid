@@ -100,10 +100,15 @@ class PathMeta:
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
-        return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
-                   crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
-                   canvas=tuple(d["canvas"]), out_dims=tuple(d["out_dims"]),
-                   rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]))
+        try:
+            return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
+                       crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
+                       canvas=tuple(d["canvas"]), out_dims=tuple(d["out_dims"]),
+                       rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]))
+        except KeyError as e:
+            raise RuntimeError(
+                f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
+                "in one call, so a partial one means that run died mid-write") from e
 
     @classmethod
     def from_json(cls, path: str | Path) -> "PathMeta":
