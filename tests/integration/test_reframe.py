@@ -2,6 +2,8 @@ import json, subprocess
 import pytest
 from scripts import reframe
 from scripts.lib import models
+from scripts.lib import layout as layout_lib
+from scripts.lib.models import Delivery, LayoutSpec
 
 def _dims(path):
     out = subprocess.run(
@@ -132,3 +134,50 @@ def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
                     str(tmp_path / "path.json"))
     vf = captured["cmd"][captured["cmd"].index("-vf") + 1]
     assert "scale=1214:2160" in vf          # 4K 9:16 crop 1215x2160 → even native, no upscale
+
+
+_NATIVE = Delivery("native", None)
+
+
+def test_filter_args_fill_is_pinned_to_todays_chain():
+    rl = layout_lib.resolve(LayoutSpec(mode="fill"), (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="577.0", cy=0, gains=(1.0, 1.1, 1.2), fps=59.94)
+    assert args == [
+        "-vf",
+        "crop=405:720:x='577.0':y=0,scale=404:720,"
+        "colorchannelmixer=rr=1.000:gg=1.100:bb=1.200,fps=59.94,format=yuv420p",
+    ]
+
+
+def test_filter_args_fit_blur_composites_over_a_blurred_cover():
+    rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
+    assert args == [
+        "-filter_complex",
+        "[0:v]split=2[a][b];"
+        "[a]scale=1280:2276:force_original_aspect_ratio=increase,"
+        "crop=1280:2276,boxblur=21:2[bg];"
+        "[b]crop=1280:720:x='0.0':y=0,scale=1280:720[fg];"
+        "[bg][fg]overlay=0:778,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=59.94,format=yuv420p",
+    ]
+
+
+def test_filter_args_never_emit_the_banned_lutrgb():
+    # spec §12: lutrgb produced black frames; colorchannelmixer only
+    for spec in (LayoutSpec(mode="fill"),
+                 LayoutSpec(mode="fit-blur", crop_aspect="source"),
+                 LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))):
+        rl = layout_lib.resolve(spec, (9, 16), (1280, 720), _NATIVE)
+        args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+        assert "lutrgb" not in args[1]
+        assert "colorchannelmixer" in args[1]
+
+
+def test_blur_radius_scales_with_canvas_width():
+    # a constant radius is nearly sharp on 4K; tie it to the canvas
+    rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+                            (9, 16), (3840, 2160), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert "boxblur=64:2" in args[1]        # 3840 // 60

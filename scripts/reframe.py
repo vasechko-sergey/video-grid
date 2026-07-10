@@ -2,6 +2,8 @@
 import argparse, json
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, proc
+from scripts.lib import layout as layout_lib
+from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify
 from scripts.lib.models import ReframeSpec, CropPath, route_from_json, Delivery
 
@@ -102,6 +104,29 @@ def _probe(src: str) -> tuple[int, int, float]:
         raise ValueError(
             f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
     return int(s["width"]), int(s["height"]), fps
+
+
+def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
+                 gains: tuple[float, ...], fps: float) -> list[str]:
+    """The ffmpeg filter arguments for one layout.
+
+    fill takes the fast path: one -vf chain, byte-identical to what this script
+    emitted before layouts existed. That is not an optimization — it is how the
+    golden fixture is protected from a silent change of command.
+    """
+    mixer = color.mixer_arg(*gains)
+    tail = f"{mixer},fps={fps:.6g},format=yuv420p"
+    if rl.fast_path:
+        return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
+                        f"scale={rl.out_w}:{rl.out_h},{tail}")]
+    rx, ry, rw, rh = rl.rect_px
+    radius = max(2, rl.out_w // 60)      # a constant radius is nearly sharp on 4K
+    return ["-filter_complex",
+            (f"[0:v]split=2[a][b];"
+             f"[a]scale={rl.out_w}:{rl.out_h}:force_original_aspect_ratio=increase,"
+             f"crop={rl.out_w}:{rl.out_h},boxblur={radius}:2[bg];"
+             f"[b]crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}[fg];"
+             f"[bg][fg]overlay={rx}:{ry},{tail}")]
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: str) -> str:
