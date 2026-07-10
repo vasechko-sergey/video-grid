@@ -107,6 +107,26 @@ def test_the_same_tiny_rect_is_fine_when_delivery_pins_the_output():
     assert rl.out_w == 1080
 
 
+def test_an_oversized_exact_delivery_is_not_told_to_pin_the_output():
+    """A raise must carry a remedy the caller can act on. The native-canvas
+    message says "pin the output with delivery exact:WxH" — useless advice for a
+    caller whose delivery already IS exact:9000x9000. It also blamed a "native
+    delivery" that is not in play."""
+    with pytest.raises(ValueError, match="Ask for a smaller exact size"):
+        layout.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.9)),
+                       CANVAS, GOLDEN, Delivery("exact", (9000, 9000)))
+
+
+def test_fit_blur_overflow_does_not_suggest_shrinking_a_rect_it_forbids():
+    """fit-blur pins rect_w to 1.0 and refuses a rect outright, so "shrink rect w"
+    and "move rect y up" are advice it cannot take. A 16:9 crop across a 21:9
+    canvas is taller than the canvas: the only levers are the canvas and the crop
+    aspect, and the message must say so."""
+    with pytest.raises(ValueError, match="Pick a taller canvas, or a wider crop_aspect"):
+        layout.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+                       (21, 9), GOLDEN, NATIVE)
+
+
 def test_fill_out_dims_match_todays_delivery_on_a_non_golden_canvas():
     # the golden 9:16 crop of 1280x720 evens exactly; 21:9 of 4K does not.
     # resolve must agree with what reframe() computes today: dims(crop_w, crop_h)

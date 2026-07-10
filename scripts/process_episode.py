@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
@@ -65,6 +66,30 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     intent = orch.derive_intent(m.composition, m.motion)
     delivery = Delivery.from_spec(m.delivery)
 
+    # probe the source ONCE and thread the real dims through the checks (contract
+    # fix). This runs BEFORE tracking so a manifest the layout cannot satisfy
+    # fails in milliseconds, not after YOLO has walked the whole segment.
+    src_w, src_h, _fps = reframe._probe(m.segment)
+
+    # the layout is editorial intent, not a retry parameter: it does not change
+    # between attempts, so build it once. validate() already proved it constructs.
+    lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
+                       rect=m.rect, background=m.background,
+                       border_px=m.border_px, border_color=m.border_color)
+
+    # 0. layout preflight. Everything below the manifest gate is HARD: resolve()
+    # raises on a rect that overflows its canvas, a border wider than its own
+    # card, or a native canvas past MAX_SIDE. validate() cannot catch any of
+    # those — they depend on the source dims, which exist only now that we have
+    # probed. Resolving here turns a manifest typo back into needs_input, the
+    # same channel every other manifest problem uses, instead of letting a
+    # ValueError escape the shell as a traceback on attempt 1. The engine keeps
+    # raising for anyone who calls reframe directly.
+    try:
+        layout_lib.resolve(lspec, m.canvas, (src_w, src_h), delivery)
+    except ValueError as e:
+        return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
+
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
     if route_path is None:
         rp = str(Path(project_dir) / "route.json")
@@ -78,9 +103,6 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         rp = route_path
         timings["track"] = 0.0
 
-    # probe the source ONCE and thread the real dims through the checks (contract fix)
-    src_w, src_h, _fps = reframe._probe(m.segment)
-
     # 2. contradiction gate (§4.1: no improvising past the manifest)
     findings = orch.detect_contradictions(m.motion, m.hero, route, track_meta,
                                           src_w, src_h, composition=m.composition)
@@ -92,11 +114,6 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     params = dict(orch.DEFAULT_PARAMS)
     path_out = str(Path(project_dir) / "path.json")
     report = None
-    # the layout is editorial intent, not a retry parameter: it does not change
-    # between attempts, so build it once. validate() already proved it constructs.
-    lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
-                       rect=m.rect, background=m.background,
-                       border_px=m.border_px, border_color=m.border_color)
     for attempt in range(1, max_attempts + 1):
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,

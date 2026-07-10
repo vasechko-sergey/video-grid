@@ -106,6 +106,31 @@ def test_fit_blur_through_the_orchestrator(tmp_path):
     assert Path(result["storyboard"]).exists()
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize("extra, problem", [
+    (dict(rect=[0.0, 0.0, 0.05]), "past the 8192px limit"),      # native canvas explodes
+    (dict(rect=[0.05, 0.90, 0.90]), "overflows"),                # card runs off the bottom
+    (dict(rect=[0.05, 0.25, 0.90], border_px=400), "narrower than its own two borders"),
+])
+def test_a_layout_the_engine_cannot_build_comes_back_as_needs_input(tmp_path, extra, problem):
+    """manifest.validate() cannot judge these — every one depends on the source
+    dims, which exist only after ffprobe. Before the preflight, each returned
+    `validate() == []` and then escaped process_episode as a raw ValueError on
+    attempt 1. The orchestrator's contract is that a manifest problem comes back
+    as a finding; a rect typo is a manifest problem.
+
+    Marked integration: the preflight runs after _probe, so ffprobe is called.
+    """
+    manifest = dict(segment=RIDE, out_path=str(tmp_path / "ep.mp4"),
+                    composition="break", grid="thirds", canvas=[9, 16], target_dur=1.58,
+                    layout="insert", crop_aspect=[1, 1], **extra)
+    result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=ROUTE)
+    assert result["status"] == "needs_input", result
+    assert result["attempt"] == 0
+    assert any(problem in p for p in result["problems"]), result["problems"]
+    assert not (tmp_path / "ep.mp4").exists()      # ffmpeg never ran
+
+
 def test_lead_at_zero_freedom_never_reaches_the_engine(tmp_path):
     # UNMARKED on purpose: the soft manifest gate refuses this before ffprobe is
     # ever called, so no ffmpeg runs. (Confirmed: process_episode.validate()
@@ -143,6 +168,26 @@ def test_insert_through_the_orchestrator_insets_the_border(tmp_path):
     assert _dims(result["clip"]) == (800, 1422)
     meta = PathMeta.from_json(Path(tmp_path) / "path.meta.json")
     assert meta.rect_px == (48, 364, 704, 704)      # content rect, inset by the border
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("canvas, layout, delivery, expect", [
+    # a 3840x200 cover: the ceiling binds at 50, where the unclamped 3840//60=64
+    # is what real ffmpeg refuses. This is the premise the unit test asserts a
+    # string about but never renders.
+    ((21, 9), LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.4, 0.02, 0.03)),
+     Delivery("exact", (3840, 200)), (3840, 200)),
+    # a 1280x4 cover: the ceiling is 1, below the radius floor of 2. The floor
+    # used to win and ffmpeg died.
+    ((256, 1), LayoutSpec(mode="fit-blur", crop_aspect=(256, 1)), NATIVE, (1280, 4)),
+])
+def test_extreme_covers_render_at_the_capped_blur_radius(tmp_path, canvas, layout,
+                                                         delivery, expect):
+    out = tmp_path / "cover.mp4"
+    spec = ReframeSpec(composition="break", grid="thirds", canvas=canvas,
+                       color_means=COLOR, delivery=delivery, layout=layout)
+    reframe.reframe(spec, RIDE, ROUTE, str(out), str(tmp_path / "path.json"))
+    assert _dims(out) == expect            # it rendered at all — ffmpeg did not refuse
 
 
 @pytest.fixture(scope="module")

@@ -324,3 +324,26 @@ def test_path_meta_from_dict_reports_a_truncated_sidecar_with_a_remedy():
     # a bare KeyError('crop_w') is not something a stranger can act on
     with pytest.raises(RuntimeError, match="has no field"):
         m.PathMeta.from_dict({"mode": "fill", "crop_h": 720})
+
+
+def test_path_meta_from_json_reports_an_unparseable_sidecar_with_a_remedy(tmp_path):
+    """The case the message above only *names*: a run that died mid-write leaves
+    a file that does not parse at all, so from_dict is never reached. Before this
+    was handled, json.loads raised a bare JSONDecodeError pointing at a column
+    number — no file, no remedy, and nothing to tell the reader that `reframe`
+    is what regenerates it."""
+    p = tmp_path / "path.meta.json"
+    p.write_text('{"mode": "fill", "crop_w": 405')       # truncated mid-write
+    with pytest.raises(RuntimeError, match="is corrupt"):
+        m.PathMeta.from_json(p)
+    with pytest.raises(RuntimeError, match="re-run reframe"):
+        m.PathMeta.from_json(p)
+
+
+def test_path_meta_from_dict_reports_an_unusable_field_with_a_remedy():
+    # present but the wrong type: int("abc") raises a bare ValueError that names
+    # neither the sidecar nor the fix
+    d = dict(mode="fill", crop_w="abc", crop_h=720, crop_y=0, src_dims=[1280, 720],
+             canvas=[9, 16], out_dims=[404, 720], rect_px=[0, 0, 404, 720], freedom=875)
+    with pytest.raises(RuntimeError, match="unusable field"):
+        m.PathMeta.from_dict(d)

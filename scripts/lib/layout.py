@@ -66,11 +66,18 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
     # gigapixel encode HERE, before any card arithmetic runs inside it, with an
     # error that names the cause — the silent-swap class this repo keeps loud.
     if out_w > MAX_SIDE or out_h > MAX_SIDE:
+        # an `exact` delivery already pins the output, so "pin the output" is not a
+        # remedy it can act on — it asked for these dimensions outright
+        if delivery.mode == "exact":
+            raise ValueError(
+                f"delivery exact:{out_w}x{out_h} is past the {MAX_SIDE}px limit — "
+                f"that is {out_w * out_h / 1e6:.0f} megapixels per frame. Ask for a "
+                "smaller exact size, or raise layout.MAX_SIDE if you truly mean it")
         if rw_f < 1.0:
             raise ValueError(
                 f"layout resolves to a {out_w}x{out_h} canvas, past the {MAX_SIDE}px limit — "
                 f"a native delivery sizes the canvas so the {crop_w}x{crop_h} crop is never "
-                f"upscaled, so rect width {rw_f} multiplies it by {1 / rw_f:.0f}x. Widen rect w, "
+                f"upscaled, so rect width {rw_f} blows it up {1 / rw_f:.1f}x. Widen rect w, "
                 "or pin the output with delivery short_edge:N / exact:WxH")
         raise ValueError(
             f"layout resolves to a {out_w}x{out_h} canvas, past the {MAX_SIDE}px limit — "
@@ -105,6 +112,15 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         ox = int(round(rx_f * out_w))
         oy = (out_h - oh) // 2 if spec.rect is None else int(round(ry_f * out_h))
         if ox + ow > out_w or oy + oh > out_h:
+            # fit-blur pins rect_w to 1.0 and forbids a rect outright, so "shrink
+            # rect w" and "move rect y up" are advice it cannot take. Its only
+            # levers are the crop aspect and the canvas.
+            if spec.rect is None:
+                raise ValueError(
+                    f"a {crop_w}x{crop_h} crop scaled to the full width of a "
+                    f"{out_w}x{out_h} canvas is {oh}px tall and does not fit — the "
+                    f"{canvas[0]}:{canvas[1]} canvas is wider than the {aspect[0]}:{aspect[1]} "
+                    "crop. Pick a taller canvas, or a wider crop_aspect")
             raise ValueError(
                 f"layout rect {spec.rect} at crop aspect {aspect[0]}:{aspect[1]} with "
                 f"border_px {b} derives a {ow}x{oh}px card at ({ox}, {oy}), which "

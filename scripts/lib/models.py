@@ -109,6 +109,13 @@ class PathMeta:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
                 "in one call, so a partial one means that run died mid-write") from e
+        except (TypeError, ValueError) as e:
+            # a field is present but unusable: crop_w="abc", src_dims=null. int()
+            # and tuple() raise bare, and the caller cannot tell which file to blame
+            raise RuntimeError(
+                f"path.meta.json holds an unusable field ({e}) — re-run reframe; the "
+                "sidecar is machine-written, so a bad type means it was hand-edited "
+                "or truncated") from e
 
     @classmethod
     def from_json(cls, path: str | Path) -> "PathMeta":
@@ -117,7 +124,17 @@ class PathMeta:
             raise RuntimeError(
                 f"{p} is missing — re-run reframe; it writes path.meta.json beside "
                 "path.json, and the checks read what was actually cropped from it")
-        return cls.from_dict(json.loads(p.read_text()))
+        try:
+            d = json.loads(p.read_text())
+        except json.JSONDecodeError as e:
+            # the exact case from_dict's message names: reframe died mid-write, so
+            # the file is truncated and never parses. Without this, the caller gets
+            # a bare JSONDecodeError naming a column, not a file and not a remedy.
+            raise RuntimeError(
+                f"{p} is corrupt ({e}) — delete it and re-run reframe; it writes the "
+                "sidecar in one call, so an unparseable one means that run died "
+                "mid-write") from e
+        return cls.from_dict(d)
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
