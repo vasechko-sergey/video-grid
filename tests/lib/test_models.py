@@ -113,8 +113,26 @@ def test_delivery_rejects_bad():
         m.Delivery("weird")
     with pytest.raises(ValueError, match="short_edge"):
         m.Delivery("short_edge", -5)
-    with pytest.raises(ValueError, match="exact"):
+    # pin the positive-ints message — "exact" alone also matches the parity
+    # message below, and an over-loose match has bitten this codebase before
+    with pytest.raises(ValueError, match="exact needs .w, h. positive ints"):
         m.Delivery("exact", (1080,))
+
+
+def test_delivery_exact_rejects_odd_dims():
+    # exact must refuse odd sides at construction — h.264/yuv420p needs both
+    # divisible by 2. match "even dimensions" so this cannot pass on the
+    # positive-ints message, which also contains "exact".
+    with pytest.raises(ValueError, match="exact needs even dimensions"):
+        m.Delivery("exact", (405, 721))
+    with pytest.raises(ValueError, match="exact needs even dimensions"):
+        m.Delivery("exact", (405, 720))   # one odd side is enough
+    with pytest.raises(ValueError, match="exact needs even dimensions"):
+        m.Delivery("exact", (404, 721))
+    # from_spec constructs the same object and must refuse identically —
+    # not swallowed into the generic "unparseable" message
+    with pytest.raises(ValueError, match="exact needs even dimensions"):
+        m.Delivery.from_spec("exact:405x721")
 
 
 def test_delivery_long_edge_real_scaling():

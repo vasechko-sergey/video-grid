@@ -151,8 +151,12 @@ _Last updated: 2026-07-10._
   relative gate is OR'd with an absolute body-black floor (`ref < black_floor`);
   real-ffmpeg all-black test in `test_verify.py`, design §12 logged. The layout
   goldens still measure boundary luma against their own (stricter) absolute bar —
-  left as-is, they guard the render pipeline, not the check. Still filed:
-  `Delivery("exact", …)` does not enforce even dims.
+  left as-is, they guard the render pipeline, not the check. The
+  `Delivery("exact", …)` even-dims hole filed here is **now closed**: it was the
+  one mode that skipped `geometry.even()`, so an odd side reached `scale=` and
+  libx264 failed cryptic; `__post_init__` raises a remedy-carrying `ValueError`
+  (exact never silently rounds — 405x721 → "use (404, 720) or (406, 722)"), and
+  `from_spec("exact:WxH")` refuses identically. design §12 logged.
 
 - **docs registry + coding standards (2026-07-09)** — specs moved to
   [`docs/specs/`](./spec/); anna-auth-style standards adopted

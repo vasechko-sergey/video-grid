@@ -481,7 +481,7 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - madmom 0.16.1 from PyPI is broken on python ≥3.10 / numpy ≥1.24 → git master only, and only as an optional extra.
 - essentia has no macOS arm64 wheels → out of v1 (§5.5).
 - ffmpeg expression parser chokes on long crop-x expressions ("Missing ')' or too many args") — a realistic-length noisy path can produce 1000+ Douglas-Peucker knots → cap knots (~80) by doubling eps; never emit per-frame if() chains.
-- odd output dimensions + yuv420p → libx264 "width not divisible by 2" → force even scale targets for EVERY canvas, not just 9:16 (floor-truncated crop widths are odd half the time).
+- odd output dimensions + yuv420p → libx264 "width not divisible by 2" → force even scale targets for EVERY canvas, not just 9:16 (floor-truncated crop widths are odd half the time). `Delivery` evens native/short_edge/long_edge in `dims()`; `exact` must **not** silently round (the mode is *exact* — shipping 404x720 for a requested 405x721 is the corruption we forbid) → it raises in `Delivery.__post_init__` on odd dims with a fix-it remedy, so a bad exact size cannot be constructed at all.
 - ByteTrack unconfirmed detections carry `id=None` → bucketing them under one sentinel id splices different people into a fake track that can win hero scoring → drop id=None detections; the gap is bridged by smoothing.
 
 ---
