@@ -426,3 +426,35 @@ def test_reel_check_spec_defaults():
 def test_reel_check_spec_rejects_bad(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.ReelCheckSpec(**kw)
+
+
+def _rr():
+    return m.ReelReport(
+        checks={"black": m.CheckResult("black", True, {"black_start": []}),
+                "length": m.CheckResult("length", False, {"dur": 7.0, "target": 6.0}),
+                "beat": m.CheckResult("beat", None, {"status": "not-implemented"})},
+        fail_reasons=[m.ReelFailure("length", "pacing", None, {"dur": 7.0})],
+        episode_count=2, wall_s=1.5)
+
+
+def test_reel_report_overall_false_on_a_failed_check():
+    assert _rr().overall is False
+
+
+def test_reel_report_none_check_never_fails():
+    rr = m.ReelReport(checks={"beat": m.CheckResult("beat", None, {"status": "x"})})
+    assert rr.overall is True
+
+
+def test_reel_report_round_trips():
+    rr = _rr()
+    back = m.ReelReport.from_dict(rr.to_dict())
+    assert back.to_dict() == rr.to_dict()
+    assert back.episode_count == 2 and back.wall_s == 1.5
+    assert back.fail_reasons[0].check == "length" and back.fail_reasons[0].escalate_to == "pacing"
+
+
+def test_reel_report_writes_json(tmp_path):
+    p = tmp_path / "reel.json"
+    _rr().write(p)
+    assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False

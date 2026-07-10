@@ -524,3 +524,57 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
         if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
             raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
+
+
+@dataclass
+class ReelFailure:
+    """One attributed reel-check failure (design §177 machine-readable). The
+    Phase A.5 driver reads escalate_to/episode_idx straight off this."""
+    check: str
+    escalate_to: str                        # "reprocess" | "edit-plan" | "pacing"
+    episode_idx: int | None = None
+    detail: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {"check": self.check, "escalate_to": self.escalate_to,
+                "episode_idx": self.episode_idx, "detail": self.detail}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelFailure":
+        return cls(check=d["check"], escalate_to=d["escalate_to"],
+                   episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
+
+
+@dataclass
+class ReelReport:
+    """Whole-reel check artifact (design §2). Reuses CheckResult; overall is a
+    property (a None check never fails), mirroring the episode Report."""
+    checks: dict[str, CheckResult]
+    fail_reasons: list[ReelFailure] = field(default_factory=list)
+    episode_count: int = 0
+    wall_s: float = 0.0                      # §11 binding: wall-time in every check report
+
+    @property
+    def overall(self) -> bool:
+        return all(c.passed is not False for c in self.checks.values())
+
+    def to_dict(self) -> dict:
+        return {"checks": {n: c.to_dict() for n, c in self.checks.items()},
+                "overall": self.overall,
+                "fail_reasons": [f.to_dict() for f in self.fail_reasons],
+                "episode_count": self.episode_count, "wall_s": self.wall_s}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelReport":
+        checks = {}
+        for n, cd in d["checks"].items():
+            if "pass" in cd:
+                checks[n] = CheckResult(n, cd["pass"], {k: v for k, v in cd.items() if k != "pass"})
+            else:
+                checks[n] = CheckResult(n, None, dict(cd))
+        return cls(checks=checks,
+                   fail_reasons=[ReelFailure.from_dict(f) for f in d.get("fail_reasons", [])],
+                   episode_count=d.get("episode_count", 0), wall_s=d.get("wall_s", 0.0))
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
