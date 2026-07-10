@@ -120,7 +120,10 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
         return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
                         f"scale={rl.out_w}:{rl.out_h},{tail}")]
     rx, ry, rw, rh = rl.rect_px
-    radius = max(2, rl.out_w // 60)      # a constant radius is nearly sharp on 4K
+    # boxblur rejects a radius above half the chroma plane, and yuv420p halves
+    # the plane again: the ceiling is min(out_w, out_h) // 4. A 3840x200 cover
+    # crashes at 64 and survives at 50.
+    radius = max(2, min(rl.out_w // 60, min(rl.out_w, rl.out_h) // 4))
     return ["-filter_complex",
             (f"[0:v]split=2[a][b];"
              f"[a]scale={rl.out_w}:{rl.out_h}:force_original_aspect_ratio=increase,"

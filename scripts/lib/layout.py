@@ -46,8 +46,14 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
     free = geometry.freedom(crop_w, src[0])
 
     rx_f, ry_f, rw_f = spec.rect if spec.rect is not None else (0.0, 0.0, 1.0)
-    canvas_w = crop_w / rw_f
-    canvas_h = canvas_w * canvas[1] / canvas[0]
+    if spec.mode == "fill":
+        # the crop already carries the canvas aspect, so the canvas IS the crop.
+        # Re-deriving canvas_h from crop_w drifts: a 21:9 crop of 4K is
+        # 3840x1645, and 3840 * 9/21 evens to 1646, not 1644.
+        canvas_w, canvas_h = float(crop_w), float(crop_h)
+    else:
+        canvas_w = crop_w / rw_f
+        canvas_h = canvas_w * canvas[1] / canvas[0]
     out_w, out_h = delivery.dims(canvas_w, canvas_h)
 
     if spec.mode == "fill":

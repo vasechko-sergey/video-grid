@@ -164,6 +164,21 @@ def test_filter_args_fit_blur_composites_over_a_blurred_cover():
     ]
 
 
+def test_filter_args_insert_is_pinned_to_the_rect():
+    rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert args == [
+        "-filter_complex",
+        "[0:v]split=2[a][b];"
+        "[a]scale=800:1422:force_original_aspect_ratio=increase,"
+        "crop=800:1422,boxblur=13:2[bg];"
+        "[b]crop=720:720:x='0.0':y=0,scale=720:720[fg];"
+        "[bg][fg]overlay=40:356,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=30,format=yuv420p",
+    ]
+
+
 def test_filter_args_never_emit_the_banned_lutrgb():
     # spec §12: lutrgb produced black frames; colorchannelmixer only
     for spec in (LayoutSpec(mode="fill"),
@@ -181,3 +196,11 @@ def test_blur_radius_scales_with_canvas_width():
                             (9, 16), (3840, 2160), _NATIVE)
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
     assert "boxblur=64:2" in args[1]        # 3840 // 60
+
+
+def test_blur_radius_is_capped_by_the_short_side():
+    # boxblur dies above min(out_w, out_h) // 4: a 3840x200 cover crashes at 64
+    rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.4, 0.02, 0.03)),
+                            (21, 9), (3840, 2160), Delivery("exact", (3840, 200)))
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert "boxblur=50:2" in args[1]
