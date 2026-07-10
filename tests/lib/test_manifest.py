@@ -38,9 +38,11 @@ def test_validate_unknown_grid():
     assert any("grid" in p for p in problems)
 
 
-def test_validate_layout_not_fill_refused():
-    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(layout="fit-blur")))
-    assert any("layout" in p and "fill" in p for p in problems)
+def test_validate_unsupported_layout_refused():
+    # fit-blur/insert are first-class layouts now; a genuinely unknown one still
+    # fails the soft gate, with a message that names what IS supported.
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(layout="pan")))
+    assert any("pan" in p and "fit-blur" in p for p in problems)
 
 
 def test_validate_stabilize_refused():
@@ -136,3 +138,70 @@ def test_validate_bad_delivery():
 def test_validate_color_means_nonpositive():
     problems = mf.validate(mf.Manifest.from_dict(_ok_dict(color_means=[0, 122, 137])))
     assert any("color_means" in p for p in problems)
+
+
+# --- Task 9: fit-blur / insert layouts, JSON array coercion, zero-freedom gate ---
+
+def _base(**over):
+    d = dict(segment="a.mp4", out_path="o.mp4", composition="lead", grid="thirds",
+             canvas=[9, 16], target_dur=3.0)
+    d.update(over)
+    return d
+
+
+def test_fit_blur_and_insert_are_now_supported():
+    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+                                    composition="break"))
+    assert mf.validate(m) == []
+    m = mf.Manifest.from_dict(_base(layout="insert", crop_aspect=[1, 1],
+                                    rect=[0.05, 0.25, 0.9]))
+    assert mf.validate(m) == []
+
+
+def test_json_arrays_become_tuples():
+    m = mf.Manifest.from_dict(_base(layout="insert", crop_aspect=[1, 1],
+                                    rect=[0.05, 0.25, 0.9]))
+    assert m.crop_aspect == (1, 1)
+    assert m.rect == (0.05, 0.25, 0.9)
+
+
+def test_lead_at_zero_freedom_is_refused_with_a_remedy():
+    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+                                    composition="lead"))
+    problems = mf.validate(m)
+    assert len(problems) == 1
+    assert "crop_scale" in problems[0] and "break" in problems[0]
+
+
+def test_lead_with_a_scaled_crop_is_allowed():
+    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+                                    composition="lead", crop_scale=0.9))
+    assert mf.validate(m) == []
+
+
+def test_a_bad_layout_field_becomes_a_problem_not_a_crash():
+    m = mf.Manifest.from_dict(_base(layout="insert", crop_aspect=[1, 1]))
+    problems = mf.validate(m)
+    assert any("insert needs a rect" in p for p in problems)
+
+
+def test_split_is_still_refused():
+    m = mf.Manifest.from_dict(_base(layout="split"))
+    assert any("split" in p for p in mf.validate(m))
+
+
+def test_insert_border_fields_round_trip_and_validate_clean():
+    # border_px/border_color ride the manifest onto the Manifest and pass the gate.
+    m = mf.Manifest.from_dict(_base(layout="insert", crop_aspect=[1, 1],
+                                    rect=[0.05, 0.25, 0.9], border_px=8,
+                                    border_color="black"))
+    assert m.border_px == 8
+    assert m.border_color == "black"
+    assert mf.validate(m) == []
+
+
+def test_fill_with_a_border_is_a_problem_not_a_crash():
+    # LayoutSpec raises for a bordered fill; the soft gate must catch it, not die.
+    m = mf.Manifest.from_dict(_base(layout="fill", border_px=8))
+    problems = mf.validate(m)
+    assert any("border" in p for p in problems)

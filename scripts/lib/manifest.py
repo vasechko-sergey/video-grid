@@ -8,11 +8,12 @@ instead of guessing.
 """
 from dataclasses import dataclass
 
-from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery
+from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model", "delivery")
-LAYOUTS_SUPPORTED = ("fill",)          # fit-blur/insert/split/pan → layouts plan
+OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model", "delivery",
+            "crop_aspect", "crop_scale", "rect", "background", "border_px", "border_color")
+LAYOUTS_SUPPORTED = ("fill", "fit-blur", "insert")   # split/pan → their own plans
 DEFAULT_COLOR = (105, 122, 137)
 DEFAULT_MODEL = "yolo11n-seg.pt"
 
@@ -32,6 +33,12 @@ class Manifest:
     stabilize: bool = False
     model: str = DEFAULT_MODEL
     delivery: str = "native"
+    crop_aspect: str | tuple[int, int] = "canvas"
+    crop_scale: float = 1.0
+    rect: tuple[float, float, float] | None = None
+    background: str = "blur"
+    border_px: int = 0
+    border_color: str = "white"
 
     @classmethod
     def from_dict(cls, d: dict) -> "Manifest":
@@ -50,6 +57,16 @@ class Manifest:
         model = d.get("model")
         layout = d.get("layout")        # explicit null → default, like model/color_means
         delivery = d.get("delivery")
+        crop_aspect = d.get("crop_aspect")
+        if isinstance(crop_aspect, list):
+            crop_aspect = tuple(crop_aspect)   # JSON has no tuples — LayoutSpec rejects lists by design
+        rect = d.get("rect")
+        if isinstance(rect, list):
+            rect = tuple(rect)
+        crop_scale = d.get("crop_scale")
+        background = d.get("background")
+        border_px = d.get("border_px")
+        border_color = d.get("border_color")
         return cls(
             segment=d["segment"], out_path=d["out_path"],
             composition=d["composition"], grid=d["grid"],
@@ -60,6 +77,13 @@ class Manifest:
             stabilize=bool(d.get("stabilize", False)),
             model=model if model is not None else DEFAULT_MODEL,
             delivery=delivery if delivery is not None else "native",
+            crop_aspect=crop_aspect if crop_aspect is not None else (
+                "canvas" if (layout or "fill") == "fill" else "source"),
+            crop_scale=float(crop_scale) if crop_scale is not None else 1.0,
+            rect=rect,
+            background=background if background is not None else "blur",
+            border_px=int(border_px) if border_px is not None else 0,
+            border_color=border_color if border_color is not None else "white",
         )
 
 
@@ -76,8 +100,32 @@ def validate(m: Manifest) -> list[str]:
         problems.append(f"grid {m.grid!r} unknown — expected {GRIDS} "
                         "(golden-canon is a static editorial layer, not a tracking target)")
     if m.layout not in LAYOUTS_SUPPORTED:
-        problems.append(f"layout {m.layout!r} not supported in the orchestrator slice — "
-                        "fill only; fit-blur/insert/split/pan land in the reframe-extensions plan")
+        problems.append(f"layout {m.layout!r} not supported — fill/fit-blur/insert only; "
+                        "split and pan land in their own plans")
+    if m.layout in LAYOUTS_SUPPORTED:
+        # LayoutSpec is the HARD backstop; here it is the soft gate's oracle. Its
+        # ValueError (unknown mode/bg, bad scale/aspect/rect, fill+border, list
+        # instead of tuple) becomes a problem string — the gate never raises.
+        try:
+            LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
+                       rect=m.rect, background=m.background,
+                       border_px=m.border_px, border_color=m.border_color)
+        except ValueError as e:
+            problems.append(str(e))
+        else:
+            # Zero horizontal freedom is decidable here for exactly one spelling:
+            # a source-aspect crop at full scale IS the whole frame, whatever the
+            # footage. It is NOT decidable for crop_aspect [16, 9] on 16:9
+            # footage, which has the same zero freedom — the gate would have to
+            # probe the file, and this gate runs before YOLO. Do not "fix" it to
+            # probe here. The sidecar's `freedom` is the real safety net:
+            # check_episode turns the composition check editorial when it is zero.
+            if (m.composition == "lead" and m.crop_scale == 1.0
+                    and m.crop_aspect == "source"):
+                problems.append(
+                    "composition 'lead' has no horizontal freedom: crop_aspect 'source' at "
+                    "crop_scale 1.0 shows the whole frame — set crop_scale below 1.0, or "
+                    "composition to 'break'")
     if m.stabilize:
         problems.append("stabilize=true not supported yet — vidstab lands in the "
                         "reframe-extensions plan (and needs a vidstab-enabled ffmpeg, "
