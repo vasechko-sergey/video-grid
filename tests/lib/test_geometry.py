@@ -1,4 +1,6 @@
 import math
+import pytest
+from scripts.lib import geometry
 from scripts.lib import geometry as g
 
 def test_crop_size_9x16_from_1080p():
@@ -54,3 +56,49 @@ def test_crop_y_headroom_045():
 def test_crop_y_clamped():
     assert g.crop_y(subject_y=20, crop_h=608, src_h=1080) == 0
     assert g.crop_y(subject_y=1070, crop_h=608, src_h=1080) == 1080 - 608
+
+
+def test_crop_for_canvas_aspect_matches_crop_size():
+    # the golden fixture: 9:16 out of 1280x720 -> 405 wide (odd, and that is correct)
+    assert geometry.crop_for((9, 16), 1.0, 1280, 720) == (405, 720)
+    assert geometry.crop_for((9, 16), 1.0, 1280, 720) == geometry.crop_size(9, 16, 1280, 720)
+
+
+def test_crop_for_source_aspect_is_the_whole_frame():
+    assert geometry.crop_for((1280, 720), 1.0, 1280, 720) == (1280, 720)
+
+
+def test_crop_for_square_aspect():
+    assert geometry.crop_for((1, 1), 1.0, 1280, 720) == (720, 720)
+
+
+def test_crop_for_scale_shrinks_both_sides():
+    assert geometry.crop_for((1280, 720), 0.5, 1280, 720) == (640, 360)
+
+
+def test_crop_for_rejects_bad_scale():
+    with pytest.raises(ValueError, match="crop_scale"):
+        geometry.crop_for((9, 16), 0.0, 1280, 720)
+    with pytest.raises(ValueError, match="crop_scale"):
+        geometry.crop_for((9, 16), 1.5, 1280, 720)
+
+
+def test_crop_for_rejects_bad_aspect():
+    with pytest.raises(ValueError, match="positive"):
+        geometry.crop_for((0, 16), 1.0, 1280, 720)
+
+
+def test_freedom_is_source_width_minus_crop_width():
+    assert geometry.freedom(405, 1280) == 875
+    assert geometry.freedom(1280, 1280) == 0
+
+
+def test_freedom_rejects_a_crop_wider_than_the_source():
+    with pytest.raises(ValueError, match="wider than the source"):
+        geometry.freedom(1300, 1280)
+
+
+def test_even_floors_to_even():
+    assert geometry.even(405) == 404
+    assert geometry.even(720) == 720
+    assert geometry.even(2275.6) == 2276
