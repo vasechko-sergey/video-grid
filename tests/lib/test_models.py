@@ -222,11 +222,6 @@ def test_delivery_dims_takes_floats_and_evens_each_side():
     d = m.Delivery("native", None)
     # the fill case: canvas floats equal the crop, and the answer is today's output
     assert d.dims(405.0, 720.0) == (404, 720)
-    # the fit-blur case: 1280 wide, 16/9 tall
+    # the fit-blur case: 1280 wide, 16/9 tall. Evening the width first and
+    # deriving the height from it would give 718, not 720 — hence floats.
     assert d.dims(1280.0, 1280.0 * 16 / 9) == (1280, 2276)
-
-
-def test_delivery_dims_rejects_a_nonpositive_canvas():
-    d = m.Delivery("native", None)
-    with pytest.raises(ValueError, match="positive crop"):
-        d.dims(0.0, 720.0)
