@@ -99,7 +99,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                             max_speed=params["max_speed"])
         _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
-                          canvas=m.canvas, src_dims=(src_w, src_h), attempt=attempt)
+                          attempt=attempt)
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json")))
         if report.overall:

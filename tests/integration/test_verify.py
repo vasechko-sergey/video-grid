@@ -19,8 +19,10 @@ def test_check_episode_reports(sample_clip, tmp_path):
     path = [540 - 607 // 2] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
-    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.0,
-                            canvas=(9, 16), src_dims=(1920, 1080))
+    models.PathMeta(mode="fill", crop_w=607, crop_h=1080, crop_y=0, src_dims=(1920, 1080),
+                    canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+                    freedom=1313).write(pp.with_suffix(".meta.json"))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.0)
     report = check_episode.run(clip=str(sample_clip), route_path=str(rp),
                                path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))
@@ -40,8 +42,7 @@ def test_check_episode_rejects_unknown_composition(sample_clip, tmp_path):
     # composition validity is now guarded by CheckSpec itself (raises before
     # check_episode.run is ever called) — a bad value must still fail loud
     with pytest.raises(ValueError, match="composition"):
-        spec = models.CheckSpec(composition="Lead", grid="thirds", target_dur=3.0,
-                                canvas=(9, 16), src_dims=(1920, 1080))
+        spec = models.CheckSpec(composition="Lead", grid="thirds", target_dur=3.0)
         check_episode.run(clip=str(sample_clip), route_path=str(rp),
                           path_path=str(pp), spec=spec,
                           out=str(tmp_path / "report.json"))
@@ -53,8 +54,10 @@ def test_check_episode_break_is_editorial_only(sample_clip, tmp_path):
     path = [50] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
-    spec = models.CheckSpec(composition="break", grid="thirds", target_dur=3.0,
-                            canvas=(9, 16), src_dims=(1920, 1080))
+    models.PathMeta(mode="fill", crop_w=607, crop_h=1080, crop_y=0, src_dims=(1920, 1080),
+                    canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+                    freedom=1313).write(pp.with_suffix(".meta.json"))
+    spec = models.CheckSpec(composition="break", grid="thirds", target_dur=3.0)
     report = check_episode.run(clip=str(sample_clip), route_path=str(rp),
                                path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))
@@ -79,11 +82,13 @@ def test_run_returns_report(monkeypatch, tmp_path):
     route = [models.RoutePoint(i / 30, 300 + i * 90, 500, 140, 320) for i in range(10)]
     models.route_to_json(route, tmp_path / "route.json")
     models.CropPath([300 + i * 90 - 200 for i in range(10)]).to_json(tmp_path / "path.json")
+    models.PathMeta(mode="fill", crop_w=607, crop_h=1080, crop_y=0, src_dims=(1920, 1080),
+                    canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+                    freedom=1313).write(tmp_path / "path.meta.json")
     monkeypatch.setattr(check_episode, "_duration", lambda clip: 3.0)
     monkeypatch.setattr(check_episode, "_black_frames_check",
                         lambda clip, **k: {"pass": True, "boundary_lumas": [120.0]})
-    spec = models.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
-                            canvas=(9, 16), src_dims=(1920, 1080))
+    spec = models.CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(tmp_path / "clip.mp4"), str(tmp_path / "route.json"),
                                str(tmp_path / "path.json"), spec, str(tmp_path / "report.json"))
     assert isinstance(report, models.Report)
@@ -164,8 +169,10 @@ def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip
     path = [540 - 607 // 2] * 30
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     pp = tmp_path / "path.json"; pp.write_text(json.dumps(path))
-    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.5,
-                            canvas=(9, 16), src_dims=(1920, 1080))
+    models.PathMeta(mode="fill", crop_w=607, crop_h=1080, crop_y=0, src_dims=(1920, 1080),
+                    canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+                    freedom=1313).write(pp.with_suffix(".meta.json"))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=3.5)
     report = check_episode.run(clip=str(bad), route_path=str(rp),
                                path_path=str(pp), spec=spec,
                                out=str(tmp_path / "report.json"))

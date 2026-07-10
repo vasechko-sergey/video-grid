@@ -59,7 +59,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
     default_report = _report(True, [])
 
     def fake_run(clip, route_path, path_path, spec, out):
-        calls["check"] = dict(canvas=spec.canvas, src_dims=spec.src_dims, attempt=spec.attempt)
+        calls["check"] = dict(attempt=spec.attempt)
         src_report = report if report is not None else default_report
         r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
         r.write(out)
@@ -78,9 +78,6 @@ def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
     # wire contract: the shell returns report.to_dict(), not a raw Report —
     # catches a regression that dropped .to_dict() without the slow golden
     assert isinstance(result["report"], dict) and result["report"]["overall"] is True
-    # contract: check_episode gets the PROBED dims, not the 1920x1080 default
-    assert calls["check"]["src_dims"] == (3840, 2160)
-    assert calls["check"]["canvas"] == (9, 16)
 
 
 def test_timings_recorded_per_stage(monkeypatch, tmp_path):

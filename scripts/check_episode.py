@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from PIL import Image, ImageStat
 from scripts.lib import checks as checks_mod, geometry, proc
-from scripts.lib.models import CheckResult, CheckSpec, Report, route_from_json, CropPath
+from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath
 from scripts.lib.motion import classify
 
 
@@ -58,20 +58,30 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
 
 
 def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -> Report:
-    """crop_w derives from canvas+src; direction from the route itself —
-    no hardcoded 607 / "right" (left-moving and non-9:16 episodes exist)."""
+    """Geometry comes from the sidecar reframe wrote — never re-derived here.
+
+    Re-deriving crop_w from the canvas is right only while every layout is
+    `fill`. Under fit-blur it returns the canvas-aspect width, and on_line then
+    divides by a width that was never cut.
+    """
     route = [p.to_dict() for p in route_from_json(route_path)]
     path = CropPath.from_json(path_path).xs
-    crop_w, _ = geometry.crop_size(spec.canvas[0], spec.canvas[1],
-                                   spec.src_dims[0], spec.src_dims[1])
-    _, direction = classify(route, spec.src_dims[0], spec.src_dims[1])
+    meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
+    crop_w = meta.crop_w
+    src_w, src_h = meta.src_dims
+    _, direction = classify(route, src_w, src_h)
     # static/head-on routes have no direction; "right" is an arbitrary but
-    # deterministic default for the lead-line pick (spec has no answer here —
-    # a lead composition over non-lateral motion is already a soft mismatch)
+    # deterministic default for the lead-line pick
     direction = direction or "right"
     checks = {}
 
-    if spec.composition == "center":
+    if meta.freedom == 0:
+        # the crop is as wide as the source: nobody controls composition, so it
+        # can neither be failed nor silently passed (design 2026-07-10 §6)
+        checks["framing"] = CheckResult("framing", None,
+                                        {"status": "editorial-only",
+                                         "reason": "no horizontal freedom"})
+    elif spec.composition == "center":
         d = checks_mod.centered(route, path, crop_w)
         checks["centered"] = CheckResult("centered", d["pass"], {k: v for k, v in d.items() if k != "pass"})
     elif spec.composition == "lead":
@@ -80,15 +90,14 @@ def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -
         d = checks_mod.on_line(route, path, crop_w, tf)
         checks["on_line"] = CheckResult("on_line", d["pass"], {k: v for k, v in d.items() if k != "pass"})
     elif spec.composition == "break":
-        # spec §6.2: break is tracked but relaxed — postcheck editorial only,
-        # no numeric fail; passed=None so it can't fail `overall`
+        # spec §6.2: break is tracked but relaxed — editorial only, no numeric fail
         checks["framing"] = CheckResult("framing", None, {"status": "editorial-only"})
     else:
         raise ValueError(f"unknown composition: {spec.composition!r}")
 
     dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005))
     checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
-    dc = checks_mod.continuity(route, spec.src_dims[0])
+    dc = checks_mod.continuity(route, src_w)
     checks["continuity"] = CheckResult("continuity", dc["pass"], {k: v for k, v in dc.items() if k != "pass"})
     dl = checks_mod.length(_duration(clip), spec.target_dur)
     checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
@@ -110,13 +119,8 @@ if __name__ == "__main__":
     ap.add_argument("--composition", default="lead")
     ap.add_argument("--grid", default="thirds")
     ap.add_argument("--target-dur", type=float, required=True)
-    ap.add_argument("--canvas", default="9:16")
-    ap.add_argument("--src-dims", default="1920x1080",
-                    help="source WxH the route coords live in")
     ap.add_argument("--attempt", type=int, default=1)
     a = ap.parse_args()
-    cw, ch = (int(v) for v in a.canvas.split(":"))
-    sw, sh = (int(v) for v in a.src_dims.split("x"))
     spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
-                     canvas=(cw, ch), src_dims=(sw, sh), attempt=a.attempt)
+                     attempt=a.attempt)
     run(a.clip, a.route, a.path, spec, a.out)

@@ -168,12 +168,16 @@ def test_reframespec_validation():
 
 
 def test_checkspec_defaults():
-    s = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+    s = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     assert s.attempt == 1 and s.black_floor == 6.0 and s.black_rel == 0.35
     with pytest.raises(ValueError, match="target_dur"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=0,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=0)
+
+
+def test_check_spec_no_longer_carries_canvas_or_src_dims():
+    spec = m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+    assert not hasattr(spec, "canvas")
+    assert not hasattr(spec, "src_dims")
 
 
 def test_storyboardspec_validation():
@@ -193,8 +197,7 @@ def test_spec_type_errors_are_value_errors():
         m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                       color_means=(105, 122, 137), delivery=m.Delivery("native"), max_speed=None)
     with pytest.raises(ValueError, match="target_dur"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=None,
-                    canvas=(9, 16), src_dims=(1920, 1080))
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=None)
     with pytest.raises(ValueError, match="grids"):
         m.StoryboardSpec(grids="thirds")     # bare string, not a list
 
@@ -207,12 +210,9 @@ def test_storyboardspec_grids_nonlist_is_value_error():
         m.StoryboardSpec(grids="thirds")     # bare string still rejected
 
 
-def test_trackspec_empty_src_and_checkspec_structural():
+def test_trackspec_empty_src_and_reframespec_delivery_type():
     with pytest.raises(ValueError, match="src"):
         m.TrackSpec(src="")
-    with pytest.raises(ValueError, match="src_dims"):
-        m.CheckSpec(composition="lead", grid="thirds", target_dur=3.0,
-                    canvas=(9, 16), src_dims=(1920, 0))
     with pytest.raises(ValueError, match="delivery"):
         m.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                       color_means=(105, 122, 137), delivery="native")   # str, not Delivery

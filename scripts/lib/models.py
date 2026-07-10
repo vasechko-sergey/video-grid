@@ -393,8 +393,6 @@ class CheckSpec:
     composition: str
     grid: str
     target_dur: float
-    canvas: tuple
-    src_dims: tuple
     attempt: int = 1
     black_floor: float = 6.0
     black_rel: float = 0.35
@@ -406,10 +404,6 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
             raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
-        if not _positive_seq(self.canvas, 2):
-            raise ValueError(f"CheckSpec.canvas must be [w, h] positive, got {self.canvas!r}")
-        if not _positive_seq(self.src_dims, 2):
-            raise ValueError(f"CheckSpec.src_dims must be [w, h] positive, got {self.src_dims!r}")
 
 
 @dataclass
