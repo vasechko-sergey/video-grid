@@ -39,6 +39,15 @@ def _fit_blur(tmp_path):
                   out_dims=(1920, 3412), rect_px=(0, 1166, 1920, 1080))
 
 
+def _insert(tmp_path):
+    """resolve(insert/1:1 @ rect(.05,.25,.90), 9:16, 1920x1080, native) ->
+    1200x2132, a 1080x1080 card at (60, 533). A square crop of a 16:9 source
+    leaves 840px of freedom, so the numeric composition check really runs — and
+    the canvas-derived width (607) is nowhere near the 1080 that was cut."""
+    return _write(tmp_path, crop_w=1080, freedom=840, mode="insert",
+                  out_dims=(1200, 2132), rect_px=(60, 533, 1080, 1080))
+
+
 @pytest.mark.integration
 def test_run_fails_loud_when_the_sidecar_is_missing(tmp_path, sample_clip):
     route = [dict(t=i / 30, x=400.0, y=540.0, w=60.0, h=160.0) for i in range(30)]
@@ -51,13 +60,17 @@ def test_run_fails_loud_when_the_sidecar_is_missing(tmp_path, sample_clip):
 
 
 @pytest.mark.integration
-def test_zero_freedom_makes_the_composition_check_editorial(tmp_path, sample_clip):
+@pytest.mark.parametrize("composition, numeric_check", [("lead", "on_line"),
+                                                        ("center", "centered")])
+def test_zero_freedom_makes_the_composition_check_editorial(tmp_path, sample_clip,
+                                                            composition, numeric_check):
     # fit-blur at scale 1.0: the crop is the whole frame, so nobody controls
-    # composition — it can neither fail nor silently pass
+    # composition — it can neither fail nor silently pass. True of both numeric
+    # compositions: the branch keys off freedom, never off the composition name.
     rp, pp = _fit_blur(tmp_path)
-    spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+    spec = CheckSpec(composition=composition, grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
-    assert "on_line" not in report.checks
+    assert numeric_check not in report.checks
     framing = report.checks["framing"]
     assert framing.passed is None
     assert framing.detail == {"status": "editorial-only", "reason": "no horizontal freedom"}
@@ -74,10 +87,22 @@ def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
 
 @pytest.mark.integration
 def test_crop_w_comes_from_the_sidecar_not_the_canvas(tmp_path, sample_clip):
-    """The bug this task fixes: a fit-blur crop is 1920 wide, and re-deriving it
-    from the 9:16 canvas would give 607 — a verdict about a crop nobody cut."""
-    rp, pp = _fit_blur(tmp_path)
-    spec = CheckSpec(composition="center", grid="thirds", target_dur=3.0)
+    """The bug this task fixes: re-deriving crop_w from the canvas yields a
+    verdict about a crop nobody cut.
+
+    It must be checked where freedom is POSITIVE. Under fit-blur freedom is zero,
+    the editorial-only branch short-circuits, and crop_w is never used for the
+    composition check at all — a fit-blur fixture here cannot tell the two
+    implementations apart.
+
+    So: an `insert` with a 1:1 crop of a 1920x1080 source. reframe cut 1080px;
+    the 9:16 canvas would re-derive 607. The route puts the subject exactly one
+    third into the real crop (360/1080 = 0.3333, dead on the left third line, so
+    on_line's ratio is 1.0). Re-derived, the same subject reads 360/607 = 0.593
+    — a quarter of the frame off the line, ratio 0.0, and the check fails.
+    """
+    rp, pp = _insert(tmp_path)
+    spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
-    assert "centered" not in report.checks          # freedom is zero → editorial
-    assert report.checks["framing"].passed is None
+    assert report.checks["on_line"].passed is True
+    assert report.checks["on_line"].detail == {"ratio": 1.0}
