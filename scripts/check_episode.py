@@ -47,12 +47,18 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
     """Spec §9: boundary-only — the seek landmine bites at cut edges. Bug #3:
     the gate is now RELATIVE to the clip body, not an absolute floor — a
     boundary frame is a defect only if it's BOTH near-black AND far below the
-    clip's own median luma, so a legitimately dark/night clip still passes."""
+    clip's own median luma, so a legitimately dark/night clip still passes.
+
+    The relative gate degenerates when the body itself is black: `ref` → 0 makes
+    `worst < black_rel * ref` collapse to `0 < 0` (False), silently passing a
+    fully-black clip. So keep the relative gate for the boundary defect, but OR
+    in an absolute body-black floor — a body median below `black_floor` is never
+    a legitimate delivery, only the seek/lutrgb corruption we're guarding."""
     boundary = _frame_lumas(clip, "boundary")
     body = _frame_lumas(clip, "body") or boundary
     ref = _median(body)
     worst = min(boundary) if boundary else ref
-    is_black = worst < black_floor and worst < black_rel * ref
+    is_black = (worst < black_floor and worst < black_rel * ref) or ref < black_floor
     return {"pass": not is_black, "boundary_lumas": [round(l, 1) for l in boundary],
             "body_median": round(ref, 1)}
 

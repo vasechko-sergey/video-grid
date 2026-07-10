@@ -146,10 +146,13 @@ _Last updated: 2026-07-10._
   raised a bare `JSONDecodeError` on the truncated sidecar its own message names;
   and two raises named remedies their caller could not act on (an `exact` delivery
   told to "pin the output", a `fit-blur` told to shrink a `rect` it forbids).
-  **Latent defect flagged, not fixed:** `check_episode._black_frames_check` returns
-  `pass=True` on a *uniformly* black clip — `worst < black_rel * ref` is `0 < 0` —
-  so the layout goldens measure boundary luma against an absolute bar themselves.
-  Also filed: `Delivery("exact", …)` does not enforce even dims.
+  **Fixed (2026-07-10):** `check_episode._black_frames_check` returned `pass=True`
+  on a *uniformly* black clip — `worst < black_rel * ref` is `0 < 0` — now the
+  relative gate is OR'd with an absolute body-black floor (`ref < black_floor`);
+  real-ffmpeg all-black test in `test_verify.py`, design §12 logged. The layout
+  goldens still measure boundary luma against their own (stricter) absolute bar —
+  left as-is, they guard the render pipeline, not the check. Still filed:
+  `Delivery("exact", …)` does not enforce even dims.
 
 - **docs registry + coding standards (2026-07-09)** — specs moved to
   [`docs/specs/`](./spec/); anna-auth-style standards adopted

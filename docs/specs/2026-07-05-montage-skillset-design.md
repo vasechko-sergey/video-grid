@@ -467,6 +467,7 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 
 - `lutrgb` → black frames. Use `colorchannelmixer`.
 - Black frames on cut — the **landmine is in the seek-argument order, NOT in 4K**. Fix: correct seek-arg order (`-ss` after `-i` / output seek, `-accurate_seek`, re-encode the window for frame accuracy), **not** a downscale to 1080. Cut and process 4K natively.
+- The **relative** black-frame gate (Bug #3: `worst < black_rel × ref`, so a dark-night clip passes) silently passes a **fully-black** clip — body median `ref → 0` collapses the compare to `0 < 0` (False). Keep the relative gate, but **OR in an absolute body-black floor** (`ref < black_floor`): a body median below the floor is never a legitimate delivery, only the seek/`lutrgb` corruption this check exists to catch. `check_episode._black_frames_check`.
 - OpenCV HSV auto-tracker catches foam/other surfers → YOLO person + ByteTrack.
 - Stabilizing the wade-in → "rolling ground". Don't stabilize.
 - ImageMagick `montage` reorders tiles → false "sawtooth" motion readings. Verify order.

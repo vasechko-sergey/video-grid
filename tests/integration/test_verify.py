@@ -185,3 +185,17 @@ def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip
                                out=str(tmp_path / "report.json"))
     assert report.checks["black_frames"].passed is False
     assert "black_frames" in report.fail_reasons
+
+@pytest.mark.integration
+def test_black_frames_fails_on_fully_black_clip(tmp_path):
+    # a fully black delivery is never legitimate. Its body median is ~0, so the
+    # relative gate `worst < black_rel * ref` degenerates to `0 < 0` (False) and
+    # the check silently passed. The absolute body-black floor must still fail it.
+    import subprocess
+    black = tmp_path / "black.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1:r=30",
+         "-pix_fmt", "yuv420p", str(black)],
+        check=True, capture_output=True)
+    res = check_episode._black_frames_check(str(black), black_floor=6.0, black_rel=0.35)
+    assert res["pass"] is False
