@@ -358,16 +358,32 @@ Aspect is a **parameter**, not a hardcoded 9:16. Layout is **per-episode** (hori
 - **`SPEC.canvas`** = target WxH per platform (9:16 reel, 4:5 feed, 1:1, 16:9 YouTube…).
 - **`EDL.layout`** per episode:
 
-| Layout | When | reframe.py |
-|--------|------|-----------|
-| `fill` | action, subject moves — a ride | YOLO-tracked crop-to-fill (algorithm §6) |
-| `fit-blur` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** |
-| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad |
-| `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background |
-| `split` | two clips stacked | stack + pad |
-| `pan` | static subject, slow reveal | slow constant-velocity pan |
+| Layout | When | reframe.py | Status |
+|--------|------|-----------|--------|
+| `fill` | action, subject moves — a ride | YOLO-tracked crop-to-fill (algorithm §6) | **built** |
+| `fit-blur` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** | **built** |
+| `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background, optional border | **built** |
+| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad | planned |
+| `split` | two clips stacked | stack + pad | planned |
+| `pan` | static subject, slow reveal | slow constant-velocity pan | planned |
 
 Proven in the session: the wade-in = `fit-blur` ("wide frame + blurred background top/bottom"), the rides = `fill`.
+
+**These names are presets, not code branches.** A layout is three parameters: a
+crop (aspect + scale), a rectangle placed in the canvas, and a background filler.
+`fill` is "crop to the canvas aspect, rect = the whole canvas, no filler";
+`fit-blur` is "crop nothing, rect = full width, filler = blur"; `insert` is the
+same with a smaller rect. Adding `fit-solid` means adding a filler, not a branch.
+
+**Whether the subject is tracked follows from geometry, not from the layout's
+name.** Horizontal freedom is `freedom = src_w − crop_w`. At zero freedom the
+crop is as wide as the source, nobody controls the composition, and the check
+reports `editorial-only` rather than failing a rule nobody can obey or silently
+passing it. Drop `crop_scale` below 1.0 and freedom returns — a `fit-blur` at
+`crop_scale=0.9` crops for composition and tracks like any `fill`.
+
+See [the layouts design](2026-07-10-layouts-design.md) for the geometry, the
+`path.meta.json` sidecar, and the two silent-corruption defects it retires.
 
 - **Composition rules apply to the visible frame region** — the same math relative to the framed rectangle, not the whole canvas.
 - **Safe-zones** keyed to platform+canvas (IG UI bottom/right).

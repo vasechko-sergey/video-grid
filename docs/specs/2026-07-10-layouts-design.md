@@ -260,6 +260,7 @@ class PathMeta:
     mode: str
     crop_w: int
     crop_h: int
+    crop_y: int
     src_dims: tuple[int, int]
     canvas: tuple[int, int]
     out_dims: tuple[int, int]
@@ -268,7 +269,8 @@ class PathMeta:
 ```
 
 It owns its JSON round-trip (`to_dict`/`from_dict`), and a round-trip test covers
-it, as the testing guide requires of every wire contract.
+it, as the testing guide requires of every wire contract. `crop_y` rides along
+because the storyboard needs it — see below.
 
 `check_episode.run` derives nothing. It reads the sidecar, and fails loud with a
 remedy when the file is absent ("re-run reframe — it writes path.meta.json beside
@@ -276,6 +278,35 @@ path.json"). `CheckSpec` **loses** `canvas` and `src_dims`; the CLI loses
 `--canvas` and `--src-dims`. Their defaults (`1920x1080`) were, in the contract
 note's words, "silently wrong on 4K/59.94 footage". They stop existing: the value
 now has exactly one source, the code that did the cropping.
+
+### 5.1 The same bug, a second time: the storyboard's hero marker
+
+`storyboard.marks_at_times` placed the §6.1a layer-4 hero marker at
+
+```python
+fx = (x - cx) / crop_w        # a fraction of the OUTPUT frame
+fy = y / src_h
+```
+
+Both lines assume the output *is* the crop. Under a composite it is a card inside
+a larger canvas, and the marker walks off the hero — under `fit-blur` on the
+golden ride, a subject near the top of the frame lands at `fy = 0.069` while the
+picture does not begin until `0.342`. The marker sits on the blurred background,
+and the editorial reviewer who is supposed to confirm "right person" is reading
+noise. Like the check above, it never crashes.
+
+`marks_at_times` takes the same `PathMeta` and maps the subject into the content
+rect:
+
+```python
+fx = (rx + rw * (x - cx) / meta.crop_w) / out_w
+fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
+```
+
+Dividing by `crop_h` and subtracting `crop_y` also retires the core plan's
+standing limitation — the old `y / src_h` was exact only when `crop_h == src_h`,
+i.e. 9:16 from landscape. Vertical freedom is now handled for every canvas. For
+`fill`, `rect_px` is the whole output and both lines reduce to what they were.
 
 ## 6. Checks: freedom decides, not the layout name
 
