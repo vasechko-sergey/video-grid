@@ -59,7 +59,8 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
     default_report = _report(True, [])
 
     def fake_run(clip, route_path, path_path, spec, out):
-        calls["check"] = dict(attempt=spec.attempt)
+        calls["check"] = dict(attempt=spec.attempt, composition=spec.composition,
+                              grid=spec.grid, target_dur=spec.target_dur)
         src_report = report if report is not None else default_report
         r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
         r.write(out)
@@ -78,6 +79,11 @@ def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
     # wire contract: the shell returns report.to_dict(), not a raw Report —
     # catches a regression that dropped .to_dict() without the slow golden
     assert isinstance(result["report"], dict) and result["report"]["overall"] is True
+    # the shell still threads the manifest's editorial intent into CheckSpec.
+    # It no longer threads canvas/src_dims: check_episode reads those from the
+    # sidecar reframe wrote, which is the point of the layouts work.
+    assert calls["check"] == dict(attempt=1, composition="lead", grid="thirds",
+                                  target_dur=3.0)
 
 
 def test_timings_recorded_per_stage(monkeypatch, tmp_path):

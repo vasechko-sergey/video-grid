@@ -71,7 +71,9 @@ def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -
     src_w, src_h = meta.src_dims
     _, direction = classify(route, src_w, src_h)
     # static/head-on routes have no direction; "right" is an arbitrary but
-    # deterministic default for the lead-line pick
+    # deterministic default for the lead-line pick (the spec has no answer here —
+    # a lead composition over non-lateral motion is already a soft mismatch, and
+    # the manifest gate refuses it before this runs)
     direction = direction or "right"
     checks = {}
 

@@ -7,17 +7,36 @@ SRC = (1920, 1080)
 CROP_W_FILL = 607              # 9:16 of a 1920x1080 source
 
 
-def _write(tmp_path, crop_w, freedom, mode):
+def _write(tmp_path, crop_w, freedom, mode, out_dims, rect_px):
     """A route the lead check passes: the subject sits on the left third of the
-    crop at every frame, so on_line's ratio is 1.0 whenever freedom allows it."""
+    crop at every frame, so on_line's ratio is 1.0 whenever freedom allows it.
+
+    check_episode never reads `out_dims`/`rect_px`, but they are still what
+    layout.resolve really produces for that mode on a 1920x1080 source. A
+    sidecar that could not have been written teaches the next reader a shape
+    that does not exist.
+    """
     route = [dict(t=i / 30, x=400.0 + i * 5, y=540.0, w=60.0, h=160.0) for i in range(30)]
     path = [int(max(0, min(freedom, round(p["x"] - crop_w / 3)))) for p in route]
     (tmp_path / "route.json").write_text(json.dumps(route))
     (tmp_path / "path.json").write_text(json.dumps(path))
     PathMeta(mode=mode, crop_w=crop_w, crop_h=1080, crop_y=0, src_dims=SRC,
-             canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+             canvas=(9, 16), out_dims=out_dims, rect_px=rect_px,
              freedom=freedom).write(tmp_path / "path.meta.json")
     return str(tmp_path / "route.json"), str(tmp_path / "path.json")
+
+
+def _fill(tmp_path):
+    """resolve(fill, 9:16, 1920x1080, native) -> 606x1080, crop 607, whole canvas."""
+    return _write(tmp_path, crop_w=CROP_W_FILL, freedom=1920 - CROP_W_FILL, mode="fill",
+                  out_dims=(606, 1080), rect_px=(0, 0, 606, 1080))
+
+
+def _fit_blur(tmp_path):
+    """resolve(fit-blur/source, 9:16, 1920x1080, native) -> 1920x3412, the whole
+    frame centred at y=1166. The crop IS the source, so freedom is zero."""
+    return _write(tmp_path, crop_w=1920, freedom=0, mode="fit-blur",
+                  out_dims=(1920, 3412), rect_px=(0, 1166, 1920, 1080))
 
 
 @pytest.mark.integration
@@ -35,7 +54,7 @@ def test_run_fails_loud_when_the_sidecar_is_missing(tmp_path, sample_clip):
 def test_zero_freedom_makes_the_composition_check_editorial(tmp_path, sample_clip):
     # fit-blur at scale 1.0: the crop is the whole frame, so nobody controls
     # composition — it can neither fail nor silently pass
-    rp, pp = _write(tmp_path, crop_w=1920, freedom=0, mode="fit-blur")
+    rp, pp = _fit_blur(tmp_path)
     spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
     assert "on_line" not in report.checks
@@ -47,7 +66,7 @@ def test_zero_freedom_makes_the_composition_check_editorial(tmp_path, sample_cli
 
 @pytest.mark.integration
 def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
-    rp, pp = _write(tmp_path, crop_w=CROP_W_FILL, freedom=1920 - CROP_W_FILL, mode="fill")
+    rp, pp = _fill(tmp_path)
     spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
     assert report.checks["on_line"].passed is True
@@ -57,7 +76,7 @@ def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
 def test_crop_w_comes_from_the_sidecar_not_the_canvas(tmp_path, sample_clip):
     """The bug this task fixes: a fit-blur crop is 1920 wide, and re-deriving it
     from the 9:16 canvas would give 607 — a verdict about a crop nobody cut."""
-    rp, pp = _write(tmp_path, crop_w=1920, freedom=0, mode="fit-blur")
+    rp, pp = _fit_blur(tmp_path)
     spec = CheckSpec(composition="center", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
     assert "centered" not in report.checks          # freedom is zero → editorial
