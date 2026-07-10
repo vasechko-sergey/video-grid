@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from scripts.lib import geometry
 from scripts.lib.models import Delivery, LayoutSpec
 
+MAX_SIDE = 8192      # x264 tops out far higher, but a canvas this size means a mistake
+
 
 @dataclass(frozen=True)
 class ResolvedLayout:
@@ -19,8 +21,10 @@ class ResolvedLayout:
     freedom: int
     out_w: int
     out_h: int
-    rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels
+    rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels — the CONTENT rect
     background: str
+    border_px: int
+    border_color: str
     fast_path: bool
 
 
@@ -56,6 +60,24 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         canvas_h = canvas_w * canvas[1] / canvas[0]
     out_w, out_h = delivery.dims(canvas_w, canvas_h)
 
+    # A native delivery never upscales the crop, so it sizes the canvas to
+    # crop_w / rect_w — a tiny rect does not make a small card, it makes an
+    # enormous canvas (insert 1:1 at rect_w 0.05 → 14400x25600). Refuse the
+    # gigapixel encode HERE, before any card arithmetic runs inside it, with an
+    # error that names the cause — the silent-swap class this repo keeps loud.
+    if out_w > MAX_SIDE or out_h > MAX_SIDE:
+        if rw_f < 1.0:
+            raise ValueError(
+                f"layout resolves to a {out_w}x{out_h} canvas, past the {MAX_SIDE}px limit — "
+                f"a native delivery sizes the canvas so the {crop_w}x{crop_h} crop is never "
+                f"upscaled, so rect width {rw_f} multiplies it by {1 / rw_f:.0f}x. Widen rect w, "
+                "or pin the output with delivery short_edge:N / exact:WxH")
+        raise ValueError(
+            f"layout resolves to a {out_w}x{out_h} canvas, past the {MAX_SIDE}px limit — "
+            f"a native delivery sizes the canvas to the {crop_w}x{crop_h} crop at the "
+            f"{canvas[0]}:{canvas[1]} canvas aspect, with no rect to shrink it. Pin the output "
+            "with delivery short_edge:N / exact:WxH, or use a less extreme canvas aspect")
+
     if spec.mode == "fill":
         # the fast path is a single scale={out_w}:{out_h} — an anisotropic squash
         # onto the full canvas, with no background to letterbox into. The crop
@@ -65,16 +87,32 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         # would drift — on the one path this plan promised would not change.
         rx, ry, rw, rh = 0, 0, out_w, out_h
     else:
-        rw = geometry.even(rw_f * out_w)
-        rh = geometry.even(rw * crop_h / crop_w)
-        rx = int(round(rx_f * out_w))
-        ry = (out_h - rh) // 2 if spec.rect is None else int(round(ry_f * out_h))
-        if rx + rw > out_w or ry + rh > out_h:
+        # rect_px is the CONTENT rect — the border (if any) sits OUTSIDE it, so the
+        # outer card keeps the crop aspect, not the content. See design 2026-07-10:
+        # a later task writes rect_px into path.meta.json for storyboard/check_episode
+        # to place the hero marker; if it were the outer card, the marker would land
+        # on the border instead of on the hero.
+        b = spec.border_px
+        ow = geometry.even(rw_f * out_w)
+        cw = ow - 2 * b
+        if cw <= 0:
             raise ValueError(
-                f"layout rect {spec.rect} at crop aspect {aspect[0]}:{aspect[1]} derives a "
-                f"{rw}x{rh}px card at ({rx}, {ry}), which overflows the {out_w}x{out_h} "
-                "canvas — shrink rect w, move rect y up, or pick a taller crop aspect")
+                f"border_px {b} leaves no content: the {ow}px card at rect width "
+                f"{rw_f} is narrower than its own two borders — widen rect w, or "
+                "shrink border_px")
+        ch = geometry.even(cw * crop_h / crop_w)
+        oh = ch + 2 * b
+        ox = int(round(rx_f * out_w))
+        oy = (out_h - oh) // 2 if spec.rect is None else int(round(ry_f * out_h))
+        if ox + ow > out_w or oy + oh > out_h:
+            raise ValueError(
+                f"layout rect {spec.rect} at crop aspect {aspect[0]}:{aspect[1]} with "
+                f"border_px {b} derives a {ow}x{oh}px card at ({ox}, {oy}), which "
+                f"overflows the {out_w}x{out_h} canvas — shrink rect w, move rect y up, "
+                "shrink border_px, or pick a taller crop aspect")
+        rx, ry, rw, rh = ox + b, oy + b, cw, ch
 
     return ResolvedLayout(mode=spec.mode, crop_aspect=aspect, crop_w=crop_w, crop_h=crop_h,
                           freedom=free, out_w=out_w, out_h=out_h, rect_px=(rx, ry, rw, rh),
-                          background=spec.background, fast_path=(spec.mode == "fill"))
+                          background=spec.background, border_px=spec.border_px,
+                          border_color=spec.border_color, fast_path=(spec.mode == "fill"))

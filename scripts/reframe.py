@@ -119,17 +119,20 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
     if rl.fast_path:
         return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
                         f"scale={rl.out_w}:{rl.out_h},{tail}")]
-    rx, ry, rw, rh = rl.rect_px
+    rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
+    b = rl.border_px
+    ox, oy, ow, oh = rx - b, ry - b, rw + 2 * b, rh + 2 * b
     # boxblur rejects a radius above half the chroma plane, and yuv420p halves
     # the plane again: the ceiling is min(out_w, out_h) // 4. A 3840x200 cover
     # crashes at 64 and survives at 50.
     radius = max(2, min(rl.out_w // 60, min(rl.out_w, rl.out_h) // 4))
+    pad = f",pad={ow}:{oh}:{b}:{b}:{rl.border_color}" if b else ""
     return ["-filter_complex",
             (f"[0:v]split=2[a][b];"
              f"[a]scale={rl.out_w}:{rl.out_h}:force_original_aspect_ratio=increase,"
              f"crop={rl.out_w}:{rl.out_h},boxblur={radius}:2[bg];"
-             f"[b]crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}[fg];"
-             f"[bg][fg]overlay={rx}:{ry},{tail}")]
+             f"[b]crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}{pad}[fg];"
+             f"[bg][fg]overlay={ox}:{oy},{tail}")]
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: str) -> str:

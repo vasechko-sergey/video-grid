@@ -283,6 +283,26 @@ def test_layout_spec_rejects_a_rect_off_the_canvas():
         m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.0, 0.1, 0.0))
 
 
+def test_layout_spec_border_defaults_to_off():
+    s = m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    assert (s.border_px, s.border_color) == (0, "white")
+
+
+def test_layout_spec_rejects_a_bad_border():
+    ok = dict(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
+    with pytest.raises(ValueError, match="non-negative int"):
+        m.LayoutSpec(**ok, border_px=-2)
+    with pytest.raises(ValueError, match="non-empty ffmpeg colour"):
+        m.LayoutSpec(**ok, border_color="")
+    with pytest.raises(ValueError, match="break the ffmpeg filtergraph"):
+        m.LayoutSpec(**ok, border_color="white,drawbox=t=fill")
+
+
+def test_layout_spec_fill_refuses_a_border():
+    with pytest.raises(ValueError, match="a bordered frame is an insert"):
+        m.LayoutSpec(mode="fill", border_px=8)
+
+
 def test_path_meta_round_trips_through_json(tmp_path):
     # every field distinct: a from_dict that read crop_w out of src_dims would
     # survive a fixture where crop_w happened to equal the source width

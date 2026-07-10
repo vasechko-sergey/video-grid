@@ -179,6 +179,31 @@ def test_filter_args_insert_is_pinned_to_the_rect():
     ]
 
 
+def test_filter_args_borderless_insert_is_byte_identical():
+    # b == 0 must emit exactly the pre-border string: pad vanishes, overlay is rx:ry
+    rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert "pad=" not in args[1]
+    assert "overlay=40:356" in args[1]
+
+
+def test_filter_args_bordered_insert_pads_the_card():
+    rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
+                                       border_px=8, border_color="white"),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert args == [
+        "-filter_complex",
+        "[0:v]split=2[a][b];"
+        "[a]scale=800:1422:force_original_aspect_ratio=increase,"
+        "crop=800:1422,boxblur=13:2[bg];"
+        "[b]crop=720:720:x='0.0':y=0,scale=704:704,pad=720:720:8:8:white[fg];"
+        "[bg][fg]overlay=40:356,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=30,format=yuv420p",
+    ]
+
+
 def test_filter_args_never_emit_the_banned_lutrgb():
     # spec §12: lutrgb produced black frames; colorchannelmixer only
     for spec in (LayoutSpec(mode="fill"),

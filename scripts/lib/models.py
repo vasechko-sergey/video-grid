@@ -282,12 +282,17 @@ class LayoutSpec:
     `fill` constrains crop_aspect and rect but deliberately not crop_scale: a
     scaled-down fill still fills the canvas, trading resolution for the
     horizontal freedom the tracker needs — the same trade fit-blur makes.
+
+    `border_px` may be any non-negative int: the outer card width is already even,
+    so the content width `ow - 2*border_px` is even whatever the border's parity.
     """
     mode: str
     crop_aspect: str | tuple[int, int] = "canvas"
     crop_scale: float = 1.0
     rect: tuple[float, float, float] | None = None
     background: str = "blur"
+    border_px: int = 0
+    border_color: str = "white"
 
     def __post_init__(self) -> None:
         if self.mode not in LAYOUT_MODES:
@@ -319,6 +324,17 @@ class LayoutSpec:
             if x + w > 1.0:
                 raise ValueError(f"LayoutSpec.rect {self.rect!r}: x + w = {x + w:.3f} > 1.0 — "
                                  "the rect runs off the right edge of the canvas")
+        if isinstance(self.border_px, bool) or not isinstance(self.border_px, int) \
+                or self.border_px < 0:
+            raise ValueError(f"LayoutSpec.border_px must be a non-negative int, got "
+                             f"{self.border_px!r} — 0 means no border")
+        if not isinstance(self.border_color, str) or not self.border_color:
+            raise ValueError(f"LayoutSpec.border_color must be a non-empty ffmpeg colour "
+                             f"name or hex, got {self.border_color!r} — e.g. 'white', '#ffffff'")
+        if any(c in self.border_color for c in ",:;'[]\\"):
+            raise ValueError(f"LayoutSpec.border_color {self.border_color!r} contains a "
+                             "character that would break the ffmpeg filtergraph — use a "
+                             "colour name like 'white' or a hex literal like '#ffffff'")
         if self.mode == "fill":
             if self.crop_aspect != "canvas":
                 raise ValueError("LayoutSpec: fill must use crop_aspect 'canvas' — a fill that "
@@ -327,6 +343,10 @@ class LayoutSpec:
                 raise ValueError(f"LayoutSpec: fill covers the whole canvas, but rect is "
                                  f"{self.rect!r} — a fill with a smaller rect is an insert, "
                                  "and must say so")
+            if self.border_px:
+                raise ValueError(f"LayoutSpec: fill covers the canvas edge to edge, so a "
+                                 f"border has nothing to sit on, got border_px="
+                                 f"{self.border_px} — a bordered frame is an insert")
         if self.mode == "fit-blur" and self.rect is not None:
             raise ValueError(f"LayoutSpec: fit-blur spans the full canvas width, so rect must "
                              f"be None, got {self.rect!r} — use insert to place a smaller rect")
