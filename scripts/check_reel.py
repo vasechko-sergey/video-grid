@@ -1,8 +1,15 @@
 """Whole-reel mechanical gate (design §4, montage §5.13 mechanical half). Silent
 phase: audio/safe-zone checks report passed=None, never a silent pass. Returns a
 ReelReport with attributed fail_reasons for the Phase A.5 driver."""
+import os
 import re
+import statistics
+import tempfile
 import time
+from itertools import accumulate
+
+import numpy as np
+from PIL import Image
 
 from scripts.lib import proc
 from scripts.lib.models import CheckResult, ReelCheckSpec, ReelFailure, ReelReport
@@ -35,6 +42,37 @@ def _span_of(t: float, durations: list[float]) -> int:
     return len(durations) - 1
 
 
+def _sample_frame(video: str, t: float, dst: str) -> str:
+    # output-seek (-ss AFTER -i) keeps the landmine lint clean; clips are short so
+    # decoding to t is cheap. One still frame at t.
+    proc.run(["ffmpeg", "-y", "-i", video, "-ss", f"{t}", "-frames:v", "1", dst])
+    return dst
+
+
+def _frame_mean(video: str, t: float) -> tuple[float, float, float]:
+    with tempfile.TemporaryDirectory() as d:
+        f = _sample_frame(video, t, os.path.join(d, "f.png"))
+        a = np.asarray(Image.open(f).convert("RGB"), dtype=float)
+    return float(a[..., 0].mean()), float(a[..., 1].mean()), float(a[..., 2].mean())
+
+
+def _rgb_dist(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return sum(abs(x - y) for x, y in zip(a, b)) / 3.0
+
+
+def _boundaries(durations: list[float]) -> list[float]:
+    return list(accumulate(durations))[:-1]            # internal cut times
+
+
+def _midpoints(durations: list[float]) -> list[float]:
+    starts = [0.0] + list(accumulate(durations))[:-1]
+    return [s + d / 2 for s, d in zip(starts, durations)]
+
+
+def _channel_median(means: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    return tuple(statistics.median(m[c] for m in means) for c in range(3))
+
+
 def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
@@ -53,6 +91,34 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
     if not length_ok:
         fails.append(ReelFailure("length", "pacing", None,
                                  {"dur": round(total, 3), "target": spec.target_dur}))
+
+    cuts = _boundaries(durations)
+    mids = _midpoints(durations)
+    if cuts:
+        span_means = [_frame_mean(master, m) for m in mids]
+        median = _channel_median(span_means)
+        color_ok = True
+        worst = None
+        for i, bt in enumerate(cuts):
+            left = _frame_mean(master, max(0.0, bt - 0.05))
+            right = _frame_mean(master, bt + 0.05)
+            delta = _rgb_dist(left, right)
+            if delta >= spec.color_delta_max:
+                color_ok = False
+                # farther-from-median span is the culprit. On a tie — notably every
+                # 2-episode reel, whose 2-value median is equidistant from both spans
+                # — blame the later episode, matching the variety check's "second of
+                # the pair" default (design §4).
+                culprit = (i if _rgb_dist(span_means[i], median) > _rgb_dist(span_means[i + 1], median)
+                           else i + 1)
+                fails.append(ReelFailure("color_across_cuts", "reprocess", culprit,
+                                         {"cut": i, "delta": round(delta, 2)}))
+                worst = round(delta, 2) if worst is None else max(worst, round(delta, 2))
+        checks["color_across_cuts"] = CheckResult("color_across_cuts", color_ok,
+                                                  {"worst_delta": worst} if worst is not None else {})
+    else:
+        checks["color_across_cuts"] = CheckResult("color_across_cuts", None,
+                                                  {"status": "n/a", "reason": "single episode, no cut"})
 
     for name, reason in _NOT_IMPL.items():
         checks[name] = CheckResult(name, None, {"status": "not-implemented", "reason": reason})

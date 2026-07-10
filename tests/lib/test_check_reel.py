@@ -1,4 +1,3 @@
-import pytest
 from scripts import check_reel
 from scripts.lib.models import ReelCheckSpec
 
@@ -62,3 +61,65 @@ def test_audio_and_safezone_checks_are_not_implemented(tmp_path, monkeypatch):
         assert rep.checks[name].passed is None
     assert rep.overall is True          # None never fails the reel
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
+
+
+def test_color_across_cuts_passes_when_neighbours_match(tmp_path, monkeypatch):
+    # one cut at t=3.0; both sides ~equal → delta 0 → pass
+    _Stub([3.0, 3.0], means={2.95: (100.0, 120.0, 130.0), 3.05: (101.0, 121.0, 131.0),
+                             1.5: (100.0, 120.0, 130.0), 4.5: (101.0, 121.0, 131.0)}
+          ).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["color_across_cuts"].passed is True
+
+
+def test_color_across_cuts_blames_the_episode_farther_from_the_reel_median(tmp_path, monkeypatch):
+    # 3 episodes, cut 1 at t=6.0 has a big jump; ep2 (span mid t=7.5) is the outlier
+    means = {5.95: (100.0, 120.0, 130.0), 6.05: (160.0, 120.0, 130.0),  # cut 1 sides
+             2.95: (100.0, 120.0, 130.0), 3.05: (100.0, 120.0, 130.0),  # cut 0 sides (match)
+             1.5: (100.0, 120.0, 130.0), 4.5: (100.0, 120.0, 130.0), 7.5: (160.0, 120.0, 130.0)}
+    _Stub([3.0, 3.0, 3.0], means=means).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4", "c.mp4"], ReelCheckSpec(target_dur=9.0),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["color_across_cuts"].passed is False
+    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
+    assert f.episode_idx == 2 and f.escalate_to == "reprocess"
+
+
+def test_color_across_cuts_is_not_applicable_for_a_single_episode(tmp_path, monkeypatch):
+    _Stub([3.0]).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["color_across_cuts"].passed is None      # no cut to judge
+
+
+def test_color_across_cuts_two_episode_tie_blames_the_later_episode(tmp_path, monkeypatch):
+    # N=2: the 2-value median is equidistant from both spans, so attribution is a
+    # defined default — blame the later episode (episode 1), matching variety.
+    means = {2.95: (100.0, 120.0, 130.0), 3.05: (200.0, 120.0, 130.0),   # cut sides: delta 33.3 → fail
+             1.5: (100.0, 120.0, 130.0), 4.5: (200.0, 120.0, 130.0)}     # span midpoints
+    _Stub([3.0, 3.0], means=means).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["color_across_cuts"].passed is False
+    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
+    assert f.episode_idx == 1
+
+
+def test_color_across_cuts_uses_median_not_mean_so_a_far_outlier_does_not_mislead(tmp_path, monkeypatch):
+    # 5 episodes; failing cut 0 is between ep0(100) and ep1(200). ep4 is a far,
+    # unrelated outlier (9999). A MEAN center is dragged by ep4 and would mis-blame
+    # ep0; the MEDIAN center keeps ep1 (the truly-shifted span) as the culprit.
+    means = {2.95: (100.0, 120.0, 130.0), 3.05: (200.0, 120.0, 130.0),   # cut 0 sides → delta 33.3, fail
+             5.95: (100.0, 120.0, 130.0), 6.05: (100.0, 120.0, 130.0),   # cut 1 sides → pass
+             8.95: (100.0, 120.0, 130.0), 9.05: (100.0, 120.0, 130.0),   # cut 2 sides → pass
+             11.95: (100.0, 120.0, 130.0), 12.05: (100.0, 120.0, 130.0),  # cut 3 sides → pass
+             1.5: (100.0, 120.0, 130.0), 4.5: (200.0, 120.0, 130.0),      # span mids 0,1
+             7.5: (100.0, 120.0, 130.0), 10.5: (100.0, 120.0, 130.0),     # span mids 2,3
+             13.5: (9999.0, 120.0, 130.0)}                                # span mid 4 — far outlier
+    _Stub([3.0, 3.0, 3.0, 3.0, 3.0], means=means).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"],
+                         ReelCheckSpec(target_dur=15.0), str(tmp_path / "r.json"))
+    assert rep.checks["color_across_cuts"].passed is False
+    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts" and x.detail["cut"] == 0][0]
+    assert f.episode_idx == 1     # median → ep1 (correct); a mean would say ep0
