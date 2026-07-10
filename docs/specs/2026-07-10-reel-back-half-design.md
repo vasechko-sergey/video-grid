@@ -94,8 +94,8 @@ ReelCheckSpec                         # mirrors CheckSpec
 
 ReelFailure                           # one attributed failure (§177 machine-readable)
   check: str                          # "black" | "color_across_cuts" | "variety" | "length"
-  episode_idx: int | None             # culprit episode, when attributable
   escalate_to: str                    # "reprocess" | "edit-plan" | "pacing"
+  episode_idx: int | None             # culprit episode, when attributable
   detail: dict                        # the numbers (timestamp, delta, distance, …)
 
 ReelReport                            # reel-level artifact; reuses CheckResult
