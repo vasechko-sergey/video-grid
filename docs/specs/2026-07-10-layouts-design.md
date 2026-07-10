@@ -50,10 +50,13 @@ crop_w)` is identically `0`. No special case is written for it. When
 `crop_scale < 1.0`, freedom returns and the subject is followed, in *any* layout:
 a `fit-blur` at `crop_scale=0.9` crops slightly for composition and tracks.
 
-### 2.1 `LayoutSpec` (new, `scripts/lib/layout.py`)
+### 2.1 `LayoutSpec` (new, `scripts/lib/models.py`)
 
 A config-spec by the repo convention: validates in `__post_init__`, raises
-`ValueError` with a remedy.
+`ValueError` with a remedy. It lives in `models.py`, beside the other
+config-specs and *above* `ReframeSpec` — which gains a `layout: LayoutSpec`
+field. Putting it in `layout.py` would make `models → layout → models` an
+import cycle, since `layout.resolve()` needs `Delivery`.
 
 ```python
 @dataclass
@@ -63,7 +66,32 @@ class LayoutSpec:
     crop_scale: float = 1.0                          # (0.0, 1.0]
     rect: tuple[float, float, float] | None = None   # (x, y, w), canvas fractions
     background: str = "blur"                         # v1: blur only
+    border_px: int = 0                               # 0 = no border
+    border_color: str = "white"                      # ffmpeg colour name or hex
 ```
+
+**The border is chrome, and it changes what `rect_px` means.** `rect` is the
+*outer* card. The border is drawn inside it, so the source pixels land in a
+*content* rect inset by `border_px` on every side, and it is the **content**
+that preserves the crop aspect:
+
+```
+ow = even(rect_w * out_w)          cw = ow - 2*border_px
+ch = even(cw * crop_h / crop_w)    oh = ch + 2*border_px
+rect_px = (ox + border_px, oy + border_px, cw, ch)
+```
+
+`rect_px` — in `ResolvedLayout` and in the `path.meta.json` sidecar — is the
+content rect, never the outer card. Were it the card, `storyboard` would place
+the hero marker on the border and `check_episode` would divide by a width that
+includes chrome. At `border_px = 0` every formula above collapses to the
+borderless one, and the emitted filtergraph is byte-identical.
+
+`border_px` may be any non-negative int: `ow` is already even, so `cw = ow -
+2*border_px` is even whatever the border's parity, and ffmpeg accepts odd `pad`
+and `overlay` offsets under `yuv420p` without complaint. `fill` refuses a border
+outright — it covers the canvas edge to edge, so a border has nothing to sit on;
+a bordered frame is an `insert`.
 
 `rect` carries **three** numbers, not four. Its height is derived from its width
 and the crop aspect. A rectangle cannot disagree with what is placed inside it,
@@ -129,7 +157,32 @@ happens once, on the delivered dimensions.
 
 `Delivery` is untouched: it stays a policy over the finished composite, and now
 receives canvas dimensions instead of crop dimensions. For `fill` these are the
-same numbers, which is why the fast path survives unchanged.
+same numbers, which is why the fast path survives unchanged — and they are the
+crop's *own* dimensions, not a re-derivation. `fill`'s crop already carries the
+canvas aspect, so `canvas = (crop_w, crop_h)` exactly. Recomputing `canvas_h`
+from `crop_w` drifts a 21:9 crop of 4K from 1644 to 1646.
+
+### 3.2 A native canvas can explode
+
+`canvas_w = crop_w / rect_w` reads innocently, but a *small* rect does not make a
+small card — it makes an enormous canvas, because the card is pinned at native
+resolution and the canvas grows around it. On the golden fixture, `insert` with a
+1:1 crop:
+
+| `rect_w` | canvas | |
+|---|---|---|
+| 0.9 | 800×1422 | 1.1 Mpx |
+| 0.5 | 1440×2560 | 3.7 Mpx |
+| 0.2 | 3600×6400 | 23 Mpx |
+| 0.05 | 14400×25600 | 369 Mpx |
+| 0.02 | 36000×64000 | **2304 Mpx** |
+
+Nothing about this fails on its own: ffmpeg accepts the command and dies in swap
+an hour later, naming none of it. So `resolve()` refuses any side past
+`MAX_SIDE = 8192`, with a remedy that names the cause and the fix — widen `rect`,
+or pin the output with `delivery: short_edge:N` / `exact:WxH`. The limit sits
+immediately after `Delivery.dims`, before any card arithmetic runs inside a
+canvas that should not exist.
 
 **Worked examples** on the golden fixture (`golden_ride.mp4`, 1280×720):
 
