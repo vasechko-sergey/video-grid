@@ -86,6 +86,21 @@ def test_crop_for_rejects_bad_scale():
 def test_crop_for_rejects_bad_aspect():
     with pytest.raises(ValueError, match="positive"):
         geometry.crop_for((0, 16), 1.0, 1280, 720)
+    with pytest.raises(ValueError, match="positive"):
+        geometry.crop_for((9, 0), 1.0, 1280, 720)
+    with pytest.raises(ValueError, match="positive"):
+        geometry.crop_for((-9, 16), 1.0, 1280, 720)
+    with pytest.raises(ValueError, match="positive"):
+        geometry.crop_for((9, -16), 1.0, 1280, 720)
+
+
+def test_crop_for_rejects_a_nonpositive_source():
+    with pytest.raises(ValueError, match="crop source must be positive"):
+        geometry.crop_for((9, 16), 1.0, 0, 720)
+    with pytest.raises(ValueError, match="crop source must be positive"):
+        geometry.crop_for((9, 16), 1.0, 1280, 0)
+    with pytest.raises(ValueError, match="crop source must be positive"):
+        geometry.crop_for((9, 16), 1.0, -1280, 720)
 
 
 def test_freedom_is_source_width_minus_crop_width():

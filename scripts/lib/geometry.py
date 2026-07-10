@@ -7,9 +7,9 @@ PHI = 1.618033988749895
 
 
 def even(n: float) -> int:
-    """Floor to an even int. Odd dimensions + yuv420p make libx264 fail with
-    'width not divisible by 2' (spec §12) — and floor-truncated crop widths
-    are odd half the time."""
+    """Round, then floor to even. Odd dimensions + yuv420p make libx264 fail
+    with 'width not divisible by 2' (spec §12) — and floor-truncated crop
+    widths are odd half the time."""
     i = int(round(n))
     return i - (i % 2)
 
@@ -28,6 +28,9 @@ def crop_for(aspect: tuple[int, int], scale: float, src_w: int, src_h: int) -> t
     if not 0.0 < scale <= 1.0:
         raise ValueError(f"crop_scale must be in (0.0, 1.0], got {scale!r} — "
                          "1.0 is the largest crop of this aspect that fits the source")
+    if src_w <= 0 or src_h <= 0:
+        raise ValueError(f"crop source must be positive, got ({src_w}, {src_h}) — "
+                         "a corrupt probe or a caller bug upstream")
     if aw / ah <= src_w / src_h:
         h = src_h
         w = int(src_h * aw / ah)
