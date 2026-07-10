@@ -410,3 +410,19 @@ def test_export_profile_audio_args_when_voiced():
 def test_export_profile_rejects_bad_construction(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.ExportProfile(**kw)
+
+
+def test_reel_check_spec_defaults():
+    s = m.ReelCheckSpec(target_dur=6.0)
+    assert s.variety_min == 8 and s.color_delta_max == 12.0
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(target_dur=0), "target_dur"),
+    (dict(target_dur=6.0, variety_min=-1), "variety_min"),
+    (dict(target_dur=6.0, variety_min=True), "variety_min"),
+    (dict(target_dur=6.0, color_delta_max=0), "color_delta_max"),
+])
+def test_reel_check_spec_rejects_bad(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.ReelCheckSpec(**kw)

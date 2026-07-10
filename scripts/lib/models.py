@@ -508,3 +508,19 @@ class ExportProfile:
 
 
 REEL_H264 = ExportProfile()
+
+
+@dataclass
+class ReelCheckSpec:
+    """Thresholds for the whole-reel mechanical gate (design §4), mirrors CheckSpec."""
+    target_dur: float
+    variety_min: int = 8               # min phash Hamming distance between adjacent episodes
+    color_delta_max: float = 12.0      # §9 across-cut mean-RGB delta ceiling
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
+            raise ValueError(f"ReelCheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
+        if isinstance(self.variety_min, bool) or not isinstance(self.variety_min, int) or self.variety_min < 0:
+            raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
+        if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
+            raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
