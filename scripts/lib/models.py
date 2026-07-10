@@ -362,6 +362,7 @@ class ReframeSpec:
     canvas: tuple
     color_means: tuple
     delivery: Delivery
+    layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
     stabilize: bool = False
 
@@ -377,6 +378,9 @@ class ReframeSpec:
                              f"got {self.color_means!r}")
         if not isinstance(self.delivery, Delivery):
             raise ValueError("ReframeSpec.delivery must be a Delivery")
+        if not isinstance(self.layout, LayoutSpec):
+            raise ValueError("ReframeSpec.layout must be a LayoutSpec — "
+                             "build it from the manifest's layout fields")
         if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
             raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
         if self.stabilize:

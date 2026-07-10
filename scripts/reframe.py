@@ -1,17 +1,21 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
 import argparse, json
+from pathlib import Path
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, proc
 from scripts.lib import layout as layout_lib
 from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify
-from scripts.lib.models import ReframeSpec, CropPath, route_from_json, Delivery
+from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
+                                PathMeta, LayoutSpec)
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
                  canvas: tuple[int, int], src: tuple[int, int],
-                 motion: tuple[str, str | None], max_step: float) -> list[int]:
-    crop_w, _ = g.crop_size(canvas[0], canvas[1], src[0], src[1])
+                 motion: tuple[str, str | None], max_step: float,
+                 crop_w: int) -> list[int]:
+    # crop_w comes from the resolved layout — the caller already cut it; deriving
+    # it from `canvas` here would be right only while every layout is `fill`.
     _, direction = motion if motion[0] == "lateral" else (motion[0], "right")
     if composition in ("center", "break") or motion[0] != "lateral":
         # center / head-on / static: aim crop centre at subject, no lead.
@@ -23,7 +27,9 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
         raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
                for pt in route]
     smoothed = pathsmooth.smooth(raw, max_step=max_step)
-    # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame
+    # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame.
+    # At zero freedom (crop_w == src_w) this clamps to a constant 0 — a
+    # whole-frame layout has nowhere to travel, and needs no special case.
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 
 
@@ -139,10 +145,14 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     """Compose one episode from a tracked route (spec §6): crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/max_speed. src/route_path/out/path_out stay explicit per-call I/O paths,
-    not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate independent
-    (25 px/frame at the session's 30fps ≡ 750 px/s). stabilize is refused upstream
-    (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
+    delivery/layout/max_speed. src/route_path/out/path_out stay explicit per-call I/O
+    paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
+    independent (25 px/frame at the session's 30fps ≡ 750 px/s). stabilize is refused
+    upstream (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
+
+    Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
+    sidecar — what was actually cut, for check_episode/storyboard to read back instead
+    of re-deriving the crop from the canvas (silently wrong under a non-fill layout).
     """
     src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
     route = route_from_json(route_path)               # list[RoutePoint]
@@ -150,25 +160,28 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
         raise ValueError(
             f"route {route_path} is empty — tracker found no hero frames; "
             "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
+    rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
     route_dicts = [p.to_dict() for p in route]        # compute_path/classify still take dicts
     motion = classify(route_dicts, src_w, src_h)
     path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
-                        (src_w, src_h), motion, max_step=spec.max_speed / fps)
+                        (src_w, src_h), motion, max_step=spec.max_speed / fps,
+                        crop_w=rl.crop_w)
     CropPath(path).to_json(path_out)
 
-    crop_w, crop_h = g.crop_size(spec.canvas[0], spec.canvas[1], src_w, src_h)
-    out_w, out_h = spec.delivery.dims(crop_w, crop_h)      # #F: was hardcoded 1080x1920
-    rr, gg, bb = color.gains_for_means(spec.color_means)
+    gains = color.gains_for_means(spec.color_means)
     times = [p.t for p in route]
     xexpr = _xexpr(path, times)
     mean_y = sum(p.y for p in route) / len(route)
-    cy = g.crop_y(mean_y, crop_h, src_h)
-    vf = (f"crop={crop_w}:{crop_h}:x='{xexpr}':y={cy},"
-          f"scale={out_w}:{out_h},{color.mixer_arg(rr, gg, bb)},"
-          f"fps={fps:.6g},format=yuv420p")
-    cmd = ["ffmpeg", "-y", "-i", src, "-vf", vf,
+    cy = g.crop_y(mean_y, rl.crop_h, src_h)
+    cmd = ["ffmpeg", "-y", "-i", src,
+           *_filter_args(rl, xexpr, cy, gains, fps),
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)
+
+    PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
+             src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
+             rect_px=rl.rect_px, freedom=rl.freedom
+             ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 
 
@@ -181,10 +194,24 @@ if __name__ == "__main__":
     ap.add_argument("--color", default="105,122,137")
     ap.add_argument("--delivery", default=None,
                     help="native (default) | short_edge:N | long_edge:N | exact:WxH")
+    ap.add_argument("--layout", default="fill", help="fill | fit-blur | insert")
+    ap.add_argument("--crop-aspect", default=None, help="canvas | source | W:H")
+    ap.add_argument("--crop-scale", type=float, default=1.0)
+    ap.add_argument("--rect", default=None, help="insert only: x,y,w as canvas fractions")
+    ap.add_argument("--border-px", type=int, default=0)
+    ap.add_argument("--border-color", default="white")
     ap.add_argument("--path-out", required=True)
     a = ap.parse_args()
     cw, ch = (int(v) for v in a.canvas.split(":"))
     means = tuple(float(v) for v in a.color.split(","))
+    aspect: str | tuple[int, int] = a.crop_aspect or ("canvas" if a.layout == "fill" else "source")
+    if isinstance(aspect, str) and ":" in aspect:
+        aw, ah = (int(v) for v in aspect.split(":"))
+        aspect = (aw, ah)
+    rect = tuple(float(v) for v in a.rect.split(",")) if a.rect else None
+    lspec = LayoutSpec(mode=a.layout, crop_aspect=aspect, crop_scale=a.crop_scale, rect=rect,
+                       border_px=a.border_px, border_color=a.border_color)
     spec = ReframeSpec(composition=a.composition, grid=a.grid, canvas=(cw, ch),
-                       color_means=means, delivery=Delivery.from_spec(a.delivery))
+                       color_means=means, delivery=Delivery.from_spec(a.delivery),
+                       layout=lspec)
     reframe(spec, a.src, a.route, a.out, a.path_out)

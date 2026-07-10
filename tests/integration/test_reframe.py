@@ -18,7 +18,7 @@ def test_compute_path_lead_right():
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="lead", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25)
+                                motion=("lateral", "right"), max_step=25, crop_w=607)
     assert len(path) == 20
     assert path[-1] >= path[0]                  # crop follows subject right
     assert all(0 <= x <= 1920 - 607 for x in path)
@@ -95,7 +95,7 @@ def test_compute_path_break_center_tracks():
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="break", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25)
+                                motion=("lateral", "right"), max_step=25, crop_w=607)
     assert len(path) == 20
     assert all(0 <= x <= 1920 - 607 for x in path)
 
@@ -104,7 +104,7 @@ def test_compute_path_unknown_composition_fails_loud():
     with pytest.raises(ValueError, match="unknown composition"):
         reframe.compute_path(route, composition="Lead", grid="thirds",
                              canvas=(9, 16), src=(1920, 1080),
-                             motion=("lateral", "right"), max_step=25)
+                             motion=("lateral", "right"), max_step=25, crop_w=607)
 
 @pytest.mark.integration
 def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
@@ -229,3 +229,47 @@ def test_blur_radius_is_capped_by_the_short_side():
                             (21, 9), (3840, 2160), Delivery("exact", (3840, 200)))
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
     assert "boxblur=50:2" in args[1]
+
+
+def test_reframe_spec_defaults_to_a_fill_layout():
+    spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=_NATIVE)
+    assert spec.layout == models.LayoutSpec(mode="fill")
+
+
+def test_compute_path_takes_crop_w_from_the_caller():
+    route = [dict(t=i / 30, x=300 + i * 40, y=500, w=140, h=320) for i in range(20)]
+    path = reframe.compute_path(route, composition="lead", grid="thirds",
+                                canvas=(9, 16), src=(1920, 1080),
+                                motion=("lateral", "right"), max_step=25, crop_w=960)
+    assert all(0 <= x <= 1920 - 960 for x in path)
+
+
+def test_compute_path_at_zero_freedom_is_constant_zero():
+    # fit-blur at scale 1.0: crop is the whole frame, so the crop cannot move
+    route = [dict(t=i / 30, x=300 + i * 40, y=500, w=140, h=320) for i in range(20)]
+    path = reframe.compute_path(route, composition="break", grid="thirds",
+                                canvas=(9, 16), src=(1920, 1080),
+                                motion=("lateral", "right"), max_step=25, crop_w=1920)
+    assert path == [0] * 20
+
+
+@pytest.mark.integration
+def test_reframe_writes_a_truthful_sidecar(sample_clip, tmp_path):
+    # sample_clip is 1920x1080 @ 30fps, 3.0s (tests/conftest.py)
+    route_p = tmp_path / "route.json"
+    models.route_to_json([models.RoutePoint(t=i / 30, x=600.0 + i * 4, y=540.0, w=80.0, h=200.0)
+                          for i in range(90)], route_p)
+    out, path_out = tmp_path / "ep.mp4", tmp_path / "path.json"
+    spec = models.ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=_NATIVE,
+                              layout=models.LayoutSpec(mode="fit-blur", crop_aspect="source"))
+    reframe.reframe(spec, str(sample_clip), str(route_p), str(out), str(path_out))
+    meta = models.PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    assert meta.mode == "fit-blur"
+    assert (meta.crop_w, meta.crop_h) == (1920, 1080)
+    assert meta.freedom == 0
+    assert meta.src_dims == (1920, 1080)
+    assert meta.canvas == (9, 16)
+    # the sidecar's out_dims must equal what ffmpeg actually produced
+    assert meta.out_dims == _dims(out)
