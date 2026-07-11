@@ -458,3 +458,30 @@ def test_reel_report_writes_json(tmp_path):
     p = tmp_path / "reel.json"
     _rr().write(p)
     assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False
+
+
+def test_reframe_spec_accepts_color_correct():
+    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(1.1, 1.0, 0.9))
+    assert s.color_correct == (1.1, 1.0, 0.9)
+
+
+def test_reframe_spec_color_correct_defaults_none():
+    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"))
+    assert s.color_correct is None
+
+
+def test_reframe_spec_rejects_nonpositive_color_correct():
+    with pytest.raises(ValueError, match="color_correct"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(0.0, 1.0, 1.0))
+
+
+def test_reframe_spec_rejects_wrong_length_color_correct():
+    with pytest.raises(ValueError, match="color_correct"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(1.1, 1.0))

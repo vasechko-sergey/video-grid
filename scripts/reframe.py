@@ -151,9 +151,11 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     """Compose one episode from a tracked route (spec §6): crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/layout/max_speed. src/route_path/out/path_out stay explicit per-call I/O
-    paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
-    independent (25 px/frame at the session's 30fps ≡ 750 px/s). stabilize is refused
+    delivery/layout/max_speed/color_correct. src/route_path/out/path_out stay explicit
+    per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
+    independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
+    optional per-channel factor the reel retry loop composes onto the grade to pull one
+    episode toward the reel median (None = base grade only). stabilize is refused
     upstream (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
 
     Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
@@ -175,6 +177,8 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     CropPath(path).to_json(path_out)
 
     gains = color.gains_for_means(spec.color_means)
+    if spec.color_correct is not None:  # reel retry loop; see docstring
+        gains = color.corrected(gains, spec.color_correct)
     times = [p.t for p in route]
     xexpr = _xexpr(path, times)
     mean_y = sum(p.y for p in route) / len(route)
