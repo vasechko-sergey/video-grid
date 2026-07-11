@@ -309,7 +309,11 @@ class EDL:
 
     @classmethod
     def from_json(cls, path: str | Path) -> "EDL":
-        return cls.from_dict(json.loads(Path(path).read_text()))
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is not valid JSON ({e}) — fix the EDL syntax") from e
+        return cls.from_dict(d)
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -675,7 +679,10 @@ def _stop(reason: str, idx: int, **extra) -> dict:
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                 work_dir: str, out_dir: str, music: str | None = None) -> dict:
-    """Drive EDL.json → REEL_v1.mp4, or a machine-readable stop-and-report."""
+    """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
+    for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
+    Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
+    raise ValueError instead (a hard setup error, not an editorial finding to route)."""
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
     seg_dir = str(Path(work_dir) / "segments")

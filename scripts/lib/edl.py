@@ -122,7 +122,11 @@ class EDL:
 
     @classmethod
     def from_json(cls, path: str | Path) -> "EDL":
-        return cls.from_dict(json.loads(Path(path).read_text()))
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is not valid JSON ({e}) — fix the EDL syntax") from e
+        return cls.from_dict(d)
 
 
 def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:

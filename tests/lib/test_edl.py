@@ -106,6 +106,13 @@ def test_edl_from_json_roundtrip(tmp_path):
     assert e.cap == 2 and e.episodes[0].source == "a.mp4"
 
 
+def test_edl_from_json_corrupt_names_a_remedy(tmp_path):
+    p = tmp_path / "EDL.json"
+    p.write_text("{not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        EDL.from_json(str(p))
+
+
 def test_bridge_produces_a_valid_manifest():
     ep = _ep(composition="lead", grid="thirds", layout="fill", crop_scale=0.8)
     md = to_manifest_dict(ep, segment="segments/ep0_raw.mp4", out_path="out/ep0.mp4")
