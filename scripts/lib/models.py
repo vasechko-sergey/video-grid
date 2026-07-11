@@ -388,6 +388,7 @@ class ReframeSpec:
     layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
     stabilize: bool = False
+    color_correct: tuple | None = None
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
@@ -409,6 +410,9 @@ class ReframeSpec:
         if self.stabilize:
             raise ValueError("ReframeSpec.stabilize must be False — the manifest refuses "
                              "stabilize upstream (needs_input); a True here is a bug")
+        if self.color_correct is not None and not _positive_seq(self.color_correct, 3):
+            raise ValueError(f"ReframeSpec.color_correct must be 3 positive per-channel "
+                             f"factors or None, got {self.color_correct!r}")
 
 
 @dataclass
@@ -578,3 +582,84 @@ class ReelReport:
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+
+def _load_manifest(m: dict | str) -> dict:
+    """A reel-manifest episode's `manifest` is either an inline dict or a path to
+    an episode manifest JSON (both forms are valid; §2)."""
+    if isinstance(m, dict):
+        return m
+    if isinstance(m, str):
+        return json.loads(Path(m).read_text())
+    raise ValueError(f"reel-manifest episode 'manifest' must be an inline dict or a path to "
+                     f"a manifest JSON, got {m!r}")
+
+
+@dataclass(frozen=True)
+class ReelEpisode:
+    """One entry in a ReelManifest: the per-episode manifest (so a reprocess can
+    rebuild it), the locked clip loop-1 produced, and the frozen route.json (a
+    reprocess reuses it — colour/black fixes never move the track)."""
+    manifest: dict
+    clip: str
+    route: str
+
+
+@dataclass
+class ReelManifest:
+    """Typed input to build_reel (design §2). Episodes are already locked by
+    loop-1 (process_episode); build_reel loops assemble/check/reprocess over them.
+    Validates hard — an empty list or a missing clip/route is a caller bug."""
+    episodes: list[ReelEpisode]
+    target_dur: float
+    variety_min: int = 8
+    color_delta_max: float = 12.0
+    cap: int = 3
+    changelog: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.episodes:
+            raise ValueError("ReelManifest.episodes is empty — a reel needs at least one "
+                             "locked episode; produce them with process_episode first")
+        for k, e in enumerate(self.episodes):
+            if not isinstance(e, ReelEpisode):
+                raise ValueError(f"ReelManifest.episodes[{k}] must be a ReelEpisode")
+            if not isinstance(e.manifest, dict):
+                raise ValueError(f"ReelManifest.episodes[{k}].manifest must be a dict — the "
+                                 "per-episode manifest a reprocess rebuilds the episode from")
+            if not (isinstance(e.clip, str) and e.clip):
+                raise ValueError(f"ReelManifest.episodes[{k}].clip is empty — the locked clip path")
+            if not (isinstance(e.route, str) and e.route):
+                raise ValueError(f"ReelManifest.episodes[{k}].route is empty — the frozen route.json "
+                                 "path; a reprocess reuses it to skip tracking")
+        if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
+            raise ValueError(f"ReelManifest.cap must be an int >= 1, got {self.cap!r}")
+        self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
+
+    @property
+    def check_spec(self) -> ReelCheckSpec:
+        return ReelCheckSpec(self.target_dur, self.variety_min, self.color_delta_max)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelManifest":
+        eps_in = d.get("episodes")
+        if not isinstance(eps_in, list):
+            raise ValueError(
+                "ReelManifest.from_dict: 'episodes' must be a list of "
+                "{manifest, clip, route} objects; produce them with process_episode first")
+        for k, e in enumerate(eps_in):
+            if not isinstance(e, dict):
+                raise ValueError(
+                    f"ReelManifest.from_dict: episodes[{k}] must be a "
+                    "{manifest, clip, route} object, got a non-object")
+        eps = [ReelEpisode(manifest=_load_manifest(e.get("manifest")),
+                           clip=e.get("clip", ""), route=e.get("route", ""))
+               for e in eps_in]
+        return cls(episodes=eps, target_dur=d.get("target_dur"),
+                   variety_min=d.get("variety_min", 8),
+                   color_delta_max=d.get("color_delta_max", 12.0),
+                   cap=d.get("cap", 3), changelog=d.get("changelog", ""))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "ReelManifest":
+        return cls.from_dict(json.loads(Path(path).read_text()))

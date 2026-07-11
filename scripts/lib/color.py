@@ -22,3 +22,12 @@ def gains_for_means(measured: tuple[float, ...],
 
 def mixer_arg(rr: float, gg: float, bb: float) -> str:
     return f"colorchannelmixer=rr={rr:.3f}:gg={gg:.3f}:bb={bb:.3f}"
+
+
+def corrected(gains: tuple[float, ...], correction: tuple[float, ...],
+              lo: float = LO, hi: float = HI) -> tuple[float, ...]:
+    """Compose an external per-channel correction onto base grade gains and
+    re-clamp to [lo, hi] (design 2026-07-11 §4). The reel retry loop passes an absolute
+    factor here to pull one episode's delivered mean toward the reel median;
+    the clamp keeps the total correction inside the same soft band as the grade."""
+    return tuple(max(lo, min(hi, g * corr)) for g, corr in zip(gains, correction))

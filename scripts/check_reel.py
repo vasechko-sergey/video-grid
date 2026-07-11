@@ -128,7 +128,9 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
                 culprit = (i if _rgb_dist(span_means[i], median) > _rgb_dist(span_means[i + 1], median)
                            else i + 1)
                 fails.append(ReelFailure("color_across_cuts", "reprocess", culprit,
-                                         {"cut": i, "delta": round(delta, 2)}))
+                                         {"cut": i, "delta": round(delta, 2),
+                                          "target": [round(x, 2) for x in median],
+                                          "culprit_mean": [round(x, 2) for x in span_means[culprit]]}))
                 worst = round(delta, 2) if worst is None else max(worst, round(delta, 2))
         checks["color_across_cuts"] = CheckResult("color_across_cuts", color_ok,
                                                   {"worst_delta": worst} if worst is not None else {})

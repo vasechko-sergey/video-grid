@@ -458,3 +458,115 @@ def test_reel_report_writes_json(tmp_path):
     p = tmp_path / "reel.json"
     _rr().write(p)
     assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False
+
+
+def test_reframe_spec_accepts_color_correct():
+    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(1.1, 1.0, 0.9))
+    assert s.color_correct == (1.1, 1.0, 0.9)
+
+
+def test_reframe_spec_color_correct_defaults_none():
+    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"))
+    assert s.color_correct is None
+
+
+def test_reframe_spec_rejects_nonpositive_color_correct():
+    with pytest.raises(ValueError, match="color_correct"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(0.0, 1.0, 1.0))
+
+
+def test_reframe_spec_rejects_wrong_length_color_correct():
+    with pytest.raises(ValueError, match="color_correct"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
+                      color_correct=(1.1, 1.0))
+
+
+def _reel_dict(**over):
+    d = dict(episodes=[{"manifest": {"segment": "s0.mp4"}, "clip": "c0.mp4", "route": "r0.json"},
+                       {"manifest": {"segment": "s1.mp4"}, "clip": "c1.mp4", "route": "r1.json"}],
+             target_dur=6.0, variety_min=4, color_delta_max=10.0, cap=3, changelog="cut")
+    d.update(over)
+    return d
+
+
+def test_reel_manifest_from_dict_round_trip():
+    rm = m.ReelManifest.from_dict(_reel_dict())
+    assert len(rm.episodes) == 2
+    assert rm.episodes[0].clip == "c0.mp4" and rm.episodes[0].route == "r0.json"
+    assert rm.episodes[1].manifest == {"segment": "s1.mp4"}
+    cs = rm.check_spec
+    assert isinstance(cs, m.ReelCheckSpec)
+    assert cs.target_dur == 6.0 and cs.variety_min == 4 and cs.color_delta_max == 10.0
+
+
+def test_reel_manifest_defaults():
+    rm = m.ReelManifest.from_dict(dict(
+        episodes=[{"manifest": {}, "clip": "c.mp4", "route": "r.json"}], target_dur=3.0))
+    assert rm.cap == 3 and rm.changelog == ""
+    assert rm.check_spec.variety_min == 8 and rm.check_spec.color_delta_max == 12.0
+
+
+def test_reel_manifest_rejects_empty_episodes():
+    with pytest.raises(ValueError, match="episodes is empty"):
+        m.ReelManifest.from_dict(_reel_dict(episodes=[]))
+
+
+def test_reel_manifest_rejects_missing_clip():
+    with pytest.raises(ValueError, match=r"episodes\[0\].clip"):
+        m.ReelManifest.from_dict(_reel_dict(
+            episodes=[{"manifest": {}, "clip": "", "route": "r.json"}]))
+
+
+def test_reel_manifest_rejects_missing_route():
+    with pytest.raises(ValueError, match=r"episodes\[0\].route"):
+        m.ReelManifest.from_dict(_reel_dict(
+            episodes=[{"manifest": {}, "clip": "c.mp4", "route": ""}]))
+
+
+def test_reel_manifest_rejects_bad_cap():
+    with pytest.raises(ValueError, match="cap"):
+        m.ReelManifest.from_dict(_reel_dict(cap=0))
+
+
+def test_reel_manifest_rejects_bad_variety_min():
+    with pytest.raises(ValueError, match="variety_min"):
+        m.ReelManifest.from_dict(_reel_dict(variety_min=-1))
+
+
+def test_reel_manifest_rejects_bad_color_delta_max():
+    with pytest.raises(ValueError, match="color_delta_max"):
+        m.ReelManifest.from_dict(_reel_dict(color_delta_max=-5.0))
+
+
+def test_reel_manifest_rejects_null_manifest():
+    with pytest.raises(ValueError, match="manifest"):
+        m.ReelManifest.from_dict(_reel_dict(
+            episodes=[{"manifest": None, "clip": "c.mp4", "route": "r.json"}]))
+
+
+def test_reel_manifest_rejects_non_dict_manifest_direct():
+    with pytest.raises(ValueError, match=r"episodes\[0\].manifest"):
+        m.ReelManifest(episodes=[m.ReelEpisode(manifest=None, clip="c.mp4", route="r.json")],
+                       target_dur=6.0)
+
+
+def test_reel_manifest_rejects_missing_clip_key():
+    with pytest.raises(ValueError, match=r"episodes\[0\].clip"):
+        m.ReelManifest.from_dict(_reel_dict(
+            episodes=[{"manifest": {}, "route": "r.json"}]))
+
+
+def test_reel_manifest_from_dict_rejects_missing_episodes_key():
+    with pytest.raises(ValueError, match="episodes"):
+        m.ReelManifest.from_dict({"target_dur": 3.0})
+
+
+def test_reel_manifest_from_dict_rejects_non_dict_episode_entry():
+    with pytest.raises(ValueError, match=r"episodes\[0\]"):
+        m.ReelManifest.from_dict({"episodes": ["ep0.json"], "target_dur": 3.0})

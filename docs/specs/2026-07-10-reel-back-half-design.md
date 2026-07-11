@@ -181,6 +181,8 @@ report: ReelReport) -> str`.
 
 ## §6 — Follow-on: the reel retry loop (Phase A.5)
 
+> **Built (2026-07-11)** — see [2026-07-11-reel-retry-loop-design.md](2026-07-11-reel-retry-loop-design.md); the sketch below is the original outline.
+
 Recorded now, built next. The §4.1 escalation ladder one level up: a failed reel
 check goes **back** to the culprit episode, never forward.
 
