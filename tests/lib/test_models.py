@@ -570,3 +570,35 @@ def test_reel_manifest_from_dict_rejects_missing_episodes_key():
 def test_reel_manifest_from_dict_rejects_non_dict_episode_entry():
     with pytest.raises(ValueError, match=r"episodes\[0\]"):
         m.ReelManifest.from_dict({"episodes": ["ep0.json"], "target_dur": 3.0})
+
+
+def _music(**kw):
+    d = dict(track="t.m4a", start_offset=0.0, duration=10.0, tempo=120.0,
+             beats=(0.0, 0.5, 1.0), energy=(0.1, 0.2), energy_hz=2.0)
+    d.update(kw)
+    return d
+
+
+def test_musicspec_roundtrips():
+    spec = m.MusicSpec.from_dict(_music())
+    assert m.MusicSpec.from_dict(spec.to_dict()) == spec
+    assert spec.beats == (0.0, 0.5, 1.0) and spec.duration == 10.0
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(track=""), "non-empty path"),
+    (dict(start_offset=-1), ">= 0"),
+    (dict(duration=0), "positive number"),
+    (dict(tempo=0), "positive BPM"),
+    (dict(beats=()), "beats is empty"),
+    (dict(beats=(1.0, 0.5)), "ascending"),
+    (dict(beats=(0.0, 99.0)), r"outside \[0, 10.0\]"),
+    (dict(beats=None), "beats must be a list"),
+    (dict(beats=(0.0, "x")), "numeric beat times"),
+    (dict(energy=()), "energy is empty"),
+    (dict(energy=None), "energy must be a list"),
+    (dict(energy_hz=0), "positive sample rate"),
+])
+def test_musicspec_rejects_with_remedy(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.MusicSpec.from_dict(_music(**kw))
