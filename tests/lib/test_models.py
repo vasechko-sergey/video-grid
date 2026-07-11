@@ -365,3 +365,96 @@ def test_path_meta_from_dict_reports_an_unusable_field_with_a_remedy():
              canvas=[9, 16], out_dims=[404, 720], rect_px=[0, 0, 404, 720], freedom=875)
     with pytest.raises(RuntimeError, match="unusable field"):
         m.PathMeta.from_dict(d)
+
+
+def test_export_profile_defaults_are_the_silent_reel():
+    p = m.REEL_H264
+    assert (p.vcodec, p.crf, p.pix_fmt, p.container) == ("libx264", 18, "yuv420p", "mp4")
+    assert p.faststart is True and p.acodec is None
+
+
+def test_export_profile_silent_args_use_an_and_faststart():
+    a = m.REEL_H264.args()
+    assert "-an" in a
+    assert a[a.index("-movflags") + 1] == "+faststart"
+    assert "-c:v" in a and a[a.index("-c:v") + 1] == "libx264"
+    assert "scale=" not in " ".join(a)          # deliver never re-scales
+
+
+def test_export_profile_maxrate_adds_bufsize():
+    a = m.ExportProfile(maxrate_kbps=9000).args()
+    assert a[a.index("-maxrate") + 1] == "9000k"
+    assert a[a.index("-bufsize") + 1] == "18000k"
+
+
+def test_export_profile_audio_args_when_voiced():
+    a = m.ExportProfile(acodec="aac", abitrate_kbps=192).args()
+    assert "-an" not in a
+    assert a[a.index("-c:a") + 1] == "aac" and a[a.index("-b:a") + 1] == "192k"
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(crf=60), "0..51"),
+    (dict(crf=-1), "0..51"),
+    (dict(crf=True), "0..51"),
+    (dict(pix_fmt=""), "pixel format"),
+    (dict(vcodec=""), "codec name"),
+    (dict(container=""), "container"),
+    (dict(fps=0), "positive number or None"),
+    (dict(fps=True), "positive number or None"),
+    (dict(maxrate_kbps=0), "positive int or None"),
+    (dict(maxrate_kbps=True), "positive int or None"),
+    (dict(abitrate_kbps=192), "acodec is None"),
+    (dict(acodec="aac", abitrate_kbps=True), "positive int or None"),
+])
+def test_export_profile_rejects_bad_construction(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.ExportProfile(**kw)
+
+
+def test_reel_check_spec_defaults():
+    s = m.ReelCheckSpec(target_dur=6.0)
+    assert s.variety_min == 8 and s.color_delta_max == 12.0
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(target_dur=0), "target_dur"),
+    (dict(target_dur=6.0, variety_min=-1), "variety_min"),
+    (dict(target_dur=6.0, variety_min=True), "variety_min"),
+    (dict(target_dur=6.0, color_delta_max=0), "color_delta_max"),
+])
+def test_reel_check_spec_rejects_bad(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.ReelCheckSpec(**kw)
+
+
+def _rr():
+    return m.ReelReport(
+        checks={"black": m.CheckResult("black", True, {"black_start": []}),
+                "length": m.CheckResult("length", False, {"dur": 7.0, "target": 6.0}),
+                "beat": m.CheckResult("beat", None, {"status": "not-implemented"})},
+        fail_reasons=[m.ReelFailure("length", "pacing", None, {"dur": 7.0})],
+        episode_count=2, wall_s=1.5)
+
+
+def test_reel_report_overall_false_on_a_failed_check():
+    assert _rr().overall is False
+
+
+def test_reel_report_none_check_never_fails():
+    rr = m.ReelReport(checks={"beat": m.CheckResult("beat", None, {"status": "x"})})
+    assert rr.overall is True
+
+
+def test_reel_report_round_trips():
+    rr = _rr()
+    back = m.ReelReport.from_dict(rr.to_dict())
+    assert back.to_dict() == rr.to_dict()
+    assert back.episode_count == 2 and back.wall_s == 1.5
+    assert back.fail_reasons[0].check == "length" and back.fail_reasons[0].escalate_to == "pacing"
+
+
+def test_reel_report_writes_json(tmp_path):
+    p = tmp_path / "reel.json"
+    _rr().write(p)
+    assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False

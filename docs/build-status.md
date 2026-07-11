@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-10._
+_Last updated: 2026-07-11._
 
 ## Done
 
@@ -164,8 +164,55 @@ _Last updated: 2026-07-10._
   [development-workflow.md](./development-workflow.md)); `CLAUDE.md` became a
   registry; scripts brought into compliance (full type hints, imports-at-top).
 
+- **reel back half DONE (2026-07-11)** — plan `docs/plans/2026-07-10-reel-back-half.md`
+  + design `docs/specs/2026-07-10-reel-back-half-design.md`, Tasks 0–11 via strict
+  subagent-driven-development (branch `feat/reel-back-half`, commits
+  `6c6b1e4`..`8e1d768`). **342 tests green incl. a real-ffmpeg whole-slice golden**
+  (`test_reel_backhalf.py`: 2 windows → `process_episode` ×2 → `assemble` →
+  `check_reel` → `deliver`). The silent back half of the conveyor: `[locked
+  out/<ep>.mp4 …] → assemble → work/master.mp4 → check_reel → deliver →
+  out/REEL_v{n}.mp4`, exactly one encode anywhere in it (at deliver). Built
+  `scripts/lib/assembly.py` (`probe_stream`/`matches`: all-uniform episodes concat
+  losslessly with `-c copy`; an outlier is normalized alone, then copy-concat) +
+  typed contracts in `scripts/lib/models.py` — `ExportProfile`/`REEL_H264`,
+  `ReelCheckSpec`, `ReelFailure`, `ReelReport` (raise-on-bad-construction + JSON
+  round-trip, mirroring `Delivery`/`LayoutSpec`). `scripts/check_reel.py` runs four
+  mechanical checks against the master — black, color-across-cuts (mean-RGB delta;
+  culprit = the span **farther from the reel's per-channel median**, with a tie —
+  every 2-episode reel, whose 2-value median is equidistant from both spans —
+  blaming the LATER episode), variety (phash Hamming distance at episode
+  midpoints), length — while `beat`/`loudness`/`safe_zones` honestly report
+  `CheckResult(passed=None, detail={"status":"not-implemented"})`, **never** a
+  silent pass. Every failure emits a machine-readable `ReelFailure` (`check`,
+  `episode_idx`, `escalate_to`, `detail`) so a future driver reads the culprit
+  straight off the report instead of re-deriving it. `scripts/deliver.py` is the
+  **one encode** — `ExportProfile.args()` is its single source of ffmpeg flags —
+  behind a **hard gate** (`report.overall is False` → raise, no fix-forward); it
+  versions `out/REEL_v{n}.<container>` (never overwrites) and appends a changelog
+  line to `out/VERSIONS.md`. **Found beyond the plan:** the shared `sample_clip`
+  test fixture's `drawbox` position expressions are inert under ffmpeg 8.1.1 (`t`
+  reads as `INT32_MAX`, not frame time) — switched to compositing the moving box
+  with `overlay` instead (`fae6209`), a test-fixture-only fix; `testing-guide.md`
+  now warns against reintroducing the `drawbox` form. **Deferred (Phase A.5,
+  next):** the retry *loop* — `reel_orchestration.next_action` (the §4.1 ladder)
+  + the `build_reel` driver (assemble → check → reprocess culprit via
+  `process_episode` → recheck → deliver | stop-and-report) + a per-episode
+  `color_target` override in `reframe` so a reprocess can re-grade one episode
+  toward the reel median.
+
 ## Next action
 
+- **Phase A.5 — the reel retry loop** (`docs/specs/2026-07-10-reel-back-half-design.md`
+  §6, the immediate follow-on): `scripts/lib/reel_orchestration.py` —
+  `next_action(fail_reasons, attempts)`, the §4.1 3×-then-escalate ladder — +
+  `scripts/build_reel.py` (driver: assemble → check_reel → reprocess culprit via
+  `process_episode` → recheck ≤N → deliver | stop-and-report) + a per-episode
+  `color_target` override in `scripts/reframe.py` so a reprocess can re-grade one
+  episode toward the reel median. Only `black`/`color_across_cuts` auto-close
+  (reprocess-class); `variety`/`length` stop-and-report — their escalation
+  targets, EDL/pacing, aren't built yet. **Then Phase B** — the music spine
+  (`MUSIC.json`, beat/loudness checks, audio-mix) that `check_reel` has been
+  reporting `passed=None` for since Task 5. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today

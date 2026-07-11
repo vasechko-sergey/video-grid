@@ -443,3 +443,138 @@ class StoryboardSpec:
         for g in self.grids:
             if g not in GRIDS:
                 raise ValueError(f"StoryboardSpec.grid {g!r} not in {GRIDS}")
+
+
+@dataclass
+class ExportProfile:
+    """One typed export profile (design §2). New platforms are new instances,
+    not new code. Silent by default (acodec None → -an); Phase B sets acodec."""
+    vcodec: str = "libx264"
+    crf: int = 18
+    preset: str = "medium"
+    pix_fmt: str = "yuv420p"
+    container: str = "mp4"
+    faststart: bool = True
+    fps: float | None = None
+    maxrate_kbps: int | None = None
+    acodec: str | None = None
+    abitrate_kbps: int | None = None
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.vcodec, str) and self.vcodec):
+            raise ValueError("ExportProfile.vcodec must be a non-empty codec name")
+        if isinstance(self.crf, bool) or not isinstance(self.crf, int) or not 0 <= self.crf <= 51:
+            raise ValueError(f"ExportProfile.crf must be an int in 0..51, got {self.crf!r}")
+        if not (isinstance(self.pix_fmt, str) and self.pix_fmt):
+            raise ValueError("ExportProfile.pix_fmt must be a non-empty pixel format")
+        if not (isinstance(self.container, str) and self.container):
+            raise ValueError("ExportProfile.container must be a non-empty container name")
+        if self.fps is not None and not (isinstance(self.fps, (int, float))
+                                         and not isinstance(self.fps, bool) and self.fps > 0):
+            raise ValueError(f"ExportProfile.fps must be a positive number or None, got {self.fps!r}")
+        if self.maxrate_kbps is not None and not (isinstance(self.maxrate_kbps, int)
+                                                  and not isinstance(self.maxrate_kbps, bool)
+                                                  and self.maxrate_kbps > 0):
+            raise ValueError(f"ExportProfile.maxrate_kbps must be a positive int or None, got {self.maxrate_kbps!r}")
+        if self.acodec is not None and not (isinstance(self.acodec, str) and self.acodec):
+            raise ValueError("ExportProfile.acodec must be a non-empty codec name or None")
+        if self.abitrate_kbps is not None:
+            if self.acodec is None:
+                raise ValueError("ExportProfile.abitrate_kbps is set but acodec is None — a bitrate "
+                                 "with no audio codec cannot be applied; set acodec or clear abitrate_kbps")
+            if isinstance(self.abitrate_kbps, bool) or not isinstance(self.abitrate_kbps, int) \
+                    or self.abitrate_kbps <= 0:
+                raise ValueError(f"ExportProfile.abitrate_kbps must be a positive int or None, got {self.abitrate_kbps!r}")
+
+    def args(self) -> list[str]:
+        """ffmpeg OUTPUT args (no -i, no output path). The one place the encode
+        landmines live — yuv420p, faststart; deliver adds no scale (even dims come
+        in from the master by construction)."""
+        a = ["-c:v", self.vcodec, "-crf", str(self.crf), "-preset", self.preset,
+             "-pix_fmt", self.pix_fmt]
+        if self.maxrate_kbps is not None:
+            a += ["-maxrate", f"{self.maxrate_kbps}k", "-bufsize", f"{2 * self.maxrate_kbps}k"]
+        if self.fps is not None:
+            a += ["-r", str(self.fps)]
+        if self.acodec is None:
+            a += ["-an"]
+        else:
+            a += ["-c:a", self.acodec]
+            if self.abitrate_kbps is not None:
+                a += ["-b:a", f"{self.abitrate_kbps}k"]
+        if self.faststart:
+            a += ["-movflags", "+faststart"]
+        return a
+
+
+REEL_H264 = ExportProfile()
+
+
+@dataclass
+class ReelCheckSpec:
+    """Thresholds for the whole-reel mechanical gate (design §4), mirrors CheckSpec."""
+    target_dur: float
+    variety_min: int = 8               # min phash Hamming distance between adjacent episodes
+    color_delta_max: float = 12.0      # §9 across-cut mean-RGB delta ceiling
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
+            raise ValueError(f"ReelCheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
+        if isinstance(self.variety_min, bool) or not isinstance(self.variety_min, int) or self.variety_min < 0:
+            raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
+        if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
+            raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
+
+
+@dataclass
+class ReelFailure:
+    """One attributed reel-check failure (design §177 machine-readable). The
+    Phase A.5 driver reads escalate_to/episode_idx straight off this."""
+    check: str
+    escalate_to: str                        # "reprocess" | "edit-plan" | "pacing"
+    episode_idx: int | None = None
+    detail: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {"check": self.check, "escalate_to": self.escalate_to,
+                "episode_idx": self.episode_idx, "detail": self.detail}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelFailure":
+        return cls(check=d["check"], escalate_to=d["escalate_to"],
+                   episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
+
+
+@dataclass
+class ReelReport:
+    """Whole-reel check artifact (design §2). Reuses CheckResult; overall is a
+    property (a None check never fails), mirroring the episode Report."""
+    checks: dict[str, CheckResult]
+    fail_reasons: list[ReelFailure] = field(default_factory=list)
+    episode_count: int = 0
+    wall_s: float = 0.0                      # §11 binding: wall-time in every check report
+
+    @property
+    def overall(self) -> bool:
+        return all(c.passed is not False for c in self.checks.values())
+
+    def to_dict(self) -> dict:
+        return {"checks": {n: c.to_dict() for n, c in self.checks.items()},
+                "overall": self.overall,
+                "fail_reasons": [f.to_dict() for f in self.fail_reasons],
+                "episode_count": self.episode_count, "wall_s": self.wall_s}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelReport":
+        checks = {}
+        for n, cd in d["checks"].items():
+            if "pass" in cd:
+                checks[n] = CheckResult(n, cd["pass"], {k: v for k, v in cd.items() if k != "pass"})
+            else:
+                checks[n] = CheckResult(n, None, dict(cd))
+        return cls(checks=checks,
+                   fail_reasons=[ReelFailure.from_dict(f) for f in d.get("fail_reasons", [])],
+                   episode_count=d.get("episode_count", 0), wall_s=d.get("wall_s", 0.0))
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))

@@ -8,11 +8,15 @@ def sample_clip(tmp_path_factory):
     if not shutil.which("ffmpeg"):
         pytest.skip("ffmpeg not installed")
     out = tmp_path_factory.mktemp("media") / "sample.mp4"
-    # box centre x moves from 270 to 1560 over 3s; y fixed; on a dark grey field
-    src = "color=c=0x303030:s=1920x1080:d=3:r=30"
-    vf = "drawbox=x='200+t*430':y=380:w=140:h=320:color=white:t=fill"
+    # box centre x moves from 270 to 1560 over 3s; y fixed; on a dark grey field.
+    # NOTE: drawbox's x/y expressions are inert under ffmpeg 8.1.1 (the `t` var reads
+    # as INT32_MAX, not the frame time) → the box never moves/appears. overlay's
+    # position expressions DO evaluate per-frame, so we composite a white box source.
+    bg = "color=c=0x303030:s=1920x1080:d=3:r=30"
+    box = "color=c=white:s=140x320:d=3:r=30"
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", src, "-vf", vf,
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", bg, "-f", "lavfi", "-i", box,
+         "-filter_complex", "[0][1]overlay=x='200+t*430':y=380",
          "-t", "3", "-pix_fmt", "yuv420p", str(out)],
         check=True, capture_output=True)
     return out
