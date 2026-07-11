@@ -520,6 +520,9 @@ class ReelCheckSpec:
     target_dur: float
     variety_min: int = 8               # min phash Hamming distance between adjacent episodes
     color_delta_max: float = 12.0      # §9 across-cut mean-RGB delta ceiling
+    beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
+    loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
+    loudness_tol: float = 1.0          # ± band around the target
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -528,6 +531,12 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
         if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
             raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
+        if not isinstance(self.beat_tol, (int, float)) or self.beat_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.beat_tol must be a positive number of seconds, got {self.beat_tol!r}")
+        if not isinstance(self.loudness_target, (int, float)):
+            raise ValueError(f"ReelCheckSpec.loudness_target must be a number (LUFS), got {self.loudness_target!r}")
+        if not isinstance(self.loudness_tol, (int, float)) or self.loudness_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.loudness_tol must be a positive number, got {self.loudness_tol!r}")
 
 
 @dataclass
@@ -620,10 +629,14 @@ class ReelFailure:
                    episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
 
 
+_ADVISORY_CHECKS = ("beat",)           # measured + reported but non-blocking — no re-trim actuator yet (design §5)
+
+
 @dataclass
 class ReelReport:
     """Whole-reel check artifact (design §2). Reuses CheckResult; overall is a
-    property (a None check never fails), mirroring the episode Report."""
+    property — a None check never fails, and an advisory check (in _ADVISORY_CHECKS,
+    e.g. beat) never blocks even when False (design §5), mirroring the episode Report."""
     checks: dict[str, CheckResult]
     fail_reasons: list[ReelFailure] = field(default_factory=list)
     episode_count: int = 0
@@ -631,7 +644,8 @@ class ReelReport:
 
     @property
     def overall(self) -> bool:
-        return all(c.passed is not False for c in self.checks.values())
+        return all(c.passed is not False
+                   for n, c in self.checks.items() if n not in _ADVISORY_CHECKS)
 
     def to_dict(self) -> dict:
         return {"checks": {n: c.to_dict() for n, c in self.checks.items()},

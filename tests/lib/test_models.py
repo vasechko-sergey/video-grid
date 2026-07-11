@@ -428,6 +428,17 @@ def test_reel_check_spec_rejects_bad(kw, msg):
         m.ReelCheckSpec(**kw)
 
 
+def test_reelcheckspec_audio_thresholds_default_and_validate():
+    s = m.ReelCheckSpec(target_dur=30.0)
+    assert (s.beat_tol, s.loudness_target, s.loudness_tol) == (0.05, -14.0, 1.0)
+    with pytest.raises(ValueError, match="beat_tol"):
+        m.ReelCheckSpec(target_dur=30.0, beat_tol=0)
+    with pytest.raises(ValueError, match="loudness_tol"):
+        m.ReelCheckSpec(target_dur=30.0, loudness_tol=-1)
+    with pytest.raises(ValueError, match="loudness_target"):
+        m.ReelCheckSpec(target_dur=30.0, loudness_target="bad")
+
+
 def _rr():
     return m.ReelReport(
         checks={"black": m.CheckResult("black", True, {"black_start": []}),
@@ -458,6 +469,16 @@ def test_reel_report_writes_json(tmp_path):
     p = tmp_path / "reel.json"
     _rr().write(p)
     assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False
+
+
+def test_reelreport_overall_excludes_advisory_beat():
+    checks = {"black": m.CheckResult("black", True, {}),
+              "beat": m.CheckResult("beat", False, {"worst_dev": 0.3})}
+    assert m.ReelReport(checks=checks).overall is True          # advisory beat=False does NOT block delivery
+
+
+def test_reelreport_overall_blocks_on_loudness_false():
+    assert m.ReelReport(checks={"loudness": m.CheckResult("loudness", False, {"measured": -9.0})}).overall is False
 
 
 def test_reframe_spec_accepts_color_correct():
