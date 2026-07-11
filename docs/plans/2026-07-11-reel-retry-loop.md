@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: COMPLETE (2026-07-11)** — all tasks landed on branch `feat/reel-retry-loop`, **389 tests green**.
+
 **Goal:** Automate the reel back half — a driver that loops `assemble → check_reel → auto-fix the culprit episode → reassemble → recheck` until the reel passes and delivers, or stops with a precise machine-readable finding.
 
 **Architecture:** A pure decision module (`scripts/lib/reel_orchestration.py`, the §4.1 ladder one level up) under a thin deterministic shell (`scripts/build_reel.py`), mirroring the `orchestration.py`/`process_episode.py` split. The shell consumes a `ReelManifest` of already-locked episode clips (loop-1 produced them), reprocesses a flagged culprit by calling `process_episode()` with a per-episode `color_correct` override, and delivers once the whole-reel gate passes. Only `black`/`color_across_cuts` auto-close; `variety`/`length` stop-and-report.
@@ -39,7 +41,7 @@ Dependency order: Task 0 (color/reframe seam) → 1 (check_reel detail) → 2 (R
 - Modify: `scripts/reframe.py:177`
 - Test: `tests/lib/test_color.py`, `tests/lib/test_models.py`, `tests/integration/test_reframe.py`
 
-- [ ] **Step 1: Write the failing `color.corrected` test**
+- [x] **Step 1: Write the failing `color.corrected` test**
 
 Append to `tests/lib/test_color.py`:
 
@@ -59,12 +61,12 @@ def test_corrected_clamps_low():
     assert c.corrected((0.8, 1.0, 1.0), (0.8, 1.0, 1.0)) == (0.7, 1.0, 1.0)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_color.py -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.color' has no attribute 'corrected'`
 
-- [ ] **Step 3: Implement `corrected`**
+- [x] **Step 3: Implement `corrected`**
 
 Append to `scripts/lib/color.py`:
 
@@ -78,12 +80,12 @@ def corrected(gains: tuple[float, ...], correction: tuple[float, ...],
     return tuple(max(lo, min(hi, g * corr)) for g, corr in zip(gains, correction))
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_color.py -v`
 Expected: PASS (all, including the three new)
 
-- [ ] **Step 5: Write the failing `ReframeSpec.color_correct` test**
+- [x] **Step 5: Write the failing `ReframeSpec.color_correct` test**
 
 Append to `tests/lib/test_models.py`:
 
@@ -117,12 +119,12 @@ def test_reframe_spec_rejects_wrong_length_color_correct():
 
 (`test_models.py` already imports `models as m` and `pytest`.)
 
-- [ ] **Step 6: Run to verify it fails**
+- [x] **Step 6: Run to verify it fails**
 
 Run: `pytest tests/lib/test_models.py -k color_correct -v`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'color_correct'`
 
-- [ ] **Step 7: Add the field + validation**
+- [x] **Step 7: Add the field + validation**
 
 In `scripts/lib/models.py`, add the field to `ReframeSpec` (after `stabilize: bool = False`, line 390):
 
@@ -140,12 +142,12 @@ And add this validation at the end of `ReframeSpec.__post_init__` (after the `st
 
 (`_positive_seq` already exists at `models.py:265`.)
 
-- [ ] **Step 8: Run to verify it passes**
+- [x] **Step 8: Run to verify it passes**
 
 Run: `pytest tests/lib/test_models.py -k color_correct -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 9: Write the failing reframe-applies test**
+- [x] **Step 9: Write the failing reframe-applies test**
 
 Append to `tests/integration/test_reframe.py` (NOT marked integration — it mocks ffmpeg):
 
@@ -185,12 +187,12 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
     assert "colorchannelmixer=rr=1.000:gg=1.000:bb=1.000" in " ".join(cmd["v"])
 ```
 
-- [ ] **Step 10: Run to verify it fails**
+- [x] **Step 10: Run to verify it fails**
 
 Run: `pytest tests/integration/test_reframe.py -k color_correct -v`
 Expected: FAIL — the first asserts `rr=1.200` but reframe emits `rr=1.000` (color_correct ignored)
 
-- [ ] **Step 11: Apply the correction in reframe**
+- [x] **Step 11: Apply the correction in reframe**
 
 In `scripts/reframe.py`, replace line 177 (`gains = color.gains_for_means(spec.color_means)`) with:
 
@@ -200,12 +202,12 @@ In `scripts/reframe.py`, replace line 177 (`gains = color.gains_for_means(spec.c
         gains = color.corrected(gains, spec.color_correct)
 ```
 
-- [ ] **Step 12: Run to verify it passes + full reframe suite**
+- [x] **Step 12: Run to verify it passes + full reframe suite**
 
 Run: `pytest tests/integration/test_reframe.py -k color_correct -v && pytest tests/lib/test_color.py tests/lib/test_models.py -q`
 Expected: PASS
 
-- [ ] **Step 13: Commit**
+- [x] **Step 13: Commit**
 
 ```bash
 git add scripts/lib/color.py scripts/lib/models.py scripts/reframe.py \
@@ -234,7 +236,7 @@ EOF
 
 The `color_across_cuts` `ReelFailure.detail` must carry the reel median (`target`) and the culprit span's delivered mean (`culprit_mean`) so the driver computes the correction ratio `med/d_i` with no re-probe (design §4).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_check_reel.py` (reuses the module-level `_Stub`):
 
@@ -258,12 +260,12 @@ def test_color_fail_detail_carries_target_and_culprit_mean(tmp_path, monkeypatch
     assert f.detail["culprit_mean"] == [160.0, 120.0, 130.0]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_check_reel.py -k target_and_culprit -v`
 Expected: FAIL — `KeyError: 'target'` (detail has only `cut`/`delta`)
 
-- [ ] **Step 3: Add target + culprit_mean to the fail detail**
+- [x] **Step 3: Add target + culprit_mean to the fail detail**
 
 In `scripts/check_reel.py`, replace the color `fails.append(...)` (lines 130-131):
 
@@ -274,12 +276,12 @@ In `scripts/check_reel.py`, replace the color `fails.append(...)` (lines 130-131
                                           "culprit_mean": [round(x, 2) for x in span_means[culprit]]}))
 ```
 
-- [ ] **Step 4: Run to verify it passes + the whole check_reel suite**
+- [x] **Step 4: Run to verify it passes + the whole check_reel suite**
 
 Run: `pytest tests/lib/test_check_reel.py -q`
 Expected: PASS (the new test + all existing — the extra detail keys don't disturb the other assertions)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -306,7 +308,7 @@ EOF
 
 The typed input to `build_reel` (design §2): an ordered list of `{episode manifest, locked clip, frozen route}` plus the reel params. Validates on construction; `check_spec` yields the existing `ReelCheckSpec`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -358,12 +360,12 @@ def test_reel_manifest_rejects_bad_cap():
         m.ReelManifest.from_dict(_reel_dict(cap=0))
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_models.py -k reel_manifest -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.models' has no attribute 'ReelManifest'`
 
-- [ ] **Step 3: Implement the config-specs**
+- [x] **Step 3: Implement the config-specs**
 
 Append to `scripts/lib/models.py` (after `ReelReport`). `json`, `Path`, `dataclass`, `field` are already imported at the top of the file:
 
@@ -431,12 +433,12 @@ def _load_manifest(m: dict | str) -> dict:
     return m if isinstance(m, dict) else json.loads(Path(m).read_text())
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_models.py -k reel_manifest -v`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -463,7 +465,7 @@ EOF
 
 Pure, deterministic, no ffmpeg — the reel-level twin of `orchestration.escalation` (design §3). Maps a `check_reel` report's `fail_reasons` to exactly one `ReelAction`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_reel_orchestration.py`:
 
@@ -546,12 +548,12 @@ def test_black_and_colour_same_episode_dedupe_to_colour():
     assert a.reprocess[0].idx == 1 and a.reprocess[0].color_correct is not None
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_reel_orchestration.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.reel_orchestration'`
 
-- [ ] **Step 3: Implement the module**
+- [x] **Step 3: Implement the module**
 
 Create `scripts/lib/reel_orchestration.py`:
 
@@ -617,12 +619,12 @@ def next_action(fail_reasons: list, attempts: dict, cap: int) -> ReelAction:
     return ReelAction("reprocess", reprocess=tuple(items[k] for k in sorted(items)))
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_reel_orchestration.py -v`
 Expected: PASS (9 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/reel_orchestration.py tests/lib/test_reel_orchestration.py
@@ -649,7 +651,7 @@ EOF
 
 The driver passes a per-episode colour override to a reprocess; `process_episode` threads it into every `ReframeSpec` it builds (constant across retry attempts, like `layout`).
 
-- [ ] **Step 1: Add the capture to the shared engine stub**
+- [x] **Step 1: Add the capture to the shared engine stub**
 
 In `tests/integration/test_process_episode.py`, inside `_stub_engine`'s `fake_reframe`, add one line (after `calls["reframe_canvas"] = spec.canvas`):
 
@@ -657,7 +659,7 @@ In `tests/integration/test_process_episode.py`, inside `_stub_engine`'s `fake_re
         calls["reframe_color_correct"] = spec.color_correct
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Append to `tests/integration/test_process_episode.py`:
 
@@ -678,12 +680,12 @@ def test_color_correct_defaults_to_none(monkeypatch, tmp_path):
 
 (`_stub_engine` returns its `calls` dict — confirm it ends with `return calls`; if it does not, add `return calls` to the fixture.)
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `pytest tests/integration/test_process_episode.py -k color_correct -v`
 Expected: FAIL — `TypeError: process_episode() got an unexpected keyword argument 'color_correct'`
 
-- [ ] **Step 4: Add the param + thread it**
+- [x] **Step 4: Add the param + thread it**
 
 In `scripts/process_episode.py`, add the param to the signature (after `project=...`, line 38):
 
@@ -702,12 +704,12 @@ And add `color_correct=color_correct` to the `ReframeSpec(...)` built in the ret
                             max_speed=params["max_speed"], color_correct=color_correct)
 ```
 
-- [ ] **Step 5: Run to verify it passes + the whole process_episode suite**
+- [x] **Step 5: Run to verify it passes + the whole process_episode suite**
 
 Run: `pytest tests/integration/test_process_episode.py -q`
 Expected: PASS (the two new + all existing — the default None preserves current behaviour)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/integration/test_process_episode.py
@@ -733,7 +735,7 @@ EOF
 
 The deterministic shell (design §5). All stages are mocked here — this task proves the loop *logic* (deliver / reprocess+compound / escalate / propagate). Real ffmpeg is Task 6.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_build_reel.py`:
 
@@ -847,12 +849,12 @@ def test_capped_episode_escalates(monkeypatch, tmp_path):
     assert seen["deliver"] == []
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_build_reel.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.build_reel'`
 
-- [ ] **Step 3: Implement the driver**
+- [x] **Step 3: Implement the driver**
 
 Create `scripts/build_reel.py`:
 
@@ -935,12 +937,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_build_reel.py -v`
 Expected: PASS (7 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/build_reel.py tests/lib/test_build_reel.py
@@ -967,7 +969,7 @@ EOF
 
 Two `@pytest.mark.integration` tests (design §6). Following the Phase A golden's precedent (`test_reel_backhalf.py` builds clips via the real `reframe` encoder, not the whole `process_episode`), these keep the stage golden robust; the reprocess-loop logic is already unit-proven in Task 5.
 
-- [ ] **Step 1: Write the two tests**
+- [x] **Step 1: Write the two tests**
 
 Create `tests/integration/test_reel_retry.py`:
 
@@ -1035,19 +1037,19 @@ def test_build_reel_delivers_a_passing_reel(tmp_path, sample_clip):
     assert "- v1 |" in (tmp_path / "out" / "VERSIONS.md").read_text()
 ```
 
-- [ ] **Step 2: Run to verify the tests pass on real ffmpeg**
+- [x] **Step 2: Run to verify the tests pass on real ffmpeg**
 
 Run: `pytest tests/integration/test_reel_retry.py -v -m integration`
 Expected: PASS (2 tests).
 - Test A tuning: if `r_c < r_u - 5` is too tight/loose, adjust the `color_correct` (stronger → 0.7) or the margin; the invariant that must hold is `r_c < r_u` (the correction lowered red). `rr=1.4` on the grey 0x30=48 gives warm red ≈67, so a 0.75 factor drops it well clear of the margin.
 - Test B: if `variety` fails (the two crops too similar), widen the `x_const` gap or lower `variety_min` — mirror the value `test_reel_backhalf.py` uses (`variety_min=4`).
 
-- [ ] **Step 3: Run the whole suite to confirm no regression**
+- [x] **Step 3: Run the whole suite to confirm no regression**
 
 Run: `pytest -q`
 Expected: PASS (all — prior count + the new unit and integration tests). Note the integration count grows by 2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_reel_retry.py
@@ -1071,11 +1073,11 @@ EOF
 **Files:**
 - Modify: `docs/build-status.md`, `CLAUDE.md`, `docs/specs/2026-07-10-reel-back-half-design.md`, `docs/plans/2026-07-11-reel-retry-loop.md`
 
-- [ ] **Step 1: Update `docs/build-status.md`**
+- [x] **Step 1: Update `docs/build-status.md`**
 
 Add a Done entry (after the reel-back-half entry) naming the branch `feat/reel-retry-loop`, the commit range, the final test count, and what shipped: `color.corrected` + `ReframeSpec.color_correct`; `check_reel` colour detail (`target`/`culprit_mean`); `ReelEpisode`/`ReelManifest`; `reel_orchestration.next_action`; `process_episode` `color_correct`; `build_reel` driver + CLI; the two real-ffmpeg proofs. Change the **Next action** from "Phase A.5" to Phase B (music spine — unblocks `beat`/`loudness`) and, if desired, the deferred reel-loop items (variety/length auto-fix, parallel reprocess, resumability).
 
-- [ ] **Step 2: Update `CLAUDE.md` Quick Reference**
+- [x] **Step 2: Update `CLAUDE.md` Quick Reference**
 
 Add two rows to the table:
 
@@ -1084,7 +1086,7 @@ Add two rows to the table:
 | Reel retry loop plan | [2026-07-11-reel-retry-loop.md](docs/plans/2026-07-11-reel-retry-loop.md) | Tasks 0–7: color_correct seam, check_reel detail, ReelManifest, next_action, build_reel, real-ffmpeg proofs. |
 ```
 
-- [ ] **Step 3: Mark the reel-back-half §6 sketch as built**
+- [x] **Step 3: Mark the reel-back-half §6 sketch as built**
 
 In `docs/specs/2026-07-10-reel-back-half-design.md`, at the top of §6 (line 182), add a one-line note that Phase A.5 is now built and point to the new design:
 
@@ -1092,16 +1094,16 @@ In `docs/specs/2026-07-10-reel-back-half-design.md`, at the top of §6 (line 182
 > **Built (2026-07-11)** — see [2026-07-11-reel-retry-loop-design.md](2026-07-11-reel-retry-loop-design.md); the sketch below is the original outline.
 ```
 
-- [ ] **Step 4: Mark this plan COMPLETE**
+- [x] **Step 4: Mark this plan COMPLETE**
 
 At the top of `docs/plans/2026-07-11-reel-retry-loop.md`, add `**STATUS: COMPLETE (2026-07-11)**` under the header, and tick every `- [ ]` checkbox to `- [x]`.
 
-- [ ] **Step 5: Verify the whole suite green**
+- [x] **Step 5: Verify the whole suite green**
 
 Run: `pytest -q`
 Expected: PASS (all).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/build-status.md CLAUDE.md docs/specs/2026-07-10-reel-back-half-design.md docs/plans/2026-07-11-reel-retry-loop.md
@@ -1117,7 +1119,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a final code-review subagent over the whole branch diff (`git diff main...feat/reel-retry-loop`) against the design spec. Focus: the compounding-vs-reverting colour math (§4), the escalate-wins ordering (§3), no silent pass (a failed reel never reaches `deliver`), landmines (colorchannelmixer only, even dims), and that every new module-level def is typed. Address findings before finishing.
 

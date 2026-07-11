@@ -193,26 +193,52 @@ _Last updated: 2026-07-11._
   test fixture's `drawbox` position expressions are inert under ffmpeg 8.1.1 (`t`
   reads as `INT32_MAX`, not frame time) — switched to compositing the moving box
   with `overlay` instead (`fae6209`), a test-fixture-only fix; `testing-guide.md`
-  now warns against reintroducing the `drawbox` form. **Deferred (Phase A.5,
-  next):** the retry *loop* — `reel_orchestration.next_action` (the §4.1 ladder)
-  + the `build_reel` driver (assemble → check → reprocess culprit via
-  `process_episode` → recheck → deliver | stop-and-report) + a per-episode
-  `color_target` override in `reframe` so a reprocess can re-grade one episode
-  toward the reel median.
+  now warns against reintroducing the `drawbox` form. **Deferred → built (Phase
+  A.5, see the entry below):** the retry *loop* — `reel_orchestration.next_action`
+  (the §4.1 ladder) + the `build_reel` driver (assemble → check → reprocess culprit
+  via `process_episode` → recheck → deliver | stop-and-report) + a per-episode
+  colour override in `reframe` (shipped as `ReframeSpec.color_correct`) so a
+  reprocess can re-grade one episode toward the reel median.
+
+- **reel retry loop (Phase A.5) DONE (2026-07-11)** — plan
+  `docs/plans/2026-07-11-reel-retry-loop.md` + design
+  `docs/specs/2026-07-11-reel-retry-loop-design.md`, Tasks 0–7 via strict
+  subagent-driven-development (branch `feat/reel-retry-loop`, commits
+  `39adba0`..`a06a07e`). **389 tests green** (47 new, incl. 2 real-ffmpeg
+  tests in `tests/integration/test_reel_retry.py`). `scripts/build_reel.py`
+  loops `assemble → check_reel → next_action → reprocess culprit → deliver |
+  stop-and-report` over a typed `ReelManifest` (locked episodes, each a
+  manifest + clip + **frozen route** — a reprocess reuses it, so colour/black
+  fixes never re-track). `reel_orchestration.next_action` is the §4.1 ladder
+  one level up, mapping a `check_reel` report to Deliver | Reprocess[...] |
+  Escalate. A colour reprocess corrects via `color.corrected()` (composes an
+  external per-channel factor onto grade gains, re-clamps to `[LO,HI]`)
+  through `ReframeSpec.color_correct`, threaded by `process_episode`'s new
+  `color_correct` param (constant across attempts, like `layout`);
+  `check_reel`'s colour fail `detail` now carries `target` + `culprit_mean` so
+  the driver computes the correction with no re-probe. **Two subtle rules
+  define the loop: escalate-wins** (§3) — any non-auto-fixable or capped
+  failure escalates immediately, never spending a round on a reel that also
+  carries an unfixable fault — **and compound-not-revert** (§4) — each
+  round's `med/d_i` ratio compounds onto the episode's *stored* factor
+  (`cc[i] ← clamp(cc[i] * med/d_i, LO, HI)`) rather than replacing it, since
+  `process_episode` regrades from source every pass and a per-round factor
+  alone would revert instead of converging. **Only `black`/`color_across_cuts`
+  auto-close**; `variety` (→ edit-plan) and `length` (→ pacing)
+  stop-and-report — their front-half fixers (EDL, pacing) aren't built.
+  **`build_reel` never delivers a failed reel:** escalate, reprocess-failure,
+  and capped-attempts all stop-and-report a machine-readable finding instead.
+  **Review-driven:** Task 2's `ReelManifest` validation closed gaps found on
+  review (lazy threshold fields, a null-manifest `TypeError`, a bare
+  `KeyError` — all now raise `ValueError` with a remedy); Task 3 gained type
+  hints + 3 branch-pinning tests; Task 5's `_compound` now reuses
+  `color.corrected`.
 
 ## Next action
 
-- **Phase A.5 — the reel retry loop** (`docs/specs/2026-07-10-reel-back-half-design.md`
-  §6, the immediate follow-on): `scripts/lib/reel_orchestration.py` —
-  `next_action(fail_reasons, attempts)`, the §4.1 3×-then-escalate ladder — +
-  `scripts/build_reel.py` (driver: assemble → check_reel → reprocess culprit via
-  `process_episode` → recheck ≤N → deliver | stop-and-report) + a per-episode
-  `color_target` override in `scripts/reframe.py` so a reprocess can re-grade one
-  episode toward the reel median. Only `black`/`color_across_cuts` auto-close
-  (reprocess-class); `variety`/`length` stop-and-report — their escalation
-  targets, EDL/pacing, aren't built yet. **Then Phase B** — the music spine
-  (`MUSIC.json`, beat/loudness checks, audio-mix) that `check_reel` has been
-  reporting `passed=None` for since Task 5. **OR**
+- **Phase B — the music spine** (`MUSIC.json`, beat/loudness checks, audio-mix)
+  that `check_reel` has been reporting `passed=None` for since Task 5 — the
+  immediate next action now that the reel retry loop (Phase A.5) is DONE. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today
@@ -228,6 +254,12 @@ _Last updated: 2026-07-11._
   fan out `process_episode`. **OR**
 - **golden-canon armature + landmine lint** — a check that the banned patterns
   (`lutrgb`, `-ss` before `-i`) cannot re-enter the filtergraphs.
+
+**Reel-loop deferrals still open** (design §8 non-goals,
+`docs/specs/2026-07-11-reel-retry-loop-design.md`): `variety`/`length`
+auto-fix needs the front-half EDL/pacing fixers (not built yet); reprocess is
+sequential, not parallel; and the loop has no resumability / Phase A.5
+retry-state persistence.
 
 ## Deferred / open
 
