@@ -18,7 +18,7 @@
 - **Create `tests/lib/test_edl.py`** — `EDLEpisode`/`EDL`/`to_manifest_dict` unit tests.
 - **Modify `tests/integration/test_extract.py`** — real-ffmpeg `extract_edl` loop + gate tests.
 - **Create `tests/lib/test_edl_to_reel.py`** — driver unit tests (monkeypatched extract/process_episode/build_reel).
-- **Create `tests/integration/test_front_spine.py`** — real-ffmpeg end-to-end golden (fakes only the YOLO-tracking `process_episode` step).
+- **Create `tests/integration/test_front_spine.py`** — real-ffmpeg end-to-end golden (fakes `process_episode`'s whole mechanical middle — tracking + crop-to-canvas + check_episode; proves the EDL→driver→build_reel→deliver wiring, not pixel-level crop).
 - **Modify** `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md` (Task 6 docs sync).
 
 Reused unchanged: `extract.extract()`, `process_episode`, `resolve_manifest`, `build_reel`, `ReelManifest`/`ReelEpisode`/`ReelCheckSpec`, `assembly.probe_stream`, `ProjectConfig`, `manifest.Manifest`/`validate`.
@@ -754,7 +754,7 @@ git commit -m "feat: edl_to_reel sequential driver + CLI (Front-half SP1)"
 **Files:**
 - Create: `tests/integration/test_front_spine.py`
 
-**Why `process_episode` is faked here:** the driver's first `process_episode` pass runs YOLO tracking (`route_path=None`), which needs a *person* in-frame — the `sample_clip` fixture is a moving box, so real tracking returns an empty route. `process_episode` has its own real-footage golden (`test_process_episode`/`test_golden`); this golden proves the SP1 wiring — real `extract_edl` → bridge → `ReelManifest` → real `build_reel`/`deliver` — with only the tracking step stubbed. The stub writes a real `route.json` and produces a real clip by copying its segment (uniform streams, distinct box position per window → variety passes; same source colour → colour-across-cuts passes).
+**Why `process_episode` is faked here:** the driver's first `process_episode` pass runs YOLO tracking (`route_path=None`), which needs a *person* in-frame — the `sample_clip` fixture is a moving box, so real tracking returns an empty route. The stub therefore stands in for `process_episode`'s *whole mechanical middle* — not just tracking, but reframe's crop-to-canvas and check_episode too — writing a real `route.json` and producing a real clip by copying its segment (uniform streams, distinct box position per window → variety passes; same source colour → colour-across-cuts passes). So this golden proves the SP1 *wiring* — real `extract_edl` → bridge → `ReelManifest` → real `build_reel`/`deliver` (assemble, check_reel gates, mix, deliver mux) on real bytes — and deliberately NOT pixel-level canvas/crop correctness: because nothing crops, the delivered reel keeps the raw source dims (1920×1080), not the project canvas (1080×1920). That the resolved canvas flows into each manifest is pinned by the Task 4 driver unit test; crop-to-canvas has its own real-footage goldens (`test_process_episode`/`test_golden`).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -786,7 +786,8 @@ def _edl(tmp_path, source, music=None):
 
 
 def _fake_track_pe(monkeypatch):
-    """Stub process_episode: write a route.json + copy the segment to the locked clip."""
+    """Stub process_episode's whole mechanical middle (tracking + crop-to-canvas +
+    check_episode): write a real route.json + copy the segment as the locked clip."""
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         (Path(project_dir) / "route.json").write_text(
