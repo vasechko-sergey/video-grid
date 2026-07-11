@@ -73,7 +73,7 @@ class EDLEpisode:
     composition: str            # ∈ COMPOSITIONS
     grid: str                   # ∈ GRIDS
     layout: str = "fill"        # ∈ LAYOUTS_SUPPORTED
-    crop_aspect: str | tuple[int, int] = "canvas"
+    crop_aspect: str | tuple[int, int] | None = None  # None → manifest auto-picks canvas/source by layout
     crop_scale: float = 1.0
     rect: tuple[float, float, float] | None = None
     background: str = "blur"
