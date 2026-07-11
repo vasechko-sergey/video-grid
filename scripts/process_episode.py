@@ -35,7 +35,8 @@ def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
 
 def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: str | None = None,
                     max_attempts: int = 3,
-                    project: ProjectConfig | str | Path | None = None) -> dict:
+                    project: ProjectConfig | str | Path | None = None,
+                    color_correct: tuple | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
@@ -117,7 +118,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     for attempt in range(1, max_attempts + 1):
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,
-                            max_speed=params["max_speed"])
+                            max_speed=params["max_speed"], color_correct=color_correct)
         _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
                           attempt=attempt)
