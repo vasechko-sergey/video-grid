@@ -16,9 +16,11 @@ from PIL import Image
 from scripts.lib import proc
 from scripts.lib.models import CheckResult, MusicSpec, ReelCheckSpec, ReelFailure, ReelReport
 
-_NOT_IMPL = {"beat": "silent reel — lands in Phase B (music)",
-             "loudness": "silent reel — lands in Phase B (audio-mix)",
-             "safe_zones": "needs per-episode route + a platform safe-margin table"}
+# beat/loudness ARE implemented — they only fall through here when a reel carries no
+# music/audio (a silent reel legitimately can't check them). safe_zones is genuinely unbuilt.
+_UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
+              "loudness": "not checked — no audio stem supplied (silent reel)"}
+_NOT_IMPL = {"safe_zones": "needs a per-episode route + a platform safe-margin table"}
 
 
 def _probe_dur(video: str) -> float:
@@ -196,6 +198,8 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     if music is not None:
         checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
 
+    for name, reason in _UNCHECKED.items():
+        checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
     for name, reason in _NOT_IMPL.items():
         checks.setdefault(name, CheckResult(name, None, {"status": "not-implemented", "reason": reason}))
 

@@ -58,15 +58,20 @@ def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
     assert f.episode_idx == 1 and f.escalate_to == "reprocess"
 
 
-def test_audio_and_safezone_checks_are_not_implemented(tmp_path, monkeypatch):
+def test_beat_loudness_not_checked_safe_zones_not_implemented(tmp_path, monkeypatch):
     # distinct hashes: this test is about beat/loudness/safe_zones, not variety —
     # without them the _Stub default (identical hash 0 at both midpoints) trips
     # the variety check (distance 0 < variety_min) and overall flips to False.
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
-    for name in ("beat", "loudness", "safe_zones"):
+    # beat/loudness ARE implemented — a silent reel (no music/audio) just can't check
+    # them, so they read "not-checked", not "not-implemented" (honesty fix).
+    for name in ("beat", "loudness"):
         assert rep.checks[name].passed is None
+        assert rep.checks[name].detail["status"] == "not-checked"
+    assert rep.checks["safe_zones"].passed is None
+    assert rep.checks["safe_zones"].detail["status"] == "not-implemented"   # genuinely unbuilt
     assert rep.overall is True          # None never fails the reel
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 
