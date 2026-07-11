@@ -64,8 +64,10 @@ def test_json_arrays_coerce_to_tuples():
     (dict(source=""), "source"),
     (dict(source=None), "source"),
     (dict(start=-0.5), "start"),
+    (dict(start=True), "start"),
     (dict(dur=0), "dur"),
     (dict(dur=-1.0), "dur"),
+    (dict(dur=True), "dur"),
     (dict(shot_type=""), "shot_type"),
     (dict(composition="zoom"), "composition"),
     (dict(grid="golden"), "grid"),          # golden-canon is editorial, not a tracking grid
@@ -73,6 +75,9 @@ def test_json_arrays_coerce_to_tuples():
     (dict(motion="orbit"), "motion"),
     (dict(beat_slot=1.5), "beat_slot"),
     (dict(beat_slot=True), "beat_slot"),    # bool is not an int index
+    (dict(color_means=None), "color_means"),
+    (dict(color_means=[1, 2]), "color_means"),
+    (dict(color_means=[1, 2, 0]), "color_means"),
 ])
 def test_bad_field_raises_valueerror_with_remedy(kw, needle):
     with pytest.raises(ValueError, match=needle):
@@ -89,9 +94,11 @@ Expected: FAIL — `ModuleNotFoundError: scripts.lib.edl`.
 ```python
 """EDL contract + the EDL→manifest bridge (design docs/specs/2026-07-11-extract-spine-design.md).
 
-The typed source of truth for the front half's edit decision list. Mirrors
-scripts/lib/manifest.py (config-spec: validate-and-raise on construction, JSON
-round-trip). The human-facing EDL.md render + interactive authoring are SP3;
+The typed source of truth for the front half's edit decision list. Follows the
+hard config-spec pattern — validate-and-raise in `__post_init__`, JSON round-trip —
+like `models.py`'s `TrackSpec`/`MusicSpec`. (Distinct from `manifest.py`'s soft
+`Manifest` gate, whose `validate()` returns problem strings and never raises.)
+The human-facing EDL.md render + interactive authoring are SP3;
 this module is what the mechanical extract spine reads. Imports the shared
 vocab from models + manifest — manifest never imports edl, so no cycle.
 """
@@ -150,6 +157,11 @@ class EDLEpisode:
             raise ValueError(f"EDLEpisode.motion {self.motion!r} unknown — expected one of {MOTIONS} or null")
         if self.beat_slot is not None and (isinstance(self.beat_slot, bool) or not isinstance(self.beat_slot, int)):
             raise ValueError(f"EDLEpisode.beat_slot must be an int index or null, got {self.beat_slot!r}")
+        if not (isinstance(self.color_means, (tuple, list)) and len(self.color_means) == 3
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+                        for v in self.color_means)):
+            raise ValueError(f"EDLEpisode.color_means must be 3 positive channel means [R, G, B]; "
+                             f"got {self.color_means!r}")
         self.color_means = tuple(self.color_means)
         if isinstance(self.hero, list):
             self.hero = tuple(self.hero)              # JSON arrays → tuple (seed-bbox pin survives)
