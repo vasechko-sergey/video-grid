@@ -520,6 +520,9 @@ class ReelCheckSpec:
     target_dur: float
     variety_min: int = 8               # min phash Hamming distance between adjacent episodes
     color_delta_max: float = 12.0      # §9 across-cut mean-RGB delta ceiling
+    beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
+    loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
+    loudness_tol: float = 1.0          # ± band around the target
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -528,6 +531,83 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
         if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
             raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
+        if not isinstance(self.beat_tol, (int, float)) or self.beat_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.beat_tol must be a positive number of seconds, got {self.beat_tol!r}")
+        if not isinstance(self.loudness_target, (int, float)):
+            raise ValueError(f"ReelCheckSpec.loudness_target must be a number (LUFS), got {self.loudness_target!r}")
+        if not isinstance(self.loudness_tol, (int, float)) or self.loudness_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.loudness_tol must be a positive number, got {self.loudness_tol!r}")
+
+
+@dataclass
+class MusicSpec:
+    """MUSIC.json — the lean music analysis a reel is cut to (design §2, Phase B).
+    Config-spec: validates on construction so a malformed track spec fails loud,
+    not into a silent mis-mix. Beats are reel-relative (0.0 = reel start)."""
+    track: str
+    start_offset: float
+    duration: float
+    tempo: float
+    beats: tuple[float, ...]
+    energy: tuple[float, ...]
+    energy_hz: float
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.track, str) and self.track):
+            raise ValueError("MusicSpec.track must be a non-empty path to the audio file")
+        if not isinstance(self.start_offset, (int, float)) or self.start_offset < 0:
+            raise ValueError(f"MusicSpec.start_offset must be >= 0 seconds, got {self.start_offset!r}")
+        if not isinstance(self.duration, (int, float)) or self.duration <= 0:
+            raise ValueError(f"MusicSpec.duration must be a positive number of seconds, got {self.duration!r}")
+        if not isinstance(self.tempo, (int, float)) or self.tempo <= 0:
+            raise ValueError(f"MusicSpec.tempo must be a positive BPM, got {self.tempo!r}")
+        if not isinstance(self.beats, (tuple, list)):
+            raise ValueError("MusicSpec.beats must be a list of reel-relative beat times (seconds); a "
+                             "null/scalar means analyze() didn't run or the MUSIC.json is malformed")
+        try:
+            self.beats = tuple(float(b) for b in self.beats)
+        except (TypeError, ValueError):
+            raise ValueError("MusicSpec.beats must contain only numeric beat times (seconds) — a "
+                             "non-numeric entry means the MUSIC.json is malformed") from None
+        if not self.beats:
+            raise ValueError("MusicSpec.beats is empty — analyze() found no beats; check the track/window")
+        if list(self.beats) != sorted(self.beats):
+            raise ValueError("MusicSpec.beats must be ascending — analyze() emits them in time order")
+        for b in self.beats:
+            if not (0.0 <= b <= self.duration):
+                raise ValueError(f"MusicSpec.beats has {b} outside [0, {self.duration}] — beats are "
+                                 "reel-relative; a stray value means the analysis window is wrong")
+        if not isinstance(self.energy, (tuple, list)):
+            raise ValueError("MusicSpec.energy must be a list of RMS values; a null/scalar means "
+                             "analyze() didn't run or the MUSIC.json is malformed")
+        try:
+            self.energy = tuple(float(e) for e in self.energy)
+        except (TypeError, ValueError):
+            raise ValueError("MusicSpec.energy must contain only numeric RMS values — a non-numeric "
+                             "entry means the MUSIC.json is malformed") from None
+        if not self.energy:
+            raise ValueError("MusicSpec.energy is empty — analyze() produced no RMS curve")
+        if not isinstance(self.energy_hz, (int, float)) or self.energy_hz <= 0:
+            raise ValueError(f"MusicSpec.energy_hz must be a positive sample rate, got {self.energy_hz!r}")
+
+    def to_dict(self) -> dict:
+        return {"track": self.track, "start_offset": self.start_offset, "duration": self.duration,
+                "tempo": self.tempo, "beats": list(self.beats),
+                "energy": list(self.energy), "energy_hz": self.energy_hz}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MusicSpec":
+        # .get with validation-tripping defaults → a missing key surfaces a remedy, not a bare KeyError.
+        # beats/energy pass through raw (not tuple()-wrapped) so __post_init__ guards a null/scalar with a
+        # remedy instead of a bare TypeError from tuple(None) — the malformed-MUSIC.json case (design §2).
+        return cls(track=d.get("track", ""), start_offset=d.get("start_offset", 0.0),
+                   duration=d.get("duration", 0.0), tempo=d.get("tempo", 0.0),
+                   beats=d.get("beats", ()), energy=d.get("energy", ()),
+                   energy_hz=d.get("energy_hz", 0.0))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "MusicSpec":
+        return cls.from_dict(json.loads(Path(path).read_text()))
 
 
 @dataclass
@@ -549,10 +629,14 @@ class ReelFailure:
                    episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
 
 
+_ADVISORY_CHECKS = ("beat",)           # measured + reported but non-blocking — no re-trim actuator yet (design §5)
+
+
 @dataclass
 class ReelReport:
     """Whole-reel check artifact (design §2). Reuses CheckResult; overall is a
-    property (a None check never fails), mirroring the episode Report."""
+    property — a None check never fails, and an advisory check (in _ADVISORY_CHECKS,
+    e.g. beat) never blocks even when False (design §5), mirroring the episode Report."""
     checks: dict[str, CheckResult]
     fail_reasons: list[ReelFailure] = field(default_factory=list)
     episode_count: int = 0
@@ -560,7 +644,8 @@ class ReelReport:
 
     @property
     def overall(self) -> bool:
-        return all(c.passed is not False for c in self.checks.values())
+        return all(c.passed is not False
+                   for n, c in self.checks.items() if n not in _ADVISORY_CHECKS)
 
     def to_dict(self) -> dict:
         return {"checks": {n: c.to_dict() for n, c in self.checks.items()},
@@ -616,6 +701,7 @@ class ReelManifest:
     color_delta_max: float = 12.0
     cap: int = 3
     changelog: str = ""
+    music: str | None = None           # MUSIC.json path (design §6); None → a silent reel, as Phase A.5
 
     def __post_init__(self) -> None:
         if not self.episodes:
@@ -634,6 +720,8 @@ class ReelManifest:
                                  "path; a reprocess reuses it to skip tracking")
         if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
             raise ValueError(f"ReelManifest.cap must be an int >= 1, got {self.cap!r}")
+        if self.music is not None and not (isinstance(self.music, str) and self.music):
+            raise ValueError("ReelManifest.music must be a MUSIC.json path or None, got an empty/non-str value")
         self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
 
     @property
@@ -658,7 +746,8 @@ class ReelManifest:
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    color_delta_max=d.get("color_delta_max", 12.0),
-                   cap=d.get("cap", 3), changelog=d.get("changelog", ""))
+                   cap=d.get("cap", 3), changelog=d.get("changelog", ""),
+                   music=d.get("music"))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":

@@ -14,11 +14,13 @@ import numpy as np
 from PIL import Image
 
 from scripts.lib import proc
-from scripts.lib.models import CheckResult, ReelCheckSpec, ReelFailure, ReelReport
+from scripts.lib.models import CheckResult, MusicSpec, ReelCheckSpec, ReelFailure, ReelReport
 
-_NOT_IMPL = {"beat": "silent reel — lands in Phase B (music)",
-             "loudness": "silent reel — lands in Phase B (audio-mix)",
-             "safe_zones": "needs per-episode route + a platform safe-margin table"}
+# beat/loudness ARE implemented — they only fall through here when a reel carries no
+# music/audio (a silent reel legitimately can't check them). safe_zones is genuinely unbuilt.
+_UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
+              "loudness": "not checked — no audio stem supplied (silent reel)"}
+_NOT_IMPL = {"safe_zones": "needs a per-episode route + a platform safe-margin table"}
 
 
 def _probe_dur(video: str) -> float:
@@ -89,7 +91,40 @@ def _hamming(a: imagehash.ImageHash, b: imagehash.ImageHash) -> int:
     return int(a - b)          # imagehash __sub__ returns numpy.int64; coerce so detail stays JSON-serializable
 
 
-def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) -> ReelReport:
+def _loudnorm_measure(audio: str) -> float:
+    """Integrated loudness (LUFS) via ffmpeg loudnorm's analysis pass — the same
+    measure loudnorm normalizes to, so the gate reads what deliver ships (§5)."""
+    r = proc.run(["ffmpeg", "-i", audio, "-af", "loudnorm=print_format=json", "-f", "null", "-"])
+    err = (r.stderr or b"").decode("utf-8", errors="replace")
+    m = re.search(r'"input_i"\s*:\s*"?(-?\d+\.?\d*)"?', err)
+    if not m:
+        raise RuntimeError(f"loudnorm printed no input_i for {audio} — the file may have no audio "
+                           "stream; mix must produce the stem before the loudness gate runs")
+    return float(m.group(1))
+
+
+def _loudness_check(measured: float, spec: ReelCheckSpec) -> tuple[CheckResult, ReelFailure | None]:
+    """LOUDNESS — hard gate. In band → pass; out → a ReelFailure that next_action
+    escalates via escalate_to='audio-mix' (a bad mix stops-and-reports, §5)."""
+    ok = abs(measured - spec.loudness_target) <= spec.loudness_tol
+    detail = {"measured": round(measured, 2), "target": spec.loudness_target}
+    fail = None if ok else ReelFailure("loudness", "audio-mix", None, dict(detail))
+    return CheckResult("loudness", ok, detail), fail
+
+
+def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> CheckResult:
+    """BEAT — advisory. Worst deviation of a cut from its nearest beat; reported,
+    never a ReelFailure (excluded from overall via _ADVISORY_CHECKS, §5). The
+    'advisory' flag self-documents report.json — a False here doesn't block."""
+    if not cuts:
+        return CheckResult("beat", None, {"status": "n/a", "reason": "single episode, no cut"})
+    worst = max(min(abs(t - b) for b in beats) for t in cuts)
+    return CheckResult("beat", worst <= tol,
+                       {"worst_dev": round(worst, 3), "tol": tol, "n_cuts": len(cuts), "advisory": True})
+
+
+def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
+        music: MusicSpec | None = None, audio: str | None = None) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -155,8 +190,18 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str) 
         checks["variety"] = CheckResult("variety", None,
                                         {"status": "n/a", "reason": "single episode"})
 
+    if audio is not None:
+        cr, fail = _loudness_check(_loudnorm_measure(audio), spec)
+        checks["loudness"] = cr
+        if fail is not None:
+            fails.append(fail)
+    if music is not None:
+        checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
+
+    for name, reason in _UNCHECKED.items():
+        checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
     for name, reason in _NOT_IMPL.items():
-        checks[name] = CheckResult(name, None, {"status": "not-implemented", "reason": reason})
+        checks.setdefault(name, CheckResult(name, None, {"status": "not-implemented", "reason": reason}))
 
     rep = ReelReport(checks=checks, fail_reasons=fails, episode_count=len(episodes),
                      wall_s=round(time.monotonic() - t0, 3))

@@ -238,11 +238,42 @@ _Last updated: 2026-07-11._
   hints + 3 branch-pinning tests; Task 5's `_compound` now reuses
   `color.corrected`.
 
+- **music spine (Phase B · B1+B2) DONE (2026-07-11)** — plan
+  `docs/plans/2026-07-11-music-spine.md` + design
+  `docs/specs/2026-07-11-music-spine-design.md`. **426 tests green.** Gives the
+  reel sound and closes two of `check_reel`'s silent `passed=None` gates.
+  Built: `scripts/beats.py` (B1) — librosa `analyze(track, start_offset,
+  duration) → MusicSpec` (tempo + reel-relative beat grid + coarse RMS
+  energy), CLI writes `MUSIC.json`; `scripts/lib/models.py` gains the
+  `MusicSpec` config-spec, `ReelCheckSpec.beat_tol/loudness_target/
+  loudness_tol`, `_ADVISORY_CHECKS` (excludes `beat` from `ReelReport.overall`),
+  and `ReelManifest.music`; `scripts/check_reel.py` — loudness is a **hard**
+  gate (escalates to `audio-mix`), beat is **advisory** (measured, reported,
+  never blocking); `scripts/mix.py` (B2) — music-only audio stem: accurate
+  seek + afade + two-pass loudnorm −14 LUFS → aac (ambient ducking/SFX
+  deferred to when `extract`, §5.8, preserves per-episode audio);
+  `scripts/deliver.py` muxes the stem (stream-copy, preserves −14 LUFS);
+  `scripts/build_reel.py` builds the stem once after the picture pass,
+  re-checks loudness/beat, delivers with audio — `music=None` keeps the
+  silent Phase A.5 path unchanged. **Code polish (same-day):** `check_reel`'s
+  `_NOT_IMPL` stub was overloaded — it labeled `beat`/`loudness` "not
+  implemented" when they are now built and simply have nothing to check on a
+  silent reel. Split into `_UNCHECKED` (`beat`/`loudness` → status
+  `"not-checked"`, reason names the missing input) and `_NOT_IMPL`
+  (`safe_zones` only, genuinely unbuilt) — `passed` stays `None` either way,
+  so no control-flow changed, only the honesty of the report. **Deferred (NOT
+  built):** B3 autonomous sourcing (`music_find`/`music_fetch`, `music.mode`,
+  mood-match), B4 pacing (5.6), ambient ducking/SFX, downbeats/sections/
+  spectral/mood, `safe_zones`.
+
 ## Next action
 
-- **Phase B — the music spine** (`MUSIC.json`, beat/loudness checks, audio-mix)
-  that `check_reel` has been reporting `passed=None` for since Task 5 — the
-  immediate next action now that the reel retry loop (Phase A.5) is DONE. **OR**
+- **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
+  `music.mode` rights lanes, mood-match against catalog metadata) — picks up
+  where B1+B2 (music spine, DONE 2026-07-11) left off. **OR**
+- **Phase B4 — pacing** (`PACING.md`, §5.6): the shared energy spine read by
+  both music-and-mood and edit-plan, pinning episode order/length/energy to
+  the music sections. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today

@@ -42,8 +42,9 @@ _Last updated: 2026-07-09._
 - **All imports at module top.** No imports inside functions.
 - **Sole exception: a heavy, optional third-party dependency**, lazy-loaded on
   purpose so the module stays importable (and testable) without it. Today the
-  only sanctioned case is `from ultralytics import YOLO` inside
-  `scripts/track.py` (ultralytics pulls in torch). Mark such a case with a
+  sanctioned cases are `from ultralytics import YOLO` inside `scripts/track.py`
+  (ultralytics pulls in torch) and `import librosa` inside `scripts/beats.py`
+  (librosa is heavy; montage §5.5). Mark such a case with a
   one-line `# lazy import: heavy optional dep (...)` comment. Stdlib (`json`,
   `tempfile`) and already-required deps (Pillow) are never lazy — put them at
   the top.

@@ -49,8 +49,11 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
     assert rep.checks["length"].passed is True
     assert rep.checks["color_across_cuts"].passed is True
     assert rep.checks["variety"].passed is True
-    for name in ("beat", "loudness", "safe_zones"):
+    for name in ("beat", "loudness"):
         assert rep.checks[name].passed is None
+        assert rep.checks[name].detail["status"] == "not-checked"      # silent reel, not unbuilt
+    assert rep.checks["safe_zones"].passed is None
+    assert rep.checks["safe_zones"].detail["status"] == "not-implemented"
 
     out_dir = str(tmp_path / "out")
     v1 = deliver.deliver(master, REEL_H264, out_dir, "golden first cut", rep)

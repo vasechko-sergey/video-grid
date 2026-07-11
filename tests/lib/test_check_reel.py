@@ -58,15 +58,20 @@ def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
     assert f.episode_idx == 1 and f.escalate_to == "reprocess"
 
 
-def test_audio_and_safezone_checks_are_not_implemented(tmp_path, monkeypatch):
+def test_beat_loudness_not_checked_safe_zones_not_implemented(tmp_path, monkeypatch):
     # distinct hashes: this test is about beat/loudness/safe_zones, not variety —
     # without them the _Stub default (identical hash 0 at both midpoints) trips
     # the variety check (distance 0 < variety_min) and overall flips to False.
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
-    for name in ("beat", "loudness", "safe_zones"):
+    # beat/loudness ARE implemented — a silent reel (no music/audio) just can't check
+    # them, so they read "not-checked", not "not-implemented" (honesty fix).
+    for name in ("beat", "loudness"):
         assert rep.checks[name].passed is None
+        assert rep.checks[name].detail["status"] == "not-checked"
+    assert rep.checks["safe_zones"].passed is None
+    assert rep.checks["safe_zones"].detail["status"] == "not-implemented"   # genuinely unbuilt
     assert rep.overall is True          # None never fails the reel
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 
@@ -201,3 +206,30 @@ def test_probe_dur_fails_loud_on_a_durationless_probe(monkeypatch):
                         lambda cmd, **k: type("C", (), {"stdout": b"N/A\n"})())
     with pytest.raises(RuntimeError, match="no usable duration"):
         check_reel._probe_dur("x.mp4")
+
+
+def test_beat_check_on_beat():
+    cr = check_reel._beat_check([1.0, 2.0], (0.0, 1.02, 1.98, 3.0), 0.05)
+    assert cr.passed is True and cr.detail["worst_dev"] == 0.02 and cr.detail["n_cuts"] == 2
+    assert cr.detail["advisory"] is True
+
+
+def test_beat_check_off_beat():
+    cr = check_reel._beat_check([1.0], (0.0, 0.5, 1.3), 0.05)   # nearest beat 1.3 → dev 0.30
+    assert cr.passed is False and cr.detail["worst_dev"] == 0.3
+
+
+def test_beat_check_single_episode_na():
+    cr = check_reel._beat_check([], (0.0, 0.5), 0.05)
+    assert cr.passed is None and cr.detail["status"] == "n/a"
+
+
+def test_loudness_check_in_range():
+    cr, fail = check_reel._loudness_check(-14.4, ReelCheckSpec(target_dur=30.0))
+    assert cr.passed is True and fail is None
+
+
+def test_loudness_check_out_of_range_escalates_to_audio_mix():
+    cr, fail = check_reel._loudness_check(-9.0, ReelCheckSpec(target_dur=30.0))
+    assert cr.passed is False
+    assert fail is not None and fail.check == "loudness" and fail.escalate_to == "audio-mix"

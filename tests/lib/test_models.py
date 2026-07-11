@@ -428,6 +428,17 @@ def test_reel_check_spec_rejects_bad(kw, msg):
         m.ReelCheckSpec(**kw)
 
 
+def test_reelcheckspec_audio_thresholds_default_and_validate():
+    s = m.ReelCheckSpec(target_dur=30.0)
+    assert (s.beat_tol, s.loudness_target, s.loudness_tol) == (0.05, -14.0, 1.0)
+    with pytest.raises(ValueError, match="beat_tol"):
+        m.ReelCheckSpec(target_dur=30.0, beat_tol=0)
+    with pytest.raises(ValueError, match="loudness_tol"):
+        m.ReelCheckSpec(target_dur=30.0, loudness_tol=-1)
+    with pytest.raises(ValueError, match="loudness_target"):
+        m.ReelCheckSpec(target_dur=30.0, loudness_target="bad")
+
+
 def _rr():
     return m.ReelReport(
         checks={"black": m.CheckResult("black", True, {"black_start": []}),
@@ -458,6 +469,16 @@ def test_reel_report_writes_json(tmp_path):
     p = tmp_path / "reel.json"
     _rr().write(p)
     assert m.ReelReport.from_dict(json.loads(p.read_text())).overall is False
+
+
+def test_reelreport_overall_excludes_advisory_beat():
+    checks = {"black": m.CheckResult("black", True, {}),
+              "beat": m.CheckResult("beat", False, {"worst_dev": 0.3})}
+    assert m.ReelReport(checks=checks).overall is True          # advisory beat=False does NOT block delivery
+
+
+def test_reelreport_overall_blocks_on_loudness_false():
+    assert m.ReelReport(checks={"loudness": m.CheckResult("loudness", False, {"measured": -9.0})}).overall is False
 
 
 def test_reframe_spec_accepts_color_correct():
@@ -570,3 +591,44 @@ def test_reel_manifest_from_dict_rejects_missing_episodes_key():
 def test_reel_manifest_from_dict_rejects_non_dict_episode_entry():
     with pytest.raises(ValueError, match=r"episodes\[0\]"):
         m.ReelManifest.from_dict({"episodes": ["ep0.json"], "target_dur": 3.0})
+
+
+def _music(**kw):
+    d = dict(track="t.m4a", start_offset=0.0, duration=10.0, tempo=120.0,
+             beats=(0.0, 0.5, 1.0), energy=(0.1, 0.2), energy_hz=2.0)
+    d.update(kw)
+    return d
+
+
+def test_musicspec_roundtrips():
+    spec = m.MusicSpec.from_dict(_music())
+    assert m.MusicSpec.from_dict(spec.to_dict()) == spec
+    assert spec.beats == (0.0, 0.5, 1.0) and spec.duration == 10.0
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(track=""), "non-empty path"),
+    (dict(start_offset=-1), ">= 0"),
+    (dict(duration=0), "positive number"),
+    (dict(tempo=0), "positive BPM"),
+    (dict(beats=()), "beats is empty"),
+    (dict(beats=(1.0, 0.5)), "ascending"),
+    (dict(beats=(0.0, 99.0)), r"outside \[0, 10.0\]"),
+    (dict(beats=None), "beats must be a list"),
+    (dict(beats=(0.0, "x")), "numeric beat times"),
+    (dict(energy=()), "energy is empty"),
+    (dict(energy=None), "energy must be a list"),
+    (dict(energy_hz=0), "positive sample rate"),
+])
+def test_musicspec_rejects_with_remedy(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.MusicSpec.from_dict(_music(**kw))
+
+
+def test_reelmanifest_accepts_music_path_and_defaults_none():
+    ep = dict(manifest={"a": 1}, clip="c.mp4", route="r.json")
+    assert m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0)).music is None
+    rm = m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music="MUSIC.json"))
+    assert rm.music == "MUSIC.json"
+    with pytest.raises(ValueError, match="music must be"):
+        m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music=""))

@@ -209,6 +209,13 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 **Delivery interaction** (see §5.14): default is `baked` — the with-music export; saying it in the invocation (e.g. "without music") additionally emits a music-less version + a sidecar note (trending-sound name + in/out offset) so the user adds the platform-licensed sound in-app — cleaner on rights, avoids Content-ID mutes.
 **Gate:** mood matches SPEC, cut-map built, `start_offset` chosen, start doesn't break a word, track sourced (per `music.mode`).
 
+> **Built (2026-07-11, B1+B2):** `scripts/beats.py` — librosa `analyze(track,
+> start_offset, duration) → MusicSpec`: tempo + reel-relative beat grid + coarse
+> RMS energy; CLI writes `MUSIC.json`. This is the **lean subset** — section
+> boundaries/downbeats, spectral features, and mood-match are deferred, as is
+> autonomous sourcing (`music_find.py`/`music_fetch.py`, `music.mode`) — see
+> `docs/plans/2026-07-11-music-spine.md` (Phase B3).
+
 ### 5.6 pacing → `PACING.md` (energy spine)
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
 **Gate:** order+length+energy pinned to the music.
@@ -242,6 +249,12 @@ Both must pass. Fail → back to reframe.
 ### 5.12 audio-mix → `out/audio`
 `mix.py`: music + **ambient ducking** (sidechaincompress) + SFX (whoosh on transitions) + **loudnorm −14 LUFS** (EBU R128). afade in/out. **Ambient source:** the original audio of `segments/<ep>_raw.mp4` (preserved by extract, §5.8), trimmed and ordered per the EDL so it stays in sync with the final picture.
 **Gate:** loudness in range.
+
+> **Built (2026-07-11, B1+B2):** `scripts/mix.py` — **music-only** stem: accurate
+> seek + afade + two-pass loudnorm −14 LUFS → aac; `scripts/deliver.py` muxes it
+> (stream-copy, preserving the measured loudness). **Ambient ducking**
+> (sidechaincompress) and **SFX** are deferred until `extract` (§5.8) preserves
+> per-episode audio to duck against — see `docs/plans/2026-07-11-music-spine.md`.
 
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
 Two parts:
@@ -429,7 +442,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 **Status (which plan implements what):**
 - **Core plan (`check_episode`):** on-line/centered, jitter, route-continuity (teleport side), length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
 - **process-episode plan:** color (in-episode) — reframe applies the gain; its verification lands with that plan.
-- **Reel back half (`check_reel`):** black, color-across-cuts (median-attributed culprit), variety (phash), length — implemented; **beat**, **loudness**, **safe-zones** report `not-implemented` (Phase B / §7 defer), **never** a silent pass.
+- **Reel back half (`check_reel`):** black, color-across-cuts (median-attributed culprit), variety (phash), length, **loudness** (hard gate) and **beat** (advisory) — implemented (loudness hard, beat advisory; built 2026-07-11); a silent reel (no music/audio supplied) reports `not-checked` for those two, never a silent pass. **safe-zones** remains deferred, reporting `not-implemented`.
 
 ---
 

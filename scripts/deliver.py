@@ -18,6 +18,24 @@ def _next_version(out_dir: str, container: str) -> int:
     return max(ns) + 1 if ns else 1
 
 
+def _video_only_args(profile: ExportProfile) -> list[str]:
+    """profile.args() with any audio-output flag stripped — the mux path stream-copies
+    a pre-encoded −14 LUFS stem, so the profile's audio codec/bitrate never apply (and
+    leaving -c:a/-b:a in would double-specify against the -c:a copy below)."""
+    args = profile.args()
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] == "-an":
+            i += 1
+        elif args[i] in ("-c:a", "-b:a"):
+            i += 2                      # drop the flag and its value
+        else:
+            out.append(args[i])
+            i += 1
+    return out
+
+
 def _log_version(out_dir: str, n: int, changelog: str) -> None:
     vf = Path(out_dir) / "VERSIONS.md"
     if not vf.exists():
@@ -28,16 +46,27 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
-            report: ReelReport) -> str:
-    """Encode the checked master to the next REEL_v{n} and log the version.
-    Hard gate: a failed reel is never shipped (no fix-forward, montage §176)."""
+            report: ReelReport, audio: str | None = None) -> str:
+    """Encode the checked master to the next REEL_v{n} and log the version. With
+    `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
+    Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
+    The mux path assumes the audio stem's duration matches the master (build_reel
+    derives mix's dur from the probed master); -shortest only absorbs sub-second
+    jitter — a grossly short stem would truncate the picture, so callers must keep
+    them aligned."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     n = _next_version(out_dir, profile.container)
     out = str(Path(out_dir) / f"REEL_v{n}.{profile.container}")
-    proc.run(["ffmpeg", "-y", "-i", master, *profile.args(), out])
+    if audio is None:
+        proc.run(["ffmpeg", "-y", "-i", master, *profile.args(), out])
+    else:
+        # mux the pre-normalized aac stem: profile audio settings don't apply — we
+        # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy
+        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio, *_video_only_args(profile),
+                  "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
     return out
 
