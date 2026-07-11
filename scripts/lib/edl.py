@@ -123,3 +123,28 @@ class EDL:
     @classmethod
     def from_json(cls, path: str | Path) -> "EDL":
         return cls.from_dict(json.loads(Path(path).read_text()))
+
+
+def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
+    """Map an EDL row + its extracted segment + output path onto a Manifest-shaped
+    dict (the process_episode brief). A deliberate field MAP, not a dump — the
+    manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
+    them from the project via resolve_manifest) and model/stabilize (manifest
+    defaults). EDL-only fields (source/start/dur/shot_type/processing_notes/
+    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary."""
+    md: dict = {
+        "segment": segment, "out_path": out_path, "target_dur": ep.dur,
+        "composition": ep.composition, "grid": ep.grid, "layout": ep.layout,
+        "crop_scale": ep.crop_scale, "background": ep.background,
+        "border_px": ep.border_px, "border_color": ep.border_color,
+        "color_means": list(ep.color_means),
+    }
+    if ep.crop_aspect is not None:      # None → let Manifest pick canvas/source by layout
+        md["crop_aspect"] = list(ep.crop_aspect) if isinstance(ep.crop_aspect, tuple) else ep.crop_aspect
+    if ep.rect is not None:
+        md["rect"] = list(ep.rect)
+    if ep.motion is not None:
+        md["motion"] = ep.motion
+    if ep.hero is not None:
+        md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
+    return md

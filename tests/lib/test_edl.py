@@ -1,7 +1,8 @@
 import json
 
 import pytest
-from scripts.lib.edl import EDL, EDLEpisode
+from scripts.lib.edl import EDL, EDLEpisode, to_manifest_dict
+from scripts.lib import manifest as manifest_lib
 from scripts.lib.manifest import DEFAULT_COLOR
 
 
@@ -103,3 +104,38 @@ def test_edl_from_json_roundtrip(tmp_path):
                  shot_type="wide", composition="lead", grid="thirds")], "cap": 2}))
     e = EDL.from_json(str(p))
     assert e.cap == 2 and e.episodes[0].source == "a.mp4"
+
+
+def test_bridge_produces_a_valid_manifest():
+    ep = _ep(composition="lead", grid="thirds", layout="fill", crop_scale=0.8)
+    md = to_manifest_dict(ep, segment="segments/ep0_raw.mp4", out_path="out/ep0.mp4")
+    md["canvas"] = [1080, 1920]                   # the driver injects this via resolve_manifest
+    m = manifest_lib.Manifest.from_dict(md)       # would raise on an unknown key or a bad field
+    assert manifest_lib.validate(m) == []
+    assert m.segment == "segments/ep0_raw.mp4" and m.out_path == "out/ep0.mp4"
+    assert m.target_dur == ep.dur and m.crop_scale == 0.8
+
+
+def test_bridge_omits_canvas_delivery_and_edl_only_fields():
+    ep = _ep(shot_type="wide", processing_notes="stabilize here", beat_slot=3)
+    md = to_manifest_dict(ep, "s.mp4", "o.mp4")
+    for k in ("canvas", "delivery", "model", "stabilize",
+              "source", "start", "dur", "shot_type", "processing_notes", "beat_slot"):
+        assert k not in md, f"{k} must not cross the EDL↔manifest boundary"
+
+
+def test_bridge_forwards_layout_and_hero_when_set():
+    # NOTE: task fixture used motion="lateral", but MOTIONS (scripts/lib/models.py) is
+    # ("lateral:right", "lateral:left", "head-on", "static") — "lateral" is not a member
+    # and would raise inside EDLEpisode. Swapped to the real member "lateral:right" here
+    # and in the assertion below, per the task's own sanity-check instruction.
+    ep = _ep(layout="insert", crop_aspect=[9, 16], rect=[0.1, 0.1, 0.8],
+             motion="lateral:right", hero=[10, 20, 30, 40])
+    md = to_manifest_dict(ep, "s.mp4", "o.mp4")
+    assert md["layout"] == "insert" and md["crop_aspect"] == [9, 16]
+    assert md["rect"] == [0.1, 0.1, 0.8] and md["motion"] == "lateral:right" and md["hero"] == [10, 20, 30, 40]
+
+
+def test_bridge_omits_crop_aspect_when_none_so_manifest_auto_picks():
+    md = to_manifest_dict(_ep(layout="insert"), "s.mp4", "o.mp4")   # crop_aspect defaults None
+    assert "crop_aspect" not in md
