@@ -7,8 +7,10 @@ import numpy as np
 import pytest
 from scipy.io import wavfile
 
-from scripts import check_reel, mix
-from scripts.lib.models import MusicSpec, ReelCheckSpec
+from scripts import build_reel, check_reel, mix, reframe
+from scripts.lib import proc
+from scripts.lib.models import (Delivery, LayoutSpec, MusicSpec, ReframeSpec,
+                                ReelCheckSpec, ReelEpisode, ReelManifest)
 
 
 def _tone_music(tmp_path, secs=6, sr=22050):
@@ -29,3 +31,40 @@ def test_mix_hits_target_loudness(tmp_path):
     measured = check_reel._loudnorm_measure(stem)
     spec = ReelCheckSpec(target_dur=6.0)
     assert abs(measured - spec.loudness_target) <= spec.loudness_tol   # mix must satisfy check_reel's real gate (±1 of −14)
+
+
+def _reframe(src, tmp, x_const, name):
+    """A clip via the real reframe encoder with a constant-x crop route. A distinct
+    x_const frames sample_clip's moving box differently → distinct phash, so two
+    clips at 645 vs 1045 clear the variety check (test_reel_retry.py's precedent)."""
+    route = [dict(t=i / 10, x=float(x_const), y=540.0, w=140.0, h=320.0) for i in range(30)]
+    rp = tmp / f"{name}.route.json"
+    rp.write_text(json.dumps(route))
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                       color_means=(105.0, 122.0, 137.0), delivery=Delivery("native"),
+                       layout=LayoutSpec(mode="fill"))
+    out = str(tmp / f"{name}.mp4")
+    reframe.reframe(spec, str(src), str(rp), out, str(tmp / f"{name}.path.meta.json"))
+    return out
+
+
+@pytest.mark.integration
+def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
+    ep0 = _reframe(sample_clip, tmp_path, 645, "ep0")
+    ep1 = _reframe(sample_clip, tmp_path, 1045, "ep1")
+    dur = sum(check_reel._probe_dur(e) for e in (ep0, ep1))
+    ms = _tone_music(tmp_path, secs=max(2, int(round(dur)) + 1))     # track at least the reel length
+    music_json = tmp_path / "MUSIC.json"
+    music_json.write_text(json.dumps({**ms.to_dict(), "duration": dur,
+                                      "beats": [b for b in ms.beats if b <= dur]}))
+    rm = ReelManifest(
+        episodes=[ReelEpisode(manifest={"_": 0}, clip=ep0, route=str(tmp_path / "r0.json")),
+                  ReelEpisode(manifest={"_": 1}, clip=ep1, route=str(tmp_path / "r1.json"))],
+        target_dur=dur, variety_min=4, color_delta_max=40.0, music=str(music_json))
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                  "stream=codec_name", "-of", "default=nk=1:nw=1", res["output"]])
+    assert r.stdout.decode().strip().startswith("aac")           # the delivered reel carries an aac stem
+    assert res["report"]["checks"]["loudness"]["pass"] is True    # loudness gate green
+    assert "worst_dev" in res["report"]["checks"]["beat"]         # beat measured (advisory)
