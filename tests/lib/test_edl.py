@@ -1,5 +1,7 @@
+import json
+
 import pytest
-from scripts.lib.edl import EDLEpisode
+from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.manifest import DEFAULT_COLOR
 
 
@@ -45,3 +47,59 @@ def test_json_arrays_coerce_to_tuples():
 def test_bad_field_raises_valueerror_with_remedy(kw, needle):
     with pytest.raises(ValueError, match=needle):
         _ep(**kw)
+
+
+def _edl(**kw):
+    ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+              composition="lead", grid="thirds")
+    base = dict(episodes=[ep, {**ep, "start": 2.0}])
+    base.update(kw)
+    return EDL.from_dict(base)
+
+
+def test_edl_from_dict_defaults():
+    e = _edl()
+    assert len(e.episodes) == 2 and all(isinstance(x, EDLEpisode) for x in e.episodes)
+    assert e.cap == 3 and e.music is None and e.target_dur is None
+
+
+def test_edl_reel_level_fields():
+    e = _edl(music="MUSIC.json", cap=2, target_dur=8.0)
+    assert e.music == "MUSIC.json" and e.cap == 2 and e.target_dur == 8.0
+
+
+def test_edl_null_cap_defaults_to_three():
+    e = _edl(cap=None)
+    assert e.cap == 3
+
+
+@pytest.mark.parametrize("kw, needle", [
+    (dict(episodes=[]), "at least one"),
+    (dict(cap=0), "cap"),
+    (dict(cap=True), "cap"),
+    (dict(target_dur=-1.0), "target_dur"),
+    (dict(music=""), "music"),
+])
+def test_edl_bad_reel_field_raises(kw, needle):
+    with pytest.raises(ValueError, match=needle):
+        _edl(**kw)
+
+
+def test_edl_episodes_must_be_a_list():
+    with pytest.raises(ValueError, match="episodes"):
+        EDL.from_dict({"episodes": "nope"})
+
+
+def test_edl_episode_unknown_field_names_the_key():
+    bad = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="w",
+               composition="lead", grid="thirds", typo=1)
+    with pytest.raises(ValueError, match="episodes\\[0\\]"):
+        EDL.from_dict({"episodes": [bad]})
+
+
+def test_edl_from_json_roundtrip(tmp_path):
+    p = tmp_path / "EDL.json"
+    p.write_text(json.dumps({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0,
+                 shot_type="wide", composition="lead", grid="thirds")], "cap": 2}))
+    e = EDL.from_json(str(p))
+    assert e.cap == 2 and e.episodes[0].source == "a.mp4"

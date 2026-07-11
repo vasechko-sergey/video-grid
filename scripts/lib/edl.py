@@ -75,3 +75,51 @@ class EDLEpisode:
             self.crop_aspect = tuple(self.crop_aspect)
         if isinstance(self.rect, list):
             self.rect = tuple(self.rect)
+
+
+@dataclass
+class EDL:
+    """The ordered edit decision list + reel-level knobs. target_dur=None → the
+    reel total is the sum of window durations (the length gate then passes by
+    construction; a user-set target that disagrees is a real pacing signal)."""
+    episodes: tuple[EDLEpisode, ...]
+    music: str | None = None       # MUSIC.json path; None → a silent reel (Phase A.5 path)
+    cap: int = 3                   # build_reel reprocess cap
+    target_dur: float | None = None
+
+    def __post_init__(self) -> None:
+        eps = tuple(self.episodes)
+        if not eps:
+            raise ValueError("EDL.episodes is empty — an EDL needs at least one episode")
+        for k, e in enumerate(eps):
+            if not isinstance(e, EDLEpisode):
+                raise ValueError(f"EDL.episodes[{k}] must be an EDLEpisode")
+        self.episodes = eps
+        if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
+            raise ValueError(f"EDL.cap must be an int >= 1, got {self.cap!r}")
+        if self.music is not None and not (isinstance(self.music, str) and self.music):
+            raise ValueError("EDL.music must be a MUSIC.json path or null, got an empty/non-str value")
+        if self.target_dur is not None and (isinstance(self.target_dur, bool)
+                or not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0):
+            raise ValueError(f"EDL.target_dur must be a positive number or null, got {self.target_dur!r}")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EDL":
+        eps_in = d.get("episodes")
+        if not isinstance(eps_in, list):
+            raise ValueError("EDL.from_dict: 'episodes' must be a list of episode objects")
+        eps = []
+        for k, e in enumerate(eps_in):
+            if not isinstance(e, dict):
+                raise ValueError(f"EDL.from_dict: episodes[{k}] must be an object, got {type(e).__name__}")
+            try:
+                eps.append(EDLEpisode(**e))       # missing-required / unknown key → TypeError → remedy below
+            except TypeError as ex:
+                raise ValueError(f"EDL.from_dict: episodes[{k}] has a missing or unknown field — {ex}") from ex
+        cap = d.get("cap")
+        return cls(episodes=tuple(eps), music=d.get("music"),
+                   cap=cap if cap is not None else 3, target_dur=d.get("target_dur"))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "EDL":
+        return cls.from_dict(json.loads(Path(path).read_text()))
