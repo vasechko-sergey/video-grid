@@ -623,3 +623,12 @@ def test_musicspec_roundtrips():
 def test_musicspec_rejects_with_remedy(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.MusicSpec.from_dict(_music(**kw))
+
+
+def test_reelmanifest_accepts_music_path_and_defaults_none():
+    ep = dict(manifest={"a": 1}, clip="c.mp4", route="r.json")
+    assert m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0)).music is None
+    rm = m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music="MUSIC.json"))
+    assert rm.music == "MUSIC.json"
+    with pytest.raises(ValueError, match="music must be"):
+        m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music=""))

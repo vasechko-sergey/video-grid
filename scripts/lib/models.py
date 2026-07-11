@@ -701,6 +701,7 @@ class ReelManifest:
     color_delta_max: float = 12.0
     cap: int = 3
     changelog: str = ""
+    music: str | None = None           # MUSIC.json path (design §6); None → a silent reel, as Phase A.5
 
     def __post_init__(self) -> None:
         if not self.episodes:
@@ -719,6 +720,8 @@ class ReelManifest:
                                  "path; a reprocess reuses it to skip tracking")
         if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
             raise ValueError(f"ReelManifest.cap must be an int >= 1, got {self.cap!r}")
+        if self.music is not None and not (isinstance(self.music, str) and self.music):
+            raise ValueError("ReelManifest.music must be a MUSIC.json path or None, got an empty/non-str value")
         self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
 
     @property
@@ -743,7 +746,8 @@ class ReelManifest:
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    color_delta_max=d.get("color_delta_max", 12.0),
-                   cap=d.get("cap", 3), changelog=d.get("changelog", ""))
+                   cap=d.get("cap", 3), changelog=d.get("changelog", ""),
+                   music=d.get("music"))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":

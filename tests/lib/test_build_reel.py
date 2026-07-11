@@ -2,7 +2,7 @@ import pytest
 from scripts import build_reel
 from scripts.lib.assembly import StreamInfo
 from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailure,
-                                CheckResult)
+                                CheckResult, MusicSpec)
 
 
 def _rm(cap=3, n=2):
@@ -31,9 +31,12 @@ def _wire(monkeypatch, reports, pe_results=None):
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda clips, dims, fps, out: out)
-    monkeypatch.setattr(build_reel.check_reel, "run", lambda m, e, s, o: rq.pop(0))
+    # music=/audio= tolerated (and ignored): build_reel now always passes them (None for
+    # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
+    # of this fixture, which only exercises the reprocess/deliver escalation ladder.
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda m, e, s, o, music=None, audio=None: rq.pop(0))
     monkeypatch.setattr(build_reel.deliver, "deliver",
-                        lambda m, prof, od, cl, rep: seen["deliver"].append(od) or f"{od}/REEL_v1.mp4")
+                        lambda m, prof, od, cl, rep, audio=None: seen["deliver"].append(od) or f"{od}/REEL_v1.mp4")
     results = iter(pe_results or [])
 
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
@@ -143,3 +146,106 @@ def test_multi_culprit_round_second_failure_propagates_without_delivering(monkey
     assert res["finding"]["reason"] == "reprocess-failed" and res["finding"]["episode_idx"] == 2
     assert seen["deliver"] == []
     assert len(seen["reprocess"]) == 2      # both attempted; the second's failure returned
+
+
+# --- music integration (Task 6) --------------------------------------------
+# NOTE: _rm_music/_wire_music are deliberately NOT named _rm/_wire — this file
+# already defines _rm(cap=3, n=2) and _wire(monkeypatch, reports, pe_results=None)
+# for the pre-existing A.5 tests above; a same-named redefinition here would
+# shadow those at module scope and break every test that calls them.
+
+def _rm_music(music):
+    ep = ReelEpisode(manifest={"a": 1}, clip="c0.mp4", route="r0.json")
+    return ReelManifest(episodes=[ep, ReelEpisode(manifest={"a": 2}, clip="c1.mp4", route="r1.json")],
+                        target_dur=6.0, variety_min=4, music=music)
+
+
+def _fake_music():
+    return MusicSpec("t.wav", 0.0, 6.0, 120.0, (0.0, 0.5, 1.0), (0.3,), 2.0)
+
+
+def _si():
+    return StreamInfo(1080, 1920, 30.0, "yuv420p", "h264")   # StreamInfo(w, h, fps, pix_fmt, vcodec)
+
+
+def _passing():
+    return ReelReport(checks={"black": CheckResult("black", True, {})})   # no fail_reasons → deliver
+
+
+def _loud_fail():
+    r = ReelReport(checks={"loudness": CheckResult("loudness", False, {"measured": -9.0})})
+    r.fail_reasons = [ReelFailure("loudness", "audio-mix", None, {"measured": -9.0})]
+    return r
+
+
+def _wire_music(monkeypatch, reports, mixed, delivered):
+    monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
+    monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 6.0)
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
+    monkeypatch.setattr(build_reel.mix, "mix", lambda mus, wd, dur: (mixed.append((wd, dur)), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, audio=None, **k: (delivered.append(audio), "OUT.mp4")[1])
+    # NOTE: reel_orchestration.next_action is REAL — proves loudness rides the true escalate path
+
+
+def test_build_reel_mixes_once_then_delivers_with_stem(tmp_path, monkeypatch):
+    mixed, delivered = [], []
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    res = build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json")),
+                                str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    assert len(mixed) == 1 and mixed[0][1] == 6.0        # stem built exactly once, at the reel duration
+    assert delivered == ["stem.m4a"]                     # deliver received the stem
+
+
+def test_build_reel_loudness_fail_stops_and_never_delivers(tmp_path, monkeypatch):
+    mixed, delivered = [], []
+    _wire_music(monkeypatch, [_passing(), _loud_fail()], mixed, delivered)   # round1 passes→mix; round2 loudness fails
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    res = build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json")),
+                                str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "not-auto-fixable" and res["finding"]["check"] == "loudness"
+    assert delivered == []                               # deliver NEVER called on a loudness fail
+
+
+def test_build_reel_silent_path_unchanged_without_music(tmp_path, monkeypatch):
+    mixed, delivered = [], []
+    _wire_music(monkeypatch, [_passing()], mixed, delivered)
+    res = build_reel.build_reel(_rm_music(music=None), str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    assert mixed == [] and delivered == [None]           # no music → no mix, deliver stays silent (A.5)
+
+
+def _color_fail_music():
+    # a fresh (no-arg) colour-fail report — NOT named _color_fail: the module already
+    # defines _color_fail(idx, target, culprit) for the A.5 tests above; a same-named
+    # redefinition would shadow it and break every caller.
+    r = ReelReport(checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})})
+    r.fail_reasons = [ReelFailure("color_across_cuts", "reprocess", 0,
+                                  {"target": [100.0, 100.0, 100.0], "culprit_mean": [120.0, 100.0, 100.0]})]
+    return r
+
+
+def test_build_reel_music_delivers_after_full_reprocess_budget(tmp_path, monkeypatch):
+    # the mix `continue` needs +2 loop headroom, not +1 — a good, fully-mixed reel
+    # that used its whole reprocess budget must deliver, not fall to reel-cap-exhausted
+    ep = ReelEpisode(manifest={"a": 1}, clip="c0.mp4", route="r0.json")
+    rm = ReelManifest(episodes=[ep], target_dur=6.0, cap=3, music=str(tmp_path / "MUSIC.json"))
+    mixed, delivered = [], []
+    reports = [_color_fail_music(), _color_fail_music(), _color_fail_music(), _passing(), _passing()]
+    monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
+    monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 6.0)
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    monkeypatch.setattr(build_reel.mix, "mix", lambda mus, wd, dur: (mixed.append(dur), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.process_episode, "process_episode",
+                        lambda *a, **k: {"status": "mechanical_pass", "clip": "c0.mp4"})
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, audio=None, **k: (delivered.append(audio), "OUT.mp4")[1])
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"                 # NOT reel-cap-exhausted
+    assert mixed == [6.0] and delivered == ["stem.m4a"]  # mixed once, delivered with the stem

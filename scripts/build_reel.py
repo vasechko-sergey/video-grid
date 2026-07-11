@@ -9,10 +9,10 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts import check_reel, deliver, process_episode
+from scripts import check_reel, deliver, mix, process_episode
 from scripts.lib import assembly, reel_orchestration
 from scripts.lib.color import corrected
-from scripts.lib.models import ReelManifest, REEL_H264
+from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
 
 def _compound(prev: tuple[float, float, float], ratio: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -31,14 +31,23 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str) -> dict:
     dims, fps = (si.w, si.h), si.fps
     master = str(Path(work_dir) / "master.mp4")
     report_path = str(Path(work_dir) / "reel_report.json")
+    music = MusicSpec.from_json(rm.music) if rm.music else None   # None → silent reel, exactly as Phase A.5
     attempts: dict[int, int] = {}
     cc: dict[int, tuple[float, float, float]] = {}
-    for _ in range(rm.cap * len(rm.episodes) + 1):   # defensive bound; next_action is the real terminator
-        assembly.assemble(clips, dims, fps, master)
-        report = check_reel.run(master, clips, rm.check_spec, report_path)
+    audio: str | None = None
+    need_assemble = True
+    for _ in range(rm.cap * len(rm.episodes) + 2):   # defensive bound; +2 leaves headroom for the
+                                                     # once-after-picture mix `continue` + the deliver pass
+        if need_assemble:
+            assembly.assemble(clips, dims, fps, master)
+            need_assemble = False
+        report = check_reel.run(master, clips, rm.check_spec, report_path, music=music, audio=audio)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap)
         if action.kind == "deliver":
-            out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report)
+            if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
+                audio = mix.mix(music, work_dir, check_reel._probe_dur(master))
+                continue                             # need_assemble stays False — clips unchanged, no re-assemble
+            out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report, audio=audio)
             return {"status": "delivered", "output": out, "report": report.to_dict()}
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,
@@ -59,6 +68,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str) -> dict:
                         "sub": res, "attempts": dict(attempts)}
             clips[item.idx] = res["clip"]
             attempts[item.idx] = attempts.get(item.idx, 0) + 1
+            need_assemble = True
     return {"status": "stop_and_report",             # defensive: next_action escalates a capped reel first
             "finding": {"reason": "reel-cap-exhausted"}, "attempts": dict(attempts)}
 
