@@ -133,6 +133,26 @@ def test_color_across_cuts_uses_median_not_mean_so_a_far_outlier_does_not_mislea
     assert f.episode_idx == 1     # median → ep1 (correct); a mean would say ep0
 
 
+def test_color_fail_detail_carries_target_and_culprit_mean(tmp_path, monkeypatch):
+    # ep0 grey ~(100,120,130), ep1 warm ~(160,120,130): the cut delta trips the
+    # ceiling. ep0/ep1 are equidistant from the median (100/160 straddle 130), so
+    # the later-episode tie-break picks ep1 (see the two-episode tie test above). The
+    # driver reads detail["target"] (reel median) and detail["culprit_mean"] to build med/d_i.
+    _Stub([3.0, 3.0],
+          means={2.95: (100.0, 120.0, 130.0), 3.05: (160.0, 120.0, 130.0),
+                 1.5: (100.0, 120.0, 130.0), 4.5: (160.0, 120.0, 130.0)}
+          ).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0, color_delta_max=12.0),
+                         str(tmp_path / "r.json"))
+    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
+    assert f.episode_idx == 1
+    # median of the two span means, per channel
+    assert f.detail["target"] == [130.0, 120.0, 130.0]
+    # ep1 (the culprit) span mean
+    assert f.detail["culprit_mean"] == [160.0, 120.0, 130.0]
+
+
 def test_variety_flags_a_near_duplicate_pair(tmp_path, monkeypatch):
     # ep0 and ep1 identical hash (distance 0 < variety_min) → fail, blame ep1
     _Stub([3.0, 3.0], hashes={1.5: 100, 4.5: 100}).install(monkeypatch)
