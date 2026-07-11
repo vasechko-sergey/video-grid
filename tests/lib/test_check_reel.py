@@ -201,3 +201,30 @@ def test_probe_dur_fails_loud_on_a_durationless_probe(monkeypatch):
                         lambda cmd, **k: type("C", (), {"stdout": b"N/A\n"})())
     with pytest.raises(RuntimeError, match="no usable duration"):
         check_reel._probe_dur("x.mp4")
+
+
+def test_beat_check_on_beat():
+    cr = check_reel._beat_check([1.0, 2.0], (0.0, 1.02, 1.98, 3.0), 0.05)
+    assert cr.passed is True and cr.detail["worst_dev"] == 0.02 and cr.detail["n_cuts"] == 2
+    assert cr.detail["advisory"] is True
+
+
+def test_beat_check_off_beat():
+    cr = check_reel._beat_check([1.0], (0.0, 0.5, 1.3), 0.05)   # nearest beat 1.3 → dev 0.30
+    assert cr.passed is False and cr.detail["worst_dev"] == 0.3
+
+
+def test_beat_check_single_episode_na():
+    cr = check_reel._beat_check([], (0.0, 0.5), 0.05)
+    assert cr.passed is None and cr.detail["status"] == "n/a"
+
+
+def test_loudness_check_in_range():
+    cr, fail = check_reel._loudness_check(-14.4, ReelCheckSpec(target_dur=30.0))
+    assert cr.passed is True and fail is None
+
+
+def test_loudness_check_out_of_range_escalates_to_audio_mix():
+    cr, fail = check_reel._loudness_check(-9.0, ReelCheckSpec(target_dur=30.0))
+    assert cr.passed is False
+    assert fail is not None and fail.check == "loudness" and fail.escalate_to == "audio-mix"
