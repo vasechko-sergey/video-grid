@@ -27,6 +27,7 @@ a crash — so they must always be in context.
 | Testing guide | [testing-guide.md](docs/testing-guide.md) | TDD, whole-object asserts, real-ffmpeg golden fixtures, markers/layout. |
 | Development workflow | [development-workflow.md](docs/development-workflow.md) | Env, commands, superpowers execution protocol, branches/commits, doc standards. |
 | Build status & next action | [build-status.md](docs/build-status.md) | What's built, what's next, external assets — **update after every task**. |
+| Pipeline map | [pipeline-map.md](docs/pipeline-map.md) | Bird's-eye map of the 15-stage conveyor (design §5) — per-stage build status + the phase roadmap. |
 
 ## Source of truth
 

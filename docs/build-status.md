@@ -6,6 +6,10 @@ relevant bullet here in the same commit.
 
 _Last updated: 2026-07-11._
 
+> Bird's-eye progress across the full 15-stage conveyor:
+> [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
+> changelog; that one is the stage-by-stage map + phase roadmap.
+
 ## Done
 
 - **Core engine — plan `docs/plans/2026-07-05-video-grid-core.md`, Tasks 0–11 ALL
