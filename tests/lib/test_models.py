@@ -560,3 +560,13 @@ def test_reel_manifest_rejects_missing_clip_key():
     with pytest.raises(ValueError, match=r"episodes\[0\].clip"):
         m.ReelManifest.from_dict(_reel_dict(
             episodes=[{"manifest": {}, "route": "r.json"}]))
+
+
+def test_reel_manifest_from_dict_rejects_missing_episodes_key():
+    with pytest.raises(ValueError, match="episodes"):
+        m.ReelManifest.from_dict({"target_dur": 3.0})
+
+
+def test_reel_manifest_from_dict_rejects_non_dict_episode_entry():
+    with pytest.raises(ValueError, match=r"episodes\[0\]"):
+        m.ReelManifest.from_dict({"episodes": ["ep0.json"], "target_dur": 3.0})

@@ -642,9 +642,19 @@ class ReelManifest:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelManifest":
+        eps_in = d.get("episodes")
+        if not isinstance(eps_in, list):
+            raise ValueError(
+                "ReelManifest.from_dict: 'episodes' must be a list of "
+                "{manifest, clip, route} objects; produce them with process_episode first")
+        for k, e in enumerate(eps_in):
+            if not isinstance(e, dict):
+                raise ValueError(
+                    f"ReelManifest.from_dict: episodes[{k}] must be a "
+                    "{manifest, clip, route} object, got a non-object")
         eps = [ReelEpisode(manifest=_load_manifest(e.get("manifest")),
                            clip=e.get("clip", ""), route=e.get("route", ""))
-               for e in d["episodes"]]
+               for e in eps_in]
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    color_delta_max=d.get("color_delta_max", 12.0),

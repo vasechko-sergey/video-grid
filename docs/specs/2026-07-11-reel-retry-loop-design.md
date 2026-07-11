@@ -157,10 +157,14 @@ rounds caps the episode → the reprocess-class hits `attempts[i] ≥ cap` →
 **Escalate** ("colour beyond in-grade repair — regrade source / different
 window"). We never brute-force a grade past its honest range.
 
-`black` reprocess carries **no** `color_correct` — a clean re-encode. If the
-black is in the source window rather than a transient encode artifact, the
-re-encode won't clear it → 3× → escalate (the window is wrong), exactly the
-§4.1 rule.
+`black` reprocess carries **no new** `color_correct` — `next_action` returns
+`color_correct=None` for it (a clean re-encode), and the driver computes no
+fresh ratio. But the driver does **reuse** the episode's *standing* compounded
+`cc_i` when it calls `process_episode` — a black fix must not revert whatever
+colour correction that episode already earned, or it would flip-flop against
+the colour check next round. If the black is in the source window rather than
+a transient encode artifact, the re-encode (at that same standing grade) won't
+clear it → 3× → escalate (the window is wrong), exactly the §4.1 rule.
 
 ## §5 — Driver: `build_reel.py`
 
