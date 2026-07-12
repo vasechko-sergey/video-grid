@@ -266,8 +266,45 @@ _Last updated: 2026-07-11._
   mood-match), B4 pacing (5.6), ambient ducking/SFX, downbeats/sections/
   spectral/mood, `safe_zones`.
 
+- **extract spine (Front-half SP1) DONE (2026-07-11)** — plan
+  `docs/plans/2026-07-11-extract-spine.md` + design
+  `docs/specs/2026-07-11-extract-spine-design.md`, Tasks 0–6 via strict
+  subagent-driven-development (branch `feat/extract-spine`, commits
+  `f7061be`..`ee5f6ba`). **470 tests green.** A hand-authored `EDL.json` now
+  drives the whole conveyor to a delivered `REEL_v1.mp4` — no more
+  hand-supplied segments or per-episode manifests. Built four units:
+  `scripts/lib/edl.py` — `EDLEpisode`/`EDL` typed config-specs (JSON
+  round-trip) + `to_manifest_dict` bridge (EDL row → process-episode manifest
+  dict; omits canvas/delivery so they inherit); `scripts/extract.py` —
+  `extract_edl(edl, footage_root, seg_dir)` loops the untouched single-window
+  `extract()` over every EDL episode, plus the §5.8 length gate (segment
+  duration must match its window, else raise); `scripts/edl_to_reel.py` — the
+  thin SEQUENTIAL driver: load EDL+project → bridge+resolve+preflight →
+  `extract_edl` → `process_episode` per episode → assemble a `ReelManifest` →
+  `build_reel` → delivered | stop-and-report (CLI);
+  `tests/integration/test_front_spine.py` — a real-ffmpeg golden proving the
+  EDL→driver→`build_reel`→deliver **wiring**. **Load-bearing invariant:** the
+  driver resolves canvas/delivery **once** (bridge → `resolve_manifest`) and
+  stores the resolved manifest in each `ReelEpisode`, because `build_reel`'s
+  reprocess calls `process_episode.process_episode(...)` **without**
+  `project=` — an unresolved manifest would silently lose canvas/delivery on
+  any reprocess round. **The golden's honest scope:** `process_episode` is
+  faked (a real `route.json` + a copied, re-muxed clip) because the synthetic
+  `sample_clip` is a box, not a person, so real YOLO tracking returns an empty
+  route — the golden proves the wiring on real bytes (real extract, assemble,
+  `check_reel` gates, mix, deliver mux), not pixel-level crop-to-canvas
+  correctness (that stays covered by `process_episode`'s own real-footage
+  goldens). **Deferred (NOT built):** SP1b `draft.mp4` (labels + music bed,
+  §5.9), SP2 footage-intake, SP3 `EDL.md` markdown render + interactive
+  edit-plan authoring, SP4 trend-scan, and the cap-3 PARALLEL router +
+  episode-choice curation (montage §5.1).
+
 ## Next action
 
+- **Front-half continuation — SP1b / SP2 / SP3** (`draft.mp4`: labels + music
+  bed, §5.9; footage-intake `FOOTAGE.md`, §5.2; reel-brief full `SPEC.md` +
+  `EDL.md` markdown render/interactive authoring, §5.3/§5.7) — picks up where
+  SP1 (extract spine, DONE 2026-07-11) left off. **OR**
 - **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
   `music.mode` rights lanes, mood-match against catalog metadata) — picks up
   where B1+B2 (music spine, DONE 2026-07-11) left off. **OR**

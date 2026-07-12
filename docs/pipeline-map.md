@@ -14,15 +14,15 @@ _Last updated: 2026-07-11._
 
 | # | Stage | Output | Status | Module / note | Closed by phase |
 |---|-------|--------|:------:|---------------|-----------------|
-| 5.1  | using-montage (router) | routing + ensure-env | ◐ | env/`setup.sh` ✅; cap-3 fan-out router ❌ | Router + curation |
+| 5.1  | using-montage (router) | routing + ensure-env | ◐ | env/`setup.sh` ✅; `edl_to_reel` ✅ (SP1, sequential end-to-end precursor); cap-3 parallel fan-out + episode-choice curation still ❌ | Router + curation |
 | 5.2  | footage-intake | `FOOTAGE.md` | ❌ | scene/people/shake scan + window cull | Front-half authoring |
 | 5.3  | reel-brief | `SPEC.md` | ◐ | `project-init` machine subset ✅; full brief ❌ | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ◐ | beats-core (tempo/beat-grid/RMS energy) ✅; mood-match + autonomous sourcing ❌ | **Phase B — music spine** ◐ |
 | 5.6  | pacing | `PACING.md` | ❌ | energy spine (shared music↔edit) | **Phase B — music spine** |
-| 5.7  | edit-plan | `EDL.md` | ❌ | source+window map, no cutting | Front-half authoring |
-| 5.8  | extract | `segments/<ep>_raw.mp4` | ❌ | cut windows once (correct seek); contract exists, skill ❌ | Front-half authoring |
-| 5.9  | assemble-draft | `draft.mp4` | ❌ | concat + burnt-in "process here" labels | Front-half authoring |
+| 5.7  | edit-plan | `EDL.md` | ◐ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` markdown render + interactive authoring ❌ (SP3) | Front-half authoring |
+| 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
+| 5.9  | assemble-draft | `draft.mp4` | ❌ | concat + burnt-in "process here" labels; draft (labels + music bed) → SP1b | Front-half authoring |
 | 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1) | — |
 | 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` | — |
 | 5.12 | audio-mix | `out/audio` | ◐ | music-only mix (seek+afade+loudnorm −14 LUFS → aac) ✅; ambient ducking + SFX ❌ | **Phase B — music spine** |
@@ -43,20 +43,24 @@ best-fit, human swaps → Router + curation).
 
 ## What produces a reel today
 
-The **spine 5.10 → 5.14 is complete** and both automation loops are closed, so a
-`REEL_v1` now delivers **with music** end-to-end from locked episode clips:
-`build_reel` mixes a music-only stem once the picture passes (seek + afade +
-two-pass loudnorm −14 LUFS), `check_reel` gates on loudness (hard) and reports
-beat alignment (advisory, non-blocking), and `deliver` muxes the stem into the
-export (stream-copy, preserving the measured loudness). What's missing to a
-*full* reel: the **front half** (5.2–5.9: intake → brief → trends → edit-plan →
-extract → draft) is not built (segments/manifests are supplied by hand / in
-tests), and the rest of audio — mood-match/sourcing (5.5), pacing (5.6), ambient
-ducking + SFX (5.12) — is not built. When a reel carries no `music`/`audio` (the
-silent path, unchanged from Phase A.5), `check_reel` honestly reports
-`passed=None` (`"not-checked"`) for beat/loudness rather than a silent pass;
-`safe_zones` reports `passed=None` (`"not-implemented"`, genuinely unbuilt)
-either way.
+The **spine 5.10 → 5.14 is complete** and both automation loops are closed, and
+now a hand-authored `EDL.json` drives the **whole conveyor**: `edl_to_reel`
+bridges each EDL row to a manifest (`to_manifest_dict`), `extract_edl` (§5.8)
+cuts every episode's window, `process_episode` runs per episode, and the
+assembled `ReelManifest` goes through `build_reel` to a delivered `REEL_v1.mp4`
+**with music** end-to-end — `build_reel` mixes a music-only stem once the
+picture passes (seek + afade + two-pass loudnorm −14 LUFS), `check_reel` gates
+on loudness (hard) and reports beat alignment (advisory, non-blocking), and
+`deliver` muxes the stem into the export (stream-copy, preserving the measured
+loudness). Segments and per-episode manifests are **no longer hand-supplied**
+outside of tests. What's still missing to a *full* reel: the rest of the
+**front half** — 5.2 footage-intake, 5.3 reel-brief (the full `SPEC.md`, beyond
+`project-init`'s machine subset), 5.4 trend-scan, and 5.9 assemble-draft — plus
+the rest of audio: mood-match/sourcing (5.5), pacing (5.6), ambient ducking +
+SFX (5.12). When a reel carries no `music`/`audio` (the silent path, unchanged
+from Phase A.5), `check_reel` honestly reports `passed=None` (`"not-checked"`)
+for beat/loudness rather than a silent pass; `safe_zones` reports
+`passed=None` (`"not-implemented"`, genuinely unbuilt) either way.
 
 ## Phase roadmap
 
@@ -73,7 +77,7 @@ either way.
 ### Upcoming
 
 - [ ] **Phase B — music spine** ◐ — B1+B2 done (2026-07-11): beats-core + music-only mix + loudness/beat gates. Remaining: B3 sourcing, B4 pacing (5.6), ambient/SFX.
-- [ ] **Front-half authoring** — stages 5.2 footage-intake, 5.3 reel-brief (full `SPEC.md`), 5.4 trend-scan, 5.7 edit-plan, 5.8 extract, 5.9 assemble-draft. The idea → EDL → segments front door; currently supplied by hand.
+- [ ] **Front-half authoring** ◐ — SP1 (extract spine) done (2026-07-11): `EDL.json` typed contract + `to_manifest_dict` bridge + `extract_edl`/`edl_to_reel` driving the whole conveyor to a delivered reel. Remaining: SP1b (`draft.mp4`), SP2 (footage-intake), SP3 (reel-brief + edit-plan authoring), SP4 (trend-scan).
 - [ ] **Router + curation** — stage 5.1 cap-3 fan-out router; the episode-choice human loop; `cast.json` hero registry (design §6.1a).
 - [ ] **Editorial reel-final** — stage 5.13 beyond the mechanical gate: `safe_zones` + structural/editorial review.
 - [ ] **Misc engine** — remaining layouts (`fit-solid`, `split`, `pan`); stabilization + tracking-degradation ladder.

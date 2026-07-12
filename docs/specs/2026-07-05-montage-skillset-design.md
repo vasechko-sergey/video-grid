@@ -224,9 +224,21 @@ A shared artifact read by **both** music-and-mood **and** edit-plan. Episode ord
 Our own skill that copies the writing-plans format (checkbox steps, exact file lists, no placeholders) — see §14. Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
 **Gate:** every episode has source+window+shot-type+beat-slot.
 
+> **Built (2026-07-11, SP1):** `scripts/lib/edl.py` — typed `EDLEpisode`/`EDL`
+> config-specs (`EDL.json`, JSON round-trip) + the `to_manifest_dict` bridge
+> (EDL row → process-episode manifest dict; omits canvas/delivery so they
+> inherit from the project). The **markdown render** (`EDL.md`) and
+> **interactive authoring** are deferred — see
+> `docs/plans/2026-07-11-extract-spine.md` (SP3).
+
 ### 5.8 extract → `segments/<ep>_raw.mp4`
 `extract.py`: using the windows from `EDL`, **cut each episode into a standalone file** — once, with **correct seek arguments** (see §12; the bug was in the call args, not in 4K). Frame-accurate cut (re-encode of the short window). **Audio is preserved** in the segment (`aac`) — it is the ambient bed for §5.12; dropping it at extract would orphan the mix. From here on both the draft and `process-episode` work on these small fragments — no seeking through 300MB, no scanning the whole file. 4K is cut natively (no proxy/downscale — quality preserved).
 **Gate:** every episode from `EDL` has its own `segments/<ep>_raw.mp4`, length matches the window.
+
+> **Built (2026-07-11, SP1):** `scripts/extract.py` — `extract_edl(edl,
+> footage_root, seg_dir)` loops the untouched single-window `extract()` over
+> every EDL episode, plus the §5.8 length gate (segment duration must match
+> its window, else raise) — see `docs/plans/2026-07-11-extract-spine.md`.
 
 ### 5.9 assemble-draft → `draft.mp4`
 `assemble.py`: concat of the **segments** (`segments/*_raw.mp4`) into the **whole draft at once**, almost no processing, with **burnt-in labels** — what will be processed and where (from the EDL processing-notes). A check of the whole shape before polishing. After plan/draft approval the segments are locked as the working input.
