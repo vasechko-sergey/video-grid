@@ -47,3 +47,30 @@ def test_carve_splits_on_presence_transition():
 def test_carve_short_clip_yields_one_window():
     spans = intake.carve_windows([], _line([(0, 1)]), 0.8)   # < WIN_MIN
     assert spans == [(0.0, 0.8)]
+
+
+def test_score_rises_with_presence():
+    lo = intake.score_window(present=0.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
+    hi = intake.score_window(present=1.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
+    assert hi > lo
+
+
+def test_score_penalises_shake():
+    steady = intake.score_window(present=1.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
+    shaky = intake.score_window(present=1.0, motion=0.35, shake=intake.SHAKY_CLIP, dur=intake.WIN_TARGET)
+    assert steady > shaky
+
+
+def test_motion_fit_peaks_in_the_middle():
+    assert intake._motion_fit(intake.MOTION_PEAK) > intake._motion_fit(0.0)
+    assert intake._motion_fit(intake.MOTION_PEAK) > intake._motion_fit(1.0)
+
+
+def test_dur_fit_peaks_at_target():
+    assert intake._dur_fit(intake.WIN_TARGET) > intake._dur_fit(intake.WIN_MIN + 0.01)
+    assert intake._dur_fit(intake.WIN_TARGET) > intake._dur_fit(intake.WIN_MAX - 0.01)
+
+
+def test_describe():
+    assert intake._describe(1, "medium", 0.5) == "1 person, medium, dynamic"
+    assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"

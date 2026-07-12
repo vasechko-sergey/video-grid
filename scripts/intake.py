@@ -86,3 +86,33 @@ def _split_span(a: float, b: float) -> list[tuple[float, float]]:
     n = max(1, round(length / WIN_TARGET))
     chunk = length / n
     return [(a + i * chunk, chunk) for i in range(n)]
+
+
+def _motion_fit(m: float) -> float:
+    """Triangular: 0 at static, 1 at MOTION_PEAK, decaying to 0 at chaotic (1.0)."""
+    if m <= MOTION_PEAK:
+        return m / MOTION_PEAK if MOTION_PEAK else 0.0
+    return max(0.0, (1.0 - m) / (1.0 - MOTION_PEAK))
+
+
+def _dur_fit(d: float) -> float:
+    """1 at WIN_TARGET, falling toward WIN_MIN / WIN_MAX, 0 outside the band."""
+    if d < WIN_MIN or d > WIN_MAX:
+        return 0.0
+    if d <= WIN_TARGET:
+        return (d - WIN_MIN) / (WIN_TARGET - WIN_MIN)
+    return (WIN_MAX - d) / (WIN_MAX - WIN_TARGET)
+
+
+def score_window(present: float, motion: float, shake: float, dur: float) -> float:
+    """Blend the four factors → [0, 1]. Pure math; each factor is tested in isolation."""
+    stability = 1.0 - min(1.0, shake / SHAKY_CLIP)
+    s = (W_PRESENT * present + W_MOTION * _motion_fit(motion)
+         + W_STABLE * stability + W_DUR * _dur_fit(dur))
+    return float(min(1.0, max(0.0, s)))
+
+
+def _describe(people: int, shot: str, motion: float) -> str:
+    who = "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
+    dyn = "dynamic" if motion >= MOTION_PEAK else "calm"
+    return f"{who}, {shot}, {dyn}"
