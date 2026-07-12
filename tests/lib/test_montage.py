@@ -45,3 +45,82 @@ def test_v1_stages_kinds_and_flags():
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
     assert by["deliver"].checkpoint == "final"
+
+
+# ---- next_action inspector ----
+
+def _state(res, key):
+    return next(s["state"] for s in res["stages"] if s["key"] == key)
+
+
+def test_empty_run_next_is_project_init(tmp_path):
+    res = next_action(str(tmp_path))
+    assert res["next"] == "project-init"
+    assert res["delivered"] is False
+    assert _state(res, "project-init") == "next"
+    assert _state(res, "footage-intake") == "pending"
+
+
+def test_deferred_stages_always_skip(tmp_path):
+    res = next_action(str(tmp_path))
+    for k in ("reel-brief", "trend-scan", "pacing"):
+        assert _state(res, k) == "skip"
+
+
+def test_project_only_next_is_footage(tmp_path):
+    _touch(tmp_path, "project.json")
+    res = next_action(str(tmp_path))
+    assert res["next"] == "footage-intake"
+    assert _state(res, "project-init") == "done"
+
+
+def test_music_optional_absent_then_present(tmp_path):
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "FOOTAGE.json")
+    res = next_action(str(tmp_path))
+    assert res["next"] == "edit-plan"
+    assert _state(res, "music-and-mood") == "optional"   # absent optional never blocks
+    _touch(tmp_path, "MUSIC.json")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "music-and-mood") == "done"
+    assert res2["next"] == "edit-plan"
+
+
+def test_edl_present_next_is_deliver(tmp_path):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    res = next_action(str(tmp_path))
+    assert res["next"] == "deliver"
+    assert res["delivered"] is False
+
+
+def test_delivered_when_reel_in_out(tmp_path):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "REEL_v1.mp4").write_text("x")
+    res = next_action(str(tmp_path))
+    assert res["next"] is None
+    assert res["delivered"] is True
+    assert _state(res, "deliver") == "done"
+
+
+def test_broken_resume_surfaces_honestly(tmp_path):
+    # EDL present but FOOTAGE missing -> footage-intake is next, edit-plan still 'done'
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "EDL.json")
+    res = next_action(str(tmp_path))
+    assert res["next"] == "footage-intake"
+    assert _state(res, "edit-plan") == "done"
+    assert _state(res, "deliver") == "pending"
+
+
+def test_out_dir_override(tmp_path):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    alt = tmp_path / "delivery"
+    alt.mkdir()
+    (alt / "REEL_v2.mkv").write_text("x")   # glob matches any container/version
+    res = next_action(str(tmp_path), str(alt))
+    assert res["delivered"] is True
