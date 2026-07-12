@@ -265,17 +265,26 @@ discipline (ask-before-proceeding, stop-and-report, never improvise):
   distinct windows of one source → both survive), `build_descriptor`
   normalization — all with **mocked YOLO** (a synthetic person-timeline; YOLO
   returns empty on synthetic footage — design §12).
-- **Integration golden** (`tests/integration/test_intake.py`, real MVI_3739):
-  real ffmpeg + real YOLO + real vidstabdetect → assert the clip is logged with
-  `≥ 1` window, a sane `shot_type`, a measured `shake`, and `to_markdown`
-  renders. **Skips when vidstab is absent** (`@pytest.mark.integration` +
-  `_require_vidstab` guard) and when the external fixture is missing.
+- **Integration golden** (`tests/integration/test_intake.py`): the synthetic
+  `sample_clip` fixture (real ffmpeg bytes — a box on a field) with `_iter_seg`
+  **monkeypatched** to a synthetic person-timeline, but **real** PySceneDetect
+  and **real** vidstabdetect. Asserts the clip is logged with `≥ 1` window, a
+  sane `shot_type`, a measured `shake ≥ 0`, `FOOTAGE.json`/`FOOTAGE.md` written,
+  and `to_markdown` renders. **Skips when vidstab is absent**
+  (`@pytest.mark.integration` + `_require_vidstab` guard).
 
-**What the golden proves:** the real CV wiring on real bytes (probe → scenes →
-YOLO → vidstab → carve → score → contract → render). **What it does not:**
-tuned scoring/carving quality — that is judgment the human/edit-plan applies
-downstream; the unit tests pin the *mechanics* of each factor, not the aesthetic
-outcome.
+  Why faked `_iter_seg`: YOLO returns an empty route on synthetic footage (a box
+  is not a person — design §12, same reason `test_front_spine` fakes
+  `process_episode`), so real YOLO here would prove nothing. Real YOLO exercises
+  only when a human points intake at real footage (`footage_root` = the external
+  fixture folder) — a manual validation, not an automated milestone (mirrors the
+  core engine's MVI_3739 golden, which is not in the CI suite either).
+
+**What the golden proves:** the CV *wiring* on real bytes (probe → scenes →
+vidstabdetect + `.trf` parse → carve → score → cull → contract → render).
+**What it does not:** tuned scoring/carving quality (judgment the human/edit-plan
+applies downstream) or YOLO detection on real people — the unit tests pin each
+factor's *mechanics* against a mocked timeline.
 
 ---
 
@@ -286,8 +295,9 @@ outcome.
   setup step brings it up. This is the repo's first real vidstab consumer.
 - **`.trf` parsing is version-fragile** — guard the header, raise on an
   unrecognized format (never a silent `shake = 0`); the golden pins it.
-- **YOLO returns empty on synthetic footage** (§12) — unit tests mock the
-  timeline; only the real-footage golden exercises YOLO.
+- **YOLO returns empty on synthetic footage** (§12) — unit tests *and* the
+  integration golden mock the seg-timeline; only a manual real-footage run
+  exercises real YOLO.
 - **Sub-scene carving is the real work** — scene cuts ≠ moment windows; a long
   take with no cuts must still split.
 - **Dedup by image, not filename** — several windows of one clip are legitimate.
