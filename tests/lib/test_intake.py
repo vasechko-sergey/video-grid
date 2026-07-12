@@ -74,3 +74,28 @@ def test_dur_fit_peaks_at_target():
 def test_describe():
     assert intake._describe(1, "medium", 0.5) == "1 person, medium, dynamic"
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
+
+
+_TRF = "\n".join([
+    "VID.STAB 1",
+    "Frame 1 (List 0 [])",
+    "Frame 2 (List 2 [(LM 3 4 100 100 0.5 0.9) (LM 6 8 200 200 0.5 0.9)])",  # mags 5, 10 → median 10
+    "Frame 3 (List 1 [(LM 0 0 100 100 0.5 0.9)])",                            # mag 0
+])
+
+
+def test_parse_trf_median_magnitudes():
+    mags = intake._parse_trf(_TRF)
+    assert mags == [0.0, 10.0, 0.0]
+
+
+def test_parse_trf_bad_header_raises():
+    with pytest.raises(ValueError, match="unrecognized header"):
+        intake._parse_trf("not a vidstab file\nFrame 1 (List 0 [])")
+
+
+def test_windowed_shake_averages_and_normalises():
+    # fps=1 → frame i at second i; window 1–3s covers frames [1,3) = mags[1:3] = [10, 0] → avg 5 / width 1000
+    mags = [0.0, 10.0, 0.0, 0.0]
+    out = intake._windowed_shake(mags, [(1.0, 2.0)], fps=1.0, w=1000)
+    assert out == [5.0 / 1000]

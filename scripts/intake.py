@@ -116,3 +116,47 @@ def _describe(people: int, shot: str, motion: float) -> str:
     who = "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
     dyn = "dynamic" if motion >= MOTION_PEAK else "calm"
     return f"{who}, {shot}, {dyn}"
+
+
+_LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
+
+
+def _parse_trf(text: str) -> list[float]:
+    """Per-frame shake magnitude (median localmotion vector length, px) from a
+    libvidstab VID.STAB transforms file. Fail loud on an unrecognized header —
+    never a silent shake=0 (the format is libvidstab-version dependent)."""
+    lines = text.splitlines()
+    if not lines or not lines[0].startswith("VID.STAB"):
+        raise ValueError("vidstabdetect .trf has an unrecognized header — libvidstab version mismatch? "
+                         "cannot trust the shake estimate (run `bash setup.sh --with-vidstab`)")
+    mags: list[float] = []
+    for line in lines[1:]:
+        if not line.startswith("Frame"):
+            continue
+        lms = _LM_RE.findall(line)
+        if lms:
+            vecs = sorted((int(x) ** 2 + int(y) ** 2) ** 0.5 for x, y in lms)
+            mags.append(vecs[len(vecs) // 2])          # median localmotion magnitude
+        else:
+            mags.append(0.0)
+    return mags
+
+
+def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: float, w: int) -> list[float]:
+    out = []
+    for a, d in windows:
+        f0, f1 = int(a * fps), int((a + d) * fps)
+        seg = mags[f0:f1] or [0.0]
+        out.append((sum(seg) / len(seg)) / (w or 1))   # fraction of frame width
+    return out
+
+
+def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, res: tuple[int, int]) -> list[float]:
+    """vidstabdetect once per clip → per-frame magnitudes → averaged per window,
+    normalized by frame width. No per-window cutting → no -ss seek landmine."""
+    _require_vidstab()
+    with tempfile.TemporaryDirectory() as d:
+        trf = str(Path(d) / "t.trf")
+        proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"])
+        mags = _parse_trf(Path(trf).read_text())
+    return _windowed_shake(mags, windows, fps, res[0])
