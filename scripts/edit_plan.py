@@ -69,3 +69,44 @@ def build_edl(footage: Footage, selection: dict) -> EDL:
     cap = selection.get("cap")
     return EDL(episodes=tuple(episodes), music=selection.get("music"),
                cap=cap if cap is not None else 3, target_dur=selection.get("target_dur"))
+
+
+def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str) -> dict:
+    """Author EDL.json + EDL.md from FOOTAGE + a selection, gated by the project's
+    manifest preflight. Nothing is written when preflight fails — a bad EDL never
+    lands as a half-valid artifact. Returns {"status": "written", ...} or the
+    preflight stop_and_report verbatim."""
+    footage = Footage.from_json(footage_path)
+    try:
+        selection = json.loads(Path(selection_path).read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{selection_path} is not valid JSON ({e}) — fix the selection syntax") from e
+    cfg = ProjectConfig.from_json(project_path)
+    edl = build_edl(footage, selection)
+    _, stop = preflight(edl, cfg, str(Path(out_dir) / "segments"), out_dir)
+    if stop:
+        return stop
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    edl_path, md_path = Path(out_dir) / "EDL.json", Path(out_dir) / "EDL.md"
+    edl_path.write_text(json.dumps(edl.to_dict(), indent=2))
+    md_path.write_text(edl.to_markdown())
+    return {"status": "written", "edl": str(edl_path), "md": str(md_path),
+            "episodes": len(edl.episodes)}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="author EDL.json + EDL.md from FOOTAGE + a selection (stage 5.7)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("build", help="build EDL.json + EDL.md from a selection")
+    b.add_argument("--footage", required=True, help="FOOTAGE.json from intake (stage 5.2)")
+    b.add_argument("--selection", required=True, help="selection.json — window refs + editorial fields")
+    b.add_argument("--project", required=True, help="project.json — canvas/delivery for the preflight")
+    b.add_argument("--out-dir", required=True, help="dir for EDL.json + EDL.md")
+    a = ap.parse_args()
+    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0 if result["status"] == "written" else 1)
+
+
+if __name__ == "__main__":
+    main()

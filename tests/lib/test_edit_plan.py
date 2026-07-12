@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from scripts import edit_plan
 from scripts.lib.edl import EDL
@@ -115,3 +117,50 @@ def test_build_edl_bad_source_type_raises():
     sel = {"episodes": [{"source": 5, "window": 0, "composition": "lead", "grid": "thirds"}]}
     with pytest.raises(ValueError, match="'source' must be a clip path string"):
         edit_plan.build_edl(_footage(), sel)
+
+
+def _write_inputs(tmp_path, sel):
+    (tmp_path / "FOOTAGE.json").write_text(json.dumps(_footage().to_dict()))
+    (tmp_path / "selection.json").write_text(json.dumps(sel))
+    (tmp_path / "project.json").write_text(
+        json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
+    return (str(tmp_path / "FOOTAGE.json"), str(tmp_path / "selection.json"),
+            str(tmp_path / "project.json"))
+
+
+def test_write_edit_plan_writes_both_files_and_round_trips(tmp_path):
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds", "crop_scale": 0.8},
+        {"source": "B.mp4", "window": 0, "composition": "center", "grid": "phi"}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel)
+    out = tmp_path / "out"
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(out))
+    assert res["status"] == "written" and res["episodes"] == 2
+    assert (out / "EDL.json").exists() and (out / "EDL.md").exists()
+    edl = EDL.from_json(str(out / "EDL.json"))                 # round-trips through the contract
+    assert edl.episodes[0].source == "A.mp4" and edl.episodes[1].source == "B.mp4"
+    assert "# Edit plan — 2 episodes" in (out / "EDL.md").read_text()
+
+
+def test_write_edit_plan_bad_episode_stops_and_writes_nothing(tmp_path):
+    # ep1 is fill+border → LayoutSpec rejects it in preflight
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds", "crop_scale": 0.8},
+        {"source": "B.mp4", "window": 0, "composition": "center", "grid": "phi",
+         "layout": "fill", "border_px": 5}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel)
+    out = tmp_path / "out"
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(out))
+    assert res["status"] == "stop_and_report" and res["finding"]["reason"] == "edl-invalid"
+    assert res["finding"]["episode_idx"] == 1
+    assert not (out / "EDL.json").exists() and not (out / "EDL.md").exists()   # nothing written
+
+
+def test_write_edit_plan_corrupt_selection_raises(tmp_path):
+    (tmp_path / "FOOTAGE.json").write_text(json.dumps(_footage().to_dict()))
+    (tmp_path / "project.json").write_text(
+        json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
+    (tmp_path / "selection.json").write_text("{ not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        edit_plan.write_edit_plan(str(tmp_path / "FOOTAGE.json"), str(tmp_path / "selection.json"),
+                                  str(tmp_path / "project.json"), str(tmp_path / "out"))
