@@ -125,3 +125,43 @@ def test_people_timeline_samples_and_counts(monkeypatch):
     assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
     assert tl[0][2][2] == 200                          # primary bbox width threaded through
     # crops stay empty here: the fakes carry no orig_img, so there is nothing to retain.
+
+
+import imagehash
+from PIL import Image as _Img
+from scripts.lib.footage import Footage, FootageClip, FootageWindow
+
+def _h(_):   # all-zero average-hash; identical inputs collide (distance 0)
+    return imagehash.average_hash(_Img.new("L", (8, 8), 0))
+
+def _h_distinct(_):
+    # NOTE: a flat/uniform image of ANY single value collides with every other
+    # flat image under average_hash — every pixel equals the mean, so every bit
+    # is 0 regardless of whether that flat value is black or white (verified:
+    # hamming(flat-black, flat-white) == 0). A split image is needed for a
+    # genuinely distinct hash (verified: hamming(flat-black, half/half) == 32).
+    img = _Img.new("L", (8, 8), 0)
+    px = img.load()
+    for x in range(4, 8):
+        for y in range(8):
+            px[x, y] = 255
+    return imagehash.average_hash(img)
+
+def test_cull_marks_best_and_drops_duplicates():
+    w_hi = FootageWindow(start=0, dur=2, shot_type="m", people=1, motion=0.4, shake=0.0, score=0.9)
+    w_dup = FootageWindow(start=5, dur=2, shot_type="m", people=1, motion=0.4, shake=0.0, score=0.7)
+    w_far = FootageWindow(start=9, dur=2, shot_type="m", people=1, motion=0.4, shake=0.0, score=0.6)
+    clip = FootageClip(source="a.mp4", dur=20, res=(1920, 1080), fps=30,
+                       windows=[w_hi, w_dup, w_far])
+    hashes = {id(w_hi): _h("a"), id(w_dup): _h("a"),
+              id(w_far): _h_distinct("b")}
+    intake.cull([clip], phash_of=lambda c, w: hashes[id(w)])
+    assert w_hi.best is True         # top score, survives
+    assert w_dup.best is False       # duplicate of w_hi
+    assert w_far.best is True        # distinct, above floor
+
+def test_cull_low_score_not_best():
+    w = FootageWindow(start=0, dur=2, shot_type="m", people=0, motion=0.1, shake=0.0, score=0.2)
+    clip = FootageClip(source="a.mp4", dur=5, res=(100, 100), fps=30, windows=[w])
+    intake.cull([clip], phash_of=lambda c, w: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
+    assert w.best is False           # below BEST_FLOOR even though unique

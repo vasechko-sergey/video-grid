@@ -221,3 +221,25 @@ def _crop_and_mask(res, idx: int, box):
         m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
         mask = m[t:b_, l:r_]
     return (crop if crop.size else None), mask
+
+
+def _phash_at(clip: str, t: float):
+    return check_reel._phash_bits(clip, t)             # reuse the reel-variety phash
+
+
+def cull(clips: list, phash_of) -> None:
+    """Rank all windows by score; a window whose phash Hamming distance to an
+    already-kept higher-scored window is < DEDUP_DIST is a duplicate (compare by
+    IMAGE, never by filename — several windows of one clip are legitimate). Mark
+    best on dedup survivors with score >= BEST_FLOOR. Mutates FootageWindow.best.
+    phash_of(clip, window) -> imagehash.ImageHash (injected; the driver closes it
+    over footage_root)."""
+    ranked = sorted(((c, w) for c in clips for w in c.windows),
+                    key=lambda cw: cw[1].score, reverse=True)
+    kept: list = []
+    for c, w in ranked:
+        h = phash_of(c, w)
+        dup = any(check_reel._hamming(h, kh) < DEDUP_DIST for kh in kept)
+        w.best = (not dup) and w.score >= BEST_FLOOR
+        if not dup:
+            kept.append(h)
