@@ -31,7 +31,7 @@ Announce on entry: **"Using using-montage to conduct footage -> reel."**
 
 Point **every** stage's output at one **run dir** so the inspector sees a coherent
 run: `project_init --project-dir <run>`, `intake <root> <run>`,
-`edit_plan --out-dir <run>`, `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
+`edit_plan build --out-dir <run>`, `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
 
 0. **Ensure env.** `bash setup.sh` (add `--with-vidstab` — footage-intake is the
    first runtime vidstab consumer, §5.2).

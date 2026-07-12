@@ -182,7 +182,7 @@ the CLIs (the user never types flags, §5.1). Judgment lives in the SKILL, not c
 |------------------------|---------|
 | "reel"/"shorts"/"9:16" · "youtube"/"16:9" · "square"/"1:1" · "cinema"/"21:9" | `project_init --purpose …` |
 | "4k" · "1080"/"social" · "native"/(unstated) | `project_init --quality …` |
-| a track path / "with music" | `beats … --out MUSIC.json`, then `edit_plan --music` |
+| a track path / "with music" | `beats … --out MUSIC.json`, then edit-plan's `selection.json` `music` field |
 | "no music" / "без музыки" | leave `MUSIC.json` unset (silent path; `music=None`) |
 | "classic" ↔ "trend" (style-lean) | edit-plan guidance (composition/pacing choices) |
 
@@ -191,7 +191,7 @@ aspect (defers to project-init's own "ask, don't guess").
 
 ## 4. Testing
 
-- **`tests/test_montage.py`** (unit, the bulk): `next_action` over a `tmp_path`
+- **`tests/lib/test_montage.py`** (unit, the bulk): `next_action` over a `tmp_path`
   run dir — empty (next=project-init, delivered False), project.json only
   (next=footage-intake), +FOOTAGE (next=edit-plan, music `optional`), +MUSIC
   (music `done`), +EDL (next=deliver), +`out/REEL_v1.mp4` (next None, delivered
