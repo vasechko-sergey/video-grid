@@ -33,3 +33,35 @@ def write_reel_brief(spec: Spec, out_dir: str) -> dict:
     spec.write(sj)
     sm.write_text(spec.to_markdown())
     return {"status": "written", "spec": str(sj), "md": str(sm)}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="write SPEC.json + SPEC.md — the reel brief (stage 5.3)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("build", help="build SPEC.json + SPEC.md from brief fields")
+    b.add_argument("--project", required=True, help="project.json — canvas source (from project-init)")
+    b.add_argument("--length", type=float, required=True, help="target reel length, seconds")
+    b.add_argument("--mood", required=True, help="the reel's mood (gate)")
+    b.add_argument("--hook", required=True, help="the opening hook intent (gate)")
+    b.add_argument("--reel-count", type=int, default=1, help="how many reels (default 1)")
+    b.add_argument("--music", default="auto", help="track name / 'auto' / 'none'")
+    b.add_argument("--music-mode", default="free", help="local / free (default) / any")
+    b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")
+    b.add_argument("--platform", default="", help="free label (reel/tiktok/youtube/…)")
+    b.add_argument("--text", default="", help="on-screen text intent")
+    b.add_argument("--ending", default="", help="ending intent")
+    b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")
+    b.add_argument("--notes", default="")
+    b.add_argument("--out-dir", required=True, help="dir for SPEC.json + SPEC.md")
+    a = ap.parse_args()
+    spec = build_spec(a.project, length_s=a.length, mood=a.mood, hook=a.hook,
+                      reel_count=a.reel_count, music=a.music, music_mode=a.music_mode,
+                      style_lean=a.style_lean, platform=a.platform, text=a.text,
+                      ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes)
+    result = write_reel_brief(spec, a.out_dir)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0)
+
+
+if __name__ == "__main__":
+    main()
