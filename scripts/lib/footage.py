@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-def _num(v) -> bool:
+def _num(v: object) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 

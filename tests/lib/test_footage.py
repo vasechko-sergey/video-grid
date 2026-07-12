@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from scripts.lib.footage import FootageWindow, FootageClip, Footage, CastMember, Cast
 
@@ -43,6 +45,18 @@ def test_clip_rejects_bad_res():
         FootageClip(source="a.mp4", dur=1.0, res=(0, 10), fps=30)
 
 
+def test_clip_from_dict_names_missing_window_field():
+    # a window dict missing a required field is named by index, same as an unknown key
+    with pytest.raises(ValueError, match=r"windows\[0\]"):
+        FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30,
+                                   windows=[dict(start=1.0, dur=2.0)]))   # missing shot_type/people/motion/shake
+
+
+def test_clip_from_dict_rejects_unknown_top_key():
+    with pytest.raises(ValueError, match="unknown field"):
+        FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30, bogus=1))
+
+
 def _footage():
     return Footage(clips=[FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30,
                                       scene_cuts=[3.0],
@@ -53,6 +67,12 @@ def _footage():
 def test_footage_roundtrips():
     f = _footage()
     assert Footage.from_dict(f.to_dict()).to_dict() == f.to_dict()
+
+
+def test_footage_from_json_roundtrip(tmp_path):
+    f = _footage()
+    p = tmp_path / "FOOTAGE.json"; p.write_text(json.dumps(f.to_dict()))
+    assert Footage.from_json(p).to_dict() == f.to_dict()
 
 
 def test_footage_from_json_bad_syntax(tmp_path):
@@ -88,3 +108,15 @@ def test_castmember_rejects_bad(kw, msg):
     d = dict(name="Lena", descriptor=[0.5, 0.5]); d.update(kw)
     with pytest.raises(ValueError, match=msg):
         CastMember(**d)
+
+
+def test_cast_from_json_roundtrip(tmp_path):
+    c = Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5])])
+    p = tmp_path / "cast.json"; p.write_text(json.dumps(c.to_dict()))
+    assert Cast.from_json(p).to_dict() == c.to_dict()
+
+
+def test_cast_from_json_bad_syntax(tmp_path):
+    p = tmp_path / "cast.json"; p.write_text("{ not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        Cast.from_json(p)
