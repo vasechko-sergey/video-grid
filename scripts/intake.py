@@ -182,11 +182,12 @@ def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]
         yield i, res
 
 
-def _people_timeline(src: str, fps: float, res: tuple[int, int]) -> tuple[list, dict]:
+def _people_timeline(src: str, fps: float, res: tuple[int, int],
+                     sample_fps: float = SAMPLE_FPS) -> tuple[list, dict]:
     """One seg pass → (timeline, crops_by_track).
     timeline: [(t, people, primary_bbox)] sampled at ~SAMPLE_FPS (primary = largest bbox).
     crops_by_track: {tid: (conf, crop_rgb, mask)} best crop per track id, for the cast pass."""
-    step = max(1, round(fps / SAMPLE_FPS))
+    step = max(1, round(fps / sample_fps))
     timeline, crops = [], {}
     for i, r in _iter_seg(src):
         boxes = list(r.boxes) if getattr(r, "boxes", None) is not None else []
@@ -358,7 +359,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> f
         dur = assembly.probe_duration(src)
         res = (info.w, info.h)
         cuts = scene_bounds(src)
-        timeline, crops = _people_timeline(src, info.fps, res)
+        timeline, crops = _people_timeline(src, info.fps, res, sample_fps)
         for tid, entry in crops.items():
             all_crops[(p.name, tid)] = entry          # composite key — ids restart per clip
         spans = carve_windows(cuts, timeline, dur)

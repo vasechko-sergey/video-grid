@@ -222,7 +222,8 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     tl = [(float(i), 1, (500, 500, 300, 300)) for i in range(9)]
-    monkeypatch.setattr(intake, "_people_timeline", lambda s, fps, res: (tl, {}))
+    monkeypatch.setattr(intake, "_people_timeline",
+                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
     monkeypatch.setattr(intake, "shake_by_window",
                         lambda clip, spans, fps, res: [0.0 for _ in spans])
     import imagehash
