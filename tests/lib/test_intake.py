@@ -1,4 +1,5 @@
 import types
+import numpy as np
 import pytest
 from scripts import intake
 
@@ -165,3 +166,27 @@ def test_cull_low_score_not_best():
     clip = FootageClip(source="a.mp4", dur=5, res=(100, 100), fps=30, windows=[w])
     intake.cull([clip], phash_of=lambda c, w: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
     assert w.best is False           # below BEST_FLOOR even though unique
+
+
+def test_build_descriptor_normalised_and_masked():
+    crop = np.zeros((10, 10, 3), dtype="uint8"); crop[:, :, 0] = 255   # pure red
+    mask = np.ones((10, 10), dtype="uint8")
+    d = intake.build_descriptor(crop, mask)
+    assert len(d) == 3 * intake._HIST_BINS
+    assert abs(sum(d) - 1.0) < 1e-6                    # L1-normalized
+    assert d[intake._HIST_BINS - 1] > 0               # red maxed → top R bin populated
+
+def test_surface_crops_dedups_identities():
+    red = (np.zeros((8, 8, 3), "uint8"), np.ones((8, 8), "uint8")); red[0][:, :, 0] = 255
+    red2 = (red[0].copy(), red[1].copy())
+    blue = (np.zeros((8, 8, 3), "uint8"), np.ones((8, 8), "uint8")); blue[0][:, :, 2] = 255
+    crops = {1: (0.9, *red), 2: (0.8, *red2), 3: (0.7, *blue)}
+    picked = intake.surface_crops(crops, top_n=8)
+    assert len(picked) == 2                            # the two reds collapse to one identity
+
+def test_write_cast_writes_json(tmp_path):
+    crop = np.zeros((8, 8, 3), "uint8"); crop[:, :, 1] = 255
+    cast = intake.write_cast([("Lena", "green", [(crop, np.ones((8, 8), "uint8"))])], str(tmp_path))
+    assert (tmp_path / "cast.json").exists()
+    assert cast.members[0].name == "Lena"
+    assert (tmp_path / "cast_crops" / "Lena_0.png").exists()

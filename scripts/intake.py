@@ -243,3 +243,59 @@ def cull(clips: list, phash_of) -> None:
         w.best = (not dup) and w.score >= BEST_FLOOR
         if not dup:
             kept.append(h)
+
+
+def build_descriptor(crop_rgb, mask) -> list[float]:
+    """L1-normalized color histogram over the segmentation-mask pixels only
+    (clothing/gear — background removed; §6.1a). numpy + Pillow, no cv2."""
+    px = crop_rgb[mask > 0] if mask is not None else crop_rgb.reshape(-1, 3)
+    if px.size == 0:
+        px = crop_rgb.reshape(-1, 3)
+    hist: list[float] = []
+    for c in range(3):
+        h, _ = np.histogram(px[:, c], bins=_HIST_BINS, range=(0, 255))
+        hist.extend(h.tolist())
+    total = float(sum(hist)) or 1.0
+    return [v / total for v in hist]
+
+
+def _descriptor_dist(a: list[float], b: list[float]) -> float:
+    return sum(abs(x - y) for x, y in zip(a, b))
+
+
+def surface_crops(crops_by_track: dict, top_n: int = 8) -> list:
+    """Cluster retained per-track crops by descriptor similarity → top_n distinct
+    identities (highest confidence first). Returns [(tid, conf, crop_rgb, mask, descriptor)]."""
+    items = []
+    for tid, (conf, crop_rgb, mask) in crops_by_track.items():
+        if crop_rgb is None:
+            continue
+        items.append((tid, conf, crop_rgb, mask, build_descriptor(crop_rgb, mask)))
+    items.sort(key=lambda it: it[1], reverse=True)
+    picked: list = []
+    for it in items:
+        if all(_descriptor_dist(it[4], p[4]) > CAST_DEDUP for p in picked):
+            picked.append(it)
+        if len(picked) >= top_n:
+            break
+    return picked
+
+
+def write_cast(named: list, out_dir: str):
+    """named: [(name, notes, [(crop_rgb, mask), ...])]. Averages 1–3 reference
+    descriptors, saves ref crop PNGs under out_dir/cast_crops/, writes cast.json."""
+    crop_dir = Path(out_dir) / "cast_crops"
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    members = []
+    for name, notes, refs in named:
+        descs, paths = [], []
+        for j, (crop_rgb, mask) in enumerate(refs[:3]):
+            descs.append(build_descriptor(crop_rgb, mask))
+            p = str(crop_dir / f"{name}_{j}.png")
+            Image.fromarray(crop_rgb.astype("uint8")).save(p)
+            paths.append(p)
+        avg = [sum(col) / len(descs) for col in zip(*descs)]
+        members.append(footage.CastMember(name=name, descriptor=avg, notes=notes, ref_crops=paths))
+    cast = footage.Cast(members=members)
+    (Path(out_dir) / "cast.json").write_text(json.dumps(cast.to_dict(), indent=2))
+    return cast
