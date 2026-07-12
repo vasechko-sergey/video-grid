@@ -1,5 +1,5 @@
 import pytest
-from scripts.lib.footage import FootageWindow
+from scripts.lib.footage import FootageWindow, FootageClip
 
 
 def _win(**kw):
@@ -21,3 +21,23 @@ def test_window_roundtrips():
 def test_window_rejects_bad(kw, msg):
     with pytest.raises(ValueError, match=msg):
         _win(**kw)
+
+
+def test_clip_roundtrips_and_wraps_windows():
+    c = FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=59.94,
+                    shaky=False, scene_cuts=[3.0], windows=[_win()])
+    back = FootageClip.from_dict(c.to_dict())
+    assert back.to_dict() == c.to_dict()
+    assert isinstance(back.windows[0], FootageWindow)
+
+
+def test_clip_from_dict_names_bad_window():
+    with pytest.raises(ValueError, match=r"windows\[0\]"):
+        FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30,
+                                   windows=[dict(start=1.0, dur=2.0, shot_type="x", people=1,
+                                                 motion=0.4, shake=0.0, bogus=1)]))
+
+
+def test_clip_rejects_bad_res():
+    with pytest.raises(ValueError, match="res"):
+        FootageClip(source="a.mp4", dur=1.0, res=(0, 10), fps=30)

@@ -52,3 +52,56 @@ class FootageWindow:
         return {"start": self.start, "dur": self.dur, "shot_type": self.shot_type,
                 "people": self.people, "motion": self.motion, "shake": self.shake,
                 "description": self.description, "score": self.score, "best": self.best}
+
+
+@dataclass
+class FootageClip:
+    source: str
+    dur: float
+    res: tuple[int, int]
+    fps: float
+    shaky: bool = False
+    scene_cuts: list[float] = field(default_factory=list)
+    windows: list[FootageWindow] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.source, str) and self.source):
+            raise ValueError("FootageClip.source must be a non-empty clip path")
+        if not (_num(self.dur) and self.dur > 0):
+            raise ValueError(f"FootageClip.dur must be a positive number, got {self.dur!r}")
+        if isinstance(self.res, list):
+            self.res = tuple(self.res)
+        if not (isinstance(self.res, tuple) and len(self.res) == 2
+                and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in self.res)):
+            raise ValueError(f"FootageClip.res must be (w, h) positive ints, got {self.res!r}")
+        if not (_num(self.fps) and self.fps > 0):
+            raise ValueError(f"FootageClip.fps must be a positive number, got {self.fps!r}")
+        if not isinstance(self.shaky, bool):
+            raise ValueError("FootageClip.shaky must be a bool")
+        self.scene_cuts = [float(t) for t in self.scene_cuts]
+        for k, w in enumerate(self.windows):
+            if not isinstance(w, FootageWindow):
+                raise ValueError(f"FootageClip.windows[{k}] must be a FootageWindow")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "FootageClip":
+        wins_in = d.get("windows", [])
+        if not isinstance(wins_in, list):
+            raise ValueError("FootageClip.from_dict: 'windows' must be a list")
+        wins = []
+        for k, w in enumerate(wins_in):
+            if not isinstance(w, dict):
+                raise ValueError(f"FootageClip.from_dict: windows[{k}] must be an object")
+            try:
+                wins.append(FootageWindow(**w))
+            except TypeError as ex:
+                raise ValueError(f"FootageClip.from_dict: windows[{k}] has a missing or unknown field — {ex}") from ex
+        try:
+            return cls(**{**d, "windows": wins})       # unknown top-level key → TypeError → remedy
+        except TypeError as ex:
+            raise ValueError(f"FootageClip.from_dict: missing or unknown field — {ex}") from ex
+
+    def to_dict(self) -> dict:
+        return {"source": self.source, "dur": self.dur, "res": list(self.res), "fps": self.fps,
+                "shaky": self.shaky, "scene_cuts": self.scene_cuts,
+                "windows": [w.to_dict() for w in self.windows]}
