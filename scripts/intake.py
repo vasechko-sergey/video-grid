@@ -30,7 +30,7 @@ _HIST_BINS = 8
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
 
 
-def shot_type(bbox, res: tuple[int, int]) -> str:
+def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, int]) -> str:
     """close/medium/wide from the primary person's bbox area fraction. None → wide (scenery)."""
     if bbox is None:
         return "wide"
@@ -52,12 +52,15 @@ def _require_vidstab() -> None:
                          "run `bash setup.sh --with-vidstab`")
 
 
-def carve_windows(scene_cuts: list[float], timeline: list, dur: float) -> list[tuple[float, float]]:
+def carve_windows(scene_cuts: list[float],
+                  timeline: list[tuple[float, int, tuple[float, float, float, float] | None]],
+                  dur: float) -> list[tuple[float, float]]:
     """scene_cuts ∪ presence-transitions, length-capped into [WIN_MIN, WIN_MAX].
     timeline: sorted [(t, people, primary_bbox)]. Scenes alone do NOT split a long
     single take (MVI_3739 = 1 ride → 3 windows), so carve within a scene by
-    people-presence + length. A clip shorter than WIN_MIN yields ONE window
-    (never zero)."""
+    people-presence + length. A single shot shorter than WIN_MIN yields ONE
+    window (the whole clip); a clip shredded into MANY too-short spans yields
+    NO windows (empty is valid — the clip is still logged)."""
     bounds = {0.0, float(dur)}
     for t in scene_cuts:
         if 0.0 < t < dur:
@@ -69,12 +72,14 @@ def carve_windows(scene_cuts: list[float], timeline: list, dur: float) -> list[t
             bounds.add(float(t))
         prev = present
     edges = sorted(bounds)
+    raw = list(zip(edges, edges[1:]))
     spans: list[tuple[float, float]] = []
-    for a, b in zip(edges, edges[1:]):
+    for a, b in raw:
         spans.extend(_split_span(a, b))
-    if not spans:
-        spans = [(0.0, float(dur))]
-    return spans
+    if not spans and len(raw) == 1:          # a single short shot (dur < WIN_MIN) — keep the whole clip
+        a, b = raw[0]
+        spans = [(a, b - a)]
+    return spans                             # many all-too-short spans → [] (clip logged, no usable moments)
 
 
 def _split_span(a: float, b: float) -> list[tuple[float, float]]:
@@ -126,7 +131,10 @@ def _parse_trf(text: str) -> list[float]:
     libvidstab VID.STAB transforms file. Fail loud on an unrecognized header —
     never a silent shake=0 (the format is libvidstab-version dependent)."""
     lines = text.splitlines()
-    if not lines or not lines[0].startswith("VID.STAB"):
+    if not lines:
+        raise ValueError("vidstabdetect produced an empty .trf (no transforms) — the analysis "
+                         "failed; check the clip is readable")
+    if not lines[0].startswith("VID.STAB"):
         raise ValueError("vidstabdetect .trf has an unrecognized header — libvidstab version mismatch? "
                          "cannot trust the shake estimate (run `bash setup.sh --with-vidstab`)")
     mags: list[float] = []
@@ -136,7 +144,7 @@ def _parse_trf(text: str) -> list[float]:
         lms = _LM_RE.findall(line)
         if lms:
             vecs = sorted((int(x) ** 2 + int(y) ** 2) ** 0.5 for x, y in lms)
-            mags.append(vecs[len(vecs) // 2])          # median localmotion magnitude
+            mags.append(vecs[len(vecs) // 2])          # upper-median localmotion magnitude (vecs[len//2])
         else:
             mags.append(0.0)
     return mags

@@ -49,6 +49,13 @@ def test_carve_short_clip_yields_one_window():
     assert spans == [(0.0, 0.8)]
 
 
+def test_carve_all_short_spans_yields_no_windows():
+    # a clip shredded by scene cuts into sub-WIN_MIN shots → no usable moments (empty),
+    # NOT one giant over-WIN_MAX window
+    spans = intake.carve_windows([1.0, 2.0, 3.0, 4.0, 5.0], _line([(t, 1) for t in range(7)]), 6.0)
+    assert spans == []
+
+
 def test_score_rises_with_presence():
     lo = intake.score_window(present=0.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
     hi = intake.score_window(present=1.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
