@@ -14,7 +14,7 @@ _Last updated: 2026-07-12._
 
 | # | Stage | Output | Status | Module / note | Closed by phase |
 |---|-------|--------|:------:|---------------|-----------------|
-| 5.1  | using-montage (router) | routing + ensure-env | ◐ | env/`setup.sh` ✅; `edl_to_reel` ✅ (SP1, sequential end-to-end precursor); cap-3 parallel fan-out + episode-choice curation still ❌ | Router + curation |
+| 5.1  | using-montage (router) | routing + ensure-env | ✅ | `using-montage` SKILL conducts the built stages footage→reel with the three §4.1 checkpoints; `montage.py` inspector (`next_action`) drives resume-from-`next`. cap-3 **parallel** fan-out is the one open sub-item | Router + curation |
 | 5.2  | footage-intake | `FOOTAGE.json`+`.md` | ✅ | `intake.py`: probe + PySceneDetect + YOLO11-seg + vidstabdetect → sub-scene carve → score → phash cull → `FOOTAGE.json`/`.md` + `cast.json` (SP2) | — |
 | 5.3  | reel-brief | `SPEC.md` | ◐ | `project-init` machine subset ✅; full brief ❌ | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
@@ -49,7 +49,7 @@ status table above.
 
 | # | Stage | St | Left to build | Blocked by (hard) · (soft) | Unblocks |
 |---|-------|:--:|---------------|----------------------------|----------|
-| 5.1 | using-montage router | ◐ | cap-3 fan-out + episode curation | **5.7 edit-plan** ✅ (SP3) — router work now unblocked | autonomous v1 |
+| 5.1 | using-montage router | ✅ | cap-3 **parallel** fan-out only (sub-item) | — | autonomous v1 |
 | 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
 | 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅ | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
@@ -66,22 +66,24 @@ status table above.
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
 
-**Tally:** 7 ✅ · 5 ◐ · 3 ❌. Both automation loops closed.
+**Tally:** 8 ✅ · 4 ◐ · 3 ❌. Both automation loops closed.
 
 ### Critical path to autonomous v1
 
 ```
-5.2 footage-intake ✅ ──► 5.7 edit-plan ✅ ──► 5.1 router ◐   = autonomy
+5.2 footage-intake ✅ ──► 5.7 edit-plan ✅ ──► 5.1 using-montage ✅   = autonomy
         │                      ▲  ▲
         └─► 5.3 brief ─────────┘  │  (soft, quality)
     5.5 music ─► 5.6 pacing ──────┘
 ```
 
-**Hard chain left: 5.1.** 5.2 + 5.7 both feed it (candidate windows + cast →
-edit-plan authoring) and are ✅ now. Everything else (B3/B4, 5.9 draft, 5.12 ambient,
-5.13 safe_zones, cast→hero-pin) is parallel **quality**, not a blocker for the
-first full autonomous build. **Critical-path head = 5.1 router** (cap-3 fan-out +
-episode curation); 5.2 + 5.7 both ✅ now feed it.
+**The entry-skill closes the autonomous v1 chain:** footage→EDL→reel now runs from
+one `using-montage` invocation — it conducts project-init → footage-intake →
+edit-plan → edl_to_reel with the three §4.1 checkpoints, resuming from `montage
+next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-out
+(a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
+Everything else (B3/B4, 5.9 draft, 5.12 ambient, 5.13 safe_zones, cast→hero-pin) is
+parallel **quality**.
 
 ## What produces a reel today
 

@@ -184,6 +184,14 @@ Gates are hard: a stage does not exit until its exit conditions are met. A faile
 Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. Step 0: ensure-env (venv). Routes through stages 1–13. Analogous to `using-superpowers`.
 **Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "more classic"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, style-lean, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags. Scripts always get the project dir explicitly (`--project-dir`); nothing assumes the caller's cwd.
 
+> **Built (2026-07-12, entry-skill):** `SKILLS/using-montage/SKILL.md` conducts the
+> built stages (project-init → footage-intake → [music] → edit-plan → edl_to_reel)
+> with the three §4.1 checkpoints, backed by `scripts/montage.py` — a deterministic
+> stage-status **inspector** (`next_action`) so resume-for-free (line 510) is
+> testable. Inspector, not runner: judgment steps stay in the sub-skills. The cap-3
+> **parallel** episode fan-out (§5.10) is deferred — `edl_to_reel` is sequential.
+> See `docs/plans/2026-07-12-using-montage.md`.
+
 ### 5.2 footage-intake → `FOOTAGE.md`
 `intake.py`: ffprobe (duration/resolution/fps) + PySceneDetect (scene boundaries) + YOLO sample (who/how many people) + shake estimate (vidstabdetect magnitude). **One clip → several moment-windows**, not one: a long ride/take contains distinct fragments (grounding: MVI_3739 = one 22s ride → `lena_ride` + `lena_ride2` + `lena_nose`; MVI_3998 → two hang-fives). intake segments each clip into candidate windows (sub-scenes + motion/people) and **scores each window separately**. Cull/selection step: rank windows across all footage, mark the best moments — several may come from one source.
 **Cast pass (when people matter to the reel):** intake surfaces top-N person crops across the footage; the user names the heroes once — any domain (family, athletes, friends, a vlogger). Each name stores an appearance descriptor into `cast.json` (§6.1a); `SPEC.cast` lists who the reel is about.

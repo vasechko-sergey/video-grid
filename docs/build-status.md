@@ -370,6 +370,25 @@ _Last updated: 2026-07-12._
   (§5.1), cast→hero-pin descriptor resolution (`hero` still rides as a bare
   bbox/rule/name string).
 
+- **using-montage router (5.1, entry-skill) DONE (2026-07-12)** — plan
+  `docs/plans/2026-07-12-using-montage.md` + design
+  `docs/specs/2026-07-12-using-montage-design.md` (branch `feat/using-montage`).
+  Ships the conveyor's front door: `SKILLS/using-montage/SKILL.md` conducts the
+  built stages (project-init → footage-intake → [music] → edit-plan → edl_to_reel)
+  with the three §4.1 user checkpoints (SPEC · EDL+curation · final review),
+  resuming a half-finished run for free and naming any deferred stage on skip.
+  Backed by `scripts/montage.py` — a thin deterministic **inspector**
+  (`Stage`/`V1_STAGES` + `next_action(run_dir)` reporting each stage's state
+  done/next/pending/optional/skip from artifact presence, + a `status` CLI). 15 new
+  unit tests (**564 green**, 1 skipped). **Inspector, not runner:** the judgment
+  steps (cast-naming, selection authoring) stay agent-interactive, so the SKILL runs
+  stages and consults `next_action` for the resume/next decision (mirrors intake.py
+  ↔ footage-intake). No stage re-implemented; no new integration golden — the
+  SP1/SP3 seam goldens already prove intake→edit→reel on real bytes. **Deferred (NOT
+  built):** cap-3 **parallel** episode fan-out (edl_to_reel stays sequential), full
+  reel-brief `SPEC.md` (5.3), `draft.mp4` (SP1b), dual-emit "without-music"+sidecar
+  (5.14), trend-scan (5.4), pacing (5.6), cast-name hero-pin resolution.
+
 ## Next action
 
 - **Front-half continuation — SP1b / reel-brief** (`draft.mp4`: labels +
@@ -395,8 +414,9 @@ _Last updated: 2026-07-12._
 - **stabilization + tracking degradation** — vidstab (never on wade-in/out shots,
   §12) and the optical-flow degradation ladder; removes the matching `validate()`
   refusals. **OR**
-- **router** — cap-3 fan-out: resolve project → `resolve_manifest` per episode →
-  fan out `process_episode`. **OR**
+- **cap-3 parallel fan-out** — the one open 5.1 sub-item now the `using-montage`
+  entry-skill has shipped (2026-07-12): parallelise `edl_to_reel`'s sequential
+  per-episode `process_episode` loop (concurrency cap 3, design §5.10). **OR**
 - **golden-canon armature + landmine lint** — a check that the banned patterns
   (`lutrgb`, `-ss` before `-i`) cannot re-enter the filtergraphs.
 
@@ -410,7 +430,8 @@ retry-state persistence.
 
 - vidstab-capable ffmpeg before stabilization (`bash setup.sh --with-vidstab`).
 - descriptor continuity re-match needs ingestion's cast.json.
-- cap-3 parallel fan-out is the router's job.
+- cap-3 parallel fan-out remains deferred — the `using-montage` entry-skill shipped
+  (2026-07-12); parallelising `edl_to_reel`'s per-episode loop is the open sub-item.
 
 ## External assets (outside this repo)
 
