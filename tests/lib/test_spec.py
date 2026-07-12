@@ -124,3 +124,23 @@ def test_to_markdown_singular_reel_and_empty_frees_dash():
     assert "**Cast:** –" in md
     assert "**Text:** –" in md
     assert "**Ending:** –" in md
+
+
+def test_to_markdown_full_render_whole_string():
+    s = Spec(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open",
+             reel_count=2, music="ODESZA", music_mode="local", style_lean="trend",
+             platform="tiktok", text="captions", ending="freeze frame",
+             cast=["Anna", "Ben"], notes="keep it tight")
+    assert s.to_markdown() == (
+        "# Reel brief — 2 reels, 30s, 9:16\n"
+        "\n"
+        "- **Mood:** energetic\n"
+        "- **Hook:** jump-cut open\n"
+        "- **Music:** ODESZA (mode: local)\n"
+        "- **Style-lean:** trend\n"
+        "- **Platform:** tiktok\n"
+        "- **Cast:** Anna, Ben\n"
+        "- **Text:** captions\n"
+        "- **Ending:** freeze frame\n"
+        "- **Notes:** keep it tight"
+    )
