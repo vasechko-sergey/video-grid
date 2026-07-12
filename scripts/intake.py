@@ -50,3 +50,39 @@ def _require_vidstab() -> None:
     if b"vidstabdetect" not in r.stdout:
         raise ValueError("footage-intake needs a vidstab-enabled ffmpeg (vidstabdetect filter missing) — "
                          "run `bash setup.sh --with-vidstab`")
+
+
+def carve_windows(scene_cuts: list[float], timeline: list, dur: float) -> list[tuple[float, float]]:
+    """scene_cuts ∪ presence-transitions, length-capped into [WIN_MIN, WIN_MAX].
+    timeline: sorted [(t, people, primary_bbox)]. Scenes alone do NOT split a long
+    single take (MVI_3739 = 1 ride → 3 windows), so carve within a scene by
+    people-presence + length. A clip shorter than WIN_MIN yields ONE window
+    (never zero)."""
+    bounds = {0.0, float(dur)}
+    for t in scene_cuts:
+        if 0.0 < t < dur:
+            bounds.add(float(t))
+    prev = None
+    for t, n, _ in timeline:
+        present = n > 0
+        if prev is not None and present != prev and 0.0 < t < dur:
+            bounds.add(float(t))
+        prev = present
+    edges = sorted(bounds)
+    spans: list[tuple[float, float]] = []
+    for a, b in zip(edges, edges[1:]):
+        spans.extend(_split_span(a, b))
+    if not spans:
+        spans = [(0.0, float(dur))]
+    return spans
+
+
+def _split_span(a: float, b: float) -> list[tuple[float, float]]:
+    length = b - a
+    if length < WIN_MIN:
+        return []
+    if length <= WIN_MAX:
+        return [(a, length)]
+    n = max(1, round(length / WIN_TARGET))
+    chunk = length / n
+    return [(a + i * chunk, chunk) for i in range(n)]
