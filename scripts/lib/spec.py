@@ -92,3 +92,22 @@ class Spec:
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+    def to_markdown(self) -> str:
+        w, h = self.canvas
+        reels = f"{self.reel_count} reel" + ("s" if self.reel_count != 1 else "")
+        cast = ", ".join(self.cast) if self.cast else "–"
+        lines = [
+            f"# Reel brief — {reels}, {self.length_s:.0f}s, {w}:{h}",
+            "",
+            f"- **Mood:** {self.mood}",
+            f"- **Hook:** {self.hook}",
+            f"- **Music:** {self.music} (mode: {self.music_mode})",
+            f"- **Style-lean:** {self.style_lean}",
+            f"- **Platform:** {self.platform or '–'}",
+            f"- **Cast:** {cast}",
+            f"- **Text:** {self.text or '–'}",
+            f"- **Ending:** {self.ending or '–'}",
+            f"- **Notes:** {self.notes or '–'}",
+        ]
+        return "\n".join(lines)

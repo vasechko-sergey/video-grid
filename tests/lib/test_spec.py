@@ -105,3 +105,22 @@ def test_spec_from_dict_rejects_string_cast():
     # from_dict must reject it cleanly, not silently splat
     with pytest.raises(ValueError, match="cast"):
         Spec.from_dict({**GOOD, "cast": "Anna"})
+
+
+def test_to_markdown_heading_and_gate_fields():
+    s = Spec(**{**GOOD, "reel_count": 2, "platform": "tiktok", "cast": ["Anna"]})
+    md = s.to_markdown()
+    assert md.startswith("# Reel brief — 2 reels, 30s, 9:16")
+    assert "**Mood:** energetic" in md
+    assert "**Hook:** jump-cut open" in md
+    assert "**Music:** auto (mode: free)" in md
+    assert "**Cast:** Anna" in md
+
+
+def test_to_markdown_singular_reel_and_empty_frees_dash():
+    md = Spec(**GOOD).to_markdown()
+    assert md.startswith("# Reel brief — 1 reel, 30s, 9:16")
+    assert "**Platform:** –" in md
+    assert "**Cast:** –" in md
+    assert "**Text:** –" in md
+    assert "**Ending:** –" in md
