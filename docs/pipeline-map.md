@@ -51,7 +51,7 @@ status table above.
 |---|-------|:--:|---------------|----------------------------|----------|
 | 5.1 | using-montage router | ✅ | cap-3 **parallel** fan-out only (sub-item) | — | autonomous v1 |
 | 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
-| 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅ | 5.7, 5.5 mood |
+| 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅, 5.4 trends | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
 | 5.5 | music-and-mood | ◐ | mood-match + sourcing (B3) | none · (soft) 5.3 | 5.6 |
 | 5.6 | pacing | ❌ | `PACING.md` (B4) | **5.5 MUSIC.json** (beats-core ✅ → buildable now) | (soft) 5.7 |
