@@ -144,8 +144,10 @@ the normalized color histogram — a fixed bin count, see §4), `notes: str = ""
 Module-level tunable constants (named, not magic): `SAMPLE_FPS = 3`,
 `WIN_MIN = 1.2`, `WIN_MAX = 4.0`, `WIN_TARGET = 2.5` (seconds); scoring weights
 `W_PRESENT = 0.40`, `W_MOTION = 0.25`, `W_STABLE = 0.25`, `W_DUR = 0.10`;
-`DEDUP_DIST = 8` (phash Hamming), `BEST_FLOOR = 0.50`, `SHAKY_CLIP = 0.30`;
-shot-type area thresholds `CLOSE_AREA = 0.30`, `MEDIUM_AREA = 0.08`.
+`DEDUP_DIST = 8` (phash Hamming), `BEST_FLOOR = 0.50`, `SHAKY_CLIP = 0.02`
+(shake as a **fraction of frame width** — see §3.4; tune on real footage),
+`MOTION_GAIN = 10.0`, `MOTION_PEAK = 0.35`; shot-type area thresholds
+`CLOSE_AREA = 0.30`, `MEDIUM_AREA = 0.08`.
 
 ### §3.1 Probe
 Reuse `assembly.probe_stream(path)` for `(w, h, fps)`. Duration needs
@@ -175,11 +177,15 @@ crop + its seg-mask for the cast pass.
 absent → raise `ValueError("footage-intake needs a vidstab-enabled ffmpeg — run
 bash setup.sh --with-vidstab")`. Then run `vidstabdetect` **once per clip**
 (`-vf vidstabdetect=result=<tmp.trf> -f null -`), parse the `.trf` (VID.STAB text
-format: per-frame translation vectors), and aggregate magnitude
-`sqrt(dx²+dy²)` over each window's frame span. The parser is **version-guarded**:
-an unrecognized `.trf` header raises (fail loud) rather than silently returning
-`shake = 0`. The golden pins the format against the installed libvidstab. No
-per-window cutting → no `-ss` seek landmine here.
+format: per-frame localmotion vectors). Per frame take the **upper-median**
+localmotion magnitude `sqrt(vx²+vy²)` (`vecs[len//2]` — slightly conservative);
+per window, **average** those magnitudes over the window's frame span and
+**normalize by frame width** so `shake` is a width-fraction comparable across
+resolutions (hence `SHAKY_CLIP = 0.02`, not a raw-pixel bar). The parser is
+**version-guarded**: an empty `.trf` and an unrecognized header each raise a
+distinct fail-loud `ValueError` (never a silent `shake = 0`). The golden pins the
+format against the installed libvidstab. No per-window cutting → no `-ss` seek
+landmine here.
 
 ### §3.5 Carve — `carve_windows(scene_cuts, timeline, dur) -> list[(start, dur)]`
 Scenes alone do **not** split a long single take (grounding: MVI_3739 = one 22s
