@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 
 from scripts.lib import assembly, proc
+from scripts.lib.assembly import probe_duration as _probe_dur   # keep the local name its callers use
 from scripts.lib.edl import EDL
 
 _LEN_EPS = 0.05    # seconds of slack beyond one frame — a re-encoded window lands ±1 frame
@@ -20,16 +21,6 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     ]
     proc.run(cmd)
     return out
-
-
-def _probe_dur(path: str) -> float:
-    out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                    "-of", "default=nk=1:nw=1", path]).stdout.decode().strip()
-    try:
-        return float(out)
-    except ValueError:
-        raise ValueError(f"{path} reports no usable duration (ffprobe gave {out!r}) — the extract "
-                         "produced an unreadable segment") from None
 
 
 def extract_edl(edl: EDL, footage_root: str, seg_dir: str) -> list[str]:
