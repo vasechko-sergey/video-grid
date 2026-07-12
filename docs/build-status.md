@@ -389,11 +389,18 @@ _Last updated: 2026-07-12._
   reel-brief `SPEC.md` (5.3), `draft.mp4` (SP1b), dual-emit "without-music"+sidecar
   (5.14), trend-scan (5.4), pacing (5.6), cast-name hero-pin resolution.
 
+- **reel-brief (5.3, editorial spine) DONE (2026-07-12)** — `scripts/lib/spec.py`
+  (`Spec` config-spec: canvas-from-project + gate on mood/hook/length, JSON
+  round-trip, `to_markdown`) + `scripts/reel_brief.py` (`build_spec`/`write_reel_brief`
+  + CLI) + `SKILLS/reel-brief` (one-question-at-a-time → `SPEC.md`+`SPEC.json`). Router
+  flips reel-brief deferred → **optional** (SPEC.md enriches CP1; autonomous path
+  intact). Text stage — no ffmpeg, no golden. See `docs/plans/2026-07-12-reel-brief.md`.
+
 ## Next action
 
-- **Front-half continuation — SP1b / reel-brief** (`draft.mp4`: labels +
-  music bed, §5.9; reel-brief full `SPEC.md`, §5.3) — picks up where SP3
-  (edit-plan, DONE 2026-07-12) left off. **OR**
+- **Front-half continuation — SP1b / trend-scan** (`draft.mp4`: labels +
+  music bed, §5.9; `TRENDS.md` cache, §5.4) — picks up where SP3 (edit-plan)
+  and reel-brief (both DONE 2026-07-12) left off. **OR**
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**

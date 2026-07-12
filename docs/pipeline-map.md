@@ -16,7 +16,7 @@ _Last updated: 2026-07-12._
 |---|-------|--------|:------:|---------------|-----------------|
 | 5.1  | using-montage (router) | routing + ensure-env | ✅ | `using-montage` SKILL conducts the built stages footage→reel with the three §4.1 checkpoints; `montage.py` inspector (`next_action`) drives resume-from-`next`. cap-3 **parallel** fan-out is the one open sub-item | Router + curation |
 | 5.2  | footage-intake | `FOOTAGE.json`+`.md` | ✅ | `intake.py`: probe + PySceneDetect + YOLO11-seg + vidstabdetect → sub-scene carve → score → phash cull → `FOOTAGE.json`/`.md` + `cast.json` (SP2) | — |
-| 5.3  | reel-brief | `SPEC.md` | ◐ | `project-init` machine subset ✅; full brief ❌ | Front-half authoring |
+| 5.3  | reel-brief | `SPEC.md` | ✅ | `reel_brief` SKILL → CLI + typed `Spec` (`scripts/lib/spec.py`) writes `SPEC.md`+`SPEC.json` atop project-init's machine subset (5.3) | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ◐ | beats-core (tempo/beat-grid/RMS energy) ✅; mood-match + autonomous sourcing ❌ | **Phase B — music spine** ◐ |
 | 5.6  | pacing | `PACING.md` | ❌ | energy spine (shared music↔edit) | **Phase B — music spine** |
@@ -51,7 +51,7 @@ status table above.
 |---|-------|:--:|---------------|----------------------------|----------|
 | 5.1 | using-montage router | ✅ | cap-3 **parallel** fan-out only (sub-item) | — | autonomous v1 |
 | 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
-| 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅, 5.4 trends | 5.7, 5.5 mood |
+| 5.3 | reel-brief | ✅ | — (2026-07-12) | — | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
 | 5.5 | music-and-mood | ◐ | mood-match + sourcing (B3) | none · (soft) 5.3 | 5.6 |
 | 5.6 | pacing | ❌ | `PACING.md` (B4) | **5.5 MUSIC.json** (beats-core ✅ → buildable now) | (soft) 5.7 |
@@ -66,7 +66,7 @@ status table above.
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
 
-**Tally:** 8 ✅ · 4 ◐ · 3 ❌. Both automation loops closed.
+**Tally:** 9 ✅ · 3 ◐ · 3 ❌. Both automation loops closed.
 
 ### Critical path to autonomous v1
 
@@ -98,8 +98,7 @@ on loudness (hard) and reports beat alignment (advisory, non-blocking), and
 `deliver` muxes the stem into the export (stream-copy, preserving the measured
 loudness). Segments and per-episode manifests are **no longer hand-supplied**
 outside of tests. What's still missing to a *full* reel: the rest of the
-**front half** — 5.2 footage-intake, 5.3 reel-brief (the full `SPEC.md`, beyond
-`project-init`'s machine subset), 5.4 trend-scan, and 5.9 assemble-draft — plus
+**front half** — 5.2 footage-intake, 5.4 trend-scan, and 5.9 assemble-draft — plus
 the rest of audio: mood-match/sourcing (5.5), pacing (5.6), ambient ducking +
 SFX (5.12). When a reel carries no `music`/`audio` (the silent path, unchanged
 from Phase A.5), `check_reel` honestly reports `passed=None` (`"not-checked"`)
@@ -121,7 +120,7 @@ for beat/loudness rather than a silent pass; `safe_zones` reports
 ### Upcoming
 
 - [ ] **Phase B — music spine** ◐ — B1+B2 done (2026-07-11): beats-core + music-only mix + loudness/beat gates. Remaining: B3 sourcing, B4 pacing (5.6), ambient/SFX.
-- [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: reel-brief full `SPEC.md` (5.3), SP1b (`draft.mp4`), SP4 (trend-scan).
+- [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP1b (`draft.mp4`), SP4 (trend-scan).
 - [ ] **Router + curation** — stage 5.1 cap-3 fan-out router; the episode-choice human loop; `cast.json` hero registry (design §6.1a).
 - [ ] **Editorial reel-final** — stage 5.13 beyond the mechanical gate: `safe_zones` + structural/editorial review.
 - [ ] **Misc engine** — remaining layouts (`fit-solid`, `split`, `pan`); stabilization + tracking-degradation ladder.

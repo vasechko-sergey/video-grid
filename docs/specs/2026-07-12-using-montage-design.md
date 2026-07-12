@@ -39,7 +39,7 @@ using-montage (SKILL) ── parses the brief, conducts:
   0. ensure-env         bash setup.sh [--with-vidstab]
   1. project-init  ───► project.json          [CP1: spec approval]
   2. footage-intake ──► FOOTAGE.json (+cast.json)
-     (3 reel-brief SPEC.md · 4 trend-scan TRENDS.md — DEFERRED, named)
+     (3 reel-brief SPEC.md — optional, enriches CP1 · 4 trend-scan TRENDS.md — DEFERRED, named)
   5. music-and-mood ──► MUSIC.json             (optional; absent → silent reel)
      (6 pacing PACING.md — DEFERRED, named; beat_slot stays unset)
   7. edit-plan     ───► EDL.json + EDL.md      [CP2: EDL approval + curation loop]
@@ -84,7 +84,7 @@ the leading `#` is the tuple position, not a field:
 |---|-----|----------|------|-----------|--------|
 | 1 | project-init | `project.json` | required | spec | project-init SKILL → `project_init` CLI |
 | 2 | footage-intake | `FOOTAGE.json` | required | — | footage-intake SKILL → `intake` CLI |
-| 3 | reel-brief | `SPEC.md` | deferred | — | 5.3 — not built (project.json is the machine subset) |
+| 3 | reel-brief | `SPEC.json` | optional | spec | reel-brief SKILL → `reel_brief` CLI |
 | 4 | trend-scan | `TRENDS.md` | deferred | — | 5.4 — not built |
 | 5 | music-and-mood | `MUSIC.json` | optional | — | `beats` CLI (absent → silent reel) |
 | 6 | pacing | `PACING.md` | deferred | — | 5.6 — not built (`beat_slot` stays unset) |
@@ -105,7 +105,7 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
       next     — the FIRST required stage whose artifact is missing (run this)
       pending  — a required stage after `next` still missing its artifact
       optional — an optional built stage not yet produced (music); never blocks
-      skip     — a deferred stage (reel-brief/trend-scan/pacing); named, not silent
+      skip     — a deferred stage (trend-scan/pacing); named, not silent
     Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
              "next": <stage key | None>, "delivered": <bool>}."""
 ```
@@ -210,8 +210,6 @@ aspect (defers to project-init's own "ask, don't guess").
 
 - **cap-3 *parallel* fan-out** (§5.10) — `edl_to_reel` stays sequential; a
   separate later slice.
-- **full reel-brief `SPEC.md`** (§5.3) — `project.json` is the machine subset;
-  the router routes around the missing brief.
 - **`draft.mp4`** (SP1b, §5.9) — CP2 approves the `EDL.md` map, no burnt-in draft.
 - **dual-emit "without music" + trending-sound sidecar** (§5.14) — v1 "no music"
   is the plain silent path; the with/without dual export is a deliver enhancement.

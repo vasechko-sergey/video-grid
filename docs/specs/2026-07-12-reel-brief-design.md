@@ -108,7 +108,7 @@ def write_reel_brief(spec: Spec, out_dir: str) -> dict:
     return {"status": "written", "spec": str(sj), "md": str(sm)}
 ```
 
-**CLI** (mirror `project_init.py`): `reel_brief build --project <project.json>
+**CLI** (mirror `edit_plan.py`'s `build` subcommand): `reel_brief build --project <project.json>
 --length 30 --mood "…" --hook "…" [--reel-count N] [--music …] [--music-mode free]
 [--style-lean balanced] [--platform …] [--text …] [--ending …] [--cast NAME
 (repeatable)] [--notes …] --out-dir <dir>`. Parse → `build_spec` → `write_reel_brief`

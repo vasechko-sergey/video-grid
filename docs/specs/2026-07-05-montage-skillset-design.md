@@ -215,6 +215,14 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
 **Gate:** mood + platform/canvas + length + hook locked.
 
+> **Built (2026-07-12):** `scripts/lib/spec.py` (`Spec` config-spec + `to_markdown`)
+> + `scripts/reel_brief.py` (`build_spec` reads canvas from `project.json`,
+> `write_reel_brief` → `SPEC.md`+`SPEC.json`) + `SKILLS/reel-brief`. Router treats it
+> as **optional** (enriches CP1; the autonomous path runs off `project.json`). Music
+> sourcing/mood-match (B3), cast.json cross-validation, and multi-reel fan-out are
+> deferred — `SPEC` records `music`/`music_mode`/`reel_count` but nothing consumes
+> them yet. See `docs/plans/2026-07-12-reel-brief.md`.
+
 ### 5.4 trend-scan → `TRENDS.md` (cache TTL 7–10d)
 `trends.py`. Layered source (see §8). Cache stamped with fetch date: fresh → reuse; older than 7–10d → refetch. Output is a **short list of checkable directives**, not a blob. Manual override: user writes lines in, the agent treats them as locked.
 **Gate:** fresh cache or manual input.
