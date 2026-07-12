@@ -10,14 +10,9 @@ import json
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode
-from scripts.lib import manifest as manifest_lib
-from scripts.lib.edl import EDL, to_manifest_dict
+from scripts.lib.edl import EDL, preflight
 from scripts.lib.models import ReelEpisode, ReelManifest
-from scripts.lib.project import ProjectConfig, resolve_manifest
-
-
-def _stop(reason: str, idx: int, **extra) -> dict:
-    return {"status": "stop_and_report", "finding": {"reason": reason, "episode_idx": idx, **extra}}
+from scripts.lib.project import ProjectConfig
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
@@ -31,19 +26,10 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     seg_dir = str(Path(work_dir) / "segments")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    # 1. bridge + resolve + preflight — fail in ms, before any ffmpeg (mirrors the layouts plan)
-    mds: list[dict] = []
-    for i, ep in enumerate(edl.episodes):
-        seg = str(Path(seg_dir) / f"ep{i}_raw.mp4")
-        md = resolve_manifest(to_manifest_dict(ep, seg, str(Path(out_dir) / f"ep{i}.mp4")), cfg)
-        try:
-            m = manifest_lib.Manifest.from_dict(md)
-        except (KeyError, TypeError, ValueError) as e:
-            return _stop("edl-invalid", i, problems=[str(e)])
-        problems = manifest_lib.validate(m)
-        if problems:
-            return _stop("edl-invalid", i, problems=problems)
-        mds.append(md)
+    # 1. resolve + preflight every episode — fail in ms, before any ffmpeg
+    mds, stop = preflight(edl, cfg, seg_dir, out_dir)
+    if stop:
+        return stop
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
     extract.extract_edl(edl, footage_root, seg_dir)

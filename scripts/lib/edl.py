@@ -6,14 +6,16 @@ like `models.py`'s `TrackSpec`/`MusicSpec`. (Distinct from `manifest.py`'s soft
 `Manifest` gate, whose `validate()` returns problem strings and never raises.)
 The human-facing EDL.md render + interactive authoring are SP3;
 this module is what the mechanical extract spine reads. Imports the shared
-vocab from models + manifest — manifest never imports edl, so no cycle.
+vocab from models + manifest and the resolve/config helpers from project —
+none of models/manifest/project import edl, so no cycle.
 """
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED
+from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
+from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
 @dataclass
@@ -183,3 +185,29 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
     if ep.hero is not None:
         md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
     return md
+
+
+def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
+              out_dir: str) -> tuple[list[dict], dict | None]:
+    """Resolve + gate every EDL episode against the project BEFORE any ffmpeg.
+    For each episode: bridge to a manifest dict, inherit canvas/delivery from the
+    project, then Manifest.from_dict + validate. Returns (resolved manifest dicts,
+    None) when all pass, or (dicts-so-far, stop) where stop is a machine-readable
+    stop_and_report naming the first invalid episode. validate() never touches the
+    filesystem (it checks layout params/dims, not file existence — this is what
+    lets it fail in ms), so seg_dir/out_dir may be placeholder paths."""
+    mds: list[dict] = []
+    for i, ep in enumerate(edl.episodes):
+        seg = str(Path(seg_dir) / f"ep{i}_raw.mp4")
+        md = resolve_manifest(to_manifest_dict(ep, seg, str(Path(out_dir) / f"ep{i}.mp4")), cfg)
+        try:
+            m = Manifest.from_dict(md)
+        except (KeyError, TypeError, ValueError) as e:
+            return mds, {"status": "stop_and_report",
+                         "finding": {"reason": "edl-invalid", "episode_idx": i, "problems": [str(e)]}}
+        problems = validate(m)
+        if problems:
+            return mds, {"status": "stop_and_report",
+                         "finding": {"reason": "edl-invalid", "episode_idx": i, "problems": problems}}
+        mds.append(md)
+    return mds, None

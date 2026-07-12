@@ -1,9 +1,10 @@
 import json
 
 import pytest
-from scripts.lib.edl import EDL, EDLEpisode, to_manifest_dict
+from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict
 from scripts.lib import manifest as manifest_lib
 from scripts.lib.manifest import DEFAULT_COLOR
+from scripts.lib.project import ProjectConfig
 
 
 def _ep(**kw):
@@ -191,3 +192,29 @@ def test_bridge_forwards_layout_and_hero_when_set():
 def test_bridge_omits_crop_aspect_when_none_so_manifest_auto_picks():
     md = to_manifest_dict(_ep(layout="insert"), "s.mp4", "o.mp4")   # crop_aspect defaults None
     assert "crop_aspect" not in md
+
+
+def _cfg():
+    return ProjectConfig(purpose="reel", canvas=[1080, 1920], delivery="native")
+
+
+def test_preflight_resolves_all_episodes_clean():
+    # crop_scale 0.8 gives 'lead' horizontal freedom, so validate() passes
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8)]})
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop is None
+    assert len(mds) == 1 and mds[0]["canvas"] == [1080, 1920] and mds[0]["delivery"] == "native"
+    assert mds[0]["segment"] == "seg/ep0_raw.mp4" and mds[0]["out_path"] == "out/ep0.mp4"
+
+
+def test_preflight_stops_on_a_bad_layout_episode_naming_the_index():
+    e = EDL.from_dict({"episodes": [
+        dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide", composition="lead",
+             grid="thirds", crop_scale=0.8),                          # ep0 fine
+        dict(source="a.mp4", start=2.0, dur=2.0, shot_type="wide", composition="lead",
+             grid="thirds", layout="fill", border_px=5)]})            # ep1 fill+border → LayoutSpec rejects
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "edl-invalid" and stop["finding"]["episode_idx"] == 1
+    assert stop["finding"]["problems"]                                # non-empty problem list
