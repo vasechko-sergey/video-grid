@@ -152,11 +152,11 @@ class Footage:
             lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")
             if c.scene_cuts:
                 lines.append("scene cuts: " + ", ".join(f"{t:.2f}" for t in c.scene_cuts))
-            lines.append("| start | dur | shot | people | motion | shake | score | best | description |")
-            lines.append("|-------|-----|------|--------|--------|-------|-------|:----:|-------------|")
-            for w in c.windows:
+            lines.append("| # | start | dur | shot | people | motion | shake | score | best | description |")
+            lines.append("|---|-------|-----|------|--------|--------|-------|-------|:----:|-------------|")
+            for i, w in enumerate(c.windows):
                 star = "★" if w.best else ""
-                lines.append(f"| {w.start:.2f} | {w.dur:.2f} | {w.shot_type} | {w.people} | "
+                lines.append(f"| {i} | {w.start:.2f} | {w.dur:.2f} | {w.shot_type} | {w.people} | "
                              f"{w.motion:.2f} | {w.shake:.4f} | {w.score:.2f} | {star} | {w.description} |")
             lines.append("")
         return "\n".join(lines)

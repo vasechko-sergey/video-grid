@@ -120,10 +120,12 @@ render and any window→episode projection read it from there.
 
   ## <source>  (<dur>s · <w>×<h> @<fps>[ · shaky])
   scene cuts: t1, t2, …
-  | start | dur | shot | people | motion | shake | score | best | description |
-  |-------|-----|------|--------|--------|-------|-------|:----:|-------------|
-  | 9.08  | 1.6 | med  | 1      | 0.42   | 0.11  | 0.78  |  ★   | 1 person, medium, dynamic |
+  | # | start | dur | shot | people | motion | shake | score | best | description |
+  |---|-------|-----|------|--------|--------|-------|-------|:----:|-------------|
+  | 0 | 9.08  | 1.6 | med  | 1      | 0.42   | 0.11  | 0.78  |  ★   | 1 person, medium, dynamic |
   ```
+  The leading `#` is the 0-based position in that clip's `windows` list — the
+  index the 5.7 `selection.json` references and `build_edl` indexes into.
 - `ranked_windows() -> list[tuple[FootageClip, FootageWindow]]` — all windows,
   score-descending; the helper cull and the render share.
 

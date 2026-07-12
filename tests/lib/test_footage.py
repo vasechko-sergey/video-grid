@@ -91,7 +91,14 @@ def test_to_markdown_renders_header_and_star():
     md = _footage().to_markdown()
     assert "# Footage — 1 clips, 2 windows (1 best)" in md
     assert "## a.mp4" in md and "★" in md
-    assert "| start | dur | shot | people | motion | shake | score | best | description |" in md
+    assert "| # | start | dur | shot | people | motion | shake | score | best | description |" in md
+
+
+def test_to_markdown_numbers_windows_zero_based_per_clip():
+    # the `#` column matches clip.windows[i] ordering — what build_edl indexes into
+    md = _footage().to_markdown()
+    assert "\n| 0 | 1.00 | 2.00 | medium |" in md
+    assert "\n| 1 | 5.00 | 2.00 | medium |" in md
 
 
 def test_cast_roundtrips():
