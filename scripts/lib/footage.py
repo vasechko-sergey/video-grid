@@ -105,3 +105,58 @@ class FootageClip:
         return {"source": self.source, "dur": self.dur, "res": list(self.res), "fps": self.fps,
                 "shaky": self.shaky, "scene_cuts": self.scene_cuts,
                 "windows": [w.to_dict() for w in self.windows]}
+
+
+@dataclass
+class Footage:
+    clips: list[FootageClip] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        for k, c in enumerate(self.clips):
+            if not isinstance(c, FootageClip):
+                raise ValueError(f"Footage.clips[{k}] must be a FootageClip")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Footage":
+        clips_in = d.get("clips", [])
+        if not isinstance(clips_in, list):
+            raise ValueError("Footage.from_dict: 'clips' must be a list")
+        clips = []
+        for k, c in enumerate(clips_in):
+            if not isinstance(c, dict):
+                raise ValueError(f"Footage.from_dict: clips[{k}] must be an object")
+            clips.append(FootageClip.from_dict(c))
+        return cls(clips=clips)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "Footage":
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is not valid JSON ({e}) — fix the FOOTAGE syntax") from e
+        return cls.from_dict(d)
+
+    def to_dict(self) -> dict:
+        return {"clips": [c.to_dict() for c in self.clips]}
+
+    def ranked_windows(self) -> list[tuple["FootageClip", "FootageWindow"]]:
+        pairs = [(c, w) for c in self.clips for w in c.windows]
+        return sorted(pairs, key=lambda cw: cw[1].score, reverse=True)
+
+    def to_markdown(self) -> str:
+        wins = [w for c in self.clips for w in c.windows]
+        n_best = sum(1 for w in wins if w.best)
+        lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)", ""]
+        for c in self.clips:
+            flag = " · shaky" if c.shaky else ""
+            lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")
+            if c.scene_cuts:
+                lines.append("scene cuts: " + ", ".join(f"{t:.2f}" for t in c.scene_cuts))
+            lines.append("| start | dur | shot | people | motion | shake | score | best | description |")
+            lines.append("|-------|-----|------|--------|--------|-------|-------|:----:|-------------|")
+            for w in c.windows:
+                star = "★" if w.best else ""
+                lines.append(f"| {w.start:.2f} | {w.dur:.2f} | {w.shot_type} | {w.people} | "
+                             f"{w.motion:.2f} | {w.shake:.2f} | {w.score:.2f} | {star} | {w.description} |")
+            lines.append("")
+        return "\n".join(lines)

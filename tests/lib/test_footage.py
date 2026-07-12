@@ -1,5 +1,5 @@
 import pytest
-from scripts.lib.footage import FootageWindow, FootageClip
+from scripts.lib.footage import FootageWindow, FootageClip, Footage
 
 
 def _win(**kw):
@@ -41,3 +41,34 @@ def test_clip_from_dict_names_bad_window():
 def test_clip_rejects_bad_res():
     with pytest.raises(ValueError, match="res"):
         FootageClip(source="a.mp4", dur=1.0, res=(0, 10), fps=30)
+
+
+def _footage():
+    return Footage(clips=[FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30,
+                                      scene_cuts=[3.0],
+                                      windows=[_win(score=0.8, best=True),
+                                               _win(start=5.0, score=0.3)])])
+
+
+def test_footage_roundtrips():
+    f = _footage()
+    assert Footage.from_dict(f.to_dict()).to_dict() == f.to_dict()
+
+
+def test_footage_from_json_bad_syntax(tmp_path):
+    p = tmp_path / "FOOTAGE.json"; p.write_text("{ not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        Footage.from_json(p)
+
+
+def test_ranked_windows_is_score_descending():
+    f = _footage()
+    ranked = f.ranked_windows()
+    assert [w.score for _, w in ranked] == [0.8, 0.3]
+
+
+def test_to_markdown_renders_header_and_star():
+    md = _footage().to_markdown()
+    assert "# Footage — 1 clips, 2 windows (1 best)" in md
+    assert "## a.mp4" in md and "★" in md
+    assert "| start | dur | shot | people | motion | shake | score | best | description |" in md
