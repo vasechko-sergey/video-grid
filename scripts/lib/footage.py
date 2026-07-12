@@ -160,3 +160,63 @@ class Footage:
                              f"{w.motion:.2f} | {w.shake:.2f} | {w.score:.2f} | {star} | {w.description} |")
             lines.append("")
         return "\n".join(lines)
+
+
+@dataclass
+class CastMember:
+    name: str
+    descriptor: list[float]
+    notes: str = ""
+    ref_crops: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.name, str) and self.name):
+            raise ValueError("CastMember.name must be a non-empty string")
+        if not (isinstance(self.descriptor, list) and self.descriptor
+                and all(_num(v) for v in self.descriptor)):
+            raise ValueError("CastMember.descriptor must be a non-empty list of numbers (color histogram)")
+        if not isinstance(self.notes, str):
+            raise ValueError("CastMember.notes must be a string")
+        if not (isinstance(self.ref_crops, list) and all(isinstance(p, str) for p in self.ref_crops)):
+            raise ValueError("CastMember.ref_crops must be a list of path strings")
+        self.descriptor = [float(v) for v in self.descriptor]
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "descriptor": self.descriptor,
+                "notes": self.notes, "ref_crops": self.ref_crops}
+
+
+@dataclass
+class Cast:
+    members: list[CastMember] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        for k, m in enumerate(self.members):
+            if not isinstance(m, CastMember):
+                raise ValueError(f"Cast.members[{k}] must be a CastMember")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Cast":
+        ms_in = d.get("members", [])
+        if not isinstance(ms_in, list):
+            raise ValueError("Cast.from_dict: 'members' must be a list")
+        ms = []
+        for k, m in enumerate(ms_in):
+            if not isinstance(m, dict):
+                raise ValueError(f"Cast.from_dict: members[{k}] must be an object")
+            try:
+                ms.append(CastMember(**m))
+            except TypeError as ex:
+                raise ValueError(f"Cast.from_dict: members[{k}] has a missing or unknown field — {ex}") from ex
+        return cls(members=ms)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "Cast":
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is not valid JSON ({e}) — fix the cast syntax") from e
+        return cls.from_dict(d)
+
+    def to_dict(self) -> dict:
+        return {"members": [m.to_dict() for m in self.members]}

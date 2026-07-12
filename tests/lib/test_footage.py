@@ -1,5 +1,5 @@
 import pytest
-from scripts.lib.footage import FootageWindow, FootageClip, Footage
+from scripts.lib.footage import FootageWindow, FootageClip, Footage, CastMember, Cast
 
 
 def _win(**kw):
@@ -72,3 +72,19 @@ def test_to_markdown_renders_header_and_star():
     assert "# Footage — 1 clips, 2 windows (1 best)" in md
     assert "## a.mp4" in md and "★" in md
     assert "| start | dur | shot | people | motion | shake | score | best | description |" in md
+
+
+def test_cast_roundtrips():
+    c = Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5], notes="red jacket",
+                                 ref_crops=["crops/lena_0.png"])])
+    assert Cast.from_dict(c.to_dict()).to_dict() == c.to_dict()
+
+
+@pytest.mark.parametrize("kw,msg", [
+    (dict(name=""), "name"), (dict(descriptor=[]), "descriptor"),
+    (dict(descriptor=["x"]), "descriptor"),
+])
+def test_castmember_rejects_bad(kw, msg):
+    d = dict(name="Lena", descriptor=[0.5, 0.5]); d.update(kw)
+    with pytest.raises(ValueError, match=msg):
+        CastMember(**d)
