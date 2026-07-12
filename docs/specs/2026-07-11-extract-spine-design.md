@@ -236,7 +236,8 @@ deterministic path `process_episode` writes when `route_path is None`.
 
 ## 7. Non-goals (SP1)
 
-- `EDL.md` markdown render + interactive edit-plan authoring → **SP3**.
+- `EDL.md` markdown render + interactive edit-plan authoring → **SP3**
+  (built 2026-07-12, docs/specs/2026-07-12-edit-plan-spine-design.md).
 - `draft.mp4` (labels + rough music bed) + its beats/plays gate → **SP1b**.
 - cap-3 **parallel** fan-out + episode-choice curation → **router, montage §5.1**.
 - footage-intake window discovery / `cast.json` → **SP2**.

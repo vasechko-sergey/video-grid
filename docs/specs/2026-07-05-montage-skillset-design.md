@@ -241,9 +241,20 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 > **Built (2026-07-11, SP1):** `scripts/lib/edl.py` — typed `EDLEpisode`/`EDL`
 > config-specs (`EDL.json`, JSON round-trip) + the `to_manifest_dict` bridge
 > (EDL row → process-episode manifest dict; omits canvas/delivery so they
-> inherit from the project). The **markdown render** (`EDL.md`) and
+> inherit from the project). ~~The **markdown render** (`EDL.md`) and
 > **interactive authoring** are deferred — see
-> `docs/plans/2026-07-11-extract-spine.md` (SP3).
+> `docs/plans/2026-07-11-extract-spine.md` (SP3).~~ **Built by SP3 — see below.**
+
+> **Built (2026-07-12, SP3):** `scripts/edit_plan.py` + `SKILLS/edit-plan`
+> author an `EDL.json` + `EDL.md` from `FOOTAGE.json` via an agent-written
+> `selection.json` — **selection is judgment, code projects by reference**:
+> `window_to_episode` copies a scored `FootageWindow`'s mechanical fields
+> (source/start/dur/shot_type/description) straight through, never retyped,
+> while the agent supplies only the editorial fields (composition/grid/
+> layout/motion/hero/…). `EDL.to_markdown` renders the `EDL.md` map;
+> `edl.preflight` (shared with `edl_to_reel`) gates the assembled `EDL`
+> against the project before anything is written. See
+> `docs/plans/2026-07-12-edit-plan-spine.md`.
 
 ### 5.8 extract → `segments/<ep>_raw.mp4`
 `extract.py`: using the windows from `EDL`, **cut each episode into a standalone file** — once, with **correct seek arguments** (see §12; the bug was in the call args, not in 4K). Frame-accurate cut (re-encode of the short window). **Audio is preserved** in the segment (`aac`) — it is the ambient bed for §5.12; dropping it at extract would orphan the mix. From here on both the draft and `process-episode` work on these small fragments — no seeking through 300MB, no scanning the whole file. 4K is cut natively (no proxy/downscale — quality preserved).

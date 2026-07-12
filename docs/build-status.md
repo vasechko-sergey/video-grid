@@ -328,12 +328,53 @@ _Last updated: 2026-07-12._
   plan — `orch.is_seed_pin` still bbox-only), SP1b `draft.mp4`, SP3 authoring,
   SP4 trend-scan.
 
+- **edit-plan spine (Front-half SP3 · 5.7) DONE (2026-07-12)** — plan
+  `docs/plans/2026-07-12-edit-plan-spine.md` + design
+  `docs/specs/2026-07-12-edit-plan-spine-design.md`, Tasks 0–7 via strict
+  subagent-driven-development (branch `feat/edit-plan-spine`, commits
+  `3208f0e`..`796e74f`). **548 tests green** (+1 vidstab-gated integration
+  golden, skipped without libvidstab). Closes the critical-path head to
+  autonomous v1 (5.2 → **5.7** → 5.1 router). `scripts/lib/edl.py` gains
+  `EDLEpisode.to_dict`/`EDL.to_dict` (JSON round-trip serializer),
+  `EDL.to_markdown` (the `EDL.md` human map: source/window/shot/layout/comp/
+  grid/motion/beat/notes per episode), and `preflight` — the EDL→manifest
+  gate extracted verbatim from `edl_to_reel`'s inline step-1 loop, now shared
+  by the driver and the new authoring path (`edl_to_reel`'s own tests stay
+  green, unchanged). `scripts/edit_plan.py` (new): `window_to_episode`
+  projects a scored `FootageWindow`/`FootageClip` (5.2) onto an `EDLEpisode`
+  **by reference** — mechanical fields (source/start/dur/shot_type/
+  description) copied straight from `FOOTAGE.json`, never retyped, closing
+  off the silent-wrong-cut class (montage §12); only editorial fields
+  (composition/grid required, layout/motion/hero/… optional) are
+  agent-supplied. `build_edl` resolves a `selection.json` (window refs by
+  source + integer index, plus editorial fields and reel knobs) into a typed
+  `EDL`, fail-loud on an unknown source (lists what's available) or an
+  out-of-range window index. `write_edit_plan` + CLI
+  (`python -m scripts.edit_plan build`) chains Footage→selection→`build_edl`
+  →`preflight`→`EDL.json`+`EDL.md`, writing **nothing** on a preflight
+  `stop_and_report`. `SKILLS/edit-plan/SKILL.md` — the writing-plans-style
+  **autonomous draft + single review gate** subagent (context recon → author
+  `selection.json` → build → present `EDL.md`; edits round-trip through
+  `selection.json`, the SKILL never hand-patches `EDL.json`).
+  `tests/integration/test_edit_plan.py` — the real-ffmpeg SP3→SP1 golden: a
+  hand-written `FOOTAGE.json` + `selection.json` + `project.json` →
+  `edit_plan build` → `EDL.json` round-trips and `EDL.md` renders → **the
+  same `EDL.json` feeds the existing `edl_to_reel`** on synthesized source
+  clips → `status == "delivered"`, `REEL_v1.mp4` exists — proving the
+  SP3→SP1 seam on real bytes. **Selection stays the agent's judgment, code
+  stays thin** — no Python window-scorer, since 5.2 already scored/culled/
+  best-marked the windows; 5.7 only projects references and renders the map.
+  **Deferred (NOT built):** full reel-brief `SPEC.md` authoring (§5.3),
+  `PACING.md`/`beat_slot` binding (§5.6/B4 — `beat_slot` stays `None`
+  without pacing), cap-3 **parallel** router + episode-choice curation
+  (§5.1), cast→hero-pin descriptor resolution (`hero` still rides as a bare
+  bbox/rule/name string).
+
 ## Next action
 
-- **Front-half continuation — SP1b / SP3** (`draft.mp4`: labels + music bed,
-  §5.9; reel-brief full `SPEC.md` + `EDL.md` markdown render/interactive
-  authoring, §5.3/§5.7) — picks up where SP2 (footage-intake, DONE 2026-07-12)
-  left off. **OR**
+- **Front-half continuation — SP1b / reel-brief** (`draft.mp4`: labels +
+  music bed, §5.9; reel-brief full `SPEC.md`, §5.3) — picks up where SP3
+  (edit-plan, DONE 2026-07-12) left off. **OR**
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**

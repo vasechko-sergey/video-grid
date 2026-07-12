@@ -20,7 +20,7 @@ _Last updated: 2026-07-12._
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ◐ | beats-core (tempo/beat-grid/RMS energy) ✅; mood-match + autonomous sourcing ❌ | **Phase B — music spine** ◐ |
 | 5.6  | pacing | `PACING.md` | ❌ | energy spine (shared music↔edit) | **Phase B — music spine** |
-| 5.7  | edit-plan | `EDL.md` | ◐ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` markdown render + interactive authoring ❌ (SP3) | Front-half authoring |
+| 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3) | Front-half authoring |
 | 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
 | 5.9  | assemble-draft | `draft.mp4` | ❌ | concat + burnt-in "process here" labels; draft (labels + music bed) → SP1b | Front-half authoring |
 | 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1) | — |
@@ -49,13 +49,13 @@ status table above.
 
 | # | Stage | St | Left to build | Blocked by (hard) · (soft) | Unblocks |
 |---|-------|:--:|---------------|----------------------------|----------|
-| 5.1 | using-montage router | ◐ | cap-3 fan-out + episode curation | **5.7 edit-plan** (needs episodes to route/curate) | autonomous v1 |
+| 5.1 | using-montage router | ◐ | cap-3 fan-out + episode curation | **5.7 edit-plan** ✅ (SP3) — router work now unblocked | autonomous v1 |
 | 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
 | 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅ | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
 | 5.5 | music-and-mood | ◐ | mood-match + sourcing (B3) | none · (soft) 5.3 | 5.6 |
 | 5.6 | pacing | ❌ | `PACING.md` (B4) | **5.5 MUSIC.json** (beats-core ✅ → buildable now) | (soft) 5.7 |
-| 5.7 | **edit-plan** | ◐ | LLM picks windows → `EDL` + `EDL.md` | **unblocked by 5.2** · (soft) 5.3/5.6/5.5 | **5.1 + autonomy** |
+| 5.7 | **edit-plan** | ✅ | — (SP3, 2026-07-12) | — | **5.1 + autonomy** |
 | 5.8 | extract | ✅ | — (SP1) | — | — |
 | 5.9 | assemble-draft | ❌ | `draft.mp4` (SP1b) | none — **5.8 ✅** | QA preview |
 | 5.10 | process-episode 🔒 | ✅ | — | — | — |
@@ -66,12 +66,12 @@ status table above.
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
 
-**Tally:** 6 ✅ · 6 ◐ · 3 ❌. Both automation loops closed.
+**Tally:** 7 ✅ · 5 ◐ · 3 ❌. Both automation loops closed.
 
 ### Critical path to autonomous v1
 
 ```
-5.2 footage-intake ✅ ──► 5.7 edit-plan ◐ ──► 5.1 router ◐   = autonomy
+5.2 footage-intake ✅ ──► 5.7 edit-plan ✅ ──► 5.1 router ◐   = autonomy
         │                      ▲  ▲
         └─► 5.3 brief ─────────┘  │  (soft, quality)
     5.5 music ─► 5.6 pacing ──────┘
