@@ -77,11 +77,11 @@ status table above.
     5.5 music ─► 5.6 pacing ──────┘
 ```
 
-**Hard chain left: 5.7 + 5.1.** 5.2 feeds both (candidate windows + cast) —
-nothing blocks starting 5.7 now. Everything else (B3/B4, 5.9 draft, 5.12 ambient,
+**Hard chain left: 5.1.** 5.2 + 5.7 both feed it (candidate windows + cast →
+edit-plan authoring) and are ✅ now. Everything else (B3/B4, 5.9 draft, 5.12 ambient,
 5.13 safe_zones, cast→hero-pin) is parallel **quality**, not a blocker for the
-first full autonomous build. **Critical-path head = 5.7 edit-plan** (LLM
-authoring: `FOOTAGE.json` → window selection → `EDL`).
+first full autonomous build. **Critical-path head = 5.1 router** (cap-3 fan-out +
+episode curation); 5.2 + 5.7 both ✅ now feed it.
 
 ## What produces a reel today
 
@@ -119,7 +119,7 @@ for beat/loudness rather than a silent pass; `safe_zones` reports
 ### Upcoming
 
 - [ ] **Phase B — music spine** ◐ — B1+B2 done (2026-07-11): beats-core + music-only mix + loudness/beat gates. Remaining: B3 sourcing, B4 pacing (5.6), ambient/SFX.
-- [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) done: `EDL.json`→delivered reel, and now `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry. Remaining: SP1b (`draft.mp4`), SP3 (reel-brief + edit-plan authoring), SP4 (trend-scan).
+- [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: reel-brief full `SPEC.md` (5.3), SP1b (`draft.mp4`), SP4 (trend-scan).
 - [ ] **Router + curation** — stage 5.1 cap-3 fan-out router; the episode-choice human loop; `cast.json` hero registry (design §6.1a).
 - [ ] **Editorial reel-final** — stage 5.13 beyond the mechanical gate: `safe_zones` + structural/editorial review.
 - [ ] **Misc engine** — remaining layouts (`fit-solid`, `split`, `pan`); stabilization + tracking-degradation ladder.
