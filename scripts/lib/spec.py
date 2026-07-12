@@ -72,7 +72,7 @@ class Spec:
             reel_count=opt("reel_count", 1), music=opt("music", "auto"),
             music_mode=opt("music_mode", "free"), style_lean=opt("style_lean", "balanced"),
             platform=opt("platform", ""), text=opt("text", ""),
-            ending=opt("ending", ""), cast=tuple(opt("cast", ())), notes=opt("notes", ""))
+            ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""))
 
     def to_dict(self) -> dict:
         return {"canvas": list(self.canvas), "length_s": self.length_s,

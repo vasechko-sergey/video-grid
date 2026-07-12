@@ -93,3 +93,15 @@ def test_spec_write_then_from_json(tmp_path):
 def test_vocab_constants_are_the_allowed_sets():
     assert MUSIC_MODES == ("local", "free", "any")
     assert STYLE_LEANS == ("classic", "balanced", "trend")
+
+
+def test_spec_from_dict_rejects_noniterable_cast():
+    with pytest.raises(ValueError, match="cast"):
+        Spec.from_dict({**GOOD, "cast": 42})
+
+
+def test_spec_from_dict_rejects_string_cast():
+    # a bare string is iterable — tuple("Anna") would splat to ('A','n','n','a');
+    # from_dict must reject it cleanly, not silently splat
+    with pytest.raises(ValueError, match="cast"):
+        Spec.from_dict({**GOOD, "cast": "Anna"})
