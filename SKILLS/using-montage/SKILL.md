@@ -78,7 +78,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]`. This runs
    the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
    deliver). **Checkpoint 3 — final review:** present `out/REEL_v1.mp4` and the
-   `check_reel` report. A `stop_and_report` (a failed gate) is surfaced verbatim -
+   `check_reel` report. A `stop_and_report` (a failed gate) is surfaced verbatim —
    never fixed forward; route it to the culprit stage's skill.
 
 ## Reading the brief (intent -> param)
