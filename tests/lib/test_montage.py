@@ -124,3 +124,31 @@ def test_out_dir_override(tmp_path):
     (alt / "REEL_v2.mkv").write_text("x")   # glob matches any container/version
     res = next_action(str(tmp_path), str(alt))
     assert res["delivered"] is True
+
+
+# ---- status CLI ----
+
+def test_status_cli_prints_json_and_exits_0(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv",
+                        ["montage", "status", "--run-dir", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        montage.main()
+    assert e.value.code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["next"] == "project-init"
+    assert payload["delivered"] is False
+
+
+def test_status_cli_out_dir_override(tmp_path, monkeypatch, capsys):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    alt = tmp_path / "delivery"
+    alt.mkdir()
+    (alt / "REEL_v1.mp4").write_text("x")
+    monkeypatch.setattr(sys, "argv",
+                        ["montage", "status", "--run-dir", str(tmp_path),
+                         "--out-dir", str(alt)])
+    with pytest.raises(SystemExit) as e:
+        montage.main()
+    assert e.value.code == 0
+    assert json.loads(capsys.readouterr().out)["delivered"] is True

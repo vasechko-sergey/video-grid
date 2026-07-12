@@ -5,6 +5,8 @@ front-half judgment steps (footage-intake cast-naming, edit-plan selection autho
 are agent-interactive, so the using-montage SKILL runs the stages and consults
 next_action() for the resume/next decision. Mirrors intake.py <-> footage-intake:
 mechanical inspection here, judgment in the SKILL."""
+import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,3 +93,22 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
         stages.append({"key": st.key, "artifact": st.artifact, "kind": st.kind,
                        "state": state, "checkpoint": st.checkpoint, "runner": st.runner})
     return {"stages": stages, "next": next_key, "delivered": delivered}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="montage router status inspector (stage 5.1)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("status",
+                       help="report which conveyor stage is next in a run dir")
+    s.add_argument("--run-dir", required=True,
+                   help="the project/run dir where stage artifacts land")
+    s.add_argument("--out-dir", default=None,
+                   help="delivery dir (default <run-dir>/out)")
+    a = ap.parse_args()
+    print(json.dumps(next_action(a.run_dir, a.out_dir), indent=2))
+    raise SystemExit(0)
+
+
+if __name__ == "__main__":
+    main()
