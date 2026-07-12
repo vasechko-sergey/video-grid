@@ -299,3 +299,76 @@ def write_cast(named: list, out_dir: str):
     cast = footage.Cast(members=members)
     (Path(out_dir) / "cast.json").write_text(json.dumps(cast.to_dict(), indent=2))
     return cast
+
+
+def scene_bounds(src: str) -> list[float]:
+    """PySceneDetect ContentDetector → scene boundary timestamps (seconds). A
+    continuous take returns [] (handled by carving)."""
+    from scenedetect import detect, ContentDetector
+    scenes = detect(src, ContentDetector())
+    return [s[0].get_seconds() for s in scenes[1:]]      # boundaries = each scene's start bar the first
+
+
+def _build_window(span, timeline, shake, res):
+    a, d = span
+    b = a + d
+    samples = [(t, n, bb) for (t, n, bb) in timeline if a <= t < b]
+    people = max((n for _, n, _ in samples), default=0)
+    present = (sum(1 for _, n, _ in samples if n > 0) / len(samples)) if samples else 0.0
+    boxes = [bb for _, _, bb in samples if bb is not None]
+    primary = max(boxes, key=lambda bb: bb[2] * bb[3]) if boxes else None
+    motion = _motion(samples, res)
+    shot = shot_type(primary, res)
+    score = score_window(present, motion, shake, d)
+    return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
+                                 people=people, motion=round(motion, 3), shake=round(shake, 4),
+                                 description=_describe(people, shot, motion), score=round(score, 3))
+
+
+def _motion(samples, res) -> float:
+    centers = [(t, bb[0]) for (t, n, bb) in samples if bb is not None]
+    if len(centers) < 2:
+        return 0.0
+    w = res[0] or 1
+    disps = [abs(centers[i][1] - centers[i - 1][1]) / w for i in range(1, len(centers))]
+    return float(min(1.0, (sum(disps) / len(disps)) * MOTION_GAIN))
+
+
+def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> footage.Footage:
+    root = Path(footage_root)
+    paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
+    clips = []
+    for p in paths:
+        src = str(p)
+        info = assembly.probe_stream(src)
+        dur = assembly.probe_duration(src)
+        res = (info.w, info.h)
+        cuts = scene_bounds(src)
+        timeline, _crops = _people_timeline(src, info.fps, res)
+        spans = carve_windows(cuts, timeline, dur)
+        shakes = shake_by_window(src, spans, info.fps, res)
+        windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
+        med = statistics.median([w.shake for w in windows]) if windows else 0.0
+        clips.append(footage.FootageClip(source=p.name, dur=dur, res=res, fps=info.fps,
+                                         shaky=med > SHAKY_CLIP, scene_cuts=cuts, windows=windows))
+    result = footage.Footage(clips=clips)
+    cull(result.clips, phash_of=lambda c, w: _phash_at(str(root / c.source), w.start + w.dur / 2))
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "FOOTAGE.json").write_text(json.dumps(result.to_dict(), indent=2))
+    (out / "FOOTAGE.md").write_text(result.to_markdown())
+    return result
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips → FOOTAGE.json/.md")
+    ap.add_argument("footage_root")
+    ap.add_argument("out_dir")
+    ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS)
+    a = ap.parse_args(argv)
+    f = intake(a.footage_root, a.out_dir, a.sample_fps)
+    print(f"{len(f.clips)} clips, {sum(len(c.windows) for c in f.clips)} windows → {a.out_dir}")
+
+
+if __name__ == "__main__":
+    main()

@@ -190,3 +190,26 @@ def test_write_cast_writes_json(tmp_path):
     assert (tmp_path / "cast.json").exists()
     assert cast.members[0].name == "Lena"
     assert (tmp_path / "cast_crops" / "Lena_0.png").exists()
+
+
+def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
+    root = tmp_path / "footage"; root.mkdir()
+    (root / "a.mp4").write_bytes(b"x")
+    monkeypatch.setattr(intake.assembly, "probe_stream",
+                        lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
+    monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
+    tl = [(float(i), 1, (500, 500, 300, 300)) for i in range(9)]
+    monkeypatch.setattr(intake, "_people_timeline", lambda s, fps, res: (tl, {}))
+    monkeypatch.setattr(intake, "shake_by_window",
+                        lambda clip, spans, fps, res: [0.0 for _ in spans])
+    import imagehash
+    from PIL import Image as I
+    monkeypatch.setattr(intake, "_phash_at",
+                        lambda clip, t: imagehash.average_hash(I.new("L", (8, 8), int(t) % 256)))
+    out = tmp_path / "out"
+    result = intake.intake(str(root), str(out))
+    assert (out / "FOOTAGE.json").exists() and (out / "FOOTAGE.md").exists()
+    assert len(result.clips) == 1 and result.clips[0].source == "a.mp4"
+    assert result.clips[0].windows                       # carved ≥1 window
+    assert any(w.best for w in result.clips[0].windows)  # cull marked best
