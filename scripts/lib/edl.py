@@ -76,6 +76,17 @@ class EDLEpisode:
         if isinstance(self.rect, list):
             self.rect = tuple(self.rect)
 
+    def to_dict(self) -> dict:
+        def _j(v: object) -> object:
+            return list(v) if isinstance(v, tuple) else v
+        return {"source": self.source, "start": self.start, "dur": self.dur,
+                "shot_type": self.shot_type, "composition": self.composition, "grid": self.grid,
+                "layout": self.layout, "crop_aspect": _j(self.crop_aspect), "crop_scale": self.crop_scale,
+                "rect": _j(self.rect), "background": self.background, "border_px": self.border_px,
+                "border_color": self.border_color, "motion": self.motion, "hero": _j(self.hero),
+                "color_means": list(self.color_means), "processing_notes": self.processing_notes,
+                "beat_slot": self.beat_slot}
+
 
 @dataclass
 class EDL:
@@ -127,6 +138,10 @@ class EDL:
         except json.JSONDecodeError as e:
             raise ValueError(f"{path} is not valid JSON ({e}) — fix the EDL syntax") from e
         return cls.from_dict(d)
+
+    def to_dict(self) -> dict:
+        return {"episodes": [e.to_dict() for e in self.episodes],
+                "music": self.music, "cap": self.cap, "target_dur": self.target_dur}
 
 
 def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:

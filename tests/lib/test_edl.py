@@ -50,6 +50,23 @@ def test_bad_field_raises_valueerror_with_remedy(kw, needle):
         _ep(**kw)
 
 
+def test_episode_to_dict_is_json_friendly_and_round_trips():
+    e = _ep(hero=[10, 20, 30, 40], crop_aspect=[9, 16], rect=[0.1, 0.2, 0.8],
+            color_means=[100, 110, 120], motion="static", beat_slot=3, processing_notes="hold here")
+    d = e.to_dict()
+    assert d["hero"] == [10, 20, 30, 40] and d["crop_aspect"] == [9, 16]   # tuples → lists
+    assert d["rect"] == [0.1, 0.2, 0.8] and d["color_means"] == [100, 110, 120]
+    assert d["beat_slot"] == 3 and d["processing_notes"] == "hold here"
+    back = EDLEpisode(**d)                       # round-trips through the constructor
+    assert back.to_dict() == d
+
+
+def test_episode_to_dict_keeps_none_optionals():
+    d = _ep().to_dict()                          # motion/hero/crop_aspect/rect default None
+    assert d["motion"] is None and d["hero"] is None and d["crop_aspect"] is None and d["rect"] is None
+    assert d["beat_slot"] is None
+
+
 def _edl(**kw):
     ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
               composition="lead", grid="thirds")
@@ -67,6 +84,12 @@ def test_edl_from_dict_defaults():
 def test_edl_reel_level_fields():
     e = _edl(music="MUSIC.json", cap=2, target_dur=8.0)
     assert e.music == "MUSIC.json" and e.cap == 2 and e.target_dur == 8.0
+
+
+def test_edl_to_dict_round_trips():
+    e = _edl(music="MUSIC.json", cap=2, target_dur=8.0)
+    assert EDL.from_dict(e.to_dict()).to_dict() == e.to_dict()
+    assert e.to_dict()["cap"] == 2 and e.to_dict()["music"] == "MUSIC.json"
 
 
 def test_edl_null_cap_defaults_to_three():
