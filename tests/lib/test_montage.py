@@ -59,6 +59,11 @@ def test_empty_run_next_is_project_init(tmp_path):
     assert res["delivered"] is False
     assert _state(res, "project-init") == "next"
     assert _state(res, "footage-intake") == "pending"
+    # whole-object: pin the per-stage dict shape (a dropped key must fail)
+    assert res["stages"][0] == {
+        "key": "project-init", "artifact": "project.json", "kind": "required",
+        "state": "next", "checkpoint": "spec",
+        "runner": "project-init SKILL -> project_init CLI"}
 
 
 def test_deferred_stages_always_skip(tmp_path):
