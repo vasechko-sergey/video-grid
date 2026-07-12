@@ -157,7 +157,7 @@ class Footage:
             for w in c.windows:
                 star = "★" if w.best else ""
                 lines.append(f"| {w.start:.2f} | {w.dur:.2f} | {w.shot_type} | {w.people} | "
-                             f"{w.motion:.2f} | {w.shake:.2f} | {w.score:.2f} | {star} | {w.description} |")
+                             f"{w.motion:.2f} | {w.shake:.4f} | {w.score:.2f} | {star} | {w.description} |")
             lines.append("")
         return "\n".join(lines)
 

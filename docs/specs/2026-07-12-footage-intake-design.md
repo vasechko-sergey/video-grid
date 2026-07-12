@@ -231,17 +231,28 @@ culls, writes `FOOTAGE.json` + `FOOTAGE.md`. CLI:
 ## §4 Cast pass
 
 Mechanical helpers in `intake.py`; the **naming is interactive** and lives in the
-SKILL (§5), never in the Python — the Python cannot ask a human.
-- `surface_crops(clips, top_n) -> list[Crop]` — cluster retained per-track crops
-  by descriptor similarity across *all* footage, return `top_n` distinct
-  identities, each with a representative crop + mask. Saves crop PNGs under
-  `out_dir/cast_crops/` for the human to look at.
+SKILL (§5), never in the Python — the Python cannot ask a human. The crops come
+from `intake()`'s **single** YOLO-seg pass (no second pass): `intake()`
+accumulates each clip's retained crops keyed `(source, track_id)` — ByteTrack ids
+restart at 1 per clip, so the raw id alone would collide across clips.
 - `build_descriptor(crop, mask) -> list[float]` — a color histogram over the
   **segmentation-mask pixels only** (background removed — §6.1a: HSV failed as a
   *tracker* but is the right *identity descriptor* over a mask). Fixed bins
-  (e.g. 3 channels × 8 = 24), L1-normalized. numpy + Pillow, **no cv2**.
-- `write_cast(names_to_crops, out_dir) -> Cast` — builds `CastMember`s
-  (descriptor from 1–3 ref crops, averaged) and writes `cast.json`.
+  (3 channels × 8 = 24), L1-normalized. numpy + Pillow, **no cv2**.
+- `surface_crops(crops_by_track, top_n) -> list` — cluster the accumulated crops
+  by descriptor L1 distance (`> CAST_DEDUP` = distinct) across *all* footage,
+  highest-confidence first, returning the `top_n` distinct identities as
+  `(key, conf, crop_rgb, mask, descriptor)`.
+- `save_cast_candidates(crops_by_track, out_dir, top_n) -> list[dict]` — the
+  reachability bridge: runs `surface_crops`, **saves** each candidate's crop PNG
+  under `out_dir/cast_crops/candidate_{i}.png`, and writes
+  `cast_candidates.json` (`id, source, conf, crop, descriptor`). `intake()` calls
+  it, so the SKILL reads candidates off disk (crops to show + descriptors already
+  computed) instead of re-running YOLO.
+- `write_cast(named, out_dir) -> Cast` — `named` is
+  `[(name, notes, descriptor, ref_crops)]`: the SKILL maps the human's names onto
+  the candidates' **persisted** descriptors (no array marshalling across the
+  `intake()` boundary), and this writes `cast.json`.
 
 ---
 

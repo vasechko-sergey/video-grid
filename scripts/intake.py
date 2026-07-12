@@ -7,8 +7,10 @@ footage-intake SKILL — Python cannot ask a human — this module only surfaces
 crops and builds descriptors.
 """
 import argparse, json, re, statistics, tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
+import imagehash
 import numpy as np
 from PIL import Image
 
@@ -170,17 +172,17 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, r
     return _windowed_shake(mags, windows, fps, res[0])
 
 
-def _iter_seg(src: str, model_path: str = MODEL):
+def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]:
     """Mirror track.py's YOLO+ByteTrack config but keep masks (track omits them
     for speed). Yields (frame_index, ultralytics_result)."""
-    from ultralytics import YOLO
+    from ultralytics import YOLO           # lazy import: heavy optional dep (ultralytics/torch)
     model = YOLO(model_path)
     for i, res in enumerate(model.track(src, stream=True, persist=True, classes=[0],
                                         tracker="bytetrack.yaml", imgsz=960, verbose=False)):
         yield i, res
 
 
-def _people_timeline(src: str, fps: float, res: tuple[int, int]):
+def _people_timeline(src: str, fps: float, res: tuple[int, int]) -> tuple[list, dict]:
     """One seg pass → (timeline, crops_by_track).
     timeline: [(t, people, primary_bbox)] sampled at ~SAMPLE_FPS (primary = largest bbox).
     crops_by_track: {tid: (conf, crop_rgb, mask)} best crop per track id, for the cast pass."""
@@ -203,7 +205,7 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int]):
     return timeline, crops
 
 
-def _crop_and_mask(res, idx: int, box):
+def _crop_and_mask(res: object, idx: int, box: object) -> tuple:
     """Extract the box's crop (RGB) + seg mask from an ultralytics result. Returns
     (None, None) when the frame image or masks are unavailable (mocked tests)."""
     img = getattr(res, "orig_img", None)
@@ -223,11 +225,11 @@ def _crop_and_mask(res, idx: int, box):
     return (crop if crop.size else None), mask
 
 
-def _phash_at(clip: str, t: float):
+def _phash_at(clip: str, t: float) -> imagehash.ImageHash:
     return check_reel._phash_bits(clip, t)             # reuse the reel-variety phash
 
 
-def cull(clips: list, phash_of) -> None:
+def cull(clips: list, phash_of: object) -> None:
     """Rank all windows by score; a window whose phash Hamming distance to an
     already-kept higher-scored window is < DEDUP_DIST is a duplicate (compare by
     IMAGE, never by filename — several windows of one clip are legitimate). Mark
@@ -245,7 +247,7 @@ def cull(clips: list, phash_of) -> None:
             kept.append(h)
 
 
-def build_descriptor(crop_rgb, mask) -> list[float]:
+def build_descriptor(crop_rgb: object, mask: object) -> list[float]:
     """L1-normalized color histogram over the segmentation-mask pixels only
     (clothing/gear — background removed; §6.1a). numpy + Pillow, no cv2."""
     px = crop_rgb[mask > 0] if mask is not None else crop_rgb.reshape(-1, 3)
@@ -281,21 +283,32 @@ def surface_crops(crops_by_track: dict, top_n: int = 8) -> list:
     return picked
 
 
-def write_cast(named: list, out_dir: str):
-    """named: [(name, notes, [(crop_rgb, mask), ...])]. Averages 1–3 reference
-    descriptors, saves ref crop PNGs under out_dir/cast_crops/, writes cast.json."""
+def save_cast_candidates(crops_by_track: dict, out_dir: str, top_n: int = 8) -> list[dict]:
+    """Surface the top-N distinct identities across ALL footage, save their crop PNGs
+    under out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json
+    (id, source, conf, crop, descriptor) — the footage-intake SKILL shows these to the
+    human to name (§4/§5). Reuses the single seg pass; empty footage → empty manifest."""
+    picked = surface_crops(crops_by_track, top_n)
     crop_dir = Path(out_dir) / "cast_crops"
-    crop_dir.mkdir(parents=True, exist_ok=True)
-    members = []
-    for name, notes, refs in named:
-        descs, paths = [], []
-        for j, (crop_rgb, mask) in enumerate(refs[:3]):
-            descs.append(build_descriptor(crop_rgb, mask))
-            p = str(crop_dir / f"{name}_{j}.png")
-            Image.fromarray(crop_rgb.astype("uint8")).save(p)
-            paths.append(p)
-        avg = [sum(col) / len(descs) for col in zip(*descs)]
-        members.append(footage.CastMember(name=name, descriptor=avg, notes=notes, ref_crops=paths))
+    if picked:
+        crop_dir.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict] = []
+    for i, (key, conf, crop_rgb, _mask, desc) in enumerate(picked):
+        path = str(crop_dir / f"candidate_{i}.png")
+        Image.fromarray(crop_rgb.astype("uint8")).save(path)
+        source = key[0] if isinstance(key, tuple) else key
+        manifest.append({"id": i, "source": source, "conf": round(float(conf), 3),
+                         "crop": path, "descriptor": desc})
+    (Path(out_dir) / "cast_candidates.json").write_text(json.dumps(manifest, indent=2))
+    return manifest
+
+
+def write_cast(named: list[tuple[str, str, list[float], list[str]]], out_dir: str) -> footage.Cast:
+    """named: [(name, notes, descriptor, ref_crops)] — descriptors already computed by
+    surface_crops and persisted in cast_candidates.json; the SKILL maps names onto them.
+    Writes cast.json (§4/§5)."""
+    members = [footage.CastMember(name=n, descriptor=list(desc), notes=notes, ref_crops=list(refs))
+               for (n, notes, desc, refs) in named]
     cast = footage.Cast(members=members)
     (Path(out_dir) / "cast.json").write_text(json.dumps(cast.to_dict(), indent=2))
     return cast
@@ -304,12 +317,12 @@ def write_cast(named: list, out_dir: str):
 def scene_bounds(src: str) -> list[float]:
     """PySceneDetect ContentDetector → scene boundary timestamps (seconds). A
     continuous take returns [] (handled by carving)."""
-    from scenedetect import detect, ContentDetector
+    from scenedetect import detect, ContentDetector   # lazy import: heavy optional dep (scenedetect/opencv)
     scenes = detect(src, ContentDetector())
     return [s[0].get_seconds() for s in scenes[1:]]      # boundaries = each scene's start bar the first
 
 
-def _build_window(span, timeline, shake, res):
+def _build_window(span: tuple[float, float], timeline: list, shake: float, res: tuple[int, int]) -> footage.FootageWindow:
     a, d = span
     b = a + d
     samples = [(t, n, bb) for (t, n, bb) in timeline if a <= t < b]
@@ -325,7 +338,7 @@ def _build_window(span, timeline, shake, res):
                                  description=_describe(people, shot, motion), score=round(score, 3))
 
 
-def _motion(samples, res) -> float:
+def _motion(samples: list, res: tuple[int, int]) -> float:
     centers = [(t, bb[0]) for (t, n, bb) in samples if bb is not None]
     if len(centers) < 2:
         return 0.0
@@ -338,13 +351,16 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> f
     root = Path(footage_root)
     paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
     clips = []
+    all_crops: dict = {}
     for p in paths:
         src = str(p)
         info = assembly.probe_stream(src)
         dur = assembly.probe_duration(src)
         res = (info.w, info.h)
         cuts = scene_bounds(src)
-        timeline, _crops = _people_timeline(src, info.fps, res)
+        timeline, crops = _people_timeline(src, info.fps, res)
+        for tid, entry in crops.items():
+            all_crops[(p.name, tid)] = entry          # composite key — ids restart per clip
         spans = carve_windows(cuts, timeline, dur)
         shakes = shake_by_window(src, spans, info.fps, res)
         windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
@@ -357,10 +373,11 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> f
     out.mkdir(parents=True, exist_ok=True)
     (out / "FOOTAGE.json").write_text(json.dumps(result.to_dict(), indent=2))
     (out / "FOOTAGE.md").write_text(result.to_markdown())
+    save_cast_candidates(all_crops, str(out))
     return result
 
 
-def main(argv=None) -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips → FOOTAGE.json/.md")
     ap.add_argument("footage_root")
     ap.add_argument("out_dir")

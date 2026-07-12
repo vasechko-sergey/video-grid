@@ -128,6 +128,17 @@ def test_people_timeline_samples_and_counts(monkeypatch):
     # crops stay empty here: the fakes carry no orig_img, so there is nothing to retain.
 
 
+def test_crop_and_mask_rgb_and_aligned_mask():
+    import types as _t
+    frame_bgr = np.zeros((100, 200, 3), "uint8"); frame_bgr[:, :, 0] = 255   # blue in BGR
+    masks = _t.SimpleNamespace(data=[np.ones((100, 200), "float32")])
+    res = _t.SimpleNamespace(orig_img=frame_bgr, masks=masks)
+    crop, mask = intake._crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
+    assert crop is not None and crop.shape[2] == 3
+    assert crop[0, 0, 2] == 255                          # BGR→RGB: blue is now channel index 2
+    assert mask is not None and mask.shape[:2] == crop.shape[:2]   # crop and mask aligned HxW
+
+
 import imagehash
 from PIL import Image as _Img
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -184,12 +195,23 @@ def test_surface_crops_dedups_identities():
     picked = intake.surface_crops(crops, top_n=8)
     assert len(picked) == 2                            # the two reds collapse to one identity
 
+def test_save_cast_candidates_saves_and_manifests(tmp_path):
+    red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
+    blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
+    crops = {("a.mp4", 1): (0.9, red, np.ones((8, 8), "uint8")),
+             ("b.mp4", 1): (0.8, blue, np.ones((8, 8), "uint8"))}
+    manifest = intake.save_cast_candidates(crops, str(tmp_path))
+    assert len(manifest) == 2                                   # two distinct identities
+    assert (tmp_path / "cast_candidates.json").exists()
+    assert (tmp_path / "cast_crops" / "candidate_0.png").exists()
+    assert manifest[0]["source"] in {"a.mp4", "b.mp4"} and "descriptor" in manifest[0]
+
 def test_write_cast_writes_json(tmp_path):
-    crop = np.zeros((8, 8, 3), "uint8"); crop[:, :, 1] = 255
-    cast = intake.write_cast([("Lena", "green", [(crop, np.ones((8, 8), "uint8"))])], str(tmp_path))
+    from scripts.lib.footage import Cast
+    cast = intake.write_cast([("Lena", "green", [0.1, 0.9], ["cast_crops/candidate_0.png"])], str(tmp_path))
     assert (tmp_path / "cast.json").exists()
-    assert cast.members[0].name == "Lena"
-    assert (tmp_path / "cast_crops" / "Lena_0.png").exists()
+    assert cast.members[0].name == "Lena" and cast.members[0].descriptor == [0.1, 0.9]
+    assert Cast.from_json(tmp_path / "cast.json").members[0].ref_crops == ["cast_crops/candidate_0.png"]
 
 
 def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
@@ -213,3 +235,4 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     assert len(result.clips) == 1 and result.clips[0].source == "a.mp4"
     assert result.clips[0].windows                       # carved ≥1 window
     assert any(w.best for w in result.clips[0].windows)  # cull marked best
+    assert (out / "cast_candidates.json").exists()       # empty crops → empty manifest, still written
