@@ -189,6 +189,20 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 **Cast pass (when people matter to the reel):** intake surfaces top-N person crops across the footage; the user names the heroes once — any domain (family, athletes, friends, a vlogger). Each name stores an appearance descriptor into `cast.json` (§6.1a); `SPEC.cast` lists who the reel is about.
 **Gate:** every clip logged, faces/people tagged, moment-windows carved out and scored, cast named (when applicable).
 
+> **Built (2026-07-12, SP2):** `scripts/intake.py` scans a footage folder → typed
+> `FOOTAGE.json` + rendered `FOOTAGE.md` of scored candidate moment-windows —
+> ffprobe + PySceneDetect scene bounds + one YOLO11-seg/ByteTrack pass
+> (people/tracks/masks) + `vidstabdetect` shake → **sub-scene carve** into the
+> episode band → present/motion/stability/dur **score** → phash **cull** marking
+> the best. Contracts in `scripts/lib/footage.py`
+> (`FootageWindow`/`FootageClip`/`Footage` + `to_markdown`, `CastMember`/`Cast`);
+> a `FootageWindow` projects onto an `EDLEpisode` (§5.7's input). The **cast
+> pass** persists top-N candidate crops + `cast_candidates.json` from the single
+> seg pass; the `footage-intake` SKILL names them → `write_cast` → `cast.json`.
+> Intake is the first runtime **vidstab** consumer (hard preflight). Descriptor →
+> manifest hero-pin wiring is deferred. See
+> `docs/plans/2026-07-12-footage-intake.md`.
+
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
 Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
 **Gate:** mood + platform/canvas + length + hook locked.

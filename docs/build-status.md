@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-11._
+_Last updated: 2026-07-12._
 
 > Bird's-eye progress across the full 15-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -299,12 +299,44 @@ _Last updated: 2026-07-11._
   edit-plan authoring, SP4 trend-scan, and the cap-3 PARALLEL router +
   episode-choice curation (montage §5.1).
 
+- **footage-intake (5.2) DONE (2026-07-12)** — plan
+  `docs/plans/2026-07-12-footage-intake.md` + design
+  `docs/specs/2026-07-12-footage-intake-design.md`, Tasks 0–15 via strict
+  subagent-driven-development (branch `feat/footage-intake`). **522 tests green**
+  (+1 vidstab-gated integration golden, skipped without libvidstab).
+  `scripts/intake.py` scans a footage folder → `FOOTAGE.json` (typed) +
+  `FOOTAGE.md` (rendered): per clip, scored candidate **moment-windows** — probe
+  + PySceneDetect scene bounds + one YOLO11-seg + ByteTrack pass (people/tracks/
+  masks) + `vidstabdetect` shake, **sub-scene carve** into the episode band
+  (scenes alone don't split a long take), present/motion/stability/dur **score**,
+  **phash cull** marking the best (dedup by image, not filename). New contracts
+  in `scripts/lib/footage.py` — `FootageWindow`/`FootageClip`/`Footage`
+  (+`to_markdown`) and `CastMember`/`Cast`; a `FootageWindow` projects onto an
+  `EDLEpisode` (5.7's input). The **cast pass**: the single seg pass surfaces
+  top-N distinct person crops → `cast_candidates.json` + `cast_crops/`; the
+  `footage-intake` SKILL names them interactively → `write_cast` → `cast.json`.
+  `assembly.probe_duration` promoted from `extract._probe_dur` (shared). **Intake
+  is the repo's first runtime vidstab consumer** — hard preflight + skip-if-absent
+  tests. **Review-driven fixes:** carve dropped a shredded clip to one over-band
+  window (now yields empty — band invariant held); the cast pass was built but
+  **unreachable** (`intake()` discarded crops, `write_cast` took arrays that
+  didn't survive the boundary) — wired end-to-end (persist candidates +
+  descriptor-based `write_cast`, `(source, track_id)` keys since ByteTrack ids
+  restart per clip); `SHAKY_CLIP` width-fraction spec-sync; a `cull` test-fixture
+  bug (`imagehash.average_hash` of any uniform image is all-zero); full type
+  hints. **Deferred (NOT built):** descriptor→manifest hero-pin wiring (a later
+  plan — `orch.is_seed_pin` still bbox-only), SP1b `draft.mp4`, SP3 authoring,
+  SP4 trend-scan.
+
 ## Next action
 
-- **Front-half continuation — SP1b / SP2 / SP3** (`draft.mp4`: labels + music
-  bed, §5.9; footage-intake `FOOTAGE.md`, §5.2; reel-brief full `SPEC.md` +
-  `EDL.md` markdown render/interactive authoring, §5.3/§5.7) — picks up where
-  SP1 (extract spine, DONE 2026-07-11) left off. **OR**
+- **Front-half continuation — SP1b / SP3** (`draft.mp4`: labels + music bed,
+  §5.9; reel-brief full `SPEC.md` + `EDL.md` markdown render/interactive
+  authoring, §5.3/§5.7) — picks up where SP2 (footage-intake, DONE 2026-07-12)
+  left off. **OR**
+- **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
+  manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
+  descriptor continuity re-match (design §6.1a) then has its registry. **OR**
 - **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
   `music.mode` rights lanes, mood-match against catalog metadata) — picks up
   where B1+B2 (music spine, DONE 2026-07-11) left off. **OR**
