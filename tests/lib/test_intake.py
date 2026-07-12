@@ -106,3 +106,22 @@ def test_windowed_shake_averages_and_normalises():
     mags = [0.0, 10.0, 0.0, 0.0]
     out = intake._windowed_shake(mags, [(1.0, 2.0)], fps=1.0, w=1000)
     assert out == [5.0 / 1000]
+
+
+class _FakeBox:
+    def __init__(self, xywh, tid, conf=0.9):
+        self.xywh = [xywh]; self.id = [tid]; self.cls = [0]; self.conf = [conf]
+
+class _FakeRes:
+    def __init__(self, boxes):
+        self.boxes = boxes
+
+def test_people_timeline_samples_and_counts(monkeypatch):
+    # 6 frames @ fps 6, SAMPLE_FPS 3 → step 2 → sample frames 0,2,4. subject slides right.
+    frames = [_FakeRes([_FakeBox([300 + i * 40, 500, 200, 300], 1)]) for i in range(6)]
+    monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(frames)))
+    tl, crops = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
+    assert [n for _, n, _ in tl] == [1, 1, 1]          # one person each sampled frame
+    assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
+    assert tl[0][2][2] == 200                          # primary bbox width threaded through
+    # crops stay empty here: the fakes carry no orig_img, so there is nothing to retain.

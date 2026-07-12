@@ -168,3 +168,56 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, r
         proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"])
         mags = _parse_trf(Path(trf).read_text())
     return _windowed_shake(mags, windows, fps, res[0])
+
+
+def _iter_seg(src: str, model_path: str = MODEL):
+    """Mirror track.py's YOLO+ByteTrack config but keep masks (track omits them
+    for speed). Yields (frame_index, ultralytics_result)."""
+    from ultralytics import YOLO
+    model = YOLO(model_path)
+    for i, res in enumerate(model.track(src, stream=True, persist=True, classes=[0],
+                                        tracker="bytetrack.yaml", imgsz=960, verbose=False)):
+        yield i, res
+
+
+def _people_timeline(src: str, fps: float, res: tuple[int, int]):
+    """One seg pass → (timeline, crops_by_track).
+    timeline: [(t, people, primary_bbox)] sampled at ~SAMPLE_FPS (primary = largest bbox).
+    crops_by_track: {tid: (conf, crop_rgb, mask)} best crop per track id, for the cast pass."""
+    step = max(1, round(fps / SAMPLE_FPS))
+    timeline, crops = [], {}
+    for i, r in _iter_seg(src):
+        boxes = list(r.boxes) if getattr(r, "boxes", None) is not None else []
+        for j, b in enumerate(boxes):
+            tid = int(b.id[0]) if getattr(b, "id", None) is not None else None
+            conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
+            if tid is not None and conf > crops.get(tid, (-1.0,))[0]:
+                crop_rgb, mask = _crop_and_mask(r, j, b)
+                if crop_rgb is not None:
+                    crops[tid] = (conf, crop_rgb, mask)
+        if i % step:
+            continue
+        bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]
+        primary = max(bbs, key=lambda bb: bb[2] * bb[3]) if bbs else None
+        timeline.append((i / fps, len(bbs), primary))
+    return timeline, crops
+
+
+def _crop_and_mask(res, idx: int, box):
+    """Extract the box's crop (RGB) + seg mask from an ultralytics result. Returns
+    (None, None) when the frame image or masks are unavailable (mocked tests)."""
+    img = getattr(res, "orig_img", None)
+    if img is None:
+        return None, None
+    arr = np.asarray(img)[..., ::-1]                       # ultralytics orig_img is BGR → RGB
+    x, y, w, h = (float(v) for v in box.xywh[0])
+    l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
+    l, t = max(0, l), max(0, t)
+    crop = arr[t:b_, l:r_]
+    mask = None
+    masks = getattr(res, "masks", None)
+    if masks is not None and getattr(masks, "data", None) is not None:
+        m = np.asarray(masks.data[idx])                    # (H, W) in model space
+        m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
+        mask = m[t:b_, l:r_]
+    return (crop if crop.size else None), mask
