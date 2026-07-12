@@ -39,7 +39,7 @@ V1_STAGES: tuple[Stage, ...] = (
           "project-init SKILL -> project_init CLI", "spec"),
     Stage("footage-intake", "FOOTAGE.json", "required",
           "footage-intake SKILL -> intake CLI", None),
-    Stage("reel-brief", "SPEC.md", "deferred", "5.3 - not built", None),
+    Stage("reel-brief", "SPEC.json", "optional", "reel-brief SKILL -> reel_brief CLI", "spec"),
     Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None),
     Stage("music-and-mood", "MUSIC.json", "optional",
           "beats CLI (absent -> silent reel)", None),

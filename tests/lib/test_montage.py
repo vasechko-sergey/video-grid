@@ -39,8 +39,11 @@ def test_v1_stages_order_and_keys():
 def test_v1_stages_kinds_and_flags():
     by = {s.key: s for s in V1_STAGES}
     assert [s.key for s in V1_STAGES if s.kind == "deferred"] == [
-        "reel-brief", "trend-scan", "pacing"]
+        "trend-scan", "pacing"]
     assert by["music-and-mood"].kind == "optional"
+    assert by["reel-brief"].kind == "optional"
+    assert by["reel-brief"].artifact == "SPEC.json"
+    assert by["reel-brief"].checkpoint == "spec"
     assert by["deliver"].in_out is True and by["deliver"].artifact == "REEL_v*.*"
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
@@ -68,7 +71,7 @@ def test_empty_run_next_is_project_init(tmp_path):
 
 def test_deferred_stages_always_skip(tmp_path):
     res = next_action(str(tmp_path))
-    for k in ("reel-brief", "trend-scan", "pacing"):
+    for k in ("trend-scan", "pacing"):
         assert _state(res, k) == "skip"
 
 
@@ -89,6 +92,17 @@ def test_music_optional_absent_then_present(tmp_path):
     res2 = next_action(str(tmp_path))
     assert _state(res2, "music-and-mood") == "done"
     assert res2["next"] == "edit-plan"
+
+
+def test_reel_brief_optional_absent_then_present(tmp_path):
+    _touch(tmp_path, "project.json")
+    res = next_action(str(tmp_path))
+    assert _state(res, "reel-brief") == "optional"   # absent optional never blocks
+    assert res["next"] == "footage-intake"           # next unaffected by an optional stage
+    _touch(tmp_path, "SPEC.json")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "reel-brief") == "done"
+    assert res2["next"] == "footage-intake"
 
 
 def test_edl_present_next_is_deliver(tmp_path):
