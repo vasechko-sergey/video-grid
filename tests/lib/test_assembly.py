@@ -6,6 +6,7 @@ import pytest
 
 from scripts.lib import assembly
 from scripts.lib.assembly import StreamInfo
+from scripts import extract
 
 
 def test_matches_is_true_only_when_all_fields_agree():
@@ -103,3 +104,9 @@ def test_concat_list_escapes_single_quotes_in_paths(tmp_path, monkeypatch):
     esc = str(ep.resolve()).replace("'", "'\\''")
     assert f"file '{esc}'" in listtext
     assert "'\\''" in listtext          # the ffmpeg-style escape is present
+
+
+def test_probe_duration_is_the_shared_helper():
+    # extract._probe_dur is promoted to assembly.probe_duration — one duration probe, shared.
+    assert extract._probe_dur is assembly.probe_duration
+    assert callable(assembly.probe_duration)

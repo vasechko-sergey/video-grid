@@ -36,6 +36,17 @@ def probe_stream(path: str) -> StreamInfo:
                       s["pix_fmt"], s["codec_name"])
 
 
+def probe_duration(path: str) -> float:
+    """Container duration in seconds (format=duration). StreamInfo carries w/h/fps
+    only; this is the shared duration probe (was extract._probe_dur)."""
+    out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=nk=1:nw=1", path]).stdout.decode().strip()
+    try:
+        return float(out)
+    except ValueError as e:
+        raise ValueError(f"ffprobe returned no duration for {path!r} ({out!r}) — corrupt/streamed source?") from e
+
+
 def matches(info: StreamInfo, dims: tuple[int, int], fps: float,
             pix_fmt: str = "yuv420p", vcodec: str = "h264") -> bool:
     return (info.w == dims[0] and info.h == dims[1] and abs(info.fps - fps) < 0.01
