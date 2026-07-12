@@ -41,6 +41,48 @@ Two human checkpoints remain unautomated by design (design §4.1): **music choic
 (skill proposes, human influences → Phase B) and **episode choice** (skill proposes
 best-fit, human swaps → Router + curation).
 
+## Remaining work — blockers & critical path
+
+A dependency view of the 15 stages: what's left, what **hard-blocks** it, what it
+unblocks. `(soft)` = a quality input, not a build prerequisite. Complements the
+status table above.
+
+| # | Stage | St | Left to build | Blocked by (hard) · (soft) | Unblocks |
+|---|-------|:--:|---------------|----------------------------|----------|
+| 5.1 | using-montage router | ◐ | cap-3 fan-out + episode curation | **5.7 edit-plan** (needs episodes to route/curate) | autonomous v1 |
+| 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
+| 5.3 | reel-brief | ◐ | full `SPEC.md` | none · (soft) 5.2 cast ✅ | 5.7, 5.5 mood |
+| 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
+| 5.5 | music-and-mood | ◐ | mood-match + sourcing (B3) | none · (soft) 5.3 | 5.6 |
+| 5.6 | pacing | ❌ | `PACING.md` (B4) | **5.5 MUSIC.json** (beats-core ✅ → buildable now) | (soft) 5.7 |
+| 5.7 | **edit-plan** | ◐ | LLM picks windows → `EDL` + `EDL.md` | **unblocked by 5.2** · (soft) 5.3/5.6/5.5 | **5.1 + autonomy** |
+| 5.8 | extract | ✅ | — (SP1) | — | — |
+| 5.9 | assemble-draft | ❌ | `draft.mp4` (SP1b) | none — **5.8 ✅** | QA preview |
+| 5.10 | process-episode 🔒 | ✅ | — | — | — |
+| 5.11 | episode-postcheck | ✅ | — | — | — |
+| 5.12 | audio-mix | ◐ | ambient duck + SFX | **extract per-ep audio passthrough** (small 5.8 change) | richer mix |
+| 5.13 | reel-final-check | ◐ | `safe_zones` + editorial | none for safe_zones · (soft) 5.2 faces ✅ | tighter gate |
+| 5.14 | deliver | ✅ | — | — | — |
+| 5.15 | ffmpeg-recipes | ✅ | — | — | — |
+| — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
+
+**Tally:** 6 ✅ · 6 ◐ · 3 ❌. Both automation loops closed.
+
+### Critical path to autonomous v1
+
+```
+5.2 footage-intake ✅ ──► 5.7 edit-plan ◐ ──► 5.1 router ◐   = autonomy
+        │                      ▲  ▲
+        └─► 5.3 brief ─────────┘  │  (soft, quality)
+    5.5 music ─► 5.6 pacing ──────┘
+```
+
+**Hard chain left: 5.7 + 5.1.** 5.2 feeds both (candidate windows + cast) —
+nothing blocks starting 5.7 now. Everything else (B3/B4, 5.9 draft, 5.12 ambient,
+5.13 safe_zones, cast→hero-pin) is parallel **quality**, not a blocker for the
+first full autonomous build. **Critical-path head = 5.7 edit-plan** (LLM
+authoring: `FOOTAGE.json` → window selection → `EDL`).
+
 ## What produces a reel today
 
 The **spine 5.10 → 5.14 is complete** and both automation loops are closed, and
