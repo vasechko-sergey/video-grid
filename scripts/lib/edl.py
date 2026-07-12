@@ -143,6 +143,22 @@ class EDL:
         return {"episodes": [e.to_dict() for e in self.episodes],
                 "music": self.music, "cap": self.cap, "target_dur": self.target_dur}
 
+    def to_markdown(self) -> str:
+        total = sum(e.dur for e in self.episodes)
+        head = f"# Edit plan — {len(self.episodes)} episodes, {total:.1f}s"
+        if self.target_dur is not None:
+            head += f" · target {self.target_dur:.1f}s"
+        lines = [head, "",
+                 "| # | source | window | shot | layout | comp | grid | motion | beat | notes |",
+                 "|---|--------|--------|------|--------|------|------|--------|:----:|-------|"]
+        for i, e in enumerate(self.episodes):
+            motion = e.motion if e.motion is not None else "–"
+            beat = str(e.beat_slot) if e.beat_slot is not None else "–"
+            window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
+            lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
+                         f"{e.composition} | {e.grid} | {motion} | {beat} | {e.processing_notes} |")
+        return "\n".join(lines)
+
 
 def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
     """Map an EDL row + its extracted segment + output path onto a Manifest-shaped

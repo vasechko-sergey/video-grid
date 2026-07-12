@@ -136,6 +136,28 @@ def test_edl_from_json_corrupt_names_a_remedy(tmp_path):
         EDL.from_json(str(p))
 
 
+def test_to_markdown_renders_header_and_rows():
+    e = _edl(target_dur=8.0)          # two episodes, start 0.0 and 2.0, dur 2.0 each
+    md = e.to_markdown()
+    assert md.startswith("# Edit plan — 2 episodes, 4.0s · target 8.0s")
+    assert "| # | source | window | shot | layout | comp | grid | motion | beat | notes |" in md
+    assert "| 0 | a.mp4 | 0.00–2.00 (2.00s) | wide | fill | lead | thirds | – | – |" in md
+
+
+def test_to_markdown_header_omits_target_when_unset():
+    md = _edl().to_markdown()         # target_dur None
+    assert md.startswith("# Edit plan — 2 episodes, 4.0s\n")
+    assert "target" not in md.splitlines()[0]
+
+
+def test_to_markdown_shows_motion_and_beat_when_set():
+    ep = dict(source="b.mp4", start=1.0, dur=3.0, shot_type="close",
+              composition="center", grid="phi", motion="lateral:right", beat_slot=2,
+              processing_notes="nose")
+    md = EDL.from_dict({"episodes": [ep]}).to_markdown()
+    assert "| 0 | b.mp4 | 1.00–4.00 (3.00s) | close | fill | center | phi | lateral:right | 2 | nose |" in md
+
+
 def test_bridge_produces_a_valid_manifest():
     ep = _ep(composition="lead", grid="thirds", layout="fill", crop_scale=0.8)
     md = to_manifest_dict(ep, segment="segments/ep0_raw.mp4", out_path="out/ep0.mp4")
