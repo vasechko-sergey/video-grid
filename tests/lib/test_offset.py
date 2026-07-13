@@ -79,3 +79,22 @@ def test_best_offset_chooses_the_louder_of_two_gap_windows():
     # gaps at t=0.0 (window [0,2] quiet) and t=1.5 (window [1.5,3.5] catches the loud tail)
     assert offset.best_offset(mix, mix_hz=2.0, gaps=((0.0, 0.5), (1.5, 2.0)),
                               duration=2.0, track_dur=4.0) == 1.5
+
+
+def test_best_offset_never_exceeds_latest_on_argmax_fallback():
+    # regression for the round()-overshoot bug: a fractional latest*mix_hz must not push
+    # the argmax grid past track_dur - duration (that would crash mix.py's duration guard)
+    mix = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]   # rising → rightmost window wins
+    off = offset.best_offset(mix, mix_hz=2.0, gaps=(), duration=2.0, track_dur=4.3)
+    assert off <= 4.3 - 2.0 + 1e-9                        # was 2.5 (> 2.3) before the fix
+
+
+def test_vocal_gaps_keeps_a_run_exactly_min_gap_long():
+    env = [1.0] + [0.0] * 7 + [1.0]                      # 7 samples / 20 Hz = 0.35s == min_gap
+    assert offset.vocal_gaps(env, hz=20.0) == ((0.05, 0.40),)
+
+
+def test_best_offset_keeps_a_gap_starting_exactly_at_latest():
+    mix = [1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0]       # loud second half
+    assert offset.best_offset(mix, mix_hz=2.0, gaps=((2.0, 2.5),),
+                              duration=2.0, track_dur=4.0) == 2.0

@@ -26,7 +26,9 @@ def vocal_gaps(env: Sequence[float], hz: float, *,
     thresh_frac * max(env) for at least min_gap seconds. Relative bar (design §12
     relative-gate lesson): a quiet mix must not read as all-silent. A below-thresh
     run shorter than min_gap is a between-words dip, dropped. env all-zero → one
-    gap over the whole envelope (no vocals to avoid). Times are seconds (i / hz)."""
+    gap over the whole envelope (no vocals to avoid). An all-zero envelope shorter
+    than min_gap yields () — pathological; real envelopes span seconds. Times are
+    seconds (i / hz)."""
     n = len(env)
     if n == 0:
         return ()
@@ -67,6 +69,9 @@ def best_offset(mix_energy: Sequence[float], mix_hz: float,
 
     candidates = [g0 for (g0, _g1) in gaps if g0 <= latest + 1e-9]
     if candidates:
-        return float(max(candidates, key=win_mean))
-    starts = [i / mix_hz for i in range(int(round(latest * mix_hz)) + 1)]
-    return float(max(starts, key=win_mean)) if starts else 0.0
+        return float(min(max(candidates, key=win_mean), latest))   # clamp: a 1e-9-slack gap start must not exceed latest
+    n = int(latest * mix_hz)                          # floor: i / mix_hz <= latest for every i (round() could overshoot)
+    starts = [i / mix_hz for i in range(n + 1)]
+    if starts[-1] < latest:
+        starts.append(latest)                         # also weigh the exact-fit endpoint window
+    return float(max(starts, key=win_mean))
