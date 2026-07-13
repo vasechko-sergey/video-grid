@@ -4,6 +4,12 @@ SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$SKILL_DIR/.venv"
 PYTHON="${PYTHON:-python3.13}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
+# freeze brew version drift: a bare `brew install X` normally runs `brew update` first and
+# can upgrade unrelated outdated formulae as a side effect (this bit us — an ad-hoc
+# `brew install` silently bumped ffmpeg 8.1.1 -> 8.1.2, whose boxblur-validation change
+# broke a golden). Disable auto-update so setup.sh installs only what is missing, never
+# upgrades what is already present; ffmpeg is pinned at the end for the same reason.
+export HOMEBREW_NO_AUTO_UPDATE=1
 
 # scan all args so --with-vidstab and --with-fonts compose (order-independent)
 WANT_VIDSTAB=0; WANT_FONTS=0
@@ -46,6 +52,7 @@ if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
   need_brew ffmpeg
   echo "ffmpeg lacks drawtext (needed for draft labels) -> installing drawtext-capable ffmpeg (homebrew-ffmpeg tap, replaces core ffmpeg)..."
   brew tap homebrew-ffmpeg/ffmpeg
+  brew unpin ffmpeg 2>/dev/null || true          # a prior run may have pinned it (see end)
   brew uninstall --ignore-dependencies ffmpeg 2>/dev/null || true
   brew install homebrew-ffmpeg/ffmpeg/ffmpeg
   ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext || { echo "ERROR: drawtext still missing after tap install"; exit 1; }
@@ -95,6 +102,7 @@ if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab; then
     need_brew ffmpeg
     echo "installing vidstab-enabled ffmpeg (homebrew-ffmpeg tap, replaces core ffmpeg)..."
     brew tap homebrew-ffmpeg/ffmpeg
+    brew unpin ffmpeg 2>/dev/null || true          # a prior run may have pinned it (see end)
     brew uninstall --ignore-dependencies ffmpeg 2>/dev/null || true
     brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libvidstab
     ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab || { echo "ERROR: vidstab still missing after tap install"; exit 1; }
@@ -102,6 +110,11 @@ if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab; then
     echo "WARNING: ffmpeg lacks vidstab filters (unused by core; needed for stabilization in process-episode) -> rerun: bash setup.sh --with-vidstab"
   fi
 fi
+
+# pin ffmpeg so a later `brew upgrade` cannot silently drift the version out from under
+# the goldens — boxblur/drawtext behavior is version-sensitive (8.1.2 changed boxblur
+# validation). Any deliberate tap-swap above unpins first, then this re-pins the result.
+if command -v brew >/dev/null; then brew pin ffmpeg 2>/dev/null || true; fi
 
 # --- venv + python deps ---
 if [ ! -d "$VENV" ]; then
