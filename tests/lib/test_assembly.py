@@ -106,6 +106,18 @@ def test_concat_list_escapes_single_quotes_in_paths(tmp_path, monkeypatch):
     assert "'\\''" in listtext          # the ffmpeg-style escape is present
 
 
+def test_concat_writes_resolved_escaped_listfile_and_copies(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(assembly.proc, "run",
+                        lambda cmd, **k: calls.append(cmd) or SimpleNamespace(stdout=b""))
+    a, b = tmp_path / "a.mp4", tmp_path / "b.mp4"
+    assembly.concat([str(a), str(b)], str(tmp_path / "w" / "m.mp4"))
+    listtext = (tmp_path / "w" / "_concat.txt").read_text()
+    assert f"file '{a.resolve()}'" in listtext and f"file '{b.resolve()}'" in listtext
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert "concat" in joined and "-c copy" in joined
+
+
 def test_probe_duration_is_the_shared_helper():
     # extract._probe_dur is promoted to assembly.probe_duration — one duration probe, shared.
     assert extract._probe_dur is assembly.probe_duration

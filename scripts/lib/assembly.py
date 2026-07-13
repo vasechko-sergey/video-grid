@@ -70,6 +70,21 @@ def _concat_quote(path: str) -> str:
     return path.replace("'", "'\\''")
 
 
+def concat(entries: list[str], out_master: str) -> str:
+    """Concat pre-uniform files losslessly (-c copy) via the concat demuxer. Writes
+    the list file next to out_master, resolving + escaping each entry path. Shared by
+    assemble() (final reel, after normalizing outliers) and the draft driver
+    (scripts/draft.py, over already-burned segments)."""
+    work = Path(out_master).parent
+    work.mkdir(parents=True, exist_ok=True)
+    listfile = work / "_concat.txt"
+    listfile.write_text("".join(
+        f"file '{_concat_quote(str(Path(p).resolve()))}'\n" for p in entries))
+    proc.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+              "-c", "copy", out_master])
+    return out_master
+
+
 def assemble(episodes: list[str], dims: tuple[int, int], fps: float, out_master: str) -> str:
     """Concat locked episodes into one silent master. Reference = the caller's
     intended (dims, fps) — the same delivery process-episode rendered to. All
@@ -83,13 +98,9 @@ def assemble(episodes: list[str], dims: tuple[int, int], fps: float, out_master:
     for i, ep in enumerate(episodes):
         info = probe_stream(ep)
         if matches(info, dims, fps):
-            entries.append(str(Path(ep).resolve()))
+            entries.append(ep)
         else:
             norm = str(work / f"_norm_{i:03d}.mp4")
             _normalize(ep, dims, fps, norm)
-            entries.append(str(Path(norm).resolve()))
-    listfile = work / "_concat.txt"
-    listfile.write_text("".join(f"file '{_concat_quote(p)}'\n" for p in entries))
-    proc.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
-              "-c", "copy", out_master])
-    return out_master
+            entries.append(norm)
+    return concat(entries, out_master)
