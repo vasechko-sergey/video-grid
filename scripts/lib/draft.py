@@ -1,10 +1,9 @@
-"""Draft-preview helpers (montage §5.9): font resolution, the burnt caption text,
-and the per-segment scale-fit + label filter string. Pure — no ffmpeg, no writes;
-the ffmpeg driver is scripts/draft.py. Split out so these fail fast in unit tests
-(the drawtext fontfile landmine — design §12 — is caught here, not at render)."""
-from pathlib import Path
-
-from scripts.lib.fonts import FONT_CANDIDATES, resolve_font  # noqa: F401  (font helpers moved to fonts.py; re-export for back-compat)
+"""Draft-preview helpers (montage §5.9): the burnt caption text and the per-segment
+scale-fit + label filter string. Pure — no ffmpeg, no writes; the ffmpeg driver is
+scripts/draft.py. Split out so these fail fast in unit tests. Font resolution moved to
+scripts/lib/fonts.py (re-exported below for back-compat; the drawtext fontfile landmine
+— design §12 — now fails loud there)."""
+from scripts.lib.fonts import FONT_CANDIDATES, resolve_font  # noqa: F401  (moved to fonts.py; re-export for back-compat)
 
 
 def label_text(idx: int, shot_type: str, processing_notes: str) -> str:
