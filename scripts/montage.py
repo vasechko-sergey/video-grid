@@ -46,6 +46,8 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("pacing", "PACING.md", "deferred", "5.6 - not built", None),
     Stage("edit-plan", "EDL.json", "required",
           "edit-plan SKILL -> edit_plan build CLI", "edl"),
+    Stage("assemble-draft", "draft.mp4", "optional",
+          "draft CLI (optional QA preview)", "edl"),
     Stage("deliver", "REEL_v*.*", "required",
           "edl_to_reel CLI", "final", in_out=True),
 )

@@ -33,7 +33,7 @@ def test_stage_accepts_good():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "reel-brief", "trend-scan",
-        "music-and-mood", "pacing", "edit-plan", "deliver"]
+        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "deliver"]
 
 
 def test_v1_stages_kinds_and_flags():
@@ -44,6 +44,10 @@ def test_v1_stages_kinds_and_flags():
     assert by["reel-brief"].kind == "optional"
     assert by["reel-brief"].artifact == "SPEC.json"
     assert by["reel-brief"].checkpoint == "spec"
+    assert by["assemble-draft"].kind == "optional"
+    assert by["assemble-draft"].artifact == "draft.mp4"
+    assert by["assemble-draft"].checkpoint == "edl"
+    assert by["assemble-draft"].in_out is False
     assert by["deliver"].in_out is True and by["deliver"].artifact == "REEL_v*.*"
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
@@ -103,6 +107,18 @@ def test_reel_brief_optional_absent_then_present(tmp_path):
     res2 = next_action(str(tmp_path))
     assert _state(res2, "reel-brief") == "done"
     assert res2["next"] == "footage-intake"
+
+
+def test_assemble_draft_optional_absent_then_present(tmp_path):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    res = next_action(str(tmp_path))
+    assert _state(res, "assemble-draft") == "optional"   # absent optional never blocks
+    assert res["next"] == "deliver"                       # next unaffected by an optional stage
+    _touch(tmp_path, "draft.mp4")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "assemble-draft") == "done"
+    assert res2["next"] == "deliver"
 
 
 def test_edl_present_next_is_deliver(tmp_path):
