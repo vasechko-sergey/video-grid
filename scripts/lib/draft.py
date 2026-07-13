@@ -4,32 +4,7 @@ the ffmpeg driver is scripts/draft.py. Split out so these fail fast in unit test
 (the drawtext fontfile landmine — design §12 — is caught here, not at render)."""
 from pathlib import Path
 
-FONT_CANDIDATES: tuple[str, ...] = (
-    "/System/Library/Fonts/Supplemental/Arial.ttf",     # macOS
-    "/System/Library/Fonts/Helvetica.ttc",              # macOS
-    "/Library/Fonts/Arial.ttf",                         # macOS (older installs)
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Debian/Ubuntu
-    "/usr/share/fonts/dejavu/DejaVuSans.ttf",           # Fedora/Arch
-)
-
-
-def resolve_font(override: str | None = None) -> str:
-    """First existing font path for drawtext. `override` wins (must exist). None
-    found → ValueError with the --font remedy. drawtext needs an explicit fontfile=
-    (design §5.9, §12): macOS has no reliable fontconfig default, so an unset font
-    silently renders no text — fail loud instead."""
-    if override is not None:
-        if not Path(override).exists():
-            raise ValueError(
-                f"--font {override!r} does not exist — pass a path to a .ttf/.ttc/.otf")
-        return override
-    for cand in FONT_CANDIDATES:
-        if Path(cand).exists():
-            return cand
-    raise ValueError(
-        f"no usable draft-label font found among {FONT_CANDIDATES} — pass --font "
-        "PATH to a .ttf/.ttc/.otf (drawtext needs an explicit fontfile=; there is no "
-        "fontconfig default on macOS)")
+from scripts.lib.fonts import FONT_CANDIDATES, resolve_font  # noqa: F401  (font helpers moved to fonts.py; re-export for back-compat)
 
 
 def label_text(idx: int, shot_type: str, processing_notes: str) -> str:
