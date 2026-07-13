@@ -87,15 +87,14 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 8. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
    exists) and the reel wants on-screen text, invoke the **titles** skill — it
    reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
-   font, and writes `TITLES.json` + `TITLES.md` into `<run>` via
-   `.venv/bin/python -m scripts.titles build --spec <run>/SPEC.json
-   --total <reel_length_s> --out-dir <run>` (`<reel_length_s>` — sum `EDL.json`'s
-   episode durations, or probe `draft.mp4` if it exists; never guess it).
-   `montage status` never points `next` here; the autonomous path (no
-   `SPEC.json`, or no on-screen text wanted) skips it and says so. **`TITLES.md`
-   is reviewed together with the near-final reel at Checkpoint 3** — not
-   standalone. When it exists, pass it to `edl_to_reel` next
-   (`--titles <run>/TITLES.json`) so the reel actually renders the text.
+   font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
+   length (`--total`); compute it here — sum `EDL.json`'s episode durations, or
+   probe `draft.mp4` if it exists; never guess it. `montage status` never points
+   `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
+   skips it and says so. **`TITLES.md` is reviewed together with the near-final
+   reel at Checkpoint 3** — not standalone. When it exists, pass it to
+   `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
+   the text.
 
 9. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root>
@@ -139,6 +138,9 @@ aspect (project-init's own "ask, don't guess").
   on-screen text is a valid, complete reel).
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
-  their writers).
+  their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it
+  is the source of record for on-screen text (no upstream judgment file to
+  regenerate from), and `Title`/`Titles` validate on load, so a bad hand-edit fails
+  loud at `deliver`.
 - **Not built here:** the cap-3 **parallel** episode fan-out — `edl_to_reel`
   processes episodes sequentially; parallelising it is a later slice.

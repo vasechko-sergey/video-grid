@@ -53,12 +53,17 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    first ~2s, `text` (if set) becomes a bottom mid-caption around the midpoint,
    `ending` (if set) closes center over the last ~3s, all `font="system"`/
    `style="bold-box"` — and writes `TITLES.json` + `TITLES.md`. If that already
-   matches your proposal, you're done. Otherwise — a different font, style,
-   retimed window, or an extra caption — there's no flag for it: edit the written
-   `TITLES.json` directly. Each item is a small `{text, start, dur, font, pos,
-   style}` object; unlike `EDL.json`/`SPEC.json`, this file is meant to be
-   hand-tuned after the build, and it still validates on load (Gate, below), so a
-   broken edit is caught the moment `deliver` reads it back, not silently.
+   matches your proposal, you're done. Otherwise — a different font, style, or a
+   retimed window — there's no flag for it: tune `start`/`dur`/`pos`/`style`/`font`
+   directly in the written `TITLES.json`, and leave `text` as the SPEC-sourced
+   words (Gate). Editing this file by hand is deliberate, not a slip:
+   `EDL.json`/`SPEC.json` stay hands-off because each is generated from a smaller
+   upstream judgment file (`EDL.json` projects `selection.json`; `SPEC.json` is
+   written from reel-brief's answers) — you edit that source and regenerate. Titles
+   have no such upstream: `build_titles` emits only the fixed default above, so the
+   placement judgment lives in `TITLES.json` itself — it *is* the source of record.
+   Validate-on-load is the safety net (a bad edit fails loud at `deliver`, never
+   silently), not the reason you may edit it.
 4. **Review — CP3.** Titles are reviewed WITH the near-final reel, not
    standalone: show `TITLES.md` alongside `out/REEL_v*.*` and the `check_reel`
    report at the final-review checkpoint. On changes, edit `TITLES.json` (or
