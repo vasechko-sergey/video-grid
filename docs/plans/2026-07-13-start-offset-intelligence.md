@@ -48,7 +48,7 @@ Breaks the `beats ↔ vocals` circular import before it exists: both will share 
 - Create: `tests/lib/test_offset.py`
 - Modify: `tests/lib/test_beats.py` (remove the 3 downsample tests — they move to test_offset.py)
 
-- [ ] **Step 1: Create `scripts/lib/offset.py` with `HOP` + `downsample`**
+- [x] **Step 1: Create `scripts/lib/offset.py` with `HOP` + `downsample`**
 
 ```python
 """Pure decision core for start-offset intelligence (design
@@ -73,7 +73,7 @@ def downsample(rms: np.ndarray, sr: int, hop: int, target_hz: float) -> tuple[li
     return energy, frame_hz / step
 ```
 
-- [ ] **Step 2: Point `beats.py` at the relocated helpers**
+- [x] **Step 2: Point `beats.py` at the relocated helpers**
 
 In `scripts/beats.py`, replace the module-level `_HOP` constant (line 12) and the entire `_downsample` function (lines 15-21) with an import. The header import block becomes:
 
@@ -93,7 +93,7 @@ _downsample = offset.downsample                       # relocated to scripts/lib
 
 Leave `analyze()` and `main()` bodies unchanged — they reference `_HOP`/`_downsample`, which now alias the offset copies. (`import numpy as np` stays; `analyze` still uses it.)
 
-- [ ] **Step 3: Move the downsample tests into `tests/lib/test_offset.py`**
+- [x] **Step 3: Move the downsample tests into `tests/lib/test_offset.py`**
 
 Create `tests/lib/test_offset.py` with the three relocated tests (now calling `offset.downsample` directly):
 
@@ -121,12 +121,12 @@ def test_downsample_empty_array_no_crash():
 
 Then delete those same three tests (and the now-unused `from scripts import beats` line if nothing else uses it) from `tests/lib/test_beats.py`. After this task `tests/lib/test_beats.py` may be reduced to just its imports — that is fine; Task 4 repopulates it.
 
-- [ ] **Step 4: Run the moved tests + the full beats suite**
+- [x] **Step 4: Run the moved tests + the full beats suite**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py tests/lib/test_beats.py tests/integration/test_beats.py -v`
 Expected: PASS (downsample behaviour unchanged; `analyze` still green via the aliases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/offset.py scripts/beats.py tests/lib/test_offset.py tests/lib/test_beats.py
@@ -141,7 +141,7 @@ git commit -m "refactor: relocate downsample/HOP to lib/offset.py (share without
 - Modify: `scripts/lib/offset.py` (append)
 - Modify: `tests/lib/test_offset.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_offset.py`:
 
@@ -175,12 +175,12 @@ def test_vocal_gaps_empty_envelope():
     assert offset.vocal_gaps([], hz=2.0) == ()
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py -k vocal_gaps -v`
 Expected: FAIL with `AttributeError: module 'scripts.lib.offset' has no attribute 'vocal_gaps'`.
 
-- [ ] **Step 3: Implement `vocal_gaps`**
+- [x] **Step 3: Implement `vocal_gaps`**
 
 Append to `scripts/lib/offset.py`:
 
@@ -211,12 +211,12 @@ def vocal_gaps(env: Sequence[float], hz: float, *,
     return tuple(gaps)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py -k vocal_gaps -v`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/offset.py tests/lib/test_offset.py
@@ -231,7 +231,7 @@ git commit -m "feat: offset.vocal_gaps — relative-threshold vocal-pause spans"
 - Modify: `scripts/lib/offset.py` (append)
 - Modify: `tests/lib/test_offset.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_offset.py`:
 
@@ -269,12 +269,12 @@ def test_best_offset_chooses_the_louder_of_two_gap_windows():
                               duration=2.0, track_dur=4.0) == 1.5
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py -k best_offset -v`
 Expected: FAIL with `AttributeError: module 'scripts.lib.offset' has no attribute 'best_offset'`.
 
-- [ ] **Step 3: Implement `best_offset`**
+- [x] **Step 3: Implement `best_offset`**
 
 Append to `scripts/lib/offset.py`:
 
@@ -305,12 +305,12 @@ def best_offset(mix_energy: Sequence[float], mix_hz: float,
     return float(max(starts, key=win_mean)) if starts else 0.0
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py -v`
 Expected: PASS (all offset tests: downsample + vocal_gaps + best_offset).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/offset.py tests/lib/test_offset.py
@@ -325,7 +325,7 @@ git commit -m "feat: offset.best_offset — loudest gap-start window, argmax fal
 - Create: `scripts/lib/vocals.py`
 - Create: `tests/lib/test_vocals.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_vocals.py`:
 
@@ -353,12 +353,12 @@ def test_separate_vocal_energy_raises_a_remedy_when_absent(monkeypatch):
         vocals.separate_vocal_energy("track.wav")
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vocals.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.lib.vocals'`.
 
-- [ ] **Step 3: Implement `vocals.py`**
+- [x] **Step 3: Implement `vocals.py`**
 
 Create `scripts/lib/vocals.py`:
 
@@ -408,12 +408,12 @@ def separate_vocal_energy(track: str, target_hz: float = 2.0) -> tuple[list[floa
     return offset.downsample(rms, model.samplerate, offset.HOP, target_hz)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vocals.py -v`
 Expected: PASS (3 tests). (The demucs body is not imported unless `has_demucs()` is true, so the suite runs without demucs installed.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/vocals.py tests/lib/test_vocals.py
@@ -428,7 +428,7 @@ git commit -m "feat: vocals.py — opt-in demucs vocal-activity envelope"
 - Modify: `scripts/beats.py` (add `import sys`, `from scripts.lib import vocals`, `_log`, `choose_offset`)
 - Modify: `tests/lib/test_beats.py` (add choose_offset tests)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_beats.py` (keep/restore `import numpy as np` and add the rest):
 
@@ -483,12 +483,12 @@ def test_choose_offset_falls_back_to_mix_proxy_without_demucs(monkeypatch, capsy
     assert 0.0 <= off <= 2.0
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -k choose_offset -v`
 Expected: FAIL with `AttributeError: module 'scripts.beats' has no attribute 'choose_offset'`.
 
-- [ ] **Step 3: Implement `_log` + `choose_offset`**
+- [x] **Step 3: Implement `_log` + `choose_offset`**
 
 In `scripts/beats.py`: add `import sys` to the stdlib imports, add `from scripts.lib import vocals` beside the offset/models imports, then add (above `main`):
 
@@ -520,12 +520,12 @@ def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> fl
     return off
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -v`
 Expected: PASS (choose_offset tests + any remaining beats tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/beats.py tests/lib/test_beats.py
@@ -540,7 +540,7 @@ git commit -m "feat: beats.choose_offset — vocal-pause in-point picker with mi
 - Modify: `scripts/beats.py:main`
 - Modify: `tests/lib/test_beats.py` (add CLI tests)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_beats.py`:
 
@@ -573,12 +573,12 @@ def test_cli_auto_start_computes_offset(monkeypatch, tmp_path):
 
 (Ensure `from scripts.lib.models import MusicSpec` is imported at the top of the test file.)
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -k auto_start -v`
 Expected: FAIL — `--auto-start` is not a recognised argument (SystemExit for the wrong reason / the compute test errors).
 
-- [ ] **Step 3: Implement the CLI change**
+- [x] **Step 3: Implement the CLI change**
 
 Replace `main()` in `scripts/beats.py` with:
 
@@ -604,12 +604,12 @@ def main() -> None:
     print(a.out)
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -v`
 Expected: PASS (all beats tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/beats.py tests/lib/test_beats.py
@@ -623,7 +623,7 @@ git commit -m "feat: beats CLI --auto-start (mutually exclusive with --start-off
 **Files:**
 - Create: `tests/integration/test_offset.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `tests/integration/test_offset.py`:
 
@@ -675,12 +675,12 @@ def test_choose_offset_vocal_path_wiring(tmp_path):
     assert 0.0 <= off <= 12.0 - 4.0
 ```
 
-- [ ] **Step 2: Run the always-on test**
+- [x] **Step 2: Run the always-on test**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_offset.py -v`
 Expected: `test_choose_offset_mix_proxy_runs_without_demucs` PASS; `test_choose_offset_vocal_path_wiring` SKIPPED (demucs absent here).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_offset.py
@@ -694,7 +694,7 @@ git commit -m "test: real proxy path + skip-if-absent demucs vocal path for choo
 **Files:**
 - Modify: `setup.sh:15` (arg-scan) and `setup.sh:124` area (post-venv pip block)
 
-- [ ] **Step 1: Add the arg-scan flag**
+- [x] **Step 1: Add the arg-scan flag**
 
 In the arg-scan loop (currently `WANT_VIDSTAB=0; WANT_FONTS=0` on line 15 and the `case` below), add `WANT_DEMUCS`:
 
@@ -710,7 +710,7 @@ for arg in "$@"; do
 done
 ```
 
-- [ ] **Step 2: Add the opt-in install after the venv deps**
+- [x] **Step 2: Add the opt-in install after the venv deps**
 
 In the `--- venv + python deps ---` block, after `"$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"` and before the `models/` mkdir, add:
 
@@ -726,12 +726,12 @@ if [ "$WANT_DEMUCS" = 1 ]; then
 fi
 ```
 
-- [ ] **Step 3: Verify shell syntax (do NOT run the installer)**
+- [x] **Step 3: Verify shell syntax (do NOT run the installer)**
 
 Run: `bash -n setup.sh; echo "EXIT: $?"`
 Expected: `EXIT: 0` (parses clean). Do not execute `setup.sh` — the user runs it.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add setup.sh
@@ -746,7 +746,7 @@ git commit -m "feat: setup.sh --with-demucs (opt-in vocal separation, torch)"
 - Modify: `SKILLS/using-montage/SKILL.md` (step 5)
 - Modify: `docs/pipeline-map.md`, `docs/build-status.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md` (§5.5), `docs/specs/2026-07-11-music-spine-design.md` (§9)
 
-- [ ] **Step 1: Wire `--auto-start` into the router SKILL**
+- [x] **Step 1: Wire `--auto-start` into the router SKILL**
 
 In `SKILLS/using-montage/SKILL.md` step 5 (the music-and-mood step, ~lines 64-67), replace the command guidance so `--auto-start` is the default when a track is named without an explicit in-point:
 
@@ -761,7 +761,7 @@ In `SKILLS/using-montage/SKILL.md` step 5 (the music-and-mood step, ~lines 64-67
    it unset — the reel is silent (a valid path).
 ```
 
-- [ ] **Step 2: Update `docs/pipeline-map.md`**
+- [x] **Step 2: Update `docs/pipeline-map.md`**
 
 In the 5.5 row of "The 16 stages" table, keep the ◐ (B3/B4 still open) but note the in-point picker. Change the 5.5 "Module / note" cell to:
 
@@ -771,7 +771,7 @@ beats-core (tempo/beat-grid/RMS energy) ✅ + start_offset intelligence (auto in
 
 And in the "Remaining work" table 5.5 row, change "Left to build" to `mood-match + sourcing (B3)` (start-offset now done) — leave the rest of the row unchanged.
 
-- [ ] **Step 3: Add a `docs/build-status.md` entry**
+- [x] **Step 3: Add a `docs/build-status.md` entry**
 
 Under "## Done", add a bullet (newest-style, matching the existing entries):
 
@@ -794,7 +794,7 @@ Under "## Done", add a bullet (newest-style, matching the existing entries):
 
 Also update the "## Next action" list's music item to note start-offset is done and B3 sourcing / B4 pacing remain.
 
-- [ ] **Step 4: Add `CLAUDE.md` registry rows**
+- [x] **Step 4: Add `CLAUDE.md` registry rows**
 
 In the Quick Reference table, add two rows (design + plan), matching the existing format:
 
@@ -803,7 +803,7 @@ In the Quick Reference table, add two rows (design + plan), matching the existin
 | Start-offset intelligence plan | [2026-07-13-start-offset-intelligence.md](docs/plans/2026-07-13-start-offset-intelligence.md) | Tasks 0–8: relocate downsample→offset, `vocal_gaps`/`best_offset`, `vocals.py` demucs boundary, `choose_offset`+`--auto-start`, integration proxy/skip, `setup.sh --with-demucs`, router+docs. |
 ```
 
-- [ ] **Step 5: Mark the design-spec §5.5 items built**
+- [x] **Step 5: Mark the design-spec §5.5 items built**
 
 In `docs/specs/2026-07-05-montage-skillset-design.md`, immediately after the `### 5.5 music-and-mood → MUSIC.json` description paragraph (the one beginning "`beats.py`: **librosa**…"), insert this blockquote note verbatim (matching the existing `>`-blockquote status notes in the file):
 
@@ -818,7 +818,7 @@ In `docs/specs/2026-07-05-montage-skillset-design.md`, immediately after the `##
 
 Do not restructure the section.
 
-- [ ] **Step 6: Cross-ref in the music-spine spec**
+- [x] **Step 6: Cross-ref in the music-spine spec**
 
 In `docs/specs/2026-07-11-music-spine-design.md` §9 (Non-goals / deferred), append this bullet verbatim to the list:
 
@@ -829,12 +829,12 @@ In `docs/specs/2026-07-11-music-spine-design.md` §9 (Non-goals / deferred), app
   pacing remain deferred as above.
 ```
 
-- [ ] **Step 7: Run the full suite**
+- [x] **Step 7: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: green (all prior tests + the new offset/vocals/beats units + the always-on integration proxy test; the demucs vocal integration test SKIPPED).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add SKILLS/using-montage/SKILL.md docs/pipeline-map.md docs/build-status.md CLAUDE.md \

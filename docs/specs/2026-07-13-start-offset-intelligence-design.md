@@ -165,8 +165,8 @@ def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> fl
         gaps, path = offset.vocal_gaps(mix_energy, mix_hz), "mix-proxy"
     off = offset.best_offset(mix_energy, mix_hz, gaps, duration, track_dur)
     # info line (stderr): the path taken + the chosen offset (never silent about a degrade)
-    _log(f"choose_offset: {off:.2f}s ({path}"
-         + ("" if path == "vocal" else "; demucs absent — setup.sh --with-demucs for vocal-accurate") + ")")
+    extra = "" if path == "vocal" else " (demucs absent — setup.sh --with-demucs for vocal-accurate)"
+    _log(f"choose_offset: {off:.2f}s via {path}{extra}")
     return off
 ```
 
