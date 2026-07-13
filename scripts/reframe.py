@@ -128,16 +128,19 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
     rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
     b = rl.border_px
     ox, oy, ow, oh = rx - b, ry - b, rw + 2 * b, rh + 2 * b
-    # boxblur rejects a radius above half the chroma plane, and yuv420p halves
-    # the plane again: the ceiling is min(out_w, out_h) // 4. A 3840x200 cover
-    # crashes at 64 and survives at 50.
+    # boxblur rejects a radius at/above half the chroma plane; yuv420p halves the
+    # plane again, so the ceiling is the largest radius STRICTLY under
+    # min(out_w, out_h) / 4 — i.e. (min(out_w, out_h) - 1) // 4. ffmpeg 8.1.2
+    # tightened this bound to a strict `<` (8.1.1 accepted radius == min/4), so a
+    # 3840x200 cover now refuses 50 and survives at 49; a 1280x4 cover refuses 1
+    # and survives at 0.
     #
     # The ceiling is applied LAST. Written as max(2, min(w // 60, ceiling)) the
     # floor wins whenever the ceiling is 0 or 1 — a canvas under 8px on its short
     # side would ask for radius 2 and ffmpeg would refuse it, which is the very
     # crash the ceiling exists to prevent. Below 8px the blur is meaningless
     # anyway; radius 0 is a legal no-op.
-    radius = min(max(2, rl.out_w // 60), min(rl.out_w, rl.out_h) // 4)
+    radius = min(max(2, rl.out_w // 60), (min(rl.out_w, rl.out_h) - 1) // 4)
     pad = f",pad={ow}:{oh}:{b}:{b}:{rl.border_color}" if b else ""
     return ["-filter_complex",
             (f"[0:v]split=2[a][b];"

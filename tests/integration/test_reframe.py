@@ -224,24 +224,26 @@ def test_blur_radius_scales_with_canvas_width():
 
 
 def test_blur_radius_is_capped_by_the_short_side():
-    # boxblur dies above min(out_w, out_h) // 4: a 3840x200 cover crashes at 64
+    # boxblur needs radius < min(out_w, out_h) / 4 (strict on ffmpeg 8.1.2); a 3840x200
+    # cover's unclamped 3840//60=64 is refused, so the ceiling caps it at (200-1)//4=49
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.4, 0.02, 0.03)),
                             (21, 9), (3840, 2160), Delivery("exact", (3840, 200)))
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
-    assert "boxblur=50:2" in args[1]
+    assert "boxblur=49:2" in args[1]
 
 
 def test_the_radius_floor_never_beats_the_chroma_ceiling():
     """Written as max(2, min(w // 60, ceiling)), the floor wins whenever the
     ceiling is 0 or 1 — and asks ffmpeg for exactly the radius the ceiling exists
-    to forbid. A 256:1 canvas resolves to 1280x4, where the ceiling is 1: the old
-    form emitted boxblur=2 and real ffmpeg answered "Invalid chroma_param radius
-    value 2, must be >= 0 and <= 1". Below 8px the blur is meaningless anyway."""
+    to forbid. A 256:1 canvas resolves to 1280x4, where min/4 = 1 and ffmpeg 8.1.2
+    requires radius strictly < 1: the ceiling ((4 - 1) // 4 = 0) yields a radius-0
+    no-op, not the floor's 2. (An unclamped 2 drew "Invalid chroma_param radius
+    value 2, must be >= 0 and < 1" from real ffmpeg.) Below 8px blur is meaningless."""
     rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect=(256, 1)),
                             (256, 1), (1280, 720), _NATIVE)
     assert (rl.out_w, rl.out_h) == (1280, 4)
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
-    assert "boxblur=1:2" in args[1]
+    assert "boxblur=0:2" in args[1]
 
 
 def test_reframe_spec_defaults_to_a_fill_layout():
