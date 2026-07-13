@@ -2,7 +2,9 @@ import json
 
 import pytest
 
+from scripts.lib.spec import Spec
 from scripts.lib.titles import POSITIONS, STYLES, Title, Titles, build_filterchain
+from scripts.titles import build_titles, write_titles
 
 
 def test_title_defaults_and_roundtrip():
@@ -105,3 +107,38 @@ def test_build_filterchain_positions_and_styles(tmp_path):
     assert "box=1:boxcolor=black@0.5:boxborderw=16" in vf   # bold-box
     assert "borderw=4:bordercolor=black" in vf              # outline
     assert "x=(w-tw)/2" in vf and "fontsize=h/18" in vf
+
+
+def _spec(**kw):
+    base = dict(canvas=(1080, 1920), length_s=30.0, mood="calm", hook="Watch this")
+    base.update(kw)
+    return Spec(**base)
+
+
+def test_build_titles_hook_opens():
+    ts = build_titles(_spec(), total_s=30.0)
+    assert ts.items[0].text == "Watch this"
+    assert ts.items[0].start == 0.0 and ts.items[0].pos == "top"
+    assert ts.items[0].font == "system"
+
+
+def test_build_titles_ending_closes_in_last_3s():
+    ts = build_titles(_spec(ending="Follow"), total_s=30.0)
+    end = ts.items[-1]
+    assert end.text == "Follow" and end.start == 27.0 and end.pos == "center"
+
+
+def test_build_titles_text_becomes_mid_caption():
+    ts = build_titles(_spec(text="mid line"), total_s=30.0)
+    assert any(t.text == "mid line" for t in ts.items)
+
+
+def test_build_titles_rejects_bad_total():
+    with pytest.raises(ValueError, match="total_s"):
+        build_titles(_spec(), total_s=0.0)
+
+
+def test_write_titles_emits_pair(tmp_path):
+    res = write_titles(build_titles(_spec(ending="Follow"), 30.0), str(tmp_path))
+    assert res["status"] == "written" and res["count"] == 2
+    assert (tmp_path / "TITLES.json").exists() and (tmp_path / "TITLES.md").exists()
