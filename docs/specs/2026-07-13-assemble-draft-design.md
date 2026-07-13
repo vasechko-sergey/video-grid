@@ -80,7 +80,7 @@ Steps (mirrors `edl_to_reel` for the read/extract half):
    construction (same canvas/fps/pix_fmt), so this is a lossless `-c copy` concat.
 6. **Music bed.** `src = music or edl.music`. If set:
    `audio = mix.mix(MusicSpec.from_json(src), tmp_dir, dur=assembly.probe_duration(master))`,
-   then mux `ffmpeg -i master -i audio -map 0:v:0 -map 1:a:0 -c:a copy -shortest out`
+   then mux `ffmpeg -i master -i audio -map 0:v:0 -map 1:a:0 -c:v copy -c:a copy -shortest out`
    (the `deliver` mux pattern — stream-copy preserves mix's −14 LUFS). If unset,
    the silent `master` is the draft (the silent-reel path, unchanged from A.5).
    Reusing `mix.mix` keeps **one source of truth** for laying music; `dur` beyond
