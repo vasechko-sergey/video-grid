@@ -17,12 +17,26 @@ from scripts.lib.models import MusicSpec
 from scripts.lib.project import ProjectConfig
 
 
+def ensure_drawtext(ffmpeg: str = "ffmpeg") -> None:
+    """Fail loud if `ffmpeg` lacks the drawtext filter — the draft label burn needs
+    it, and a missing filter otherwise surfaces as a cryptic 'No such filter:
+    drawtext' mid-render. setup.sh installs a drawtext-capable ffmpeg; this is the
+    runtime backstop (a different ffmpeg may be on PATH)."""
+    filters = proc.run([ffmpeg, "-hide_banner", "-filters"]).stdout.decode("utf-8", errors="replace")
+    if "drawtext" not in filters:
+        raise ValueError(
+            f"{ffmpeg} has no drawtext filter — the draft labels need it. Install a "
+            "drawtext-capable ffmpeg (libfreetype): run `bash setup.sh`, or "
+            "`brew install ffmpeg`.")
+
+
 def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: str,
                 out: str, *, music: str | None = None, font: str | None = None) -> dict:
     """EDL.json + project.json -> a QA-preview draft.mp4. Extract each window, burn a
     canvas-fit + processing_notes label into every segment, concat, then mux a rough
     music bed (reusing mix.mix — one source of truth for laying music; absent -> a
     silent draft). Returns {"status": "written", "draft", "episodes", "music"}."""
+    ensure_drawtext()
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
     dims = cfg.canvas

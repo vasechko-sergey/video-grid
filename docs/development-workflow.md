@@ -10,8 +10,10 @@ _Last updated: 2026-07-09._
 - **Python 3.13** in a skill-local `.venv`. One `requirements.txt`, one pypi
   index. Bootstrap with `bash setup.sh` (adds `--with-vidstab` for a
   stabilization-capable ffmpeg; the core never calls vidstab).
-- Requires `ffmpeg` + `ffprobe` on PATH. Every script fails loud with a remedy if
-  a binary is missing (`brew install ffmpeg`).
+- Requires `ffmpeg` + `ffprobe` on PATH, and the `ffmpeg` must include the
+  `drawtext` filter (libfreetype) — the assemble-draft stage (§5.9) burns labels
+  with it. `setup.sh` ensures a drawtext-capable ffmpeg. Every script fails loud
+  with a remedy if a binary or filter is missing (`brew install ffmpeg`).
 
 ## Commands
 
