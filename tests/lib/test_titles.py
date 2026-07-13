@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.lib.titles import POSITIONS, STYLES, Title, Titles
+from scripts.lib.titles import POSITIONS, STYLES, Title, Titles, build_filterchain
 
 
 def test_title_defaults_and_roundtrip():
@@ -70,9 +70,6 @@ def test_titles_from_json_roundtrip(tmp_path):
 def test_positions_and_styles_frozen():
     assert POSITIONS == ("top", "center", "bottom")
     assert STYLES == ("bold-box", "outline", "plain")
-
-
-from scripts.lib.titles import build_filterchain
 
 
 def _fake_resolve(name):
