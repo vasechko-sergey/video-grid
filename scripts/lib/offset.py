@@ -44,3 +44,29 @@ def vocal_gaps(env: Sequence[float], hz: float, *,
     if run_start is not None and (n - run_start) / hz >= min_gap:
         gaps.append((run_start / hz, n / hz))
     return tuple(gaps)
+
+
+def best_offset(mix_energy: Sequence[float], mix_hz: float,
+                gaps: Sequence[tuple[float, float]],
+                duration: float, track_dur: float) -> float:
+    """start_offset (track seconds) of the max-mean-energy duration-window whose
+    start lies in a vocal gap (design §2). track_dur <= duration → 0.0. Candidate
+    starts = gap starts with start <= track_dur - duration (the window must fit the
+    track); a gap starting later is dropped. No usable gap → argmax over a coarse
+    per-sample slide (honest degrade — may begin mid-phrase; the driver logs it).
+    Ties resolve to the earliest start (max() keeps the first maximum)."""
+    if track_dur <= duration:
+        return 0.0
+    latest = track_dur - duration
+
+    def win_mean(start: float) -> float:
+        a = int(round(start * mix_hz))
+        b = int(round((start + duration) * mix_hz))
+        seg = mix_energy[a:b]
+        return float(np.mean(seg)) if len(seg) else 0.0
+
+    candidates = [g0 for (g0, _g1) in gaps if g0 <= latest + 1e-9]
+    if candidates:
+        return float(max(candidates, key=win_mean))
+    starts = [i / mix_hz for i in range(int(round(latest * mix_hz)) + 1)]
+    return float(max(starts, key=win_mean)) if starts else 0.0

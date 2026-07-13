@@ -46,3 +46,36 @@ def test_vocal_gaps_relative_threshold_scales():
 
 def test_vocal_gaps_empty_envelope():
     assert offset.vocal_gaps([], hz=2.0) == ()
+
+
+def test_best_offset_track_shorter_than_reel():
+    assert offset.best_offset([1.0, 2.0], mix_hz=2.0, gaps=(), duration=5.0, track_dur=1.0) == 0.0
+
+
+def test_best_offset_picks_gap_start_over_raw_peak():
+    # mix_hz=2 → 8 samples = 4s. Peak energy in samples 2..5 (t=1.0..3.0). duration=2s
+    # (4 samples), latest = 4-2 = 2.0s. A gap starts at t=1.0 → window [1.0,3.0] = the peak.
+    mix = [1.0, 1.0, 5.0, 5.0, 5.0, 5.0, 1.0, 1.0]
+    assert offset.best_offset(mix, mix_hz=2.0, gaps=((1.0, 1.5),),
+                              duration=2.0, track_dur=4.0) == 1.0
+
+
+def test_best_offset_drops_a_gap_that_starts_too_late():
+    # gap starts at 3.0s but latest usable start is 2.0s → dropped → argmax fallback picks 1.0s
+    mix = [1.0, 1.0, 5.0, 5.0, 5.0, 5.0, 1.0, 1.0]
+    assert offset.best_offset(mix, mix_hz=2.0, gaps=((3.0, 3.5),),
+                              duration=2.0, track_dur=4.0) == 1.0
+
+
+def test_best_offset_no_gaps_falls_back_to_argmax():
+    mix = [1.0, 1.0, 5.0, 5.0, 5.0, 5.0, 1.0, 1.0]
+    assert offset.best_offset(mix, mix_hz=2.0, gaps=(),
+                              duration=2.0, track_dur=4.0) == 1.0
+
+
+def test_best_offset_chooses_the_louder_of_two_gap_windows():
+    # two gaps: one leads into quiet, one leads into the loud region → pick the loud one
+    mix = [1.0, 1.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0]          # loud in the second half
+    # gaps at t=0.0 (window [0,2] quiet) and t=1.5 (window [1.5,3.5] catches the loud tail)
+    assert offset.best_offset(mix, mix_hz=2.0, gaps=((0.0, 0.5), (1.5, 2.0)),
+                              duration=2.0, track_dur=4.0) == 1.5
