@@ -22,6 +22,8 @@ def test_title_defaults_and_roundtrip():
     (dict(text="x", start=0.0, dur=1.0, style="neon"), "style"),
     (dict(text="x", start=True, dur=1.0), "start"),
     (dict(text="x", start=0.0, dur=True), "dur"),
+    (dict(text="x", start=float("inf"), dur=1.0), "start"),
+    (dict(text="x", start=0.0, dur=float("nan")), "dur"),
 ])
 def test_title_validation_fails_loud(kw, msg):
     with pytest.raises(ValueError, match=msg):
@@ -117,6 +119,7 @@ def _spec(**kw):
 
 def test_build_titles_hook_opens():
     ts = build_titles(_spec(), total_s=30.0)
+    assert len(ts.items) == 1              # hook only — _spec() has no text/ending
     assert ts.items[0].text == "Watch this"
     assert ts.items[0].start == 0.0 and ts.items[0].pos == "top"
     assert ts.items[0].font == "system"
@@ -138,7 +141,14 @@ def test_build_titles_rejects_bad_total():
         build_titles(_spec(), total_s=0.0)
 
 
+def test_build_titles_rejects_nonfinite_total():
+    for bad in (float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="total_s"):
+            build_titles(_spec(), total_s=bad)
+
+
 def test_write_titles_emits_pair(tmp_path):
     res = write_titles(build_titles(_spec(ending="Follow"), 30.0), str(tmp_path))
     assert res["status"] == "written" and res["count"] == 2
     assert (tmp_path / "TITLES.json").exists() and (tmp_path / "TITLES.md").exists()
+    assert Titles.from_json(tmp_path / "TITLES.json").items[-1].text == "Follow"

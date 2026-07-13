@@ -5,6 +5,7 @@ actual words / timing / style — is the titles SKILL's; this is the starting
 projection. Mirror of reel_brief.py: contract in lib, driver here."""
 import argparse
 import json
+import math
 from pathlib import Path
 
 from scripts.lib.spec import Spec
@@ -16,8 +17,10 @@ def build_titles(spec: Spec, total_s: float) -> Titles:
     set) a mid caption, spec.ending (when set) a closing title in the last 3s. All
     font='system' so the draft renders without --with-fonts. total_s (reel length) is
     the caller's — EDL sum or a probed master — build_titles never guesses it."""
-    if isinstance(total_s, bool) or not isinstance(total_s, (int, float)) or total_s <= 0:
-        raise ValueError(f"build_titles total_s must be a positive number (seconds), got {total_s!r}")
+    if (isinstance(total_s, bool) or not isinstance(total_s, (int, float))
+            or not math.isfinite(total_s) or total_s <= 0):
+        raise ValueError(
+            f"build_titles total_s must be a positive finite number (seconds), got {total_s!r}")
     items: list[Title] = [Title(text=spec.hook, start=0.0, dur=min(2.0, total_s), pos="top")]
     if spec.text.strip():
         mid = max(0.0, total_s / 2 - 1.0)

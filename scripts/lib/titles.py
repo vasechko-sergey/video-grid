@@ -5,6 +5,7 @@ like edl.py's EDL / spec.py's Spec. build_filterchain (Task 2) is the drawtext c
 deliver injects into its one encode. drawtext only; explicit fontfile= + per-title
 textfile dodge the filtergraph-escaping landmines (§12)."""
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,8 @@ class Title:
             v = getattr(self, name)
             if isinstance(v, bool) or not isinstance(v, (int, float)):
                 raise ValueError(f"Title.{name} must be a number (seconds), got {v!r}")
+            if not math.isfinite(v):
+                raise ValueError(f"Title.{name} must be a finite number (seconds), got {v!r}")
         if self.start < 0:
             raise ValueError(f"Title.start must be >= 0 seconds, got {self.start!r}")
         if self.dur <= 0:
