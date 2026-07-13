@@ -468,6 +468,130 @@ git commit -m "feat: scripts/draft.py — build_draft + CLI, real-ffmpeg golden 
 
 ---
 
+## Task 2b: drawtext preflight + golden skip-guard + setup
+
+**Context:** `drawtext` (the label-burn filter) is not in every ffmpeg build — some ship without libfreetype, and then `build_draft` dies mid-render with a cryptic `No such filter: 'drawtext'`. Add a fail-loud runtime preflight, skip the golden when the filter is absent (so the suite is green on any machine), and make `setup.sh` install a drawtext-capable ffmpeg by default so a user never hits the runtime error.
+
+**Files:**
+- Modify: `scripts/draft.py` (add `ensure_drawtext`; call it in `build_draft`)
+- Create: `tests/test_draft.py` (driver unit — monkeypatched, no real render)
+- Modify: `tests/integration/test_draft.py` (autouse skip-guard)
+- Modify: `setup.sh`
+- Modify: `docs/development-workflow.md`
+
+- [ ] **Step 1: Write the failing unit tests** — Create `tests/test_draft.py`:
+
+```python
+from types import SimpleNamespace
+
+import pytest
+
+from scripts import draft
+
+
+def _fake_filters(text):
+    return lambda cmd, **k: SimpleNamespace(stdout=text.encode())
+
+
+def test_ensure_drawtext_passes_when_present(monkeypatch):
+    monkeypatch.setattr(draft.proc, "run",
+                        _fake_filters(" T.. drawtext   V->V   Draw text on top of video.\n"))
+    draft.ensure_drawtext()   # no raise
+
+
+def test_ensure_drawtext_fails_loud_when_absent(monkeypatch):
+    monkeypatch.setattr(draft.proc, "run",
+                        _fake_filters(" T.. scale       V->V   Scale the input video.\n"))
+    with pytest.raises(ValueError, match="drawtext"):
+        draft.ensure_drawtext()
+```
+
+- [ ] **Step 2: Run to verify fail** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected FAIL: `AttributeError: module 'scripts.draft' has no attribute 'ensure_drawtext'`.
+
+- [ ] **Step 3: Add `ensure_drawtext` + call it** — In `scripts/draft.py`, add this function above `build_draft`:
+
+```python
+def ensure_drawtext(ffmpeg: str = "ffmpeg") -> None:
+    """Fail loud if `ffmpeg` lacks the drawtext filter — the draft label burn needs
+    it, and a missing filter otherwise surfaces as a cryptic 'No such filter:
+    drawtext' mid-render. setup.sh installs a drawtext-capable ffmpeg; this is the
+    runtime backstop (a different ffmpeg may be on PATH)."""
+    filters = proc.run([ffmpeg, "-hide_banner", "-filters"]).stdout.decode("utf-8", errors="replace")
+    if "drawtext" not in filters:
+        raise ValueError(
+            f"{ffmpeg} has no drawtext filter — the draft labels need it. Install a "
+            "drawtext-capable ffmpeg (libfreetype): run `bash setup.sh`, or "
+            "`brew install ffmpeg`.")
+```
+
+And make it the first statement in `build_draft` (before `edl = EDL.from_json(...)`):
+
+```python
+    ensure_drawtext()
+    edl = EDL.from_json(edl_path)
+```
+
+- [ ] **Step 4: Run unit tests → pass** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected PASS (2 passed).
+
+- [ ] **Step 5: Add the golden skip-guard** — In `tests/integration/test_draft.py`, add `import shutil` at the top and this autouse fixture (after the imports, before `_project`):
+
+```python
+@pytest.fixture(autouse=True)
+def _need_drawtext():
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    filters = proc.run(["ffmpeg", "-hide_banner", "-filters"]).stdout.decode(errors="replace")
+    if "drawtext" not in filters:
+        pytest.skip("ffmpeg built without the drawtext filter (run: bash setup.sh)")
+```
+
+- [ ] **Step 6: Run the golden** — `.venv/bin/python -m pytest tests/integration/test_draft.py -q ; echo "EXIT: $?"` — Expected: 3 passed where ffmpeg has drawtext, or 3 skipped where it does not — either way `EXIT: 0`.
+
+- [ ] **Step 7: `setup.sh` drawtext block** — Add this block **after** the existing `vidstab` block (after its closing `fi`, before the `# --- venv + python deps ---` line):
+
+```bash
+# drawtext: the assemble-draft stage (§5.9) burns labels via drawtext, which needs
+# libfreetype. Most homebrew ffmpeg builds carry it; some don't. The homebrew-ffmpeg
+# tap full build has drawtext (and vidstab). Unlike vidstab this is a baseline
+# requirement (the draft stage needs it), so ensure it by default — the branch only
+# fires, and only replaces ffmpeg, when drawtext is genuinely missing.
+if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
+  need_brew ffmpeg
+  echo "ffmpeg lacks drawtext (needed for draft labels) -> installing drawtext-capable ffmpeg (homebrew-ffmpeg tap, replaces core ffmpeg)..."
+  brew tap homebrew-ffmpeg/ffmpeg
+  brew uninstall --ignore-dependencies ffmpeg 2>/dev/null || true
+  brew install homebrew-ffmpeg/ffmpeg/ffmpeg
+  ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext || { echo "ERROR: drawtext still missing after tap install"; exit 1; }
+fi
+```
+
+- [ ] **Step 8: `docs/development-workflow.md` note** — In §Environment, change the ffmpeg requirement bullet from:
+
+```markdown
+- Requires `ffmpeg` + `ffprobe` on PATH. Every script fails loud with a remedy if
+  a binary is missing (`brew install ffmpeg`).
+```
+
+to:
+
+```markdown
+- Requires `ffmpeg` + `ffprobe` on PATH, and the `ffmpeg` must include the
+  `drawtext` filter (libfreetype) — the assemble-draft stage (§5.9) burns labels
+  with it. `setup.sh` ensures a drawtext-capable ffmpeg. Every script fails loud
+  with a remedy if a binary or filter is missing (`brew install ffmpeg`).
+```
+
+- [ ] **Step 9: Commit** — do NOT run `setup.sh` (it mutates the machine's Homebrew — the user runs it themselves).
+
+```bash
+git add scripts/draft.py tests/test_draft.py tests/integration/test_draft.py setup.sh docs/development-workflow.md
+git commit -m "feat: drawtext preflight + golden skip-guard + setup ensures it (5.9)"
+```
+
+Append the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` trailer.
+
+---
+
 ## Task 3: `scripts/montage.py` — optional `assemble-draft` Stage
 
 **Files:**

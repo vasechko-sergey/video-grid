@@ -52,6 +52,12 @@ def build_draft(edl_path: str, project_path: str, footage_root: str,
 
 Steps (mirrors `edl_to_reel` for the read/extract half):
 
+0. **Preflight** `ensure_drawtext()` — fail loud if this ffmpeg lacks the `drawtext`
+   filter (some ffmpeg builds ship without libfreetype). Without it the label burn
+   dies mid-render with a cryptic `No such filter: 'drawtext'`; the preflight turns
+   that into a `ValueError` with the remedy (`bash setup.sh` installs a
+   drawtext-capable ffmpeg). Lives in the driver (`scripts/draft.py`), not the pure
+   `lib/draft.py`, because it shells out to ffmpeg.
 1. `edl = EDL.from_json(edl_path)`; `cfg = ProjectConfig.from_json(project_path)`;
    `dims = cfg.canvas`.
 2. `extract.extract_edl(edl, footage_root, seg_dir)` — the canonical frame-accurate
@@ -170,6 +176,9 @@ sibling" is now `scripts/draft.py`, sharing the `lib/assembly` core.
 
 ## 6. Testing
 
+- **`tests/test_draft.py`** (driver unit, no real render — monkeypatch `proc.run`):
+  `ensure_drawtext` passes when the fake `ffmpeg -filters` output contains `drawtext`
+  and raises `ValueError` (naming the `setup.sh` / `brew` remedy) when it does not.
 - **`tests/lib/test_draft.py`** (pure, no ffmpeg): `resolve_font` finds a candidate
   / honors a valid override / raises with the `--font` remedy when none exist (and
   when a given override is missing); `label_text` with and without notes (the
@@ -191,7 +200,9 @@ sibling" is now `scripts/draft.py`, sharing the `lib/assembly` core.
     stream.
 
   Window durations sum to 2.0s so `mix`'s guards hold (`dur ≤ music.duration` and
-  `dur ≥ 2·fade`).
+  `dur ≥ 2·fade`). An autouse fixture **skips** all three when the ffmpeg on PATH
+  lacks `drawtext` (mirrors the `sample_clip` no-ffmpeg skip), so the suite stays
+  green before `setup.sh` has installed a drawtext-capable ffmpeg.
 
 ## 7. Non-goals (v1)
 
@@ -209,6 +220,15 @@ sibling" is now `scripts/draft.py`, sharing the `lib/assembly` core.
 
 ## 8. Docs to sync (final task)
 
+- `setup.sh` — a **default** drawtext capability check mirroring the existing
+  `vidstab` block: if `ffmpeg -filters` lacks `drawtext`, install a drawtext-capable
+  ffmpeg via the `homebrew-ffmpeg` tap (the full build carries both drawtext and
+  vidstab), verify, else fail loud. Unlike vidstab (opt-in via `--with-vidstab`),
+  drawtext is a baseline requirement — the draft stage needs it — so the check is
+  on by default and only installs when genuinely missing (most `brew install ffmpeg`
+  builds already carry it, so the branch rarely fires).
+- `docs/development-workflow.md` — the §Environment ffmpeg line notes the `drawtext`
+  (libfreetype) requirement, which `setup.sh` ensures.
 - `docs/pipeline-map.md` — 5.9 `❌ → ✅` in both tables; tally
   `9 ✅ · 3 ◐ · 3 ❌ → 10 ✅ · 3 ◐ · 2 ❌`; the front-half narrative (SP1b done).
 - `docs/build-status.md` — the assemble-draft DONE entry; narrow the Next-action.
