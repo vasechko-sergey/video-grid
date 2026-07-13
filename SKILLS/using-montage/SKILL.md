@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> edit-plan -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> edit-plan -> [assemble-draft] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -70,10 +70,21 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). **Checkpoint
    2 — EDL approval + curation:** show the user `EDL.md`. To swap or re-order an
    episode, edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
-   There is **no `draft.mp4`** in v1 (deferred) — the `EDL.md` map is the approval
-   surface; say so plainly.
+   **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
+   assemble-draft step below), it is what the user approves at Checkpoint 2; on a
+   run without it, `EDL.md` still anchors CP2.
 
-7. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
+7. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
+   process-episode render, offer a rough draft: "Want to see a rough cut first?"
+   If yes, `.venv/bin/python -m scripts.draft build --edl <run>/EDL.json
+   --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
+   --out <run>/draft.mp4 [--music <run>/MUSIC.json]`. `draft.mp4` concats the raw
+   segments, scale-fit into the canvas, with `processing_notes` labels and a rough
+   music bed — the user eyeballs layout / order / length / beat-landing and
+   approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
+   `montage status` never points `next` at it, and the autonomous path skips it.
+
+8. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root>
    --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]`. This runs
    the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
@@ -101,10 +112,12 @@ aspect (project-init's own "ask, don't guess").
 
 - The **three checkpoints** (SPEC, EDL, final review) are the ONLY user-facing
   gates (§4.1); everything else is a machine gate inside the sub-stages.
-- **Deferred stages are named, not skipped silently:** trend-scan (5.4), pacing
-  (`PACING.md`, 5.6 — `beat_slot` stays unset), and the `draft.mp4` (SP1b) are not
-  built; say so when you pass over them. reel-brief (`SPEC.md`, 5.3) is optional —
-  offer it; on a bare run, name it as skipped.
+- **Deferred stages are named, not skipped silently:** trend-scan (5.4) and pacing
+  (`PACING.md`, 5.6 — `beat_slot` stays unset) are not built; say so when you pass
+  over them. reel-brief (`SPEC.md`, 5.3) is optional — offer it; on a bare run,
+  name it as skipped. assemble-draft (`draft.mp4`, 5.9) is optional too — offer it
+  before edl_to_reel; the autonomous path skips it without asking (no approval
+  needed to skip a preview).
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers).

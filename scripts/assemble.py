@@ -1,6 +1,6 @@
 """Final reel assembler (чистовик, design §3): ordered locked episodes → one
-silent master via lib.assembly. The draft assembler is a later sibling over the
-same core."""
+silent master via lib.assembly. Its draft sibling is scripts/draft.py — a labelled
+QA preview over the same lib.assembly.concat core (montage §5.9)."""
 import argparse
 from scripts.lib import assembly
 
