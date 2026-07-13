@@ -95,6 +95,17 @@ def test_vocal_gaps_keeps_a_run_exactly_min_gap_long():
 
 
 def test_best_offset_keeps_a_gap_starting_exactly_at_latest():
-    mix = [1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0]       # loud second half
+    # loud FIRST half → the global argmax window is at start 0.0. If the boundary
+    # candidate (gap start == latest) were dropped (a <=→< mutation) it would fall to
+    # argmax and return 0.0. Asserting 2.0 pins that the exactly-at-latest gap is KEPT.
+    mix = [9.0, 9.0, 9.0, 9.0, 1.0, 1.0, 1.0, 1.0]
     assert offset.best_offset(mix, mix_hz=2.0, gaps=((2.0, 2.5),),
                               duration=2.0, track_dur=4.0) == 2.0
+
+
+def test_best_offset_clamps_a_gap_start_within_epsilon_slack():
+    # a gap starting a hair past latest (inside the 1e-9 filter slack) is kept, but the
+    # returned offset must be clamped to latest so it never overruns track_dur - duration.
+    off = offset.best_offset([9.0, 9.0, 9.0, 9.0, 1.0, 1.0, 1.0, 1.0], mix_hz=2.0,
+                             gaps=((2.0 + 1e-10, 2.5),), duration=2.0, track_dur=4.0)
+    assert off == 2.0                                     # clamped down from 2.0000000001
