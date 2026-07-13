@@ -444,6 +444,22 @@ _Last updated: 2026-07-13._
   pixel-for-pixel from an untitled one, both silent and muxed, behind the
   existing drawtext skip-guard. See `docs/plans/2026-07-13-titles.md`.
 
+- **start-offset intelligence (§5.5 sub-slice) DONE (2026-07-13)** — plan
+  `docs/plans/2026-07-13-start-offset-intelligence.md` + design
+  `docs/specs/2026-07-13-start-offset-intelligence-design.md`. `scripts/lib/offset.py`
+  (`downsample` relocated from beats to break a beats↔vocals cycle; `vocal_gaps`
+  relative-threshold pause spans; `best_offset` loudest gap-start window, argmax
+  fallback — with a review-fixed invariant so the offset never overruns
+  `track_dur − duration`) + `scripts/lib/vocals.py` (`has_demucs`/
+  `separate_vocal_energy`, the lone lazy demucs importer) + `scripts/beats.py`
+  `choose_offset` driver and CLI `--auto-start` (mutually exclusive with
+  `--start-offset`, needs `--duration`). demucs is opt-in (`setup.sh --with-demucs`,
+  pulls torch); absent → a logged librosa mix-silence proxy, never a crash. Pure
+  decision exhaustively unit-tested; the demucs path is mocked (unit) +
+  skip-if-absent (integration `test_offset.py`, real proxy path always runs).
+  `analyze()` untouched. **Deferred:** beat-snap of the start, section detection
+  (B4 pacing), mood-match/sourcing (B3).
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -457,7 +473,8 @@ _Last updated: 2026-07-13._
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
 - **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
   `music.mode` rights lanes, mood-match against catalog metadata) — picks up
-  where B1+B2 (music spine, DONE 2026-07-11) left off. **OR**
+  where B1+B2 (music spine, DONE 2026-07-11) and start-offset intelligence
+  (DONE 2026-07-13) left off; B4 pacing (below) also remains. **OR**
 - **Phase B4 — pacing** (`PACING.md`, §5.6): the shared energy spine read by
   both music-and-mood and edit-plan, pinning episode order/length/energy to
   the music sections. **OR**

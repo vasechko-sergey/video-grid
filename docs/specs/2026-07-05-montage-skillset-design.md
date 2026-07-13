@@ -247,6 +247,13 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 > autonomous sourcing (`music_find.py`/`music_fetch.py`, `music.mode`) — see
 > `docs/plans/2026-07-11-music-spine.md` (Phase B3).
 
+> **Built (2026-07-13, start-offset intelligence):** `start_offset` (the "chosen
+> track fragment") and the `vocal-map` phrase-boundary start-snap now ship — a
+> peak-energy `duration`-window whose start lands in a vocal pause (opt-in demucs
+> vocal stem, librosa mix-silence proxy fallback), via `beats --auto-start`.
+> Mood-match and autonomous sourcing (B3) remain deferred. See
+> `docs/specs/2026-07-13-start-offset-intelligence-design.md`.
+
 ### 5.6 pacing → `PACING.md` (energy spine)
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
 **Gate:** order+length+energy pinned to the music.

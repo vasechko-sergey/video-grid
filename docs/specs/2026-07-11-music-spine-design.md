@@ -330,3 +330,7 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 - **Music-less delivery mode** — `baked` only; a music-less export is silent
   today (no ambient/SFX to keep) so it is meaningless until `extract` lands.
 - **Beat as a hard gate** — advisory until edit-plan/extract can re-trim a cut.
+- **Start-offset intelligence** — the "chosen fragment" `start_offset` + vocal-pause
+  start-snap landed separately on 2026-07-13 (its own spec/plan:
+  `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B3 sourcing and B4
+  pacing remain deferred as above.
