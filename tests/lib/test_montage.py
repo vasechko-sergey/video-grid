@@ -33,7 +33,7 @@ def test_stage_accepts_good():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "reel-brief", "trend-scan",
-        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "deliver"]
+        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "titles", "deliver"]
 
 
 def test_v1_stages_kinds_and_flags():
@@ -48,6 +48,10 @@ def test_v1_stages_kinds_and_flags():
     assert by["assemble-draft"].artifact == "draft.mp4"
     assert by["assemble-draft"].checkpoint == "edl"
     assert by["assemble-draft"].in_out is False
+    assert by["titles"].kind == "optional"
+    assert by["titles"].artifact == "TITLES.json"
+    assert by["titles"].checkpoint == "final"
+    assert by["titles"].in_out is False
     assert by["deliver"].in_out is True and by["deliver"].artifact == "REEL_v*.*"
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
@@ -118,6 +122,18 @@ def test_assemble_draft_optional_absent_then_present(tmp_path):
     _touch(tmp_path, "draft.mp4")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "assemble-draft") == "done"
+    assert res2["next"] == "deliver"
+
+
+def test_titles_optional_absent_then_present(tmp_path):
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    res = next_action(str(tmp_path))
+    assert _state(res, "titles") == "optional"   # absent optional never blocks
+    assert res["next"] == "deliver"
+    _touch(tmp_path, "TITLES.json")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "titles") == "done"
     assert res2["next"] == "deliver"
 
 
