@@ -16,7 +16,8 @@ from scripts.lib.project import ProjectConfig
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
-                work_dir: str, out_dir: str, music: str | None = None) -> dict:
+                work_dir: str, out_dir: str, music: str | None = None,
+                titles: str | None = None) -> dict:
     """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
     for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
@@ -50,7 +51,7 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)
     rm = ReelManifest(episodes=episodes, target_dur=target, cap=edl.cap,
                       changelog=str(Path(out_dir) / "VERSIONS.md"), music=music or edl.music)
-    return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"))
+    return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
 
 
 def main() -> None:
@@ -61,8 +62,10 @@ def main() -> None:
     ap.add_argument("--work-dir", required=True, help="scratch for segments / per-episode / reel master")
     ap.add_argument("--out-dir", required=True, help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4")
     ap.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
+    ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the reel (§5.16)")
     a = ap.parse_args()
-    result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir, music=a.music)
+    result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
+                         music=a.music, titles=a.titles)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "delivered" else 1)
 

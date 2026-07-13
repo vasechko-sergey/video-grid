@@ -23,7 +23,7 @@ def _compound(prev: tuple[float, float, float], ratio: tuple[float, float, float
     return corrected(prev, ratio)
 
 
-def build_reel(rm: ReelManifest, out_dir: str, work_dir: str) -> dict:
+def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None = None) -> dict:
     """Drive rm's locked clips to a delivered reel or a stop-and-report finding."""
     Path(work_dir).mkdir(parents=True, exist_ok=True)
     clips = [e.clip for e in rm.episodes]
@@ -47,7 +47,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str) -> dict:
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master))
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
-            out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report, audio=audio)
+            out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
+                                  audio=audio, titles=titles)
             return {"status": "delivered", "output": out, "report": report.to_dict()}
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,

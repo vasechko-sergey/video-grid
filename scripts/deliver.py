@@ -9,6 +9,7 @@ from pathlib import Path
 
 from scripts.lib import proc
 from scripts.lib.models import ExportProfile, ReelReport
+from scripts.lib.titles import Titles, build_filterchain
 
 
 def _next_version(out_dir: str, container: str) -> int:
@@ -46,26 +47,33 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
-            report: ReelReport, audio: str | None = None) -> str:
+            report: ReelReport, audio: str | None = None, titles: str | None = None) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
     The mux path assumes the audio stem's duration matches the master (build_reel
     derives mix's dur from the probed master); -shortest only absorbs sub-second
     jitter — a grossly short stem would truncate the picture, so callers must keep
-    them aligned."""
+    them aligned.
+    With `titles` (a TITLES.json path), burn the drawtext chain into this one
+    encode (design §5.16) — no second pass."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    vf: list[str] = []
+    if titles is not None:
+        chain = build_filterchain(Titles.from_json(titles), out_dir)
+        if chain:
+            vf = ["-vf", chain]
     n = _next_version(out_dir, profile.container)
     out = str(Path(out_dir) / f"REEL_v{n}.{profile.container}")
     if audio is None:
-        proc.run(["ffmpeg", "-y", "-i", master, *profile.args(), out])
+        proc.run(["ffmpeg", "-y", "-i", master, *vf, *profile.args(), out])
     else:
         # mux the pre-normalized aac stem: profile audio settings don't apply — we
         # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy
-        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio, *_video_only_args(profile),
+        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio, *vf, *_video_only_args(profile),
                   "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
     return out
@@ -77,9 +85,10 @@ def main() -> None:
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--report", required=True, help="ReelReport JSON from check_reel")
     ap.add_argument("--changelog", default="")
+    ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the encode (§5.16)")
     a = ap.parse_args()
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
-    out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report)
+    out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report, titles=a.titles)
     print(out)
 
 
