@@ -3,7 +3,7 @@
 Environment, commands, and the execution protocol for video-grid. Adapted from
 the anna-auth workflow doc to a superpowers-driven Python skill set.
 
-_Last updated: 2026-07-09._
+_Last updated: 2026-07-13._
 
 ## Environment
 
@@ -11,9 +11,21 @@ _Last updated: 2026-07-09._
   index. Bootstrap with `bash setup.sh` (adds `--with-vidstab` for a
   stabilization-capable ffmpeg; the core never calls vidstab).
 - Requires `ffmpeg` + `ffprobe` on PATH, and the `ffmpeg` must include the
-  `drawtext` filter (libfreetype) — the assemble-draft stage (§5.9) burns labels
-  with it. `setup.sh` ensures a drawtext-capable ffmpeg. Every script fails loud
-  with a remedy if a binary or filter is missing (`brew install ffmpeg`).
+  `drawtext` filter (libfreetype) **plus a usable `.ttf`/`.ttc` font on disk** —
+  the assemble-draft stage (§5.9) burns labels with it, and drawtext needs an
+  explicit `fontfile=` (the filter and the font are decoupled). `setup.sh` provides
+  both: a drawtext-capable ffmpeg, and — since macOS ships Arial/Helvetica so this
+  is normally already satisfied — it installs DejaVu (`brew install --cask
+  font-dejavu`) if no system font is found, rather than dead-ending the user. On
+  top of that floor, `bash setup.sh --with-fonts` installs a curated title set
+  (Montserrat, Inter, Bebas Neue, Oswald) that the titles stage (§5.16) resolves
+  **by name**, not path; naming a font that isn't installed makes `deliver` fail
+  loud with the `--with-fonts` remedy — never a silent fallback to a different
+  font. Every script also fails loud with a remedy if a binary, filter, or font is
+  still missing.
+- `setup.sh` is **macOS/homebrew only for now** (cross-platform auto-install is a
+  TODO). The runtime code is already portable — `scripts/lib/fonts.py`
+  `FONT_CANDIDATES` carries Linux font paths, and `--font PATH` overrides on any OS.
 
 ## Commands
 

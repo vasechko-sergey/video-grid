@@ -36,12 +36,14 @@ a crash — so they must always be in context.
 | Reel-brief spine plan | [2026-07-12-reel-brief.md](docs/plans/2026-07-12-reel-brief.md) | Tasks 0–6: `Spec` + `to_markdown`, `build_spec`/`write_reel_brief` + CLI, router deferred→optional flip + test patch, `reel-brief` SKILL + using-montage wiring, docs. |
 | Assemble-draft spine design | [2026-07-13-assemble-draft-design.md](docs/specs/2026-07-13-assemble-draft-design.md) | Stage 5.9: `draft.mp4` QA preview — concat of raw segments, canvas-fit + `processing_notes` labels (drawtext `fontfile=`/`textfile=` landmines) + rough music bed (reuse `mix.mix`); thin `lib/draft.py` helpers + `scripts/draft.py` driver, shared `assembly.concat`, optional router Stage (CP2). |
 | Assemble-draft spine plan | [2026-07-13-assemble-draft.md](docs/plans/2026-07-13-assemble-draft.md) | Tasks 0–5 (+2b): `lib/draft.py` helpers, `assembly.concat` refactor, `draft.py` `build_draft`+CLI+real-ffmpeg golden, drawtext preflight+skip-guard+setup, optional `montage.py` Stage + test patch, using-montage wiring, docs. |
+| Titles design | [2026-07-13-titles-design.md](docs/specs/2026-07-13-titles-design.md) | Stage 5.16: agent-authored `TITLES.json` (hook/text/ending) drawtext-rendered inside deliver's one encode, safe-by-construction positions; opt-in curated font library (`setup.sh --with-fonts`) resolved by name; §5.13 safe-zones/§12 landmines already apply. |
+| Titles plan | [2026-07-13-titles.md](docs/plans/2026-07-13-titles.md) | Tasks 0–9: `lib/fonts.py` extract+resolve-by-name, `lib/titles.py` `Title`/`Titles`+`build_filterchain`, `titles.py` `build_titles`+CLI, deliver `--titles`+driver wiring, optional `montage.py` Stage, `setup.sh --with-fonts`, `titles` SKILL, real-ffmpeg golden, docs. |
 | All plans | [docs/plans/](docs/plans/) | One plan per subsystem (core, orchestrator, engine-hardening, project-init, layouts). |
 | Coding standards | [coding-standards.md](docs/coding-standards.md) | Fail-loud contract, imports-at-top, typing, dataclass conventions, banned patterns. |
 | Testing guide | [testing-guide.md](docs/testing-guide.md) | TDD, whole-object asserts, real-ffmpeg golden fixtures, markers/layout. |
 | Development workflow | [development-workflow.md](docs/development-workflow.md) | Env, commands, superpowers execution protocol, branches/commits, doc standards. |
 | Build status & next action | [build-status.md](docs/build-status.md) | What's built, what's next, external assets — **update after every task**. |
-| Pipeline map | [pipeline-map.md](docs/pipeline-map.md) | Bird's-eye map of the 15-stage conveyor (design §5) — per-stage build status + the phase roadmap. |
+| Pipeline map | [pipeline-map.md](docs/pipeline-map.md) | Bird's-eye map of the 16-stage conveyor (design §5) — per-stage build status + the phase roadmap. |
 
 ## Source of truth
 

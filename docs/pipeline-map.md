@@ -1,6 +1,6 @@
 # Montage Conveyor — Pipeline Map
 
-Bird's-eye map of the full **15-stage** montage conveyor (design spec
+Bird's-eye map of the full **16-stage** montage conveyor (design spec
 [§4 flow](specs/2026-07-05-montage-skillset-design.md) / §5 skills). Tick a stage
 when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
@@ -10,7 +10,7 @@ _Last updated: 2026-07-13._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
-## The 15 stages (design §5)
+## The 16 stages (design §5)
 
 | # | Stage | Output | Status | Module / note | Closed by phase |
 |---|-------|--------|:------:|---------------|-----------------|
@@ -29,6 +29,7 @@ _Last updated: 2026-07-13._
 | 5.13 | reel-final-check (gate) | review | ◐ | `check_reel` mechanical ✅; loudness (hard) + beat (advisory) now measured ✅; `safe_zones` still ❌ (`passed=None`) | Phase B (audio) + Editorial |
 | 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate | — |
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
+| 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate | — |
 
 ## Automation loops (design §4.1 ladder)
 
@@ -43,7 +44,7 @@ best-fit, human swaps → Router + curation).
 
 ## Remaining work — blockers & critical path
 
-A dependency view of the 15 stages: what's left, what **hard-blocks** it, what it
+A dependency view of the 16 stages: what's left, what **hard-blocks** it, what it
 unblocks. `(soft)` = a quality input, not a build prerequisite. Complements the
 status table above.
 
@@ -64,9 +65,10 @@ status table above.
 | 5.13 | reel-final-check | ◐ | `safe_zones` + editorial | none for safe_zones · (soft) 5.2 faces ✅ | tighter gate |
 | 5.14 | deliver | ✅ | — | — | — |
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
+| 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
 | — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
 
-**Tally:** 10 ✅ · 3 ◐ · 2 ❌. Both automation loops closed.
+**Tally:** 11 ✅ · 3 ◐ · 2 ❌. Both automation loops closed.
 
 ### Critical path to autonomous v1
 

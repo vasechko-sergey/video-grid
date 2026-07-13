@@ -103,6 +103,7 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 | `work/<ep>/{route,path,report}.json` | process-episode | tracker route, smoothed crop path, check report (`attempt`, `fail_reasons[]` — feeds the §4.1 escalation) |
 | `checks/*.json` | *-check | mechanical-check reports |
 | `storyboards/*.jpg` | storyboard | contact sheets with a grid (thirds + phi; for hero/static — the full golden-canon armature) — **verification artifact** |
+| `TITLES.json` | titles | hook/ending/caption text, timing, font, position, style |
 | `out/*.mp4` | process/assemble/deliver | locked episodes 🔒, audio, final |
 
 ---
@@ -331,6 +332,24 @@ Two parts:
 
 ### 5.15 ffmpeg-recipes (reference)
 Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **landmine registry** (§12). Used by extract, assemble-draft, process-episode, audio-mix, deliver. Goal: "don't reinvent ffmpeg."
+
+### 5.16 titles → `TITLES.json` (optional, on-screen text)
+Agent-authored hook / mid-caption / ending text, drawn from `SPEC.hook/text/ending` (§5.3). A typed `TITLES.json` (text, start/dur, font, position, style) is the stage's own artifact — the **render rides `deliver`'s single encode** (§5.14): `drawtext` cannot ride `-c copy`, so titles never get a second-pass intermediate. Positions are **safe-by-construction** presets (top/center/bottom margins), not the full pixel-level `check_reel.safe_zones` gate (§5.13, still deferred) — titles are its first real consumer once that gate is built. Fonts resolve by name through an opt-in curated library (`setup.sh --with-fonts`); the `drawtext`/`fontfile=` landmine (§12) already covers the failure mode.
+**Gate:** every title's text/timing/position/style validates; deliver's encode carries the burned text.
+
+> **Built (2026-07-13, §5.16):** `scripts/lib/fonts.py` (`resolve_font` extracted
+> from `draft.py`, +name-mode resolution against a curated cask set) +
+> `scripts/lib/titles.py` (`Title`/`Titles` config-specs + `build_filterchain` —
+> one `drawtext` per title, `enable='between(t,...)'` windows, per-title
+> `textfile=`) + `scripts/titles.py` (`build_titles` projects `SPEC.hook/text/
+> ending` into a starting `Titles`; CLI writes `TITLES.json`+`TITLES.md`).
+> `deliver.py` gains `titles=` — burns the chain into the one encode it already
+> runs (silent and music-muxed paths both covered); `build_reel`/`edl_to_reel`
+> thread `titles=` through. Optional `montage.py` Stage (checkpoint `final`);
+> `titles` SKILL + `using-montage` CP3 wiring; `setup.sh --with-fonts` installs
+> Montserrat/Inter/Bebas Neue/Oswald. Real-ffmpeg golden confirms the encode
+> changes pixels inside a title window, both silent and muxed. See
+> `docs/plans/2026-07-13-titles.md`.
 
 ---
 

@@ -6,7 +6,7 @@ relevant bullet here in the same commit.
 
 _Last updated: 2026-07-13._
 
-> Bird's-eye progress across the full 15-stage conveyor:
+> Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
@@ -419,6 +419,30 @@ _Last updated: 2026-07-13._
   drawtext skip-guard so the suite stays green on a machine without a
   drawtext-capable ffmpeg; `setup.sh` now ensures one by default (homebrew-ffmpeg
   tap fallback, mirroring the vidstab block).
+
+- **titles (5.16, on-screen text spine) DONE (2026-07-13)** — plan
+  `docs/plans/2026-07-13-titles.md` + design
+  `docs/specs/2026-07-13-titles-design.md`. **638 tests green** (+6 skipped:
+  the 2 real-ffmpeg titles goldens + the 3 draft goldens on a machine whose
+  ffmpeg lacks drawtext, +1 pre-existing vidstab-gated). `scripts/lib/fonts.py`
+  — `resolve_font` extracted from `draft.py` plus a name-mode (`FONT_NAMES`):
+  a curated cask font resolves by friendly name, unknown/uninstalled fails
+  loud with the `--with-fonts` remedy — no silent substitution.
+  `scripts/lib/titles.py` — `Title`/`Titles` config-specs + `build_filterchain`
+  (one `drawtext` per title, `enable='between(...)'` windows, per-title
+  `textfile=`). `scripts/titles.py` — `build_titles` projects `SPEC.hook/text/
+  ending` into a starting `Titles` (hook opens, ending closes in the last 3s);
+  CLI writes `TITLES.json`+`TITLES.md`. `scripts/deliver.py` gains `titles=` —
+  burns the chain into the **one encode** it already runs (silent and
+  music-muxed paths both covered, never a second pass); `build_reel`/
+  `edl_to_reel` thread `titles=` through. Optional `montage.py` Stage
+  (`TITLES.json`, checkpoint `"final"`) — never chosen as `next`; `titles`
+  SKILL + `using-montage` CP3 wiring (offered alongside the final reel
+  review). `setup.sh --with-fonts` installs a curated set (Montserrat/Inter/
+  Bebas Neue/Oswald) on top of the DejaVu floor. Real-ffmpeg golden
+  (`tests/integration/test_titles.py`) confirms the burned encode differs
+  pixel-for-pixel from an untitled one, both silent and muxed, behind the
+  existing drawtext skip-guard. See `docs/plans/2026-07-13-titles.md`.
 
 ## Next action
 
