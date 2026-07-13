@@ -6,7 +6,6 @@ expensive process-episode pass. The draft sibling of scripts/assemble.py, over t
 shared lib/assembly concat core; the pure label/fit helpers live in lib/draft.py."""
 import argparse
 import json
-import tempfile
 from pathlib import Path
 
 from scripts import extract, mix
@@ -25,9 +24,8 @@ def ensure_drawtext(ffmpeg: str = "ffmpeg") -> None:
     filters = proc.run([ffmpeg, "-hide_banner", "-filters"]).stdout.decode("utf-8", errors="replace")
     if "drawtext" not in filters:
         raise ValueError(
-            f"{ffmpeg} has no drawtext filter — the draft labels need it. Install a "
-            "drawtext-capable ffmpeg (libfreetype): run `bash setup.sh`, or "
-            "`brew install ffmpeg`.")
+            f"{ffmpeg} has no drawtext filter — the draft labels need it. Run "
+            "`bash setup.sh`, which installs a drawtext-capable ffmpeg (libfreetype).")
 
 
 def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: str,
@@ -68,11 +66,10 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
         proc.run(["ffmpeg", "-y", "-i", master, "-c", "copy", out])
     else:
         dur = assembly.probe_duration(master)
-        with tempfile.TemporaryDirectory() as d:
-            audio = mix.mix(MusicSpec.from_json(src), d, dur)
-            proc.run(["ffmpeg", "-y", "-i", master, "-i", audio,
-                      "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy",
-                      "-shortest", out])
+        audio = mix.mix(MusicSpec.from_json(src), str(work / "audio"), dur)
+        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio,
+                  "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy",
+                  "-shortest", out])
     return {"status": "written", "draft": out,
             "episodes": len(edl.episodes), "music": src is not None}
 

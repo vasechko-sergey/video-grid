@@ -24,6 +24,20 @@ if ! command -v ffmpeg >/dev/null; then
   brew install ffmpeg
 fi
 
+# drawtext: the assemble-draft stage (§5.9) burns labels via drawtext, which needs
+# libfreetype. Most homebrew ffmpeg builds carry it; some don't. The homebrew-ffmpeg
+# tap full build has drawtext (and vidstab). Unlike vidstab this is a baseline
+# requirement (the draft stage needs it), so ensure it by default — the branch only
+# fires, and only replaces ffmpeg, when drawtext is genuinely missing.
+if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
+  need_brew ffmpeg
+  echo "ffmpeg lacks drawtext (needed for draft labels) -> installing drawtext-capable ffmpeg (homebrew-ffmpeg tap, replaces core ffmpeg)..."
+  brew tap homebrew-ffmpeg/ffmpeg
+  brew uninstall --ignore-dependencies ffmpeg 2>/dev/null || true
+  brew install homebrew-ffmpeg/ffmpeg/ffmpeg
+  ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext || { echo "ERROR: drawtext still missing after tap install"; exit 1; }
+fi
+
 # vidstab: unused by core; required for stabilization in process-episode.
 # homebrew-core ffmpeg ships WITHOUT libvidstab — the vidstab build comes from the
 # homebrew-ffmpeg tap and REPLACES the ffmpeg formula, so it stays opt-in.
@@ -38,20 +52,6 @@ if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q vidstab; then
   else
     echo "WARNING: ffmpeg lacks vidstab filters (unused by core; needed for stabilization in process-episode) -> rerun: bash setup.sh --with-vidstab"
   fi
-fi
-
-# drawtext: the assemble-draft stage (§5.9) burns labels via drawtext, which needs
-# libfreetype. Most homebrew ffmpeg builds carry it; some don't. The homebrew-ffmpeg
-# tap full build has drawtext (and vidstab). Unlike vidstab this is a baseline
-# requirement (the draft stage needs it), so ensure it by default — the branch only
-# fires, and only replaces ffmpeg, when drawtext is genuinely missing.
-if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
-  need_brew ffmpeg
-  echo "ffmpeg lacks drawtext (needed for draft labels) -> installing drawtext-capable ffmpeg (homebrew-ffmpeg tap, replaces core ffmpeg)..."
-  brew tap homebrew-ffmpeg/ffmpeg
-  brew uninstall --ignore-dependencies ffmpeg 2>/dev/null || true
-  brew install homebrew-ffmpeg/ffmpeg/ffmpeg
-  ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext || { echo "ERROR: drawtext still missing after tap install"; exit 1; }
 fi
 
 # --- venv + python deps ---
