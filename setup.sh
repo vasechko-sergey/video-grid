@@ -78,8 +78,13 @@ fi
 # macOS-only for now (same cross-platform TODO as the rest of this script).
 if [ "$WANT_FONTS" = 1 ]; then
   need_brew "title fonts"
-  echo "installing curated title fonts (brew casks -> ~/Library/Fonts)..."
-  brew install --cask font-montserrat font-inter font-bebas-neue font-oswald
+  # guard each cask on already-installed (like the vidstab/DejaVu blocks guard on
+  # outcome) so a rerun is a clean no-op — an unguarded `brew install --cask` on a
+  # present cask exits non-zero and, under `set -e`, would abort the whole setup.
+  for cask in font-montserrat font-inter font-bebas-neue font-oswald; do
+    brew list --cask "$cask" >/dev/null 2>&1 || {
+      echo "installing $cask -> ~/Library/Fonts..."; brew install --cask "$cask"; }
+  done
 fi
 
 # vidstab: unused by core; required for stabilization in process-episode.
