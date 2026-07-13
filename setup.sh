@@ -11,12 +11,13 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 # upgrades what is already present; ffmpeg is pinned at the end for the same reason.
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# scan all args so --with-vidstab and --with-fonts compose (order-independent)
-WANT_VIDSTAB=0; WANT_FONTS=0
+# scan all args so --with-vidstab, --with-fonts and --with-demucs compose (order-independent)
+WANT_VIDSTAB=0; WANT_FONTS=0; WANT_DEMUCS=0
 for arg in "$@"; do
   case "$arg" in
     --with-vidstab) WANT_VIDSTAB=1 ;;
     --with-fonts)   WANT_FONTS=1 ;;
+    --with-demucs)  WANT_DEMUCS=1 ;;
   esac
 done
 
@@ -122,6 +123,15 @@ if [ ! -d "$VENV" ]; then
 fi
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
+# demucs: vocal separation for start-offset intelligence (§5.5). Opt-in — pulls
+# torch (large). Absent → choose_offset falls back to a librosa mix-silence proxy,
+# so this is accuracy, not a hard requirement. Guarded on already-installed so a
+# rerun is a clean no-op (kept out of requirements.txt to keep the base install lean).
+if [ "$WANT_DEMUCS" = 1 ]; then
+  "$VENV/bin/pip" show demucs >/dev/null 2>&1 || {
+    echo "installing demucs (vocal separation; pulls torch) into the venv..."
+    "$VENV/bin/pip" install demucs; }
+fi
 # YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
