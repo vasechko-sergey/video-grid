@@ -62,11 +62,20 @@ def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> fl
 def main() -> None:
     ap = argparse.ArgumentParser(description="analyse a track → MUSIC.json (tempo + beats + energy)")
     ap.add_argument("track")
-    ap.add_argument("--start-offset", type=float, default=0.0)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--start-offset", type=float, default=0.0)
+    g.add_argument("--auto-start", action="store_true",
+                   help="auto-pick the in-point (strongest fragment, vocal-pause start); needs --duration")
     ap.add_argument("--duration", type=float, default=None)
     ap.add_argument("--out", required=True, help="MUSIC.json output path")
     a = ap.parse_args()
-    ms = analyze(a.track, a.start_offset, a.duration)
+    if a.auto_start:
+        if a.duration is None:
+            ap.error("--auto-start needs --duration (the reel length) to size the window")
+        start = choose_offset(a.track, a.duration)
+    else:
+        start = a.start_offset
+    ms = analyze(a.track, start, a.duration)
     Path(a.out).write_text(json.dumps(ms.to_dict(), indent=2))
     print(a.out)
 
