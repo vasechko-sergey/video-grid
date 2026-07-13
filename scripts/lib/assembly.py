@@ -1,5 +1,5 @@
 """Normalize-and-concat core for reel assembly (design 2026-07-10 §3). Shared by
-the final assembler and, later, the draft assembler."""
+the final assembler and the draft assembler (scripts/draft.py)."""
 import json
 from dataclasses import dataclass
 from pathlib import Path

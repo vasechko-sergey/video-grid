@@ -47,6 +47,10 @@ def segment_filter(dims: tuple[int, int], fps: float, font: str, textfile: str) 
     yuv420p, then the drawtext label (semi-opaque box, bottom-left). force_divisible_by=2
     keeps the scaled intermediate even (the even-dims landmine, design §12)."""
     w, h = dims
+    # font/textfile are single-quoted for the filtergraph; callers pass a resolved
+    # system font and a skill-controlled work-dir path (no apostrophes). A "'" in
+    # either would need filtergraph escaping — not hit in v1 (design §12); the free
+    # caption text dodges it entirely by living in the textfile, not the graph.
     label = (f"drawtext=fontfile='{font}':textfile='{textfile}':fontsize=h/24:"
              f"fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=12:x=40:y=h-th-40")
     return (f"scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
