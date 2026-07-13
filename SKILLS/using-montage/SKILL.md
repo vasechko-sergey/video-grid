@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> edit-plan -> [assemble-draft] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -84,13 +84,30 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
    `montage status` never points `next` at it, and the autonomous path skips it.
 
-8. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
+8. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
+   exists) and the reel wants on-screen text, invoke the **titles** skill — it
+   reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
+   font, and writes `TITLES.json` + `TITLES.md` into `<run>` via
+   `.venv/bin/python -m scripts.titles build --spec <run>/SPEC.json
+   --total <reel_length_s> --out-dir <run>` (`<reel_length_s>` — sum `EDL.json`'s
+   episode durations, or probe `draft.mp4` if it exists; never guess it).
+   `montage status` never points `next` here; the autonomous path (no
+   `SPEC.json`, or no on-screen text wanted) skips it and says so. **`TITLES.md`
+   is reviewed together with the near-final reel at Checkpoint 3** — not
+   standalone. When it exists, pass it to `edl_to_reel` next
+   (`--titles <run>/TITLES.json`) so the reel actually renders the text.
+
+9. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root>
-   --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]`. This runs
+   --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
+   [--titles <run>/TITLES.json]`. This runs
    the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
-   deliver). **Checkpoint 3 — final review:** present `out/REEL_v1.mp4` and the
-   `check_reel` report. A `stop_and_report` (a failed gate) is surfaced verbatim —
-   never fixed forward; route it to the culprit stage's skill.
+   deliver). When `TITLES.json` is passed, `deliver` burns its drawtext chain into
+   the ONE encode it already runs — no second pass. **Checkpoint 3 — final
+   review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when titles
+   were authored) `TITLES.md` alongside them. A `stop_and_report` (a failed gate)
+   is surfaced verbatim — never fixed forward; route it to the culprit stage's
+   skill.
 
 ## Reading the brief (intent -> param)
 
@@ -117,7 +134,9 @@ aspect (project-init's own "ask, don't guess").
   over them. reel-brief (`SPEC.md`, 5.3) is optional — offer it; on a bare run,
   name it as skipped. assemble-draft (`draft.mp4`, 5.9) is optional too — offer it
   before edl_to_reel; the autonomous path skips it without asking (no approval
-  needed to skip a preview).
+  needed to skip a preview). titles (`TITLES.json`, 5.16) is optional too — offer
+  it once `SPEC.json` exists; the autonomous path skips it without asking (no
+  on-screen text is a valid, complete reel).
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers).
