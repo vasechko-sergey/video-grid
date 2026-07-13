@@ -31,12 +31,13 @@ def _wire(monkeypatch, reports, pe_results=None):
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda clips, dims, fps, out: out)
-    # music=/audio= tolerated (and ignored): build_reel now always passes them (None for
-    # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
-    # of this fixture, which only exercises the reprocess/deliver escalation ladder.
+    # music=/audio=/titles= tolerated (and ignored): build_reel now always passes them
+    # (None for these silent-reel tests, matching check_reel.run's real defaults) — not
+    # the subject of this fixture, which only exercises the reprocess/deliver escalation ladder.
     monkeypatch.setattr(build_reel.check_reel, "run", lambda m, e, s, o, music=None, audio=None: rq.pop(0))
     monkeypatch.setattr(build_reel.deliver, "deliver",
-                        lambda m, prof, od, cl, rep, audio=None: seen["deliver"].append(od) or f"{od}/REEL_v1.mp4")
+                        lambda m, prof, od, cl, rep, audio=None, titles=None:
+                        seen["deliver"].append(od) or f"{od}/REEL_v1.mp4")
     results = iter(pe_results or [])
 
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):

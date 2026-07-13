@@ -36,7 +36,9 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
         return next(results, {"status": "mechanical_pass", "clip": manifest["out_path"]})
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
 
-    def fake_build(rm, out_dir, work_dir):
+    def fake_build(rm, out_dir, work_dir, titles=None):
+        # titles= tolerated (and ignored): edl_to_reel now always forwards it (None
+        # here) — not the subject of this fixture, which only checks the hand-off.
         seen["rm"] = rm
         seen["build"].append((out_dir, work_dir))
         return build_result or {"status": "delivered", "output": f"{out_dir}/REEL_v1.mp4", "report": {}}
