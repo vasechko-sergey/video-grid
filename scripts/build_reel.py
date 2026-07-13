@@ -79,9 +79,10 @@ def main() -> None:
     ap.add_argument("reel_manifest", help="path to a reel manifest JSON (design §2)")
     ap.add_argument("--out-dir", required=True, help="delivery dir for REEL_v{n}")
     ap.add_argument("--work-dir", required=True, help="scratch for master/report + per-episode reprocess")
+    ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the reel (§5.16)")
     a = ap.parse_args()
     rm = ReelManifest.from_json(a.reel_manifest)
-    result = build_reel(rm, a.out_dir, a.work_dir)
+    result = build_reel(rm, a.out_dir, a.work_dir, titles=a.titles)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "delivered" else 1)
 

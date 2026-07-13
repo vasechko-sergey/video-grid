@@ -47,7 +47,7 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
-            report: ReelReport, audio: str | None = None, titles: str | None = None) -> str:
+            report: ReelReport, *, audio: str | None = None, titles: str | None = None) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -61,6 +61,10 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    # Titles ride deliver's ONE encode (§5.16): build_filterchain writes each title's
+    # text to a title_i.txt sidecar in out_dir (work_dir=out_dir) and returns a drawtext
+    # chain. This is the SOLE -vf slot — ExportProfile.args() emits no -vf/scale, so
+    # nothing clobbers it (last -vf wins in ffmpeg — the §12 silent-drop flavor).
     vf: list[str] = []
     if titles is not None:
         chain = build_filterchain(Titles.from_json(titles), out_dir)

@@ -16,7 +16,7 @@ from scripts.lib.project import ProjectConfig
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
-                work_dir: str, out_dir: str, music: str | None = None,
+                work_dir: str, out_dir: str, *, music: str | None = None,
                 titles: str | None = None) -> dict:
     """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
     for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
