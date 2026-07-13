@@ -286,6 +286,16 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 "Almost no processing" = no *creative* processing; concat still demands uniform streams, so assemble scale-fits every segment into the SPEC canvas and unifies fps/codec first (§12). Labels via `drawtext` with an explicit `fontfile=` — macOS has no reliable fontconfig default. The draft muxes a **rough music bed** — the chosen fragment from `MUSIC.json` at `start_offset` — otherwise the "lands on beats" gate has nothing to land on; segment audio stays out of the draft (it returns as ducked ambient in §5.12).
 **Gate:** full length, lands on beats, plays.
 
+> **Built (2026-07-13, SP1b):** `scripts/draft.py` `build_draft` — extract each EDL
+> window, burn a canvas-fit (letterbox) + `processing_notes` label into every
+> segment (`scripts/lib/draft.py`: `resolve_font`/`label_text`/`segment_filter`,
+> the explicit-`fontfile=` landmine caught in a unit test), concat via the shared
+> `assembly.concat`, and mux a rough music bed by reusing `mix.mix`. An optional
+> `assemble-draft` router Stage (CP2, `draft.mp4`) — never the autonomous `next`.
+> An `ensure_drawtext` preflight + `setup.sh` guard the drawtext dependency. No
+> creative crop/track (process-episode), no ducked ambient (§5.12). See
+> `docs/plans/2026-07-13-assemble-draft.md`.
+
 ### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
 See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, hero?, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`.
 **`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px), a rule (`largest` / `leftmost` / explicit track id), or a **cast name** resolved through `cast.json` descriptors (§6.1a). `track.py` picks the track matching the pin (max IoU with the seed over the first frames); no pin → intent-conditioned scoring (§6.1a). This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).

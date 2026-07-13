@@ -40,7 +40,7 @@
 - Create: `scripts/lib/draft.py`
 - Test: `tests/lib/test_draft.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_draft.py`:
 
@@ -92,12 +92,12 @@ def test_segment_filter_carries_fit_and_label_pieces():
         assert piece in vf, piece
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_draft.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.draft'`.
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 Create `scripts/lib/draft.py`:
 
@@ -157,12 +157,12 @@ def segment_filter(dims: tuple[int, int], fps: float, font: str, textfile: str) 
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,fps={fps},format=yuv420p,{label}")
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_draft.py -q ; echo "EXIT: $?"`
 Expected: PASS (7 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/draft.py tests/lib/test_draft.py
@@ -179,7 +179,7 @@ git commit -m "feat: lib/draft.py — font resolve + label text + segment filter
 
 **Context:** `assemble()` currently inlines the concat-demuxer step (write `_concat.txt`, run `ffmpeg -f concat -c copy`). Extract it into a public `concat()` so the draft driver reuses it. Behaviour must stay identical — the existing `test_assembly.py` asserts on the listfile contents and the `-c copy` command.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_assembly.py` (the file already imports `json`, `Path`, `SimpleNamespace`, `pytest`, `assembly`):
 
@@ -196,12 +196,12 @@ def test_concat_writes_resolved_escaped_listfile_and_copies(tmp_path, monkeypatc
     assert "concat" in joined and "-c copy" in joined
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py::test_concat_writes_resolved_escaped_listfile_and_copies -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.assembly' has no attribute 'concat'`.
 
-- [ ] **Step 3: Refactor — add `concat()`, make `assemble()` call it**
+- [x] **Step 3: Refactor — add `concat()`, make `assemble()` call it**
 
 In `scripts/lib/assembly.py`, replace the entire `assemble()` function (lines 73-95) with these two functions (order matters — `concat` uses `_concat_quote`, defined above; `assemble` uses `concat`):
 
@@ -242,12 +242,12 @@ def assemble(episodes: list[str], dims: tuple[int, int], fps: float, out_master:
     return concat(entries, out_master)
 ```
 
-- [ ] **Step 4: Run the whole assembly suite to verify green**
+- [x] **Step 4: Run the whole assembly suite to verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py -q ; echo "EXIT: $?"`
 Expected: PASS (all existing tests + the new `concat` test). The three key existing tests still hold because `concat()` resolves each entry (so `test_concat_list_escapes_single_quotes_in_paths` still sees `file '{ep.resolve()-escaped}'`), writes `_concat.txt` in `out_master.parent`, and runs `-c copy`; `assemble()` still calls `_normalize` only for the outlier.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py tests/lib/test_assembly.py
@@ -264,7 +264,7 @@ git commit -m "refactor: extract assembly.concat() for the draft to share (5.9)"
 
 **Context:** This is a media stage, so the driver is proven end-to-end by a real-ffmpeg golden (like `tests/integration/test_front_spine.py`), not a mocked unit test. The `sample_clip` session fixture (a 3s 1920×1080 clip) lives in `tests/conftest.py`. Because process-episode is **not** faked here, the draft's letterbox fit is real — so the golden additionally proves the draft dims equal the project canvas.
 
-- [ ] **Step 1: Write the failing golden**
+- [x] **Step 1: Write the failing golden**
 
 Create `tests/integration/test_draft.py`:
 
@@ -357,12 +357,12 @@ def test_draft_cli_builds_and_exits_0(sample_clip, tmp_path, monkeypatch):
     assert e.value.code == 0 and out.exists()
 ```
 
-- [ ] **Step 2: Run the golden to verify it fails**
+- [x] **Step 2: Run the golden to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_draft.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.draft'` (collection error).
 
-- [ ] **Step 3: Implement the driver**
+- [x] **Step 3: Implement the driver**
 
 Create `scripts/draft.py`:
 
@@ -454,12 +454,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run the golden to verify it passes**
+- [x] **Step 4: Run the golden to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_draft.py -q ; echo "EXIT: $?"`
 Expected: PASS (3 passed). If ffmpeg is absent the `sample_clip` fixture skips — run on a machine with ffmpeg.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/draft.py tests/integration/test_draft.py
@@ -479,7 +479,7 @@ git commit -m "feat: scripts/draft.py — build_draft + CLI, real-ffmpeg golden 
 - Modify: `setup.sh`
 - Modify: `docs/development-workflow.md`
 
-- [ ] **Step 1: Write the failing unit tests** — Create `tests/test_draft.py`:
+- [x] **Step 1: Write the failing unit tests** — Create `tests/test_draft.py`:
 
 ```python
 from types import SimpleNamespace
@@ -506,9 +506,9 @@ def test_ensure_drawtext_fails_loud_when_absent(monkeypatch):
         draft.ensure_drawtext()
 ```
 
-- [ ] **Step 2: Run to verify fail** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected FAIL: `AttributeError: module 'scripts.draft' has no attribute 'ensure_drawtext'`.
+- [x] **Step 2: Run to verify fail** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected FAIL: `AttributeError: module 'scripts.draft' has no attribute 'ensure_drawtext'`.
 
-- [ ] **Step 3: Add `ensure_drawtext` + call it** — In `scripts/draft.py`, add this function above `build_draft`:
+- [x] **Step 3: Add `ensure_drawtext` + call it** — In `scripts/draft.py`, add this function above `build_draft`:
 
 ```python
 def ensure_drawtext(ffmpeg: str = "ffmpeg") -> None:
@@ -531,9 +531,9 @@ And make it the first statement in `build_draft` (before `edl = EDL.from_json(..
     edl = EDL.from_json(edl_path)
 ```
 
-- [ ] **Step 4: Run unit tests → pass** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected PASS (2 passed).
+- [x] **Step 4: Run unit tests → pass** — `.venv/bin/python -m pytest tests/test_draft.py -q ; echo "EXIT: $?"` — Expected PASS (2 passed).
 
-- [ ] **Step 5: Add the golden skip-guard** — In `tests/integration/test_draft.py`, add `import shutil` at the top and this autouse fixture (after the imports, before `_project`):
+- [x] **Step 5: Add the golden skip-guard** — In `tests/integration/test_draft.py`, add `import shutil` at the top and this autouse fixture (after the imports, before `_project`):
 
 ```python
 @pytest.fixture(autouse=True)
@@ -545,9 +545,9 @@ def _need_drawtext():
         pytest.skip("ffmpeg built without the drawtext filter (run: bash setup.sh)")
 ```
 
-- [ ] **Step 6: Run the golden** — `.venv/bin/python -m pytest tests/integration/test_draft.py -q ; echo "EXIT: $?"` — Expected: 3 passed where ffmpeg has drawtext, or 3 skipped where it does not — either way `EXIT: 0`.
+- [x] **Step 6: Run the golden** — `.venv/bin/python -m pytest tests/integration/test_draft.py -q ; echo "EXIT: $?"` — Expected: 3 passed where ffmpeg has drawtext, or 3 skipped where it does not — either way `EXIT: 0`.
 
-- [ ] **Step 7: `setup.sh` drawtext block** — Add this block **after** the existing `vidstab` block (after its closing `fi`, before the `# --- venv + python deps ---` line):
+- [x] **Step 7: `setup.sh` drawtext block** — Add this block **after** the existing `vidstab` block (after its closing `fi`, before the `# --- venv + python deps ---` line):
 
 ```bash
 # drawtext: the assemble-draft stage (§5.9) burns labels via drawtext, which needs
@@ -565,7 +565,7 @@ if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
 fi
 ```
 
-- [ ] **Step 8: `docs/development-workflow.md` note** — In §Environment, change the ffmpeg requirement bullet from:
+- [x] **Step 8: `docs/development-workflow.md` note** — In §Environment, change the ffmpeg requirement bullet from:
 
 ```markdown
 - Requires `ffmpeg` + `ffprobe` on PATH. Every script fails loud with a remedy if
@@ -581,7 +581,7 @@ to:
   with a remedy if a binary or filter is missing (`brew install ffmpeg`).
 ```
 
-- [ ] **Step 9: Commit** — do NOT run `setup.sh` (it mutates the machine's Homebrew — the user runs it themselves).
+- [x] **Step 9: Commit** — do NOT run `setup.sh` (it mutates the machine's Homebrew — the user runs it themselves).
 
 ```bash
 git add scripts/draft.py tests/test_draft.py tests/integration/test_draft.py setup.sh docs/development-workflow.md
@@ -600,7 +600,7 @@ Append the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` trailer.
 
 **Context:** The draft is off the critical path. As an **optional** stage it is never chosen as `next` (`next_action` advances `next` only past *required* stages), so the autonomous `project → footage → edit-plan → deliver` sequence is unchanged. `checkpoint="edl"` because the draft is CP2's richer artifact — it shares `"edl"` with `edit-plan`, exactly as `project-init` and `reel-brief` share `"spec"`. `in_out=False` → `draft.mp4` is looked for in the run dir.
 
-- [ ] **Step 1: Write the failing test patches**
+- [x] **Step 1: Write the failing test patches**
 
 In `tests/lib/test_montage.py`:
 
@@ -637,12 +637,12 @@ def test_assemble_draft_optional_absent_then_present(tmp_path):
     assert res2["next"] == "deliver"
 ```
 
-- [ ] **Step 2: Run the montage suite to verify the new/changed assertions fail**
+- [x] **Step 2: Run the montage suite to verify the new/changed assertions fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `test_v1_stages_order_and_keys` (list mismatch), `test_v1_stages_kinds_and_flags` (`KeyError: 'assemble-draft'`), `test_assemble_draft_optional_absent_then_present`.
 
-- [ ] **Step 3: Add the Stage row**
+- [x] **Step 3: Add the Stage row**
 
 In `scripts/montage.py`, in the `V1_STAGES` tuple, insert the `assemble-draft` row between the `edit-plan` and `deliver` rows:
 
@@ -655,12 +655,12 @@ In `scripts/montage.py`, in the `V1_STAGES` tuple, insert the `assemble-draft` r
           "edl_to_reel CLI", "final", in_out=True),
 ```
 
-- [ ] **Step 4: Run the montage suite to verify green**
+- [x] **Step 4: Run the montage suite to verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: PASS (all montage tests, including the unchanged `test_edl_present_next_is_deliver` — an optional stage between `edit-plan` and `deliver` does not change `next`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -677,7 +677,7 @@ git commit -m "feat: router — optional assemble-draft stage (draft.mp4, CP2) (
 
 **Context:** No standalone SKILL for the draft — it is mechanical. `using-montage` offers it as an optional preview at CP2, after edit-plan produces the EDL and before `edl_to_reel` commits the expensive render.
 
-- [ ] **Step 1: Add the optional draft step to using-montage**
+- [x] **Step 1: Add the optional draft step to using-montage**
 
 Read `SKILLS/using-montage/SKILL.md`. Find the step where edit-plan produces the `EDL.json` / the CP2 (EDL/plan approval) checkpoint is described, immediately before the `edl_to_reel` render step. Insert an **optional** step with this content (match the file's existing numbering/heading style):
 
@@ -693,7 +693,7 @@ Read `SKILLS/using-montage/SKILL.md`. Find the step where edit-plan produces the
 
 Also, wherever the CP2 checkpoint artifact is named (`EDL.md`), add that `draft.mp4` is CP2's richer artifact when the user asked for a preview.
 
-- [ ] **Step 2: Update the `assemble.py` docstring**
+- [x] **Step 2: Update the `assemble.py` docstring**
 
 In `scripts/assemble.py`, replace the docstring sentence:
 
@@ -711,12 +711,12 @@ silent master via lib.assembly. Its draft sibling is scripts/draft.py — a labe
 QA preview over the same lib.assembly.concat core (montage §5.9)."""
 ```
 
-- [ ] **Step 3: Verify nothing broke**
+- [x] **Step 3: Verify nothing broke**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: PASS (the docstring change is inert; this confirms no accidental edit).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add SKILLS/using-montage/SKILL.md scripts/assemble.py
@@ -733,7 +733,7 @@ git commit -m "docs: using-montage offers the optional CP2 draft; assemble sibli
 - Modify: `docs/specs/2026-07-05-montage-skillset-design.md`
 - Modify: `CLAUDE.md`
 
-- [ ] **Step 1: `docs/pipeline-map.md`**
+- [x] **Step 1: `docs/pipeline-map.md`**
 
 Make these edits:
 - The `_Last updated:_` line → `2026-07-13`.
@@ -742,11 +742,11 @@ Make these edits:
 - Tally line: `9 ✅ · 3 ◐ · 3 ❌` → `10 ✅ · 3 ◐ · 2 ❌`.
 - Front-half narrative (the "What produces a reel today" paragraph and/or the "Front-half authoring" roadmap bullet): drop `SP1b (draft.mp4)` from the "Remaining" list — the front-half remaining is now `SP4 (trend-scan)` (plus the parallel-quality items already listed).
 
-- [ ] **Step 2: `docs/build-status.md`**
+- [x] **Step 2: `docs/build-status.md`**
 
 Read it, then: append a DONE entry for assemble-draft mirroring the format of the prior entries (e.g. the reel-brief one), naming `scripts/draft.py` + `scripts/lib/draft.py` + the `assembly.concat` refactor + the optional `montage.py` Stage + the real-ffmpeg golden; and narrow the "Next action" line (5.9 done — the front-half remaining is trend-scan (5.4, YAGNI) and the real-footage end-to-end v1 gate; audio B3/B4 and 5.12/5.13 stay as parallel quality).
 
-- [ ] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`**
+- [x] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`**
 
 Under the `### 5.9 assemble-draft → draft.mp4` section, add a Built note (mirror the other `> **Built (...)**` blocks):
 
@@ -761,7 +761,7 @@ Under the `### 5.9 assemble-draft → draft.mp4` section, add a Built note (mirr
 > `docs/plans/2026-07-13-assemble-draft.md`.
 ```
 
-- [ ] **Step 4: `CLAUDE.md`**
+- [x] **Step 4: `CLAUDE.md`**
 
 In the Quick Reference table, add two rows (mirror the reel-brief design/plan rows) — one for the design, one for the plan:
 
@@ -770,12 +770,12 @@ In the Quick Reference table, add two rows (mirror the reel-brief design/plan ro
 | Assemble-draft spine plan | [2026-07-13-assemble-draft.md](docs/plans/2026-07-13-assemble-draft.md) | Tasks 0–5: `lib/draft.py` helpers, `assembly.concat` refactor, `draft.py` `build_draft`+CLI+real-ffmpeg golden, optional `montage.py` Stage + test patch, using-montage wiring, docs. |
 ```
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS — the pre-existing count (592 passed, 1 skipped as of the reel-brief merge) plus the new tests (Task 0: 7; Task 1: 1; Task 2: 3 integration; Task 3: 1 new + 2 patched). Confirm `EXIT: 0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/pipeline-map.md docs/build-status.md docs/specs/2026-07-05-montage-skillset-design.md CLAUDE.md

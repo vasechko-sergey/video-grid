@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-12._
+_Last updated: 2026-07-13._
 
 > Bird's-eye progress across the full 15-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -396,11 +396,38 @@ _Last updated: 2026-07-12._
   flips reel-brief deferred → **optional** (SPEC.md enriches CP1; autonomous path
   intact). Text stage — no ffmpeg, no golden. See `docs/plans/2026-07-12-reel-brief.md`.
 
+- **assemble-draft (5.9, QA-preview spine) DONE (2026-07-13)** — plan
+  `docs/plans/2026-07-13-assemble-draft.md` + design
+  `docs/specs/2026-07-13-assemble-draft-design.md`. **603 tests green** (+4
+  skipped: the 3 real-ffmpeg draft goldens on a machine whose ffmpeg lacks
+  drawtext, +1 pre-existing vidstab-gated). `scripts/draft.py`
+  (`build_draft` + CLI): extract each EDL window, burn a canvas-fit (letterbox)
+  + `processing_notes` label into every segment, concat via the shared core, mux
+  a rough music bed by reusing `mix.mix` — one source of truth for laying music,
+  absent music → a silent draft. `scripts/lib/draft.py` — the pure helpers
+  (`resolve_font`/`label_text`/`segment_filter`), split out so the drawtext
+  `fontfile=` landmine (design §12 — macOS has no fontconfig default) is caught
+  in a unit test, not at render. An `ensure_drawtext` runtime preflight fails
+  loud with a remedy when the active ffmpeg lacks the filter. `scripts/lib/
+  assembly.py` gains a shared `concat()` (extracted verbatim out of `assemble()`,
+  behaviour unchanged — the final assembler and the draft now reuse one concat
+  core). Router: an **optional** `assemble-draft` Stage in `montage.py`
+  (`draft.mp4`, checkpoint `"edl"`, CP2) — never chosen as `next`, so the
+  autonomous chain is untouched; `using-montage` offers it as an optional CP2
+  preview after edit-plan. Real-ffmpeg golden (`tests/integration/test_draft.py`:
+  canvas-fit dims, muxed music bed, silent variant, CLI) behind an autouse
+  drawtext skip-guard so the suite stays green on a machine without a
+  drawtext-capable ffmpeg; `setup.sh` now ensures one by default (homebrew-ffmpeg
+  tap fallback, mirroring the vidstab block).
+
 ## Next action
 
-- **Front-half continuation — SP1b / trend-scan** (`draft.mp4`: labels +
-  music bed, §5.9; `TRENDS.md` cache, §5.4) — picks up where SP3 (edit-plan)
-  and reel-brief (both DONE 2026-07-12) left off. **OR**
+- **Front-half continuation — trend-scan, then the real-footage v1 gate**
+  (`TRENDS.md` cache, §5.4 — low-priority/YAGNI) — the only front-half stage
+  left now that SP1b (assemble-draft, DONE 2026-07-13) has shipped; once it's
+  built (or knowingly skipped) the front half is complete enough to run the
+  whole `using-montage` conveyor end-to-end on Sergei's real footage — the
+  milestone the synthetic goldens stand in for today. **OR**
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
