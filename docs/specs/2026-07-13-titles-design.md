@@ -76,7 +76,7 @@ Judgment is the agent's; the code is thin (mirrors reel-brief).
   as a mid caption the agent re-times. `total_s` (reel length) comes from the EDL
   sum or a probe of the assembled master — `build_titles` does not guess it.
   Default `font="system"` so the draft always renders without `--with-fonts`.
-- CLI `titles.py build --spec SPEC.json --total <s> [--out TITLES.json]` — writes
+- CLI `titles.py build --spec SPEC.json --total <s> --out-dir <dir>` — writes
   `TITLES.json` + `TITLES.md`, prints JSON, `SystemExit(0)`.
 - `titles` SKILL (autonomous-draft, like edit-plan): read `SPEC.hook/text/ending`,
   propose titles (words / timing / pos / style / font), write the pair, surface

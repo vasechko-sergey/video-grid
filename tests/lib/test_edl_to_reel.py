@@ -21,7 +21,7 @@ def _edl_file(tmp_path, episodes=None, **reel):
 
 def _wire(monkeypatch, pe_results=None, build_result=None):
     """Fake extract_edl / process_episode / build_reel; record what the driver builds."""
-    seen = {"segments": [], "pe": [], "rm": None, "build": []}
+    seen = {"segments": [], "pe": [], "rm": None, "build": [], "build_titles": None}
 
     def fake_extract(edl, footage_root, seg_dir):
         segs = [str(Path(seg_dir) / f"ep{i}_raw.mp4") for i in range(len(edl.episodes))]
@@ -37,10 +37,12 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
 
     def fake_build(rm, out_dir, work_dir, titles=None):
-        # titles= tolerated (and ignored): edl_to_reel now always forwards it (None
-        # here) — not the subject of this fixture, which only checks the hand-off.
+        # titles= is captured into seen["build_titles"] so a test can assert edl_to_reel
+        # forwards it here (a silent drop would else pass CI) — not otherwise the subject
+        # of this fixture, which mainly checks the extract→episodes→build hand-off.
         seen["rm"] = rm
         seen["build"].append((out_dir, work_dir))
+        seen["build_titles"] = titles
         return build_result or {"status": "delivered", "output": f"{out_dir}/REEL_v1.mp4", "report": {}}
     monkeypatch.setattr(edl_to_reel.build_reel, "build_reel", fake_build)
     return seen
@@ -69,6 +71,13 @@ def test_edl_music_and_target_override_reach_the_reel_manifest(monkeypatch, tmp_
     rm = seen["rm"]
     assert rm.music == "OVERRIDE.json"
     assert rm.target_dur == 9.0 and rm.cap == 2
+
+
+def test_titles_forwarded_to_build_reel(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"), titles="TITLES.json")
+    assert seen["build_titles"] == "TITLES.json"    # titles= forwarded edl_to_reel -> build_reel
 
 
 def test_bad_episode_preflights_before_any_ffmpeg(monkeypatch, tmp_path):

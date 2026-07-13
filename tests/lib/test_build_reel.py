@@ -26,18 +26,22 @@ def _color_fail(idx, target, culprit):
 def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the
     color_correct passed to each process_episode reprocess."""
-    seen = {"deliver": [], "reprocess": []}
+    seen = {"deliver": [], "reprocess": [], "titles": []}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda clips, dims, fps, out: out)
-    # music=/audio=/titles= tolerated (and ignored): build_reel now always passes them
-    # (None for these silent-reel tests, matching check_reel.run's real defaults) — not
-    # the subject of this fixture, which only exercises the reprocess/deliver escalation ladder.
+    # music=/audio= tolerated (and ignored): build_reel now always passes them (None for
+    # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
+    # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
+    # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
     monkeypatch.setattr(build_reel.check_reel, "run", lambda m, e, s, o, music=None, audio=None: rq.pop(0))
-    monkeypatch.setattr(build_reel.deliver, "deliver",
-                        lambda m, prof, od, cl, rep, audio=None, titles=None:
-                        seen["deliver"].append(od) or f"{od}/REEL_v1.mp4")
+
+    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None):
+        seen["deliver"].append(od)
+        seen["titles"].append(titles)
+        return f"{od}/REEL_v1.mp4"
+    monkeypatch.setattr(build_reel.deliver, "deliver", fake_deliver)
     results = iter(pe_results or [])
 
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
@@ -53,6 +57,14 @@ def test_clean_reel_delivers_without_reprocess(monkeypatch, tmp_path):
     assert res["status"] == "delivered"
     assert res["output"].endswith("REEL_v1.mp4")
     assert seen["reprocess"] == []          # no fix needed
+
+
+def test_build_reel_forwards_titles_to_deliver(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_pass()])
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"),
+                                titles="TITLES.json")
+    assert res["status"] == "delivered"
+    assert seen["titles"] == ["TITLES.json"]        # titles= threaded build_reel -> deliver
 
 
 def test_color_fail_then_pass_reprocesses_then_delivers(monkeypatch, tmp_path):
