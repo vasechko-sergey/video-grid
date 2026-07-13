@@ -47,12 +47,12 @@ class Title:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Title":
-        def opt(key: str, default: object) -> object:
-            v = d.get(key)
-            return default if v is None else v
-        return cls(text=d.get("text"), start=d.get("start"), dur=d.get("dur"),
-                   font=opt("font", "system"), pos=opt("pos", "bottom"),
-                   style=opt("style", "bold-box"))
+        if not isinstance(d, dict):
+            raise ValueError(f"Title.from_dict: expected an object, got {type(d).__name__}")
+        try:
+            return cls(**d)            # missing-required / unknown key → TypeError → remedy below
+        except TypeError as ex:
+            raise ValueError(f"Title.from_dict: {d!r} has a missing or unknown field — {ex}") from ex
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,17 @@ class Titles:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Titles":
-        return cls(items=tuple(Title.from_dict(t) for t in d.get("items", ())))
+        items_in = d.get("items", ())
+        if not isinstance(items_in, (list, tuple)):
+            raise ValueError(
+                f"Titles.from_dict: 'items' must be a list, got {type(items_in).__name__}")
+        items = []
+        for i, t in enumerate(items_in):
+            if not isinstance(t, dict):
+                raise ValueError(
+                    f"Titles.from_dict: items[{i}] must be an object, got {type(t).__name__}")
+            items.append(Title.from_dict(t))
+        return cls(items=tuple(items))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Titles":
