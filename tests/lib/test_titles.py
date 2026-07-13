@@ -70,3 +70,41 @@ def test_titles_from_json_roundtrip(tmp_path):
 def test_positions_and_styles_frozen():
     assert POSITIONS == ("top", "center", "bottom")
     assert STYLES == ("bold-box", "outline", "plain")
+
+
+from scripts.lib.titles import build_filterchain
+
+
+def _fake_resolve(name):
+    return "/f.ttf"
+
+
+def test_build_filterchain_empty_is_blank(tmp_path):
+    assert build_filterchain(Titles(), str(tmp_path)) == ""
+
+
+def test_build_filterchain_one_drawtext_per_title_with_windows(tmp_path):
+    ts = Titles(items=(Title("Hook", 0.0, 2.0, pos="top", style="bold-box"),
+                       Title("End", 26.0, 3.0, pos="center", style="plain")))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert vf.count("drawtext=") == 2
+    assert "enable='between(t,0.0,2.0)'" in vf
+    assert "enable='between(t,26.0,29.0)'" in vf
+    assert "fontfile='/f.ttf'" in vf
+    # per-title textfiles written, referenced
+    assert (tmp_path / "title_0.txt").read_text() == "Hook"
+    assert (tmp_path / "title_1.txt").read_text() == "End"
+    assert "textfile='" in vf
+
+
+def test_build_filterchain_positions_and_styles(tmp_path):
+    ts = Titles(items=(Title("a", 0.0, 1.0, pos="top", style="bold-box"),
+                       Title("b", 1.0, 1.0, pos="center", style="outline"),
+                       Title("c", 2.0, 1.0, pos="bottom", style="plain")))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert "y=h*0.08" in vf                     # top
+    assert "y=(h-th)/2" in vf                   # center
+    assert "y=h-th-h*0.12" in vf                # bottom
+    assert "box=1:boxcolor=black@0.5:boxborderw=16" in vf   # bold-box
+    assert "borderw=4:bordercolor=black" in vf              # outline
+    assert "x=(w-tw)/2" in vf and "fontsize=h/18" in vf

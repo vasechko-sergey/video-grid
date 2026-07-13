@@ -102,3 +102,41 @@ class Titles:
         if not self.items:
             lines.append("| – | (none) | – | – | – | – |")
         return "\n".join(lines)
+
+
+_STYLE_FRAGMENTS: dict[str, str] = {
+    "bold-box": "box=1:boxcolor=black@0.5:boxborderw=16",
+    "outline": "borderw=4:bordercolor=black",
+    "plain": "",
+}
+_Y_EXPR: dict[str, str] = {          # safe-margin presets (design §4); ffmpeg h/th exprs
+    "top": "h*0.08",
+    "center": "(h-th)/2",
+    "bottom": "h-th-h*0.12",
+}
+
+
+def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font) -> str:
+    """The drawtext chain deliver injects into its encode -vf: one drawtext per Title,
+    shown only in [start, start+dur] via enable=. Positions use ffmpeg's own w/h/tw/th
+    expressions (resolution-agnostic — no python dims). Each title's free text goes to
+    a per-title textfile (textfile= dodges filtergraph escaping of ':'/apostrophes —
+    draft's trick, generalized to N titles, hence work_dir). Empty Titles -> "" (deliver
+    then encodes with no -vf). font/textfile are single-quoted; a resolved system/cask
+    font and a skill-controlled work-dir path carry no apostrophe (draft's assumption)."""
+    if not titles.items:
+        return ""
+    work = Path(work_dir)
+    work.mkdir(parents=True, exist_ok=True)
+    parts: list[str] = []
+    for i, t in enumerate(titles.items):
+        tf = work / f"title_{i}.txt"
+        tf.write_text(t.text)
+        font = resolve(t.font)
+        style = _STYLE_FRAGMENTS[t.style]
+        piece = (f"drawtext=fontfile='{font}':textfile='{tf}':fontsize=h/18:"
+                 f"fontcolor=white:x=(w-tw)/2:y={_Y_EXPR[t.pos]}:"
+                 f"{style + ':' if style else ''}"
+                 f"enable='between(t,{t.start},{t.start + t.dur})'")
+        parts.append(piece)
+    return ",".join(parts)
