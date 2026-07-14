@@ -89,3 +89,44 @@ def test_mood_target_zero_match_returns_none():
 
 def test_mood_target_empty_returns_none():
     assert mood_target("") is None
+
+
+from scripts.lib.mood import distance, rank, rank_by_drive
+
+
+def test_distance_identical_is_zero():
+    v = MoodVector(0.5, 0.5, 0.5)
+    assert distance(v, v) == 0.0
+
+
+def test_distance_known_pair():
+    assert distance(MoodVector(0.0, 0.0, 0.0), MoodVector(1.0, 0.0, 0.0)) == 1.0
+
+
+def test_distance_weights_scale_one_axis():
+    a, b = MoodVector(0.0, 0.0, 0.0), MoodVector(1.0, 0.0, 0.0)
+    assert distance(a, b, weights=(4.0, 1.0, 1.0)) == 2.0     # sqrt(4 * 1) = 2
+
+
+def test_rank_orders_ascending_by_distance():
+    target = MoodVector(1.0, 1.0, 1.0)
+    cands = [("far", MoodVector(0.0, 0.0, 0.0)), ("near", MoodVector(0.9, 0.9, 0.9))]
+    assert [n for n, _d, _v in rank(cands, target)] == ["near", "far"]
+
+
+def test_rank_stable_on_ties():
+    target = MoodVector(0.0, 0.0, 0.0)
+    a, b = MoodVector(0.5, 0.0, 0.0), MoodVector(0.5, 0.0, 0.0)   # equidistant
+    assert [n for n, _d, _v in rank([("a", a), ("b", b)], target)] == ["a", "b"]
+
+
+def test_rank_empty():
+    assert rank([], MoodVector(0.5, 0.5, 0.5)) == []
+
+
+def test_rank_by_drive_orders_by_energy_plus_pace_desc():
+    lo = MoodVector(0.1, 0.9, 0.1)     # drive 0.2
+    hi = MoodVector(0.8, 0.0, 0.7)     # drive 1.5
+    ranked = rank_by_drive([("lo", lo), ("hi", hi)])
+    assert [n for n, _s, _v in ranked] == ["hi", "lo"]
+    assert ranked[0][1] == pytest.approx(1.5)      # positive drive in the score slot

@@ -2,7 +2,9 @@
 The MoodVector space + the anchor lexicon + scoring — numpy/stdlib only, no audio IO,
 no librosa — so every branch is unit-tested deterministically (the offset.py discipline).
 beats.mood_features maps an audio file into this space; scripts/mood.py ranks a folder."""
+import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 PACE_BPM = (60.0, 180.0)         # tempo → pace axis
@@ -75,3 +77,30 @@ def mood_target(text: str) -> "MoodVector | None":
     return MoodVector(energy=sum(v.energy for v in matched) / n,
                       brightness=sum(v.brightness for v in matched) / n,
                       pace=sum(v.pace for v in matched) / n)
+
+
+def distance(a: MoodVector, b: MoodVector,
+             weights: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> float:
+    """Weighted Euclidean distance in the 3-axis space (smaller = closer fit).
+    Euclidean, not cosine: the axes are [0,1] and magnitude is meaningful."""
+    return math.sqrt(sum(w * (x - y) ** 2
+                         for w, x, y in zip(weights, a.as_tuple(), b.as_tuple())))
+
+
+def rank(candidates: Sequence[tuple[str, MoodVector]], target: MoodVector,
+         weights: tuple[float, float, float] = (1.0, 1.0, 1.0)
+         ) -> list[tuple[str, float, MoodVector]]:
+    """(name, vector) → sorted ascending by distance to target. Returns
+    (name, distance, vector). Stable on ties (Python's sort preserves input order)."""
+    scored = [(name, distance(v, target, weights), v) for name, v in candidates]
+    return sorted(scored, key=lambda t: t[1])
+
+
+def rank_by_drive(candidates: Sequence[tuple[str, MoodVector]]
+                  ) -> list[tuple[str, float, MoodVector]]:
+    """Fallback when mood_target is None: sort by drive = energy + pace DESCENDING
+    (most-driving first — the most defensible order with no mood direction). Returns
+    (name, drive, vector) with drive POSITIVE — the driver writes it under a `drive`
+    key, never `distance`, so the two score semantics never share a field."""
+    scored = [(name, v.energy + v.pace, v) for name, v in candidates]
+    return sorted(scored, key=lambda t: t[1], reverse=True)
