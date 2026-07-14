@@ -97,7 +97,7 @@ def _free_source() -> str:
     return "jamendo" if _jamendo_client_id() else "ccmixter"
 
 
-def _get_json(url: str):
+def _get_json(url: str) -> dict | list:
     """GET a URL → parsed JSON (dict or list). Raises ValueError on any transport/parse
     error (fail loud — the driver surfaces it; never a silent empty shortlist)."""
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
