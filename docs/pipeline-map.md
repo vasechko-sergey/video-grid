@@ -84,7 +84,7 @@ one `using-montage` invocation — it conducts project-init → footage-intake �
 edit-plan → edl_to_reel with the three §4.1 checkpoints, resuming from `montage
 next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-out
 (a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
-Everything else (B3/B4, 5.9 draft, 5.12 ambient, 5.13 safe_zones, cast→hero-pin) is
+Everything else (B4, 5.9 draft, 5.12 ambient, 5.13 safe_zones, cast→hero-pin) is
 parallel **quality**.
 
 ## What produces a reel today
