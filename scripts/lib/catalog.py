@@ -183,3 +183,49 @@ def _search_ccmixter(query: str, n: int) -> list[Candidate]:
                              license=r.get("license_name") or "Creative Commons (ccMixter)",
                              preview_url=dl))
     return out
+
+
+def _search_youtube(query: str, n: int) -> list[Candidate]:
+    proc = subprocess.run(
+        ytdlp_cmd() + [f"ytsearch{n}:{query}", "--flat-playlist", "--dump-json", "--no-warnings"],
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise ValueError(f"music sourcing: yt-dlp search failed ({proc.stderr.strip()})")
+    out = []
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        title = r.get("title")
+        ref = r.get("webpage_url") or r.get("url") or r.get("id")
+        if not (title and ref):
+            continue
+        out.append(Candidate(title=title, artist=r.get("channel") or r.get("uploader") or "unknown",
+                             source="youtube", ref=ref, license="unknown (any lane)",
+                             preview_url=None))
+    return out
+
+
+def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Candidate]:
+    """Discovery across rights lanes (design §4). `free` → _free_source() (ccMixter / Jamendo);
+    `any` → YouTube by default, or `catalog` in {itunes, deezer}. Rights invariant: the free
+    branch only ever calls the CC catalogs, never YouTube. Zero results raises."""
+    if mode == "free":
+        cands = (_search_jamendo(query, n) if _free_source() == "jamendo"
+                 else _search_ccmixter(query, n))
+    elif mode == "any":
+        if catalog == "itunes":
+            cands = _search_itunes(query, n)
+        elif catalog == "deezer":
+            cands = _search_deezer(query, n)
+        elif catalog in (None, "youtube"):
+            cands = _search_youtube(query, n)
+        else:
+            raise ValueError(f"--catalog {catalog!r} not in (youtube, itunes, deezer)")
+    else:
+        raise ValueError(f"music sourcing mode {mode!r} not in (free, any) — "
+                         f"local is the music-match lane, not sourcing")
+    if not cands:
+        raise ValueError(f"music sourcing: no candidates for {query!r} (mode={mode}) — "
+                         f"try a different --query or --mood")
+    return cands
