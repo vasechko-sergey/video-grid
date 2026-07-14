@@ -2,6 +2,7 @@
 The MoodVector space + the anchor lexicon + scoring — numpy/stdlib only, no audio IO,
 no librosa — so every branch is unit-tested deterministically (the offset.py discipline).
 beats.mood_features maps an audio file into this space; scripts/mood.py ranks a folder."""
+import re
 from dataclasses import dataclass
 
 PACE_BPM = (60.0, 180.0)         # tempo → pace axis
@@ -61,3 +62,16 @@ MOOD_ANCHORS: dict[str, MoodVector] = {
     "tense": MoodVector(0.75, 0.40, 0.60),     "dramatic": MoodVector(0.78, 0.45, 0.55),
     "urgent": MoodVector(0.80, 0.42, 0.70),
 }
+
+
+def mood_target(text: str) -> "MoodVector | None":
+    """Free-text mood → target MoodVector: lowercase, tokenize on word boundaries,
+    average every token that is a MOOD_ANCHORS key. No known token → None (the driver
+    falls back to rank_by_drive). 'energetic and dark' averages the two anchors."""
+    matched = [MOOD_ANCHORS[t] for t in re.findall(r"[a-z]+", text.lower()) if t in MOOD_ANCHORS]
+    if not matched:
+        return None
+    n = len(matched)
+    return MoodVector(energy=sum(v.energy for v in matched) / n,
+                      brightness=sum(v.brightness for v in matched) / n,
+                      pace=sum(v.pace for v in matched) / n)

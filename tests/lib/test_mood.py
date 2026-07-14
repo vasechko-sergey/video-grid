@@ -54,3 +54,38 @@ def test_anchor_families_present():
     for w in ("energetic", "chill", "epic", "dark", "happy",
               "melancholic", "dreamy", "tense"):
         assert w in MOOD_ANCHORS
+
+
+from scripts.lib.mood import mood_target
+
+
+def test_mood_target_single_anchor():
+    assert mood_target("energetic") == MOOD_ANCHORS["energetic"]
+
+
+def test_mood_target_averages_multiple():
+    t = mood_target("energetic dark")
+    e, d = MOOD_ANCHORS["energetic"], MOOD_ANCHORS["dark"]
+    assert t == MoodVector((e.energy + d.energy) / 2,
+                           (e.brightness + d.brightness) / 2,
+                           (e.pace + d.pace) / 2)
+
+
+def test_mood_target_case_insensitive():
+    assert mood_target("ENERGETIC") == MOOD_ANCHORS["energetic"]
+
+
+def test_mood_target_ignores_punctuation_and_filler():
+    assert mood_target("energetic, and driving!") == mood_target("energetic driving")
+
+
+def test_mood_target_synonym_resolves():
+    assert mood_target("mellow") == MOOD_ANCHORS["mellow"]
+
+
+def test_mood_target_zero_match_returns_none():
+    assert mood_target("purple wombat") is None
+
+
+def test_mood_target_empty_returns_none():
+    assert mood_target("") is None
