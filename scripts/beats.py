@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.lib import offset, vocals
+from scripts.lib import mood, offset, vocals
 from scripts.lib.models import MusicSpec
 
 _HOP = offset.HOP                                     # kept as a module name for analyze() below
@@ -57,6 +57,22 @@ def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> fl
     extra = "" if path == "vocal" else " (demucs absent — setup.sh --with-demucs for vocal-accurate)"
     _log(f"choose_offset: {off:.2f}s via {path}{extra}")
     return off
+
+
+def mood_features(track: str) -> mood.MoodVector:
+    """Map a track into the mood.py vector space (design §3): tempo → pace,
+    spectral-centroid mean → brightness, peak-normalized RMS mean → energy (loudness-
+    robust: divide by max|y| before RMS, so mastering gain cancels). Lazy librosa,
+    like analyze()/choose_offset()."""
+    import librosa                                    # lazy import: heavy optional dep (librosa)
+    y, sr = librosa.load(track, sr=None, mono=True)
+    tempo = float(np.atleast_1d(librosa.beat.beat_track(y=y, sr=sr, hop_length=_HOP)[0])[0])
+    centroid = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=_HOP)))
+    peak = float(np.max(np.abs(y))) or 1.0           # silent track → guard /0
+    rms_mean = float(np.mean(librosa.feature.rms(y=y / peak, hop_length=_HOP)[0]))
+    return mood.MoodVector(energy=mood.norm01(rms_mean, *mood.ENERGY_RMS),
+                           brightness=mood.norm01(centroid, *mood.BRIGHT_HZ),
+                           pace=mood.norm01(tempo, *mood.PACE_BPM))
 
 
 def main() -> None:
