@@ -58,3 +58,40 @@ def test_ytdlp_cmd_raises_when_absent(monkeypatch):
     monkeypatch.setattr(catalog, "has_ytdlp", lambda: False)
     with pytest.raises(ValueError, match="setup.sh --with-sourcing"):
         catalog.ytdlp_cmd()
+
+
+# append to tests/lib/test_catalog.py
+import json as _json
+
+
+class _FakeResp:
+    def __init__(self, body): self._body = body.encode()
+    def read(self): return self._body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def _mock_urlopen(monkeypatch, body):
+    monkeypatch.setattr(catalog.urllib.request, "urlopen",
+                        lambda req, timeout=0: _FakeResp(_json.dumps(body)))
+
+
+def test_search_itunes_parses(monkeypatch):
+    _mock_urlopen(monkeypatch, {"results": [
+        {"trackName": "Sun", "artistName": "Nova", "previewUrl": "http://p/1",
+         "trackViewUrl": "http://itunes/1"}]})
+    cands = catalog._search_itunes("energetic", 5)
+    assert cands[0].source == "itunes" and cands[0].title == "Sun"
+    assert cands[0].ref == "Nova - Sun" and cands[0].preview_url == "http://p/1"
+
+
+def test_search_deezer_parses(monkeypatch):
+    _mock_urlopen(monkeypatch, {"data": [
+        {"title": "Rain", "artist": {"name": "Cloud"}, "preview": "http://p/2"}]})
+    cands = catalog._search_deezer("chill", 5)
+    assert cands[0].source == "deezer" and cands[0].ref == "Cloud - Rain"
+
+
+def test_search_itunes_skips_incomplete_rows(monkeypatch):
+    _mock_urlopen(monkeypatch, {"results": [{"trackName": "NoArtist"}]})
+    assert catalog._search_itunes("x", 5) == []

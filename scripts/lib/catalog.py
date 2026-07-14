@@ -118,3 +118,30 @@ def http_download(url: str, dest: Path) -> None:
             shutil.copyfileobj(resp, f)
     except (urllib.error.URLError, TimeoutError) as e:
         raise ValueError(f"music sourcing: download of {url} failed ({e})") from e
+
+
+def _search_itunes(query: str, n: int) -> list[Candidate]:
+    url = ("https://itunes.apple.com/search?"
+           + urllib.parse.urlencode({"term": query, "entity": "song", "limit": n}))
+    out = []
+    for r in _get_json(url).get("results", []):
+        title, artist = r.get("trackName"), r.get("artistName")
+        if not (title and artist):
+            continue
+        out.append(Candidate(title=title, artist=artist, source="itunes",
+                             ref=f"{artist} - {title}", license="unknown (any lane)",
+                             preview_url=r.get("previewUrl")))
+    return out
+
+
+def _search_deezer(query: str, n: int) -> list[Candidate]:
+    url = "https://api.deezer.com/search?" + urllib.parse.urlencode({"q": query, "limit": n})
+    out = []
+    for r in _get_json(url).get("data", []):
+        title, artist = r.get("title"), (r.get("artist") or {}).get("name")
+        if not (title and artist):
+            continue
+        out.append(Candidate(title=title, artist=artist, source="deezer",
+                             ref=f"{artist} - {title}", license="unknown (any lane)",
+                             preview_url=r.get("preview")))
+    return out
