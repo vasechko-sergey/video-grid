@@ -1,5 +1,5 @@
 """Pure decision core for mood-match (design docs/specs/2026-07-13-mood-match-design.md).
-The MoodVector space + the anchor lexicon + scoring — numpy/stdlib only, no audio IO,
+The MoodVector space + the anchor lexicon + scoring — stdlib only, no audio IO,
 no librosa — so every branch is unit-tested deterministically (the offset.py discipline).
 beats.mood_features maps an audio file into this space; scripts/mood.py ranks a folder."""
 import math

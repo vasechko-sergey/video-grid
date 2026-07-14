@@ -4,7 +4,7 @@
 
 **Goal:** Rank a local folder of candidate tracks by fit to `SPEC.mood` → a `MUSIC_SHORTLIST` the agent picks from, closing the montage §5.5 "mood matches SPEC" gate for the `local` music lane.
 
-**Architecture:** Mirrors the start-offset slice — a pure numeric core (`scripts/lib/mood.py`, the `offset.py` analog: `MoodVector` + `MOOD_ANCHORS` lexicon + `mood_target`/`distance`/`rank`/`rank_by_drive`, numpy/stdlib only), a librosa extractor that maps a file into that space (`beats.mood_features`, where librosa already lives), and a thin driver (`scripts/mood.py`) that scans a folder → ranks → writes `MUSIC_SHORTLIST.{json,md}`. A `music-match` SKILL runs the driver, presents the shortlist, and hands the pick to the existing `beats --auto-start`.
+**Architecture:** Mirrors the start-offset slice — a pure numeric core (`scripts/lib/mood.py`, the `offset.py` analog: `MoodVector` + `MOOD_ANCHORS` lexicon + `mood_target`/`distance`/`rank`/`rank_by_drive`, stdlib only), a librosa extractor that maps a file into that space (`beats.mood_features`, where librosa already lives), and a thin driver (`scripts/mood.py`) that scans a folder → ranks → writes `MUSIC_SHORTLIST.{json,md}`. A `music-match` SKILL runs the driver, presents the shortlist, and hands the pick to the existing `beats --auto-start`.
 
 **Tech Stack:** Python 3, numpy, librosa (lazy import, already a dep), scipy.io.wavfile (test fixtures, already used), pytest (`pythonpath = .`, marker `integration`).
 
@@ -102,7 +102,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.mood'`.
 ```python
 # scripts/lib/mood.py
 """Pure decision core for mood-match (design docs/specs/2026-07-13-mood-match-design.md).
-The MoodVector space + the anchor lexicon + scoring — numpy/stdlib only, no audio IO,
+The MoodVector space + the anchor lexicon + scoring — stdlib only, no audio IO,
 no librosa — so every branch is unit-tested deterministically (the offset.py discipline).
 beats.mood_features maps an audio file into this space; scripts/mood.py ranks a folder."""
 from dataclasses import dataclass

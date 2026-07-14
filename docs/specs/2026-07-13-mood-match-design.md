@@ -47,7 +47,7 @@ where librosa already lives — no second importer), and a thin driver. Five tou
 scripts/lib/mood.py   NEW  pure   MoodVector (3 axes, validate + JSON round-trip);
                                   MOOD_ANCHORS synonym-rich lexicon; mood_target(text)→
                                   MoodVector|None; norm01 + the three ref ranges; distance();
-                                  rank(); rank_by_drive() (fallback). numpy + stdlib only.
+                                  rank(); rank_by_drive() (fallback). stdlib only (no numpy).
 scripts/beats.py      EDIT  add   mood_features(track)→MoodVector — lazy librosa: tempo,
                                   spectral-centroid mean, peak-normalized RMS mean → norm01.
 scripts/mood.py       NEW  driver build_shortlist(folder, mood_text, out_dir): glob tracks →
@@ -59,7 +59,7 @@ docs                  EDIT        this spec + plan + build-status + pipeline-map
                                   montage §5.5 blockquote.
 ```
 
-**Dependency DAG (no cycle):** `mood.py` → numpy only; `beats.py` → `offset`,
+**Dependency DAG (no cycle):** `mood.py` → stdlib only; `beats.py` → `offset`,
 `vocals`, `mood`, `models` (librosa lazy); `scripts/mood.py` → `beats`, `mood`,
 `spec`. `mood.py` imports nothing from the repo — it owns the vector space and is
 pure, exactly as `offset.py` owns the envelope space.
