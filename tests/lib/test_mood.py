@@ -25,6 +25,11 @@ def test_moodvector_rejects_non_number():
         MoodVector("hi", 0.5, 0.5)
 
 
+def test_moodvector_from_dict_missing_key_raises():
+    with pytest.raises(ValueError, match="missing key"):
+        MoodVector.from_dict({"energy": 0.5, "brightness": 0.5})   # no "pace"
+
+
 def test_norm01_endpoints_midpoint_and_clamp():
     assert norm01(60, 60, 180) == 0.0
     assert norm01(180, 60, 180) == 1.0

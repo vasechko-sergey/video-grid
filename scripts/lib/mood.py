@@ -33,6 +33,10 @@ class MoodVector:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MoodVector":
+        missing = [k for k in ("energy", "brightness", "pace") if k not in d]
+        if missing:
+            raise ValueError(f"MoodVector.from_dict missing key(s) {missing} — "
+                             f"a mood vector dict needs energy, brightness, pace")
         return cls(energy=d["energy"], brightness=d["brightness"], pace=d["pace"])
 
 
