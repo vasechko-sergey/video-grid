@@ -38,8 +38,10 @@ def test_v1_stages_order_and_keys():
 
 def test_v1_stages_kinds_and_flags():
     by = {s.key: s for s in V1_STAGES}
-    assert [s.key for s in V1_STAGES if s.kind == "deferred"] == [
-        "trend-scan", "pacing"]
+    assert [s.key for s in V1_STAGES if s.kind == "deferred"] == ["trend-scan"]
+    assert by["pacing"].kind == "optional"
+    assert by["pacing"].artifact == "PACING.md"
+    assert by["pacing"].checkpoint is None
     assert by["music-and-mood"].kind == "optional"
     assert by["reel-brief"].kind == "optional"
     assert by["reel-brief"].artifact == "SPEC.json"
@@ -79,8 +81,7 @@ def test_empty_run_next_is_project_init(tmp_path):
 
 def test_deferred_stages_always_skip(tmp_path):
     res = next_action(str(tmp_path))
-    for k in ("trend-scan", "pacing"):
-        assert _state(res, k) == "skip"
+    assert _state(res, "trend-scan") == "skip"
 
 
 def test_project_only_next_is_footage(tmp_path):
@@ -99,6 +100,18 @@ def test_music_optional_absent_then_present(tmp_path):
     _touch(tmp_path, "MUSIC.json")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "music-and-mood") == "done"
+    assert res2["next"] == "edit-plan"
+
+
+def test_pacing_optional_absent_then_present(tmp_path):
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "FOOTAGE.json")
+    res = next_action(str(tmp_path))
+    assert _state(res, "pacing") == "optional"   # absent optional never blocks
+    assert res["next"] == "edit-plan"
+    _touch(tmp_path, "PACING.md")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "pacing") == "done"
     assert res2["next"] == "edit-plan"
 
 

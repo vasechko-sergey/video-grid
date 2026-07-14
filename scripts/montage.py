@@ -43,7 +43,7 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None),
     Stage("music-and-mood", "MUSIC.json", "optional",
           "beats CLI (absent -> silent reel)", None),
-    Stage("pacing", "PACING.md", "deferred", "5.6 - not built", None),
+    Stage("pacing", "PACING.md", "optional", "pacing SKILL -> pacing CLI", None),
     Stage("edit-plan", "EDL.json", "required",
           "edit-plan SKILL -> edit_plan build CLI", "edl"),
     Stage("assemble-draft", "draft.mp4", "optional",

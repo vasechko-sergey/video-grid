@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> [pacing] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -84,7 +84,15 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    Either way, pass `<run>/MUSIC.json` to edit-plan. On "no music" / "без
    музыки", leave it unset — the reel is silent (a valid path).
 
-6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
+6. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
+   skill — it derives the beat-aligned energy spine (`.venv/bin/python -m
+   scripts.pacing --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir
+   <run>`) and writes `PACING.json` + `PACING.md` into `<run>`. No `MUSIC.json`
+   (a silent reel) -> skip it (named); edit-plan runs pacing-less (`beat_slot`
+   stays unset). `montage status` never points `next` here (it is optional).
+   Pass `<run>/PACING.json` to edit-plan next (`--pacing <run>/PACING.json`).
+
+7. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). **Checkpoint
    2 — EDL approval + curation:** show the user `EDL.md`. To swap or re-order an
    episode, edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
@@ -92,7 +100,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    assemble-draft step below), it is what the user approves at Checkpoint 2; on a
    run without it, `EDL.md` still anchors CP2.
 
-7. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
+8. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
    process-episode render, offer a rough draft: "Want to see a rough cut first?"
    If yes, `.venv/bin/python -m scripts.draft build --edl <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
@@ -102,7 +110,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
    `montage status` never points `next` at it, and the autonomous path skips it.
 
-8. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
+9. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
    exists) and the reel wants on-screen text, invoke the **titles** skill — it
    reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
    font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
@@ -114,17 +122,17 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
    the text.
 
-9. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
-   --project <run>/project.json --footage-root <footage_root>
-   --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
-   [--titles <run>/TITLES.json]`. This runs
-   the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
-   deliver). When `TITLES.json` is passed, `deliver` burns its drawtext chain into
-   the ONE encode it already runs — no second pass. **Checkpoint 3 — final
-   review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when titles
-   were authored) `TITLES.md` alongside them. A `stop_and_report` (a failed gate)
-   is surfaced verbatim — never fixed forward; route it to the culprit stage's
-   skill.
+10. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
+    --project <run>/project.json --footage-root <footage_root>
+    --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
+    [--titles <run>/TITLES.json]`. This runs
+    the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
+    deliver). When `TITLES.json` is passed, `deliver` burns its drawtext chain into
+    the ONE encode it already runs — no second pass. **Checkpoint 3 — final
+    review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when titles
+    were authored) `TITLES.md` alongside them. A `stop_and_report` (a failed gate)
+    is surfaced verbatim — never fixed forward; route it to the culprit stage's
+    skill.
 
 ## Reading the brief (intent -> param)
 
@@ -146,14 +154,16 @@ aspect (project-init's own "ask, don't guess").
 
 - The **three checkpoints** (SPEC, EDL, final review) are the ONLY user-facing
   gates (§4.1); everything else is a machine gate inside the sub-stages.
-- **Deferred stages are named, not skipped silently:** trend-scan (5.4) and pacing
-  (`PACING.md`, 5.6 — `beat_slot` stays unset) are not built; say so when you pass
-  over them. reel-brief (`SPEC.md`, 5.3) is optional — offer it; on a bare run,
-  name it as skipped. assemble-draft (`draft.mp4`, 5.9) is optional too — offer it
-  before edl_to_reel; the autonomous path skips it without asking (no approval
-  needed to skip a preview). titles (`TITLES.json`, 5.16) is optional too — offer
-  it once `SPEC.json` exists; the autonomous path skips it without asking (no
-  on-screen text is a valid, complete reel).
+- **Deferred stages are named, not skipped silently:** trend-scan (5.4) is not
+  built; say so when you pass over it. reel-brief (`SPEC.md`, 5.3) is optional —
+  offer it; on a bare run, name it as skipped. assemble-draft (`draft.mp4`, 5.9)
+  is optional too — offer it before edl_to_reel; the autonomous path skips it
+  without asking (no approval needed to skip a preview). titles (`TITLES.json`,
+  5.16) is optional too — offer it once `SPEC.json` exists; the autonomous path
+  skips it without asking (no on-screen text is a valid, complete reel). pacing
+  (`PACING.md`, 5.6) is optional too — it runs automatically whenever
+  `MUSIC.json` exists; a music-less reel skips it and edit-plan runs pacing-less
+  (`beat_slot` stays unset).
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it
