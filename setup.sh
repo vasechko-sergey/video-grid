@@ -11,13 +11,14 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 # upgrades what is already present; ffmpeg is pinned at the end for the same reason.
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# scan all args so --with-vidstab, --with-fonts and --with-demucs compose (order-independent)
-WANT_VIDSTAB=0; WANT_FONTS=0; WANT_DEMUCS=0
+# scan all args so --with-vidstab, --with-fonts, --with-demucs and --with-sourcing compose (order-independent)
+WANT_VIDSTAB=0; WANT_FONTS=0; WANT_DEMUCS=0; WANT_SOURCING=0
 for arg in "$@"; do
   case "$arg" in
-    --with-vidstab) WANT_VIDSTAB=1 ;;
-    --with-fonts)   WANT_FONTS=1 ;;
-    --with-demucs)  WANT_DEMUCS=1 ;;
+    --with-vidstab)  WANT_VIDSTAB=1 ;;
+    --with-fonts)    WANT_FONTS=1 ;;
+    --with-demucs)   WANT_DEMUCS=1 ;;
+    --with-sourcing) WANT_SOURCING=1 ;;
   esac
 done
 
@@ -131,6 +132,32 @@ if [ "$WANT_DEMUCS" = 1 ]; then
   "$VENV/bin/pip" show demucs >/dev/null 2>&1 || {
     echo "installing demucs (vocal separation; pulls torch) into the venv..."
     "$VENV/bin/pip" install demucs; }
+fi
+# music sourcing (§5.5 B3). Opt-in — installs yt-dlp (the `any` lane) and configures the
+# free lane's OPTIONAL Jamendo key. The free lane works out of the box via ccMixter (no
+# key), so this is capability, not a hard requirement. Guarded on already-installed so a
+# rerun is a clean no-op (kept out of requirements.txt to keep the base install lean).
+if [ "$WANT_SOURCING" = 1 ]; then
+  "$VENV/bin/pip" show yt-dlp >/dev/null 2>&1 || {
+    echo "installing yt-dlp (any-lane audio sourcing) into the venv..."
+    "$VENV/bin/pip" install yt-dlp; }
+  SRC_ENV="$SKILL_DIR/config/sourcing.env"
+  if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
+    echo ""
+    echo "Free-lane music source. Jamendo (richer CC catalog) needs a free client_id;"
+    echo "without one the free lane uses ccMixter (no key)."
+    echo "  [1] paste a Jamendo client_id   [2] open the devportal to create one   [3] use ccMixter"
+    printf "choose [1/2/3] (default 3): "
+    read -r choice || choice=3
+    case "${choice:-3}" in
+      1) printf "paste client_id: "; read -r cid
+         mkdir -p "$SKILL_DIR/config"; echo "JAMENDO_CLIENT_ID=$cid" > "$SRC_ENV"
+         echo "saved to config/sourcing.env (gitignored)" ;;
+      2) echo "open https://devportal.jamendo.com/ , create an app, then re-run: bash setup.sh --with-sourcing"
+         echo "(the free lane uses ccMixter until a key is configured)" ;;
+      *) echo "using ccMixter (no key) for the free lane" ;;
+    esac
+  fi
 fi
 # YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"

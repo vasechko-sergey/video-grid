@@ -6,3 +6,6 @@ __pycache__/
 
 # visual brainstorming companion (mockups, not source)
 .superpowers/
+
+# per-user music-sourcing config (Jamendo client_id) — never committed
+config/sourcing.env
