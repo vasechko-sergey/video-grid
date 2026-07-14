@@ -19,7 +19,7 @@ def test_download_free_direct_writes_file_and_sidecar(tmp_path, monkeypatch):
                         lambda url, dest: dest.write_bytes(b"MP3"))
     tr = fetch.download(_cc(), "free", str(tmp_path), "2026-07-14")
     assert open(tr.path, "rb").read() == b"MP3" and tr.license == "CC BY"
-    side = json.loads((tmp_path / f"{_cc().slug()}.json").read_text())
+    side = json.loads((tmp_path / f"{fetch._cache_key(_cc())}.json").read_text())
     assert side["source"] == "jamendo" and side["date"] == "2026-07-14"
 
 
@@ -28,7 +28,7 @@ def test_download_any_youtube_logs_responsibility(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(fetch.catalog, "has_ytdlp", lambda: True)
     monkeypatch.setattr(fetch.catalog, "ytdlp_cmd", lambda: ["yt-dlp"])
     def fake_run(cmd, **k):
-        (tmp_path / f"{c.slug()}.m4a").write_bytes(b"YT")
+        (tmp_path / f"{fetch._cache_key(c)}.m4a").write_bytes(b"YT")
         return _sp.CompletedProcess(cmd, 0, "", "")
     monkeypatch.setattr(fetch.subprocess, "run", fake_run)
     tr = fetch.download(c, "any", str(tmp_path), "2026-07-14")
@@ -49,6 +49,21 @@ def test_download_reuses_cache(tmp_path, monkeypatch):
     fetch.download(_cc(), "free", str(tmp_path), "2026-07-14")
     fetch.download(_cc(), "free", str(tmp_path), "2026-07-14")   # sidecar present → reuse
     assert len(calls) == 1
+
+
+def test_download_distinct_refs_same_slug_do_not_collide(tmp_path, monkeypatch):
+    a = _cc(ref="http://a/one")            # slug jamendo-a-t
+    b = _cc(ref="http://a/two")            # SAME slug, different ref
+    assert a.slug() == b.slug() and fetch._cache_key(a) != fetch._cache_key(b)
+    seen = []
+    monkeypatch.setattr(fetch.catalog, "http_download",
+                        lambda url, dest: (seen.append(url), dest.write_bytes(url.encode())))
+    ta = fetch.download(a, "free", str(tmp_path), "2026-07-14")
+    tb = fetch.download(b, "free", str(tmp_path), "2026-07-14")
+    assert ta.path != tb.path                                   # distinct cache files
+    assert open(ta.path, "rb").read() == b"http://a/one"
+    assert open(tb.path, "rb").read() == b"http://a/two"        # b did NOT reuse a's file
+    assert len(seen) == 2                                       # both downloaded — no false cache hit
 
 
 def test_download_free_rejects_youtube_source(tmp_path):

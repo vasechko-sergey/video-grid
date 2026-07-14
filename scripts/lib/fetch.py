@@ -4,6 +4,7 @@ cached audio file + a metadata sidecar, per rights lane: `free` (Jamendo/ccMixte
 direct HTTP GET; `any` (YouTube / iTunes / Deezer name) goes through yt-dlp and logs a
 responsibility line. Mirrors vocals.py — the opt-in heavy tool (yt-dlp) sits behind
 catalog.has_ytdlp() with a fail-loud remedy. The driver stamps `date` (no ambient clock)."""
+import hashlib
 import json
 import subprocess
 import sys
@@ -43,24 +44,32 @@ def _cached(cache: Path, slug: str) -> Path | None:
     return hits[0] if hits else None
 
 
+def _cache_key(candidate: catalog.Candidate) -> str:
+    """Cache filename stem: the slug plus a short hash of the source-native ref, so two
+    distinct tracks that share source+artist+title (same slug) never collide in the cache
+    (design §5.3 — keyed by source+id, not just source+title)."""
+    ref_hash = hashlib.sha1(candidate.ref.encode("utf-8")).hexdigest()[:8]
+    return f"{candidate.slug()}-{ref_hash}"
+
+
 def download(candidate: catalog.Candidate, mode: str, cache_dir: str, date: str) -> FetchedTrack:
     """Download `candidate` to `cache_dir` and write its sidecar. `free` → direct HTTP;
-    `any` → yt-dlp (+ responsibility log). A cached slug (sidecar present) is reused."""
+    `any` → yt-dlp (+ responsibility log). A cached key (sidecar present) is reused."""
     if mode not in ("free", "any"):
         raise ValueError(f"fetch mode {mode!r} not in (free, any)")
     if mode == "free" and candidate.source not in ("jamendo", "ccmixter"):
         raise ValueError(f"free lane cannot fetch a {candidate.source} source — rights invariant")
     cache = Path(cache_dir); cache.mkdir(parents=True, exist_ok=True)
-    slug = candidate.slug()
-    sidecar = cache / f"{slug}.json"
-    if sidecar.exists() and (hit := _cached(cache, slug)) is not None:
+    key = _cache_key(candidate)
+    sidecar = cache / f"{key}.json"
+    if sidecar.exists() and (hit := _cached(cache, key)) is not None:
         meta = json.loads(sidecar.read_text())
         _log(f"music_fetch: reusing cached {hit.name}")
         return FetchedTrack(path=str(hit), title=meta["title"], artist=meta["artist"],
                             source=meta["source"], source_url=meta["source_url"],
                             license=meta["license"], date=meta["date"])
     if candidate.source in ("jamendo", "ccmixter"):
-        dest = cache / f"{slug}.mp3"
+        dest = cache / f"{key}.mp3"
         catalog.http_download(candidate.ref, dest)
         path = dest
     else:                                        # youtube / itunes / deezer → yt-dlp (any lane)
@@ -69,12 +78,12 @@ def download(candidate: catalog.Candidate, mode: str, cache_dir: str, date: str)
              f"{target!r}. Licensing/rights are the user's responsibility and "
              f"jurisdiction-dependent (recorded in {sidecar.name}).")
         proc = subprocess.run(
-            catalog.ytdlp_cmd() + ["-f", "bestaudio", "-o", str(cache / f"{slug}.%(ext)s"),
+            catalog.ytdlp_cmd() + ["-f", "bestaudio", "-o", str(cache / f"{key}.%(ext)s"),
                                    "--no-warnings", target],
             capture_output=True, text=True)
         if proc.returncode != 0:
             raise ValueError(f"music sourcing: yt-dlp download failed ({proc.stderr.strip()})")
-        path = _cached(cache, slug)
+        path = _cached(cache, key)
         if path is None:
             raise ValueError(f"music sourcing: yt-dlp produced no file for {target}")
     track = FetchedTrack(path=str(path), title=candidate.title, artist=candidate.artist,

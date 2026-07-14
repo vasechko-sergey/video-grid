@@ -117,16 +117,20 @@ the final `MUSIC.json` analysis runs on the fetched full file.
    surfaced the list, the user chose), or `--track "<name>"` (an explicit
    `Spec.music` track name — skips discovery: `free` → Jamendo name search top-1;
    `any` → `yt-dlp ytsearch1:"<name>"`).
-2. **Download.** `fetch.download(candidate, mode, cache_dir) -> FetchedTrack` (§7):
-   - `free` (Jamendo/ccMixter) → HTTP GET the `download_url` → `music/cache/<slug>.mp3`.
-   - `any`/YouTube → `yt-dlp -f bestaudio -o <cache>/<slug>.%(ext)s <ref>`.
-   - Writes a **metadata sidecar** `music/cache/<slug>.json`
+2. **Download.** `fetch.download(candidate, mode, cache_dir) -> FetchedTrack` (§7). Each
+   candidate resolves to a cache key `<key>` = `<slug>-<id8>` — the candidate's `slug()`
+   plus an 8-hex-char hash of its source-native `ref` — so two distinct tracks that share
+   source+artist+title (same slug) never collide in the cache:
+   - `free` (Jamendo/ccMixter) → HTTP GET the `download_url` → `music/cache/<key>.mp3`.
+   - `any`/YouTube → `yt-dlp -f bestaudio -o <cache>/<key>.%(ext)s <ref>`.
+   - Writes a **metadata sidecar** `music/cache/<key>.json`
      (`title, artist, source, source_url, license, date`). `date` is passed in by the
      driver (scripts cannot call `Date.now()`-equivalents freely — the driver stamps it).
    - On `any`, logs the **responsibility line** to stderr and records
      `license="unknown (any lane)"`.
-3. **Cache reuse.** A cached `<slug>` with its sidecar present is **reused** — no
-   re-download across runs (mirrors intake's per-run reuse ethos; keyed by source+id).
+3. **Cache reuse.** A cached `<key>` with its sidecar present is **reused** — no
+   re-download across runs (mirrors intake's per-run reuse ethos; keyed by source+id, via
+   the ref-hash folded into `<key>`).
 4. **Hand-off.** The `music-source` SKILL then runs the existing
    `beats <cached-file> --auto-start --duration <length_s> --out <run>/MUSIC.json`
    on the **real full file** — start-offset intelligence + the beat grid, unchanged.
@@ -145,8 +149,8 @@ SPEC.mood + music_mode=free|any
   MUSIC_SHORTLIST.json/.md   ── agent/user picks (§4.1 music checkpoint) ──┐
                                                                             ▼
                                                               music_fetch.py
-                                                    fetch.download → music/cache/<slug>.*
-                                                              + <slug>.json sidecar
+                                                    fetch.download → music/cache/<key>.*
+                                                              + <key>.json sidecar
                                                                             │
                                             beats --auto-start (real file)  ▼
                                                                      MUSIC.json
