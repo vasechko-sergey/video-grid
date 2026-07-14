@@ -165,3 +165,24 @@ def test_search_zero_candidates_raises(monkeypatch):
     _mock_ytdlp(monkeypatch, "")
     with pytest.raises(ValueError, match="no candidates"):
         catalog.search("any", "zzz", 3)
+
+
+# append to tests/lib/test_catalog.py
+def test_preview_clip_http_when_preview_url(tmp_path, monkeypatch):
+    c = Candidate("t", "a", "itunes", "a - t", "unknown (any lane)", "http://p/x.mp3")
+    monkeypatch.setattr(catalog, "http_download",
+                        lambda url, dest: dest.write_bytes(b"AUDIO"))
+    path = catalog.preview_clip(c, str(tmp_path))
+    assert path.endswith(".preview.mp3") and open(path, "rb").read() == b"AUDIO"
+
+
+def test_preview_clip_ytdlp_section_when_no_preview(tmp_path, monkeypatch):
+    c = Candidate("t", "a", "youtube", "vid", "unknown (any lane)", None)
+    monkeypatch.setattr(catalog, "has_ytdlp", lambda: True)
+    monkeypatch.setattr(catalog, "ytdlp_cmd", lambda: ["yt-dlp"])
+    def fake_run(cmd, **k):
+        (tmp_path / f"{c.slug()}.preview.m4a").write_bytes(b"YT")
+        return _sp.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(catalog.subprocess, "run", fake_run)
+    path = catalog.preview_clip(c, str(tmp_path))
+    assert path.endswith(".preview.m4a")

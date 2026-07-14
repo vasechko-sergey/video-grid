@@ -229,3 +229,25 @@ def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Ca
         raise ValueError(f"music sourcing: no candidates for {query!r} (mode={mode}) — "
                          f"try a different --query or --mood")
     return cands
+
+
+def preview_clip(candidate: Candidate, cache_dir: str) -> str:
+    """Materialise a ~30 s clip for mood analysis, source-appropriately (design §4): an
+    HTTP preview_url via GET, else a yt-dlp 0:00–0:30 section. Returns the clip path."""
+    cache = Path(cache_dir); cache.mkdir(parents=True, exist_ok=True)
+    slug = candidate.slug()
+    if candidate.preview_url:
+        dest = cache / f"{slug}.preview.mp3"
+        http_download(candidate.preview_url, dest)
+        return str(dest)
+    proc = subprocess.run(
+        ytdlp_cmd() + ["-f", "bestaudio", "--download-sections", "*0:00-0:30",
+                       "-o", str(cache / f"{slug}.preview.%(ext)s"), "--no-warnings",
+                       candidate.ref],
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise ValueError(f"music sourcing: yt-dlp preview failed ({proc.stderr.strip()})")
+    hits = sorted(cache.glob(f"{slug}.preview.*"))
+    if not hits:
+        raise ValueError(f"music sourcing: yt-dlp produced no preview for {candidate.ref}")
+    return str(hits[0])
