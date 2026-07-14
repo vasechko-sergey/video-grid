@@ -31,7 +31,7 @@
 - Create: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_catalog.py
@@ -68,12 +68,12 @@ def test_sources_are_the_five_lanes():
     assert SOURCES == ("jamendo", "ccmixter", "youtube", "itunes", "deezer")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: scripts.lib.catalog`.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 ```python
 # scripts/lib/catalog.py
@@ -127,12 +127,12 @@ class Candidate:
                    license=d["license"], preview_url=d.get("preview_url"))
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -147,7 +147,7 @@ git commit -m "feat: catalog.Candidate wire-contract + SOURCES + slug (5.5 sourc
 - Modify: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/lib/test_catalog.py
@@ -180,12 +180,12 @@ def test_ytdlp_cmd_raises_when_absent(monkeypatch):
         catalog.ytdlp_cmd()
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.catalog' has no attribute '_free_source'`.
 
-- [ ] **Step 3: Add the infra** (imports at top of `catalog.py`, helpers after `Candidate`)
+- [x] **Step 3: Add the infra** (imports at top of `catalog.py`, helpers after `Candidate`)
 
 Add to the import block:
 
@@ -272,12 +272,12 @@ def http_download(url: str, dest: Path) -> None:
 
 Also add `import os` to the import block (used by `_jamendo_client_id`).
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -292,7 +292,7 @@ git commit -m "feat: catalog infra — yt-dlp gate, Jamendo key, free-source res
 - Modify: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/lib/test_catalog.py
@@ -332,12 +332,12 @@ def test_search_itunes_skips_incomplete_rows(monkeypatch):
     assert catalog._search_itunes("x", 5) == []
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k "itunes or deezer" -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: ... '_search_itunes'`.
 
-- [ ] **Step 3: Add the two keyless searches**
+- [x] **Step 3: Add the two keyless searches**
 
 ```python
 def _search_itunes(query: str, n: int) -> list[Candidate]:
@@ -367,12 +367,12 @@ def _search_deezer(query: str, n: int) -> list[Candidate]:
     return out
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k "itunes or deezer" -q ; echo "EXIT: $?"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -387,7 +387,7 @@ git commit -m "feat: catalog keyless searches — iTunes + Deezer (5.5 sourcing)
 - Modify: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/lib/test_catalog.py
@@ -413,12 +413,12 @@ def test_search_ccmixter_parses_list(monkeypatch):
     assert cands[0].license == "CC BY"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k "jamendo or ccmixter" -q ; echo "EXIT: $?"`
 Expected: FAIL — missing `_search_jamendo`.
 
-- [ ] **Step 3: Add the two free searches**
+- [x] **Step 3: Add the two free searches**
 
 ```python
 def _search_jamendo(query: str, n: int) -> list[Candidate]:
@@ -459,12 +459,12 @@ def _search_ccmixter(query: str, n: int) -> list[Candidate]:
     return out
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k "jamendo or ccmixter" -q ; echo "EXIT: $?"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -479,7 +479,7 @@ git commit -m "feat: catalog free searches — Jamendo + ccMixter (5.5 sourcing)
 - Modify: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/lib/test_catalog.py
@@ -529,12 +529,12 @@ def test_search_zero_candidates_raises(monkeypatch):
         catalog.search("any", "zzz", 3)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k "youtube or search" -q ; echo "EXIT: $?"`
 Expected: FAIL — missing `_search_youtube`/`search`.
 
-- [ ] **Step 3: Add the YouTube search + the dispatcher**
+- [x] **Step 3: Add the YouTube search + the dispatcher**
 
 ```python
 def _search_youtube(query: str, n: int) -> list[Candidate]:
@@ -585,12 +585,12 @@ def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Ca
 
 Note: the `catalog` parameter shadows the module name inside `search`; that is intentional and local (the function references no module-level `catalog`). Keep it.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: PASS (whole file).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -605,7 +605,7 @@ git commit -m "feat: catalog YouTube search + search() dispatcher w/ rights inva
 - Modify: `scripts/lib/catalog.py`
 - Test: `tests/lib/test_catalog.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/lib/test_catalog.py
@@ -629,12 +629,12 @@ def test_preview_clip_ytdlp_section_when_no_preview(tmp_path, monkeypatch):
     assert path.endswith(".preview.m4a")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -k preview -q ; echo "EXIT: $?"`
 Expected: FAIL — missing `preview_clip`.
 
-- [ ] **Step 3: Add `preview_clip`**
+- [x] **Step 3: Add `preview_clip`**
 
 ```python
 def preview_clip(candidate: Candidate, cache_dir: str) -> str:
@@ -659,12 +659,12 @@ def preview_clip(candidate: Candidate, cache_dir: str) -> str:
     return str(hits[0])
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_catalog.py -q ; echo "EXIT: $?"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/catalog.py tests/lib/test_catalog.py
@@ -679,7 +679,7 @@ git commit -m "feat: catalog.preview_clip — HTTP preview or yt-dlp section (5.
 - Create: `scripts/lib/fetch.py`
 - Test: `tests/lib/test_fetch.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_fetch.py
@@ -741,12 +741,12 @@ def test_download_free_rejects_youtube_source(tmp_path):
                        "free", str(tmp_path), "2026-07-14")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_fetch.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: scripts.lib.fetch`.
 
-- [ ] **Step 3: Write `fetch.py`**
+- [x] **Step 3: Write `fetch.py`**
 
 ```python
 # scripts/lib/fetch.py
@@ -835,12 +835,12 @@ def download(candidate: catalog.Candidate, mode: str, cache_dir: str, date: str)
     return track
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_fetch.py -q ; echo "EXIT: $?"`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/fetch.py tests/lib/test_fetch.py
@@ -855,7 +855,7 @@ git commit -m "feat: fetch.download — cache, sidecar, responsibility log, righ
 - Create: `scripts/music_find.py`
 - Test: `tests/lib/test_music_find_driver.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_music_find_driver.py
@@ -925,12 +925,12 @@ def test_cli_requires_free_or_any(tmp_path, monkeypatch):
         find.main()
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_music_find_driver.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: scripts.music_find`.
 
-- [ ] **Step 3: Write `music_find.py`**
+- [x] **Step 3: Write `music_find.py`**
 
 ```python
 # scripts/music_find.py
@@ -1034,12 +1034,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_music_find_driver.py -q ; echo "EXIT: $?"`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/music_find.py tests/lib/test_music_find_driver.py
@@ -1054,7 +1054,7 @@ git commit -m "feat: music_find driver — rank sourced previews → MUSIC_SHORT
 - Create: `scripts/music_fetch.py`
 - Test: `tests/lib/test_music_fetch_driver.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_music_fetch_driver.py
@@ -1112,12 +1112,12 @@ def test_cli_from_shortlist_needs_pick(tmp_path, monkeypatch):
         mf.main()
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_music_fetch_driver.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: scripts.music_fetch`.
 
-- [ ] **Step 3: Write `music_fetch.py`**
+- [x] **Step 3: Write `music_fetch.py`**
 
 ```python
 # scripts/music_fetch.py
@@ -1170,12 +1170,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_music_fetch_driver.py -q ; echo "EXIT: $?"`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/music_fetch.py tests/lib/test_music_fetch_driver.py
@@ -1189,7 +1189,7 @@ git commit -m "feat: music_fetch driver — pick/named download + CLI (5.5 sourc
 **Files:**
 - Create: `tests/integration/test_sourcing.py`
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 ```python
 # tests/integration/test_sourcing.py
@@ -1240,12 +1240,12 @@ def test_find_local_fixture_ranks_energetic_first(tmp_path, monkeypatch):
     assert data["candidates"][0]["title"] == "Energetic"
 ```
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_sourcing.py -q -m integration ; echo "EXIT: $?"`
 Expected: PASS (the iTunes smoke may `skip` off-network; the local find PASSES via real librosa).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_sourcing.py
@@ -1262,7 +1262,7 @@ git commit -m "test: sourcing integration — iTunes smoke + local-fixture real-
 
 > **No machine mutation:** edit the script only. Do **not** run `setup.sh`, do not `pip install yt-dlp`. Verification is reading the diff back.
 
-- [ ] **Step 1: Add `--with-sourcing` to the arg-scan**
+- [x] **Step 1: Add `--with-sourcing` to the arg-scan**
 
 Change the comment + `WANT_*` line + the `case`:
 
@@ -1279,7 +1279,7 @@ for arg in "$@"; do
 done
 ```
 
-- [ ] **Step 2: Add the install + interactive free-lane block** (after the `WANT_DEMUCS` block, before the `mkdir -p "$SKILL_DIR/models"` line)
+- [x] **Step 2: Add the install + interactive free-lane block** (after the `WANT_DEMUCS` block, before the `mkdir -p "$SKILL_DIR/models"` line)
 
 ```bash
 # music sourcing (§5.5 B3). Opt-in — installs yt-dlp (the `any` lane) and configures the
@@ -1310,7 +1310,7 @@ if [ "$WANT_SOURCING" = 1 ]; then
 fi
 ```
 
-- [ ] **Step 3: gitignore the per-user config**
+- [x] **Step 3: gitignore the per-user config**
 
 Append to `.gitignore`:
 
@@ -1319,13 +1319,13 @@ Append to `.gitignore`:
 config/sourcing.env
 ```
 
-- [ ] **Step 4: Verify (read-only — do NOT run setup.sh)**
+- [x] **Step 4: Verify (read-only — do NOT run setup.sh)**
 
 Run: `bash -n setup.sh ; echo "SYNTAX EXIT: $?"` (syntax check only — no execution)
 Run: `git diff --stat setup.sh .gitignore`
 Expected: `bash -n` returns 0; the diff shows the two files changed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add setup.sh .gitignore
@@ -1341,7 +1341,7 @@ git commit -m "build: setup.sh --with-sourcing (yt-dlp + interactive Jamendo key
 - Modify: `SKILLS/music-match/SKILL.md` (the "Not this skill / Sourcing" bullet)
 - Modify: `SKILLS/using-montage/SKILL.md` (step 5 music routing)
 
-- [ ] **Step 1: Write `SKILLS/music-source/SKILL.md`**
+- [x] **Step 1: Write `SKILLS/music-source/SKILL.md`**
 
 ```markdown
 ---
@@ -1410,7 +1410,7 @@ Announce on entry: **"Using music-source to source and shortlist the reel's trac
   by mood only.
 ```
 
-- [ ] **Step 2: Update `SKILLS/music-match/SKILL.md`** — replace the deferred-sourcing bullet
+- [x] **Step 2: Update `SKILLS/music-match/SKILL.md`** — replace the deferred-sourcing bullet
 
 Find the "Not this skill" line:
 
@@ -1427,7 +1427,7 @@ Replace with:
   the user already has (`music.mode=local`).
 ```
 
-- [ ] **Step 3: Wire `SKILLS/using-montage/SKILL.md` step 5**
+- [x] **Step 3: Wire `SKILLS/using-montage/SKILL.md` step 5**
 
 Read the current step 5 (the music branch, added in the mood-match slice). It currently routes mood-but-no-track + a folder → music-match. Extend it so mood-but-no-track **without** a folder and `music_mode ∈ {free, any}` routes to **music-source**. Preserve the existing music-match branch. The resulting step 5 must read (adjust to match the file's exact surrounding wording):
 
@@ -1442,12 +1442,12 @@ Read the current step 5 (the music branch, added in the mood-match slice). It cu
    Then `beats --auto-start` locks `MUSIC.json`.
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `ls SKILLS/music-source/SKILL.md && grep -c music-source SKILLS/using-montage/SKILL.md SKILLS/music-match/SKILL.md ; echo "EXIT: $?"`
 Expected: the file exists; both SKILLs reference `music-source` (count ≥ 1 each).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add SKILLS/music-source/SKILL.md SKILLS/music-match/SKILL.md SKILLS/using-montage/SKILL.md
@@ -1464,7 +1464,7 @@ git commit -m "docs: music-source SKILL + music-match cross-ref + using-montage 
   `docs/specs/2026-07-11-music-spine-design.md`,
   `docs/specs/2026-07-13-mood-match-design.md`
 
-- [ ] **Step 1: `docs/build-status.md`** — add a Done entry and refresh Next-action
+- [x] **Step 1: `docs/build-status.md`** — add a Done entry and refresh Next-action
 
 Add under the most-recent Done entry:
 
@@ -1479,26 +1479,26 @@ Add under the most-recent Done entry:
 
 Update the "Next action" and the test-count line (run the suite in Step 5 for the exact number, e.g. "≈730 tests green").
 
-- [ ] **Step 2: `docs/pipeline-map.md`** — flip 5.5 to ✅, bump the tally + date
+- [x] **Step 2: `docs/pipeline-map.md`** — flip 5.5 to ✅, bump the tally + date
 
 - 5.5 row: append `+ sourcing (free/any, network) ✅`; change the 5.5 status marker from `◐` to `✅` and drop the "sourcing (B3)" blocker.
 - Tally line: `11 ✅ · 3 ◐ · 2 ❌` → `12 ✅ · 2 ◐ · 2 ❌`.
 - Bump `_Last updated: 2026-07-13._` → `_Last updated: 2026-07-14._`.
 
-- [ ] **Step 3: `CLAUDE.md`** — two registry rows (after the mood-match rows)
+- [x] **Step 3: `CLAUDE.md`** — two registry rows (after the mood-match rows)
 
 ```markdown
 | Music-sourcing design | [2026-07-14-music-sourcing-design.md](docs/specs/2026-07-14-music-sourcing-design.md) | §5.5 network lanes (B3): `catalog.py` per-source discovery (Jamendo/ccMixter/YouTube/iTunes/Deezer) + `fetch.py` download/cache/sidecar; `music_find`/`music_fetch` reuse the mood engine; `free`=ccMixter-no-key/Jamendo-keyed, `any`=yt-dlp opt-in responsibility-switch; `music-source` SKILL. |
 | Music-sourcing plan | [2026-07-14-music-sourcing.md](docs/plans/2026-07-14-music-sourcing.md) | Tasks 0–12: catalog contract/infra/searches/dispatcher/preview, fetch, both drivers, integration, `setup.sh --with-sourcing`, SKILL+wiring, docs. |
 ```
 
-- [ ] **Step 4: cross-refs in the three specs**
+- [x] **Step 4: cross-refs in the three specs**
 
 - `docs/specs/2026-07-05-montage-skillset-design.md` §5.5 — add a "Built (2026-07-14, sourcing)" blockquote after the mood-match one (autonomous sourcing lands; the three lanes complete; `music-source` SKILL; `setup.sh --with-sourcing`).
 - `docs/specs/2026-07-11-music-spine-design.md` §9 — change the "B3 — autonomous sourcing" bullet to note it **landed** 2026-07-14 (its own spec/plan), keeping only B4 pacing deferred.
 - `docs/specs/2026-07-13-mood-match-design.md` §9 — change the "B3 autonomous sourcing" non-goal bullet to a "landed 2026-07-14 (cross-ref)" note.
 
-- [ ] **Step 5: Run the full suite, then commit**
+- [x] **Step 5: Run the full suite, then commit**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: all green (unit sourcing tests + the rest); integration iTunes may `skip` off-network. Put the real passed-count into build-status.
@@ -1508,7 +1508,7 @@ git add docs/build-status.md docs/pipeline-map.md CLAUDE.md docs/specs/2026-07-0
 git commit -m "docs: sync build-status/pipeline-map/registry — 5.5 sourcing lands, 5.5 → ✅ (5.5 sourcing)"
 ```
 
-- [ ] **Step 6: Final whole-slice review** — dispatch a fresh reviewer over the whole branch diff (`git diff main...feat/music-sourcing`) against `docs/specs/2026-07-14-music-sourcing-design.md`. Focus: the **rights invariant** (`free` never yt-dlp / never a youtube source; `any` always logs + records the license), the yt-dlp **module-invocation** boundary (venv-consistent, mocked in units), fail-loud remedies, and that no test hits the real network unmarked. Fix findings as **separate follow-up commits** (never `--amend`).
+- [x] **Step 6: Final whole-slice review** — dispatch a fresh reviewer over the whole branch diff (`git diff main...feat/music-sourcing`) against `docs/specs/2026-07-14-music-sourcing-design.md`. Focus: the **rights invariant** (`free` never yt-dlp / never a youtube source; `any` always logs + records the license), the yt-dlp **module-invocation** boundary (venv-consistent, mocked in units), fail-loud remedies, and that no test hits the real network unmarked. Fix findings as **separate follow-up commits** (never `--amend`).
 
 ---
 
