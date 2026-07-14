@@ -95,3 +95,26 @@ def test_search_deezer_parses(monkeypatch):
 def test_search_itunes_skips_incomplete_rows(monkeypatch):
     _mock_urlopen(monkeypatch, {"results": [{"trackName": "NoArtist"}]})
     assert catalog._search_itunes("x", 5) == []
+
+
+# append to tests/lib/test_catalog.py
+def test_search_jamendo_parses_and_needs_key(monkeypatch):
+    monkeypatch.setattr(catalog, "_jamendo_client_id", lambda: None)
+    with pytest.raises(ValueError, match="Jamendo client_id"):
+        catalog._search_jamendo("epic", 5)
+    monkeypatch.setattr(catalog, "_jamendo_client_id", lambda: "cid")
+    _mock_urlopen(monkeypatch, {"results": [
+        {"name": "Rise", "artist_name": "Aurora", "audio": "http://a/s",
+         "audiodownload": "http://a/dl", "license_ccurl": "http://cc/by"}]})
+    cands = catalog._search_jamendo("epic", 5)
+    assert cands[0].source == "jamendo" and cands[0].ref == "http://a/dl"
+    assert cands[0].license == "http://cc/by" and cands[0].preview_url == "http://a/s"
+
+
+def test_search_ccmixter_parses_list(monkeypatch):
+    _mock_urlopen(monkeypatch, [
+        {"upload_name": "Groove", "user_name": "dj", "license_name": "CC BY",
+         "files": [{"download_url": "http://c/dl"}]}])
+    cands = catalog._search_ccmixter("funk", 5)
+    assert cands[0].source == "ccmixter" and cands[0].ref == "http://c/dl"
+    assert cands[0].license == "CC BY"

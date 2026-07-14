@@ -145,3 +145,41 @@ def _search_deezer(query: str, n: int) -> list[Candidate]:
                              ref=f"{artist} - {title}", license="unknown (any lane)",
                              preview_url=r.get("preview")))
     return out
+
+
+def _search_jamendo(query: str, n: int) -> list[Candidate]:
+    cid = _jamendo_client_id()
+    if not cid:
+        raise ValueError("_search_jamendo needs a Jamendo client_id — set JAMENDO_CLIENT_ID "
+                         "or run `bash setup.sh --with-sourcing` (else the ccMixter fallback runs)")
+    url = ("https://api.jamendo.com/v3.0/tracks/?"
+           + urllib.parse.urlencode({"client_id": cid, "format": "json", "limit": n,
+                                     "fuzzytags": query, "audioformat": "mp32",
+                                     "include": "musicinfo licenses"}))
+    out = []
+    for r in _get_json(url).get("results", []):
+        title, artist = r.get("name"), r.get("artist_name")
+        dl = r.get("audiodownload") or r.get("audio")
+        if not (title and artist and dl):
+            continue
+        out.append(Candidate(title=title, artist=artist, source="jamendo", ref=dl,
+                             license=r.get("license_ccurl") or "Creative Commons (Jamendo)",
+                             preview_url=r.get("audio")))
+    return out
+
+
+def _search_ccmixter(query: str, n: int) -> list[Candidate]:
+    url = ("http://dig.ccmixter.org/api/query?"
+           + urllib.parse.urlencode({"f": "json", "limit": n, "tags": query}))
+    data = _get_json(url)
+    out = []
+    for r in (data if isinstance(data, list) else []):
+        title, artist = r.get("upload_name"), r.get("user_name")
+        files = r.get("files") or []
+        dl = files[0].get("download_url") if files else None
+        if not (title and artist and dl):
+            continue
+        out.append(Candidate(title=title, artist=artist, source="ccmixter", ref=dl,
+                             license=r.get("license_name") or "Creative Commons (ccMixter)",
+                             preview_url=dl))
+    return out
