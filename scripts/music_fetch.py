@@ -3,8 +3,8 @@
 --track name) to a cached audio file + sidecar via scripts/lib/fetch. Prints the cached
 path; the SKILL then runs `beats --auto-start` on it for MUSIC.json."""
 import argparse
-from pathlib import Path
 import json
+from pathlib import Path
 
 from scripts.lib import catalog, fetch
 

@@ -51,3 +51,13 @@ def test_cli_from_shortlist_needs_pick(tmp_path, monkeypatch):
                                      "--date", "2026-07-14"])
     with pytest.raises(SystemExit):        # --from-shortlist without --pick → ap.error
         mf.main()
+
+
+def test_cli_pick_prints_cached_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(mf.fetch, "download",
+                        lambda cand, mode, cd, date: _fake_track("/cache/hit.m4a"))
+    monkeypatch.setattr("sys.argv", ["music_fetch", "--mode", "any", "--from-shortlist",
+                                     str(_shortlist(tmp_path)), "--pick", "1",
+                                     "--cache-dir", str(tmp_path), "--date", "2026-07-14"])
+    mf.main()                                     # exercises the fetch_pick dispatch + print
+    assert capsys.readouterr().out.strip() == "/cache/hit.m4a"
