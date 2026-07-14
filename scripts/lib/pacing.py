@@ -124,3 +124,36 @@ class Spine:
             lines.append(f"| {s.index} | {s.start:.2f}–{s.start + s.dur:.2f} | "
                          f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} |")
         return "\n".join(lines) + "\n"
+
+
+LOW_BAND, HIGH_BAND = 0.33, 0.66          # normalized-energy band thresholds
+SLOW_BEATS, MID_BEATS, FAST_BEATS = 8, 4, 2   # beats per slot by band (cut density ∝ energy)
+HOOK_BEATS = 2                            # the first slot: short, attention-grab
+_FLAT_EPS = 1e-9                          # energy range below this → treat as uniform
+
+
+def _kind(n: float) -> str:
+    """Normalized energy → band label (peak/build/release; hook is set positionally)."""
+    return "peak" if n >= HIGH_BAND else "build" if n >= LOW_BAND else "release"
+
+
+def _beats_per_slot(n: float) -> int:
+    """Normalized energy → slot span in beats — fewer when loud (fast cuts)."""
+    return FAST_BEATS if n >= HIGH_BAND else MID_BEATS if n >= LOW_BAND else SLOW_BEATS
+
+
+def _beat_energy(beats: Sequence[float], energy: Sequence[float], energy_hz: float,
+                 duration: float) -> list[float]:
+    """Per-beat mean RMS, MIN-MAX normalized within the track → [0,1]. Beat i spans
+    [beats[i], beats[i+1]) (the last → duration). A flat track (range < _FLAT_EPS) →
+    all 0.5. Relative, not absolute — §12 loudness discipline (the drop is 'loud FOR
+    THIS TRACK'; a quiet master still gets a real arc)."""
+    edges = list(beats) + [duration]
+    raw = []
+    for i in range(len(beats)):
+        i0 = max(0, round(edges[i] * energy_hz))
+        i1 = max(i0 + 1, round(edges[i + 1] * energy_hz))
+        seg = energy[i0:i1] or energy[i0:i0 + 1] or energy[-1:]
+        raw.append(fmean(seg))
+    lo, hi = min(raw), max(raw)
+    return [0.5 if (hi - lo) < _FLAT_EPS else (r - lo) / (hi - lo) for r in raw]

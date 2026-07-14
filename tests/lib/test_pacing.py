@@ -75,3 +75,30 @@ def test_spine_rejects_misordered_index():
     with pytest.raises(ValueError, match="index-ordered"):
         Spine(slots=(Slot(0, 0.0, 1.0, 0.5, "hook"), Slot(5, 1.0, 1.0, 0.5, "peak")),
               target_dur=2.0, tempo=120.0)
+
+
+def test_kind_bands():
+    assert pacing._kind(0.0) == "release" and pacing._kind(0.32) == "release"
+    assert pacing._kind(0.33) == "build" and pacing._kind(0.65) == "build"
+    assert pacing._kind(0.66) == "peak" and pacing._kind(1.0) == "peak"
+
+
+def test_beats_per_slot_bands():
+    assert pacing._beats_per_slot(0.1) == pacing.SLOW_BEATS
+    assert pacing._beats_per_slot(0.5) == pacing.MID_BEATS
+    assert pacing._beats_per_slot(0.9) == pacing.FAST_BEATS
+
+
+def test_beat_energy_min_max_normalizes_within_track():
+    # 4 beats every 1s over 4s; energy 2 Hz => 8 samples; quiet first half, loud second
+    beats = [0.0, 1.0, 2.0, 3.0]
+    energy = [0.1, 0.1, 0.1, 0.1, 0.9, 0.9, 0.9, 0.9]   # samples at 0.0,0.5,...,3.5s
+    n = pacing._beat_energy(beats, energy, energy_hz=2.0, duration=4.0)
+    assert len(n) == 4
+    assert n[0] == 0.0 and n[3] == 1.0                  # min-max: quietest→0, loudest→1
+    assert n[2] == 1.0                                  # beat 2 spans [2,3): loud samples
+
+
+def test_beat_energy_flat_curve_is_mid():
+    n = pacing._beat_energy([0.0, 1.0], [0.5, 0.5, 0.5, 0.5], energy_hz=2.0, duration=2.0)
+    assert n == [0.5, 0.5]                              # range < _FLAT_EPS → uniform 0.5
