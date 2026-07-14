@@ -24,7 +24,13 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
     """Discover n candidates (per rights lane), rank by fit to mood_text, write
     MUSIC_SHORTLIST.{json,md} in out_dir. Zero candidates raises (in catalog.search); an
     unknown mood logs and falls back to drive-ranking (never silent)."""
-    cands = catalog.search(mode, query or mood_text, n, catalog=cat)
+    if query is not None:
+        search_query = query                         # --query overrides verbatim
+    elif mode == "free":
+        search_query = f"{mood_text} instrumental"   # §4.1 free-lane stylistic hint
+    else:
+        search_query = mood_text
+    cands = catalog.search(mode, search_query, n, catalog=cat)
     with tempfile.TemporaryDirectory() as clips:
         pairs = []
         for i, c in enumerate(cands):

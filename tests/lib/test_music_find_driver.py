@@ -67,6 +67,24 @@ def test_build_shortlist_same_slug_candidates_do_not_cross_attribute(tmp_path, m
     assert data["candidates"][1]["ref"] == "ref-album"
 
 
+def test_free_default_query_gets_instrumental_hint(tmp_path, monkeypatch):
+    x = _c("X", source="ccmixter")
+    seen = {}
+    def fake_search(mode, q, n, catalog=None):
+        seen["q"] = q
+        return [x]
+    monkeypatch.setattr(find.catalog, "search", fake_search)
+    monkeypatch.setattr(find.catalog, "preview_clip", lambda c, d: d)
+    monkeypatch.setattr(find.beats, "mood_features", lambda p: MoodVector(0.5, 0.5, 0.5))
+    out = tmp_path / "o"; out.mkdir()
+    find.build_shortlist("free", "energetic", str(out))
+    assert seen["q"] == "energetic instrumental"          # free default → hint appended
+    find.build_shortlist("any", "energetic", str(out))
+    assert seen["q"] == "energetic"                       # any → no hint
+    find.build_shortlist("free", "energetic", str(out), query="my exact query")
+    assert seen["q"] == "my exact query"                  # --query overrides verbatim
+
+
 def test_cli_reads_mood_from_spec(tmp_path, monkeypatch):
     from scripts.lib.spec import Spec
     x = _c("X")
