@@ -146,6 +146,11 @@ def test_search_free_never_returns_youtube(monkeypatch):
     assert all(c.source != "youtube" for c in cands)   # rights invariant
 
 
+def test_search_free_rejects_catalog_arg(monkeypatch):
+    with pytest.raises(ValueError, match="any-lane"):
+        catalog.search("free", "funk", 3, catalog="itunes")
+
+
 def test_search_any_defaults_to_youtube(monkeypatch):
     _mock_ytdlp(monkeypatch, '{"title": "T", "url": "v", "channel": "C"}\n')
     assert catalog.search("any", "x", 1)[0].source == "youtube"

@@ -211,6 +211,9 @@ def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Ca
     `any` → YouTube by default, or `catalog` in {itunes, deezer}. Rights invariant: the free
     branch only ever calls the CC catalogs, never YouTube. Zero results raises."""
     if mode == "free":
+        if catalog is not None:
+            raise ValueError(f"--catalog {catalog!r} is an any-lane option; the free lane "
+                             f"uses the CC catalogs — drop --catalog, or use --mode any")
         cands = (_search_jamendo(query, n) if _free_source() == "jamendo"
                  else _search_ccmixter(query, n))
     elif mode == "any":
