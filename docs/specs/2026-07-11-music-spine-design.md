@@ -316,9 +316,11 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 
 ## §9 — Non-goals / deferred
 
-- **B3 — autonomous sourcing** (`music_find`/`music_fetch`, Spotify/iTunes/Deezer
-  shortlist, yt-dlp download, `music.mode` rights lanes, mood-cosine). v1 hands
-  `beats.py` a local file path.
+- **B3 — autonomous sourcing** — `music_find`/`music_fetch`, catalog discovery
+  (Jamendo/ccMixter for the `free` lane, YouTube/iTunes/Deezer for `any` via
+  yt-dlp), `music.mode` rights lanes — **landed 2026-07-14** (its own spec/plan:
+  `docs/specs/2026-07-14-music-sourcing-design.md`). v1 (this spec) hands
+  `beats.py` a local file path; sourcing is the separate slice that supplies it.
 - **B4 — pacing / energy-spine** (`PACING.md`, section-pinning). Blocked on the
   front half (edit-plan/extract); the `energy` curve is recorded now but unread.
 - **Ambient ducking + SFX** in the mix — need `extract`'s preserved per-episode
@@ -332,10 +334,11 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 - **Beat as a hard gate** — advisory until edit-plan/extract can re-trim a cut.
 - **Start-offset intelligence** — the "chosen fragment" `start_offset` + vocal-pause
   start-snap landed separately on 2026-07-13 (its own spec/plan:
-  `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B3 sourcing and B4
-  pacing remain deferred as above.
+  `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B4 pacing remains
+  deferred as above (B3 sourcing has since landed too — see above).
 - **Mood-match (local lane)** — ranking a user's own folder of tracks against
   `SPEC.mood` (`scripts/lib/mood.py` + `scripts/mood.py` → `MUSIC_SHORTLIST`, the
   `music-match` SKILL) landed 2026-07-14 (its own spec/plan:
-  `docs/specs/2026-07-13-mood-match-design.md`), so B3's remaining scope is the
-  **networked** sourcing (find/fetch across rights lanes); B4 pacing remains deferred.
+  `docs/specs/2026-07-13-mood-match-design.md`); its ranking core was reused
+  unchanged by B3's networked sourcing (also landed 2026-07-14 — see above), so
+  B3 is now complete end-to-end; B4 pacing remains the only deferred item here.

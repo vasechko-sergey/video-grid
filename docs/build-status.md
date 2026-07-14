@@ -480,6 +480,26 @@ _Last updated: 2026-07-14._
   signals, ±tol). **702 tests green.** **Deferred:** B3 autonomous sourcing
   (networked), catalog-metadata mood, a 4th dynamism axis, feature caching.
 
+- **music-sourcing (§5.5 B3, network lanes) DONE (2026-07-14)** — plan
+  `docs/plans/2026-07-14-music-sourcing.md` + design
+  `docs/specs/2026-07-14-music-sourcing-design.md`. `scripts/lib/catalog.py`
+  (`Candidate` + per-source discovery over stdlib `urllib` / an opt-in `yt-dlp`
+  module invocation, `preview_clip`) + `scripts/lib/fetch.py` (download + cache +
+  sidecar + responsibility log) + `scripts/music_find.py` / `scripts/music_fetch.py`
+  drivers reuse the mood engine (`beats.mood_features` + `mood.rank`) to source &
+  rank internet tracks into `MUSIC_SHORTLIST`: `free` = ccMixter (no key) /
+  Jamendo (keyed upgrade), `any` = YouTube (yt-dlp, default) + iTunes/Deezer
+  opt-in, behind an explicit responsibility switch — `any` always logs + records
+  `license="unknown (any lane)"`, never silently. `music-source` SKILL runs
+  find→pick→fetch; `setup.sh --with-sourcing` installs yt-dlp + interactively
+  configures a Jamendo key. **5.5 now fully ✅** — all three `music.mode` rights
+  lanes (`local`/`free`/`any`) complete. **740 tests green** (+8 skipped: 3
+  drawtext-gated draft-goldens + 2 drawtext-gated titles-goldens on a machine
+  whose ffmpeg lacks drawtext, +1 pre-existing vidstab-gated intake golden, +1
+  pre-existing demucs-gated offset golden, +1 off-network iTunes sourcing
+  smoke). **Deferred:** B4 pacing (5.6), trend-presence ranking (blocked on 5.4
+  trend-scan), catalog-metadata mood.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -491,15 +511,12 @@ _Last updated: 2026-07-14._
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
-- **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
-  `music.mode` rights lanes, mood-ranking against catalog metadata) — the local
-  mood-match (rank a user folder vs `SPEC.mood` → `MUSIC_SHORTLIST`, DONE
-  2026-07-14) has landed, so §5.5's remaining gap is the **networked** sourcing;
-  picks up where B1+B2 (music spine, DONE 2026-07-11) and start-offset
-  intelligence (DONE 2026-07-13) left off; B4 pacing (below) also remains. **OR**
 - **Phase B4 — pacing** (`PACING.md`, §5.6): the shared energy spine read by
   both music-and-mood and edit-plan, pinning episode order/length/energy to
-  the music sections. **OR**
+  the music sections — the last open Phase B item now that B1+B2 (music spine,
+  DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13), mood-match
+  (DONE 2026-07-14), and networked sourcing (DONE 2026-07-14) have all landed
+  and §5.5 (music-and-mood) is fully ✅. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today

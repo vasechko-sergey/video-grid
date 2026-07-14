@@ -258,8 +258,22 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 > `scripts/lib/mood.py` scores a track's energy/brightness/pace (loudness-robust)
 > against a curated mood lexicon and `scripts/mood.py` ranks a local folder vs
 > `SPEC.mood` into `MUSIC_SHORTLIST.md` for the agent to pick from (`music-match`
-> SKILL). Autonomous **sourcing** (`music_find`/`music_fetch`, `music.mode`
-> free/any) stays deferred (B3). See `docs/specs/2026-07-13-mood-match-design.md`.
+> SKILL). ~~Autonomous **sourcing** (`music_find`/`music_fetch`, `music.mode`
+> free/any) stays deferred (B3).~~ **Built by sourcing — see below.** See
+> `docs/specs/2026-07-13-mood-match-design.md`.
+
+> **Built (2026-07-14, sourcing):** autonomous sourcing (B3) now ships too,
+> closing §5.5's last gap. `scripts/lib/catalog.py` (per-source discovery over
+> stdlib `urllib` or an opt-in `yt-dlp` module invocation — Jamendo/ccMixter for
+> the `free` lane, YouTube/iTunes/Deezer for `any`) + `scripts/lib/fetch.py`
+> (download/cache/sidecar/responsibility log) back `scripts/music_find.py` /
+> `scripts/music_fetch.py`, which reuse the same mood engine
+> (`beats.mood_features` + `mood.rank`) that ranks a local folder to rank
+> sourced previews instead — sourcing is plumbing, not new scoring. All three
+> `music.mode` rights lanes (`local`/`free`/`any`) are now complete; the
+> `music-source` SKILL conducts find→pick→fetch; `setup.sh --with-sourcing`
+> installs the opt-in `yt-dlp` dep and interactively configures a Jamendo key.
+> See `docs/specs/2026-07-14-music-sourcing-design.md`.
 
 ### 5.6 pacing → `PACING.md` (energy spine)
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).

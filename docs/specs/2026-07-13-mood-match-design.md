@@ -312,8 +312,12 @@ CP-music; it never blocks the pipeline.
 ## §9 — Non-goals / deferred
 
 - **B3 autonomous sourcing** — `music_find`/`music_fetch`, royalty-free (`free`)
-  and copyrighted (`any`, legally gray) catalogs, yt-dlp, `music.mode` lanes,
-  trend-presence ranking. Mood-match ranks a **local folder** the user supplies.
+  and copyrighted (`any`, legally gray) catalogs, yt-dlp, `music.mode` lanes —
+  **landed 2026-07-14** (cross-ref: its own spec/plan
+  `docs/specs/2026-07-14-music-sourcing-design.md`), reusing this slice's
+  `mood.rank`/`beats.mood_features` unchanged to rank sourced previews instead
+  of a local folder. Trend-presence ranking (blocked on 5.4 trend-scan) remains
+  out of scope.
 - **Catalog-metadata mood** — Spotify `audio-features` (valence/danceability),
   iTunes/Deezer. Needs network + keys; v1 measures mood from the **audio** locally.
 - **A 4th "dynamism" axis** (energy variance / build-drop) — YAGNI; 3 axes order
