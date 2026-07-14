@@ -164,3 +164,68 @@ def test_write_edit_plan_corrupt_selection_raises(tmp_path):
     with pytest.raises(ValueError, match="not valid JSON"):
         edit_plan.write_edit_plan(str(tmp_path / "FOOTAGE.json"), str(tmp_path / "selection.json"),
                                   str(tmp_path / "project.json"), str(tmp_path / "out"))
+
+
+from scripts.lib.pacing import Slot, Spine
+
+
+def _sel3():
+    return {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},   # window dur 2.0
+        {"source": "A.mp4", "window": 1, "composition": "lead", "grid": "thirds"},   # window dur 3.0
+        {"source": "B.mp4", "window": 0, "composition": "center", "grid": "phi"}]}   # window dur 2.5
+
+
+def _spine2():
+    return Spine(slots=(Slot(0, 0.0, 1.0, 0.2, "hook"),
+                        Slot(1, 1.0, 1.5, 0.9, "peak")), target_dur=2.5, tempo=120.0)
+
+
+def test_build_edl_pacing_binds_slot_and_retimes_dur():
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2())
+    assert edl.episodes[0].beat_slot == 0 and edl.episodes[0].dur == 1.0   # re-timed to slot 0
+    assert edl.episodes[1].beat_slot == 1 and edl.episodes[1].dur == 1.5   # re-timed to slot 1
+    assert edl.episodes[0].start == 0.5                                     # window start preserved
+
+
+def test_build_edl_pacing_overflow_tail_unbound(capsys):
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2())        # 3 eps, 2 slots
+    assert edl.episodes[2].beat_slot is None and edl.episodes[2].dur == 2.5  # tail unchanged
+    assert "exceed the 2-slot spine" in capsys.readouterr().err
+
+
+def test_build_edl_pacing_shortfall_keeps_window(capsys):
+    # slot 0 wants 5s but window A/0 is only 2s → keep 2s + log shortfall
+    spine = Spine(slots=(Slot(0, 0.0, 5.0, 0.5, "hook"),), target_dur=5.0, tempo=120.0)
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(_footage(), sel, pacing=spine)
+    assert edl.episodes[0].dur == 2.0                                       # window kept, not stretched
+    assert "shorter than its slot" in capsys.readouterr().err
+
+
+def test_build_edl_no_pacing_leaves_beat_slot_none():
+    edl = edit_plan.build_edl(_footage(), _sel3())
+    assert all(e.beat_slot is None for e in edl.episodes)                   # regression: unchanged path
+    assert edl.episodes[0].dur == 2.0                                       # window dur untouched
+
+
+def test_cli_build_threads_pacing(tmp_path, monkeypatch, capsys):
+    import sys
+    from scripts.lib.pacing import Slot, Spine
+    # reuse _write_inputs: it writes the on-disk FOOTAGE/selection/project.json shape
+    # the real preflight (ProjectConfig + resolve_manifest + preflight) accepts.
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel)
+    (tmp_path / "PACING.json").write_text(json.dumps(
+        Spine((Slot(0, 0.0, 1.0, 0.5, "hook"),), 1.0, 120.0).to_dict()))
+    monkeypatch.setattr(sys, "argv", ["edit_plan", "build",
+                                      "--footage", fj,
+                                      "--selection", sj,
+                                      "--project", pj,
+                                      "--out-dir", str(tmp_path),
+                                      "--pacing", str(tmp_path / "PACING.json")])
+    with pytest.raises(SystemExit) as e:
+        edit_plan.main()
+    assert e.value.code == 0
+    edl = json.loads((tmp_path / "EDL.json").read_text())
+    assert edl["episodes"][0]["beat_slot"] == 0 and edl["episodes"][0]["dur"] == 1.0

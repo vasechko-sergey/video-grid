@@ -12,12 +12,19 @@ a retyped start/dur is the silent-wrong-cut class (montage §12). selection.json
 carries only integer window indices + editorial enums/notes.
 """
 import argparse
+import dataclasses
 import json
+import sys
 from pathlib import Path
 
 from scripts.lib.edl import EDL, EDLEpisode, preflight
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
+from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
+
+
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr)
 
 
 def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: object) -> EDLEpisode:
@@ -36,8 +43,35 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: obj
         raise ValueError(f"window_to_episode: unknown or missing editorial field — {ex}") from ex
 
 
-def build_edl(footage: Footage, selection: dict) -> EDL:
-    """Assemble an EDL from a selection dict. Each selection episode references a
+def _bind_pacing(episodes: list, spine: Spine) -> list:
+    """Bind selected episodes to spine slots by position (design §5): episode i → slot
+    i (beat_slot=i, dur re-timed to the slot, window start preserved). Zip-to-min; a
+    window shorter than its slot keeps its own dur (can't stretch footage) + logs; an
+    over/underflow is logged, never a silent drop (§4.1)."""
+    n = min(len(episodes), len(spine.slots))
+    bound = []
+    for i in range(n):
+        slot, ep = spine.slots[i], episodes[i]
+        new_dur = min(ep.dur, slot.dur)
+        if ep.dur < slot.dur:
+            _log(f"pacing: episode {i} window {ep.dur:.2f}s is shorter than its slot "
+                 f"{slot.dur:.2f}s — keeping the window (can't stretch footage); the "
+                 f"length gate will see the shortfall")
+        bound.append(dataclasses.replace(ep, beat_slot=i, dur=new_dur))
+    if len(episodes) > len(spine.slots):
+        _log(f"pacing: {len(episodes)} episodes exceed the {len(spine.slots)}-slot spine "
+             f"— the {len(episodes) - len(spine.slots)} tail episode(s) keep beat_slot=None; "
+             f"extend the track fragment or drop episodes")
+        bound.extend(episodes[n:])
+    elif len(spine.slots) > len(episodes):
+        _log(f"pacing: {len(spine.slots)} slots exceed the {len(episodes)} episodes — the "
+             f"{len(spine.slots) - len(episodes)} tail slot(s) are unfilled")
+    return bound
+
+
+def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None) -> EDL:
+    """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
+    episode to its slot (beat_slot + re-timed dur, §5.6). Each selection episode references a
     window by (source, integer index) into FOOTAGE and supplies editorial fields;
     window_to_episode projects the mechanical fields. Reel knobs (music/cap/
     target_dur) ride at the top level. Fail-loud on a source not in FOOTAGE or an
@@ -66,12 +100,15 @@ def build_edl(footage: Footage, selection: dict) -> EDL:
             raise ValueError(f"selection episode {k}: window {window} out of range for {source} "
                              f"(has {len(clip.windows)})")
         episodes.append(window_to_episode(clip, clip.windows[window], **ed))
+    if pacing is not None:
+        episodes = _bind_pacing(episodes, pacing)
     cap = selection.get("cap")
     return EDL(episodes=tuple(episodes), music=selection.get("music"),
                cap=cap if cap is not None else 3, target_dur=selection.get("target_dur"))
 
 
-def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str) -> dict:
+def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
+                    pacing_path: str | None = None) -> dict:
     """Author EDL.json + EDL.md from FOOTAGE + a selection, gated by the project's
     manifest preflight. Nothing is written when preflight fails — a bad EDL never
     lands as a half-valid artifact. Returns {"status": "written", ...} or the
@@ -82,7 +119,8 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     except json.JSONDecodeError as e:
         raise ValueError(f"{selection_path} is not valid JSON ({e}) — fix the selection syntax") from e
     cfg = ProjectConfig.from_json(project_path)
-    edl = build_edl(footage, selection)
+    pacing = Spine.from_json(pacing_path) if pacing_path else None
+    edl = build_edl(footage, selection, pacing=pacing)
     _, stop = preflight(edl, cfg, str(Path(out_dir) / "segments"), out_dir)
     if stop:
         return stop
@@ -102,8 +140,9 @@ def main() -> None:
     b.add_argument("--selection", required=True, help="selection.json — window refs + editorial fields")
     b.add_argument("--project", required=True, help="project.json — canvas/delivery for the preflight")
     b.add_argument("--out-dir", required=True, help="dir for EDL.json + EDL.md")
+    b.add_argument("--pacing", help="PACING.json — bind episodes to the energy spine (optional, §5.6)")
     a = ap.parse_args()
-    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir)
+    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "written" else 1)
 
