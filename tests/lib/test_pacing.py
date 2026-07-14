@@ -153,3 +153,23 @@ def test_build_spine_beat_on_duration_makes_no_zero_width_tail():
 def test_build_spine_no_beats_raises():
     with pytest.raises(ValueError, match="no beats"):
         pacing.build_spine([], [0.5], energy_hz=2.0, duration=5.0, tempo=120.0)
+
+
+def test_beat_energy_fewer_samples_than_beats_uses_fallback():
+    # spec §8: a COARSE curve with fewer energy samples than beats still yields one
+    # value per beat — exercises the empty-segment fallback (the i0>=len guard the
+    # 2 Hz-vs-slower-curve case relies on). 2 samples (0.5 Hz → t=0s, 2s) for 4 beats.
+    n = pacing._beat_energy([0.0, 1.0, 2.0, 3.0], [0.2, 0.8], energy_hz=0.5, duration=4.0)
+    assert len(n) == 4                                  # one value per beat, no crash on the tail
+    assert n[0] == 0.0 and n[-1] == 1.0                 # min-max over the resolved per-beat means
+
+
+def test_build_spine_interior_boundaries_are_beat_times():
+    # spec §8 + §12(b): every interior cut lands on a beat. Each slot after the hook
+    # starts exactly on a beat time (start=beats[i]); by contiguity that is also the
+    # prior slot's cut point, so this pins "boundaries are beat-aligned".
+    beats = _grid(24, 12.0)
+    energy = [0.05] * 8 + [0.95] * 8 + [0.05] * 8
+    sp = pacing.build_spine(beats, energy, energy_hz=2.0, duration=12.0, tempo=120.0)
+    beat_set = set(beats)
+    assert all(s.start in beat_set for s in sp.slots[1:])
