@@ -56,6 +56,12 @@ Announce on entry: **"Using music-source to source and shortlist the reel's trac
    — start-offset intelligence starts the reel on the strongest fragment, in a vocal
    pause. Pass `<run>/MUSIC.json` on to edit-plan.
 
+**Explicit track already chosen?** When `SPEC.music` is a track name (not `auto`), skip
+Find/Present — `.venv/bin/python -m scripts.music_fetch --mode <free|any> --track "<name>"
+--cache-dir <run>/music/cache --date $(date +%F)` resolves the top-1 match in the lane and
+fetches it directly; then Lock (step 5). A track that is already a local file path needs no
+fetch — Lock it directly.
+
 ## Not this skill
 
 - **A local folder** the user already has → **music-match** (the `local` lane), not this.
