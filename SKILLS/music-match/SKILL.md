@@ -44,7 +44,8 @@ Announce on entry: **"Using music-match to shortlist the reel's track by mood."*
 
 ## Not this skill
 
-- **Sourcing** a track from the internet (royalty-free or otherwise) — deferred
-  (B3); music-match ranks a **local folder** the user already has.
+- **Sourcing** a track from the internet (royalty-free or copyrighted) — that is the
+  **music-source** skill (the `free`/`any` lanes); music-match ranks a **local folder**
+  the user already has (`music.mode=local`).
 - **Writing `MUSIC.json`** — that is `beats --auto-start` (step 4), not this skill.
 - **The beat grid / loudness gate** — those are `beats.analyze` / `check_reel`.

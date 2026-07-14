@@ -61,17 +61,28 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
    bare autonomous run, skip it and say so; `project.json` still anchors CP1.
 
-5. **music-and-mood (optional).** If the brief names a **track**, analyse it
-   directly — prefer letting the tool pick the in-point:
-   `.venv/bin/python -m scripts.beats <track> --auto-start --duration <reel_len>
-   --out <run>/MUSIC.json` — it starts the reel on the strongest fragment, in a
-   vocal pause (accurate with `bash setup.sh --with-demucs`; a librosa mix-silence
-   proxy otherwise). Pass an explicit `--start-offset S` instead only to override.
-   If instead the brief has a **mood but no chosen track** and the user has a
-   **folder** of candidates, invoke the **music-match** skill first — it ranks the
-   folder by mood into `MUSIC_SHORTLIST.md`, the user picks, and it runs the same
-   `beats --auto-start`. Then pass `<run>/MUSIC.json` to edit-plan. On "no music" /
-   "без музыки", leave it unset — the reel is silent (a valid path).
+5. **music-and-mood (optional).** If the brief names a **track**:
+   - a **local file path** -> analyse it directly, preferring the tool's own
+     in-point pick: `.venv/bin/python -m scripts.beats <track> --auto-start
+     --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
+     strongest fragment, in a vocal pause (accurate with `bash setup.sh
+     --with-demucs`; a librosa mix-silence proxy otherwise). Pass an explicit
+     `--start-offset S` instead only to override.
+   - an explicit **track name** (not a path) -> skip discovery; invoke
+     **music-source** with `--track "<name>"` to resolve and fetch it, then the
+     same `beats --auto-start` locks it.
+   If instead the brief has a **mood but no chosen track**:
+   - the user has a **folder** of candidates (`music_mode == local`) -> invoke
+     **music-match** first — it ranks the folder by mood into
+     `MUSIC_SHORTLIST.md`, the user picks, and it runs the same
+     `beats --auto-start`.
+   - no local folder (`music_mode` is `free` or `any`) -> invoke
+     **music-source** instead — it discovers and ranks candidates from the
+     internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — confirm
+     with the user first) into the same shortlist shape, the user picks, and it
+     downloads then runs `beats --auto-start`.
+   Either way, pass `<run>/MUSIC.json` to edit-plan. On "no music" / "без
+   музыки", leave it unset — the reel is silent (a valid path).
 
 6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). **Checkpoint
