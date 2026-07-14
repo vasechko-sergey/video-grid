@@ -105,8 +105,8 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
       done     — artifact exists (resume-for-free, design line 510)
       next     — the FIRST required stage whose artifact is missing (run this)
       pending  — a required stage after `next` still missing its artifact
-      optional — an optional built stage not yet produced (music); never blocks
-      skip     — a deferred stage (trend-scan/pacing); named, not silent
+      optional — an optional built stage not yet produced (music/pacing); never blocks
+      skip     — a deferred stage (trend-scan); named, not silent
     Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
              "next": <stage key | None>, "delivered": <bool>}."""
 ```
@@ -214,7 +214,8 @@ aspect (defers to project-init's own "ask, don't guess").
 - **`draft.mp4`** (SP1b, §5.9) — CP2 approves the `EDL.md` map, no burnt-in draft.
 - **dual-emit "without music" + trending-sound sidecar** (§5.14) — v1 "no music"
   is the plain silent path; the with/without dual export is a deliver enhancement.
-- **trend-scan (§5.4), pacing (§5.6)** — deferred stages, named on skip.
+- **trend-scan (§5.4)** — a deferred stage, named on skip. (pacing (§5.6) is now
+  built — an optional stage, run when `MUSIC.json` exists; see stage 6.)
 - **a headless auto-run mode** (no checkpoints) — v1 is interactive at the three
   gates by design (§4.1).
 - **cast-name hero-pin resolution** — `hero` still rides as a bbox/rule/name

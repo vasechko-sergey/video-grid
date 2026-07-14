@@ -69,8 +69,8 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
       done     - artifact exists (resume-for-free, design line 510)
       next     - the FIRST required stage whose artifact is missing (run this)
       pending  - a required stage after `next` still missing its artifact
-      optional - an optional built stage not yet produced (music); never blocks
-      skip     - a deferred stage (trend-scan/pacing); named, not silent
+      optional - an optional built stage not yet produced (music/pacing); never blocks
+      skip     - a deferred stage (trend-scan); named, not silent
     Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
              "next": <stage key | None>, "delivered": <bool>}."""
     run = Path(run_dir)
