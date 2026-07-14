@@ -58,3 +58,69 @@ class Slot:
                              f"index, start, dur, energy, kind")
         return cls(index=d["index"], start=d["start"], dur=d["dur"],
                    energy=d["energy"], kind=d["kind"])
+
+
+@dataclass(frozen=True)
+class Spine:
+    """The ordered energy skeleton (PACING.json). Covers [0, target_dur] exactly —
+    slot 0 starts at 0.0, slots are contiguous, durations sum to target_dur, slot 0
+    is the hook. Config-spec: a malformed spine fails loud, never mis-binds the edit."""
+    slots: tuple
+    target_dur: float
+    tempo: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.slots, tuple) or not self.slots:
+            raise ValueError("Spine.slots must be a non-empty tuple of Slot — build_spine "
+                             "found no beats; check the track/window")
+        for want, s in enumerate(self.slots):
+            if not isinstance(s, Slot):
+                raise ValueError(f"Spine.slots[{want}] must be a Slot, got {s!r}")
+            if s.index != want:
+                raise ValueError(f"Spine.slots must be index-ordered 0..N-1; position "
+                                 f"{want} has index {s.index}")
+        if self.slots[0].kind != "hook":
+            raise ValueError(f"Spine.slots[0].kind must be 'hook' (hook first, §5.6), "
+                             f"got {self.slots[0].kind!r}")
+        if abs(self.slots[0].start) > _TOL:
+            raise ValueError(f"Spine.slots[0].start must be 0.0 (the reel starts at 0), "
+                             f"got {self.slots[0].start}")
+        for a, b in zip(self.slots, self.slots[1:]):
+            if abs((a.start + a.dur) - b.start) > _TOL:
+                raise ValueError(f"Spine slots must be contiguous: slot {a.index} ends at "
+                                 f"{a.start + a.dur} but slot {b.index} starts at {b.start}")
+        total = sum(s.dur for s in self.slots)
+        if abs(total - self.target_dur) > 1e-3:
+            raise ValueError(f"Spine slot durations sum to {total}, not target_dur "
+                             f"{self.target_dur} — the spine must cover the fragment exactly")
+        if isinstance(self.tempo, bool) or not isinstance(self.tempo, (int, float)) or self.tempo <= 0:
+            raise ValueError(f"Spine.tempo must be a positive BPM, got {self.tempo!r}")
+        object.__setattr__(self, "target_dur", float(self.target_dur))
+        object.__setattr__(self, "tempo", float(self.tempo))
+
+    def to_dict(self) -> dict:
+        return {"target_dur": self.target_dur, "tempo": self.tempo,
+                "slots": [s.to_dict() for s in self.slots]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Spine":
+        for k in ("target_dur", "tempo", "slots"):
+            if k not in d:
+                raise ValueError(f"Spine.from_dict missing key {k!r} — a spine needs "
+                                 f"target_dur, tempo, slots")
+        return cls(slots=tuple(Slot.from_dict(s) for s in d["slots"]),
+                   target_dur=d["target_dur"], tempo=d["tempo"])
+
+    @classmethod
+    def from_json(cls, path) -> "Spine":
+        return cls.from_dict(json.loads(Path(path).read_text()))
+
+    def to_markdown(self) -> str:
+        lines = [f"# Pacing — energy spine ({len(self.slots)} slots, "
+                 f"{self.target_dur:.1f}s @ {self.tempo:.0f} BPM)", "",
+                 "| # | start–end | dur | energy | kind |",
+                 "|--:|-----------|----:|-------:|------|"]
+        for s in self.slots:
+            lines.append(f"| {s.index} | {s.start:.2f}–{s.start + s.dur:.2f} | "
+                         f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} |")
+        return "\n".join(lines) + "\n"
