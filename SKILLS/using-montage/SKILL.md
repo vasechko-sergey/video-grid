@@ -61,14 +61,17 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
    bare autonomous run, skip it and say so; `project.json` still anchors CP1.
 
-5. **music-and-mood (optional).** If the brief names a track or asks for music,
-   analyse it. Prefer letting the tool pick the in-point:
+5. **music-and-mood (optional).** If the brief names a **track**, analyse it
+   directly — prefer letting the tool pick the in-point:
    `.venv/bin/python -m scripts.beats <track> --auto-start --duration <reel_len>
    --out <run>/MUSIC.json` — it starts the reel on the strongest fragment, in a
    vocal pause (accurate with `bash setup.sh --with-demucs`; a librosa mix-silence
    proxy otherwise). Pass an explicit `--start-offset S` instead only to override.
-   Then pass `<run>/MUSIC.json` to edit-plan. On "no music" / "без музыки", leave
-   it unset — the reel is silent (a valid path).
+   If instead the brief has a **mood but no chosen track** and the user has a
+   **folder** of candidates, invoke the **music-match** skill first — it ranks the
+   folder by mood into `MUSIC_SHORTLIST.md`, the user picks, and it runs the same
+   `beats --auto-start`. Then pass `<run>/MUSIC.json` to edit-plan. On "no music" /
+   "без музыки", leave it unset — the reel is silent (a valid path).
 
 6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). **Checkpoint
