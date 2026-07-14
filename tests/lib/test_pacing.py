@@ -102,3 +102,54 @@ def test_beat_energy_min_max_normalizes_within_track():
 def test_beat_energy_flat_curve_is_mid():
     n = pacing._beat_energy([0.0, 1.0], [0.5, 0.5, 0.5, 0.5], energy_hz=2.0, duration=2.0)
     assert n == [0.5, 0.5]                              # range < _FLAT_EPS → uniform 0.5
+
+
+def _grid(n_beats, duration):
+    step = duration / n_beats
+    return [round(i * step, 6) for i in range(n_beats)]
+
+
+def test_build_spine_hook_first_and_covers_duration():
+    beats = _grid(24, 12.0)                              # 24 beats over 12s
+    energy = [0.5] * 24                                  # uniform 2 Hz-ish curve
+    sp = pacing.build_spine(beats, energy, energy_hz=2.0, duration=12.0, tempo=120.0)
+    assert sp.slots[0].kind == "hook" and sp.slots[0].start == 0.0
+    assert sp.slots[0].dur == beats[pacing.HOOK_BEATS]   # hook spans HOOK_BEATS beats
+    assert abs(sum(s.dur for s in sp.slots) - 12.0) < 1e-9   # covers [0,12] exactly
+    assert sp.slots[-1].start + sp.slots[-1].dur == 12.0
+
+
+def test_build_spine_uniform_energy_uses_mid_slots():
+    beats = _grid(24, 12.0)
+    sp = pacing.build_spine(beats, [0.5] * 24, energy_hz=2.0, duration=12.0, tempo=120.0)
+    # after the hook, uniform (0.5) energy → build slots of MID_BEATS beats each
+    assert all(s.kind == "build" for s in sp.slots[1:])
+    assert all(abs(s.dur - pacing.MID_BEATS * 0.5) < 1e-9 for s in sp.slots[1:-1])
+
+
+def test_build_spine_cut_density_rises_with_energy():
+    beats = _grid(24, 12.0)
+    # quiet first third (beats 0-7), loud middle (8-15), quiet last third (16-23)
+    energy = [0.05] * 8 + [0.95] * 8 + [0.05] * 8
+    sp = pacing.build_spine(beats, energy, energy_hz=2.0, duration=12.0, tempo=120.0)
+    loud = [s for s in sp.slots if 4.0 <= s.start < 8.0]
+    quiet = [s for s in sp.slots if s.start >= 8.0]
+    assert len(loud) > len(quiet)                        # more (shorter) slots where loud
+    assert any(s.kind == "peak" for s in loud)
+
+
+def test_build_spine_single_beat_is_one_hook_slot():
+    sp = pacing.build_spine([0.0], [0.5, 0.5], energy_hz=2.0, duration=3.0, tempo=90.0)
+    assert len(sp.slots) == 1 and sp.slots[0].kind == "hook" and sp.slots[0].dur == 3.0
+
+
+def test_build_spine_beat_on_duration_makes_no_zero_width_tail():
+    beats = _grid(8, 8.0) + [8.0]                        # a beat sitting exactly on duration
+    sp = pacing.build_spine(beats, [0.5] * 16, energy_hz=2.0, duration=8.0, tempo=120.0)
+    assert all(s.dur > 0 for s in sp.slots)              # no zero-width slot
+    assert abs(sum(s.dur for s in sp.slots) - 8.0) < 1e-9
+
+
+def test_build_spine_no_beats_raises():
+    with pytest.raises(ValueError, match="no beats"):
+        pacing.build_spine([], [0.5], energy_hz=2.0, duration=5.0, tempo=120.0)

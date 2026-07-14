@@ -157,3 +157,31 @@ def _beat_energy(beats: Sequence[float], energy: Sequence[float], energy_hz: flo
         raw.append(fmean(seg))
     lo, hi = min(raw), max(raw)
     return [0.5 if (hi - lo) < _FLAT_EPS else (r - lo) / (hi - lo) for r in raw]
+
+
+def build_spine(beats: Sequence[float], energy: Sequence[float], energy_hz: float,
+                duration: float, tempo: float) -> Spine:
+    """Fold the beat grid + energy curve into a beat-aligned energy spine (§5.6).
+    Greedy left-to-right: the first slot is a HOOK_BEATS hook; thereafter each slot
+    spans _beats_per_slot(local energy) beats — fewer when loud (fast cuts), more when
+    quiet. Slot boundaries snap to beat times; slot 0 starts at 0.0 and the last slot
+    ends at `duration`, so the spine covers [0, duration] exactly. Deterministic
+    (stdlib only) — the goldens pin exact slots."""
+    if not beats:
+        raise ValueError("build_spine got no beats — MUSIC.json analyze() found none; "
+                         "check the track/window (a spine needs a beat grid)")
+    n = _beat_energy(beats, energy, energy_hz, duration)
+    slots: list[Slot] = []
+    i = 0
+    while i < len(beats):
+        first = not slots
+        start = 0.0 if first else beats[i]
+        if not first and start >= duration - _TOL:   # a beat on the end → no zero-width tail slot
+            break
+        span = HOOK_BEATS if first else _beats_per_slot(n[i])
+        j = min(i + span, len(beats))
+        end = duration if j >= len(beats) else beats[j]
+        e = fmean(n[i:j])
+        slots.append(Slot(len(slots), start, end - start, e, "hook" if first else _kind(e)))
+        i = j
+    return Spine(tuple(slots), float(duration), float(tempo))
