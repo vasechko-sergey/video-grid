@@ -279,6 +279,19 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
 **Gate:** order+length+energy pinned to the music.
 
+> **Built (2026-07-14, B4 authoring):** `scripts/lib/pacing.py` — `Slot`/`Spine`
+> config-specs (validate hook-first/contiguous/duration-sum, JSON round-trip,
+> `to_markdown`) + `build_spine`: folds `MUSIC.json`'s beat grid + RMS energy
+> curve into a beat-aligned energy spine, **min-max normalized within the
+> track** (§12 relative-gate discipline), cut density rising with energy, hook
+> first. `scripts/pacing.py` (the driver) writes `PACING.{json,md}`;
+> `edit_plan.build_edl(pacing=)` binds the selected episodes to the spine's
+> slots (`beat_slot` + re-timed `dur`), so "the mood matches, not two glued
+> halves" is now structural, not eyeballed. stdlib-only core (no numpy/librosa)
+> — bit-exact, goldens pin exact slots. The **retry-time auto-fix**
+> (`build_reel`'s `length` failure re-timing the spine) and **librosa section
+> detection** stay deferred. See `docs/specs/2026-07-14-pacing-design.md`.
+
 ### 5.7 edit-plan → `EDL.md` (= writing-plans)
 Our own skill that copies the writing-plans format (checkbox steps, exact file lists, no placeholders) — see §14. Each episode binds to a slot in `PACING`: source+window, **shot-type**, **layout**, **composition**, **grid** (thirds/phi), **motion**, processing-notes, beat-slot. See §6 (composition) and §7 (layout). This is a **map** (which file holds what and from which timestamp to view) — no cutting yet.
 **Gate:** every episode has source+window+shot-type+beat-slot.

@@ -321,8 +321,13 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   yt-dlp), `music.mode` rights lanes — **landed 2026-07-14** (its own spec/plan:
   `docs/specs/2026-07-14-music-sourcing-design.md`). v1 (this spec) hands
   `beats.py` a local file path; sourcing is the separate slice that supplies it.
-- **B4 — pacing / energy-spine** (`PACING.md`, section-pinning). Blocked on the
-  front half (edit-plan/extract); the `energy` curve is recorded now but unread.
+- **B4 — pacing / energy-spine** (`PACING.md`, section-pinning) — **landed
+  2026-07-14** (its own spec/plan: `docs/specs/2026-07-14-pacing-design.md`).
+  The `energy` curve this spec recorded but left unread now has its consumer:
+  `pacing.build_spine` folds it (min-max normalized, beat-aligned) into slots
+  edit-plan binds episodes to. The retry-time auto-fix (`build_reel`'s
+  `length` failure re-timing the spine) and librosa section detection remain
+  deferred.
 - **Ambient ducking + SFX** in the mix — need `extract`'s preserved per-episode
   audio (§5.8). `mix.py` is music-only; its signature reserves room.
 - **Downbeats / section detection / spectral / mood vector** — added when B3/B4
@@ -341,4 +346,6 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   `music-match` SKILL) landed 2026-07-14 (its own spec/plan:
   `docs/specs/2026-07-13-mood-match-design.md`); its ranking core was reused
   unchanged by B3's networked sourcing (also landed 2026-07-14 — see above), so
-  B3 is now complete end-to-end; B4 pacing remains the only deferred item here.
+  B3 is now complete end-to-end; B4 pacing has since landed too (2026-07-14 —
+  see above). Ambient ducking/SFX and the pacing retry-time auto-fix are what
+  remain open in this spec's scope.

@@ -41,7 +41,8 @@ using-montage (SKILL) ── parses the brief, conducts:
   2. footage-intake ──► FOOTAGE.json (+cast.json)
      (3 reel-brief SPEC.md — optional, enriches CP1 · 4 trend-scan TRENDS.md — DEFERRED, named)
   5. music-and-mood ──► MUSIC.json             (optional; absent → silent reel)
-     (6 pacing PACING.md — DEFERRED, named; beat_slot stays unset)
+     (6 pacing PACING.md — optional; 5.6 energy spine, run after music,
+      --pacing into edit-plan; music-less path only → beat_slot stays unset)
   7. edit-plan     ───► EDL.json + EDL.md      [CP2: EDL approval + curation loop]
   8. edl_to_reel   ───► out/REEL_v1.mp4        [CP3: final review]
 
@@ -87,7 +88,7 @@ the leading `#` is the tuple position, not a field:
 | 3 | reel-brief | `SPEC.json` | optional | spec | reel-brief SKILL → `reel_brief` CLI |
 | 4 | trend-scan | `TRENDS.md` | deferred | — | 5.4 — not built |
 | 5 | music-and-mood | `MUSIC.json` | optional | — | `beats` CLI (absent → silent reel) |
-| 6 | pacing | `PACING.md` | deferred | — | 5.6 — not built (`beat_slot` stays unset) |
+| 6 | pacing | `PACING.md` | optional | — | 5.6 — energy spine; run after music, `--pacing` into edit-plan (music-less path only: `beat_slot` stays unset) |
 | 7 | edit-plan | `EDL.json` | required | edl | edit-plan SKILL → `edit_plan build` CLI |
 | 8 | deliver | `REEL_v*.*` | required | final | `edl_to_reel` CLI (extract→process×N→assemble→check→deliver) |
 

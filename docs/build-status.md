@@ -500,6 +500,40 @@ _Last updated: 2026-07-14._
   smoke). **Deferred:** B4 pacing (5.6), trend-presence ranking (blocked on 5.4
   trend-scan), catalog-metadata mood.
 
+- **pacing (§5.6, B4 energy-spine authoring) DONE (2026-07-14)** — plan
+  `docs/plans/2026-07-14-pacing.md` + design
+  `docs/specs/2026-07-14-pacing-design.md`. `scripts/lib/pacing.py` — the pure
+  core (the `offset.py`/`mood.py` analog): `Slot` (index/start/dur/energy/kind,
+  validate + JSON round-trip) + `Spine` (slots/target_dur/tempo, validates
+  hook-first/contiguous/duration-sum, `to_dict`/`from_dict`/`from_json`/
+  `to_markdown`), band constants (`LOW_BAND`/`HIGH_BAND`, `SLOW_BEATS`/
+  `MID_BEATS`/`FAST_BEATS`, `HOOK_BEATS`) + `_kind`/`_beats_per_slot`/
+  `_beat_energy` helpers, and `build_spine` — folds the beat grid + RMS energy
+  curve into a beat-aligned energy spine, cut density rising with energy (hook
+  first). stdlib only (`statistics.fmean`, no numpy/librosa) — bit-exact,
+  goldens pin exact slots. `scripts/pacing.py` — the driver: `build_pacing`
+  reads `MUSIC.json` → `build_spine` → writes `PACING.{json,md}`, logging a
+  `SPEC.length_s`/`MUSIC.duration` mismatch (never silent); CLI mirrors
+  `scripts/mood.py`. `scripts/edit_plan.py` gains `build_edl(pacing=)` +
+  `--pacing`: binds the i-th selected episode to slot i (`beat_slot=i`,
+  `dur←slot.dur`, window start preserved), zip-to-min; a short window keeps
+  its own `dur` + logs the shortfall, an episode/slot count mismatch logs an
+  over/underflow report — `pacing=None` leaves the existing no-pacing path
+  unchanged (the regression guard). `scripts/montage.py`'s `pacing` `Stage`
+  flips `deferred → optional`; `SKILLS/pacing/SKILL.md` runs the driver,
+  sanity-checks the `PACING.md` arc, then passes `PACING.json` to edit-plan;
+  `using-montage` wires it in as an optional step between music-and-mood and
+  edit-plan. Real-librosa integration golden
+  (`tests/integration/test_pacing.py`): a synthetic quiet-half/loud-half WAV →
+  `beats.analyze` → `build_spine` proves the loud half carries more (shorter)
+  slots end-to-end. **781 tests green** (+8 skipped, unchanged from
+  sourcing: 3 drawtext-gated draft + 2 drawtext-gated titles + 1 vidstab-gated
+  intake + 1 demucs-gated offset + 1 off-network sourcing smoke). **B4
+  authoring (role 1) complete — §5.6 now ✅.** **Deferred:** the retry-time
+  auto-fix (role 2 — `build_reel`'s `length` failure re-timing the spine), the
+  pacing-gate back-edge (auto re-pick `start_offset` on a misfit), librosa
+  section detection, musical-phrase-aware grouping.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -511,12 +545,15 @@ _Last updated: 2026-07-14._
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
-- **Phase B4 — pacing** (`PACING.md`, §5.6): the shared energy spine read by
-  both music-and-mood and edit-plan, pinning episode order/length/energy to
-  the music sections — the last open Phase B item now that B1+B2 (music spine,
-  DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13), mood-match
-  (DONE 2026-07-14), and networked sourcing (DONE 2026-07-14) have all landed
-  and §5.5 (music-and-mood) is fully ✅. **OR**
+- **Phase B remainder — ambient ducking + SFX** (`audio-mix`, §5.12): duck the
+  ambient bed under the music and layer SFX, using `extract`'s already-preserved
+  per-episode audio (§5.8) — the last audio-quality item now that B1+B2 (music
+  spine, DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13),
+  mood-match (DONE 2026-07-14), networked sourcing (DONE 2026-07-14), and B4
+  pacing (DONE 2026-07-14) have all landed. A sibling item in the same phase:
+  the pacing **retry-time length auto-fix** (`build_reel`'s `length` failure
+  re-timing the spine, `docs/specs/2026-07-14-pacing-design.md` §10 role 2) —
+  deferred, needs `build_reel`/`reel_orchestration` work. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today

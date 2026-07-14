@@ -19,7 +19,7 @@ _Last updated: 2026-07-14._
 | 5.3  | reel-brief | `SPEC.md` | ✅ | `reel_brief` SKILL → CLI + typed `Spec` (`scripts/lib/spec.py`) writes `SPEC.md`+`SPEC.json` atop project-init's machine subset (5.3) | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ✅ | beats-core (tempo/beat-grid/RMS energy) ✅ + start_offset intelligence (auto in-point: peak-energy window, vocal-pause start via opt-in demucs / librosa proxy) ✅ + mood-match (local: rank a folder vs SPEC.mood → MUSIC_SHORTLIST) ✅ + sourcing (free/any, network) ✅ | **Phase B — music spine** ◐ |
-| 5.6  | pacing | `PACING.md` | ❌ | energy spine (shared music↔edit) | **Phase B — music spine** |
+| 5.6  | pacing | `PACING.md` | ✅ | energy spine from MUSIC.json's RMS curve — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding | **Phase B — music spine** |
 | 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3) | Front-half authoring |
 | 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
 | 5.9  | assemble-draft | `draft.mp4` | ✅ | draft CLI + typed helpers (scripts/draft.py, scripts/lib/draft.py) — concat of raw segments, canvas-fit, processing_notes labels + music bed (SP1b, 5.9) | Front-half authoring |
@@ -55,7 +55,7 @@ status table above.
 | 5.3 | reel-brief | ✅ | — (2026-07-12) | — | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.3, 5.7 |
 | 5.5 | music-and-mood | ✅ | — (2026-07-14) | — | 5.6 |
-| 5.6 | pacing | ❌ | `PACING.md` (B4) | **5.5 MUSIC.json** (beats-core ✅ → buildable now) | (soft) 5.7 |
+| 5.6 | pacing | ✅ | — (2026-07-14) | — | (soft) 5.7 |
 | 5.7 | **edit-plan** | ✅ | — (SP3, 2026-07-12) | — | **5.1 + autonomy** |
 | 5.8 | extract | ✅ | — (SP1) | — | — |
 | 5.9 | assemble-draft | ✅ | — (2026-07-13) | none — **5.8 ✅** | QA preview |
@@ -68,7 +68,7 @@ status table above.
 | 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
 | — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name | none — **5.2 cast.json ✅** | cast-name hero pins |
 
-**Tally:** 12 ✅ · 2 ◐ · 2 ❌. Both automation loops closed.
+**Tally:** 13 ✅ · 2 ◐ · 1 ❌. Both automation loops closed.
 
 ### Critical path to autonomous v1
 
@@ -121,7 +121,7 @@ for beat/loudness rather than a silent pass; `safe_zones` reports
 
 ### Upcoming
 
-- [ ] **Phase B — music spine** ◐ — B1+B2+B3 done (B3 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes). Remaining: B4 pacing (5.6), ambient/SFX.
+- [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding). Remaining: ambient/SFX (5.12), the pacing retry-time length auto-fix.
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
 - [ ] **Router + curation** — stage 5.1 cap-3 fan-out router; the episode-choice human loop; `cast.json` hero registry (design §6.1a).
 - [ ] **Editorial reel-final** — stage 5.13 beyond the mechanical gate: `safe_zones` + structural/editorial review.
