@@ -1,6 +1,6 @@
 # Mood-Match Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rank a local folder of candidate tracks by fit to `SPEC.mood` → a `MUSIC_SHORTLIST` the agent picks from, closing the montage §5.5 "mood matches SPEC" gate for the `local` music lane.
 
@@ -30,7 +30,7 @@
 - Create: `scripts/lib/mood.py`
 - Test: `tests/lib/test_mood.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_mood.py
@@ -92,12 +92,12 @@ def test_anchor_families_present():
         assert w in MOOD_ANCHORS
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.mood'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # scripts/lib/mood.py
@@ -166,12 +166,12 @@ MOOD_ANCHORS: dict[str, MoodVector] = {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -q ; echo "EXIT: $?"`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/mood.py tests/lib/test_mood.py
@@ -186,7 +186,7 @@ git commit -m "feat: mood.py MoodVector + norm01 + MOOD_ANCHORS lexicon (5.5)"
 - Modify: `scripts/lib/mood.py`
 - Test: `tests/lib/test_mood.py`
 
-- [ ] **Step 1: Write the failing test** (append to `tests/lib/test_mood.py`)
+- [x] **Step 1: Write the failing test** (append to `tests/lib/test_mood.py`)
 
 ```python
 from scripts.lib.mood import mood_target
@@ -224,12 +224,12 @@ def test_mood_target_empty_returns_none():
     assert mood_target("") is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -k mood_target -q ; echo "EXIT: $?"`
 Expected: FAIL — `ImportError: cannot import name 'mood_target'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add `import re` to the top of `scripts/lib/mood.py` (below the module docstring, above `from dataclasses import dataclass`), then add:
 
@@ -249,12 +249,12 @@ def mood_target(text: str) -> "MoodVector | None":
 
 (Place `mood_target` after `MOOD_ANCHORS` — it references the table.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -q ; echo "EXIT: $?"`
 Expected: PASS (16 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/mood.py tests/lib/test_mood.py
@@ -269,7 +269,7 @@ git commit -m "feat: mood_target parses free-text mood → target vector (5.5)"
 - Modify: `scripts/lib/mood.py`
 - Test: `tests/lib/test_mood.py`
 
-- [ ] **Step 1: Write the failing test** (append to `tests/lib/test_mood.py`)
+- [x] **Step 1: Write the failing test** (append to `tests/lib/test_mood.py`)
 
 ```python
 from scripts.lib.mood import distance, rank, rank_by_drive
@@ -313,12 +313,12 @@ def test_rank_by_drive_orders_by_energy_plus_pace_desc():
     assert ranked[0][1] == pytest.approx(1.5)      # positive drive in the score slot
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -k "distance or rank" -q ; echo "EXIT: $?"`
 Expected: FAIL — `ImportError: cannot import name 'distance'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add `import math` at the top of `scripts/lib/mood.py` (with the other imports), add `from collections.abc import Sequence`, then append:
 
@@ -350,12 +350,12 @@ def rank_by_drive(candidates: Sequence[tuple[str, MoodVector]]
     return sorted(scored, key=lambda t: t[1], reverse=True)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood.py -q ; echo "EXIT: $?"`
-Expected: PASS (24 tests).
+Expected: PASS (23 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/mood.py tests/lib/test_mood.py
@@ -370,7 +370,7 @@ git commit -m "feat: mood distance + rank + rank_by_drive fallback (5.5)"
 - Modify: `scripts/beats.py` (import line + a new function)
 - Test: `tests/lib/test_beats.py`
 
-- [ ] **Step 1: Write the failing test** (append to `tests/lib/test_beats.py`)
+- [x] **Step 1: Write the failing test** (append to `tests/lib/test_beats.py`)
 
 ```python
 from scripts.lib import mood
@@ -412,12 +412,12 @@ def test_mood_features_silent_track_guards_zero_division(monkeypatch):
     assert v.energy == 0.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -k mood_features -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.beats' has no attribute 'mood_features'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/beats.py`, change the lib import line
 ```python
@@ -446,12 +446,12 @@ def mood_features(track: str) -> mood.MoodVector:
                            pace=mood.norm01(tempo, *mood.PACE_BPM))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_beats.py -q ; echo "EXIT: $?"`
 Expected: PASS (the two new tests plus the pre-existing `test_beats.py` tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/beats.py tests/lib/test_beats.py
@@ -466,7 +466,7 @@ git commit -m "feat: beats.mood_features maps a track into the mood vector space
 - Create: `scripts/mood.py`
 - Test: `tests/lib/test_mood_driver.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_mood_driver.py
@@ -556,12 +556,12 @@ def test_cli_reads_mood_from_spec(tmp_path, monkeypatch):
     assert data["mood_text"] == "energetic"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood_driver.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.mood'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # scripts/mood.py
@@ -652,12 +652,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood_driver.py -q ; echo "EXIT: $?"`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/mood.py tests/lib/test_mood_driver.py
@@ -671,7 +671,7 @@ git commit -m "feat: mood.py driver — build_shortlist + MUSIC_SHORTLIST writer
 **Files:**
 - Create: `tests/integration/test_mood.py`
 
-- [ ] **Step 1: Write the test** (these pass once Tasks 3–4 are in; they exercise the real librosa path)
+- [x] **Step 1: Write the test** (these pass once Tasks 3–4 are in; they exercise the real librosa path)
 
 ```python
 # tests/integration/test_mood.py
@@ -740,12 +740,12 @@ def test_build_shortlist_golden_ranks_energetic_first(tmp_path):
     assert data["candidates"][0]["track"] == "energetic.wav"
 ```
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_mood.py -q ; echo "EXIT: $?"`
 Expected: PASS (4 tests). If `test_mood_features_pace_tracks_tempo` is flaky on librosa's tempo estimate, widen the BPM gap (e.g. 60 vs 170) — do **not** loosen it into a tautology.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_mood.py
@@ -760,7 +760,7 @@ git commit -m "test: real-librosa mood_features + build_shortlist golden (5.5)"
 - Create: `SKILLS/music-match/SKILL.md`
 - Modify: `SKILLS/using-montage/SKILL.md:64-71` (the music step)
 
-- [ ] **Step 1: Write the SKILL**
+- [x] **Step 1: Write the SKILL**
 
 ```markdown
 <!-- SKILLS/music-match/SKILL.md -->
@@ -816,7 +816,7 @@ Announce on entry: **"Using music-match to shortlist the reel's track by mood."*
 - **The beat grid / loudness gate** — those are `beats.analyze` / `check_reel`.
 ```
 
-- [ ] **Step 2: Wire it into using-montage**
+- [x] **Step 2: Wire it into using-montage**
 
 In `SKILLS/using-montage/SKILL.md`, replace the step-5 block (lines 64–71, "music-and-mood (optional)…") with:
 
@@ -834,7 +834,7 @@ In `SKILLS/using-montage/SKILL.md`, replace the step-5 block (lines 64–71, "mu
    "без музыки", leave it unset — the reel is silent (a valid path).
 ```
 
-- [ ] **Step 3: Verify the SKILL files are well-formed**
+- [x] **Step 3: Verify the SKILL files are well-formed**
 
 Run: `.venv/bin/python -c "import pathlib; [print(p, 'OK') for p in ('SKILLS/music-match/SKILL.md', 'SKILLS/using-montage/SKILL.md') if pathlib.Path(p).read_text().startswith('---') or 'music-match' in pathlib.Path(p).read_text()]"`
 Expected: both paths print `OK` (the SKILL has frontmatter; using-montage references music-match).
@@ -842,7 +842,7 @@ Expected: both paths print `OK` (the SKILL has frontmatter; using-montage refere
 Run the full suite to confirm nothing regressed: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS (green; the prior count + the new mood tests).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add SKILLS/music-match/SKILL.md SKILLS/using-montage/SKILL.md
@@ -858,7 +858,7 @@ git commit -m "feat: music-match SKILL + using-montage music-step wiring (5.5)"
   `docs/specs/2026-07-05-montage-skillset-design.md`,
   `docs/specs/2026-07-11-music-spine-design.md`
 
-- [ ] **Step 1: `docs/build-status.md`** — add a "Done" entry after the start-offset one:
+- [x] **Step 1: `docs/build-status.md`** — add a "Done" entry after the start-offset one:
 
 ```markdown
 - **mood-match (§5.5 sub-slice, local lane) DONE (2026-07-13)** — plan
@@ -886,20 +886,20 @@ git commit -m "feat: music-match SKILL + using-montage music-step wiring (5.5)"
   sourcing" bullet reads that mood-match is now built and B3 (sourcing) + B4 (pacing)
   remain.
 
-- [ ] **Step 2: `docs/pipeline-map.md`** — update the 5.5 row's "Module / note" cell
+- [x] **Step 2: `docs/pipeline-map.md`** — update the 5.5 row's "Module / note" cell
   to append `+ mood-match (local: rank a folder vs SPEC.mood → MUSIC_SHORTLIST) ✅`,
   and change its "Left to build" cell in the blockers table to `sourcing (B3)` only
   (mood-match done). 5.5 **stays ◐** (B3 still open). The tally (11 ✅ · 3 ◐ · 2 ❌)
   is unchanged.
 
-- [ ] **Step 3: `CLAUDE.md`** — add two Quick-Reference rows (after the start-offset rows):
+- [x] **Step 3: `CLAUDE.md`** — add two Quick-Reference rows (after the start-offset rows):
 
 ```markdown
 | Mood-match design | [2026-07-13-mood-match-design.md](docs/specs/2026-07-13-mood-match-design.md) | §5.5 local lane: rank a folder vs `SPEC.mood` — pure `mood.py` core (`MoodVector`/`MOOD_ANCHORS` lexicon/`rank`) + loudness-robust `beats.mood_features` + `scripts/mood.py` driver → `MUSIC_SHORTLIST`; `music-match` SKILL; B3 sourcing deferred. |
 | Mood-match plan | [2026-07-13-mood-match.md](docs/plans/2026-07-13-mood-match.md) | Tasks 0–7: `mood.py` (MoodVector/norm01/anchors, mood_target, distance/rank/rank_by_drive), `beats.mood_features`, `scripts/mood.py` driver + CLI, real-librosa golden, `music-match` SKILL + wiring, docs. |
 ```
 
-- [ ] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — add a "Built"
+- [x] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — add a "Built"
   blockquote under the §5.5 section (after the start-offset one):
 
 ```markdown
@@ -911,28 +911,28 @@ git commit -m "feat: music-match SKILL + using-montage music-step wiring (5.5)"
 > free/any) stays deferred (B3). See `docs/specs/2026-07-13-mood-match-design.md`.
 ```
 
-- [ ] **Step 5: `docs/specs/2026-07-11-music-spine-design.md`** — extend the §9
+- [x] **Step 5: `docs/specs/2026-07-11-music-spine-design.md`** — extend the §9
   "Start-offset intelligence" deferred bullet (or add a sibling) noting mood-match
   landed 2026-07-13 (`docs/specs/2026-07-13-mood-match-design.md`); **B3 sourcing**
   remains the sole deferred §5.5 item.
 
-- [ ] **Step 6: Tick this plan's checkboxes** — mark every `- [ ]` in
+- [x] **Step 6: Tick this plan's checkboxes** — mark every `- [x]` in
   `docs/plans/2026-07-13-mood-match.md` as `- [x]` (the source-of-truth rule:
   plan checkboxes + build-status move in the same commit as the work).
 
-- [ ] **Step 7: Run the whole suite green**
+- [x] **Step 7: Run the whole suite green**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS, EXIT 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add docs/ CLAUDE.md
 git commit -m "docs: sync build-status/pipeline-map/specs/registry for mood-match (5.5)"
 ```
 
-- [ ] **Step 9: Final whole-slice review**
+- [x] **Step 9: Final whole-slice review**
 
 Dispatch a fresh reviewer subagent (most-capable model) over the whole branch diff
 (`git diff main...HEAD`) against `docs/specs/2026-07-13-mood-match-design.md`. The
@@ -965,3 +965,20 @@ table is enumerated (Task 0); the SKILL body is complete (Task 6).
 `beats.mood_features(track)→MoodVector` consistent across tasks and the driver/tests.
 The two `mood` modules (`scripts.lib.mood` vs `scripts.mood`) are aliased consistently
 (`mood` vs `driver`).
+
+## Review addendum (as-built delta)
+
+Beyond the as-planned literal blocks above:
+
+- **Task 0 — `from_dict` missing-key (commit `edff5d7`).** The adversarial review of
+  the pure core found `MoodVector.from_dict` raised a bare `KeyError` on a truncated
+  dict, unmet by design §6 ("a corrupt shortlist fails loud with the remedy") and §7
+  (which enumerates a missing-key test). Fixed as a separate follow-up commit:
+  `from_dict` now raises a remedy-bearing `ValueError` naming the missing key(s), and
+  `test_moodvector_from_dict_missing_key_raises` was added. `tests/lib/test_mood.py`
+  is therefore **24** tests, not the 23 of the as-planned blocks (the earlier "24" in
+  Task 2's step 4 was an arithmetic slip; the review test independently brings the real
+  count to 24). Whole suite: **702 passed / 7 skipped**.
+- The `distance()` short-`weights` truncation the review also noted was left as-is
+  (YAGNI: the parameter is type-hinted 3-tuple, the only in-repo caller passes the
+  3-tuple default, and it matches the `offset.py` sibling that this slice mirrors).

@@ -254,6 +254,13 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 > Mood-match and autonomous sourcing (B3) remain deferred. See
 > `docs/specs/2026-07-13-start-offset-intelligence-design.md`.
 
+> **Built (2026-07-14, mood-match):** the §5.5 mood-match (local lane) now ships —
+> `scripts/lib/mood.py` scores a track's energy/brightness/pace (loudness-robust)
+> against a curated mood lexicon and `scripts/mood.py` ranks a local folder vs
+> `SPEC.mood` into `MUSIC_SHORTLIST.md` for the agent to pick from (`music-match`
+> SKILL). Autonomous **sourcing** (`music_find`/`music_fetch`, `music.mode`
+> free/any) stays deferred (B3). See `docs/specs/2026-07-13-mood-match-design.md`.
+
 ### 5.6 pacing → `PACING.md` (energy spine)
 A shared artifact read by **both** music-and-mood **and** edit-plan. Episode order + each episode's target length + energy level, pinned to music sections. Hook first. This makes "the mood matches, not two halves" **structural**, not eyeballed. Episode length is variable (short cutaways where rhythm is needed, long ones where a maneuver/ride must be shown fully).
 **Gate:** order+length+energy pinned to the music.

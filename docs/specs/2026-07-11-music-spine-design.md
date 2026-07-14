@@ -334,3 +334,8 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   start-snap landed separately on 2026-07-13 (its own spec/plan:
   `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B3 sourcing and B4
   pacing remain deferred as above.
+- **Mood-match (local lane)** — ranking a user's own folder of tracks against
+  `SPEC.mood` (`scripts/lib/mood.py` + `scripts/mood.py` → `MUSIC_SHORTLIST`, the
+  `music-match` SKILL) landed 2026-07-14 (its own spec/plan:
+  `docs/specs/2026-07-13-mood-match-design.md`), so B3's remaining scope is the
+  **networked** sourcing (find/fetch across rights lanes); B4 pacing remains deferred.

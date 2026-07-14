@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-13._
+_Last updated: 2026-07-14._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -460,6 +460,26 @@ _Last updated: 2026-07-13._
   `analyze()` untouched. **Deferred:** beat-snap of the start, section detection
   (B4 pacing), mood-match/sourcing (B3).
 
+- **mood-match (§5.5 sub-slice, local lane) DONE (2026-07-14)** — plan
+  `docs/plans/2026-07-13-mood-match.md` + design
+  `docs/specs/2026-07-13-mood-match-design.md`. `scripts/lib/mood.py` — the pure
+  core (the `offset.py` analog): `MoodVector` (3 axes energy/brightness/pace,
+  validate + JSON round-trip, remedy-bearing `from_dict`), a synonym-rich
+  `MOOD_ANCHORS` lexicon, `mood_target` (free-text mood → target, zero-match →
+  None), `distance` (weighted Euclidean), `rank`, and `rank_by_drive` (the
+  no-target fallback, positive drive under its own key). `scripts/beats.py` gains
+  `mood_features(track)` — lazy librosa: tempo → pace, spectral centroid →
+  brightness, **peak-normalized** RMS mean → energy (loudness-robust, the §12
+  relative-gate discipline). `scripts/mood.py` — the driver: scan a folder →
+  `mood_features` each → rank vs `mood_target(SPEC.mood)` (or `rank_by_drive` on a
+  zero-match, logged never silent) → `MUSIC_SHORTLIST.{json,md}`; CLI
+  `--folder (--spec|--mood) --out-dir`. `SKILLS/music-match` runs it, presents the
+  shortlist, the user picks, then the existing `beats --auto-start` writes
+  `MUSIC.json`. Pure core exhaustively unit-tested (24); `mood_features` + the
+  ranking golden are real-librosa integration tests (synthetic known-answer
+  signals, ±tol). **702 tests green.** **Deferred:** B3 autonomous sourcing
+  (networked), catalog-metadata mood, a 4th dynamism axis, feature caching.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -472,9 +492,11 @@ _Last updated: 2026-07-13._
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
 - **Phase B3 — autonomous music sourcing** (`music_find.py`/`music_fetch.py`,
-  `music.mode` rights lanes, mood-match against catalog metadata) — picks up
-  where B1+B2 (music spine, DONE 2026-07-11) and start-offset intelligence
-  (DONE 2026-07-13) left off; B4 pacing (below) also remains. **OR**
+  `music.mode` rights lanes, mood-ranking against catalog metadata) — the local
+  mood-match (rank a user folder vs `SPEC.mood` → `MUSIC_SHORTLIST`, DONE
+  2026-07-14) has landed, so §5.5's remaining gap is the **networked** sourcing;
+  picks up where B1+B2 (music spine, DONE 2026-07-11) and start-offset
+  intelligence (DONE 2026-07-13) left off; B4 pacing (below) also remains. **OR**
 - **Phase B4 — pacing** (`PACING.md`, §5.6): the shared energy spine read by
   both music-and-mood and edit-plan, pinning episode order/length/energy to
   the music sections. **OR**
