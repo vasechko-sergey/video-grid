@@ -45,6 +45,28 @@ def test_build_shortlist_unknown_mood_falls_back_to_drive(tmp_path, monkeypatch,
     assert "ranking by drive" in capsys.readouterr().err
 
 
+def test_build_shortlist_same_slug_candidates_do_not_cross_attribute(tmp_path, monkeypatch):
+    # Two catalog hits collapse to the same slug (realistic: iTunes/Deezer single vs album
+    # cut — same artist/title, different ref/preview). Keying rows by slug would give a row
+    # the WRONG candidate's identity while keeping its own mood vector — silent corruption
+    # music_fetch would then act on. Rows must key by index so ref never crosses.
+    a = Candidate("Dup", "A", "itunes", "ref-single", "unknown (any lane)", "http://p/a")
+    b = Candidate("Dup", "A", "itunes", "ref-album", "unknown (any lane)", "http://p/b")
+    assert a.slug() == b.slug()                      # precondition: the collision
+    monkeypatch.setattr(find.catalog, "search", lambda *a_, **k: [a, b])
+    monkeypatch.setattr(find.catalog, "preview_clip", lambda c, d: d)   # unique per-candidate subdir
+    seen = []
+    def fake_features(path):
+        seen.append(path)
+        return MoodVector(0.9, 0.7, 0.85) if len(seen) == 1 else MoodVector(0.2, 0.5, 0.3)
+    monkeypatch.setattr(find.beats, "mood_features", fake_features)
+    out = tmp_path / "out"; out.mkdir()
+    find.build_shortlist("any", "energetic", str(out))
+    data = json.loads((out / "MUSIC_SHORTLIST.json").read_text())
+    assert data["candidates"][0]["ref"] == "ref-single"   # energetic vector => the single, not the album cut
+    assert data["candidates"][1]["ref"] == "ref-album"
+
+
 def test_cli_reads_mood_from_spec(tmp_path, monkeypatch):
     from scripts.lib.spec import Spec
     x = _c("X")

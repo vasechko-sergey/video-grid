@@ -25,9 +25,12 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
     MUSIC_SHORTLIST.{json,md} in out_dir. Zero candidates raises (in catalog.search); an
     unknown mood logs and falls back to drive-ranking (never silent)."""
     cands = catalog.search(mode, query or mood_text, n, catalog=cat)
-    by_slug = {c.slug(): c for c in cands}
     with tempfile.TemporaryDirectory() as clips:
-        pairs = [(c.slug(), beats.mood_features(catalog.preview_clip(c, clips))) for c in cands]
+        pairs = []
+        for i, c in enumerate(cands):
+            sub = Path(clips) / str(i)      # per-candidate subdir: same-slug previews never collide
+            sub.mkdir()
+            pairs.append((i, beats.mood_features(catalog.preview_clip(c, str(sub)))))
     target = mood.mood_target(mood_text)
     if target is None:
         _log(f"music-source: '{mood_text}' matched no mood anchor "
@@ -38,8 +41,8 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
         ranked = mood.rank(pairs, target)
         head = {"target": target.to_dict(), "fallback": None}
     rows = []
-    for slug, score, v in ranked:
-        c = by_slug[slug]
+    for i, score, v in ranked:      # key by index, not slug — dup-slug rows must not cross-attribute
+        c = cands[i]
         row = {"title": c.title, "artist": c.artist, "source": c.source, "ref": c.ref,
                "license": c.license, "preview_url": c.preview_url, "vector": v.to_dict()}
         if head["fallback"] == "drive":
