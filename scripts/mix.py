@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 
-from scripts.lib import proc
+from scripts.lib import assembly, proc
 from scripts.lib.models import MusicSpec
 
 _TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12)
@@ -28,6 +28,43 @@ def _measure(audio: str) -> dict[str, str]:
                                "second pass; the chosen fragment may be silent")
         stats[k] = m.group(1)
     return stats
+
+
+_AR = 48000            # ambient bed sample rate (uniform for -c copy concat)
+
+
+def _has_audio(path: str) -> bool:
+    """True iff `path` has at least one audio stream (a video-only segment does not)."""
+    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "a",
+                  "-show_entries", "stream=codec_name", "-of", "default=nk=1:nw=1", path])
+    return bool(r.stdout.decode("utf-8", errors="replace").strip())
+
+
+def _build_ambient(segments: list[tuple[str, float]], tmp_dir: str) -> str | None:
+    """Concatenate each raw segment's audio, trimmed/padded to its final episode dur
+    and ordered as given (EDL order), into one reel-length ambient bed. A segment with
+    no audio stream contributes anullsrc silence so the bed stays in sync with the
+    picture. Returns the bed wav path, or None when EVERY segment is silent (→ mix
+    falls back to the music-only stem). Uniform 48 kHz stereo s16 so assembly.concat
+    (-c copy) joins them losslessly."""
+    beds: list[str] = []
+    any_audio = False
+    for i, (seg, dur) in enumerate(segments):
+        bed = os.path.join(tmp_dir, f"amb_{i:03d}.wav")
+        if _has_audio(seg):
+            any_audio = True
+            # audio seek exempt from the -ss-after-i rule; re-encode from 0, apad the
+            # tail then -t caps → exactly `dur`, uniform 48k/stereo/s16.
+            proc.run(["ffmpeg", "-y", "-i", seg, "-t", f"{dur}", "-vn", "-ac", "2",
+                      "-ar", str(_AR), "-af", "apad", "-c:a", "pcm_s16le", bed])
+        else:
+            proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                      f"anullsrc=r={_AR}:cl=stereo", "-t", f"{dur}",
+                      "-c:a", "pcm_s16le", bed])
+        beds.append(bed)
+    if not any_audio:
+        return None
+    return assembly.concat(beds, os.path.join(tmp_dir, "ambient.wav"))
 
 
 def mix(music: MusicSpec, out_dir: str, dur: float) -> str:
