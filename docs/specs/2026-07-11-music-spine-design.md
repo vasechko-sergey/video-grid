@@ -339,13 +339,15 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   consume them.
 - **`safe_zones`** — needs a per-episode route + a platform safe-margin table
   (Editorial reel-final, a later phase); stays `passed=None`.
-- **Music-less delivery mode** — `baked` only; a music-less export is silent
-  today (no ambient/SFX to keep) so it is meaningless until `extract` lands.
+- **Music-less delivery mode** — `baked` only; ambient ducking (2026-07-15)
+  now bakes each clip's nat-sound *into* the music stem, so `mix.py` emits a
+  single inseparable music+ambient stem — a music-less-but-ambient-kept export
+  would need a separable ambient-only stem the mixer doesn't yet produce.
 - **Beat as a hard gate** — advisory until edit-plan/extract can re-trim a cut.
 - **Start-offset intelligence** — the "chosen fragment" `start_offset` + vocal-pause
   start-snap landed separately on 2026-07-13 (its own spec/plan:
-  `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B4 pacing remains
-  deferred as above (B3 sourcing has since landed too — see above).
+  `docs/specs/2026-07-13-start-offset-intelligence-design.md`); B4 pacing and
+  B3 sourcing have since landed too (see above).
 - **Mood-match (local lane)** — ranking a user's own folder of tracks against
   `SPEC.mood` (`scripts/lib/mood.py` + `scripts/mood.py` → `MUSIC_SHORTLIST`, the
   `music-match` SKILL) landed 2026-07-14 (its own spec/plan:

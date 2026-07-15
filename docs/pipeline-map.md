@@ -84,8 +84,9 @@ one `using-montage` invocation — it conducts project-init → footage-intake �
 edit-plan → edl_to_reel with the three §4.1 checkpoints, resuming from `montage
 next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-out
 (a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
-Everything else (B4, 5.9 draft, 5.12 ambient, 5.13 safe_zones, cast→hero-pin) is
-parallel **quality**.
+Everything else was parallel **quality**, and most of it has since shipped
+(B4 pacing, 5.9 draft, 5.12 ambient); only **5.13 safe_zones** and
+cast→hero-pin stay genuinely open.
 
 ## What produces a reel today
 
@@ -100,7 +101,7 @@ on loudness (hard) and reports beat alignment (advisory, non-blocking), and
 `deliver` muxes the stem into the export (stream-copy, preserving the measured
 loudness). Segments and per-episode manifests are **no longer hand-supplied**
 outside of tests. What's still missing to a *full* reel: the rest of the
-**front half** — 5.2 footage-intake and 5.4 trend-scan — plus
+**front half** — 5.4 trend-scan — plus
 the rest of audio: mood-match/sourcing (5.5), pacing (5.6), SFX (5.12). When a
 reel carries no `music`/`audio` (the silent path, unchanged
 from Phase A.5), `check_reel` honestly reports `passed=None` (`"not-checked"`)
