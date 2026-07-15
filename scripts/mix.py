@@ -67,8 +67,12 @@ def _build_ambient(segments: list[tuple[str, float]], tmp_dir: str) -> str | Non
     return assembly.concat(beds, os.path.join(tmp_dir, "ambient.wav"))
 
 
-def mix(music: MusicSpec, out_dir: str, dur: float) -> str:
-    """Music-only audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS)."""
+def mix(music: MusicSpec, out_dir: str, dur: float,
+        segments: list[tuple[str, float]] | None = None) -> str:
+    """Audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS). With
+    `segments` ([(raw_segment_path, episode_dur), …] in reel order), each clip's
+    nat-sound is ducked under the music and mixed in (design §5.12); without them (or
+    when every segment is silent) the stem is music-only, exactly as before."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
     if dur > music.duration + 0.1:
@@ -88,8 +92,24 @@ def mix(music: MusicSpec, out_dir: str, dur: float) -> str:
                   "-i", music.track, "-t", f"{dur}",
                   "-af", f"afade=t=in:st=0:d={_FADE},afade=t=out:st={max(0.0, dur - _FADE)}:d={_FADE}",
                   frag])
-        st = _measure(frag)
-        proc.run(["ffmpeg", "-y", "-i", frag, "-af",
+        norm_src = frag
+        if segments:
+            ambient = _build_ambient(segments, d)
+            if ambient is not None:
+                mixed = os.path.join(d, "mixed.wav")
+                # duck the ambient under the music (sidechaincompress: main=ambient,
+                # key=music), keep the ambient below the music (volume=0.6), then amix
+                # with duration=first so the stem is EXACTLY the music length (= dur).
+                proc.run(["ffmpeg", "-y", "-i", frag, "-i", ambient, "-filter_complex",
+                          ("[0:a]asplit=2[msum][mkey];"
+                           "[1:a]volume=0.6[amb];"
+                           "[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:"
+                           "attack=20:release=300[duck];"
+                           "[msum][duck]amix=inputs=2:duration=first[mixed]"),
+                          "-map", "[mixed]", mixed])
+                norm_src = mixed
+        st = _measure(norm_src)
+        proc.run(["ffmpeg", "-y", "-i", norm_src, "-af",
                   (f"loudnorm=I={_TARGET_LUFS}:TP={_TP_MAX}:LRA={_LRA_TARGET}:"
                    f"measured_I={st['input_i']}:measured_TP={st['input_tp']}:"
                    f"measured_LRA={st['input_lra']}:measured_thresh={st['input_thresh']}"),
