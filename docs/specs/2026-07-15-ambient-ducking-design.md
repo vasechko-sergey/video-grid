@@ -77,24 +77,27 @@ from `frag.wav` to the mixed signal:
 inputs: 0 = frag.wav (seeked+faded music, exactly dur)   1 = ambient.wav (reel-length bed)
 filter_complex:
   [0:a] asplit=2 [msum][mkey]
-  [1:a][mkey] sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300 [duck]
-  [msum][duck] amix=inputs=2:duration=first:weights='1 0.6' [mixed]
+  [1:a] volume=0.6 [amb]
+  [amb][mkey] sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300 [duck]
+  [msum][duck] amix=inputs=2:duration=first [mixed]
 -map [mixed]  mixed.wav
 ```
 
 - **`asplit`** — the music is used twice (as the amix sum term *and* as the
   sidechain key), so it must be split; ffmpeg forbids re-using a pad.
-- **`sidechaincompress`** — main = `[1:a]` ambient, key = `[mkey]` music →
-  ambient ducks when the music is loud. `threshold=0.03` (linear) ducks readily;
-  `ratio=4`, `attack=20`ms, `release=300`ms — a soft, un-pumping duck. These are
-  conservative defaults, tunable in one place.
+- **`volume=0.6`** — keeps the raw ambient below the music *before* the duck (a
+  separate `volume` filter rather than `amix … weights='1 0.6'` avoids a
+  space-in-option inside the filtergraph); the final loudnorm then lifts the
+  *sum* to −14.
+- **`sidechaincompress`** — main = `[amb]` (the scaled ambient), key = `[mkey]`
+  music → ambient ducks when the music is loud. `threshold=0.03` (linear) ducks
+  readily; `ratio=4`, `attack=20`ms, `release=300`ms — a soft, un-pumping duck.
+  Conservative defaults, tunable in one place.
 - **`amix=duration=first`** — the *first* input (`[msum]`, the music, exactly
   `dur` from pass-1's `-t dur`) fixes the output length. The ambient bed is
   truncated or silence-padded to match — so the stem is **exactly** master-length
   regardless of per-segment rounding drift. This closes the sync landmine
-  (`deliver`'s `-shortest` only absorbs sub-second jitter). `weights='1 0.6'`
-  keeps the raw ambient below the music before ducking; the final loudnorm then
-  lifts the *sum* to −14.
+  (`deliver`'s `-shortest` only absorbs sub-second jitter).
 
 When `segments is None` or `_build_ambient` returns `None`, `mix()` skips the
 filtergraph pass entirely and measures+loudnorms `frag.wav` exactly as today —
