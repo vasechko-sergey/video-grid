@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-07-14._
+_Last updated: 2026-07-15._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -25,7 +25,7 @@ _Last updated: 2026-07-14._
 | 5.9  | assemble-draft | `draft.mp4` | ✅ | draft CLI + typed helpers (scripts/draft.py, scripts/lib/draft.py) — concat of raw segments, canvas-fit, processing_notes labels + music bed (SP1b, 5.9) | Front-half authoring |
 | 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1) | — |
 | 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` | — |
-| 5.12 | audio-mix | `out/audio` | ◐ | music-only mix (seek+afade+loudnorm −14 LUFS → aac) ✅; ambient ducking + SFX ❌ | **Phase B — music spine** |
+| 5.12 | audio-mix | `out/audio` | ◐ | music-only mix ✅ + ambient ducking ✅ (nat-sound ducked under music, ReelManifest.ambient); SFX ❌ | **Phase B — music spine** |
 | 5.13 | reel-final-check (gate) | review | ◐ | `check_reel` mechanical ✅; loudness (hard) + beat (advisory) now measured ✅; `safe_zones` still ❌ (`passed=None`) | Phase B (audio) + Editorial |
 | 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate | — |
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
@@ -61,7 +61,7 @@ status table above.
 | 5.9 | assemble-draft | ✅ | — (2026-07-13) | none — **5.8 ✅** | QA preview |
 | 5.10 | process-episode 🔒 | ✅ | — | — | — |
 | 5.11 | episode-postcheck | ✅ | — | — | — |
-| 5.12 | audio-mix | ◐ | ambient duck + SFX | **extract per-ep audio passthrough** (small 5.8 change) | richer mix |
+| 5.12 | audio-mix | ◐ | SFX whoosh (asset + transition placement) | none — extract preserves segment audio today | richer mix |
 | 5.13 | reel-final-check | ◐ | `safe_zones` + editorial | none for safe_zones · (soft) 5.2 faces ✅ | tighter gate |
 | 5.14 | deliver | ✅ | — | — | — |
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
@@ -101,8 +101,8 @@ on loudness (hard) and reports beat alignment (advisory, non-blocking), and
 loudness). Segments and per-episode manifests are **no longer hand-supplied**
 outside of tests. What's still missing to a *full* reel: the rest of the
 **front half** — 5.2 footage-intake and 5.4 trend-scan — plus
-the rest of audio: mood-match/sourcing (5.5), pacing (5.6), ambient ducking +
-SFX (5.12). When a reel carries no `music`/`audio` (the silent path, unchanged
+the rest of audio: mood-match/sourcing (5.5), pacing (5.6), SFX (5.12). When a
+reel carries no `music`/`audio` (the silent path, unchanged
 from Phase A.5), `check_reel` honestly reports `passed=None` (`"not-checked"`)
 for beat/loudness rather than a silent pass; `safe_zones` reports
 `passed=None` (`"not-implemented"`, genuinely unbuilt) either way.
@@ -121,7 +121,7 @@ for beat/loudness rather than a silent pass; `safe_zones` reports
 
 ### Upcoming
 
-- [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding). Remaining: ambient/SFX (5.12), the pacing retry-time length auto-fix.
+- [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding) + ambient ducking (5.12, landed 2026-07-15). Remaining: SFX (5.12), the pacing retry-time length auto-fix.
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
 - [ ] **Router + curation** — stage 5.1 cap-3 fan-out router; the episode-choice human loop; `cast.json` hero registry (design §6.1a).
 - [ ] **Editorial reel-final** — stage 5.13 beyond the mechanical gate: `safe_zones` + structural/editorial review.

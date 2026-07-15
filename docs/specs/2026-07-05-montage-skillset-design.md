@@ -357,9 +357,17 @@ Both must pass. Fail → back to reframe.
 
 > **Built (2026-07-11, B1+B2):** `scripts/mix.py` — **music-only** stem: accurate
 > seek + afade + two-pass loudnorm −14 LUFS → aac; `scripts/deliver.py` muxes it
-> (stream-copy, preserving the measured loudness). **Ambient ducking**
+> (stream-copy, preserving the measured loudness). ~~**Ambient ducking**
 > (sidechaincompress) and **SFX** are deferred until `extract` (§5.8) preserves
-> per-episode audio to duck against — see `docs/plans/2026-07-11-music-spine.md`.
+> per-episode audio to duck against~~ — see `docs/plans/2026-07-11-music-spine.md`.
+> **Ambient built 2026-07-15 — see below; SFX still deferred.**
+
+> **Built (2026-07-15, ambient sub-slice):** `mix(segments=)` ducks each clip's
+> preserved nat-sound — the raw `ep{i}_raw.mp4` segments `extract` already keeps
+> (§5.8 needed no change), never the silent locked clips — under the music via
+> `sidechaincompress` before the loudnorm pass; `ReelManifest.ambient` defaults
+> on. **SFX** (whoosh on transitions) remains the open §5.12 piece. See
+> `docs/specs/2026-07-15-ambient-ducking-design.md`.
 
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
 Two parts:

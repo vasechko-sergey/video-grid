@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-14._
+_Last updated: 2026-07-15._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -534,6 +534,40 @@ _Last updated: 2026-07-14._
   pacing-gate back-edge (auto re-pick `start_offset` on a misfit), librosa
   section detection, musical-phrase-aware grouping.
 
+- **ambient ducking (§5.12 audio-mix, ambient sub-slice) DONE (2026-07-15)** —
+  plan `docs/plans/2026-07-15-ambient-ducking.md` + design
+  `docs/specs/2026-07-15-ambient-ducking-design.md`. Grows the music-spine
+  (B2) mixer with a ducked ambient bed built from each clip's preserved
+  nat-sound. `scripts/lib/models.py` gains
+  `ReelManifest.ambient: bool = True` — the on/off switch (`False` restores
+  today's pure-music stem).
+  `scripts/mix.py` gains `_build_ambient(segments, tmp_dir)`: per `(segment,
+  target_dur)` in EDL order, an audio-bearing segment trims/pads (`apad` +
+  `-t dur`) to a uniform 48kHz/stereo/s16 wav, a video-only segment synths
+  `anullsrc` silence instead, and `assembly.concat` joins them into one
+  reel-length bed (`None` when every segment is silent — a graceful
+  music-only fallback, not an error); `mix(segments=)` inserts one
+  filtergraph pass between the existing seek+fade and loudnorm passes —
+  `sidechaincompress` ducks the ambient (main) under the music (sidechain
+  key, via `asplit`), `amix=duration=first` pins the mixed stem to exactly
+  the music's `dur` so it can never drift from the picture — before the
+  unchanged two-pass loudnorm. `scripts/build_reel.py`'s stem hook gathers
+  each episode's `(segment, target_dur)` from its manifest and passes
+  `segments` only when `rm.ambient`. **Two real-ffmpeg proofs**
+  (`tests/integration/test_ambient.py`): a bed-mixed stem still measures −14
+  LUFS, and the ambient's frequency band measurably drops during the loud
+  half of a synthetic music track (the duck moves samples, not just wires
+  the graph); `tests/integration/test_music_spine.py`'s `build_reel` golden
+  now hands real `segment`/`target_dur` manifests, proving the default
+  `ambient=True` path survives real — but audioless, since `reframe` renders
+  with `-an` — segments end-to-end. **796 tests green** (+8 skipped,
+  unchanged from pacing). **Correction:** the pipeline-map's old "blocked by
+  extract per-ep audio passthrough" note was stale — `extract` already
+  preserves segment audio (§5.8), so no 5.8 change was needed; the ambient
+  source is the preserved raw `ep{i}_raw.mp4` segments, never the silent
+  locked clips. **Deferred:** SFX (whoosh on transitions) — its own slice,
+  needs an asset plus transition-point placement.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -545,15 +579,16 @@ _Last updated: 2026-07-14._
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
-- **Phase B remainder — ambient ducking + SFX** (`audio-mix`, §5.12): duck the
-  ambient bed under the music and layer SFX, using `extract`'s already-preserved
-  per-episode audio (§5.8) — the last audio-quality item now that B1+B2 (music
-  spine, DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13),
-  mood-match (DONE 2026-07-14), networked sourcing (DONE 2026-07-14), and B4
-  pacing (DONE 2026-07-14) have all landed. A sibling item in the same phase:
-  the pacing **retry-time length auto-fix** (`build_reel`'s `length` failure
-  re-timing the spine, `docs/specs/2026-07-14-pacing-design.md` §10 role 2) —
-  deferred, needs `build_reel`/`reel_orchestration` work. **OR**
+- **Phase B remainder — SFX** (`audio-mix`, §5.12): layer transition whoosh —
+  the last audio-quality item now that B1+B2 (music spine, DONE 2026-07-11),
+  start-offset intelligence (DONE 2026-07-13), mood-match (DONE 2026-07-14),
+  networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), and
+  ambient ducking (DONE 2026-07-15) have all landed; needs an asset (bundled
+  `.wav` or ffmpeg-synth) plus transition-point placement, orthogonal to the
+  now-shipped ambient bed. A sibling item in the same phase: the pacing
+  **retry-time length auto-fix** (`build_reel`'s `length` failure re-timing
+  the spine, `docs/specs/2026-07-14-pacing-design.md` §10 role 2) — deferred,
+  needs `build_reel`/`reel_orchestration` work. **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today

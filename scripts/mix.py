@@ -1,7 +1,7 @@
-"""audio-mix (montage §5.12, music-only B2): build the reel's audio stem from a
-MusicSpec — seek the chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac.
-Ambient ducking + SFX arrive when extract preserves per-episode audio (§5.8);
-this signature is the stable seam for them."""
+"""audio-mix (montage §5.12): build the reel's audio stem from a MusicSpec —
+seek the chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac — and,
+given `segments`, duck each clip's preserved nat-sound under the music
+(sidechaincompress) first. SFX (whoosh on transitions) is still deferred."""
 import argparse
 import os
 import re

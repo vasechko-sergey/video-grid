@@ -47,8 +47,11 @@ numbers. `safe_zones` stays deferred (honest `passed=None`).
    reprocess round — wasteful, music never changes; inlining at deliver — breaks
    the check-before-deliver ordering.)
 5. **Music-only mix v1.** Ambient ducking (`sidechaincompress`) and SFX (whoosh
-   on transitions) are deferred to when `extract` (§5.8) preserves per-episode
-   ambient. `mix.py`'s signature leaves room; v1 muxes music + fades + loudnorm.
+   on transitions) were deferred to when `extract` (§5.8) preserves per-episode
+   ambient — **ambient landed 2026-07-15** (turned out §5.8 needed no change;
+   `extract` already preserved the raw segments — see
+   `docs/specs/2026-07-15-ambient-ducking-design.md`); **SFX remains deferred.**
+   `mix.py`'s signature left the room; ambient is the first thing grown into it.
 
 ## §1 — Architecture & files
 
@@ -328,8 +331,10 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   edit-plan binds episodes to. The retry-time auto-fix (`build_reel`'s
   `length` failure re-timing the spine) and librosa section detection remain
   deferred.
-- **Ambient ducking + SFX** in the mix — need `extract`'s preserved per-episode
-  audio (§5.8). `mix.py` is music-only; its signature reserves room.
+- **Ambient ducking** in the mix — **landed 2026-07-15** (its own spec/plan:
+  `docs/specs/2026-07-15-ambient-ducking-design.md`); turned out `extract`
+  already preserved per-episode audio (§5.8), so no §5.8 change was needed.
+  **SFX** (whoosh on transitions) remains deferred — its own future slice.
 - **Downbeats / section detection / spectral / mood vector** — added when B3/B4
   consume them.
 - **`safe_zones`** — needs a per-episode route + a platform safe-margin table
@@ -347,5 +352,5 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   `docs/specs/2026-07-13-mood-match-design.md`); its ranking core was reused
   unchanged by B3's networked sourcing (also landed 2026-07-14 — see above), so
   B3 is now complete end-to-end; B4 pacing has since landed too (2026-07-14 —
-  see above). Ambient ducking/SFX and the pacing retry-time auto-fix are what
-  remain open in this spec's scope.
+  see above). SFX and the pacing retry-time auto-fix are what remain open in
+  this spec's scope (ambient ducking landed 2026-07-15 — see above).

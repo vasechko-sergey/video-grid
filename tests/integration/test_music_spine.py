@@ -59,6 +59,9 @@ def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
                                       "beats": [b for b in ms.beats if b <= dur]}))
     d0 = check_reel._probe_dur(ep0)
     d1 = check_reel._probe_dur(ep1)
+    # ep0/ep1 are silent (reframe strips audio with -an) → _build_ambient returns
+    # None → music-only stem; proves the default ambient=True path survives real
+    # audioless segments
     rm = ReelManifest(
         episodes=[ReelEpisode(manifest={"segment": ep0, "target_dur": d0}, clip=ep0, route=str(tmp_path / "r0.json")),
                   ReelEpisode(manifest={"segment": ep1, "target_dur": d1}, clip=ep1, route=str(tmp_path / "r1.json"))],
