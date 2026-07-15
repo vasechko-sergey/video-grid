@@ -566,8 +566,8 @@ _Last updated: 2026-07-15._
   preserves segment audio (§5.8), so no 5.8 change was needed; the ambient
   source is the preserved raw `ep{i}_raw.mp4` segments, never the silent
   locked clips. **Deferred → built (transition SFX sub-slice, see the entry
-  below):** SFX (whoosh on transitions) — its own slice, needs an asset plus
-  transition-point placement.
+  below):** SFX (whoosh on transitions) — its own slice; shipped as a pure
+  ffmpeg-synth whoosh (no asset) placed on major transitions.
 
 - **transition SFX (§5.12 audio-mix, whoosh sub-slice) DONE (2026-07-15)** —
   plan `docs/plans/2026-07-15-transition-sfx.md` + design
