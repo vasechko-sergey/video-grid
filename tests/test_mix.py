@@ -123,3 +123,43 @@ def test_build_sfx_places_a_whoosh_at_each_major_cut(tmp_path, monkeypatch):
     assert "asplit=1" in joined                                   # one major cut → one whoosh copy
     assert "adelay=2800:all=1" in joined                          # t=3.0 − _SFX_LEAD(0.2) = 2.8s
     assert "amix=inputs=2:duration=first:normalize=0" in joined   # base + 1 whoosh, levels kept
+
+
+def test_mix_sfx_only_makes_no_sidechain(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d: d + "/sfx.wav")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
+            segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)], ambient=False, sfx=True)
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert "sidechaincompress" not in joined and "asplit" not in joined  # no ambient duck
+    assert "[sfx]" in joined and "amix=inputs=2:duration=first" in joined  # music + sfx on top
+
+
+def test_mix_ambient_and_sfx_compose_three_inputs(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
+    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d: d + "/sfx.wav")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
+            segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)], ambient=True, sfx=True)
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert "sidechaincompress" in joined                              # ambient still ducked
+    assert "[sfx]" in joined                                          # sfx term present
+    assert "amix=inputs=3:duration=first" in joined                  # music + ducked ambient + sfx
+
+
+def test_mix_sfx_false_leaves_ambient_graph_unchanged(tmp_path, monkeypatch):
+    # regression: sfx defaults off → the ambient-only graph is byte-identical to today
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=[("s0.mp4", 6.0)])
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert ("[0:a]asplit=2[msum][mkey];[1:a]volume=0.6[amb];"
+            "[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300[duck];"
+            "[msum][duck]amix=inputs=2:duration=first[mixed]") in joined
+    assert "[sfx]" not in joined

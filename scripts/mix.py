@@ -1,7 +1,9 @@
-"""audio-mix (montage §5.12): build the reel's audio stem from a MusicSpec —
-seek the chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac — and,
-given `segments`, duck each clip's preserved nat-sound under the music
-(sidechaincompress) first. SFX (whoosh on transitions) is still deferred."""
+"""audio-mix (montage §5.12): build the reel's audio stem from a MusicSpec — seek the
+chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac. Given `segments` and
+`ambient`, each clip's preserved nat-sound is ducked under the music
+(sidechaincompress); with `sfx`, a synthesized whoosh is placed on the reel's major
+transitions and mixed in on top. Both bake into the one stem before the final
+loudnorm, so deliver/check_reel see a single pre-normalized signal."""
 import argparse
 import os
 import re
@@ -139,12 +141,40 @@ def _build_sfx(durs: list[float], tmp_dir: str) -> str | None:
     return out
 
 
+def _mix_graph(has_ambient: bool, has_sfx: bool) -> str:
+    """filter_complex composing the optional ambient (ducked under the music) and sfx
+    (un-ducked, on top) layers over the music fragment (input 0). Inputs after 0 are,
+    in order: ambient (if any) then sfx (if any). The music-only path never calls this;
+    the ambient-only string is byte-identical to the pre-SFX mixer (regression-pinned)."""
+    idx = 1
+    parts: list[str] = []
+    terms: list[str] = []
+    if has_ambient:
+        parts.append("[0:a]asplit=2[msum][mkey]")
+        terms.append("[msum]")
+        parts.append(f"[{idx}:a]volume=0.6[amb]")
+        parts.append("[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300[duck]")
+        terms.append("[duck]")
+        idx += 1
+    else:
+        terms.append("[0:a]")
+    if has_sfx:
+        parts.append(f"[{idx}:a]volume={_SFX_MIX}[sfx]")
+        terms.append("[sfx]")
+        idx += 1
+    parts.append(f"{''.join(terms)}amix=inputs={len(terms)}:duration=first[mixed]")
+    return ";".join(parts)
+
+
 def mix(music: MusicSpec, out_dir: str, dur: float,
-        segments: list[tuple[str, float]] | None = None) -> str:
+        segments: list[tuple[str, float]] | None = None,
+        ambient: bool = True, sfx: bool = False) -> str:
     """Audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS). With
-    `segments` ([(raw_segment_path, episode_dur), …] in reel order), each clip's
-    nat-sound is ducked under the music and mixed in (design §5.12); without them (or
-    when every segment is silent) the stem is music-only, exactly as before."""
+    `segments` ([(raw_segment_path, episode_dur), …] in reel order) and `ambient`,
+    each clip's nat-sound is ducked under the music; with `sfx`, a synthesized whoosh
+    is placed on the reel's major transitions and mixed in on top. Both bake into the
+    one stem before the final loudnorm; without them the stem is music-only, exactly
+    as before."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
     if dur > music.duration + 0.1:
@@ -164,22 +194,20 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
                   "-i", music.track, "-t", f"{dur}",
                   "-af", f"afade=t=in:st=0:d={_FADE},afade=t=out:st={max(0.0, dur - _FADE)}:d={_FADE}",
                   frag])
+        amb = _build_ambient(segments, d) if (segments and ambient) else None
+        sfx_bed = _build_sfx([du for _, du in segments], d) if (segments and sfx) else None
         norm_src = frag
-        if segments:
-            ambient = _build_ambient(segments, d)
-            if ambient is not None:
-                mixed = os.path.join(d, "mixed.wav")
-                # duck the ambient under the music (sidechaincompress: main=ambient,
-                # key=music), keep the ambient below the music (volume=0.6), then amix
-                # with duration=first so the stem is EXACTLY the music length (= dur).
-                proc.run(["ffmpeg", "-y", "-i", frag, "-i", ambient, "-filter_complex",
-                          ("[0:a]asplit=2[msum][mkey];"
-                           "[1:a]volume=0.6[amb];"
-                           "[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:"
-                           "attack=20:release=300[duck];"
-                           "[msum][duck]amix=inputs=2:duration=first[mixed]"),
-                          "-map", "[mixed]", mixed])
-                norm_src = mixed
+        if amb is not None or sfx_bed is not None:
+            inputs = ["-i", frag]
+            if amb is not None:
+                inputs += ["-i", amb]
+            if sfx_bed is not None:
+                inputs += ["-i", sfx_bed]
+            mixed = os.path.join(d, "mixed.wav")
+            proc.run(["ffmpeg", "-y", *inputs, "-filter_complex",
+                      _mix_graph(amb is not None, sfx_bed is not None),
+                      "-map", "[mixed]", mixed])
+            norm_src = mixed
         st = _measure(norm_src)
         proc.run(["ffmpeg", "-y", "-i", norm_src, "-af",
                   (f"loudnorm=I={_TARGET_LUFS}:TP={_TP_MAX}:LRA={_LRA_TARGET}:"
