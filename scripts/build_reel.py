@@ -45,9 +45,11 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap)
         if action.kind == "deliver":
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
+                want = rm.ambient or rm.sfx
                 segments = ([(e.manifest["segment"], e.manifest["target_dur"]) for e in rm.episodes]
-                            if rm.ambient else None)
-                audio = mix.mix(music, work_dir, check_reel._probe_dur(master), segments=segments)
+                            if want else None)
+                audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
+                                segments=segments, ambient=rm.ambient, sfx=rm.sfx)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   audio=audio, titles=titles)

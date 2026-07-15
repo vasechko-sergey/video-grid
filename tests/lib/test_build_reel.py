@@ -167,11 +167,11 @@ def test_multi_culprit_round_second_failure_propagates_without_delivering(monkey
 # for the pre-existing A.5 tests above; a same-named redefinition here would
 # shadow those at module scope and break every test that calls them.
 
-def _rm_music(music, ambient=True):
+def _rm_music(music, ambient=True, sfx=False):
     ep0 = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 3.0}, clip="c0.mp4", route="r0.json")
     ep1 = ReelEpisode(manifest={"segment": "s1.mp4", "target_dur": 3.0}, clip="c1.mp4", route="r1.json")
     return ReelManifest(episodes=[ep0, ep1], target_dur=6.0, variety_min=4,
-                        music=music, ambient=ambient)
+                        music=music, ambient=ambient, sfx=sfx)
 
 
 def _fake_music():
@@ -198,7 +198,8 @@ def _wire_music(monkeypatch, reports, mixed, delivered):
     monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 6.0)
     monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
     monkeypatch.setattr(build_reel.mix, "mix",
-                        lambda mus, wd, dur, segments=None: (mixed.append((wd, dur)), "stem.m4a")[1])
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (mixed.append((wd, dur)), "stem.m4a")[1])
     monkeypatch.setattr(build_reel.deliver, "deliver",
                         lambda *a, audio=None, **k: (delivered.append(audio), "OUT.mp4")[1])
     # NOTE: reel_orchestration.next_action is REAL — proves loudness rides the true escalate path
@@ -257,7 +258,8 @@ def test_build_reel_music_delivers_after_full_reprocess_budget(tmp_path, monkeyp
     monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     monkeypatch.setattr(build_reel.mix, "mix",
-                        lambda mus, wd, dur, segments=None: (mixed.append(dur), "stem.m4a")[1])
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (mixed.append(dur), "stem.m4a")[1])
     monkeypatch.setattr(build_reel.process_episode, "process_episode",
                         lambda *a, **k: {"status": "mechanical_pass", "clip": "c0.mp4"})
     monkeypatch.setattr(build_reel.deliver, "deliver",
@@ -272,7 +274,8 @@ def test_build_reel_passes_segments_when_ambient(tmp_path, monkeypatch):
     mixed, delivered, got = [], [], {}
     _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
     monkeypatch.setattr(build_reel.mix, "mix",
-                        lambda mus, wd, dur, segments=None: (got.setdefault("segments", segments), "stem.m4a")[1])
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (got.setdefault("segments", segments), "stem.m4a")[1])
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json")),
                           str(tmp_path / "out"), str(tmp_path / "work"))
@@ -283,8 +286,37 @@ def test_build_reel_ambient_false_passes_no_segments(tmp_path, monkeypatch):
     mixed, delivered, got = [], [], {}
     _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
     monkeypatch.setattr(build_reel.mix, "mix",
-                        lambda mus, wd, dur, segments=None: (got.setdefault("segments", segments), "stem.m4a")[1])
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (got.setdefault("segments", segments), "stem.m4a")[1])
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), ambient=False),
                           str(tmp_path / "out"), str(tmp_path / "work"))
     assert got["segments"] is None            # ambient=False → pure-music stem
+
+
+def test_build_reel_passes_sfx_flag_when_set(tmp_path, monkeypatch):
+    # sfx=True → build_reel hands mix the flag AND the (segment, target_dur) list (durs drive placement)
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix",
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (got.update(segments=segments, sfx=sfx), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), sfx=True),
+                          str(tmp_path / "out"), str(tmp_path / "work"))
+    assert got["sfx"] is True
+    assert got["segments"] == [("s0.mp4", 3.0), ("s1.mp4", 3.0)]
+
+
+def test_build_reel_sfx_only_still_passes_segments(tmp_path, monkeypatch):
+    # ambient OFF but sfx ON → segments still handed over (sfx needs the durations)
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix",
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (got.update(segments=segments, ambient=ambient, sfx=sfx), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), ambient=False, sfx=True),
+                          str(tmp_path / "out"), str(tmp_path / "work"))
+    assert got["ambient"] is False and got["sfx"] is True
+    assert got["segments"] == [("s0.mp4", 3.0), ("s1.mp4", 3.0)]
