@@ -1,5 +1,7 @@
 """mix ambient path — unit level, proc.run mocked (the real ffmpeg proof lives in
 tests/integration/test_ambient.py). Asserts branch selection + command shape only."""
+import pytest
+
 from scripts import mix
 from scripts.lib.models import MusicSpec
 
@@ -84,3 +86,40 @@ def test_mix_all_silent_bed_falls_back_to_music_only(tmp_path, monkeypatch):
     mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=[("s0.mp4", 3.0)])
     joined = " ".join(" ".join(map(str, c)) for c in calls)
     assert "sidechaincompress" not in joined                          # None → music-only
+
+
+# --- transition SFX (§5.12) -------------------------------------------------
+
+def test_major_cuts_needs_two_clips():
+    assert mix._major_cuts([5.0]) == []
+
+
+def test_major_cuts_uniform_pacing_has_none():
+    assert mix._major_cuts([2.0, 2.0, 2.0]) == []          # nothing exceeds the median → no accent
+
+
+def test_major_cuts_one_held_shot():
+    assert mix._major_cuts([3.0, 0.5, 0.5]) == pytest.approx([3.0])   # cut after the 3.0s hold
+
+
+def test_major_cuts_throttle_drops_close_second():
+    # majors fall at 4.0, 4.3, 8.3; 4.3 is within _MIN_GAP (0.6) of 4.0 → dropped
+    assert mix._major_cuts([4.0, 0.3, 4.0, 0.3, 0.3]) == pytest.approx([4.0, 8.3])
+
+
+def test_build_sfx_no_major_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(mix.proc, "run", lambda *a, **k: _R())
+    monkeypatch.setattr(mix, "_whoosh", lambda d: d + "/w.wav")
+    assert mix._build_sfx([2.0, 2.0, 2.0], str(tmp_path)) is None
+
+
+def test_build_sfx_places_a_whoosh_at_each_major_cut(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    monkeypatch.setattr(mix, "_whoosh", lambda d: d + "/w.wav")
+    res = mix._build_sfx([3.0, 0.5, 0.5], str(tmp_path))
+    assert res is not None and res.endswith("sfx.wav")
+    joined = " ".join(map(str, calls[-1]))
+    assert "asplit=1" in joined                                   # one major cut → one whoosh copy
+    assert "adelay=2800:all=1" in joined                          # t=3.0 − _SFX_LEAD(0.2) = 2.8s
+    assert "amix=inputs=2:duration=first:normalize=0" in joined   # base + 1 whoosh, levels kept

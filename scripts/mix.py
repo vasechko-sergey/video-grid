@@ -5,6 +5,7 @@ given `segments`, duck each clip's preserved nat-sound under the music
 import argparse
 import os
 import re
+import statistics
 import tempfile
 
 from scripts.lib import assembly, proc
@@ -31,6 +32,17 @@ def _measure(audio: str) -> dict[str, str]:
 
 
 _AR = 48000            # ambient bed sample rate (uniform for -c copy concat)
+
+# --- SFX: whoosh on major transitions (§5.12) — tunable in one place --------
+_MAJOR_FACTOR = 1.0     # a cut is "major" when max(neighbour durs) > factor * median(durs)
+_MIN_GAP = 0.6          # min seconds between kept whooshes (throttle)
+_SFX_DUR = 0.35         # whoosh length (s)
+_SFX_FREQ = 1200        # whoosh bandpass centre (Hz)
+_SFX_Q = 0.7            # whoosh bandpass width (Q; smaller = wider)
+_SFX_ATTACK = 0.08      # whoosh rise time (s); its peak lands here
+_SFX_LEAD = 0.2         # whoosh starts this many seconds before the cut so its peak sits near it
+_SFX_MIX = 1.0          # whoosh volume entering the final amix (relative punch)
+_SFX_SEED = 42          # anoisesrc seed → a deterministic whoosh
 
 
 def _has_audio(path: str) -> bool:
@@ -65,6 +77,66 @@ def _build_ambient(segments: list[tuple[str, float]], tmp_dir: str) -> str | Non
     if not any_audio:
         return None
     return assembly.concat(beds, os.path.join(tmp_dir, "ambient.wav"))
+
+
+def _major_cuts(durs: list[float]) -> list[float]:
+    """Cumulative offsets of the reel's MAJOR internal cuts (EDL order). A cut between
+    ep[k] and ep[k+1] sits at T[k]=sum(durs[:k+1]); it is major when max(durs[k],
+    durs[k + 1]) > _MAJOR_FACTOR * median(durs) — i.e. it touches a held/hero shot on
+    either side — and is kept only if at least _MIN_GAP past the previous kept cut
+    (throttle). Empty when the reel has fewer than two clips or none exceed the median
+    (uniform pacing → no accent)."""
+    if len(durs) < 2:
+        return []
+    med = statistics.median(durs)
+    kept: list[float] = []
+    t = 0.0
+    for k in range(len(durs) - 1):
+        t += durs[k]                                    # T[k] = end of ep k = the cut time
+        if max(durs[k], durs[k + 1]) > _MAJOR_FACTOR * med:
+            if not kept or t - kept[-1] >= _MIN_GAP:
+                kept.append(t)
+    return kept
+
+
+def _whoosh(tmp_dir: str) -> str:
+    """Synthesize one transition whoosh → wav (48 kHz stereo s16): seeded pink noise
+    through a resonant bandpass, a fast attack then a decay — a swell that reads as a
+    whoosh. No asset, deterministic (fixed seed)."""
+    out = os.path.join(tmp_dir, "whoosh.wav")
+    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+              f"anoisesrc=color=pink:r={_AR}:d={_SFX_DUR}:a=0.9:seed={_SFX_SEED}",
+              "-af", (f"bandpass=f={_SFX_FREQ}:width_type=q:w={_SFX_Q},"
+                      f"afade=t=in:st=0:d={_SFX_ATTACK},"
+                      f"afade=t=out:st={_SFX_ATTACK}:d={_SFX_DUR - _SFX_ATTACK}"),
+              "-ac", "2", "-ar", str(_AR), "-c:a", "pcm_s16le", out])
+    return out
+
+
+def _build_sfx(durs: list[float], tmp_dir: str) -> str | None:
+    """Render a whoosh at each major internal cut (see _major_cuts) into one sfx-bed
+    wav, or None when the reel has no major cut. The whoosh is synthesized once and
+    placed by adelay onto the cut offsets (started _SFX_LEAD early so its attack peaks
+    near the cut); amix normalize=0 keeps each whoosh at its own level. The bed is
+    truncated/padded to the music length by mix's own amix=duration=first."""
+    cuts = _major_cuts(durs)
+    if not cuts:
+        return None
+    whoosh = _whoosh(tmp_dir)
+    out = os.path.join(tmp_dir, "sfx.wav")
+    total = sum(durs)
+    k = len(cuts)
+    fc = ["[1:a]asplit=%d%s" % (k, "".join(f"[w{i}]" for i in range(k)))]
+    for i, t in enumerate(cuts):
+        ms = max(0, int(round((t - _SFX_LEAD) * 1000)))
+        fc.append(f"[w{i}]adelay={ms}:all=1[d{i}]")
+    terms = "[0:a]" + "".join(f"[d{i}]" for i in range(k))
+    fc.append(f"{terms}amix=inputs={k + 1}:duration=first:normalize=0[sfx]")
+    proc.run(["ffmpeg", "-y", "-t", f"{total}", "-f", "lavfi", "-i",
+              f"anullsrc=r={_AR}:cl=stereo", "-i", whoosh,
+              "-filter_complex", ";".join(fc), "-map", "[sfx]",
+              "-c:a", "pcm_s16le", out])
+    return out
 
 
 def mix(music: MusicSpec, out_dir: str, dur: float,
