@@ -57,9 +57,11 @@ def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
     music_json = tmp_path / "MUSIC.json"
     music_json.write_text(json.dumps({**ms.to_dict(), "duration": dur,
                                       "beats": [b for b in ms.beats if b <= dur]}))
+    d0 = check_reel._probe_dur(ep0)
+    d1 = check_reel._probe_dur(ep1)
     rm = ReelManifest(
-        episodes=[ReelEpisode(manifest={"_": 0}, clip=ep0, route=str(tmp_path / "r0.json")),
-                  ReelEpisode(manifest={"_": 1}, clip=ep1, route=str(tmp_path / "r1.json"))],
+        episodes=[ReelEpisode(manifest={"segment": ep0, "target_dur": d0}, clip=ep0, route=str(tmp_path / "r0.json")),
+                  ReelEpisode(manifest={"segment": ep1, "target_dur": d1}, clip=ep1, route=str(tmp_path / "r1.json"))],
         target_dur=dur, variety_min=4, color_delta_max=40.0, music=str(music_json))
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
     assert res["status"] == "delivered"
