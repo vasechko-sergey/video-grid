@@ -632,3 +632,16 @@ def test_reelmanifest_accepts_music_path_and_defaults_none():
     assert rm.music == "MUSIC.json"
     with pytest.raises(ValueError, match="music must be"):
         m.ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music=""))
+
+
+def test_reel_manifest_ambient_defaults_true():
+    assert m.ReelManifest.from_dict(_reel_dict()).ambient is True
+
+
+def test_reel_manifest_ambient_false_from_dict():
+    assert m.ReelManifest.from_dict(_reel_dict(ambient=False)).ambient is False
+
+
+def test_reel_manifest_rejects_non_bool_ambient():
+    with pytest.raises(ValueError, match="ambient"):
+        m.ReelManifest.from_dict(_reel_dict(ambient="yes"))
