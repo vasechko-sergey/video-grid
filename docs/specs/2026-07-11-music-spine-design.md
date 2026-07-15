@@ -50,8 +50,10 @@ numbers. `safe_zones` stays deferred (honest `passed=None`).
    on transitions) were deferred to when `extract` (§5.8) preserves per-episode
    ambient — **ambient landed 2026-07-15** (turned out §5.8 needed no change;
    `extract` already preserved the raw segments — see
-   `docs/specs/2026-07-15-ambient-ducking-design.md`); **SFX remains deferred.**
-   `mix.py`'s signature left the room; ambient is the first thing grown into it.
+   `docs/specs/2026-07-15-ambient-ducking-design.md`); **SFX landed 2026-07-15
+   too** (see `docs/specs/2026-07-15-transition-sfx-design.md`) — §5.12 is now
+   complete. `mix.py`'s signature left the room; ambient was the first thing
+   grown into it, SFX the second.
 
 ## §1 — Architecture & files
 
@@ -334,7 +336,9 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 - **Ambient ducking** in the mix — **landed 2026-07-15** (its own spec/plan:
   `docs/specs/2026-07-15-ambient-ducking-design.md`); turned out `extract`
   already preserved per-episode audio (§5.8), so no §5.8 change was needed.
-  **SFX** (whoosh on transitions) remains deferred — its own future slice.
+  **SFX** (whoosh on transitions) — **landed 2026-07-15** too (its own
+  spec/plan: `docs/specs/2026-07-15-transition-sfx-design.md`); §5.12
+  (audio-mix) is now complete.
 - **Downbeats / section detection / spectral / mood vector** — added when B3/B4
   consume them.
 - **`safe_zones`** — needs a per-episode route + a platform safe-margin table
@@ -354,5 +358,6 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
   `docs/specs/2026-07-13-mood-match-design.md`); its ranking core was reused
   unchanged by B3's networked sourcing (also landed 2026-07-14 — see above), so
   B3 is now complete end-to-end; B4 pacing has since landed too (2026-07-14 —
-  see above). SFX and the pacing retry-time auto-fix are what remain open in
-  this spec's scope (ambient ducking landed 2026-07-15 — see above).
+  see above). The pacing retry-time auto-fix is what remains open in this
+  spec's scope (ambient ducking and SFX both landed 2026-07-15 — see above;
+  §5.12 is now complete).

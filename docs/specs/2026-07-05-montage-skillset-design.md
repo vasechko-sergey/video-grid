@@ -360,14 +360,22 @@ Both must pass. Fail → back to reframe.
 > (stream-copy, preserving the measured loudness). ~~**Ambient ducking**
 > (sidechaincompress) and **SFX** are deferred until `extract` (§5.8) preserves
 > per-episode audio to duck against~~ — see `docs/plans/2026-07-11-music-spine.md`.
-> **Ambient built 2026-07-15 — see below; SFX still deferred.**
+> **Ambient built 2026-07-15; SFX built 2026-07-15 — see below. §5.12 is complete.**
 
 > **Built (2026-07-15, ambient sub-slice):** `mix(segments=)` ducks each clip's
 > preserved nat-sound — the raw `ep{i}_raw.mp4` segments `extract` already keeps
 > (§5.8 needed no change), never the silent locked clips — under the music via
 > `sidechaincompress` before the loudnorm pass; `ReelManifest.ambient` defaults
-> on. **SFX** (whoosh on transitions) remains the open §5.12 piece. See
-> `docs/specs/2026-07-15-ambient-ducking-design.md`.
+> on. See `docs/specs/2026-07-15-ambient-ducking-design.md`.
+
+> **Built (2026-07-15, SFX sub-slice):** `mix(sfx=)` synthesizes a whoosh
+> (ffmpeg pink-noise → bandpass → fade envelope, no assets, deterministic seed)
+> and places it on the reel's **major transitions** — a cut where
+> `max(neighbour dur) > median(durs)`, throttled by a minimum gap — mixed
+> **un-ducked** on top of the music(+ambient) stem before the final −14
+> loudnorm. `ReelManifest.sfx` defaults **off** (a deliberate stylistic accent,
+> unlike the ambient bed which defaults on). This closes §5.12 — see
+> `docs/specs/2026-07-15-transition-sfx-design.md`.
 
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
 Two parts:

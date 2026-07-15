@@ -565,8 +565,37 @@ _Last updated: 2026-07-15._
   extract per-ep audio passthrough" note was stale — `extract` already
   preserves segment audio (§5.8), so no 5.8 change was needed; the ambient
   source is the preserved raw `ep{i}_raw.mp4` segments, never the silent
-  locked clips. **Deferred:** SFX (whoosh on transitions) — its own slice,
-  needs an asset plus transition-point placement.
+  locked clips. **Deferred → built (transition SFX sub-slice, see the entry
+  below):** SFX (whoosh on transitions) — its own slice, needs an asset plus
+  transition-point placement.
+
+- **transition SFX (§5.12 audio-mix, whoosh sub-slice) DONE (2026-07-15)** —
+  plan `docs/plans/2026-07-15-transition-sfx.md` + design
+  `docs/specs/2026-07-15-transition-sfx-design.md`. **Closes §5.12** — grows
+  the music-spine mixer with a synthesized whoosh on the reel's major
+  transitions, no assets shipped or downloaded. `scripts/lib/models.py`
+  gains `ReelManifest.sfx: bool = False` — off by default (a deliberate
+  stylistic accent, unlike the ambient bed which defaults on).
+  `scripts/mix.py` gains `_whoosh(tmp_dir)` (ffmpeg `anoisesrc=color=pink` →
+  `bandpass` → `afade` in/out swell, seeded and deterministic) and
+  `_build_sfx(durs, tmp_dir)` (a cut is "major" when `max(neighbour dur) >
+  _MAJOR_FACTOR * median(durs)`, throttled by `_MIN_GAP` between kept
+  whooshes; synthesizes the whoosh once, `adelay` copies it onto each kept
+  cut offset, `amix`es onto a silent base pinned to the reel length);
+  `mix()` now composes up to three optional layers (music/ambient/sfx)
+  across four cases — the music-only and ambient-only filtergraph strings
+  stay byte-identical to before this slice (regression-pinned) — with the
+  whoosh entering the final `amix` **un-ducked** (an accent, not
+  background) at its own `volume`, trimmed to −14 LUFS by the unchanged
+  final loudnorm. `scripts/build_reel.py`'s stem hook passes `segments`
+  when `rm.ambient or rm.sfx` (SFX needs the episode durations even with
+  ambient off) plus `ambient=rm.ambient, sfx=rm.sfx`. **Two real-ffmpeg
+  proofs** (`tests/integration/test_sfx.py`): a whoosh-bearing stem still
+  measures −14 LUFS, and the whoosh's frequency band measurably spikes at
+  the one major cut's timestamp and nowhere else (placement, not just
+  wiring). `deliver.py`/`check_reel.py` untouched — one pre-normalized stem
+  in, same −14 gate. **812 tests green** (+8 skipped, unchanged from
+  ambient ducking). **§5.12 audio-mix is now complete.**
 
 ## Next action
 
@@ -579,16 +608,14 @@ _Last updated: 2026-07-15._
 - **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
   manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
   descriptor continuity re-match (design §6.1a) then has its registry. **OR**
-- **Phase B remainder — SFX** (`audio-mix`, §5.12): layer transition whoosh —
-  the last audio-quality item now that B1+B2 (music spine, DONE 2026-07-11),
-  start-offset intelligence (DONE 2026-07-13), mood-match (DONE 2026-07-14),
-  networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), and
-  ambient ducking (DONE 2026-07-15) have all landed; needs an asset (bundled
-  `.wav` or ffmpeg-synth) plus transition-point placement, orthogonal to the
-  now-shipped ambient bed. A sibling item in the same phase: the pacing
-  **retry-time length auto-fix** (`build_reel`'s `length` failure re-timing
-  the spine, `docs/specs/2026-07-14-pacing-design.md` §10 role 2) — deferred,
-  needs `build_reel`/`reel_orchestration` work. **OR**
+- **Phase B remainder — pacing retry-time auto-fix** (`docs/specs/2026-07-14-pacing-design.md`
+  §10 role 2): the one open Phase-B item left now that B1+B2 (music spine,
+  DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13), mood-match
+  (DONE 2026-07-14), networked sourcing (DONE 2026-07-14), B4 pacing (DONE
+  2026-07-14), ambient ducking (DONE 2026-07-15), and SFX whoosh (DONE
+  2026-07-15, **closing §5.12**) have all landed — `build_reel`'s `length`
+  failure re-timing the spine, needs `build_reel`/`reel_orchestration` work.
+  **OR**
 - **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
   interactive naming pass from surfaced crops → name + seg-mask appearance
   descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today
