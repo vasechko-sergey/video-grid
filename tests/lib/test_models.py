@@ -645,3 +645,16 @@ def test_reel_manifest_ambient_false_from_dict():
 def test_reel_manifest_rejects_non_bool_ambient():
     with pytest.raises(ValueError, match="ambient"):
         m.ReelManifest.from_dict(_reel_dict(ambient="yes"))
+
+
+def test_reel_manifest_sfx_defaults_false():
+    assert m.ReelManifest.from_dict(_reel_dict()).sfx is False
+
+
+def test_reel_manifest_sfx_true_from_dict():
+    assert m.ReelManifest.from_dict(_reel_dict(sfx=True)).sfx is True
+
+
+def test_reel_manifest_rejects_non_bool_sfx():
+    with pytest.raises(ValueError, match="sfx"):
+        m.ReelManifest.from_dict(_reel_dict(sfx="yes"))

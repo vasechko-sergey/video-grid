@@ -703,6 +703,7 @@ class ReelManifest:
     changelog: str = ""
     music: str | None = None           # MUSIC.json path (design §6); None → a silent reel, as Phase A.5
     ambient: bool = True               # duck each clip's nat-sound under the music (§5.12); False → pure-music stem
+    sfx: bool = False                  # whoosh on major transitions (§5.12); default off (opt-in stylistic accent)
 
     def __post_init__(self) -> None:
         if not self.episodes:
@@ -726,6 +727,9 @@ class ReelManifest:
         if not isinstance(self.ambient, bool):
             raise ValueError(f"ReelManifest.ambient must be a bool (True → duck ambient under "
                              f"music, False → pure-music stem), got {self.ambient!r}")
+        if not isinstance(self.sfx, bool):
+            raise ValueError(f"ReelManifest.sfx must be a bool (True → whoosh on major "
+                             f"transitions, False → no SFX), got {self.sfx!r}")
         self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
 
     @property
@@ -751,7 +755,8 @@ class ReelManifest:
                    variety_min=d.get("variety_min", 8),
                    color_delta_max=d.get("color_delta_max", 12.0),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
-                   music=d.get("music"), ambient=d.get("ambient", True))
+                   music=d.get("music"), ambient=d.get("ambient", True),
+                   sfx=d.get("sfx", False))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":
