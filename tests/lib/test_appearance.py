@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from scripts.lib import appearance
 
@@ -40,6 +41,19 @@ def test_descriptor_falls_back_to_whole_crop_when_mask_is_empty():
     crop = _crop((250, 0, 0))
     assert appearance.build_descriptor(crop, np.zeros((4, 4), dtype=np.uint8)) == \
            appearance.build_descriptor(crop, None)
+
+
+def test_descriptor_dist_rejects_a_length_mismatch():
+    # a descriptor off a stale cast.json (built under a different HIST_BINS) must
+    # fail loud: zip() would truncate to the shorter operand and return a
+    # plausible-but-wrong distance — a silently wrong hero, not a crash.
+    # CastMember.descriptor is validated as "a non-empty list of numbers" only, so
+    # this guard is the only thing standing between that file and a bad match.
+    full = appearance.build_descriptor(_crop((250, 0, 0)), None)
+    with pytest.raises(ValueError, match="length mismatch") as ex:
+        appearance.descriptor_dist(full, full[:-1])
+    assert "footage-intake" in str(ex.value)      # the remedy, not just the diagnosis
+    assert "24" in str(ex.value)                  # both lengths + the expected 3 * HIST_BINS
 
 
 def test_crop_and_mask_without_orig_img_is_none():
