@@ -21,7 +21,10 @@ def test_route_json_roundtrip(tmp_path):
 
 
 def test_trackmeta_roundtrip():
-    d = {"hero": 3, "ambiguous": True, "intent": "action", "features": {"3": {"n": 5}}}
+    # pin_matched rides along explicitly: to_dict() always emits it (None here,
+    # since this dict predates any pin), so the round-trip dict must include it too.
+    d = {"hero": 3, "ambiguous": True, "intent": "action", "features": {"3": {"n": 5}},
+         "pin_matched": None}
     tm = m.TrackMeta.from_dict(d)
     assert tm.hero == 3 and tm.ambiguous is True and tm.intent == "action"
     assert tm.to_dict() == d
@@ -30,6 +33,16 @@ def test_trackmeta_roundtrip():
 def test_trackmeta_hero_none():
     tm = m.TrackMeta.from_dict({"hero": None, "ambiguous": False, "intent": "static", "features": {}})
     assert tm.hero is None and tm.to_dict()["hero"] is None
+
+
+def test_track_meta_pin_matched_round_trips():
+    for v in (True, False, None):
+        tm = m.TrackMeta(hero=1, pin_matched=v)
+        assert m.TrackMeta.from_dict(tm.to_dict()).pin_matched is v
+
+
+def test_track_meta_pin_matched_defaults_to_none():
+    assert m.TrackMeta().pin_matched is None
 
 
 def test_croppath_json_roundtrip(tmp_path):
@@ -162,14 +175,22 @@ def test_delivery_from_spec_malformed_raises_clean():
 
 def test_trackspec_defaults_and_validation():
     s = m.TrackSpec(src="seg.mp4")
-    assert s.model == "yolo11n-seg.pt" and s.intent == "action" and s.seed_bbox is None
+    assert s.model == "yolo11n-seg.pt" and s.intent == "action" and s.pin is None
     with pytest.raises(ValueError, match="model"):
         m.TrackSpec(src="s.mp4", model="bogus.pt")
     with pytest.raises(ValueError, match="intent"):
         m.TrackSpec(src="s.mp4", intent="cinematic")
-    with pytest.raises(ValueError, match="seed_bbox"):
-        m.TrackSpec(src="s.mp4", seed_bbox=(1, 2, 3))
-    m.TrackSpec(src="s.mp4", seed_bbox=(1, 2, 3, 4))   # 4-tuple ok
+
+
+def test_track_spec_takes_a_pin():
+    p = m.HeroPin(kind="rule", rule="largest")
+    assert m.TrackSpec(src="s.mp4", pin=p).pin is p
+    assert m.TrackSpec(src="s.mp4").pin is None
+
+
+def test_track_spec_rejects_a_raw_hero_value():
+    with pytest.raises(ValueError, match="pin"):
+        m.TrackSpec(src="s.mp4", pin=(900, 500, 120, 300))
 
 
 def test_reframespec_validation():

@@ -48,15 +48,19 @@ class TrackMeta:
     ambiguous: bool = False
     intent: str = "action"
     features: dict = field(default_factory=dict)
+    pin_matched: bool | None = None    # None = no pin was given; False = a pin was given and
+                                       # nothing matched it → orchestration raises hero-unmatched
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":
         return cls(hero=d.get("hero"), ambiguous=bool(d.get("ambiguous", False)),
-                   intent=d.get("intent", "action"), features=d.get("features", {}))
+                   intent=d.get("intent", "action"), features=d.get("features", {}),
+                   pin_matched=d.get("pin_matched"))
 
     def to_dict(self) -> dict:
         return {"hero": self.hero, "ambiguous": self.ambiguous,
-                "intent": self.intent, "features": self.features}
+                "intent": self.intent, "features": self.features,
+                "pin_matched": self.pin_matched}
 
 
 @dataclass
@@ -317,7 +321,7 @@ class HeroPin:
 class TrackSpec:
     src: str
     model: str = "yolo11n-seg.pt"
-    seed_bbox: tuple[float, float, float, float] | None = None
+    pin: HeroPin | None = None     # a RESOLVED hero pin (hero.resolve), never a raw manifest value
     intent: str = "action"
     fps: float | None = None
 
@@ -328,10 +332,9 @@ class TrackSpec:
             raise ValueError(f"TrackSpec.model {self.model!r} not in {MODELS}")
         if self.intent not in INTENTS:
             raise ValueError(f"TrackSpec.intent {self.intent!r} not in {INTENTS}")
-        if self.seed_bbox is not None and not (
-                isinstance(self.seed_bbox, tuple) and len(self.seed_bbox) == 4):
-            raise ValueError(f"TrackSpec.seed_bbox must be a 4-tuple or None, "
-                             f"got {self.seed_bbox!r}")
+        if self.pin is not None and not isinstance(self.pin, HeroPin):
+            raise ValueError(f"TrackSpec.pin must be a HeroPin or None, got {self.pin!r} — "
+                             f"resolve the manifest's raw hero through hero.resolve() first")
 
 
 LAYOUT_MODES = ("fill", "fit-blur", "insert")

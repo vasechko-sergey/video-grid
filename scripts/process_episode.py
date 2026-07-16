@@ -13,9 +13,11 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
+from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, LayoutSpec, route_from_json, CropPath, PathMeta)
 from scripts.lib.project import ProjectConfig, resolve_manifest
@@ -51,7 +53,19 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         m = manifest_lib.Manifest.from_dict(manifest_dict)
     except (KeyError, TypeError, ValueError) as e:
         return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
-    problems = manifest_lib.validate(m)
+    # load the cast registry ONCE, here — the same object backs both validate()'s
+    # oracle call below and the real resolution in the tracking step further down,
+    # so the two cannot see different registries. Cast.from_dict (and so from_json)
+    # raises a clean ValueError for a non-object top level, so this except is
+    # genuinely sufficient — no bare AttributeError/TypeError can escape it.
+    cast = None
+    if m.cast:
+        try:
+            cast = Cast.from_json(m.cast)
+        except (OSError, ValueError) as e:
+            return {"status": "needs_input", "attempt": 0,
+                    "problems": [f"cast {m.cast!r} is unreadable — {e}"]}
+    problems = manifest_lib.validate(m, cast=cast)
     if problems:
         return {"status": "needs_input", "problems": problems, "attempt": 0}
     Path(project_dir).mkdir(parents=True, exist_ok=True)   # scratch for route/path/report
@@ -94,9 +108,13 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
     if route_path is None:
         rp = str(Path(project_dir) / "route.json")
+        # resolve() cannot raise here: validate() above already ran hero_lib.resolve
+        # on this same (m.hero, cast) pair and returned no problems, so a second,
+        # identical call is guaranteed not to raise — the same contract
+        # layout_lib.resolve relies on just above ("validate() already proved it
+        # constructs").
         tspec = TrackSpec(src=m.segment, model=m.model,
-                          seed_bbox=m.hero if orch.is_seed_pin(m.hero) else None,
-                          intent=intent)
+                          pin=hero_lib.resolve(m.hero, cast), intent=intent)
         _timed("track", lambda: track.build_route(tspec, rp))
         route, track_meta = _load_route(rp)
     else:

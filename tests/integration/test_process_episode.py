@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from scripts import process_episode as pe
 from scripts.lib import models
+from scripts.lib.footage import Cast, CastMember
 
 
 def _manifest(tmp_path, **over):
@@ -42,7 +43,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
 
     def fake_build_route(spec, out):
         calls["track_intent"] = spec.intent
-        calls["track_seed_bbox"] = spec.seed_bbox
+        calls["track_pin"] = spec.pin
         Path(out).write_text(json.dumps(route))
         Path(out).with_suffix(".meta.json").write_text(json.dumps({"ambiguous": False}))
         return [models.RoutePoint.from_dict(d) for d in route]
@@ -297,11 +298,41 @@ def test_delivery_threaded_to_reframe(monkeypatch, tmp_path):
 
 
 def test_seed_bbox_threaded_to_track(monkeypatch, tmp_path):
-    # a tuple hero pin must reach the TrackSpec as the tracker seed
+    # a manifest hero value must reach the TrackSpec as a RESOLVED HeroPin —
+    # the shell threads it through hero.resolve(), never the raw manifest value
     calls = _stub_engine(monkeypatch, tmp_path)
     pe.process_episode(_manifest(tmp_path, hero=[900, 500, 120, 300]),
                        project_dir=str(tmp_path))
-    assert calls["track_seed_bbox"] == (900, 500, 120, 300)
+    assert calls["track_pin"] == models.HeroPin(kind="bbox", bbox=(900.0, 500.0, 120.0, 300.0))
+
+
+def test_cast_pin_threaded_to_track(monkeypatch, tmp_path):
+    # a cast-name hero, backed by a real cast.json on disk, must reach the
+    # TrackSpec as a resolved "cast" HeroPin carrying the registered descriptor —
+    # proves the shell loads the registry AND hands the SAME object to both
+    # validate() and the tracking step (not two independent loads that could drift)
+    calls = _stub_engine(monkeypatch, tmp_path)
+    cast_path = tmp_path / "cast.json"
+    cast_path.write_text(json.dumps(Cast(members=[
+        CastMember(name="Lena", descriptor=[0.5, 0.5])]).to_dict()))
+    result = pe.process_episode(
+        _manifest(tmp_path, hero="Lena", cast=str(cast_path)), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert calls["track_pin"] == models.HeroPin(kind="cast", name="Lena", descriptor=(0.5, 0.5))
+
+
+def test_unreadable_cast_path_returns_needs_input(monkeypatch, tmp_path):
+    # m.cast pointing at a missing file must return needs_input, not crash —
+    # Cast.from_json raises OSError (missing) or ValueError (malformed JSON /
+    # wrong shape), and both must funnel into the same soft gate every other
+    # manifest problem uses
+    _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(
+        _manifest(tmp_path, hero="Lena", cast=str(tmp_path / "missing_cast.json")),
+        project_dir=str(tmp_path))
+    assert result["status"] == "needs_input"
+    assert any("unreadable" in p for p in result["problems"])
+    assert result["attempt"] == 0
 
 
 def test_lead_nonlateral_stops(monkeypatch, tmp_path):

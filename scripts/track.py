@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from scripts.lib import appearance, proc
-from scripts.lib.models import HERO_RULES, RoutePoint, TrackMeta, TrackSpec, route_to_json
+from scripts.lib import hero as hero_lib
+from scripts.lib.footage import Cast
+from scripts.lib.models import (HERO_KINDS, HERO_RULES, HeroPin, RoutePoint, TrackMeta,
+                                TrackSpec, route_to_json)
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
 # path would NOT auto-download (landmine, design §12). setup.sh redirects the
@@ -221,11 +224,11 @@ def _pick_hero(feats: dict[int, dict], intent: str) -> tuple[int | None, bool]:
 def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     """Track the hero subject → list[RoutePoint] + a TrackMeta sidecar (spec §6.1).
 
-    spec: a TrackSpec (scripts/lib/models.py) — carries src/model/seed_bbox/
-    intent/fps so the orchestrator can pass a manifest-derived intent instead
-    of always "action" (#1).
+    spec: a TrackSpec (scripts/lib/models.py) — carries src/model/pin/intent/fps
+    so the orchestrator can pass a manifest-derived intent instead of always
+    "action" (#1), and a RESOLVED HeroPin (hero.resolve()) instead of a raw
+    manifest value (§5.10) — never a tuple/str/int, and never seed_bbox.
     """
-    # hero priority: explicit seed pin (spec §5.10) > intent-conditioned scoring
     fps, src_w, src_h = spec.fps, None, None
     if fps is None:
         # never trust a caller-supplied default (4K/59.94 footage is the norm) —
@@ -246,19 +249,50 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
             tid = int(b.id[0])
             dets.append((tid, x, y, w, h))
         per_frame.append((idx, dets))
+        # crop descriptors are only useful for a cast-name pin (§6.1a layer 2);
+        # every other pin kind leaves `crops` empty at zero extra cost
+        if spec.pin is not None and spec.pin.kind == "cast":
+            _track_crops(res, boxes, crops)
 
     feats = _track_features(per_frame, src_w=src_w, src_h=src_h)
-    hero, ambiguous = None, False
-    if spec.seed_bbox is not None:
-        hero = _seed_track(per_frame, spec.seed_bbox)
-    if hero is None:
-        hero, ambiguous = _pick_hero(feats, spec.intent)
+    # hero priority (§5.10): a pin decides, or intent-conditioned scoring does.
+    # A pin that matches NOTHING does NOT fall through to scoring — that silent
+    # substitution is the §6.1a bug this replaces. It reports pin_matched=False,
+    # the route comes out empty, and orchestration raises hero-unmatched.
+    hero_id, ambiguous, pin_matched = None, False, None
+    if spec.pin is None:
+        hero_id, ambiguous = _pick_hero(feats, spec.intent)
+    elif spec.pin.kind == "bbox":
+        hero_id = _seed_track(per_frame, spec.pin.bbox)
+    elif spec.pin.kind == "rule":
+        hero_id = _rule_track(feats, spec.pin.rule)
+    elif spec.pin.kind == "track":
+        hero_id = _id_track(feats, spec.pin.track_id)
+    elif spec.pin.kind == "cast":
+        hero_id, ambiguous = _descriptor_track({t: d for t, (_c, d) in crops.items()},
+                                               spec.pin.descriptor)
+    else:
+        # HeroPin.kind is gated to HERO_KINDS at construction, so this branch is
+        # reachable only if HERO_KINDS grows a kind with no matching rung here —
+        # the same shape of bug _rule_track already refuses to paper over for an
+        # unrecognised rule (silently answering with a DIFFERENT valid rung is
+        # the exact substitution this slice deletes). Raise instead of quietly
+        # treating an unrecognised kind as "cast".
+        raise ValueError(f"build_route: HeroPin.kind {spec.pin.kind!r} has no dispatch rung "
+                         f"here — the implemented pin kinds are 'bbox'/'rule'/'track'/'cast'. "
+                         f"HeroPin gates kind against HERO_KINDS ({list(HERO_KINDS)}) before it "
+                         f"reaches here, so this means HERO_KINDS grew a kind this dispatch "
+                         f"still needs a branch for.")
+    if spec.pin is not None:
+        pin_matched = hero_id is not None
     # sidecar meta: the orchestrator reads `ambiguous` to fire the §4.1
-    # stop-and-report (margin rule) with both candidates' crops
-    meta = TrackMeta(hero=hero, ambiguous=ambiguous, intent=spec.intent,
+    # stop-and-report (margin rule) with both candidates' crops, and reads
+    # `pin_matched` to fire hero-unmatched when a pin matched nobody
+    meta = TrackMeta(hero=hero_id, ambiguous=ambiguous, intent=spec.intent,
                      features={str(k): {kk: f[kk] for kk in
                                         ("n", "disp", "area", "speed", "border")}
-                               for k, f in feats.items()})
+                               for k, f in feats.items()},
+                     pin_matched=pin_matched)
     Path(out).with_suffix(".meta.json").write_text(json.dumps(meta.to_dict()))
 
     route = []
@@ -266,7 +300,7 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
         # hero only — NO largest-in-frame fallback: it would splice strangers'
         # coordinates into the route (false teleports for the continuity check);
         # a frame gap is fine, smoothing bridges it
-        pick = next((d for d in dets if d[0] == hero), None)
+        pick = next((d for d in dets if d[0] == hero_id), None)
         if pick:
             _, x, y, w, h = pick
             route.append(RoutePoint(t=idx / fps, x=x, y=y, w=w, h=h))
@@ -285,9 +319,19 @@ if __name__ == "__main__":
                          "yolo11m-seg.pt for small/far subjects")
     ap.add_argument("--seed", default=None,
                     help="hero pin: first-frame centre bbox 'x,y,w,h' in source px")
+    ap.add_argument("--rule", default=None, choices=list(HERO_RULES),
+                    help="hero pin: a mechanical rule (§5.10)")
+    ap.add_argument("--track-id", type=int, default=None, help="hero pin: an explicit track id")
+    ap.add_argument("--cast-name", default=None, help="hero pin: a name from --cast-json")
+    ap.add_argument("--cast-json", default=None, help="cast.json — required with --cast-name")
     ap.add_argument("--intent", default="action", choices=["action", "static"],
                     help="hero scoring mode (spec §6.1a)")
     a = ap.parse_args()
-    seed = tuple(float(v) for v in a.seed.split(",")) if a.seed else None
-    spec = TrackSpec(src=a.src, model=a.model, seed_bbox=seed, intent=a.intent, fps=a.fps)
+    raw = ([float(v) for v in a.seed.split(",")] if a.seed else
+           a.rule if a.rule else
+           a.track_id if a.track_id is not None else
+           a.cast_name)
+    cast = Cast.from_json(a.cast_json) if a.cast_json else None
+    spec = TrackSpec(src=a.src, model=a.model, pin=hero_lib.resolve(raw, cast),
+                     intent=a.intent, fps=a.fps)
     build_route(spec, a.out)

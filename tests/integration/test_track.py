@@ -36,15 +36,79 @@ def test_route_from_frames(monkeypatch, tmp_path):
     assert route[0].x == 300 and route[-1].x == 300 + 9 * 50
     assert json.loads(out.read_text())[0]["x"] == 300
 
-def test_route_seed_pin(monkeypatch, tmp_path):
+def test_route_bbox_pin(monkeypatch, tmp_path):
     # two persistent tracks; the seed bbox must pin the RIGHT one as hero
     frames = [[_FakeBox([300, 500, 140, 320], 1),
                _FakeBox([1500, 500, 120, 300], 2)] for _ in range(10)]
     monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     out = tmp_path / "route.json"
-    spec = models.TrackSpec(src="ignored.mp4", fps=30, seed_bbox=(1500, 500, 120, 300))
+    spec = models.TrackSpec(src="ignored.mp4", fps=30,
+                            pin=models.HeroPin(kind="bbox", bbox=(1500.0, 500.0, 120.0, 300.0)))
     route = track.build_route(spec, out=str(out))
     assert all(pt.x == 1500 for pt in route)
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.pin_matched is True
+
+
+def test_route_rule_pin(monkeypatch, tmp_path):
+    frames = [[_FakeBox([300, 500, 140, 320], 1),
+               _FakeBox([1500, 500, 300, 700], 2)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    spec = models.TrackSpec(src="ignored.mp4", fps=30,
+                            pin=models.HeroPin(kind="rule", rule="largest"))
+    route = track.build_route(spec, out=str(tmp_path / "route.json"))
+    assert all(pt.x == 1500 for pt in route)
+
+
+def test_route_track_id_pin(monkeypatch, tmp_path):
+    frames = [[_FakeBox([300, 500, 140, 320], 1),
+               _FakeBox([1500, 500, 120, 300], 2)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    spec = models.TrackSpec(src="ignored.mp4", fps=30,
+                            pin=models.HeroPin(kind="track", track_id=1))
+    route = track.build_route(spec, out=str(tmp_path / "route.json"))
+    assert all(pt.x == 300 for pt in route)
+
+
+def test_unmatched_pin_never_falls_back_to_scoring(monkeypatch, tmp_path):
+    # the pinned track id is not in this segment: the route must be EMPTY and the
+    # sidecar must say so — silently following whoever scored highest is the bug
+    # this slice deletes
+    frames = [[_FakeBox([300, 500, 140, 320], 1)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4", fps=30,
+                            pin=models.HeroPin(kind="track", track_id=99))
+    route = track.build_route(spec, out=str(out))
+    assert route == []
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.pin_matched is False and meta.hero is None
+
+
+def test_no_pin_leaves_pin_matched_none(monkeypatch, tmp_path):
+    frames = [[_FakeBox([300 + i * 50, 500, 140, 320], 1)] for i in range(10)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    out = tmp_path / "route.json"
+    track.build_route(models.TrackSpec(src="ignored.mp4", fps=30), out=str(out))
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.pin_matched is None
+
+
+def test_build_route_raises_on_an_unrecognized_pin_kind(monkeypatch, tmp_path):
+    # HeroPin.kind is gated to HERO_KINDS at construction, so this can only be
+    # reached by a caller that bypasses HeroPin's own validation (e.g. HERO_KINDS
+    # grows a 5th kind with no matching rung here). The dispatch must raise, not
+    # silently treat the new kind as "cast" — same reasoning as _rule_track's
+    # raise-on-an-unimplemented-rule: the raise is keyed to the branches actually
+    # implemented, not to vocabulary membership, so a vocab that outgrows the
+    # dispatch fails loud instead of guessing.
+    monkeypatch.setattr(models, "HERO_KINDS", models.HERO_KINDS + ("beacon",))
+    bogus_pin = models.HeroPin(kind="beacon")
+    frames = [[_FakeBox([300, 500, 140, 320], 1)] for _ in range(10)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    spec = models.TrackSpec(src="ignored.mp4", fps=30, pin=bogus_pin)
+    with pytest.raises(ValueError, match="beacon"):
+        track.build_route(spec, out=str(tmp_path / "route.json"))
 
 def test_action_intent_prefers_mover_over_bystander(monkeypatch, tmp_path):
     # bystander in ALL 20 frames (static); mover in 12 frames, crosses frame.
