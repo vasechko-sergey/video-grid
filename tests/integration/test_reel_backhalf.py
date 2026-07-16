@@ -53,7 +53,7 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
         assert rep.checks[name].passed is None
         assert rep.checks[name].detail["status"] == "not-checked"      # silent reel, not unbuilt
     assert rep.checks["safe_zones"].passed is None
-    assert rep.checks["safe_zones"].detail["status"] == "not-implemented"
+    assert rep.checks["safe_zones"].detail["status"] == "not-checked"   # implemented; no geometry passed here
 
     out_dir = str(tmp_path / "out")
     v1 = deliver.deliver(master, REEL_H264, out_dir, "golden first cut", rep)
