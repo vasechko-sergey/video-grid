@@ -218,3 +218,93 @@ def test_preflight_stops_on_a_bad_layout_episode_naming_the_index():
     assert stop["status"] == "stop_and_report"
     assert stop["finding"]["reason"] == "edl-invalid" and stop["finding"]["episode_idx"] == 1
     assert stop["finding"]["problems"]                                # non-empty problem list
+
+
+def test_edl_cast_round_trips():
+    # NOTE: task snippet used `edl.EDL(...)`/`edl.EDL.from_dict(...)`, but this file
+    # imports names directly (`from scripts.lib.edl import EDL, ...`) with no `edl`
+    # module alias bound anywhere — `edl.EDL(...)` raises NameError: name 'edl' is
+    # not defined (confirmed by running the snippet verbatim before this fix).
+    # Swapped to the unqualified names this file already uses everywhere else.
+    e = EDL(episodes=(_ep(),), cast="proj/cast.json")
+    assert EDL.from_dict(e.to_dict()).cast == "proj/cast.json"
+
+
+def test_edl_cast_defaults_to_none():
+    assert EDL(episodes=(_ep(),)).cast is None
+
+
+def test_edl_cast_rejects_an_empty_string():
+    with pytest.raises(ValueError, match="cast"):
+        EDL(episodes=(_ep(),), cast="")
+
+
+def test_episode_hero_accepts_a_track_id():
+    assert _ep(hero=3).hero == 3
+
+
+def test_bridge_forwards_the_cast_path():
+    md = to_manifest_dict(_ep(hero="Lena"), "s.mp4", "o.mp4", cast="proj/cast.json")
+    assert md["hero"] == "Lena" and md["cast"] == "proj/cast.json"
+
+
+def test_bridge_omits_the_cast_when_absent():
+    assert "cast" not in to_manifest_dict(_ep(), "s.mp4", "o.mp4")
+
+
+def test_preflight_resolves_a_cast_name_hero_via_the_registry(tmp_path):
+    p = tmp_path / "cast.json"
+    p.write_text(json.dumps({"members": [{"name": "Lena", "descriptor": [100.0, 110.0, 120.0]}]}))
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8, hero="Lena")],
+                       "cast": str(p)})
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop is None
+    assert mds[0]["hero"] == "Lena" and mds[0]["cast"] == str(p)
+
+
+def test_preflight_stops_when_the_cast_name_is_not_registered(tmp_path):
+    # NOTE: asserting only "Ghost" in the problem text is a false-positive trap — hero.resolve's
+    # OTHER raise site ("hero 'Ghost' is a cast name but no cast.json was supplied") also embeds
+    # the queried name, so it would pass even if preflight never loaded the registry at all
+    # (confirmed: this happened before the cast=cast wiring below was added). Asserting "Lena"
+    # (the real registered member) appears too proves the registry was actually loaded and
+    # consulted, not just that a hero-name error of some kind was raised.
+    p = tmp_path / "cast.json"
+    p.write_text(json.dumps({"members": [{"name": "Lena", "descriptor": [1.0, 2.0, 3.0]}]}))
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8, hero="Ghost")],
+                       "cast": str(p)})
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["episode_idx"] == 0
+    assert any("Ghost" in msg and "Lena" in msg and "known names" in msg
+              for msg in stop["finding"]["problems"])
+
+
+def test_preflight_cast_json_missing_file_stops_gracefully_naming_no_episode(tmp_path):
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8)],
+                       "cast": str(tmp_path / "does_not_exist.json")})
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "edl-invalid" and stop["finding"]["episode_idx"] is None
+    assert mds == []
+
+
+def test_preflight_cast_json_malformed_shape_stops_gracefully_not_crashes(tmp_path):
+    # Cast.from_json's own except only converts json.JSONDecodeError → ValueError; a
+    # syntactically-valid-but-wrong-shaped top level (e.g. a bare array instead of an
+    # object) falls through to Cast.from_dict's `d.get("members", [])`, which raises a
+    # bare AttributeError on a list/str/int/bool/None — NOT an OSError or ValueError
+    # (verified directly against Cast.from_json with each of those shapes). A preflight
+    # that only catches (OSError, ValueError) around Cast.from_json would let this crash
+    # instead of returning the stop_and_report the "never crashes" gate promises.
+    p = tmp_path / "cast.json"
+    p.write_text("[]")
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8)],
+                       "cast": str(p)})
+    mds, stop = preflight(e, _cfg(), "seg", "out")     # must not raise
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "edl-invalid" and stop["finding"]["episode_idx"] is None

@@ -6,13 +6,15 @@ like `models.py`'s `TrackSpec`/`MusicSpec`. (Distinct from `manifest.py`'s soft
 `Manifest` gate, whose `validate()` returns problem strings and never raises.)
 The human-facing EDL.md render + interactive authoring are SP3;
 this module is what the mechanical extract spine reads. Imports the shared
-vocab from models + manifest and the resolve/config helpers from project —
-none of models/manifest/project import edl, so no cycle.
+vocab from models + manifest, the resolve/config helpers from project, and the
+cast registry from footage — none of models/manifest/project/footage import
+edl, so no cycle.
 """
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from scripts.lib.footage import Cast
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
 from scripts.lib.project import ProjectConfig, resolve_manifest
@@ -39,7 +41,9 @@ class EDLEpisode:
     border_px: int = 0
     border_color: str = "white"
     motion: str | None = None
-    hero: tuple | str | None = None
+    hero: tuple | str | int | None = None   # seed bbox / rule / track id / cast name (§5.10);
+                                            # NOT validated here — see the class docstring: the
+                                            # manifest gate reached via preflight is its one home
     color_means: tuple = DEFAULT_COLOR
     processing_notes: str = ""       # authoring metadata → SP1b draft labels; not acted on here
     beat_slot: int | None = None     # authoring metadata → B4 pacing; not acted on here
@@ -97,6 +101,7 @@ class EDL:
     construction; a user-set target that disagrees is a real pacing signal)."""
     episodes: tuple[EDLEpisode, ...]
     music: str | None = None       # MUSIC.json path; None → a silent reel (Phase A.5 path)
+    cast: str | None = None        # cast.json path; needed only when an episode pins a cast name
     cap: int = 3                   # build_reel reprocess cap
     target_dur: float | None = None
 
@@ -112,6 +117,8 @@ class EDL:
             raise ValueError(f"EDL.cap must be an int >= 1, got {self.cap!r}")
         if self.music is not None and not (isinstance(self.music, str) and self.music):
             raise ValueError("EDL.music must be a MUSIC.json path or null, got an empty/non-str value")
+        if self.cast is not None and not (isinstance(self.cast, str) and self.cast):
+            raise ValueError("EDL.cast must be a cast.json path or null, got an empty/non-str value")
         if self.target_dur is not None and (isinstance(self.target_dur, bool)
                 or not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0):
             raise ValueError(f"EDL.target_dur must be a positive number or null, got {self.target_dur!r}")
@@ -130,7 +137,7 @@ class EDL:
             except TypeError as ex:
                 raise ValueError(f"EDL.from_dict: episodes[{k}] has a missing or unknown field — {ex}") from ex
         cap = d.get("cap")
-        return cls(episodes=tuple(eps), music=d.get("music"),
+        return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
                    cap=cap if cap is not None else 3, target_dur=d.get("target_dur"))
 
     @classmethod
@@ -143,7 +150,7 @@ class EDL:
 
     def to_dict(self) -> dict:
         return {"episodes": [e.to_dict() for e in self.episodes],
-                "music": self.music, "cap": self.cap, "target_dur": self.target_dur}
+                "music": self.music, "cast": self.cast, "cap": self.cap, "target_dur": self.target_dur}
 
     def to_markdown(self) -> str:
         total = sum(e.dur for e in self.episodes)
@@ -162,13 +169,18 @@ class EDL:
         return "\n".join(lines)
 
 
-def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
+def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
+                     cast: str | None = None) -> dict:
     """Map an EDL row + its extracted segment + output path onto a Manifest-shaped
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model/stabilize (manifest
     defaults). EDL-only fields (source/start/dur/shot_type/processing_notes/
-    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary."""
+    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
+    `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
+    hero resolves per episode while the manifest itself stays a self-contained
+    brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""
+    default rather than the dict carrying an explicit null."""
     md: dict = {
         "segment": segment, "out_path": out_path, "target_dur": ep.dur,
         "composition": ep.composition, "grid": ep.grid, "layout": ep.layout,
@@ -184,6 +196,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
         md["motion"] = ep.motion
     if ep.hero is not None:
         md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
+    if cast is not None:
+        md["cast"] = cast
     return md
 
 
@@ -193,19 +207,38 @@ def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
     For each episode: bridge to a manifest dict, inherit canvas/delivery from the
     project, then Manifest.from_dict + validate. Returns (resolved manifest dicts,
     None) when all pass, or (dicts-so-far, stop) where stop is a machine-readable
-    stop_and_report naming the first invalid episode. validate() never touches the
-    filesystem (it checks layout params/dims, not file existence — this is what
-    lets it fail in ms), so seg_dir/out_dir may be placeholder paths."""
+    stop_and_report naming the first invalid episode. validate() itself never
+    touches the filesystem (it checks layout params/dims and resolves the hero pin
+    against an already-loaded registry, not file existence — this is what lets it
+    fail in ms). The one exception is EDL.cast: preflight reads it once, here,
+    before the loop — never per-episode, so a 12-episode EDL does not read the
+    registry 12 times — and hands the loaded Cast to every validate() call below.
+    seg_dir/out_dir may still be placeholder paths."""
     mds: list[dict] = []
+    cast = None
+    if edl.cast is not None:
+        try:
+            cast = Cast.from_json(edl.cast)
+        except (OSError, ValueError, AttributeError) as e:
+            # AttributeError: Cast.from_json only converts a JSONDecodeError to ValueError;
+            # syntactically-valid JSON with the wrong top-level shape (a bare array/string/
+            # number/null instead of an object) reaches Cast.from_dict's dict.get and raises
+            # a bare AttributeError instead — confirmed empirically, not assumed. Caught here
+            # too so a malformed cast.json reports softly like every other bad EDL input,
+            # instead of crashing the one gate that promises never to.
+            return mds, {"status": "stop_and_report",
+                         "finding": {"reason": "edl-invalid", "episode_idx": None,
+                                     "problems": [f"EDL.cast {edl.cast!r} is unreadable — {e}"]}}
     for i, ep in enumerate(edl.episodes):
         seg = str(Path(seg_dir) / f"ep{i}_raw.mp4")
-        md = resolve_manifest(to_manifest_dict(ep, seg, str(Path(out_dir) / f"ep{i}.mp4")), cfg)
+        md = resolve_manifest(to_manifest_dict(ep, seg, str(Path(out_dir) / f"ep{i}.mp4"),
+                                               cast=edl.cast), cfg)
         try:
             m = Manifest.from_dict(md)
         except (KeyError, TypeError, ValueError) as e:
             return mds, {"status": "stop_and_report",
                          "finding": {"reason": "edl-invalid", "episode_idx": i, "problems": [str(e)]}}
-        problems = validate(m)
+        problems = validate(m, cast=cast)
         if problems:
             return mds, {"status": "stop_and_report",
                          "finding": {"reason": "edl-invalid", "episode_idx": i, "problems": problems}}
