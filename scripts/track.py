@@ -107,7 +107,8 @@ def _id_track(feats: dict[int, dict], track_id: int) -> int | None:
     return track_id if track_id in feats else None
 
 
-def _track_crops(res: object, boxes: list, crops: dict) -> None:
+def _track_crops(res: object, boxes: list[object],
+                 crops: dict[int, tuple[float, list[float]]]) -> None:
     """Accumulate the highest-confidence crop DESCRIPTOR per track id, in place.
 
     Mirrors intake._people_timeline: one crop_and_mask per confidence improvement
@@ -147,7 +148,8 @@ def _descriptor_track(descs: dict[int, list[float]],
     """
     if not descs:
         return None, False
-    ranked = sorted(((appearance.descriptor_dist(d, list(pin)), tid)
+    ref = list(pin)                    # loop-invariant: one list, not one per track
+    ranked = sorted(((appearance.descriptor_dist(d, ref), tid)
                      for tid, d in descs.items()))
     d1, hero_id = ranked[0]
     if d1 > appearance.CAST_MATCH:

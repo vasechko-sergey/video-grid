@@ -1,7 +1,9 @@
 import json
+import numpy as np
 import pytest
 from scripts import track
 from scripts.lib import models
+from scripts.lib.appearance import HIST_BINS
 
 class _FakeBox:
     def __init__(self, xywh, tid):
@@ -244,3 +246,116 @@ def test_descriptor_track_exact_tie_is_the_most_ambiguous_case():
     crops = {1: list(pin), 2: list(pin)}
     hero_id, ambiguous = track._descriptor_track(crops, pin)
     assert hero_id in (1, 2) and ambiguous is True
+
+
+# --- _track_crops: the highest-confidence-crop accumulator ------------------
+# _FakeRes above is deliberately pixel-less (crop_and_mask → (None, None)), which
+# is right for the build_route tests but means it can never exercise the store.
+# These need real pixels, so they bring their own minimal fixture: a flat colour
+# is enough -- _track_crops's contract is WHICH crop is kept, not what the
+# histogram of it contains (that is test_appearance.py's job).
+
+_RED, _GREEN = (0, 0, 255), (0, 255, 0)     # BGR — orig_img is BGR, like ultralytics
+
+
+class _PixelRes:
+    """An ultralytics-result-shaped fake WITH pixels: a frame of one flat colour."""
+    def __init__(self, colour_bgr=_RED, size=(40, 40)):
+        h, w = size
+        self.orig_img = np.full((h, w, 3), colour_bgr, dtype=np.uint8)
+        self.masks = None                   # no seg mask → build_descriptor uses every pixel
+
+
+class _ConfBox(_FakeBox):
+    """A _FakeBox that also carries ultralytics' .conf — the field _track_crops
+    reads to decide whether a resighting beats the crop already stored."""
+    def __init__(self, xywh, tid, conf):
+        super().__init__(xywh, tid)
+        self.conf = [conf]
+
+
+def _box(tid, conf=None):
+    """A 20x20 box centred in the _PixelRes frame."""
+    xywh = [20.0, 20.0, 20.0, 20.0]
+    return _ConfBox(xywh, tid, conf) if conf is not None else _FakeBox(xywh, tid)
+
+
+def _flat_desc(r_bin, g_bin, b_bin):
+    """The descriptor a flat-colour crop must produce: each channel's whole mass
+    lands in exactly one of its HIST_BINS bins, and the three channels are
+    normalized over the GRAND total — so each spike is 1/3, not 1.0. Spelled out
+    from the histogram's semantics rather than by calling build_descriptor, so the
+    assert cannot pass by echoing the code under test back at itself."""
+    d = [0.0] * (3 * HIST_BINS)
+    d[r_bin] = d[HIST_BINS + g_bin] = d[2 * HIST_BINS + b_bin] = 1 / 3
+    return d
+
+
+_RED_DESC = _flat_desc(7, 0, 0)             # BGR (0,0,255) → RGB (255,0,0): R maxed, G/B zero
+_GREEN_DESC = _flat_desc(0, 7, 0)           # BGR (0,255,0) → RGB (0,255,0): G maxed, R/B zero
+
+
+def test_track_crops_first_sighting_stores_the_descriptor():
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [_box(1, conf=0.7)], crops)
+    assert crops == {1: (0.7, pytest.approx(_RED_DESC))}
+
+
+def test_track_crops_lower_confidence_resighting_does_not_overwrite():
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [_box(1, conf=0.9)], crops)
+    track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.4)], crops)
+    # the GREEN pixels of the worse sighting must not have displaced the RED ones
+    assert crops == {1: (0.9, pytest.approx(_RED_DESC))}
+
+
+def test_track_crops_higher_confidence_resighting_replaces_the_crop():
+    # The accumulator's whole reason for existing: a later, more confident sighting
+    # of the same tid REPLACES the stored crop. Nothing else in this slice covers
+    # this branch -- a fixture with a constant conf only ever exercises "first
+    # sighting" (stores) and "exact tie" (skips), never the replace.
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [_box(1, conf=0.4)], crops)
+    track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.9)], crops)
+    assert crops == {1: (0.9, pytest.approx(_GREEN_DESC))}
+
+
+def test_track_crops_equal_confidence_resighting_keeps_the_first():
+    # `conf <= stored` is a <=, not a <: an exact tie keeps the incumbent rather
+    # than re-running crop_and_mask on every frame of a steady-confidence track.
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [_box(1, conf=0.9)], crops)
+    track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.9)], crops)
+    assert crops == {1: (0.9, pytest.approx(_RED_DESC))}
+
+
+def test_track_crops_box_without_conf_defaults_to_full_confidence():
+    # ultralytics always sets .conf; the getattr default is for the fakes and for
+    # a box shape that predates it. The default must be 1.0 (certain), not 0.0 --
+    # a later 0.99 sighting losing to it is what proves the value is really 1.0.
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [_box(1)], crops)          # no .conf at all
+    assert crops == {1: (1.0, pytest.approx(_RED_DESC))}
+    track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.99)], crops)
+    assert crops == {1: (1.0, pytest.approx(_RED_DESC))}
+
+
+def test_track_crops_without_pixels_stores_nothing_and_leaves_the_dict_clean():
+    # crop_and_mask returns (None, None) for a result with no orig_img (every
+    # build_route test drives exactly this). Storing a None crop would poison the
+    # dict -- _descriptor_track would hand it to descriptor_dist and crash on len().
+    crops = {}
+    track._track_crops(_FakeRes([]), [_box(1, conf=0.9)], crops)
+    assert crops == {}
+
+
+def test_track_crops_skips_unconfirmed_detections():
+    # id=None is a normal ByteTrack state (first frames / after occlusion). There
+    # is no tid to file the crop under, so it must be skipped outright -- int(None[0])
+    # would raise, and any fabricated shared id would blend two strangers' pixels
+    # into one descriptor.
+    unconfirmed = _ConfBox([20.0, 20.0, 20.0, 20.0], 1, 0.9)
+    unconfirmed.id = None
+    crops = {}
+    track._track_crops(_PixelRes(_RED), [unconfirmed], crops)
+    assert crops == {}
