@@ -658,3 +658,30 @@ def test_reel_manifest_sfx_true_from_dict():
 def test_reel_manifest_rejects_non_bool_sfx():
     with pytest.raises(ValueError, match="sfx"):
         m.ReelManifest.from_dict(_reel_dict(sfx="yes"))
+
+
+def test_reel_episode_path_meta_round_trip():
+    rm = m.ReelManifest.from_dict(_reel_dict(episodes=[
+        {"manifest": {}, "clip": "c.mp4", "route": "r.json", "path": "p.json", "meta": "pm.json"}]))
+    assert rm.episodes[0].path == "p.json" and rm.episodes[0].meta == "pm.json"
+
+
+def test_reel_episode_path_meta_default_empty():
+    rm = m.ReelManifest.from_dict(_reel_dict())
+    assert rm.episodes[0].path == "" and rm.episodes[0].meta == ""    # backward compatible
+
+
+def test_reel_manifest_rejects_a_lone_sidecar():
+    with pytest.raises(ValueError, match="path and meta must both"):
+        m.ReelManifest.from_dict(_reel_dict(episodes=[
+            {"manifest": {}, "clip": "c.mp4", "route": "r.json", "path": "p.json"}]))   # meta missing
+
+
+def test_reel_manifest_platform_default_and_set():
+    assert m.ReelManifest.from_dict(_reel_dict()).platform == ""
+    assert m.ReelManifest.from_dict(_reel_dict(platform="tiktok")).platform == "tiktok"
+
+
+def test_reelreport_overall_excludes_advisory_safe_zones():
+    rr = m.ReelReport(checks={"safe_zones": m.CheckResult("safe_zones", False, {"advisory": True})})
+    assert rr.overall is True          # advisory False never blocks the reel

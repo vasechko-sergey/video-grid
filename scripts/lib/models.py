@@ -629,7 +629,7 @@ class ReelFailure:
                    episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
 
 
-_ADVISORY_CHECKS = ("beat",)           # measured + reported but non-blocking — no re-trim actuator yet (design §5)
+_ADVISORY_CHECKS = ("beat", "safe_zones")   # measured + reported but non-blocking (design §5)
 
 
 @dataclass
@@ -684,10 +684,14 @@ def _load_manifest(m: dict | str) -> dict:
 class ReelEpisode:
     """One entry in a ReelManifest: the per-episode manifest (so a reprocess can
     rebuild it), the locked clip loop-1 produced, and the frozen route.json (a
-    reprocess reuses it — colour/black fixes never move the track)."""
+    reprocess reuses it — colour/black fixes never move the track). `path`/`meta`
+    are the frozen path.json / path.meta.json sidecars — safe_zones (§5.13) projects
+    the subject through them; empty = geometry unavailable (safe_zones not-checked)."""
     manifest: dict
     clip: str
     route: str
+    path: str = ""
+    meta: str = ""
 
 
 @dataclass
@@ -704,6 +708,7 @@ class ReelManifest:
     music: str | None = None           # MUSIC.json path (design §6); None → a silent reel, as Phase A.5
     ambient: bool = True               # duck each clip's nat-sound under the music (§5.12); False → pure-music stem
     sfx: bool = False                  # whoosh on major transitions (§5.12); default off (opt-in stylistic accent)
+    platform: str = ""                 # UI safe-zone table key (§5.13); "" → generic; from Spec.platform
 
     def __post_init__(self) -> None:
         if not self.episodes:
@@ -720,6 +725,9 @@ class ReelManifest:
             if not (isinstance(e.route, str) and e.route):
                 raise ValueError(f"ReelManifest.episodes[{k}].route is empty — the frozen route.json "
                                  "path; a reprocess reuses it to skip tracking")
+            if bool(e.path) != bool(e.meta):
+                raise ValueError(f"ReelManifest.episodes[{k}]: path and meta must both be set or "
+                                 "both empty — a lone sidecar cannot project the subject for safe_zones")
         if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
             raise ValueError(f"ReelManifest.cap must be an int >= 1, got {self.cap!r}")
         if self.music is not None and not (isinstance(self.music, str) and self.music):
@@ -730,6 +738,9 @@ class ReelManifest:
         if not isinstance(self.sfx, bool):
             raise ValueError(f"ReelManifest.sfx must be a bool (True → whoosh on major "
                              f"transitions, False → no SFX), got {self.sfx!r}")
+        if not isinstance(self.platform, str):
+            raise ValueError(f"ReelManifest.platform must be a string label (e.g. 'tiktok'), "
+                             f"got {self.platform!r}")
         self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
 
     @property
@@ -749,14 +760,15 @@ class ReelManifest:
                     f"ReelManifest.from_dict: episodes[{k}] must be a "
                     "{manifest, clip, route} object, got a non-object")
         eps = [ReelEpisode(manifest=_load_manifest(e.get("manifest")),
-                           clip=e.get("clip", ""), route=e.get("route", ""))
+                           clip=e.get("clip", ""), route=e.get("route", ""),
+                           path=e.get("path", ""), meta=e.get("meta", ""))
                for e in eps_in]
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    color_delta_max=d.get("color_delta_max", 12.0),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
                    music=d.get("music"), ambient=d.get("ambient", True),
-                   sfx=d.get("sfx", False))
+                   sfx=d.get("sfx", False), platform=d.get("platform", ""))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":
