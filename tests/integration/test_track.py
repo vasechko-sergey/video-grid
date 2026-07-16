@@ -116,3 +116,53 @@ def test_build_route_uses_spec_and_returns_routepoints(monkeypatch, tmp_path):
     assert route and isinstance(route[0], models.RoutePoint)
     meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
     assert meta.hero == 1                      # static intent → the still, large subject
+
+
+def _feats():
+    # tid 1: left + small; tid 2: right + large
+    return {1: {"n": 10, "disp": 0.0, "area": 100.0, "x0": 300.0, "speed": 0.0, "border": None},
+            2: {"n": 10, "disp": 0.0, "area": 900.0, "x0": 1500.0, "speed": 0.0, "border": None}}
+
+
+def test_rule_track_largest():
+    assert track._rule_track(_feats(), "largest") == 2
+
+
+def test_rule_track_leftmost():
+    assert track._rule_track(_feats(), "leftmost") == 1
+
+
+def test_rule_track_breaks_ties_on_the_lowest_id():
+    feats = {5: {"area": 100.0, "x0": 10.0}, 2: {"area": 100.0, "x0": 10.0}}
+    assert track._rule_track(feats, "largest") == 2
+    assert track._rule_track(feats, "leftmost") == 2
+
+
+def test_rule_track_empty_feats_is_unmatched():
+    assert track._rule_track({}, "largest") is None
+
+
+def test_id_track_hit_and_miss():
+    assert track._id_track(_feats(), 2) == 2
+    assert track._id_track(_feats(), 99) is None
+
+
+def test_ambig_margin_is_the_one_spelling_of_the_margin_rule():
+    assert track.AMBIG_MARGIN == 0.8
+
+
+def test_pick_hero_reads_ambig_margin_not_a_reinlined_literal(monkeypatch):
+    # score ratio pinned at 0.85 (intent="static": score = n/mx_n + area/mx_area;
+    # n equal so that term is 1.0 for both, area 100 vs 70 -> scores 2.0 vs 1.7).
+    # Ambiguous under the real 0.8 margin (1.7 >= 0.8*2.0) but not once the margin
+    # is raised past that ratio -- the flip only happens if _pick_hero reads
+    # track.AMBIG_MARGIN itself at call time, rather than a re-inlined 0.8 literal
+    # that a future edit could silently reintroduce (the constant exists precisely
+    # so there is one spelling of the margin, not two that can drift apart).
+    feats = {1: {"n": 10, "disp": 0.0, "area": 100.0},
+             2: {"n": 10, "disp": 0.0, "area": 70.0}}
+    _, ambiguous = track._pick_hero(feats, "static")
+    assert ambiguous is True
+    monkeypatch.setattr(track, "AMBIG_MARGIN", 0.9)
+    _, ambiguous_raised = track._pick_hero(feats, "static")
+    assert ambiguous_raised is False

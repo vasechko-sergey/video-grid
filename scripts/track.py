@@ -12,6 +12,9 @@ from scripts.lib.models import RoutePoint, TrackMeta, TrackSpec, route_to_json
 # weight cache into models/.
 MODEL = "yolo11n-seg.pt"
 
+AMBIG_MARGIN = 0.8      # §6.1a margin rule: top-2 within ~20% ⇒ ambiguous ⇒ stop-and-report.
+                        # One spelling, two readers (_pick_hero, _descriptor_track).
+
 _Det = tuple[int, float, float, float, float]
 _Frame = tuple[int, list[_Det]]
 
@@ -64,6 +67,33 @@ def _seed_track(per_frame: list[_Frame], seed: tuple[float, ...], first_n: int =
             if union > 0 and inter / union > best_iou:
                 best, best_iou = tid, inter / union
     return best
+
+
+def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
+    """Track id chosen by a mechanical §5.10 rule pin. Ties break on the lowest
+    track id so a re-run is deterministic.
+
+    A rule makes no claim about identity — the human said "largest", so largest
+    wins — which is why, unlike _descriptor_track and _pick_hero, this never
+    reports ambiguity.
+
+    `rule` is assumed pre-validated to HERO_RULES: the only production caller,
+    hero.resolve(), never constructs a HeroPin(kind="rule") with anything else,
+    and HeroPin.__post_init__ raises if one ever did. A rule this function
+    doesn't recognise therefore falls through to the leftmost branch rather than
+    raising here — deliberately: re-validating a value the boundary already
+    guarantees would just be a second, driftable copy of that same guard.
+    """
+    if not feats:
+        return None
+    if rule == "largest":
+        return min(feats, key=lambda tid: (-feats[tid]["area"], tid))
+    return min(feats, key=lambda tid: (feats[tid]["x0"], tid))      # leftmost
+
+
+def _id_track(feats: dict[int, dict], track_id: int) -> int | None:
+    """Track id pinned explicitly (§5.10). Absent from this segment ⇒ unmatched."""
+    return track_id if track_id in feats else None
 
 
 def _track_features(per_frame: list[_Frame], src_w: int | None = None,
@@ -122,7 +152,7 @@ def _pick_hero(feats: dict[int, dict], intent: str) -> tuple[int | None, bool]:
 
     ranked = sorted(feats.items(), key=lambda kv: score(kv[1]), reverse=True)
     ambiguous = (len(ranked) > 1
-                 and score(ranked[1][1]) >= 0.8 * score(ranked[0][1]))
+                 and score(ranked[1][1]) >= AMBIG_MARGIN * score(ranked[0][1]))
     return ranked[0][0], ambiguous
 
 
