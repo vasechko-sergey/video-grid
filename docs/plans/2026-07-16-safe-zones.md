@@ -863,7 +863,10 @@ def test_safe_zones_flags_low_subject_without_blocking_delivery(tmp_path):
     assembly.assemble(clips, (320, 568), 30.0, master)               # a genuinely assembled master
     geom = [_write_geom(tmp_path / "ep0", 900.0),                    # fy 0.45 — safe
             _write_geom(tmp_path / "ep1", 1960.0)]                   # fy 0.98 — under the caption band
-    rep = check_reel.run(master, clips, ReelCheckSpec(target_dur=2.0),
+    # flat-color fixture: identical phash + large colour delta trip the unrelated
+    # variety/color hard gates, so they're relaxed to isolate the advisory-safe_zones
+    # proof (variety needs texture to key on; red vs blue clears the default 12.0 ceiling).
+    rep = check_reel.run(master, clips, ReelCheckSpec(target_dur=2.0, variety_min=0, color_delta_max=260.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is False                 # ep1 subject under UI chrome
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1

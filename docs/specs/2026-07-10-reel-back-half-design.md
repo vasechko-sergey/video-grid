@@ -149,7 +149,7 @@ subject data. Cut boundaries = cumulative episode durations (probe each).
 | `variety` | phash of one representative frame (episode midpoint) per episode; every adjacent pair Hamming ≥ `variety_min` (image, not filename — §427) | the second of the near-duplicate pair; `escalate_to="edit-plan"` |
 | `length` | master duration within ±0.5s of `target_dur` | none (whole-reel); `escalate_to="pacing"` |
 | `beat`, `loudness` | `CheckResult(passed=None, detail={"status":"not-implemented","reason":"silent reel — Phase B"})` | — |
-| `safe_zones` | `passed=None`, `not-implemented` — needs per-episode route + a platform safe-margin table (§7/§432); honest defer | — |
+| `safe_zones` | `passed=None`, `not-implemented` at authorship — needs per-episode route + a platform safe-margin table (§7/§432); honest defer. **Built 2026-07-16** as an advisory route-geometry check (`docs/specs/2026-07-16-safe-zones-design.md`) | — |
 
 `check_reel` is a **gate that returns a report**: legitimate failures land as
 `CheckResult(passed=False)` + a `ReelFailure`, `overall=False` — it does **not**
@@ -251,6 +251,8 @@ discipline of the engine-hardening and layouts plans.
 - **`beat`, `loudness` checks + audio-mix** — Phase B (needs `MUSIC.json`).
 - **`safe_zones` numeric check** — needs per-episode route data + a platform
   safe-margin table; lands with the editorial reel-final-check or a later phase.
+  **Built 2026-07-16** as an advisory route-geometry check — see
+  `docs/specs/2026-07-16-safe-zones-design.md`.
 - **Secondary-aspect re-reframe on deliver** — Phase F.
 - **Resumability** (skip a stage when its artifact + input hash is unchanged) —
   the router's job (montage §11).

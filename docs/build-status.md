@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-15._
+_Last updated: 2026-07-16._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -596,6 +596,28 @@ _Last updated: 2026-07-15._
   wiring). `deliver.py`/`check_reel.py` untouched — one pre-normalized stem
   in, same −14 gate. **812 tests green** (+8 skipped, unchanged from
   ambient ducking). **§5.12 audio-mix is now complete.**
+
+- **safe-zones (§5.13) DONE (2026-07-16)** — plan
+  `docs/plans/2026-07-16-safe-zones.md` + design
+  `docs/specs/2026-07-16-safe-zones-design.md`. Closes the last unbuilt
+  `check_reel` check. `scripts/lib/safezones.py` — `SafeZone` config-spec +
+  `SAFE_ZONES` platform table (`generic`/`tiktok`/`reels`/`shorts`, generic ==
+  titles' 0.08/0.12) + `safe_zone_for`/`default_zone` + `subject_marks` (k=5) +
+  pure `evaluate` (worst-offender). The subject→canvas projection
+  `marks_at_times` moved from `scripts/storyboard.py` to
+  `scripts/lib/geometry.py` (a checker must not import a driver; `storyboard`
+  re-imports it). `check_reel.run` gains `geometry=`/`platform=`: with the
+  frozen per-episode sidecars it projects each subject and tests it against
+  the zone, reporting an **advisory** `CheckResult` (joins `_ADVISORY_CHECKS`
+  with `beat` — reported, out of `overall`, no `ReelFailure`); `_NOT_IMPL` is
+  gone (a geometry-less reel reports `not-checked`). `ReelEpisode` gains
+  `path`/`meta`, `ReelManifest` gains `platform` (from `Spec.platform`);
+  `build_reel` builds the geometry list once (invariant across colour/black
+  reprocess — the route is frozen) and `edl_to_reel` wires the sidecars.
+  `titles._Y_EXPR` now derives its margins from `safezones.default_zone()`
+  (one authority; rendered exprs unchanged). No auto-fix actuator exists, so
+  the check stays advisory by design. **835 passed / 8 skipped** (23 new
+  incl. 1 real-ffmpeg proof in `tests/integration/test_safezones.py`).
 
 ## Next action
 

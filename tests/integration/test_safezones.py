@@ -8,12 +8,11 @@ from pathlib import Path
 import pytest
 
 from scripts import check_reel
-from scripts.lib import assembly
+from scripts.lib import assembly, proc
 from scripts.lib.models import ReelCheckSpec
 
 
 def _solid(path, color, secs):
-    from scripts.lib import proc
     proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c={color}:s=320x568:d={secs}:r=30",
               "-pix_fmt", "yuv420p", str(path)])
     return str(path)

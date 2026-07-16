@@ -4,8 +4,8 @@
 **Depends on:** reel-brief (§5.3, `Spec.hook/text/ending`), reel back-half
 (`deliver` = one encode, §5.14), draft (`scripts/lib/draft.py` `resolve_font` +
 the explicit-`fontfile=` landmine).
-**Related:** §5.13 `reel-final-check` safe-zones (still deferred — titles are its
-first real consumer).
+**Related:** §5.13 `reel-final-check` safe-zones (built 2026-07-16 — titles now
+resolve their margins from the same `SafeZone` table via `safezones.default_zone()`).
 
 ## §1 · Intent
 
@@ -168,9 +168,12 @@ def resolve_font(font: str | None = None) -> str:
   static windows only.
 - Per-episode titles — titles are **reel-level** (rendered at deliver over the
   whole reel), not part of process-episode.
-- The full pixel-level `check_reel.safe_zones` gate — v1 titles are
-  **safe-by-construction** (presets sit inside safe margins); the coordinate
-  check is a stretch, the pixel check stays deferred.
+- The full pixel-level `check_reel.safe_zones` gate — titles are
+  **safe-by-construction** (presets sit inside safe margins) and, since
+  2026-07-16, those margins are drawn from the same `SafeZone` table
+  `check_reel.safe_zones` checks against (`safezones.default_zone()`); a
+  **pixel-level** gate remains a non-goal — safe_zones is advisory
+  subject-route geometry, not pixel CV.
 - Cross-platform font install — macOS/brew casks only for now (same TODO as the
   rest of `setup.sh`).
 

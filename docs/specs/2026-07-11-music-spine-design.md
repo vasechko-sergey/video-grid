@@ -23,7 +23,9 @@ music-only subset), and §5.13 (reel-final-check — turns the `beat`/`loudness`
 The reel is silent today (processed episode clips are video-only; `build_reel`
 assembles and delivers a soundless master). B1+B2 makes a music-only reel deliver
 end-to-end and replaces the dishonest `beat`/`loudness` = `passed=None` with real
-numbers. `safe_zones` stays deferred (honest `passed=None`).
+numbers. `safe_zones` stayed deferred at authorship (honest `passed=None`); it
+landed 2026-07-16 as an advisory route-geometry check
+(`docs/specs/2026-07-16-safe-zones-design.md`).
 
 ## Scope decisions (from brainstorming, 2026-07-11)
 
@@ -314,7 +316,9 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 - **Never a silent pass** — loudness is a *hard* gate (a bad mix stops-and-reports,
   never ships); beat is *measured and reported* (a real `worst_dev`, non-blocking
   only because no re-trim actuator exists yet — an honest, documented limit, not a
-  fake green); `safe_zones` stays an honest `passed=None`.
+  fake green); `safe_zones` landed the same way 2026-07-16 — measured and
+  reported (advisory route-geometry), non-blocking because no auto-fix actuator
+  exists either; a geometry-less reel still reports the honest `passed=None`.
 - **Determinism** — librosa isn't bit-exact on real audio, so tests pin a
   synthetic known-BPM fixture; production `MUSIC.json` is written once per track
   and reused (a bad re-analysis can't silently drift a shipped reel).
@@ -342,7 +346,10 @@ for _ in range(rm.cap * len(rm.episodes) + 1):
 - **Downbeats / section detection / spectral / mood vector** — added when B3/B4
   consume them.
 - **`safe_zones`** — needs a per-episode route + a platform safe-margin table
-  (Editorial reel-final, a later phase); stays `passed=None`.
+  (Editorial reel-final, a later phase) — **landed 2026-07-16** (its own
+  spec/plan: `docs/specs/2026-07-16-safe-zones-design.md`); no longer stays
+  `passed=None` by default — it's now an advisory route-geometry check against
+  a platform `SafeZone` table.
 - **Music-less delivery mode** — `baked` only; ambient ducking (2026-07-15)
   now bakes each clip's nat-sound *into* the music stem, so `mix.py` emits a
   single inseparable music+ambient stem — a music-less-but-ambient-kept export

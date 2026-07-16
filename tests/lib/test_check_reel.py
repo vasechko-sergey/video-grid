@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import imagehash
 import pytest
@@ -233,8 +234,6 @@ def test_loudness_check_out_of_range_escalates_to_audio_mix():
 def _write_geom(dir_path, x, y):
     """Write route.json / path.json / path.meta.json (fill 1000x2000; subject centre
     (x,y) source px, crop-x 0) and return the (route, path, meta) path triple."""
-    import json
-    from pathlib import Path
     d = Path(dir_path)
     d.mkdir(parents=True, exist_ok=True)
     (d / "route.json").write_text(json.dumps(

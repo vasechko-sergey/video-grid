@@ -391,7 +391,7 @@ Two parts:
 Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **landmine registry** (§12). Used by extract, assemble-draft, process-episode, audio-mix, deliver. Goal: "don't reinvent ffmpeg."
 
 ### 5.16 titles → `TITLES.json` (optional, on-screen text)
-Agent-authored hook / mid-caption / ending text, drawn from `SPEC.hook/text/ending` (§5.3). A typed `TITLES.json` (text, start/dur, font, position, style) is the stage's own artifact — the **render rides `deliver`'s single encode** (§5.14): `drawtext` cannot ride `-c copy`, so titles never get a second-pass intermediate. Positions are **safe-by-construction** presets (top/center/bottom margins), not the full pixel-level `check_reel.safe_zones` gate (§5.13, still deferred) — titles are its first real consumer once that gate is built. Fonts resolve by name through an opt-in curated library (`setup.sh --with-fonts`); the `drawtext`/`fontfile=` landmine (§12) already covers the failure mode.
+Agent-authored hook / mid-caption / ending text, drawn from `SPEC.hook/text/ending` (§5.3). A typed `TITLES.json` (text, start/dur, font, position, style) is the stage's own artifact — the **render rides `deliver`'s single encode** (§5.14): `drawtext` cannot ride `-c copy`, so titles never get a second-pass intermediate. Positions are **safe-by-construction** presets (top/center/bottom margins), now drawn from the same `SafeZone` table that `check_reel.safe_zones` (§5.13, built 2026-07-16) checks the tracked subject against — an advisory route-geometry check, not pixel-level CV. Fonts resolve by name through an opt-in curated library (`setup.sh --with-fonts`); the `drawtext`/`fontfile=` landmine (§12) already covers the failure mode.
 **Gate:** every title's text/timing/position/style validates; deliver's encode carries the burned text.
 
 > **Built (2026-07-13, §5.16):** `scripts/lib/fonts.py` (`resolve_font` extracted
@@ -539,7 +539,7 @@ See [the layouts design](2026-07-10-layouts-design.md) for the geometry, the
 
 - **Composition rules apply to the visible frame region** — the same math relative to the framed rectangle, not the whole canvas.
 - **Safe-zones** keyed to platform+canvas (IG UI bottom/right).
-- **reel-final-check:** mixed aspect/layout is **intentional**, not a defect. It checks: pad bars clean, subject in safe-zone, key action not clipped, layout transitions not jarring.
+- **reel-final-check:** mixed aspect/layout is **intentional**, not a defect. It checks: pad bars clean, subject in safe-zone (now `check_reel.safe_zones` — advisory route-geometry vs a platform `SafeZone` table, built 2026-07-16), key action not clipped, layout transitions not jarring — the other three stay editorial follow-ons.
 - **deliver:** primary canvas + optional secondary aspects via re-reframe.
 
 ---
@@ -581,7 +581,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 **Status (which plan implements what):**
 - **Core plan (`check_episode`):** on-line/centered, jitter, route-continuity (teleport side), length, black frames — implemented; **head power-point** and **horizon** are `planned` (need pose keypoints / line detection) — reports print `not-implemented`, **never** a silent pass.
 - **process-episode plan:** color (in-episode) — reframe applies the gain; its verification lands with that plan.
-- **Reel back half (`check_reel`):** black, color-across-cuts (median-attributed culprit), variety (phash), length, **loudness** (hard gate) and **beat** (advisory) — implemented (loudness hard, beat advisory; built 2026-07-11); a silent reel (no music/audio supplied) reports `not-checked` for those two, never a silent pass. **safe-zones** remains deferred, reporting `not-implemented`.
+- **Reel back half (`check_reel`):** black, color-across-cuts (median-attributed culprit), variety (phash), length, **loudness** (hard gate) and **beat** (advisory) — implemented (loudness hard, beat advisory; built 2026-07-11); a silent reel (no music/audio supplied) reports `not-checked` for those two, never a silent pass. **safe-zones** is now an advisory route-geometry subject check against a platform `SafeZone` table (built 2026-07-16): the tracked subject, projected into canvas coordinates, is tested against the zone, reporting an advisory pass/False, or `not-checked` when a reel carries no per-episode geometry.
 
 ---
 
