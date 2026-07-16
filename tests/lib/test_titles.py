@@ -152,3 +152,12 @@ def test_write_titles_emits_pair(tmp_path):
     assert res["status"] == "written" and res["count"] == 2
     assert (tmp_path / "TITLES.json").exists() and (tmp_path / "TITLES.md").exists()
     assert Titles.from_json(tmp_path / "TITLES.json").items[-1].text == "Follow"
+
+
+def test_titles_margins_are_sourced_from_the_safe_zone_table():
+    # genuine fail-first: titles._Z does not exist until the rewire, so this raises
+    # AttributeError before Step 3 — value-based checks would coincide (generic == 0.08/0.12).
+    from scripts.lib import titles, safezones
+    assert titles._Z is safezones.default_zone()
+    assert titles._Y_EXPR["top"] == f"h*{safezones.default_zone().top}"
+    assert titles._Y_EXPR["bottom"] == f"h-th-h*{safezones.default_zone().bottom}"

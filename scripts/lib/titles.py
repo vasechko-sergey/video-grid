@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.lib.fonts import resolve_font
+from scripts.lib import safezones
 
 POSITIONS: tuple[str, ...] = ("top", "center", "bottom")
 STYLES: tuple[str, ...] = ("bold-box", "outline", "plain")
@@ -112,10 +113,11 @@ _STYLE_FRAGMENTS: dict[str, str] = {
     "outline": "borderw=4:bordercolor=black",
     "plain": "",
 }
-_Y_EXPR: dict[str, str] = {          # safe-margin presets (design §4); ffmpeg h/th exprs
-    "top": "h*0.08",
+_Z = safezones.default_zone()
+_Y_EXPR: dict[str, str] = {          # safe-margin presets from the shared SafeZone table (§5.13/§5.16)
+    "top": f"h*{_Z.top}",
     "center": "(h-th)/2",
-    "bottom": "h-th-h*0.12",
+    "bottom": f"h-th-h*{_Z.bottom}",
 }
 
 
