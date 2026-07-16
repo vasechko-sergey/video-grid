@@ -11,11 +11,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import imagehash
-import numpy as np
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
 from scripts.lib import assembly, footage, proc
+from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.track import MODEL                    # reuse the tracker's model choice
 
 SAMPLE_FPS = 3.0
@@ -28,7 +28,6 @@ BEST_FLOOR = 0.50
 SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
-_HIST_BINS = 8
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
 
 
@@ -195,7 +194,7 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
             tid = int(b.id[0]) if getattr(b, "id", None) is not None else None
             conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
             if tid is not None and conf > crops.get(tid, (-1.0,))[0]:
-                crop_rgb, mask = _crop_and_mask(r, j, b)
+                crop_rgb, mask = crop_and_mask(r, j, b)
                 if crop_rgb is not None:
                     crops[tid] = (conf, crop_rgb, mask)
         if i % step:
@@ -204,26 +203,6 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
         primary = max(bbs, key=lambda bb: bb[2] * bb[3]) if bbs else None
         timeline.append((i / fps, len(bbs), primary))
     return timeline, crops
-
-
-def _crop_and_mask(res: object, idx: int, box: object) -> tuple:
-    """Extract the box's crop (RGB) + seg mask from an ultralytics result. Returns
-    (None, None) when the frame image or masks are unavailable (mocked tests)."""
-    img = getattr(res, "orig_img", None)
-    if img is None:
-        return None, None
-    arr = np.asarray(img)[..., ::-1]                       # ultralytics orig_img is BGR → RGB
-    x, y, w, h = (float(v) for v in box.xywh[0])
-    l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
-    l, t = max(0, l), max(0, t)
-    crop = arr[t:b_, l:r_]
-    mask = None
-    masks = getattr(res, "masks", None)
-    if masks is not None and getattr(masks, "data", None) is not None:
-        m = np.asarray(masks.data[idx])                    # (H, W) in model space
-        m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
-        mask = m[t:b_, l:r_]
-    return (crop if crop.size else None), mask
 
 
 def _phash_at(clip: str, t: float) -> imagehash.ImageHash:
@@ -248,24 +227,6 @@ def cull(clips: list, phash_of: object) -> None:
             kept.append(h)
 
 
-def build_descriptor(crop_rgb: object, mask: object) -> list[float]:
-    """L1-normalized color histogram over the segmentation-mask pixels only
-    (clothing/gear — background removed; §6.1a). numpy + Pillow, no cv2."""
-    px = crop_rgb[mask > 0] if mask is not None else crop_rgb.reshape(-1, 3)
-    if px.size == 0:
-        px = crop_rgb.reshape(-1, 3)
-    hist: list[float] = []
-    for c in range(3):
-        h, _ = np.histogram(px[:, c], bins=_HIST_BINS, range=(0, 255))
-        hist.extend(h.tolist())
-    total = float(sum(hist)) or 1.0
-    return [v / total for v in hist]
-
-
-def _descriptor_dist(a: list[float], b: list[float]) -> float:
-    return sum(abs(x - y) for x, y in zip(a, b))
-
-
 def surface_crops(crops_by_track: dict, top_n: int = 8) -> list:
     """Cluster retained per-track crops by descriptor similarity → top_n distinct
     identities (highest confidence first). Returns [(tid, conf, crop_rgb, mask, descriptor)]."""
@@ -277,7 +238,7 @@ def surface_crops(crops_by_track: dict, top_n: int = 8) -> list:
     items.sort(key=lambda it: it[1], reverse=True)
     picked: list = []
     for it in items:
-        if all(_descriptor_dist(it[4], p[4]) > CAST_DEDUP for p in picked):
+        if all(descriptor_dist(it[4], p[4]) > CAST_DEDUP for p in picked):
             picked.append(it)
         if len(picked) >= top_n:
             break

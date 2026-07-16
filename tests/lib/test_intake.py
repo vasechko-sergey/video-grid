@@ -2,6 +2,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
+from scripts.lib import appearance
 
 
 def test_shot_type_buckets():
@@ -133,7 +134,7 @@ def test_crop_and_mask_rgb_and_aligned_mask():
     frame_bgr = np.zeros((100, 200, 3), "uint8"); frame_bgr[:, :, 0] = 255   # blue in BGR
     masks = _t.SimpleNamespace(data=[np.ones((100, 200), "float32")])
     res = _t.SimpleNamespace(orig_img=frame_bgr, masks=masks)
-    crop, mask = intake._crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
+    crop, mask = intake.crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
     assert crop is not None and crop.shape[2] == 3
     assert crop[0, 0, 2] == 255                          # BGR→RGB: blue is now channel index 2
     assert mask is not None and mask.shape[:2] == crop.shape[:2]   # crop and mask aligned HxW
@@ -183,9 +184,9 @@ def test_build_descriptor_normalised_and_masked():
     crop = np.zeros((10, 10, 3), dtype="uint8"); crop[:, :, 0] = 255   # pure red
     mask = np.ones((10, 10), dtype="uint8")
     d = intake.build_descriptor(crop, mask)
-    assert len(d) == 3 * intake._HIST_BINS
+    assert len(d) == 3 * appearance.HIST_BINS
     assert abs(sum(d) - 1.0) < 1e-6                    # L1-normalized
-    assert d[intake._HIST_BINS - 1] > 0               # red maxed → top R bin populated
+    assert d[appearance.HIST_BINS - 1] > 0            # red maxed → top R bin populated
 
 def test_surface_crops_dedups_identities():
     red = (np.zeros((8, 8, 3), "uint8"), np.ones((8, 8), "uint8")); red[0][:, :, 0] = 255
