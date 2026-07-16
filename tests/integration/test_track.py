@@ -1,4 +1,5 @@
 import json
+import pytest
 from scripts import track
 from scripts.lib import models
 
@@ -140,6 +141,20 @@ def test_rule_track_breaks_ties_on_the_lowest_id():
 
 def test_rule_track_empty_feats_is_unmatched():
     assert track._rule_track({}, "largest") is None
+
+
+def test_rule_track_unknown_rule_raises_instead_of_answering_leftmost():
+    # a typo'd rule must NOT silently select a DIFFERENT valid rule -- that is the
+    # same silent substitution this slice exists to delete, one level down. The
+    # sibling rung _id_track answers an unmatched pin with an honest None; a rule
+    # this function does not know is not "unmatched", it is a caller bug.
+    with pytest.raises(ValueError) as e:
+        track._rule_track(_feats(), "tallest")
+    msg = str(e.value)
+    assert "_rule_track" in msg                              # names the function
+    assert "tallest" in msg                                  # echoes the offending rule
+    for r in models.HERO_RULES:                              # lists what IS accepted
+        assert r in msg
 
 
 def test_id_track_hit_and_miss():

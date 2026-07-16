@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.lib import proc
-from scripts.lib.models import RoutePoint, TrackMeta, TrackSpec, route_to_json
+from scripts.lib.models import HERO_RULES, RoutePoint, TrackMeta, TrackSpec, route_to_json
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
 # path would NOT auto-download (landmine, design §12). setup.sh redirects the
@@ -77,18 +77,26 @@ def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
     wins — which is why, unlike _descriptor_track and _pick_hero, this never
     reports ambiguity.
 
-    `rule` is assumed pre-validated to HERO_RULES: the only production caller,
-    hero.resolve(), never constructs a HeroPin(kind="rule") with anything else,
-    and HeroPin.__post_init__ raises if one ever did. A rule this function
-    doesn't recognise therefore falls through to the leftmost branch rather than
-    raising here — deliberately: re-validating a value the boundary already
-    guarantees would just be a second, driftable copy of that same guard.
+    An empty feats is an honest "unmatched" — nobody to pick — and returns None.
+    A rule with no branch here is not: hero.resolve() and HeroPin both gate `rule`
+    against HERO_RULES, so one that reaches this point can only come from a caller
+    that bypassed them, and it raises. Answering it with leftmost instead would let
+    a typo'd pin silently select a different VALID rule — the same silent
+    substitution this slice exists to delete. The raise is keyed to the branches
+    actually implemented, not to HERO_RULES membership, so growing that vocab
+    without adding a rung here fails loud instead of falling through to leftmost.
     """
     if not feats:
         return None
     if rule == "largest":
         return min(feats, key=lambda tid: (-feats[tid]["area"], tid))
-    return min(feats, key=lambda tid: (feats[tid]["x0"], tid))      # leftmost
+    if rule == "leftmost":
+        return min(feats, key=lambda tid: (feats[tid]["x0"], tid))
+    raise ValueError(f"_rule_track: rule {rule!r} has no branch here — the §5.10 rule pins "
+                     f"are {list(HERO_RULES)}. hero.resolve()/HeroPin gate the rule before "
+                     f"it reaches here, so an unrecognised one means a caller bypassed them "
+                     f"(build the pin with hero.resolve()); a rule newly added to HERO_RULES "
+                     f"means this function still needs its branch.")
 
 
 def _id_track(feats: dict[int, dict], track_id: int) -> int | None:
