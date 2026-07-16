@@ -49,6 +49,16 @@ def _fake_track_pe(monkeypatch):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         (Path(project_dir) / "route.json").write_text(
             json.dumps([{"t": 0.0, "x": 960, "y": 540, "w": 120, "h": 120, "id": 1}]))
+        # real process_episode writes path.json + path.meta.json beside route.json on every
+        # mechanical_pass (reframe emits both); mirror that so build_reel's frozen safe_zones
+        # geometry reads real files. CropPath [0] is parallel to the single route point above;
+        # a plain fill sidecar at the 1920x1080 source dims (safe_zones is advisory — these
+        # tests don't assert it, so the values need only be valid, not "safe").
+        (Path(project_dir) / "path.json").write_text(json.dumps([0]))
+        (Path(project_dir) / "path.meta.json").write_text(json.dumps(
+            {"mode": "fill", "crop_w": 1920, "crop_h": 1080, "crop_y": 0,
+             "src_dims": [1920, 1080], "canvas": [1920, 1080], "out_dims": [1920, 1080],
+             "rect_px": [0, 0, 1920, 1080], "freedom": 0}))
         proc.run(["ffmpeg", "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
         return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
