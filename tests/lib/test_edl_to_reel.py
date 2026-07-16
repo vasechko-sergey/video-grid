@@ -60,6 +60,8 @@ def test_happy_path_drives_extract_then_episodes_then_build_reel(monkeypatch, tm
     assert len(rm.episodes) == 2 and rm.target_dur == 4.0
     assert rm.episodes[0].manifest["canvas"] == [1080, 1920]
     assert rm.episodes[0].route.endswith("ep0/route.json")
+    assert rm.episodes[0].path.endswith("ep0/path.json")
+    assert rm.episodes[0].meta.endswith("ep0/path.meta.json")
     assert rm.cap == 3
 
 

@@ -26,7 +26,7 @@ def _color_fail(idx, target, culprit):
 def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the
     color_correct passed to each process_episode reprocess."""
-    seen = {"deliver": [], "reprocess": [], "titles": []}
+    seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": ""}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -35,7 +35,13 @@ def _wire(monkeypatch, reports, pe_results=None):
     # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
     # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
-    monkeypatch.setattr(build_reel.check_reel, "run", lambda m, e, s, o, music=None, audio=None: rq.pop(0))
+    # geometry=/platform= ARE captured into seen so a test can assert build_reel builds and
+    # forwards them to check_reel.run.
+    def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform=""):
+        seen["geometry"] = geometry
+        seen["platform"] = platform
+        return rq.pop(0)
+    monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
     def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None):
         seen["deliver"].append(od)
@@ -159,6 +165,23 @@ def test_multi_culprit_round_second_failure_propagates_without_delivering(monkey
     assert res["finding"]["reason"] == "reprocess-failed" and res["finding"]["episode_idx"] == 2
     assert seen["deliver"] == []
     assert len(seen["reprocess"]) == 2      # both attempted; the second's failure returned
+
+
+def test_build_reel_passes_platform_and_omits_geometry_without_sidecars(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_pass()])
+    build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert seen["geometry"] is None          # _rm episodes carry no path/meta → no geometry
+    assert seen["platform"] == ""            # _rm sets no platform → generic
+
+
+def test_build_reel_builds_geometry_and_platform_when_sidecars_present(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_pass()])
+    eps = [ReelEpisode(manifest={"segment": "s.mp4"}, clip="c0.mp4", route="r0.json",
+                       path="p0.json", meta="pm0.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, platform="tiktok")
+    build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert seen["geometry"] == [("r0.json", "p0.json", "pm0.json")]
+    assert seen["platform"] == "tiktok"
 
 
 # --- music integration (Task 6) --------------------------------------------

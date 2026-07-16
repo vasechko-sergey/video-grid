@@ -45,7 +45,9 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                     "finding": {"reason": "episode-failed", "episode_idx": i,
                                 "sub_status": res.get("status")}, "sub": res}
         episodes.append(ReelEpisode(manifest=md, clip=res["clip"],
-                                    route=str(Path(epdir) / "route.json")))
+                                    route=str(Path(epdir) / "route.json"),
+                                    path=str(Path(epdir) / "path.json"),
+                                    meta=str(Path(epdir) / "path.meta.json")))
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)

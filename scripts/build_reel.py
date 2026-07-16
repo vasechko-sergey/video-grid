@@ -35,13 +35,16 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     attempts: dict[int, int] = {}
     cc: dict[int, tuple[float, float, float]] = {}
     audio: str | None = None
+    geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
+                if all(e.path and e.meta for e in rm.episodes) else None)
     need_assemble = True
     for _ in range(rm.cap * len(rm.episodes) + 2):   # defensive bound; +2 leaves headroom for the
                                                      # once-after-picture mix `continue` + the deliver pass
         if need_assemble:
             assembly.assemble(clips, dims, fps, master)
             need_assemble = False
-        report = check_reel.run(master, clips, rm.check_spec, report_path, music=music, audio=audio)
+        report = check_reel.run(master, clips, rm.check_spec, report_path,
+                                music=music, audio=audio, geometry=geometry, platform=rm.platform)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap)
         if action.kind == "deliver":
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
