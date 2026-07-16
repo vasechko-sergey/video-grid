@@ -117,3 +117,26 @@ def test_even_floors_to_even():
     assert geometry.even(405) == 404
     assert geometry.even(720) == 720
     assert geometry.even(2275.6) == 2276
+
+
+def test_marks_at_times_projects_subject_into_canvas_fractions():
+    from scripts.lib import geometry
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
+    # fill layout, 1000x2000 out; crop 1000x2000 at y=0; subject centre at x=500 (crop-x 0)
+    route = [RoutePoint(0.0, 500.0, 900.0, 100.0, 200.0),
+             RoutePoint(2.0, 500.0, 900.0, 100.0, 200.0)]
+    path = CropPath([0, 0])
+    meta = PathMeta(mode="fill", crop_w=1000, crop_h=2000, crop_y=0, src_dims=(1000, 2000),
+                    canvas=(1000, 2000), out_dims=(1000, 2000), rect_px=(0, 0, 1000, 2000), freedom=0)
+    marks = geometry.marks_at_times(route, path, meta, [0.0, 1.0, 2.0])
+    assert marks[0] == (0.5, 0.45)             # x-cx=500 → 0.5 ; y=900/2000 → 0.45
+    assert marks == [(0.5, 0.45)] * 3          # constant route → constant marks
+
+
+def test_marks_at_times_rejects_desync():
+    import pytest
+    from scripts.lib import geometry
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
+    meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000), (0, 0, 1000, 2000), 0)
+    with pytest.raises(ValueError, match="parallel arrays"):
+        geometry.marks_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])

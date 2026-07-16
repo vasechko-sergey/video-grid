@@ -1,5 +1,8 @@
 """Pure crop geometry for the follow algorithm (spec §6.2, §6.4, §6.5)."""
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:                       # runtime import would cycle: models imports geometry.even
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
 
 _Num = TypeVar("_Num", int, float)
 
@@ -92,3 +95,45 @@ def crop_y(subject_y: float, crop_h: int, src_h: int) -> int:
     if crop_h >= src_h:
         return 0
     return clamp(round(subject_y - 0.45 * crop_h), 0, src_h - crop_h)
+
+
+def _interp(ts: list[float], xs: list[float], t: float) -> float:
+    if t <= ts[0]:
+        return xs[0]
+    if t >= ts[-1]:
+        return xs[-1]
+    for i in range(1, len(ts)):
+        if t <= ts[i]:
+            f = (t - ts[i - 1]) / (ts[i] - ts[i - 1]) if ts[i] != ts[i - 1] else 0.0
+            return xs[i - 1] + f * (xs[i] - xs[i - 1])
+    return xs[-1]
+
+
+def marks_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta",
+                   times: list[float]) -> list[tuple[float, float]]:
+    """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME.
+
+    The crop is placed inside `meta.rect_px`, which for `fill` is the whole
+    output — so this reduces to the plain (x - cx) / crop_w there, and stays
+    correct when the crop is a card in a larger canvas. fy divides by crop_h and
+    honours meta.crop_y, so a canvas with vertical freedom maps right too. Route
+    x/y and crop-x are interpolated on t so a mark lands on the right frame even
+    on a gappy route."""
+    if not route or len(route) != len(path):
+        raise ValueError(f"route/path must be non-empty parallel arrays, "
+                         f"got {len(route)} vs {len(path)}")
+    ts = [p.t for p in route]
+    xs = [p.x for p in route]
+    ys = [p.y for p in route]
+    cxs = path.xs
+    rx, ry, rw, rh = meta.rect_px
+    out_w, out_h = meta.out_dims
+    marks = []
+    for t in times:
+        x = _interp(ts, xs, t)
+        y = _interp(ts, ys, t)
+        cx = _interp(ts, cxs, t)
+        fx = (rx + rw * (x - cx) / meta.crop_w) / out_w
+        fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
+        marks.append((fx, fy))
+    return marks

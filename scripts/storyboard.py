@@ -2,7 +2,7 @@
 import argparse, json, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw
-from scripts.lib.geometry import grid_lines
+from scripts.lib.geometry import grid_lines, marks_at_times
 from scripts.lib import proc
 from scripts.lib.models import StoryboardSpec, RoutePoint, CropPath, PathMeta
 
@@ -52,50 +52,6 @@ def _overlay(img: Image.Image, grids: tuple[str, ...],
         mx, my, r = mark[0] * w, mark[1] * h, max(6, w // 60)
         d.ellipse([mx - r, my - r, mx + r, my + r], outline=(0, 255, 0), width=3)
     return img
-
-
-def _interp(ts: list[float], xs: list[float], t: float) -> float:
-    if t <= ts[0]:
-        return xs[0]
-    if t >= ts[-1]:
-        return xs[-1]
-    for i in range(1, len(ts)):
-        if t <= ts[i]:
-            f = (t - ts[i - 1]) / (ts[i] - ts[i - 1]) if ts[i] != ts[i - 1] else 0.0
-            return xs[i - 1] + f * (xs[i] - xs[i - 1])
-    return xs[-1]
-
-
-def marks_at_times(route: list[RoutePoint], path: CropPath, meta: PathMeta,
-                   times: list[float]) -> list[tuple[float, float]]:
-    """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME.
-
-    The crop is placed inside `meta.rect_px`, which for `fill` is the whole
-    output — so this reduces to the old (x - cx) / crop_w there, and stays
-    correct when the crop is a card in a larger canvas. fy divides by crop_h
-    and honours meta.crop_y, so a canvas with vertical freedom maps right too.
-
-    Route x/y and crop-x are interpolated on t so the marks align with the
-    frames storyboard samples BY TIME (fixes index/time desync on a gappy
-    route, #4)."""
-    if not route or len(route) != len(path):
-        raise ValueError(f"route/path must be non-empty parallel arrays, "
-                         f"got {len(route)} vs {len(path)}")
-    ts = [p.t for p in route]
-    xs = [p.x for p in route]
-    ys = [p.y for p in route]
-    cxs = path.xs
-    rx, ry, rw, rh = meta.rect_px
-    out_w, out_h = meta.out_dims
-    marks = []
-    for t in times:
-        x = _interp(ts, xs, t)
-        y = _interp(ts, ys, t)
-        cx = _interp(ts, cxs, t)
-        fx = (rx + rw * (x - cx) / meta.crop_w) / out_w
-        fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
-        marks.append((fx, fy))
-    return marks
 
 
 def build(src: str, out: str, spec: StoryboardSpec, route: list[RoutePoint] | None = None,
