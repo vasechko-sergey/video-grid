@@ -230,3 +230,17 @@ def test_descriptor_track_single_track_is_never_ambiguous():
 
 def test_descriptor_track_no_crops_is_unmatched():
     assert track._descriptor_track({}, _desc(1.0, 0.0, 0.0)) == (None, False)
+
+
+def test_descriptor_track_exact_tie_is_the_most_ambiguous_case():
+    # Two tracks whose descriptors are bit-identical to the pinned cast member's --
+    # and therefore to each other. A PERFECT double-match reads at a glance like
+    # maximum confidence; it is the exact opposite. d1 == d2 == 0.0 means a colour
+    # histogram cannot tell these two people apart at all, which is the most
+    # extreme instance of §6.1a mode 1 (two people in similar clothing) -- the very
+    # failure the ambiguous flag exists to catch. Picking one silently would be a
+    # coin flip dressed up as a decision; only a human can break this tie.
+    pin = _desc(0.5, 0.3, 0.2)
+    crops = {1: list(pin), 2: list(pin)}
+    hero_id, ambiguous = track._descriptor_track(crops, pin)
+    assert hero_id in (1, 2) and ambiguous is True

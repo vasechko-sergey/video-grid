@@ -140,6 +140,10 @@ def _descriptor_track(descs: dict[int, list[float]],
     a similarity transform pushes both terms to ~1.0 whenever both matches are
     good and would call every clean match ambiguous. Two people in similar
     clothing is §6.1a's mode 1, the failure a colour histogram is most exposed to.
+
+    An exact tie (d1 == d2, including a perfect 0.0 double-match) is therefore
+    ambiguous, not confident: identical distances mean a colour histogram cannot
+    separate those two tracks at all, which is precisely when a human must look.
     """
     if not descs:
         return None, False
@@ -148,7 +152,7 @@ def _descriptor_track(descs: dict[int, list[float]],
     d1, hero_id = ranked[0]
     if d1 > appearance.CAST_MATCH:
         return None, False
-    ambiguous = len(ranked) > 1 and ranked[1][0] > 0 and d1 >= AMBIG_MARGIN * ranked[1][0]
+    ambiguous = len(ranked) > 1 and d1 >= AMBIG_MARGIN * ranked[1][0]
     return hero_id, ambiguous
 
 
