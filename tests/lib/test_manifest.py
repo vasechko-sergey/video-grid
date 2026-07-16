@@ -1,5 +1,6 @@
 import pytest
 from scripts.lib import manifest as mf
+from scripts.lib.footage import Cast, CastMember
 
 
 def _ok_dict(**over):
@@ -205,3 +206,52 @@ def test_fill_with_a_border_is_a_problem_not_a_crash():
     m = mf.Manifest.from_dict(_base(layout="fill", border_px=8))
     problems = mf.validate(m)
     assert any("border" in p for p in problems)
+
+
+# --- Task 5: cast field + hero.resolve as validate()'s oracle ---
+
+def _cast():
+    return Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5])])
+
+
+def test_cast_path_round_trips():
+    m = mf.Manifest.from_dict(_ok_dict(cast="proj/cast.json"))
+    assert m.cast == "proj/cast.json"
+
+
+def test_cast_defaults_to_empty():
+    assert mf.Manifest.from_dict(_ok_dict()).cast == ""
+
+
+def test_hero_track_id_survives_from_dict():
+    assert mf.Manifest.from_dict(_ok_dict(hero=3)).hero == 3
+
+
+def test_validate_accepts_a_rule_hero_without_a_cast():
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict(hero="largest"))) == []
+
+
+def test_validate_accepts_a_known_cast_name():
+    m = mf.Manifest.from_dict(_ok_dict(hero="Lena", cast="proj/cast.json"))
+    assert mf.validate(m, cast=_cast()) == []
+
+
+def test_validate_flags_a_cast_name_with_no_registry():
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(hero="Lena")))
+    assert any("cast.json" in p for p in problems)
+
+
+def test_validate_flags_an_unknown_cast_name():
+    m = mf.Manifest.from_dict(_ok_dict(hero="Lna", cast="proj/cast.json"))
+    assert any("Lena" in p for p in mf.validate(m, cast=_cast()))
+
+
+def test_validate_flags_a_malformed_hero():
+    # Strengthened beyond a bare truthiness check: each of these must name the hero
+    # field specifically, not merely produce SOME problem. All three otherwise-valid
+    # dicts pass validate() clean (see test_validate_ok), so a bare `assert problems`
+    # would still pass today even if the message were about something else entirely —
+    # this pins the message content, not just the list's non-emptiness.
+    for bad in ([1, 2, 3], True, 4.2):
+        problems = mf.validate(mf.Manifest.from_dict(_ok_dict(hero=bad)))
+        assert any("hero" in p for p in problems), (bad, problems)

@@ -8,10 +8,18 @@ instead of guessing.
 """
 from dataclasses import dataclass
 
+from scripts.lib import hero as hero_lib   # aliased: this module already has a `hero` FIELD
+                                           # (Manifest.hero, and from_dict's local `hero = ...`)
+                                           # — a bare `import hero` would be shadowed by that
+                                           # local the day a method needs both in one scope, and
+                                           # `hero.resolve(...)` reads as a field access at a
+                                           # glance next to `m.hero`. hero_lib keeps every call
+                                           # site unambiguous.
+from scripts.lib.footage import Cast
 from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "hero", "color_means", "stabilize", "model", "delivery",
+OPTIONAL = ("layout", "motion", "hero", "cast", "color_means", "stabilize", "model", "delivery",
             "crop_aspect", "crop_scale", "rect", "background", "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit-blur", "insert")   # split/pan → their own plans
 DEFAULT_COLOR = (105, 122, 137)
@@ -28,7 +36,9 @@ class Manifest:
     target_dur: float
     layout: str = "fill"
     motion: str | None = None
-    hero: tuple | str | None = None
+    hero: tuple | str | int | None = None
+    cast: str = ""                       # cast.json path — a cast-name hero needs the registry,
+                                         # and the manifest is a self-contained brief (§14.4)
     color_means: tuple = DEFAULT_COLOR
     stabilize: bool = False
     model: str = DEFAULT_MODEL
@@ -72,7 +82,7 @@ class Manifest:
             composition=d["composition"], grid=d["grid"],
             canvas=tuple(d["canvas"]), target_dur=float(d["target_dur"]),
             layout=layout if layout is not None else "fill", motion=d.get("motion"),
-            hero=hero,
+            hero=hero, cast=d.get("cast") or "",
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             stabilize=bool(d.get("stabilize", False)),
             model=model if model is not None else DEFAULT_MODEL,
@@ -87,8 +97,12 @@ class Manifest:
         )
 
 
-def validate(m: Manifest) -> list[str]:
-    """Return a list of human-readable problem strings (empty = ok)."""
+def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
+    """Return a list of human-readable problem strings (empty = ok).
+
+    `cast` is the LOADED registry, handed in by the caller: this gate does no
+    I/O (see the crop_aspect note below), so it cannot read m.cast itself.
+    """
     problems = []
     if not (isinstance(m.segment, str) and m.segment):
         problems.append("segment must be a non-empty path")
@@ -126,6 +140,15 @@ def validate(m: Manifest) -> list[str]:
                     "composition 'lead' has no horizontal freedom: crop_aspect 'source' at "
                     "crop_scale 1.0 shows the whole frame — set crop_scale below 1.0, or "
                     "composition to 'break'")
+    # hero.resolve is the HARD backstop; here it is the soft gate's oracle, exactly
+    # like LayoutSpec above. Its ValueError (a malformed pin, a cast name with no
+    # registry, a name absent from the cast) becomes a problem string — the gate
+    # never raises. One function for validation and for the shell's real
+    # resolution, so the two cannot drift apart.
+    try:
+        hero_lib.resolve(m.hero, cast)
+    except ValueError as e:
+        problems.append(str(e))
     if m.stabilize:
         problems.append("stabilize=true not supported yet — vidstab lands in the "
                         "reframe-extensions plan (and needs a vidstab-enabled ffmpeg, "
