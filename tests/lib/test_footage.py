@@ -127,3 +127,19 @@ def test_cast_from_json_bad_syntax(tmp_path):
     p = tmp_path / "cast.json"; p.write_text("{ not json")
     with pytest.raises(ValueError, match="not valid JSON"):
         Cast.from_json(p)
+
+
+@pytest.mark.parametrize("d", [[], [1, 2], "str", 42, 4.5, True, None])
+def test_cast_from_dict_rejects_a_non_object_top_level(d):
+    # This boundary reads user-supplied JSON, so it owes callers ONE documented type.
+    # Before the top-level guard these raised a bare AttributeError out of d.get(),
+    # which callers' `except (OSError, ValueError)` did not catch.
+    with pytest.raises(ValueError, match="expected a cast.json object"):
+        Cast.from_dict(d)
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_cast_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "cast.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run footage-intake"):
+        Cast.from_json(p)

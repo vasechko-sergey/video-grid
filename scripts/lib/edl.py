@@ -219,13 +219,12 @@ def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
     if edl.cast is not None:
         try:
             cast = Cast.from_json(edl.cast)
-        except (OSError, ValueError, AttributeError) as e:
-            # AttributeError: Cast.from_json only converts a JSONDecodeError to ValueError;
-            # syntactically-valid JSON with the wrong top-level shape (a bare array/string/
-            # number/null instead of an object) reaches Cast.from_dict's dict.get and raises
-            # a bare AttributeError instead — confirmed empirically, not assumed. Caught here
-            # too so a malformed cast.json reports softly like every other bad EDL input,
-            # instead of crashing the one gate that promises never to.
+        except (OSError, ValueError) as e:
+            # Cast.from_json's whole failure surface: OSError (missing/unreadable file) or
+            # ValueError (bad syntax, bad top-level shape, bad members) — it guards its own
+            # top level, so a malformed registry arrives here as one documented type rather
+            # than an exception zoo. Deliberately NOT widened past those two: a clause that
+            # cannot fire reads as protection while protecting nothing.
             return mds, {"status": "stop_and_report",
                          "finding": {"reason": "edl-invalid", "episode_idx": None,
                                      "problems": [f"EDL.cast {edl.cast!r} is unreadable — {e}"]}}

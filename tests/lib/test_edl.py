@@ -292,19 +292,27 @@ def test_preflight_cast_json_missing_file_stops_gracefully_naming_no_episode(tmp
     assert mds == []
 
 
-def test_preflight_cast_json_malformed_shape_stops_gracefully_not_crashes(tmp_path):
-    # Cast.from_json's own except only converts json.JSONDecodeError → ValueError; a
-    # syntactically-valid-but-wrong-shaped top level (e.g. a bare array instead of an
-    # object) falls through to Cast.from_dict's `d.get("members", [])`, which raises a
-    # bare AttributeError on a list/str/int/bool/None — NOT an OSError or ValueError
-    # (verified directly against Cast.from_json with each of those shapes). A preflight
-    # that only catches (OSError, ValueError) around Cast.from_json would let this crash
-    # instead of returning the stop_and_report the "never crashes" gate promises.
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_preflight_cast_json_malformed_shape_stops_gracefully_not_crashes(tmp_path, body):
+    # A syntactically-valid cast.json whose TOP LEVEL is not an object (a bare array/
+    # string/number/bool/null) once reached Cast.from_dict's `d.get("members", [])` and
+    # raised a bare AttributeError — an exception preflight's (OSError, ValueError) does
+    # not catch, crashing the one gate that promises never to. Fixed at the source:
+    # Cast.from_dict now guards its own top level and raises ValueError-with-remedy, so
+    # preflight catches it like any other bad input. Asserting the remedy text (not just
+    # "some stop happened") is what pins that: a laundered AttributeError string would
+    # carry no 'members'/re-run remedy, so this fails if the from_dict guard is removed.
     p = tmp_path / "cast.json"
-    p.write_text("[]")
+    p.write_text(body)
     e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
                        composition="lead", grid="thirds", crop_scale=0.8)],
                        "cast": str(p)})
     mds, stop = preflight(e, _cfg(), "seg", "out")     # must not raise
     assert stop["status"] == "stop_and_report"
     assert stop["finding"]["reason"] == "edl-invalid" and stop["finding"]["episode_idx"] is None
+    assert mds == []
+    problem = stop["finding"]["problems"][0]
+    assert "is unreadable" in problem                      # preflight's own framing
+    assert "expected a cast.json object with a 'members' list" in problem   # from_dict's remedy
+    assert "re-run footage-intake" in problem
+    assert "AttributeError" not in problem and "has no attribute" not in problem

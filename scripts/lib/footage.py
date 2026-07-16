@@ -197,6 +197,14 @@ class Cast:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Cast":
+        # The top level is checked FIRST, before d.get: this boundary reads user-supplied
+        # JSON, so it owes its callers ONE documented exception type (ValueError-with-
+        # remedy, per coding-standards). Without this, a valid-JSON-but-wrong-shape top
+        # level (a bare array/string/number/bool/null) reached d.get and raised a bare
+        # AttributeError, which every caller would have to enumerate from memory.
+        if not isinstance(d, dict):
+            raise ValueError(f"Cast.from_dict: expected a cast.json object with a 'members' list, "
+                             f"got {type(d).__name__} — re-run footage-intake to regenerate cast.json")
         ms_in = d.get("members", [])
         if not isinstance(ms_in, list):
             raise ValueError("Cast.from_dict: 'members' must be a list")
