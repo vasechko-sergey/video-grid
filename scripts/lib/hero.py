@@ -14,6 +14,8 @@ from scripts.lib.models import HERO_RULES, HeroPin
 
 _FORMS = ("a seed bbox [x, y, w, h] in source px, a rule "
           f"{list(HERO_RULES)}, an integer track id, or a cast name from cast.json")
+# the shared half of the two bbox rejections, so they keep reading as a pair
+_BBOX_FORM = "a bbox pin is 4 numbers [x, y, w, h], centre-format, in source px"
 
 
 def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
@@ -29,8 +31,17 @@ def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
         raise ValueError(f"hero {hero!r} is not a pin — expected {_FORMS}")
     if isinstance(hero, (tuple, list)):
         if len(hero) != 4:
-            raise ValueError(f"hero {list(hero)!r} is not a seed bbox — a bbox pin is 4 numbers "
-                             f"[x, y, w, h], centre-format, in source px; got {len(hero)}")
+            raise ValueError(f"hero {list(hero)!r} is not a seed bbox — {_BBOX_FORM}; "
+                             f"got {len(hero)}")
+        # Deliberately the same predicate HeroPin.bbox uses (same landmine, same
+        # spelling), and it runs BEFORE float() on purpose: float() would launder
+        # "900"→900.0 and True→1.0, which both defeats that guard on the only wired
+        # path and hands a human float()'s bare "could not convert string to float"
+        # via validate(). float() stays — JSON gives ints, _seed_track wants floats.
+        bad = [v for v in hero if not (isinstance(v, (int, float)) and not isinstance(v, bool))]
+        if bad:
+            raise ValueError(f'hero {list(hero)!r} is not a seed bbox — {_BBOX_FORM}; got {bad!r}. '
+                             f'Write each as a bare JSON number — 900, not "900" or true.')
         return HeroPin(kind="bbox", bbox=tuple(float(v) for v in hero))
     if isinstance(hero, int):
         return HeroPin(kind="track", track_id=hero)

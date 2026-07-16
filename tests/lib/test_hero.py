@@ -29,6 +29,26 @@ def test_bbox_list_is_coerced():
     assert hero.resolve([900, 500, 120, 300]).bbox == (900, 500, 120, 300)
 
 
+def test_bbox_elements_must_be_numbers():
+    # Not in test_malformed_values_raise's loop on purpose: that loop asserts the
+    # exception TYPE, and float("a") already raises ValueError — so type alone would
+    # pass while the human read float()'s bare "could not convert string to float:
+    # 'a'". resolve is validate()'s oracle; the message must be this module's own.
+    for bad in (["900", 500, 120, 300], ("a", 500, 120, 300), [None, 500, 120, 300]):
+        with pytest.raises(ValueError, match="is not a seed bbox") as e:
+            hero.resolve(bad)
+        assert "bare JSON number" in str(e.value)        # the remedy, in hero.py's voice
+
+
+def test_bbox_bool_element_is_not_laundered():
+    # float(True) is 1.0 — a bool element must not become a coordinate. resolve
+    # coerces before handing over, so without this check HeroPin.bbox's own bool
+    # guard could never fire on the only path that builds a bbox pin.
+    with pytest.raises(ValueError) as e:
+        hero.resolve((True, 500, 120, 300))
+    assert "is not a seed bbox" in str(e.value) and "True" in str(e.value)
+
+
 def test_rule():
     assert hero.resolve("largest").kind == "rule"
     assert hero.resolve("leftmost").rule == "leftmost"
