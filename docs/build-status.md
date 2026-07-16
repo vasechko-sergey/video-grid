@@ -600,7 +600,9 @@ _Last updated: 2026-07-16._
 - **safe-zones (§5.13) DONE (2026-07-16)** — plan
   `docs/plans/2026-07-16-safe-zones.md` + design
   `docs/specs/2026-07-16-safe-zones-design.md`. Closes the last unbuilt
-  `check_reel` check. `scripts/lib/safezones.py` — `SafeZone` config-spec +
+  `check_reel` check — §5.13's **mechanical** half; the stage itself stays ◐
+  until its editorial half lands (the spec's gate is "both parts green").
+  `scripts/lib/safezones.py` — `SafeZone` config-spec +
   `SAFE_ZONES` platform table (`generic`/`tiktok`/`reels`/`shorts`, generic ==
   titles' 0.08/0.12) + `safe_zone_for`/`default_zone` + `subject_marks` (k=5) +
   pure `evaluate` (worst-offender). The subject→canvas projection
@@ -627,28 +629,57 @@ _Last updated: 2026-07-16._
   built (or knowingly skipped) the front half is complete enough to run the
   whole `using-montage` conveyor end-to-end on Sergei's real footage — the
   milestone the synthetic goldens stand in for today. **OR**
-- **cast → hero-pin wiring** — thread `cast.json` descriptors into episode
-  manifests so `orch.is_seed_pin` accepts a cast name (today bbox-only); the
-  descriptor continuity re-match (design §6.1a) then has its registry. **OR**
-- **Phase B remainder — pacing retry-time auto-fix** (`docs/specs/2026-07-14-pacing-design.md`
-  §10 role 2): the one open Phase-B item left now that B1+B2 (music spine,
-  DONE 2026-07-11), start-offset intelligence (DONE 2026-07-13), mood-match
-  (DONE 2026-07-14), networked sourcing (DONE 2026-07-14), B4 pacing (DONE
-  2026-07-14), ambient ducking (DONE 2026-07-15), and SFX whoosh (DONE
-  2026-07-15, **closing §5.12**) have all landed — `build_reel`'s `length`
-  failure re-timing the spine, needs `build_reel`/`reel_orchestration` work.
-  **OR**
-- **cast.json ingestion** (montage design §6.1a / §-line 287): hero registry — one
-  interactive naming pass from surfaced crops → name + seg-mask appearance
-  descriptor; descriptor wiring into manifests; unlocks cast-name hero pins (today
-  `orch.is_seed_pin` only accepts a bbox tuple). **OR**
+- **cast → hero-pin wiring** (montage design §6.1a) — the registry's *producer*
+  shipped with 5.2 (2026-07-12: interactive naming pass over surfaced crops →
+  name + seg-mask descriptor → `cast.json`), but **nothing reads it back** —
+  `Cast.from_json` is called only from tests, so `cast.json` is a dead-end
+  artifact today. Thread the descriptors into episode manifests so
+  `orch.is_seed_pin` accepts a cast name (it takes a non-empty bbox tuple and
+  nothing else). **This also fixes a live defect:** `SKILLS/edit-plan/SKILL.md`
+  offers `hero` values `largest`/`leftmost`, and a cast name is accepted all the
+  way through `EDL`→manifest as a string — but `is_seed_pin` rejects every
+  non-tuple and `track.py` has no rule dispatch, so all of them silently fall
+  back to intent scoring. The doc promises a pin the code drops. Descriptor
+  continuity re-match then has its registry. **OR**
+- **Phase B remainder — the two pacing auto-fixes**
+  (`docs/specs/2026-07-14-pacing-design.md` §10, both parked by the same scope
+  decision 1): (a) **retry-time length auto-fix** — `build_reel`'s `length`
+  failure re-times the spine; today `reel_orchestration._REPROCESS_CLASS` is
+  `("black", "color_across_cuts")`, so `length` takes the catch-all escalate
+  branch to a human. (b) **the pacing-gate back-edge** — spine won't fit → auto
+  re-pick `MUSIC.start_offset`; today `beats.choose_offset` is the manual
+  re-pick. Both need `build_reel`/`reel_orchestration` work, and they are all
+  that is left of Phase B now that B1+B2 (music spine, DONE 2026-07-11),
+  start-offset intelligence (DONE 2026-07-13), mood-match (DONE 2026-07-14),
+  networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), ambient
+  ducking (DONE 2026-07-15) and SFX whoosh (DONE 2026-07-15, **closing §5.12**)
+  have landed. **OR**
+- **§5.13's editorial half** — the stage stays ◐ until it lands (the spec's gate
+  is "both parts green"). In rising order of judgment: **"key action not
+  clipped"** (bbox extent through the same `safezones` projection — the
+  smallest, still mechanical), **"pad bars clean"** (filler-rect validation —
+  mechanical given the `path.meta.json` sidecar), **"transitions not jarring"**
+  (taste; a mechanical proxy at best), then the **agent review** proper
+  (SPEC's idea/mood/hook/ending/spine, modelled on `requesting-code-review`).
+  Its "classic base **and** trend flavor" criterion has no source of truth until
+  §5.4 lands. **OR**
 - **the remaining layouts** — `fit-solid` (a filler, not a branch: add `solid` to
-  `BACKGROUNDS`), `split` (two clips → two rects), `pan` (a path over a static
-  subject). The three-parameter model was built to absorb these without new code
+  `BACKGROUNDS` **and** have `reframe` read `ResolvedLayout.background`, which is
+  plumbed but ignored — the renderer hardcodes `boxblur`), `split` (two clips →
+  two rects), `pan` (a path over a static subject — already expressible as a
+  layout via `fill` + `crop_scale < 1`; what's missing is the generated x(t), not
+  a mode). The three-parameter model was built to absorb these without new code
   paths; `split` is the one that stresses it, since it needs two sources. **OR**
-- **stabilization + tracking degradation** — vidstab (never on wade-in/out shots,
-  §12) and the optical-flow degradation ladder; removes the matching `validate()`
-  refusals. **OR**
+- **stabilization's apply half + tracking degradation** — `vidstabdetect` already
+  ships as 5.2's shake score (the first runtime vidstab consumer);
+  `vidstabtransform` appears nowhere and is refused at three layers
+  (`manifest.validate` → `needs_input`, `ReframeSpec.stabilize`, `reframe`).
+  Applying it (never on wade-in/out shots, §12) removes those refusals. Separately
+  the **optical-flow degradation ladder** (ultralytics gone / track garbage →
+  optical-flow centroid → manual keyframes, each rung stamped `degraded:`) is
+  unbuilt — `process_episode`'s `"degraded": None` is a reserved placeholder, and
+  it is *not* the reframe-param retry ladder in `orchestration.py`, which is
+  built. **OR**
 - **cap-3 parallel fan-out** — the one open 5.1 sub-item now the `using-montage`
   entry-skill has shipped (2026-07-12): parallelise `edl_to_reel`'s sequential
   per-episode `process_episode` loop (concurrency cap 3, design §5.10). **OR**
@@ -663,8 +694,11 @@ retry-state persistence.
 
 ## Deferred / open
 
-- vidstab-capable ffmpeg before stabilization (`bash setup.sh --with-vidstab`).
-- descriptor continuity re-match needs ingestion's cast.json.
+- vidstab-capable ffmpeg (`bash setup.sh --with-vidstab`) — already a **hard**
+  runtime gate for 5.2 intake's `vidstabdetect` shake score (`_require_vidstab`);
+  the *apply* half (`vidstabtransform`) is what remains unbuilt.
+- descriptor continuity re-match needs the cast **wiring**, not the artifact —
+  `cast.json` has shipped since 5.2 (2026-07-12) but no code reads it back.
 - cap-3 parallel fan-out remains deferred — the `using-montage` entry-skill shipped
   (2026-07-12); parallelising `edl_to_reel`'s per-episode loop is the open sub-item.
 

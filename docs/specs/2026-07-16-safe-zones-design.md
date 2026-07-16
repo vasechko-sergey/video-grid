@@ -10,8 +10,9 @@ table); §6.1a hero marks + the `path.meta.json` sidecar (the projection this re
 fractions (reusing `storyboard.marks_at_times`) and tested against a
 platform-keyed safe-margin table. A subject that lands under the platform's UI
 chrome (bottom caption bar, right action rail) is flagged — reported, never
-blocking. Closes stage 5.13; the pipeline tally becomes **15 ✅ · 0 ◐ · 1 ❌**
-(only 5.4 trend-scan, YAGNI, stays unbuilt).
+blocking. Closes **§5.13's mechanical gate** — the stage itself stays ◐ until its
+editorial half lands, since the spec's gate is "both parts green"; the pipeline
+tally stays **14 ✅ · 1 ◐ · 1 ❌** (5.13 ◐ plus 5.4 trend-scan ❌, YAGNI).
 
 ## Scope decisions (locked in brainstorming)
 
