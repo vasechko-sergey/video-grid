@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from scripts.lib import proc
+from scripts.lib import appearance, proc
 from scripts.lib.models import HERO_RULES, RoutePoint, TrackMeta, TrackSpec, route_to_json
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
@@ -34,9 +34,12 @@ def _probe_meta(src: str) -> tuple[float, int, int]:
 
 
 def _iter_detections(src: str, model_path: str = MODEL) -> Iterator[tuple[int, Any]]:
-    """Yield (frame_index, [boxes]) using Ultralytics YOLO+ByteTrack.
+    """Yield (frame_index, ultralytics_result) using YOLO+ByteTrack.
 
-    Isolated for testability; boxes expose .xywh, .id, .cls like ultralytics.
+    Yields the whole result, not just .boxes: a cast-name hero pin needs the seg
+    masks + frame pixels to build a per-track appearance descriptor (§6.1a). The
+    masks are only READ on that path — every other pin costs nothing extra.
+    Isolated for testability; res.boxes expose .xywh, .id, .cls like ultralytics.
     """
     # lazy import: heavy optional dep (ultralytics/torch)
     from ultralytics import YOLO
@@ -46,7 +49,7 @@ def _iter_detections(src: str, model_path: str = MODEL) -> Iterator[tuple[int, A
     for i, res in enumerate(model.track(src, stream=True, persist=True,
                                         classes=[0], tracker="bytetrack.yaml",
                                         imgsz=960, verbose=False)):
-        yield i, (res.boxes if res.boxes is not None else [])
+        yield i, res
 
 
 def _seed_track(per_frame: list[_Frame], seed: tuple[float, ...], first_n: int = 5) -> int | None:
@@ -102,6 +105,51 @@ def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
 def _id_track(feats: dict[int, dict], track_id: int) -> int | None:
     """Track id pinned explicitly (§5.10). Absent from this segment ⇒ unmatched."""
     return track_id if track_id in feats else None
+
+
+def _track_crops(res: object, boxes: list, crops: dict) -> None:
+    """Accumulate the highest-confidence crop DESCRIPTOR per track id, in place.
+
+    Mirrors intake._people_timeline: one crop_and_mask per confidence improvement
+    (≈ once per track), never once per frame. crop_and_mask carries the two
+    landmines — ultralytics' orig_img is BGR, and the mask is in model space and
+    must be resized to source dims — and returns (None, None) for a mocked result
+    with no pixels, which is how every track test drives this.
+    """
+    for j, b in enumerate(boxes):
+        if getattr(b, "id", None) is None:
+            continue
+        tid = int(b.id[0])
+        conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
+        if conf <= crops.get(tid, (-1.0,))[0]:
+            continue
+        crop_rgb, mask = appearance.crop_and_mask(res, j, b)
+        if crop_rgb is not None:
+            crops[tid] = (conf, appearance.build_descriptor(crop_rgb, mask))
+
+
+def _descriptor_track(descs: dict[int, list[float]],
+                      pin: tuple[float, ...]) -> tuple[int | None, bool]:
+    """Track id whose appearance descriptor is closest to the pinned cast member's
+    (§6.1a layer 2: a cast name makes descriptor similarity outrank kinematics).
+
+    Returns (hero_id, ambiguous). Nobody within CAST_MATCH ⇒ (None, False) — the
+    pinned person is not in this episode. The margin rule is expressed on DISTANCE
+    (d1 >= AMBIG_MARGIN * d2 ⇒ ambiguous: the best match is not meaningfully closer
+    than the runner-up), not on a similarity ratio, because lower-is-better here —
+    a similarity transform pushes both terms to ~1.0 whenever both matches are
+    good and would call every clean match ambiguous. Two people in similar
+    clothing is §6.1a's mode 1, the failure a colour histogram is most exposed to.
+    """
+    if not descs:
+        return None, False
+    ranked = sorted(((appearance.descriptor_dist(d, list(pin)), tid)
+                     for tid, d in descs.items()))
+    d1, hero_id = ranked[0]
+    if d1 > appearance.CAST_MATCH:
+        return None, False
+    ambiguous = len(ranked) > 1 and ranked[1][0] > 0 and d1 >= AMBIG_MARGIN * ranked[1][0]
+    return hero_id, ambiguous
 
 
 def _track_features(per_frame: list[_Frame], src_w: int | None = None,
@@ -178,8 +226,9 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
         # a wrong fps silently desyncs route t, the crop expression's time axis
         fps, src_w, src_h = _probe_meta(spec.src)
 
-    per_frame = []
-    for idx, boxes in _iter_detections(spec.src, model_path=spec.model):
+    per_frame, crops = [], {}
+    for idx, res in _iter_detections(spec.src, model_path=spec.model):
+        boxes = list(res.boxes) if getattr(res, "boxes", None) is not None else []
         dets = []
         for b in boxes:
             if b.id is None:

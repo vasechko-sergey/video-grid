@@ -7,11 +7,25 @@ class _FakeBox:
     def __init__(self, xywh, tid):
         self.xywh = [xywh]; self.id = [tid]; self.cls = [0]  # cls 0 = person
 
+
+class _FakeRes:
+    """An ultralytics-result-shaped fake: boxes only. No orig_img/masks, so
+    appearance.crop_and_mask returns (None, None) — the same way the intake tests
+    drive it. Tests that need real pixels build their own (see test_cast_pin.py)."""
+    def __init__(self, boxes):
+        self.boxes = boxes
+        self.orig_img = None
+        self.masks = None
+
+
+def _fake_iter(frames):
+    """The monkeypatch body every track test shares: frames of boxes → (i, res)."""
+    return lambda src, **k: iter(enumerate(_FakeRes(f) for f in frames))
+
 def test_route_from_frames(monkeypatch, tmp_path):
     # fake per-frame detections: subject slides right
     frames = [[_FakeBox([300 + i * 50, 500, 140, 320], 1)] for i in range(10)]
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     out = tmp_path / "route.json"
     spec = models.TrackSpec(src="ignored.mp4", fps=30)
     route = track.build_route(spec, out=str(out))
@@ -24,8 +38,7 @@ def test_route_seed_pin(monkeypatch, tmp_path):
     # two persistent tracks; the seed bbox must pin the RIGHT one as hero
     frames = [[_FakeBox([300, 500, 140, 320], 1),
                _FakeBox([1500, 500, 120, 300], 2)] for _ in range(10)]
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     out = tmp_path / "route.json"
     spec = models.TrackSpec(src="ignored.mp4", fps=30, seed_bbox=(1500, 500, 120, 300))
     route = track.build_route(spec, out=str(out))
@@ -40,8 +53,7 @@ def test_action_intent_prefers_mover_over_bystander(monkeypatch, tmp_path):
         if 4 <= i < 16:
             dets.append(_FakeBox([200 + (i - 4) * 120, 500, 140, 320], 9))
         frames.append(dets)
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     spec = models.TrackSpec(src="ignored.mp4", fps=30, intent="action")
     route = track.build_route(spec, out=str(tmp_path / "route.json"))
     xs = [pt.x for pt in route]
@@ -51,8 +63,7 @@ def test_meta_flags_ambiguity(monkeypatch, tmp_path):
     # two indistinguishable static tracks → margin rule fires (spec §6.1a)
     frames = [[_FakeBox([500, 500, 140, 320], 1),
                _FakeBox([1400, 500, 140, 320], 2)] for _ in range(10)]
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     out = tmp_path / "route.json"
     spec = models.TrackSpec(src="ignored.mp4", fps=30)
     track.build_route(spec, out=str(out))
@@ -70,8 +81,7 @@ def test_unconfirmed_detections_never_become_hero(monkeypatch, tmp_path):
         dets = [_FakeBox([600 + i * 20, 500, 140, 320], 3)]      # real hero
         dets.append(_NoneBox([200, 500, 100, 300] if i % 2 else [1700, 500, 100, 300]))
         frames.append(dets)
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     out = tmp_path / "route.json"
     spec = models.TrackSpec(src="ignored.mp4", fps=30)
     route = track.build_route(spec, out=str(out))
@@ -82,8 +92,7 @@ def test_unconfirmed_detections_never_become_hero(monkeypatch, tmp_path):
 
 def test_features_include_speed_and_border(monkeypatch, tmp_path):
     frames = [[_FakeBox([300 + i * 50, 500, 140, 320], 1)] for i in range(10)]
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     spec = models.TrackSpec(src="ignored.mp4", fps=30)
     track.build_route(spec, out=str(tmp_path / "route.json"))
     meta = models.TrackMeta.from_dict(json.loads((tmp_path / "route.meta.json").read_text()))
@@ -94,8 +103,7 @@ def test_features_include_speed_and_border(monkeypatch, tmp_path):
 def test_fps_probe_when_not_given(monkeypatch, tmp_path, sample_clip):
     # fps=None → probed from the real file (sample fixture is 30fps 1920x1080)
     frames = [[_FakeBox([300, 500, 140, 320], 1)] for _ in range(5)]
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     spec = models.TrackSpec(src=str(sample_clip))
     route = track.build_route(spec, out=str(tmp_path / "route.json"))
     assert abs(route[1].t - 1 / 30) < 1e-6
@@ -108,8 +116,7 @@ def test_build_route_uses_spec_and_returns_routepoints(monkeypatch, tmp_path):
     for i in range(6):
         frames.append([_FakeBox([900, 500, 300, 600], 1),
                        _FakeBox([100 + i * 200, 500, 120, 300], 2)])
-    monkeypatch.setattr(track, "_iter_detections",
-                        lambda src, **k: iter(enumerate(frames)))
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
 
     out = tmp_path / "route.json"
     spec = models.TrackSpec(src="seg.mp4", intent="static", fps=30.0)
@@ -181,3 +188,45 @@ def test_pick_hero_reads_ambig_margin_not_a_reinlined_literal(monkeypatch):
     monkeypatch.setattr(track, "AMBIG_MARGIN", 0.9)
     _, ambiguous_raised = track._pick_hero(feats, "static")
     assert ambiguous_raised is False
+
+
+def _desc(*channels):
+    """A hand-built descriptor: `channels` are per-channel weights, HIST_BINS wide."""
+    from scripts.lib.appearance import HIST_BINS
+    d = []
+    for w in channels:
+        d.extend([w / HIST_BINS] * HIST_BINS)
+    return tuple(d)
+
+
+def test_descriptor_track_picks_the_closest():
+    crops = {1: [1.0, 0.0, 0.0] + [0.0] * 21, 2: [0.0, 0.0, 1.0] + [0.0] * 21}
+    pin = tuple([0.0, 0.0, 1.0] + [0.0] * 21)
+    hero_id, ambiguous = track._descriptor_track(crops, pin)
+    assert hero_id == 2 and ambiguous is False
+
+
+def test_descriptor_track_beyond_the_threshold_is_unmatched():
+    # both tracks sit at the maximum distance (disjoint supports) → nobody matches
+    crops = {1: [1.0] + [0.0] * 23, 2: [1.0] + [0.0] * 23}
+    pin = tuple([0.0] * 23 + [1.0])
+    hero_id, ambiguous = track._descriptor_track(crops, pin)
+    assert hero_id is None and ambiguous is False
+
+
+def test_descriptor_track_margin_flags_ambiguity():
+    # two near-identical descriptors → d1 >= 0.8*d2 → §6.1a mode 1
+    crops = {1: [0.50, 0.50] + [0.0] * 22, 2: [0.52, 0.48] + [0.0] * 22}
+    pin = tuple([0.51, 0.49] + [0.0] * 22)
+    hero_id, ambiguous = track._descriptor_track(crops, pin)
+    assert hero_id in (1, 2) and ambiguous is True
+
+
+def test_descriptor_track_single_track_is_never_ambiguous():
+    crops = {7: [1.0, 0.0] + [0.0] * 22}
+    hero_id, ambiguous = track._descriptor_track(crops, tuple([1.0, 0.0] + [0.0] * 22))
+    assert hero_id == 7 and ambiguous is False
+
+
+def test_descriptor_track_no_crops_is_unmatched():
+    assert track._descriptor_track({}, _desc(1.0, 0.0, 0.0)) == (None, False)
