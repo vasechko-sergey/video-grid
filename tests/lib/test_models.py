@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import pytest
 from scripts.lib import models as m
@@ -725,7 +726,18 @@ def test_hero_pin_cast_needs_a_name_and_a_descriptor():
         m.HeroPin(kind="cast", name="Lena", descriptor=())
 
 
+def test_hero_pin_cast_descriptor_must_be_numeric():
+    # the message promises "a non-empty tuple OF NUMBERS" — enforce what it says.
+    # A str element otherwise reaches appearance.descriptor_dist and dies there on
+    # a bare `TypeError: unsupported operand type(s) for -: 'str' and 'float'` —
+    # no remedy, deep in the tracking pipeline. bool is the standing landmine:
+    # isinstance(True, int) is True, so it needs its own exclusion, as bbox's does.
+    for bad in (("a", "b", "c"), (0.5, "x"), (True, False), (0.5, True), (None,), [0.5, 0.5]):
+        with pytest.raises(ValueError, match="descriptor"):
+            m.HeroPin(kind="cast", name="Lena", descriptor=bad)
+
+
 def test_hero_pin_is_frozen():
     p = m.HeroPin(kind="rule", rule="leftmost")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         p.rule = "largest"

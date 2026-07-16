@@ -306,7 +306,9 @@ class HeroPin:
         if self.kind == "cast":
             if not (isinstance(self.name, str) and self.name):
                 raise ValueError("HeroPin(kind='cast').name must be a non-empty cast name")
-            if not (isinstance(self.descriptor, tuple) and self.descriptor):
+            if not (isinstance(self.descriptor, tuple) and self.descriptor
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                            for v in self.descriptor)):
                 raise ValueError(f"HeroPin(kind='cast').descriptor must be a non-empty tuple "
                                  f"of numbers, got {self.descriptor!r}")
 
