@@ -343,22 +343,52 @@ episode's manifest at the documented boundary:
   ambiguity gate no longer consults `hero`.
 - `validate(m, cast=)` — each hero problem string.
 
-**Deleted** (they pin exactly the behaviour this slice reverses; both carry
-comments scoping themselves to "this slice (cast.json is the ingestion plan)"):
-- `test_orchestration.py::test_named_or_rule_hero_does_not_resolve_ambiguity`
-- `test_orchestration.py::test_is_seed_pin_only_true_for_nonempty_tuple`
+**Deleted** — four tests in `test_orchestration.py`, all pinning behaviour this
+slice reverses. The last two carry comments scoping themselves to "this slice
+(cast.json is the ingestion plan)": they were written to be deleted by this one.
+- `::test_named_or_rule_hero_does_not_resolve_ambiguity`
+- `::test_is_seed_pin_only_true_for_nonempty_tuple`
+- `::test_ambiguous_hero_with_pin_is_resolved` — asserts a bbox pin *suppresses*
+  `hero-ambiguous`. Now impossible in both directions: the gate no longer reads
+  `hero`, and a pin can no longer coexist with `ambiguous` (the pin's rung
+  resolves it, so `_pick_hero` — the only source of kinematic ambiguity — never
+  runs).
+- `::test_ambiguous_hero_with_empty_pin_is_a_contradiction` — `""`/`()`/`[]` now
+  raise in `hero.resolve` and never reach the tracker; the coverage moves to the
+  resolver's own raise tests.
 
 **Moved:** `test_track.py::test_route_seed_pin` (seed → pin),
 `test_process_episode.py::test_seed_bbox_threaded_to_track`,
 `test_manifest.py::test_hero_string_rule_kept`, and every
 `detect_contradictions` caller (signature).
 
-**Integration (real YOLO, marked, skip without ultralytics):** two synthetic
-people in differently-coloured clothing on a synthetic clip; a cast pin naming
-one of them puts *that* one in the route (assert the route's x band, not a track
-id — ByteTrack ids are not stable across runs). A second run pinning a name whose
-descriptor matches neither returns `hero-unmatched`. This is the first test that
-proves the descriptor round-trips intake → `cast.json` → track.
+**Test-double churn — the priced cost of §4's choice.** All nine tests in
+`test_track.py` monkeypatch `_iter_detections` to yield `(idx, [_FakeBox, …])`,
+so yielding the whole `res` breaks every one. They gain a `_FakeRes` wrapper
+(`.boxes`, no `orig_img`/`masks`) behind one shared helper — a one-line change
+per test. `crop_and_mask`'s existing `getattr(…, None)` guards mean a maskless
+fake returns `(None, None)` and never reaches numpy, which is exactly how the
+intake tests already mock it. This is real churn, and it is the reason option B
+looked cheap; option B's second YOLO pass over 4K footage is worse.
+
+**Integration — real descriptor math, YOLO mocked.** Not real YOLO: this repo
+fakes YOLO in *every* test, and its own comments say why — *"sample_clip is a
+box, not a person, so real YOLO tracking returns an empty route"*
+(`test_front_spine.py:6`, `test_intake.py:5`); `test_layouts.py` uses a frozen
+route "so no YOLO runs". A synthetic clip cannot contain a detectable person, so
+a "real-YOLO" proof of this slice is not constructible.
+
+What *is* constructible, and is the honest maximum: mock `_iter_detections` (as
+all nine existing track tests do) but hand the fake `res` a **real numpy
+`orig_img` and `masks`** — two people wearing differently-coloured blocks of
+pixels. Then `crop_and_mask` (both landmines), `build_descriptor`,
+`descriptor_dist` and the whole rung run for real, over real pixels. The proof:
+a cast pin naming the red-clothed person puts *that* track in the route and not
+the blue one; the same clip with a green-descriptor name returns
+`hero-unmatched`; a near-duplicate second person trips the margin into
+`ambiguous`. This is the first test that exercises descriptor → `cast.json` →
+route end to end, and the only YOLO-shaped thing it fakes is the detector the
+repo already fakes everywhere.
 
 ## 11. Non-goals / deferred
 
