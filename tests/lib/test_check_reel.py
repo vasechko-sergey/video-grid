@@ -58,21 +58,16 @@ def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
     assert f.episode_idx == 1 and f.escalate_to == "reprocess"
 
 
-def test_beat_loudness_not_checked_safe_zones_not_implemented(tmp_path, monkeypatch):
-    # distinct hashes: this test is about beat/loudness/safe_zones, not variety —
-    # without them the _Stub default (identical hash 0 at both midpoints) trips
-    # the variety check (distance 0 < variety_min) and overall flips to False.
+def test_beat_loudness_safe_zones_not_checked_when_silent(tmp_path, monkeypatch):
+    # distinct hashes so the variety check passes (see the color/variety tests).
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
-    # beat/loudness ARE implemented — a silent reel (no music/audio) just can't check
-    # them, so they read "not-checked", not "not-implemented" (honesty fix).
-    for name in ("beat", "loudness"):
+    # all three now read "not-checked" — beat/loudness lack audio, safe_zones lacks geometry.
+    for name in ("beat", "loudness", "safe_zones"):
         assert rep.checks[name].passed is None
         assert rep.checks[name].detail["status"] == "not-checked"
-    assert rep.checks["safe_zones"].passed is None
-    assert rep.checks["safe_zones"].detail["status"] == "not-implemented"   # genuinely unbuilt
-    assert rep.overall is True          # None never fails the reel
+    assert rep.overall is True
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 
 
@@ -233,3 +228,42 @@ def test_loudness_check_out_of_range_escalates_to_audio_mix():
     cr, fail = check_reel._loudness_check(-9.0, ReelCheckSpec(target_dur=30.0))
     assert cr.passed is False
     assert fail is not None and fail.check == "loudness" and fail.escalate_to == "audio-mix"
+
+
+def _write_geom(dir_path, x, y):
+    """Write route.json / path.json / path.meta.json (fill 1000x2000; subject centre
+    (x,y) source px, crop-x 0) and return the (route, path, meta) path triple."""
+    import json
+    from pathlib import Path
+    d = Path(dir_path)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "route.json").write_text(json.dumps(
+        [{"t": 0.0, "x": x, "y": y, "w": 100.0, "h": 200.0},
+         {"t": 3.0, "x": x, "y": y, "w": 100.0, "h": 200.0}]))
+    (d / "path.json").write_text(json.dumps([0, 0]))
+    (d / "path.meta.json").write_text(json.dumps(
+        {"mode": "fill", "crop_w": 1000, "crop_h": 2000, "crop_y": 0, "src_dims": [1000, 2000],
+         "canvas": [1000, 2000], "out_dims": [1000, 2000], "rect_px": [0, 0, 1000, 2000], "freedom": 0}))
+    return (str(d / "route.json"), str(d / "path.json"), str(d / "path.meta.json"))
+
+
+def test_safe_zones_passes_when_every_subject_is_framed_safely(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # fy 0.45 safe
+            _write_geom(tmp_path / "ep1", 500.0, 900.0)]
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is True
+    assert rep.checks["safe_zones"].detail["advisory"] is True
+
+
+def test_safe_zones_flags_low_subject_but_stays_advisory(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # safe
+            _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # fy 0.98 → under tiktok caption band
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is False
+    assert rep.checks["safe_zones"].detail["worst_episode"] == 1
+    assert rep.overall is True          # advisory — a False safe_zones never blocks the reel
+    assert not [f for f in rep.fail_reasons if f.check == "safe_zones"]   # no ReelFailure emitted

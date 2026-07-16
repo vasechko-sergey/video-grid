@@ -13,14 +13,16 @@ import imagehash
 import numpy as np
 from PIL import Image
 
-from scripts.lib import proc
-from scripts.lib.models import CheckResult, MusicSpec, ReelCheckSpec, ReelFailure, ReelReport
+from scripts.lib import proc, safezones
+from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
+                                ReelFailure, ReelReport, route_from_json)
 
-# beat/loudness ARE implemented — they only fall through here when a reel carries no
-# music/audio (a silent reel legitimately can't check them). safe_zones is genuinely unbuilt.
+# beat/loudness/safe_zones ARE implemented — they fall through to "not-checked" only when
+# the reel lacks the input each needs (music/audio for beat/loudness, per-episode geometry
+# for safe_zones). Nothing is genuinely "not-implemented" anymore.
 _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
-              "loudness": "not checked — no audio stem supplied (silent reel)"}
-_NOT_IMPL = {"safe_zones": "needs a per-episode route + a platform safe-margin table"}
+              "loudness": "not checked — no audio stem supplied (silent reel)",
+              "safe_zones": "not checked — no per-episode geometry supplied"}
 
 
 def _probe_dur(video: str) -> float:
@@ -124,7 +126,8 @@ def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> Chec
 
 
 def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
-        music: MusicSpec | None = None, audio: str | None = None) -> ReelReport:
+        music: MusicSpec | None = None, audio: str | None = None,
+        geometry: list[tuple[str, str, str]] | None = None, platform: str = "") -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -198,10 +201,16 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     if music is not None:
         checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
 
+    if geometry is not None:
+        zone = safezones.safe_zone_for(platform)
+        marks_per_ep = [safezones.subject_marks(route_from_json(r), CropPath.from_json(p),
+                                                PathMeta.from_json(m), dur)
+                        for (r, p, m), dur in zip(geometry, durations)]
+        passed, detail = safezones.evaluate(marks_per_ep, zone)
+        checks["safe_zones"] = CheckResult("safe_zones", passed, detail)
+
     for name, reason in _UNCHECKED.items():
         checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
-    for name, reason in _NOT_IMPL.items():
-        checks.setdefault(name, CheckResult(name, None, {"status": "not-implemented", "reason": reason}))
 
     rep = ReelReport(checks=checks, fail_reasons=fails, episode_count=len(episodes),
                      wall_s=round(time.monotonic() - t0, 3))
