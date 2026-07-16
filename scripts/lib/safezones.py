@@ -51,3 +51,38 @@ def safe_zone_for(platform: str) -> SafeZone:
 def default_zone() -> SafeZone:
     """The generic zone — titles' single margin source (§5.16)."""
     return SAFE_ZONES["generic"]
+
+
+_SAFE_SAMPLES = 5
+
+
+def _sample_times(dur: float) -> list[float]:
+    return [(k + 0.5) * dur / _SAFE_SAMPLES for k in range(_SAFE_SAMPLES)]
+
+
+def subject_marks(route: list[RoutePoint], path: CropPath, meta: PathMeta,
+                  dur: float) -> list[tuple[float, float]]:
+    """The subject's (fx, fy) canvas fractions at _SAFE_SAMPLES points across the
+    episode — the projection lib.geometry already implements, sampled by time."""
+    return marks_at_times(route, path, meta, _sample_times(dur))
+
+
+def evaluate(marks_per_ep: list[list[tuple[float, float]]],
+             zone: SafeZone) -> tuple[bool, dict]:
+    """Pure decision: flag if any subject mark in any episode falls outside its safe
+    region. The report names the worst offender (deepest overshoot) so a human sees
+    where. Advisory — the caller never turns this into a ReelFailure."""
+    worst = None                                   # (overshoot, episode_idx, fx, fy)
+    for i, marks in enumerate(marks_per_ep):
+        for fx, fy in marks:
+            if not zone.contains(fx, fy):
+                over = max(zone.left - fx, fx - (1.0 - zone.right),
+                           zone.top - fy, fy - (1.0 - zone.bottom))
+                if worst is None or over > worst[0]:
+                    worst = (over, i, round(fx, 4), round(fy, 4))
+    if worst is None:
+        return True, {"episodes": len(marks_per_ep), "advisory": True}
+    _, idx, fx, fy = worst
+    return False, {"worst_episode": idx, "worst_mark": [fx, fy],
+                   "zone": {"top": zone.top, "bottom": zone.bottom,
+                            "left": zone.left, "right": zone.right}, "advisory": True}

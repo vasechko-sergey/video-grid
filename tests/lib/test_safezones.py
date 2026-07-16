@@ -2,6 +2,7 @@ import pytest
 
 from scripts.lib import safezones
 from scripts.lib.safezones import SafeZone, SAFE_ZONES
+from scripts.lib.models import RoutePoint, CropPath, PathMeta
 
 
 def test_safezone_contains_inside_and_outside():
@@ -35,3 +36,37 @@ def test_default_zone_is_generic_and_matches_titles_presets():
     z = safezones.default_zone()
     assert z is SAFE_ZONES["generic"]
     assert (z.top, z.bottom) == (0.08, 0.12)      # == titles _Y_EXPR presets
+
+
+def _geom(x, y):
+    # fill 1000x2000; subject centre at (x,y) source px, crop-x 0
+    route = [RoutePoint(0.0, x, y, 100.0, 200.0), RoutePoint(2.0, x, y, 100.0, 200.0)]
+    path = CropPath([0, 0])
+    meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000),
+                    (0, 0, 1000, 2000), 0)
+    return route, path, meta
+
+
+def test_subject_marks_samples_five_points_across_the_episode():
+    route, path, meta = _geom(500.0, 900.0)
+    marks = safezones.subject_marks(route, path, meta, dur=2.0)
+    assert len(marks) == 5
+    assert marks == [(0.5, 0.45)] * 5             # constant route → constant marks
+
+
+def test_evaluate_passes_when_every_subject_is_inside():
+    zone = safezones.safe_zone_for("generic")
+    inside = [(0.5, 0.45), (0.33, 0.5)]
+    passed, detail = safezones.evaluate([inside, inside], zone)
+    assert passed is True and detail["advisory"] is True and detail["episodes"] == 2
+
+
+def test_evaluate_flags_the_worst_offender_episode():
+    zone = safezones.safe_zone_for("tiktok")       # bottom band 0.18
+    ep0 = [(0.5, 0.45)]                             # safe
+    ep1 = [(0.5, 0.70), (0.5, 0.99)]               # 0.99 is deepest under the caption band
+    passed, detail = safezones.evaluate([ep0, ep1], zone)
+    assert passed is False
+    assert detail["worst_episode"] == 1
+    assert detail["worst_mark"] == [0.5, 0.99]
+    assert detail["advisory"] is True
