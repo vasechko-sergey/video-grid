@@ -13,6 +13,8 @@ GRIDS = ("thirds", "phi")
 MODELS = ("yolo11n-seg.pt", "yolo11s-seg.pt", "yolo11m-seg.pt")
 MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
 INTENTS = ("action", "static")
+HERO_RULES = ("largest", "leftmost")          # §5.10 rule pins — mechanical, no identity claim
+HERO_KINDS = ("bbox", "rule", "track", "cast")
 
 
 @dataclass(frozen=True)
@@ -265,6 +267,48 @@ class Delivery:
 def _positive_seq(v: object, n: int) -> bool:
     return (isinstance(v, (tuple, list)) and len(v) == n
             and all(isinstance(x, (int, float)) and x > 0 for x in v))
+
+
+@dataclass(frozen=True)
+class HeroPin:
+    """A RESOLVED §5.10 hero pin — the one shape every consumer agrees on.
+
+    The manifest's `hero` is a raw value (tuple / str / int); this is what
+    hero.resolve() turns it into, once, at the boundary. Frozen: resolve hands it
+    over already-coerced, so nothing downstream re-guesses with isinstance.
+    """
+    kind: str
+    bbox: tuple[float, float, float, float] | None = None
+    rule: str = ""
+    track_id: int | None = None
+    name: str = ""
+    descriptor: tuple[float, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.kind not in HERO_KINDS:
+            raise ValueError(f"HeroPin.kind {self.kind!r} unknown — expected one of {HERO_KINDS}")
+        if self.kind == "bbox" and not (isinstance(self.bbox, tuple) and len(self.bbox) == 4
+                                        and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                                                for v in self.bbox)):
+            raise ValueError(f"HeroPin(kind='bbox').bbox must be a 4-tuple of numbers "
+                             f"(centre-format x,y,w,h in source px), got {self.bbox!r}")
+        if self.kind == "rule" and self.rule not in HERO_RULES:
+            raise ValueError(f"HeroPin(kind='rule').rule {self.rule!r} unknown — "
+                             f"expected one of {HERO_RULES}")
+        if self.kind == "track" and (isinstance(self.track_id, bool)
+                                     or not isinstance(self.track_id, int)):
+            # isinstance(True, int) is True, so a bare `not isinstance(x, int)` guard
+            # would let a bool slip through as a valid id — `hero: true` in a manifest
+            # would then silently resolve to track id 1. The explicit bool disjunct
+            # closes that gap (its position in the `or` doesn't matter; both are
+            # independent conditions).
+            raise ValueError(f"HeroPin(kind='track').track_id must be an int, got {self.track_id!r}")
+        if self.kind == "cast":
+            if not (isinstance(self.name, str) and self.name):
+                raise ValueError("HeroPin(kind='cast').name must be a non-empty cast name")
+            if not (isinstance(self.descriptor, tuple) and self.descriptor):
+                raise ValueError(f"HeroPin(kind='cast').descriptor must be a non-empty tuple "
+                                 f"of numbers, got {self.descriptor!r}")
 
 
 @dataclass

@@ -685,3 +685,47 @@ def test_reel_manifest_platform_default_and_set():
 def test_reelreport_overall_excludes_advisory_safe_zones():
     rr = m.ReelReport(checks={"safe_zones": m.CheckResult("safe_zones", False, {"advisory": True})})
     assert rr.overall is True          # advisory False never blocks the reel
+
+
+def test_hero_pin_bbox():
+    p = m.HeroPin(kind="bbox", bbox=(900.0, 500.0, 120.0, 300.0))
+    assert p.kind == "bbox" and p.bbox == (900.0, 500.0, 120.0, 300.0)
+
+
+def test_hero_pin_rule_rejects_unknown_rule():
+    assert m.HeroPin(kind="rule", rule="largest").rule == "largest"
+    with pytest.raises(ValueError, match="HERO_RULES|largest"):
+        m.HeroPin(kind="rule", rule="tallest")
+
+
+def test_hero_pin_rejects_unknown_kind():
+    with pytest.raises(ValueError, match="kind"):
+        m.HeroPin(kind="vibes")
+
+
+def test_hero_pin_bbox_must_be_a_4_tuple():
+    for bad in (None, (1, 2, 3), [1, 2, 3, 4], (1, 2, 3, 4, 5)):
+        with pytest.raises(ValueError, match="bbox"):
+            m.HeroPin(kind="bbox", bbox=bad)
+
+
+def test_hero_pin_track_id_rejects_bool_and_none():
+    assert m.HeroPin(kind="track", track_id=0).track_id == 0   # 0 is a real track id
+    for bad in (None, True, 1.5, "3"):
+        with pytest.raises(ValueError, match="track_id"):
+            m.HeroPin(kind="track", track_id=bad)
+
+
+def test_hero_pin_cast_needs_a_name_and_a_descriptor():
+    p = m.HeroPin(kind="cast", name="Lena", descriptor=(0.5, 0.5))
+    assert p.name == "Lena" and p.descriptor == (0.5, 0.5)
+    with pytest.raises(ValueError, match="name"):
+        m.HeroPin(kind="cast", name="", descriptor=(0.5, 0.5))
+    with pytest.raises(ValueError, match="descriptor"):
+        m.HeroPin(kind="cast", name="Lena", descriptor=())
+
+
+def test_hero_pin_is_frozen():
+    p = m.HeroPin(kind="rule", rule="leftmost")
+    with pytest.raises(Exception):
+        p.rule = "largest"
