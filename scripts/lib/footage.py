@@ -216,6 +216,21 @@ class Cast:
         for k, m in enumerate(self.members):
             if not isinstance(m, CastMember):
                 raise ValueError(f"Cast.members[{k}] must be a CastMember")
+        # A registry maps a NAME to one identity — that is the whole point of the
+        # file, and hero.resolve is its only reader. Two members under one name map
+        # it to neither: resolve returned whichever happened to be listed first, so
+        # the route followed a coin flip nobody could see. Checked HERE rather than
+        # in resolve because it is the type's invariant, not the pin's — which also
+        # means intake.write_cast (where a human names two surfaced crops "Lena")
+        # fails during the naming pass, before cast.json ever reaches disk, and
+        # resolve's first match is the ONLY match by construction.
+        names = [m.name for m in self.members]
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        if dupes:
+            raise ValueError(f"Cast has duplicate member name(s) {dupes} — a cast name must "
+                             f"identify exactly one person, and a hero pin resolves against it. "
+                             f"Give them distinct names ('Lena', 'Lena (wetsuit)'), or keep one "
+                             f"entry if the crops show the same person in different shots.")
 
     @classmethod
     def from_dict(cls, d: dict) -> "Cast":

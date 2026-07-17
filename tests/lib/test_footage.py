@@ -154,6 +154,45 @@ def test_cast_from_json_roundtrip(tmp_path):
     assert Cast.from_json(p).to_dict() == c.to_dict()
 
 
+def _twins():
+    """Two members named "Lena" carrying OPPOSITE descriptors — the pin that
+    resolves to one follows a completely different person than the other."""
+    return [CastMember(name="Lena", descriptor=_desc(1.0)),
+            CastMember(name="Lena", descriptor=[0.0] * (DESCRIPTOR_LEN - 1) + [1.0])]
+
+
+def test_cast_rejects_duplicate_names():
+    # A registry maps a NAME to an identity; two entries under one name map it to
+    # neither. hero.resolve returned whichever was listed first, so the route
+    # followed a coin flip decided by list order — silently, with no way to tell.
+    # Not exotic: intake dedups surfaced crops at CAST_DEDUP=0.30, so one person
+    # shot in two lightings gets surfaced twice, and naming both "Lena" is the
+    # obvious human move. Uniqueness is the registry's invariant, so it is checked
+    # on construction — which also makes resolve's first-match loop correct rather
+    # than merely lucky.
+    with pytest.raises(ValueError, match="Lena") as ex:
+        Cast(members=_twins())
+    assert "duplicate" in str(ex.value)
+    assert "distinct names" in str(ex.value)      # the remedy, not just the diagnosis
+
+
+def test_cast_from_json_rejects_duplicate_names(tmp_path):
+    # the disk path must refuse it too — from_json is how every real cast.json enters
+    p = tmp_path / "cast.json"
+    p.write_text(json.dumps({"members": [m.to_dict() for m in _twins()]}))
+    with pytest.raises(ValueError, match="duplicate"):
+        Cast.from_json(p)
+
+
+def test_cast_allows_distinct_names_with_identical_descriptors():
+    # the invariant is about NAMES, not descriptors: two people who happen to be
+    # dressed alike are a tracking problem (track.py's margin rule), not a registry
+    # problem, and the registry must not pre-empt that judgement
+    d = _desc(0.5, 0.5)
+    assert len(Cast(members=[CastMember(name="Lena", descriptor=d),
+                             CastMember(name="Bo", descriptor=d)]).members) == 2
+
+
 def test_cast_from_json_bad_syntax(tmp_path):
     p = tmp_path / "cast.json"; p.write_text("{ not json")
     with pytest.raises(ValueError, match="not valid JSON"):

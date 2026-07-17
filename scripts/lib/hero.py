@@ -54,6 +54,10 @@ def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
         raise ValueError(f"hero {hero!r} is a cast name but no cast.json was supplied — set "
                          f"EDL.cast (or pass --cast) so the name can be resolved, or use "
                          f"a rule {list(HERO_RULES)} / a seed bbox instead")
+    # This reads as first-match-wins, and it is — but it cannot silently pick between
+    # rivals: Cast.__post_init__ rejects duplicate names, so a match here is the ONLY
+    # match. The ambiguity that WOULD be a coin flip is refused one layer down, at the
+    # registry that owns the invariant, rather than papered over with a second check.
     for m in cast.members:
         if m.name == hero:
             return HeroPin(kind="cast", name=m.name, descriptor=tuple(m.descriptor))

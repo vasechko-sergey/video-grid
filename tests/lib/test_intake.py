@@ -230,6 +230,18 @@ def test_write_cast_rejects_a_stale_descriptor_before_writing_the_file(tmp_path)
     assert not (tmp_path / "cast.json").exists()
 
 
+def test_write_cast_rejects_two_crops_named_the_same(tmp_path):
+    # THE birth site of a duplicate name: surface_crops dedups by descriptor
+    # (CAST_DEDUP=0.30), so one person in two lightings is surfaced twice and the
+    # human naming both "Lena" is the obvious move. Cast's uniqueness check fires
+    # during the naming pass — where the human is standing and can actually fix it —
+    # and cast.json never reaches disk broken.
+    with pytest.raises(ValueError, match="duplicate"):
+        intake.write_cast([("Lena", "red jacket", _desc(1.0), []),
+                           ("Lena", "blue wetsuit", _desc(0.0, 1.0), [])], str(tmp_path))
+    assert not (tmp_path / "cast.json").exists()
+
+
 def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     root = tmp_path / "footage"; root.mkdir()
     (root / "a.mp4").write_bytes(b"x")
