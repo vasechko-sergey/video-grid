@@ -50,24 +50,43 @@ def test_route_bbox_pin(monkeypatch, tmp_path):
     assert meta.pin_matched is True
 
 
+# A pin's whole job is to OUTRANK the intent scoring it replaces, so each fixture
+# below makes the two DISAGREE: the pinned track is deliberately not the one
+# _pick_hero would choose. Both fixtures used to answer the same track either way,
+# which left the rule and track-id rungs unable to tell a working pin from a
+# re-inlined `hero_id = _pick_hero(feats, spec.intent)` — the exact silent
+# substitution this slice exists to delete. The mover/bystander split does it: with
+# intent="action" the displacement term carries weight 2.0 against area's 0.3, so
+# whoever crosses the frame wins the scoring no matter how small they are.
+#
+# Both also assert the route as a LIST rather than with all(): `all()` over the
+# empty route an unmatched rung returns is VACUOUSLY TRUE, so the old assertions
+# held even when the rung picked nobody at all.
+
+
 def test_route_rule_pin(monkeypatch, tmp_path):
-    frames = [[_FakeBox([300, 500, 140, 320], 1),
-               _FakeBox([1500, 500, 300, 700], 2)] for _ in range(10)]
+    # "largest" must win on SIZE: track 2 is the big bystander standing still,
+    # track 1 the small one crossing the frame that action scoring prefers. A rule
+    # makes no claim about identity — the human said largest, so largest wins.
+    frames = [[_FakeBox([200 + i * 100, 500, 140, 320], 1),
+               _FakeBox([1500, 500, 300, 700], 2)] for i in range(10)]
     monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     spec = models.TrackSpec(src="ignored.mp4", fps=30,
                             pin=models.HeroPin(kind="rule", rule="largest"))
     route = track.build_route(spec, out=str(tmp_path / "route.json"))
-    assert all(pt.x == 1500 for pt in route)
+    assert [pt.x for pt in route] == [1500.0] * 10
 
 
 def test_route_track_id_pin(monkeypatch, tmp_path):
+    # The named id must win outright: track 1 is the small static one the human
+    # pinned, track 2 the big mover scoring would hand back instead.
     frames = [[_FakeBox([300, 500, 140, 320], 1),
-               _FakeBox([1500, 500, 120, 300], 2)] for _ in range(10)]
+               _FakeBox([200 + i * 100, 500, 300, 700], 2)] for i in range(10)]
     monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
     spec = models.TrackSpec(src="ignored.mp4", fps=30,
                             pin=models.HeroPin(kind="track", track_id=1))
     route = track.build_route(spec, out=str(tmp_path / "route.json"))
-    assert all(pt.x == 300 for pt in route)
+    assert [pt.x for pt in route] == [300.0] * 10
 
 
 def test_unmatched_pin_never_falls_back_to_scoring(monkeypatch, tmp_path):
