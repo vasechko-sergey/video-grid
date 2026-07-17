@@ -1,10 +1,17 @@
 import pytest
 
 from scripts.lib import hero
-from scripts.lib.footage import Cast, CastMember
+from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
 
-_LENA = (0.5, 0.25, 0.25)
-_BO = (0.1, 0.1, 0.8)
+
+def _desc(*head: float) -> tuple[float, ...]:
+    """A registry-valid descriptor: DESCRIPTOR_LEN floats — `head`, zero-padded.
+    CastMember rejects any other length, so a pin's descriptor is always this wide."""
+    return tuple(head) + (0.0,) * (DESCRIPTOR_LEN - len(head))
+
+
+_LENA = _desc(0.5, 0.25, 0.25)
+_BO = _desc(0.1, 0.1, 0.8)
 
 
 def _cast():

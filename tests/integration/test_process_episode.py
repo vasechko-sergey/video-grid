@@ -3,7 +3,12 @@ from pathlib import Path
 import pytest
 from scripts import process_episode as pe
 from scripts.lib import models
-from scripts.lib.footage import Cast, CastMember
+from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
+
+
+def _desc(*head: float) -> list[float]:
+    """A registry-valid descriptor: DESCRIPTOR_LEN floats — `head`, zero-padded."""
+    return list(head) + [0.0] * (DESCRIPTOR_LEN - len(head))
 
 
 def _manifest(tmp_path, **over):
@@ -314,11 +319,12 @@ def test_cast_pin_threaded_to_track(monkeypatch, tmp_path):
     calls = _stub_engine(monkeypatch, tmp_path)
     cast_path = tmp_path / "cast.json"
     cast_path.write_text(json.dumps(Cast(members=[
-        CastMember(name="Lena", descriptor=[0.5, 0.5])]).to_dict()))
+        CastMember(name="Lena", descriptor=_desc(0.5, 0.5))]).to_dict()))
     result = pe.process_episode(
         _manifest(tmp_path, hero="Lena", cast=str(cast_path)), project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
-    assert calls["track_pin"] == models.HeroPin(kind="cast", name="Lena", descriptor=(0.5, 0.5))
+    assert calls["track_pin"] == models.HeroPin(kind="cast", name="Lena",
+                                                descriptor=tuple(_desc(0.5, 0.5)))
 
 
 def test_unreadable_cast_path_returns_needs_input(monkeypatch, tmp_path):

@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict
 from scripts.lib import manifest as manifest_lib
+from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.manifest import DEFAULT_COLOR
 from scripts.lib.project import ProjectConfig
 
@@ -252,15 +253,44 @@ def test_bridge_omits_the_cast_when_absent():
     assert "cast" not in to_manifest_dict(_ep(), "s.mp4", "o.mp4")
 
 
-def test_preflight_resolves_a_cast_name_hero_via_the_registry(tmp_path):
+def _cast_json(tmp_path, *members: dict):
+    """A cast.json on disk. Descriptors are DESCRIPTOR_LEN floats — the real shape;
+    a short one now stops preflight, so a fixture carrying one would make the tests
+    below pass for the wrong reason."""
     p = tmp_path / "cast.json"
-    p.write_text(json.dumps({"members": [{"name": "Lena", "descriptor": [100.0, 110.0, 120.0]}]}))
+    p.write_text(json.dumps({"members": [
+        {**m, "descriptor": list(m["descriptor"])
+                            + [0.0] * (DESCRIPTOR_LEN - len(m["descriptor"]))}
+        for m in members]}))
+    return p
+
+
+def test_preflight_resolves_a_cast_name_hero_via_the_registry(tmp_path):
+    p = _cast_json(tmp_path, {"name": "Lena", "descriptor": [1.0, 1.1, 1.2]})
     e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
                        composition="lead", grid="thirds", crop_scale=0.8, hero="Lena")],
                        "cast": str(p)})
     mds, stop = preflight(e, _cfg(), "seg", "out")
     assert stop is None
     assert mds[0]["hero"] == "Lena" and mds[0]["cast"] == str(p)
+
+
+def test_preflight_stops_on_a_stale_cast_descriptor(tmp_path):
+    # preflight's docstring sells "fail in ms, before any ffmpeg". It did not: a
+    # descriptor of the wrong length (a cast.json built under a different HIST_BINS)
+    # passed Cast.from_json, hero.resolve and validate() — stop was None — and blew
+    # up later in track.build_route, after every window had been cut. The registry
+    # load is the boundary, so the stop must come from there: episode_idx is None
+    # (the cast is reel-level, not one episode's fault) and the remedy names intake.
+    p = tmp_path / "cast.json"
+    p.write_text(json.dumps({"members": [{"name": "Lena", "descriptor": [100.0, 110.0, 120.0]}]}))
+    e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                       composition="lead", grid="thirds", crop_scale=0.8, hero="Lena")],
+                       "cast": str(p)})
+    mds, stop = preflight(e, _cfg(), "seg", "out")
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["episode_idx"] is None
+    assert any("footage-intake" in msg for msg in stop["finding"]["problems"]), stop
 
 
 def test_preflight_stops_when_the_cast_name_is_not_registered(tmp_path):
@@ -270,8 +300,7 @@ def test_preflight_stops_when_the_cast_name_is_not_registered(tmp_path):
     # (confirmed: this happened before the cast=cast wiring below was added). Asserting "Lena"
     # (the real registered member) appears too proves the registry was actually loaded and
     # consulted, not just that a hero-name error of some kind was raised.
-    p = tmp_path / "cast.json"
-    p.write_text(json.dumps({"members": [{"name": "Lena", "descriptor": [1.0, 2.0, 3.0]}]}))
+    p = _cast_json(tmp_path, {"name": "Lena", "descriptor": [1.0, 2.0, 3.0]})
     e = EDL.from_dict({"episodes": [dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
                        composition="lead", grid="thirds", crop_scale=0.8, hero="Ghost")],
                        "cast": str(p)})

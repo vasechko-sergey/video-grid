@@ -11,6 +11,16 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The shape of a cast.json descriptor. It lives HERE, not in lib/appearance, because
+# it is this module's on-disk contract: cast.json is Cast/CastMember's file, and a
+# reader of that file must be able to check a descriptor without importing the CV
+# stack that produced it. lib/appearance imports HIST_BINS from here, so the producer
+# (build_descriptor) and the contract cannot drift apart. Keeping the constant on this
+# side also keeps the manifest gate (manifest → hero → footage) numpy-free: importing
+# appearance costs ~82ms of numpy + PIL, and the gate's whole promise is failing in ms.
+HIST_BINS = 8                     # colour-histogram bins per channel
+DESCRIPTOR_LEN = 3 * HIST_BINS    # 3 channels × HIST_BINS floats, L1-normalized over the grand total
+
 
 def _num(v: object) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -175,6 +185,18 @@ class CastMember:
         if not (isinstance(self.descriptor, list) and self.descriptor
                 and all(_num(v) for v in self.descriptor)):
             raise ValueError("CastMember.descriptor must be a non-empty list of numbers (color histogram)")
+        # The registry is the ONE boundary a foreign descriptor crosses, so its shape
+        # is checked here, at load. Without this, a stale cast.json passed every gate
+        # — Cast.from_json, hero.resolve, manifest.validate, edl.preflight — and only
+        # died in appearance.descriptor_dist, deep inside tracking, after every window
+        # had been cut. A typo'd cast NAME fails in milliseconds; a stale descriptor
+        # must fail the same way, through the same channel, with the same remedy.
+        if len(self.descriptor) != DESCRIPTOR_LEN:
+            raise ValueError(f"CastMember {self.name!r}: descriptor must be {DESCRIPTOR_LEN} floats "
+                             f"(3 channels × HIST_BINS = {HIST_BINS}), got {len(self.descriptor)} — "
+                             f"a descriptor built under a different HIST_BINS, i.e. a stale cast.json; "
+                             f"re-run footage-intake to regenerate it "
+                             f"(`.venv/bin/python -m scripts.intake <footage_root> <out_dir>`)")
         if not isinstance(self.notes, str):
             raise ValueError("CastMember.notes must be a string")
         if not (isinstance(self.ref_crops, list) and all(isinstance(p, str) for p in self.ref_crops)):

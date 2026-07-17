@@ -1,6 +1,6 @@
 import pytest
 from scripts.lib import manifest as mf
-from scripts.lib.footage import Cast, CastMember
+from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
 
 
 def _ok_dict(**over):
@@ -211,7 +211,8 @@ def test_fill_with_a_border_is_a_problem_not_a_crash():
 # --- Task 5: cast field + hero.resolve as validate()'s oracle ---
 
 def _cast():
-    return Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5])])
+    # a descriptor is DESCRIPTOR_LEN floats — CastMember rejects any other length
+    return Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5] + [0.0] * (DESCRIPTOR_LEN - 2))])
 
 
 def test_cast_path_round_trips():

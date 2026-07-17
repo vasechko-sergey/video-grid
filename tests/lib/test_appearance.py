@@ -44,16 +44,34 @@ def test_descriptor_falls_back_to_whole_crop_when_mask_is_empty():
 
 
 def test_descriptor_dist_rejects_a_length_mismatch():
-    # a descriptor off a stale cast.json (built under a different HIST_BINS) must
-    # fail loud: zip() would truncate to the shorter operand and return a
-    # plausible-but-wrong distance — a silently wrong hero, not a crash.
-    # CastMember.descriptor is validated as "a non-empty list of numbers" only, so
-    # this guard is the only thing standing between that file and a bad match.
+    # two operands of different lengths must fail loud: zip() would truncate to the
+    # shorter one and return a plausible-but-wrong distance — a silently wrong hero,
+    # not a crash. This is a caller-error backstop, not the stale-cast.json gate:
+    # footage.CastMember owns the descriptor's SHAPE and rejects a stale registry at
+    # load (see test_castmember_rejects_a_wrong_length_descriptor), which is why the
+    # "re-run footage-intake" remedy lives there and not in this message.
     full = appearance.build_descriptor(_crop((250, 0, 0)), None)
     with pytest.raises(ValueError, match="length mismatch") as ex:
         appearance.descriptor_dist(full, full[:-1])
-    assert "footage-intake" in str(ex.value)      # the remedy, not just the diagnosis
-    assert "24" in str(ex.value)                  # both lengths + the expected 3 * HIST_BINS
+    assert "24" in str(ex.value) and "23" in str(ex.value)      # both lengths, so the caller can see which
+    assert "build_descriptor" in str(ex.value)                  # the remedy, not just the diagnosis
+
+
+def test_descriptor_dist_promises_only_the_check_it_makes():
+    # The message used to read "(both must be 3 * HIST_BINS = 24)" while the code
+    # only compared len(a) to len(b) — descriptor_dist([0.5, 0.5], [0.5, 0.5])
+    # returned 0.0 with no complaint, so the message promised a check that was not
+    # there. Equal lengths ARE the honest precondition of an L1 distance, and it is
+    # the one the code enforces; "a descriptor is 24 floats" has exactly one home,
+    # footage.DESCRIPTOR_LEN, at the boundary a foreign descriptor actually crosses.
+    # Re-checking it here would be a second spelling AND a guard no wired path can
+    # reach — both operands already come from build_descriptor or a validated
+    # CastMember. So: the message tells the truth instead.
+    assert appearance.descriptor_dist([0.5, 0.5], [0.5, 0.5]) == 0.0
+    assert appearance.descriptor_dist([1.0, 0.0], [0.0, 1.0]) == 2.0
+    with pytest.raises(ValueError) as ex:
+        appearance.descriptor_dist([0.5, 0.5], [1.0])
+    assert "3 * HIST_BINS" not in str(ex.value)
 
 
 def test_crop_and_mask_without_orig_img_is_none():

@@ -3,6 +3,12 @@ import numpy as np
 import pytest
 from scripts import intake
 from scripts.lib import appearance
+from scripts.lib.footage import DESCRIPTOR_LEN, Cast
+
+
+def _desc(*head: float) -> list[float]:
+    """A registry-valid descriptor: DESCRIPTOR_LEN floats — `head`, zero-padded."""
+    return list(head) + [0.0] * (DESCRIPTOR_LEN - len(head))
 
 
 def test_shot_type_buckets():
@@ -208,11 +214,20 @@ def test_save_cast_candidates_saves_and_manifests(tmp_path):
     assert manifest[0]["source"] in {"a.mp4", "b.mp4"} and "descriptor" in manifest[0]
 
 def test_write_cast_writes_json(tmp_path):
-    from scripts.lib.footage import Cast
-    cast = intake.write_cast([("Lena", "green", [0.1, 0.9], ["cast_crops/candidate_0.png"])], str(tmp_path))
+    cast = intake.write_cast([("Lena", "green", _desc(0.1, 0.9), ["cast_crops/candidate_0.png"])],
+                             str(tmp_path))
     assert (tmp_path / "cast.json").exists()
-    assert cast.members[0].name == "Lena" and cast.members[0].descriptor == [0.1, 0.9]
+    assert cast.members[0].name == "Lena" and cast.members[0].descriptor == _desc(0.1, 0.9)
     assert Cast.from_json(tmp_path / "cast.json").members[0].ref_crops == ["cast_crops/candidate_0.png"]
+
+
+def test_write_cast_rejects_a_stale_descriptor_before_writing_the_file(tmp_path):
+    # write_cast builds the Cast BEFORE writing cast.json, so CastMember's shape
+    # check fires while the human is still in the naming pass — the broken registry
+    # never reaches disk to be discovered three stages later
+    with pytest.raises(ValueError, match="descriptor"):
+        intake.write_cast([("Lena", "green", [0.1, 0.9], [])], str(tmp_path))
+    assert not (tmp_path / "cast.json").exists()
 
 
 def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):

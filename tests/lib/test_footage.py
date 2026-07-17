@@ -1,7 +1,15 @@
 import json
 
 import pytest
-from scripts.lib.footage import FootageWindow, FootageClip, Footage, CastMember, Cast
+from scripts.lib.footage import (DESCRIPTOR_LEN, FootageWindow, FootageClip, Footage,
+                                 CastMember, Cast)
+
+
+def _desc(*head: float) -> list[float]:
+    """A registry-valid descriptor: DESCRIPTOR_LEN floats — `head`, zero-padded.
+    Reads the length from its one home rather than hardcoding 24, so a HIST_BINS
+    change moves these fixtures with the contract instead of breaking them."""
+    return list(head) + [0.0] * (DESCRIPTOR_LEN - len(head))
 
 
 def _win(**kw):
@@ -102,7 +110,7 @@ def test_to_markdown_numbers_windows_zero_based_per_clip():
 
 
 def test_cast_roundtrips():
-    c = Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5], notes="red jacket",
+    c = Cast(members=[CastMember(name="Lena", descriptor=_desc(0.5, 0.5), notes="red jacket",
                                  ref_crops=["crops/lena_0.png"])])
     assert Cast.from_dict(c.to_dict()).to_dict() == c.to_dict()
 
@@ -112,13 +120,36 @@ def test_cast_roundtrips():
     (dict(descriptor=["x"]), "descriptor"),
 ])
 def test_castmember_rejects_bad(kw, msg):
-    d = dict(name="Lena", descriptor=[0.5, 0.5]); d.update(kw)
+    d = dict(name="Lena", descriptor=_desc(0.5, 0.5)); d.update(kw)
     with pytest.raises(ValueError, match=msg):
         CastMember(**d)
 
 
+def test_castmember_rejects_a_wrong_length_descriptor():
+    # A descriptor is 3 channels × HIST_BINS = DESCRIPTOR_LEN floats. Nothing used
+    # to check that until appearance.descriptor_dist ran deep inside tracking, so a
+    # stale cast.json (built under a different HIST_BINS, or hand-edited) passed
+    # Cast.from_json, hero.resolve, manifest.validate AND edl.preflight, then
+    # detonated in track.build_route — after every window had been cut. A typo'd
+    # cast NAME fails in milliseconds; a stale descriptor must too. This is the one
+    # boundary a foreign descriptor crosses, so this is where the shape is checked.
+    for bad in ([0.5, 0.5], [0.0] * (DESCRIPTOR_LEN - 1), [0.0] * (DESCRIPTOR_LEN + 1)):
+        with pytest.raises(ValueError, match="descriptor") as ex:
+            CastMember(name="Lena", descriptor=bad)
+        assert str(DESCRIPTOR_LEN) in str(ex.value), ex.value
+        assert "footage-intake" in str(ex.value), ex.value    # the remedy, not just the diagnosis
+
+
+def test_descriptor_len_is_three_channels_of_hist_bins():
+    # the derived fact gets ONE spelling, here — appearance.build_descriptor imports
+    # HIST_BINS from this module rather than declaring its own, so the producer and
+    # the on-disk contract cannot drift
+    from scripts.lib.footage import HIST_BINS
+    assert DESCRIPTOR_LEN == 3 * HIST_BINS
+
+
 def test_cast_from_json_roundtrip(tmp_path):
-    c = Cast(members=[CastMember(name="Lena", descriptor=[0.5, 0.5])])
+    c = Cast(members=[CastMember(name="Lena", descriptor=_desc(0.5, 0.5))])
     p = tmp_path / "cast.json"; p.write_text(json.dumps(c.to_dict()))
     assert Cast.from_json(p).to_dict() == c.to_dict()
 

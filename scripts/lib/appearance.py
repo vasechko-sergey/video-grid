@@ -3,12 +3,22 @@
 Shared by intake (surfaces and names the cast) and track (matches a pinned cast
 member against this episode's tracks). They live here, not in intake.py, because
 a driver must not import a driver — the same reason marks_at_times moved to
-lib/geometry. numpy + Pillow, no cv2.
+lib/geometry. That rule is about DRIVERS: lib/footage is a contract module, so
+importing HIST_BINS from it is allowed and deliberate. The direction matters —
+this module (numpy + Pillow, no cv2) depends on the contract, never the reverse:
+footage must stay importable without the CV stack, because the manifest gate
+imports it and owes the caller an answer in milliseconds.
+
+HIST_BINS is not declared here because a descriptor's shape is cast.json's
+contract, and cast.json is footage's file. Reading it from there is what stops
+the producer (build_descriptor) and the registry that validates its output from
+drifting to two different numbers.
 """
 import numpy as np
 from PIL import Image
 
-HIST_BINS = 8
+from scripts.lib.footage import HIST_BINS
+
 CAST_MATCH = 0.6      # max L1 descriptor distance for "this track IS that cast member".
                       # descriptor_dist ranges [0.0, 2.0], so this is 30% of the max:
                       # necessarily looser than intake's CAST_DEDUP (0.30, "are these two
@@ -40,13 +50,21 @@ def descriptor_dist(a: list[float], b: list[float]) -> float:
     normalized over its GRAND total, so both sum to 1.0 and the maximum is
     attained exactly when their supports are disjoint. Equal lengths are enforced:
     zip() would truncate to the shorter operand and return a plausible-but-wrong
-    distance — a silently wrong hero — and cast.json's own validation cannot catch
-    it (CastMember.descriptor is checked as "a non-empty list of numbers" only)."""
+    distance — a silently wrong hero, not a crash.
+
+    That the operands agree with each other is this function's OWN precondition,
+    and it is all this checks. A descriptor's shape (footage.DESCRIPTOR_LEN) is
+    deliberately not re-checked here: footage.CastMember owns that fact and gates
+    the one path a foreign descriptor takes into the engine (cast.json), so by the
+    time anything reaches this function both operands come from build_descriptor
+    or a validated CastMember. Re-asserting it would be a second spelling of the
+    same fact and a branch no wired path can reach. The message used to promise
+    that check without making it — it now says exactly what it does."""
     if len(a) != len(b):
-        raise ValueError(f"descriptor length mismatch: {len(a)} vs {len(b)} (both must be "
-                         f"3 * HIST_BINS = {3 * HIST_BINS}) — a descriptor built under a different "
-                         f"HIST_BINS, i.e. a stale cast.json; re-run footage-intake to regenerate it "
-                         f"(`.venv/bin/python -m scripts.intake <footage_root> <out_dir>`)")
+        raise ValueError(f"descriptor length mismatch: {len(a)} vs {len(b)} — a distance between "
+                         f"different-length vectors is meaningless. Both operands must be "
+                         f"descriptors from appearance.build_descriptor (or a footage.CastMember, "
+                         f"which validates the same shape at the cast.json boundary).")
     return sum(abs(x - y) for x, y in zip(a, b))
 
 
