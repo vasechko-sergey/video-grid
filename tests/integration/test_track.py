@@ -265,6 +265,27 @@ def _desc(*channels):
     return tuple(d)
 
 
+def _twin(shift: float) -> list[float]:
+    """A descriptor at L1 distance exactly `2 * shift` from `_CAST_PIN` — one of two
+    near-identical twins whose RELATIVE distance is the only thing the margin rule
+    reads (§6.1a mode 1: two people in similar clothing).
+
+    Shaped the way build_descriptor really emits: three per-channel histograms
+    normalized over the GRAND total, so each channel's HIST_BINS bins sum to 1/3 —
+    every pixel feeds all three. Only red differs from the pin: `shift` of its mass
+    moves from bin 0 to bin 1, costing `shift` out of one bin plus `shift` into the
+    next; green and blue are the pin's own and cancel. So two twins' distance ratio
+    is just their shift ratio — which is what lets a fixture sit at a CHOSEN ratio
+    either side of AMBIG_MARGIN instead of only at the degenerate extremes.
+    """
+    red = [1 / 3 - shift, shift] + [0.0] * (HIST_BINS - 2)
+    green_blue = ([1 / 3] + [0.0] * (HIST_BINS - 1)) * 2
+    return red + green_blue
+
+
+_CAST_PIN = tuple(_twin(0.0))       # the pinned cast member: each channel's mass in bin 0
+
+
 def test_descriptor_track_picks_the_closest():
     crops = {1: [1.0, 0.0, 0.0] + [0.0] * 21, 2: [0.0, 0.0, 1.0] + [0.0] * 21}
     pin = tuple([0.0, 0.0, 1.0] + [0.0] * 21)
@@ -280,12 +301,39 @@ def test_descriptor_track_beyond_the_threshold_is_unmatched():
     assert hero_id is None and ambiguous is False
 
 
-def test_descriptor_track_margin_flags_ambiguity():
-    # two near-identical descriptors → d1 >= 0.8*d2 → §6.1a mode 1
-    crops = {1: [0.50, 0.50] + [0.0] * 22, 2: [0.52, 0.48] + [0.0] * 22}
-    pin = tuple([0.51, 0.49] + [0.0] * 22)
-    hero_id, ambiguous = track._descriptor_track(crops, pin)
-    assert hero_id in (1, 2) and ambiguous is True
+# --- the margin band: where "clearly this one" ends and a coin flip begins ----
+# The pair below are the ONLY cases that enter the band AMBIG_MARGIN*d2 <= d1 < d2.
+# Every other _descriptor_track fixture sits at a degenerate extreme — d1 == d2 (a
+# tie, ambiguous under ANY margin) or d1 == 0 against a far runner-up (confident
+# under any) — so none of them can see what AMBIG_MARGIN's VALUE is. Straddling the
+# band from both sides is what pins it: the ratios are 0.85 and 0.75, so the
+# constant is held inside (0.75, 0.85] and a margin that drifts either way fails
+# here instead of silently widening or narrowing the band a human gets called into.
+
+
+def test_descriptor_track_reads_ambig_margin_not_a_reinlined_literal(monkeypatch):
+    # INSIDE the band: d1 = 0.17, d2 = 0.20 → ratio 0.85. Ambiguous under the real
+    # 0.8 margin (0.17 >= 0.16), confident once the margin is raised past the ratio
+    # (0.17 < 0.18) — and that flip can only happen if _descriptor_track reads
+    # track.AMBIG_MARGIN at call time rather than a re-inlined 0.8 that could later
+    # drift from _pick_hero's copy. The constant's comment claims "one spelling, two
+    # readers"; this is the second reader's half of that claim (the first is
+    # test_pick_hero_reads_ambig_margin_not_a_reinlined_literal above).
+    crops = {1: _twin(0.085), 2: _twin(0.10)}
+    assert track._descriptor_track(crops, _CAST_PIN) == (1, True)
+    monkeypatch.setattr(track, "AMBIG_MARGIN", 0.9)
+    assert track._descriptor_track(crops, _CAST_PIN) == (1, False)
+
+
+def test_descriptor_track_below_the_margin_is_confident():
+    # BELOW the band: d1 = 0.15, d2 = 0.20 → ratio 0.75, clear of the 0.8 margin
+    # (0.15 < 0.16), so track 1 IS meaningfully closer and no human is needed. This
+    # is the margin's other side, and the side no test had: the band is a range, and
+    # a fixture that only ever proves "a tie is ambiguous" cannot notice a margin
+    # LOWERED far enough to call every clean match a coin flip — stopping delivery
+    # to ask about a person the histogram already separated perfectly well.
+    crops = {1: _twin(0.075), 2: _twin(0.10)}
+    assert track._descriptor_track(crops, _CAST_PIN) == (1, False)
 
 
 def test_descriptor_track_single_track_is_never_ambiguous():
