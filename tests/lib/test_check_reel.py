@@ -266,3 +266,52 @@ def test_safe_zones_flags_low_subject_but_stays_advisory(tmp_path, monkeypatch):
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1
     assert rep.overall is True          # advisory — a False safe_zones never blocks the reel
     assert not [f for f in rep.fail_reasons if f.check == "safe_zones"]   # no ReelFailure emitted
+
+
+def _write_geom_layout(d, mode, rect_px):
+    # a non-fill episode: subject centred, but the content rect is a card/letterbox
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "route.json").write_text(json.dumps(
+        [{"t": 0.0, "x": 500.0, "y": 900.0, "w": 100.0, "h": 200.0},
+         {"t": 3.0, "x": 500.0, "y": 900.0, "w": 100.0, "h": 200.0}]))
+    (d / "path.json").write_text(json.dumps([0, 0]))
+    (d / "path.meta.json").write_text(json.dumps(
+        {"mode": mode, "crop_w": 1000, "crop_h": 2000, "crop_y": 0, "src_dims": [1000, 2000],
+         "canvas": [1000, 2000], "out_dims": [1000, 2000], "rect_px": list(rect_px), "freedom": 0}))
+    return (str(d / "route.json"), str(d / "path.json"), str(d / "path.meta.json"))
+
+
+def test_editorial_checks_report_and_stay_advisory(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    # ep0 fills; ep1's subject (x=980, w=100 via _write_geom) pokes past the right edge → key_action False
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),
+            _write_geom(tmp_path / "ep1", 980.0, 900.0)]
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["key_action"].passed is False           # clipped subject flagged
+    assert rep.checks["key_action"].detail["advisory"] is True
+    assert rep.checks["pad_bars"].passed is None              # both fill → n/a
+    assert rep.checks["transitions"].passed is True           # fill→fill, no layout jump
+    assert rep.overall is True                                # all three advisory — none block
+    assert not rep.fail_reasons                               # no ReelFailure emitted
+
+
+def test_editorial_checks_flag_padbars_and_transitions(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    # ep0 fill; ep1 an asymmetric letterbox AND a fill→insert-ish layout jump
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),
+            _write_geom_layout(tmp_path / "ep1", "insert", (0, 300, 400, 800))]
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["pad_bars"].passed is False and rep.checks["pad_bars"].detail["worst_episode"] == 1
+    assert rep.checks["transitions"].passed is False and rep.checks["transitions"].detail["worst_cut"] == 0
+    assert rep.overall is True and not rep.fail_reasons
+
+
+def test_editorial_checks_not_checked_when_silent(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))            # no geometry
+    for name in ("key_action", "pad_bars", "transitions"):
+        assert rep.checks[name].passed is None
+        assert rep.checks[name].detail["status"] == "not-checked"

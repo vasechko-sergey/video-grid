@@ -13,7 +13,7 @@ import imagehash
 import numpy as np
 from PIL import Image
 
-from scripts.lib import proc, safezones
+from scripts.lib import proc, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -22,7 +22,10 @@ from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, Reel
 # for safe_zones). Nothing is genuinely "not-implemented" anymore.
 _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               "loudness": "not checked — no audio stem supplied (silent reel)",
-              "safe_zones": "not checked — no per-episode geometry supplied"}
+              "safe_zones": "not checked — no per-episode geometry supplied",
+              "key_action": "not checked — no per-episode geometry supplied",
+              "pad_bars": "not checked — no per-episode geometry supplied",
+              "transitions": "not checked — no per-episode geometry supplied"}
 
 
 def _probe_dur(video: str) -> float:
@@ -202,12 +205,22 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
 
     if geometry is not None:
+        routes = [route_from_json(r) for (r, _, _) in geometry]
+        paths = [CropPath.from_json(p) for (_, p, _) in geometry]
+        metas = [PathMeta.from_json(m) for (_, _, m) in geometry]
         zone = safezones.safe_zone_for(platform)
-        marks_per_ep = [safezones.subject_marks(route_from_json(r), CropPath.from_json(p),
-                                                PathMeta.from_json(m), dur)
-                        for (r, p, m), dur in zip(geometry, durations)]
-        passed, detail = safezones.evaluate(marks_per_ep, zone)
-        checks["safe_zones"] = CheckResult("safe_zones", passed, detail)
+        marks_per_ep = [safezones.subject_marks(rt, pa, me, dur)
+                        for rt, pa, me, dur in zip(routes, paths, metas, durations)]
+        sz_pass, sz_detail = safezones.evaluate(marks_per_ep, zone)
+        checks["safe_zones"] = CheckResult("safe_zones", sz_pass, sz_detail)
+        extents_per_ep = [safezones.subject_extents(rt, pa, me, dur)
+                          for rt, pa, me, dur in zip(routes, paths, metas, durations)]
+        ka_pass, ka_detail = reel_final.evaluate_key_action(extents_per_ep, spec.clip_tol)
+        checks["key_action"] = CheckResult("key_action", ka_pass, ka_detail)
+        pb_pass, pb_detail = reel_final.evaluate_pad_bars(metas, spec.bar_symmetry_tol)
+        checks["pad_bars"] = CheckResult("pad_bars", pb_pass, pb_detail)
+        tr_pass, tr_detail = reel_final.evaluate_transitions(metas, spec.layout_jump_max)
+        checks["transitions"] = CheckResult("transitions", tr_pass, tr_detail)
 
     for name, reason in _UNCHECKED.items():
         checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
