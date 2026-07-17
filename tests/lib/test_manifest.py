@@ -255,3 +255,21 @@ def test_validate_flags_a_malformed_hero():
     for bad in ([1, 2, 3], True, 4.2):
         problems = mf.validate(mf.Manifest.from_dict(_ok_dict(hero=bad)))
         assert any("hero" in p for p in problems), (bad, problems)
+
+
+def test_validate_flags_a_non_str_cast():
+    # cast is the one path field from_dict passes through raw (`d.get("cast") or ""`
+    # coerces nothing), so the gate is the only thing standing between a manifest
+    # typo and Cast.from_json's Path(123) — a bare TypeError, deep in the shell.
+    # Every OTHER field of these dicts is valid (see test_validate_ok), so the
+    # problem named here can only be the cast one.
+    for bad in (123, ["proj/cast.json"], {"path": "x"}, 4.2):
+        problems = mf.validate(mf.Manifest.from_dict(_ok_dict(cast=bad)))
+        assert any("cast" in p for p in problems), (bad, problems)
+
+
+def test_validate_accepts_an_absent_cast():
+    # "" is the documented "no registry" default — it must not be a problem, or
+    # every cast-less manifest (the overwhelming majority) would fail the gate
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict())) == []
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict(cast=None))) == []

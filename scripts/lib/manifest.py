@@ -140,6 +140,15 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
                     "composition 'lead' has no horizontal freedom: crop_aspect 'source' at "
                     "crop_scale 1.0 shows the whole frame — set crop_scale below 1.0, or "
                     "composition to 'break'")
+    # `cast` is a PATH, checked with the same predicate segment/out_path get above
+    # ("" = absent, the documented default). It is the one field from_dict passes
+    # through raw — canvas/target_dur/crop_scale/border_px are all coerced there and
+    # so cannot arrive as garbage, but `cast=d.get("cast") or ""` coerces nothing, so
+    # {"cast": 123} reaches this gate intact. It has to be caught HERE and not merely
+    # downstream: Cast.from_json would hand 123 to Path() before reading a byte of
+    # JSON and raise TypeError, which is not in any caller's except surface.
+    if not isinstance(m.cast, str):
+        problems.append(f"cast must be a cast.json path string (or absent); got {m.cast!r}")
     # hero.resolve is the HARD backstop; here it is the soft gate's oracle, exactly
     # like LayoutSpec above. Its ValueError (a malformed pin, a cast name with no
     # registry, a name absent from the cast) becomes a problem string — the gate

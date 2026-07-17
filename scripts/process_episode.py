@@ -55,11 +55,23 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
     # load the cast registry ONCE, here — the same object backs both validate()'s
     # oracle call below and the real resolution in the tracking step further down,
-    # so the two cannot see different registries. Cast.from_dict (and so from_json)
-    # raises a clean ValueError for a non-object top level, so this except is
-    # genuinely sufficient — no bare AttributeError/TypeError can escape it.
+    # so the two cannot see different registries.
+    #
+    # The isinstance guard is load-bearing, not decoration. This load necessarily
+    # runs BEFORE validate() (validate needs the loaded Cast as its hero oracle), so
+    # it is the one step no gate has vetted, and Manifest.from_dict passes `cast`
+    # through raw. Cast.from_json's first statement is Path(path) — it runs before a
+    # byte of JSON is read, so a non-str m.cast raises TypeError there, outside the
+    # except below, escaping the gate whose whole job is not to raise. Skipping the
+    # load instead leaves cast=None and lets validate() report the bad field as a
+    # problem string, the same channel every other manifest problem uses.
+    #
+    # Past that guard, (OSError, ValueError) IS Cast.from_json's whole failure
+    # surface — OSError for a missing/unreadable file, ValueError for bad syntax, a
+    # non-object top level (from_dict guards it) or a bad member — so no bare
+    # AttributeError/TypeError can escape here.
     cast = None
-    if m.cast:
+    if isinstance(m.cast, str) and m.cast:
         try:
             cast = Cast.from_json(m.cast)
         except (OSError, ValueError) as e:

@@ -335,6 +335,22 @@ def test_unreadable_cast_path_returns_needs_input(monkeypatch, tmp_path):
     assert result["attempt"] == 0
 
 
+def test_non_str_cast_returns_needs_input_instead_of_crashing(monkeypatch, tmp_path):
+    # The registry load runs BEFORE validate() (validate needs the loaded Cast as
+    # its hero oracle), so it is the one step no gate has vetted. Cast.from_json's
+    # first statement is Path(path) — it runs before a byte of JSON is read, and
+    # Path(123) raises TypeError, which is NOT in the `except (OSError, ValueError)`
+    # surface below. That TypeError escaped process_episode entirely: a crash out of
+    # the gate whose whole job is to return problems softly. Reachable straight from
+    # this module's own CLI, which json.loads a manifest file.
+    _stub_engine(monkeypatch, tmp_path)
+    for bad in (123, ["proj/cast.json"], {"path": "x"}):
+        result = pe.process_episode(_manifest(tmp_path, hero="Lena", cast=bad),
+                                    project_dir=str(tmp_path))
+        assert result["status"] == "needs_input", (bad, result)
+        assert any("cast" in p for p in result["problems"]), (bad, result)
+
+
 def test_lead_nonlateral_stops(monkeypatch, tmp_path):
     # a static route under a lead manifest → composition-motion-mismatch, no reframe
     _stub_engine(monkeypatch, tmp_path,
