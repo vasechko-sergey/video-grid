@@ -328,9 +328,9 @@ factor's *mechanics* against a mocked timeline.
 
 - **Final episode selection + order** — 5.7 edit-plan + §4.1 episode-choice loop.
 - **Mood-match / autonomous music** — 5.5 B3.
-- **Descriptor → manifest hero-pin wiring** — a later plan unlocks cast-name
-  pins (`orch.is_seed_pin` today accepts only a bbox tuple); 5.2 only *produces*
-  `cast.json`.
+- **Descriptor → manifest hero-pin wiring** — landed 2026-07-16 as its own
+  plan, cast → hero-pin (`orch.is_seed_pin` deleted there, not merely
+  extended); 5.2's own scope stayed just *producing* `cast.json`.
 - **Trend-scan** — 5.4.
 - **Vocal-aware in-points / demucs** — §5.8 optional upgrade.
 - **Sharpness/blur metric** — deferred (would add cv2); shake covers stability

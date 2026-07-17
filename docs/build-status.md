@@ -324,9 +324,10 @@ _Last updated: 2026-07-17._
   descriptor-based `write_cast`, `(source, track_id)` keys since ByteTrack ids
   restart per clip); `SHAKY_CLIP` width-fraction spec-sync; a `cull` test-fixture
   bug (`imagehash.average_hash` of any uniform image is all-zero); full type
-  hints. **Deferred (NOT built):** descriptor→manifest hero-pin wiring (a later
-  plan — `orch.is_seed_pin` still bbox-only), SP1b `draft.mp4`, SP3 authoring,
-  SP4 trend-scan.
+  hints. **Deferred (NOT built):** SP1b `draft.mp4`, SP3 authoring, SP4
+  trend-scan; descriptor→manifest hero-pin wiring landed 2026-07-16 as its own
+  slice, cast → hero-pin (see below) — `orch.is_seed_pin` was deleted there,
+  not left bbox-only.
 
 - **edit-plan spine (Front-half SP3 · 5.7) DONE (2026-07-12)** — plan
   `docs/plans/2026-07-12-edit-plan-spine.md` + design
