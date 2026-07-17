@@ -77,6 +77,23 @@ def test_cast_name_without_a_cast_raises_with_a_remedy():
         hero.resolve("Lena")
 
 
+def test_cast_name_remedy_names_no_cli_flag():
+    """One resolver, three callers, two different flag spellings — so the shared
+    remedy must name the ARTEFACT, never one caller's flag.
+
+    manifest.validate() has no CLI at all; edit_plan.py spells it --cast; track.py
+    spells it --cast-json. A remedy saying "or pass --cast" is right for exactly one
+    of the three, and actively hostile on track.py, where following it literally
+    lands a stranger in a second, unrelated failure:
+    `error: ambiguous option: --cast could match --cast-name, --cast-json`.
+    """
+    with pytest.raises(ValueError) as e:
+        hero.resolve("Lena")
+    msg = str(e.value)
+    assert "cast.json" in msg          # the artefact all three callers share
+    assert "--cast" not in msg         # no flag: they disagree, and one caller has none
+
+
 def test_unknown_cast_name_lists_the_known_names():
     with pytest.raises(ValueError) as e:
         hero.resolve("Lna", _cast())

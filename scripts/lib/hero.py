@@ -51,9 +51,20 @@ def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
         return HeroPin(kind="rule", rule=hero)
     # a non-rule string is a cast name
     if cast is None:
-        raise ValueError(f"hero {hero!r} is a cast name but no cast.json was supplied — set "
-                         f"EDL.cast (or pass --cast) so the name can be resolved, or use "
-                         f"a rule {list(HERO_RULES)} / a seed bbox instead")
+        # Names the ARTEFACT, never a flag. This resolver is shared by three callers
+        # with three different registry spellings — manifest.validate() has no CLI at
+        # all, edit_plan.py has --cast, track.py has --cast-json — so any one flag
+        # named here is wrong for the other two. "or pass --cast" was worse than
+        # merely wrong on track.py: following it literally lands a stranger in
+        # `ambiguous option: --cast could match --cast-name, --cast-json`. The `cast`
+        # FIELD is safe to name (Manifest.cast and EDL.cast are both spelled `cast`);
+        # each CLI's own --help is the authority on its flag.
+        raise ValueError(f"hero {hero!r} is a cast name but no cast.json was supplied — set the "
+                         f"`cast` field (manifest/EDL) to the cast.json footage-intake wrote, or "
+                         f"pass this script's cast.json option (its --help names it; the flag "
+                         f"differs per script), so the name can be resolved; or pin a rule "
+                         f"{list(HERO_RULES)} / a seed bbox instead, neither of which needs the "
+                         f"registry")
     # This reads as first-match-wins, and it is — but it cannot silently pick between
     # rivals: Cast.__post_init__ rejects duplicate names, so a match here is the ONLY
     # match. The ambiguity that WOULD be a coin flip is refused one layer down, at the

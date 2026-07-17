@@ -77,6 +77,26 @@ def test_ambiguity_fires_even_with_a_pin():
     assert any(f["reason"] == "hero-ambiguous" for f in findings)
 
 
+def test_ambiguous_pin_is_not_told_to_pin_a_hero():
+    """The remedy IS the next action, so it must differ by whether a pin was given.
+
+    pin_matched=None is "nobody pinned, scoring tied" → "pin a hero" is the action.
+    pin_matched=True + ambiguous is only ever produced by the cast rung
+    (_descriptor_track): the human DID pin, and that pin tied — so "pin a hero ...
+    and retry" tells them to re-run the exact thing that just failed.
+    """
+    pinned = orch.detect_contradictions(motion=None, route=_route_right(),
+                                        track_meta={"pin_matched": True, "ambiguous": True},
+                                        src_w=1920, src_h=1080)
+    unpinned = orch.detect_contradictions(motion=None, route=_route_right(),
+                                          track_meta={"pin_matched": None, "ambiguous": True},
+                                          src_w=1920, src_h=1080)
+    assert [f["reason"] for f in pinned] == ["hero-ambiguous"]      # same machine-readable reason
+    assert pinned[0]["detail"] != unpinned[0]["detail"]             # different next action
+    assert "pin a hero" not in pinned[0]["detail"]                  # they already did
+    assert "pin a hero" in unpinned[0]["detail"]                    # here it IS the action
+
+
 def test_default_params():
     assert orch.DEFAULT_PARAMS["max_speed"] == 750.0
 

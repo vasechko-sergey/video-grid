@@ -45,14 +45,30 @@ def detect_contradictions(motion: str | None, route: list[dict],
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
     if meta.get("ambiguous"):
-        # No pin check: the rungs consume the pin themselves, so `ambiguous` is
-        # honest on its own. A pin that resolved cleanly sets it False; a cast pin
-        # matching two look-alikes sets it True — and then the PIN is what is
-        # ambiguous, so suppressing the gate (as is_seed_pin did) was backwards.
-        findings.append({"reason": "hero-ambiguous",
-                         "detail": "top-2 candidate scores within margin (§6.1a) — "
-                                   "pin a hero (seed bbox [x,y,w,h], a rule, a track id, "
-                                   "or a cast name from cast.json) and retry"})
+        # No pin check to FIRE the gate: the rungs consume the pin themselves, so
+        # `ambiguous` is honest on its own. A pin that resolved cleanly sets it False;
+        # a cast pin matching two look-alikes sets it True — and then the PIN is what
+        # is ambiguous, so suppressing the gate (as is_seed_pin did) was backwards.
+        #
+        # The DETAIL, though, must still split on the pin: the remedy is the next
+        # action an agent takes, and the two cases have opposite ones. pin_matched is
+        # None ⇒ nobody pinned and the scoring tied ⇒ "pin a hero" IS the action.
+        # pin_matched is True ⇒ the human pinned and the pin itself tied (only the
+        # cast rung, _descriptor_track, can produce that pairing — every other rung
+        # leaves ambiguous False), so "pin a hero and retry" would send them to re-run
+        # the exact thing that just failed. Keyed on the meta, not on a pin kind the
+        # sidecar does not carry.
+        if meta.get("pin_matched"):
+            detail = ("top-2 candidate scores within margin (§6.1a) — the hero pin itself "
+                      "matched two candidates, so re-running it as-is changes nothing: a cast "
+                      "descriptor that cannot separate two look-alikes will not separate them "
+                      "on a retry either. Compare them in the route sidecar's `features` and "
+                      "re-pin the one you mean by seed bbox [x,y,w,h] or track id — each names "
+                      "one track outright, so neither can tie")
+        else:
+            detail = ("top-2 candidate scores within margin (§6.1a) — pin a hero (seed bbox "
+                      "[x,y,w,h], a rule, a track id, or a cast name from cast.json) and retry")
+        findings.append({"reason": "hero-ambiguous", "detail": detail})
     if composition == "lead":
         obs_type, _ = classify(route, src_w, src_h)
         if obs_type != "lateral":
