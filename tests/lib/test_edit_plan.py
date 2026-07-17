@@ -185,6 +185,32 @@ def test_write_edit_plan_corrupt_selection_raises(tmp_path):
                                   str(tmp_path / "project.json"), str(tmp_path / "out"))
 
 
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_write_edit_plan_wrong_shaped_footage_raises_valueerror_not_attributeerror(tmp_path, body):
+    # A syntactically-valid FOOTAGE.json whose TOP LEVEL is not an object once reached
+    # Footage.from_dict's `d.get("clips", [])` and raised a bare AttributeError straight out
+    # of this driver — write_edit_plan has no except around Footage.from_json at all.
+    # Fixed at the source, NOT here: from_dict guards its own top level and raises
+    # ValueError-with-remedy, which lands this in the SAME channel write_edit_plan already
+    # uses for its sibling bad inputs (bad-syntax FOOTAGE/selection → ValueError, see
+    # test_write_edit_plan_corrupt_selection_raises above; missing file → OSError). A
+    # stop_and_report here would make wrong-shape the ONE input failure that reports softly.
+    # Asserting the remedy text is what pins the guard: a bare AttributeError carries no
+    # 'clips'/re-run remedy, so this fails if the from_dict guard is removed.
+    (tmp_path / "FOOTAGE.json").write_text(body)
+    (tmp_path / "project.json").write_text(
+        json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
+    (tmp_path / "selection.json").write_text(json.dumps(
+        {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}))
+    with pytest.raises(ValueError) as ei:
+        edit_plan.write_edit_plan(str(tmp_path / "FOOTAGE.json"), str(tmp_path / "selection.json"),
+                                  str(tmp_path / "project.json"), str(tmp_path / "out"))
+    msg = str(ei.value)
+    assert "expected a FOOTAGE.json object" in msg and "re-run footage-intake" in msg
+    assert "has no attribute" not in msg
+    assert not (tmp_path / "out" / "EDL.json").exists()          # nothing written
+
+
 from scripts.lib.pacing import Slot, Spine
 
 

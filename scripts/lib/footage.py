@@ -96,6 +96,15 @@ class FootageClip:
 
     @classmethod
     def from_dict(cls, d: dict) -> "FootageClip":
+        # Top level checked FIRST, before d.get — see Footage.from_dict below for why this
+        # boundary owes its callers ONE documented exception type. Footage.from_dict already
+        # checks each clip is an object before delegating here, so this guard is for the
+        # direct caller: from_dict is public contract surface, and a guard that depends on
+        # every caller having checked first is not a guard.
+        if not isinstance(d, dict):
+            raise ValueError(f"FootageClip.from_dict: expected a FOOTAGE.json clip object with a "
+                             f"'windows' list, got {type(d).__name__} — re-run footage-intake to "
+                             f"regenerate FOOTAGE.json")
         wins_in = d.get("windows", [])
         if not isinstance(wins_in, list):
             raise ValueError("FootageClip.from_dict: 'windows' must be a list")
@@ -129,6 +138,16 @@ class Footage:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Footage":
+        # The top level is checked FIRST, before d.get: this boundary reads user-supplied
+        # JSON, so it owes its callers ONE documented exception type (ValueError-with-
+        # remedy, per coding-standards). Without this, a valid-JSON-but-wrong-shape top
+        # level (a bare array/string/number/bool/null) reached d.get and raised a bare
+        # AttributeError — and write_edit_plan (scripts/edit_plan.py) has no except around
+        # Footage.from_json at all, so it crashed the driver instead of naming a remedy.
+        if not isinstance(d, dict):
+            raise ValueError(f"Footage.from_dict: expected a FOOTAGE.json object with a 'clips' "
+                             f"list, got {type(d).__name__} — re-run footage-intake to regenerate "
+                             f"FOOTAGE.json")
         clips_in = d.get("clips", [])
         if not isinstance(clips_in, list):
             raise ValueError("Footage.from_dict: 'clips' must be a list")

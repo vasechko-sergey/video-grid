@@ -213,3 +213,54 @@ def test_cast_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "cast.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run footage-intake"):
         Cast.from_json(p)
+
+
+@pytest.mark.parametrize("d", [[], [1, 2], "str", 42, 4.5, True, None])
+def test_footage_from_dict_rejects_a_non_object_top_level(d):
+    # This boundary reads user-supplied JSON, so it owes callers ONE documented type.
+    # Before the top-level guard these raised a bare AttributeError out of d.get("clips"),
+    # and write_edit_plan (scripts/edit_plan.py) has NO except around Footage.from_json —
+    # so a valid-JSON-but-wrong-shape FOOTAGE.json crashed the driver outright.
+    with pytest.raises(ValueError, match="expected a FOOTAGE.json object"):
+        Footage.from_dict(d)
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_footage_from_dict_names_what_was_expected_what_arrived_and_the_remedy(d, name):
+    # coding-standards: wrong-type construction raises ValueError with the remedy in the
+    # message. All three halves are asserted — a message missing any of them leaves the
+    # reader knowing something broke but not what to do about it.
+    with pytest.raises(ValueError) as ei:
+        Footage.from_dict(d)
+    msg = str(ei.value)
+    assert "'clips' list" in msg                    # what was expected
+    assert f"got {name}" in msg                     # what actually arrived
+    assert "re-run footage-intake" in msg           # the remedy
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_footage_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "FOOTAGE.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run footage-intake"):
+        Footage.from_json(p)
+
+
+@pytest.mark.parametrize("d", [[], [1, 2], "str", 42, 4.5, True, None])
+def test_clip_from_dict_rejects_a_non_object_top_level(d):
+    # Footage.from_dict checks each clip is a dict before delegating, so this guard is for
+    # the DIRECT caller: FootageClip.from_dict is public contract surface (tests and any
+    # future per-clip reader call it) and owes the same one type. Same bug shape —
+    # d.get("windows") on an unchecked d.
+    with pytest.raises(ValueError, match="expected a FOOTAGE.json clip object"):
+        FootageClip.from_dict(d)
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ("str", "str"), (42, "int"), (None, "NoneType")])
+def test_clip_from_dict_names_what_was_expected_what_arrived_and_the_remedy(d, name):
+    with pytest.raises(ValueError) as ei:
+        FootageClip.from_dict(d)
+    msg = str(ei.value)
+    assert "'windows' list" in msg
+    assert f"got {name}" in msg
+    assert "re-run footage-intake" in msg
