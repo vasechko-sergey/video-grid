@@ -645,8 +645,11 @@ _Last updated: 2026-07-17._
   the cast path, `build_route` dispatches every pin kind with **no
   fallback** — a pin matching nobody reports `pin_matched=False` and an empty
   route) + `scripts/lib/orchestration.py` (`is_seed_pin` **deleted**;
-  `hero-unmatched` fires **before** `no-track` — an unmatched pin produced the
-  empty route, so "hero never detected" would be the wrong diagnosis) +
+  `hero-unmatched` fires **before** `no-track` when a track existed and the pin
+  missed it — the unmatched pin produced that empty route, so "hero never
+  detected" would misdiagnose it; when the detector confirmed nobody at all,
+  `no-track` wins instead, since the *detector* produced the empty route
+  there, not the pin) +
   `scripts/lib/manifest.py` (`Manifest.cast` path field; `validate(m, cast=)`
   finally gates `hero`, using `hero.resolve` as its oracle — the `LayoutSpec`
   calque) + `scripts/lib/edl.py` (`EDL.cast`; `preflight` loads the registry
@@ -675,15 +678,34 @@ _Last updated: 2026-07-17._
   check it never made, now corrected to what it does); `Cast` rejects duplicate
   member names, which `resolve` used to answer by list order — a coin flip, and
   a plausible one, since intake dedups at `CAST_DEDUP=0.30` and a human names
-  both surfaced crops "Lena". `tests/integration/test_cast_pin.py` (**new**) is the
+  both surfaced crops "Lena". **Five more from completing that same review
+  (2026-07-17):** the `hero-unmatched`-before-`no-track` ordering above became
+  conditional on `features` (a segment the detector found nobody in now
+  reports `no-track`, not `hero-unmatched` — see above); `hero.resolve`'s "no
+  cast.json" remedy stopped naming a CLI flag (it is shared by three callers
+  with three different registry spellings — `manifest.validate()` has no CLI
+  at all, `edit_plan.py` has `--cast`, `track.py` has `--cast-json` — so the
+  old "or pass --cast" text was wrong for two of the three and, on `track.py`,
+  actively landed a reader in an `ambiguous option` argparse error; it now
+  names the `cast` artefact/field instead) and `hero-ambiguous`'s detail text
+  now splits on `pin_matched` (nobody pinned + a scoring tie ⇒ "pin a hero" is
+  the action; a human's own pin tying two candidates ⇒ telling them to re-pin
+  the same way would send them to re-run the exact match that just failed); a
+  400-digit JSON int in a bbox pin no longer escapes `manifest.validate()` as
+  a bare `OverflowError` (new public `models.is_bbox_coord`, the one
+  finite-magnitude predicate `HeroPin` and `hero.resolve` now share); and
+  `track.py --seed ''` — an unset shell variable's typical shape — is refused
+  by `track._parse_seed` instead of silently downgrading a pinned run to a
+  scored one. `tests/integration/test_cast_pin.py` (**new**) is the
   proof over real pixels — YOLO mocked (as every test in this repo mocks it),
   but the fake result carries a real BGR frame and a real model-space mask, so
   `crop_and_mask`, `build_descriptor`, `descriptor_dist` and the descriptor
   rung all execute for real. **§6.1a layer 3** (descriptor continuity
   re-match — intra-episode ID-switch repair) is a separate mechanism this
   slice does not build, but it is now **unblocked**: it needed the cast
-  wiring, and the wiring has landed. **948 passed / 8 skipped** (936 at the
-  slice's landing, +12 from the review fixes above).
+  wiring, and the wiring has landed. **960 passed / 8 skipped** (936 at the
+  slice's landing, +12 from the first three review fixes, +12 more from
+  completing that review above).
 
 ## Next action
 

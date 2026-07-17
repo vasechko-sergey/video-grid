@@ -249,7 +249,8 @@ dict), so a field that does not serialize is a gate that never fires.
 ## 5. `orchestration.py` — the gate collapses
 
 ```python
-if (track_meta or {}).get("pin_matched") is False:
+tracked = bool((track_meta or {}).get("features"))
+if (track_meta or {}).get("pin_matched") is False and tracked:
     findings.append({"reason": "hero-unmatched", "detail": …})
     return findings                    # an unmatched pin explains the empty route
 if not route:
@@ -259,10 +260,18 @@ if (track_meta or {}).get("ambiguous"):
     findings.append({"reason": "hero-ambiguous", …})
 ```
 
-**The order is load-bearing.** An unmatched pin produces an empty route, and
-`no-track` ("tracker produced an empty route — hero never detected") would be a
-*wrong diagnosis* pointing at the segment or the model when the real answer is
-"the person you pinned is not in this clip".
+**The order is load-bearing, and so is the `tracked` condition on it.** An
+unmatched pin over a segment that DID have tracks produces the empty route
+below, so `no-track` ("tracker produced an empty route — hero never detected")
+would be a *wrong diagnosis* there, pointing at the segment or the model when
+the real answer is "the person you pinned is not in this clip". **Amended
+2026-07-17 (review):** that reasoning does not hold when the detector found
+nobody at all — `features` empty. There the *detector* produced the empty
+route, there was nobody for any pin to match, and `hero-unmatched`'s remedy
+("the pinned person may not be in this episode…") answers a claim a rule or
+track-id pin never made. `no-track` is the honest diagnosis there, so the gate
+keys the pre-emption on `features` (which the sidecar already carries), not on
+pin kind.
 
 `is_seed_pin` is **deleted**, and its docstring's warning — *"The ambiguity gate
 and the shell's seed gate MUST share this one predicate or a named-but-unseeded
@@ -341,7 +350,8 @@ episode's manifest at the documented boundary:
 | No `hero` | `pin=None`, `pin_matched=None` — today's path exactly, unchanged. |
 | Cast name, hero absent from the episode | all `d > CAST_MATCH` → `hero-unmatched` → stop-and-report. |
 | Cast name, two similar-looking people | `d1 >= 0.8·d2` → `ambiguous` → `hero-ambiguous` → stop-and-report. |
-| `hero` set but the segment has no people at all | `feats` empty → every rung returns `None` → `hero-unmatched` (**not** `no-track`) — the pin is the more specific diagnosis, and the route is empty either way. |
+| `hero` set, segment has tracks but the pin matches none of them | `hero-unmatched` — the unmatched pin explains the empty route; the more specific diagnosis. |
+| `hero` set but the segment has no people at all | `feats` empty → every rung returns `None` → `pin_matched=False`, but `no-track` fires, **not** `hero-unmatched` — **amended 2026-07-17**: the *detector* emptied the route here, not the pin, so "the pinned person may not be in this episode" would answer a claim the pin never made; `no-track`'s own detail ("check the segment, model size, or hero pin") already lists the pin among its suspects. This row previously claimed the opposite. |
 | Cast member with an empty `descriptor` | impossible: `CastMember.__post_init__` already rejects it. |
 | Cast member with a **wrong-length** `descriptor` (a stale `cast.json`) | rejected by `CastMember.__post_init__` against `DESCRIPTOR_LEN`, at load, with the "re-run footage-intake" remedy (§3). **Was** a hole: nothing checked the length until `descriptor_dist` ran inside tracking, so it passed every gate and died after every window was cut. |
 | **Two cast members with the same name** | rejected by `Cast.__post_init__`. **Was** a hole: `resolve` returned whichever was listed first, so the route followed list order, silently. Not exotic — intake dedups surfaced crops at `CAST_DEDUP=0.30`, so one person in two lightings is surfaced twice and a human names both "Lena". The invariant is on **names** only; identical descriptors under distinct names are `track.py`'s margin rule to judge, not the registry's. |
@@ -360,7 +370,22 @@ episode's manifest at the documented boundary:
   truthiness. The old `is_seed_pin` had exactly this bug class as its reason to
   exist (`len(hero) > 0` for `()`).
 - **Ordering in `detect_contradictions`** (§5) — `hero-unmatched` before
-  `no-track`, or the diagnosis is wrong.
+  `no-track`, but only when `features` is non-empty; unconditional ordering
+  misdiagnoses the segment where the detector, not the pin, emptied the route
+  (amended 2026-07-17).
+- **Bbox magnitude, not just type** — `isinstance(v, (int, float))` alone
+  waves a 400-digit JSON int through to `float()`, which raises
+  `OverflowError`, not `ValueError`, straight out of `manifest.validate()`'s
+  `except ValueError`. `math.isfinite(v)` does not close it either — it
+  converts its argument to a double first and raises that same
+  `OverflowError` one step earlier. `models.is_bbox_coord`'s
+  `abs(v) <= sys.float_info.max` closes both that and `Infinity`/`NaN` (added
+  2026-07-17).
+- **A CLI flag can be falsy and still be real input** — `--seed ''` (an unset
+  shell variable in a wrapper script) is falsy but IS a pin; a truthiness test
+  on it silently drops to "no pin, score by intent," the exact failure mode
+  this slice exists to close, recurring one layer up in the CLI
+  (`track._parse_seed`, added 2026-07-17).
 
 ## 10. Testing
 

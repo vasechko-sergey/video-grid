@@ -2361,3 +2361,65 @@ between those two numbers is wide enough that almost any threshold in
 in similar clothing, whose real descriptors would sit much closer together
 than a flat red block and a flat blue one. Recorded honestly in the design
 doc (§3, §11) rather than left to read as more validated than it is.
+
+**A second pass (2026-07-17, three independent reviewers over the whole
+slice) found 13 more — again zero implementer defects, all in this plan's own
+snippets.** Three were registry-shaped and are logged in build-status.md's
+entry rather than repeated here (`Manifest.cast` reaching `Cast.from_json`
+untype-checked; a wrong-length descriptor caught only deep inside tracking; a
+duplicate cast name resolved by list order). Six of the other ten are shapes
+1–3 above, recurring one level further in — the actual lesson for a future
+plan-writer is that closing a defect class in the code does not immunize
+that fix's OWN remedy text, ordering conditional, or test fixture against the
+same class. The remaining four split into two patterns of their own: a wrong
+remedy string (below), and two mechanical leftovers noted after it.
+
+- **Shape 1 (vacuous test fixture) recurred three times.** Task 7's
+  `test_route_rule_pin` and `test_route_track_id_pin` (over the real
+  `build_route` dispatch) each asserted only that the route matched the pin,
+  on fixtures where the pin and the intent-scoring fallback happened to
+  agree — so the mutant that deletes the no-fallback behaviour entirely
+  (restoring the exact silent substitution this slice deletes) passed both,
+  and one assertion was vacuously true over an empty route besides. Task 4's
+  descriptor-margin test wore `AMBIG_MARGIN`'s name without guarding its
+  value: two fixture descriptors landed bit-identical, which any margin from
+  the literal `0.8` down to `0.0` still flags ambiguous, so the constant
+  could be re-inlined, deleted, or changed and the suite would not notice.
+- **Shape 2 (guard weaker than its message) recurred once, in two files that
+  share one predicate.** Task 1's `HeroPin` bbox check and Task 2's
+  `hero.resolve` element check both used `isinstance(v, (int, float))`
+  alone, which waves a 400-digit JSON int through to `float()` —
+  `OverflowError`, not the `ValueError` `manifest.validate()` catches. The
+  reviewer's own first proposal, `math.isfinite(v)`, does not close it
+  either: `isfinite` converts to a double first and raises that same
+  `OverflowError` one line earlier. Worth a plan-writer's notice — a
+  *proposed fix* earns the same "did I run this" scrutiny as the snippet it
+  replaces, not less.
+- **Shape 3 (silent fallback one level down) recurred twice.** Task 7's
+  `--seed` chain tested `if a.seed` — the exact truthiness bug §6.1a's
+  deleted `is_seed_pin` existed to close at a different layer, recurring in
+  the CLI this plan wrote to replace it (`--seed ''`, an unset shell
+  variable's typical shape, fell through to "no pin, score by intent"). Task
+  8's `detect_contradictions` snippet fired `hero-unmatched` on
+  `pin_matched is False` alone, misdiagnosing the segment where the
+  *detector*, not the pin, produced the empty route — `TrackMeta.features` is
+  the one field that tells the two stories apart, and the snippet never
+  read it.
+- **A remedy string is code, and needs the same test a branch does.** Task
+  2's `hero.resolve` "no cast.json" message named `--cast` — right for
+  exactly one of its three callers (`edit_plan.py`) and wrong for the other
+  two (`manifest.validate()` has no CLI at all; `track.py`'s real flag is
+  `--cast-json`, so `--cast` there is an `ambiguous option` argparse error,
+  not a fix). Task 8's `hero-ambiguous` detail had the mirror bug: one string
+  for both "nobody pinned, scoring tied" and "the human's own pin tied,"
+  telling the second reader to re-run the exact match that had just failed.
+  Neither wrong string failed a test, because nothing asserted the *content*
+  of a remedy — a human, not a test, is the one who reads it.
+
+Two more were mechanical, not behavioural, and are noted for completeness
+rather than as a shape: a dead `HeroPin` import in `track.py` and a
+module-level `HIST_BINS` import re-shadowed inside a test function. Neither
+had behaviour to pin — pyflakes catches both, no test does or should.
+
+Final: **960 passed / 8 skipped** (936 at this plan's Task 11 → 948 after the
+first three fixes above → 960 after these ten).
