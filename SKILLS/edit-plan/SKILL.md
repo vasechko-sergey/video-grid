@@ -42,8 +42,14 @@ from `FOOTAGE.json`.
    - `grid` ∈ `thirds` / `phi` (required)
    - `layout` ∈ `fill` / `fit-blur` / `insert` (default `fill`)
    - `motion` ∈ `lateral:right` / `lateral:left` / `head-on` / `static` (optional)
-   - `hero` — a rule (`largest`/`leftmost`), a first-frame bbox `[x,y,w,h]`, or a
-     cast name (optional; resolving a cast name to a descriptor is a later task)
+   - `hero` (optional) — a first-frame seed bbox `[x,y,w,h]` (centre-format,
+     source px), a rule (`largest`/`leftmost`), an integer track id, or a cast
+     name resolved through `cast.json` (§6.1a). A cast name needs the registry:
+     pass `--cast` (step 3) and the name must exist in `cast.json` — an
+     unresolvable name is a preflight `edl-invalid` (fix `selection.json` and
+     re-run), and a pin that matches nobody in the episode's segment is a
+     `hero-unmatched` stop-and-report at process-episode time — never a silent
+     fallback to intent scoring.
    - `processing_notes` — a short note for the draft labels (optional)
 
    The shape (integer window indices + editorial only — no timestamps):
@@ -60,11 +66,14 @@ from `FOOTAGE.json`.
 3. **Build.** Run the authoring script (explicit args; the user never types flags):
 
        python -m scripts.edit_plan build --footage FOOTAGE.json \
-         --selection selection.json --project project.json --out-dir .
+         --selection selection.json --project project.json --out-dir . \
+         [--cast cast.json]
 
-   It projects each window, **preflights** the EDL against the project, and writes
-   `EDL.json` + `EDL.md`. On a `stop_and_report` (reason `edl-invalid`), fix the
-   named episode in `selection.json` and re-run — never hand-edit `EDL.json`
+   Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
+   the registry the preflight resolves that name against. It projects each
+   window, **preflights** the EDL against the project, and writes `EDL.json` +
+   `EDL.md`. On a `stop_and_report` (reason `edl-invalid`), fix the named
+   episode in `selection.json` and re-run — never hand-edit `EDL.json`
    (`selection.json` is the source; the EDL is generated).
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and

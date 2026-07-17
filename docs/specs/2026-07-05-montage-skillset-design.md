@@ -340,10 +340,30 @@ Our own skill that copies the writing-plans format (checkbox steps, exact file l
 
 ### 5.10 process-episode → `out/<ep>.mp4` 🔒 (subagent, crown jewel)
 See §6. Runs **as a subagent, one per episode**, in parallel (via `dispatching-parallel-agents`). The subagent's context = only `{segment: segments/<ep>_raw.mp4, shot-type, layout, composition, grid, motion, hero?, line/center-target, color-target, stabilize?, canvas, out-path}` + `reframe.py` + `ffmpeg-recipes`.
-**`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px), a rule (`largest` / `leftmost` / explicit track id), or a **cast name** resolved through `cast.json` descriptors (§6.1a). `track.py` picks the track matching the pin (max IoU with the seed over the first frames); no pin → intent-conditioned scoring (§6.1a). This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
+**`hero?`** — optional subject pin for multi-person frames: a first-frame seed bbox (centre-format `[x,y,w,h]`, source px), a rule (`largest` / `leftmost`), an explicit track id, or a **cast name** resolved through `cast.json` descriptors (§6.1a) — all four forms built (2026-07-16, see below). `hero.resolve()` turns whichever form the manifest carries into one typed pin at a single boundary, and `track.py` dispatches it to the matching rung: a bbox pin picks the track with max IoU against the seed over the first frames, a rule picks mechanically (no identity claim), a track id is looked up directly, and a cast name picks the closest appearance descriptor. No pin → intent-conditioned scoring (§6.1a). A pin that matches nobody in the segment is a stop-and-report, never a silent fallback to scoring. This is also the **answer channel** for the §4.1 "who is the hero" stop-and-report: the orchestrator (or the user at the top of the ladder) fills `hero`, the episode retries. Input is the **cut fragment**, not the full clip (small file, no seeking through 300MB). Loop: track → reframe → storyboard → episode-postcheck → (fail? retry) → return 🔒 clip + report. The main thread never loads episode detail. **Concurrency cap: 3 episode subagents at once** (default, tunable) — one machine; YOLO + ffmpeg saturate it. Manifest ambiguous → ask before starting; mid-task contradiction → stop and report, never improvise (§4.1).
 **Gate:** episode-postcheck passes.
 
 > **Built (2026-07-08, orchestrator-first slice):** `scripts/process_episode.py` drives the loop for one episode (`fill`/9:16), threading the probed `canvas`/`src_dims` into `check_episode` (closes the core-plan contract note) and wiring the §6.1a hero marks onto the storyboard; `SKILLS/process-episode/SKILL.md` is the subagent (ask-before-start, editorial gate, stop-and-report). The deterministic loop/escalation is pure Python (`scripts/lib/{manifest,orchestration}.py`, TDD); judgment lives in the SKILL. Layouts/stab, the optical-flow/manual degradation rungs, descriptor continuity re-match, and the cap-3 parallel fan-out are their own follow-on plans (see `docs/plans/2026-07-08-process-episode-orchestrator.md`).
+
+> **Built (2026-07-16, cast → hero-pin):** `scripts/lib/hero.resolve` is the one
+> boundary that turns a manifest's raw `hero` (tuple/str/int) into a typed
+> `HeroPin`, raising with a remedy on anything unresolvable rather than
+> returning `None` (which means "no pin, score by intent" and nothing else —
+> quietly returning it for an unresolvable pin was the exact silent fallback
+> this closed). `track.py` gained a rung per pin kind (`_rule_track`/
+> `_id_track`/`_descriptor_track`, siblings of the existing `_seed_track`); a
+> pin given means the rung decides, with no fallback to intent scoring — a
+> rung that matches nobody reports `pin_matched=False`, which
+> `orchestration.py` turns into a `hero-unmatched` stop-and-report (fired
+> **before** `no-track`, since the unmatched pin is what produced the empty
+> route). `manifest.validate()` finally gates `hero`, using `hero.resolve` as
+> its oracle, so a malformed pin or an unknown cast name is a `needs_input`
+> problem string instead of quietly validating clean. `is_seed_pin` is
+> **deleted** — the rungs consume the pin, so there is no longer a predicate to
+> share between the ambiguity gate and the shell's seed gate. See
+> `docs/specs/2026-07-16-cast-hero-pin-design.md`. **§6.1a layer 3**
+> (descriptor continuity re-match) is a separate mechanism, now unblocked —
+> see §6.1a below.
 
 ### 5.11 episode-postcheck (gate)
 Mandatory step. Two parts:
@@ -436,7 +456,7 @@ Identity errors were real in the source session, and they have **four distinct f
 
 Out of scope, documented: face recognition (faces are small/wet/blurred in action footage; heavy dependency — the layers above make it unnecessary).
 
-**Plan split:** core plan = intent-conditioned scoring + margin flag, route-continuity check, storyboard marker. Ingestion plan = cast registry + interactive naming + descriptor wiring into manifests. process-episode plan = descriptor-based continuity re-match.
+**Plan split:** core plan = intent-conditioned scoring + margin flag, route-continuity check, storyboard marker. Ingestion plan = cast registry + interactive naming + descriptor wiring into manifests — **landed 2026-07-16** (`docs/specs/2026-07-16-cast-hero-pin-design.md`): every §5.10 pin form now resolves through `cast.json`, and a pin matching nobody stops and reports rather than falling back to scoring. process-episode plan = descriptor-based continuity re-match (layer 3 above) — a different mechanism against a different failure mode (mid-episode ID switch, not "who is the hero" at all), **now unblocked** since the cast wiring it needs has landed; still its own slice.
 
 **Reuse:** take the stack (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), write our own glue (`reframe.py`) for our rules + color + stabilization. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) is a reference/fallback (its path optimizer, but we don't bend its CLI: it can't do thirds-bias or our color).
 

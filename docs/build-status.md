@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-16._
+_Last updated: 2026-07-17._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -621,6 +621,53 @@ _Last updated: 2026-07-16._
   the check stays advisory by design. **835 passed / 8 skipped** (23 new
   incl. 1 real-ffmpeg proof in `tests/integration/test_safezones.py`).
 
+- **cast → hero-pin (§6.1a ingestion half) DONE (2026-07-16)** — plan
+  `docs/plans/2026-07-16-cast-hero-pin.md` + design
+  `docs/specs/2026-07-16-cast-hero-pin-design.md`. Makes the manifest's `hero`
+  pin mean something: **every** §5.10 pin form now resolves — a seed bbox
+  (unchanged IoU match), a rule (`largest`/`leftmost`), an explicit track id,
+  or a cast name matched by appearance descriptor — where before only the bbox
+  did anything and a rule or cast name silently fell back to intent scoring,
+  and `cast.json` (shipped with 5.2) was never read back by anything. Built:
+  `scripts/lib/appearance.py` (**new** — `HIST_BINS`/`CAST_MATCH`/
+  `build_descriptor`/`descriptor_dist`/`crop_and_mask`, moved verbatim out of
+  `intake.py` so a driver need not import a driver) + `scripts/lib/hero.py`
+  (**new** — `resolve(hero, cast) -> HeroPin | None`, the one boundary; raises
+  with a remedy on anything unresolvable, used both as `manifest.validate()`'s
+  oracle and as the shell's real resolution, so validation and behaviour
+  cannot drift apart) + `scripts/lib/models.py` (`HERO_RULES`/`HERO_KINDS`
+  vocab, the frozen `HeroPin` config-spec, `TrackSpec.seed_bbox` → `pin`,
+  `TrackMeta.pin_matched`) + `scripts/track.py` (`_rule_track`/`_id_track`/
+  `_descriptor_track` rungs, masks now reach the tracker but are only read on
+  the cast path, `build_route` dispatches every pin kind with **no
+  fallback** — a pin matching nobody reports `pin_matched=False` and an empty
+  route) + `scripts/lib/orchestration.py` (`is_seed_pin` **deleted**;
+  `hero-unmatched` fires **before** `no-track` — an unmatched pin produced the
+  empty route, so "hero never detected" would be the wrong diagnosis) +
+  `scripts/lib/manifest.py` (`Manifest.cast` path field; `validate(m, cast=)`
+  finally gates `hero`, using `hero.resolve` as its oracle — the `LayoutSpec`
+  calque) + `scripts/lib/edl.py` (`EDL.cast`; `preflight` loads the registry
+  **once** before the episode loop) + `scripts/lib/footage.py`
+  (`Cast.from_dict` guards its own top level) + `scripts/process_episode.py`
+  (loads the cast, resolves the pin, threads a `HeroPin` into `TrackSpec`) +
+  `scripts/edit_plan.py` (`build_edl(cast=)`/`write_edit_plan(cast=)`/
+  `--cast`). **Review-driven:** an exact descriptor tie (`d1 == d2`, including
+  a perfect 0.0 double-match) is ambiguous, not confident — two tracks
+  bit-identical to the pinned cast member is §6.1a mode 1's extreme case, not
+  high confidence; `_rule_track` raises on a rule it has no implemented branch
+  for rather than silently answering `leftmost` (the exact substitution this
+  slice deletes everywhere else); `Cast.from_dict` needed its own top-level
+  guard (a syntactically-valid but wrong-shape `cast.json` crashed
+  `AttributeError` through preflight's narrow `except (OSError, ValueError)`,
+  not caught by it). `tests/integration/test_cast_pin.py` (**new**) is the
+  proof over real pixels — YOLO mocked (as every test in this repo mocks it),
+  but the fake result carries a real BGR frame and a real model-space mask, so
+  `crop_and_mask`, `build_descriptor`, `descriptor_dist` and the descriptor
+  rung all execute for real. **§6.1a layer 3** (descriptor continuity
+  re-match — intra-episode ID-switch repair) is a separate mechanism this
+  slice does not build, but it is now **unblocked**: it needed the cast
+  wiring, and the wiring has landed. **936 passed / 8 skipped.**
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -629,18 +676,6 @@ _Last updated: 2026-07-16._
   built (or knowingly skipped) the front half is complete enough to run the
   whole `using-montage` conveyor end-to-end on Sergei's real footage — the
   milestone the synthetic goldens stand in for today. **OR**
-- **cast → hero-pin wiring** (montage design §6.1a) — the registry's *producer*
-  shipped with 5.2 (2026-07-12: interactive naming pass over surfaced crops →
-  name + seg-mask descriptor → `cast.json`), but **nothing reads it back** —
-  `Cast.from_json` is called only from tests, so `cast.json` is a dead-end
-  artifact today. Thread the descriptors into episode manifests so
-  `orch.is_seed_pin` accepts a cast name (it takes a non-empty bbox tuple and
-  nothing else). **This also fixes a live defect:** `SKILLS/edit-plan/SKILL.md`
-  offers `hero` values `largest`/`leftmost`, and a cast name is accepted all the
-  way through `EDL`→manifest as a string — but `is_seed_pin` rejects every
-  non-tuple and `track.py` has no rule dispatch, so all of them silently fall
-  back to intent scoring. The doc promises a pin the code drops. Descriptor
-  continuity re-match then has its registry. **OR**
 - **Phase B remainder — the two pacing auto-fixes**
   (`docs/specs/2026-07-14-pacing-design.md` §10, both parked by the same scope
   decision 1): (a) **retry-time length auto-fix** — `build_reel`'s `length`
@@ -697,8 +732,12 @@ retry-state persistence.
 - vidstab-capable ffmpeg (`bash setup.sh --with-vidstab`) — already a **hard**
   runtime gate for 5.2 intake's `vidstabdetect` shake score (`_require_vidstab`);
   the *apply* half (`vidstabtransform`) is what remains unbuilt.
-- descriptor continuity re-match needs the cast **wiring**, not the artifact —
-  `cast.json` has shipped since 5.2 (2026-07-12) but no code reads it back.
+- §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
+  repair) is now **unblocked**: the cast wiring it needed landed with cast →
+  hero-pin (2026-07-16, see Done above). A different mechanism (per-frame
+  descriptor jump + x-teleport + area jump ⇒ split the route, re-match the
+  pieces) against a different failure mode than this slice fixed; the design
+  assigns it to the process-episode plan as the natural follow-on.
 - cap-3 parallel fan-out remains deferred — the `using-montage` entry-skill shipped
   (2026-07-12); parallelising `edl_to_reel`'s per-episode loop is the open sub-item.
 

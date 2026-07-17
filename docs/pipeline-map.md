@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-07-16._
+_Last updated: 2026-07-17._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -69,7 +69,7 @@ status table above.
 | 5.14 | deliver | ✅ | — | — | — |
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
-| — | cast → hero-pin | ❌ | `cast.json` descriptors → manifests; `is_seed_pin` bbox→name — today a cast name (or an `edit-plan` `largest`/`leftmost` rule) silently falls back to intent scoring | none — **5.2 cast.json ✅** (written, never read back) | cast-name hero pins |
+| — | cast → hero-pin | ✅ | — (2026-07-16) | none — **5.2 cast.json ✅** | §6.1a layer 3 (continuity re-match) |
 
 **Tally:** 14 ✅ · 1 ◐ · 1 ❌. Both automation loops closed. Every **mechanical**
 check the conveyor runs is built; what is left is 5.4 (never started — YAGNI) and
@@ -91,9 +91,8 @@ next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-o
 (a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
 Everything else was parallel **quality**, and most of it has since shipped
 (B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13's safe_zones + the rest of its
-mechanical gate). Genuinely open on the quality side: **cast→hero-pin** (the
-registry ships but nothing reads it), **5.13's editorial half**, and the two
-**pacing auto-fixes**.
+mechanical gate, cast→hero-pin 2026-07-16). Genuinely open on the quality side:
+**5.13's editorial half** and the two **pacing auto-fixes**.
 
 ## What produces a reel today
 
@@ -133,7 +132,7 @@ advisory pass/False computed from the per-episode route geometry, or
 
 - [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding) + ambient ducking + SFX whoosh (5.12 complete, landed 2026-07-15). Remaining — the **two** auto-fixes parked together by the pacing design's scope decision 1 ([§10](specs/2026-07-14-pacing-design.md)): the **retry-time length auto-fix** (`build_reel`'s `length` failure re-times the spine — today `reel_orchestration._REPROCESS_CLASS` is `("black", "color_across_cuts")`, so `length` escalates to a human) and the **pacing-gate back-edge** (spine won't fit → auto re-pick `MUSIC.start_offset`; today `beats.choose_offset` is the manual re-pick). Both need `build_reel`/`reel_orchestration` work.
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
-- [ ] **Router + curation** ◐ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design, and `cast.json` itself ships (5.2, 2026-07-12). Remaining: stage 5.1's **cap-3 parallel fan-out** (`edl_to_reel` is a sequential per-episode loop — a perf slice, not a v1 blocker) and **cast → hero-pin** — `cast.json` is written but never read back, so `orch.is_seed_pin` still accepts only a bbox tuple and a cast name (or an `edit-plan` `largest`/`leftmost` rule) silently falls back to intent scoring.
+- [ ] **Router + curation** ◐ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design, and `cast.json` itself ships (5.2, 2026-07-12) and is now read back by the cast → hero-pin slice (2026-07-16, see the table above). Remaining: stage 5.1's **cap-3 parallel fan-out** (`edl_to_reel` is a sequential per-episode loop — a perf slice, not a v1 blocker) — its only open sub-item now.
 - [ ] **Editorial reel-final** — stage 5.13's second half; the spec's gate is "both parts green", so **5.13 stays ◐ until this lands**. The mechanical half is done (`safe_zones` ✅ 2026-07-16 closed its last check). Remaining, in rising order of judgment: **"key action not clipped"** (bbox extent through the same `safezones` projection — the smallest, still mechanical), **"pad bars clean"** (filler-rect validation — mechanical given the `path.meta.json` sidecar), **"transitions not jarring"** (taste — a mechanical proxy at best), and the **agent review** proper (does the reel deliver SPEC's idea/mood/hook/ending/spine? — modelled on `requesting-code-review`). Its "classic base **and** trend flavor" criterion has no source of truth until **5.4** lands.
 - [ ] **Misc engine** — the tail of the design's §7 five-names list, re-read through the layouts design's crop × rect × filler model: **`split`** is the only genuine remaining *layout* (two sources → two rects; changes the manifest's shape); **`fit-solid`** is a **filler literal**, not a branch (add `solid` to `BACKGROUNDS` and have `reframe` actually read `ResolvedLayout.background` — plumbed but ignored today, the renderer hardcodes `boxblur`); **`pan`** is already expressible as a layout (`fill` + `crop_scale < 1` ⇒ `freedom > 0`) — what's missing is a *generated* x(t) motion source, not a mode ("tracking is not a property of the layout"). Plus **stabilization's apply half** (`vidstabdetect` already ships as 5.2's shake score; `vidstabtransform` is refused at `manifest`/`ReframeSpec`/`reframe`) and the **tracking-degradation ladder** (ultralytics gone / track garbage → optical-flow centroid → manual keyframes, each rung stamped `degraded:` — today `process_episode`'s `"degraded": None` is a reserved placeholder; not the reframe-param retry ladder, which **is** built).
 

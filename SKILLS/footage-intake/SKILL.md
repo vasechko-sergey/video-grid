@@ -62,8 +62,10 @@ are later stages.
 ## Boundaries
 
 - Intake produces `FOOTAGE`/`cast` only. Selecting and ordering episodes is 5.7
-  edit-plan; wiring hero descriptors into episode manifests (cast-name hero pins)
-  is a later plan — 5.2 just produces `cast.json`.
+  edit-plan; wiring hero descriptors into episode manifests is the cast →
+  hero-pin slice (2026-07-16) — `cast.json` is now read by `edit-plan --cast` →
+  `EDL.cast` → the manifest → `track`, so a cast name in `selection.json`
+  resolves into a real pin. 5.2's own scope stays just producing `cast.json`.
 - The scan is deterministic and mechanical; your judgment is confined to the
   interactive hero-naming. Do not hand-edit `FOOTAGE.json` scores or windows —
   if the scan looks wrong, report it.

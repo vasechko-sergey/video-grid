@@ -151,8 +151,19 @@ cast descriptor is snapped from one best crop in one clip and the episode's crop
 comes from different footage, lighting, and pose — but tight enough that "the
 pinned person is not in this episode at all" still fails. The real discriminator
 is not the threshold: it is min-distance among the tracks actually present, plus
-the margin rule below. The threshold only guards absence. The golden fixture is
-what says whether 0.6 is even in the right neighbourhood.
+the margin rule below. The threshold only guards absence.
+
+**What the golden fixture actually showed (2026-07-16, Task 10):** a matched
+track↔cast pair measured `descriptor_dist == 0.0`; every unmatched pair
+measured `1.333`. This does **not** contradict `0.6` — both sit comfortably
+on their expected side of it — but the fixture's two flat-colour tracks sit
+far enough apart that almost any threshold in `[0.05, 1.3]` would have passed
+equally well. The proof validates the *mechanism* (descriptor distance
+correctly separates a matched pair from an unmatched one, end to end, over
+real pixels), not the *constant's tightness* for the hard case this section
+names — two people in genuinely similar clothing, where real distances would
+sit much closer together than 0.0 vs. 1.333. `0.6` remains an unverified
+first cut for that case.
 
 ## 4. `track.py` — the pin rungs
 
@@ -362,8 +373,8 @@ slice reverses. The last two carry comments scoping themselves to "this slice
 `test_manifest.py::test_hero_string_rule_kept`, and every
 `detect_contradictions` caller (signature).
 
-**Test-double churn — the priced cost of §4's choice.** All nine tests in
-`test_track.py` monkeypatch `_iter_detections` to yield `(idx, [_FakeBox, …])`,
+**Test-double churn — the priced cost of §4's choice.** All eight pre-existing
+tests in `test_track.py` monkeypatch `_iter_detections` to yield `(idx, [_FakeBox, …])`,
 so yielding the whole `res` breaks every one. They gain a `_FakeRes` wrapper
 (`.boxes`, no `orig_img`/`masks`) behind one shared helper — a one-line change
 per test. `crop_and_mask`'s existing `getattr(…, None)` guards mean a maskless
@@ -379,7 +390,7 @@ route "so no YOLO runs". A synthetic clip cannot contain a detectable person, so
 a "real-YOLO" proof of this slice is not constructible.
 
 What *is* constructible, and is the honest maximum: mock `_iter_detections` (as
-all nine existing track tests do) but hand the fake `res` a **real numpy
+all eight pre-existing track tests do) but hand the fake `res` a **real numpy
 `orig_img` and `masks`** — two people wearing differently-coloured blocks of
 pixels. Then `crop_and_mask` (both landmines), `build_descriptor`,
 `descriptor_dist` and the whole rung run for real, over real pixels. The proof:
@@ -396,9 +407,14 @@ repo already fakes everywhere.
   `cast_candidates.json` holds every surfaced identity's descriptor, so the
   distance distribution *between known-distinct people* is observable, and the
   min pairwise distance between cast members upper-bounds how close a stranger
-  may legitimately sit. A constant ships now because it is testable now and the
-  golden will say whether 0.6 is in the right neighbourhood; deriving it is its
-  own slice with its own evidence.
+  may legitimately sit. A constant ships now because it is testable now;
+  deriving it is its own slice with its own evidence. **The golden landed
+  (2026-07-16, Task 10) and measured 0.0 for a matched pair vs. 1.333 for
+  every unmatched pair** — consistent with `0.6`, but too wide a margin to
+  say the constant is *tight*: almost any threshold in `[0.05, 1.3]` would
+  have passed the same fixture. It remains unverified for the hard case (two
+  people in similar clothing) this deferral exists to eventually address —
+  see §3's "What the golden fixture actually showed".
 - **§6.1a layer 3 — descriptor continuity re-match** (mid-episode ID switch:
   descriptor jump + x-teleport + area jump ⇒ split the route, re-match the
   pieces). Different mechanism, different failure mode; the design assigns it to
