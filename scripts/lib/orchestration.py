@@ -28,11 +28,27 @@ def detect_contradictions(motion: str | None, route: list[dict],
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
     findings = []
     meta = track_meta or {}
-    if meta.get("pin_matched") is False:
-        # ORDER IS LOAD-BEARING: an unmatched pin is what PRODUCED the empty
-        # route below, so no-track ("hero never detected") would be the wrong
-        # diagnosis — it points at the segment or the model, when the real answer
-        # is "the person you pinned is not in this clip".
+    # TrackMeta.features is per-CONFIRMED-track, so non-empty ⇔ the tracker saw
+    # somebody. It is the only thing in the sidecar that tells the two empty-route
+    # stories apart (`hero` is None under both), and the pre-emption below turns on
+    # exactly that difference. Absent reads as empty — TrackMeta.to_dict always emits
+    # the key and from_dict defaults it to {}, so the key is missing only from a meta
+    # the pipeline never wrote.
+    tracked = bool(meta.get("features"))
+    if meta.get("pin_matched") is False and tracked:
+        # ORDER IS LOAD-BEARING, AND SO IS THE `tracked` CONDITION ON IT: an
+        # unmatched pin is what PRODUCED the empty route below, so no-track ("hero
+        # never detected") would be the wrong diagnosis — it points at the segment or
+        # the model, when the real answer is "the person you pinned is not in this
+        # clip". That rationale holds only while somebody WAS tracked and the pin
+        # missed them. With no tracks at all it is false: the DETECTOR produced the
+        # empty route, there was nobody for ANY pin to match, and pre-empting here
+        # misdirects instead — a rule pin names no person and claims no identity, so
+        # "the pinned person may not be in this episode, or the cast descriptor may
+        # not survive its lighting" answers a claim it never made. no-track is the
+        # honest diagnosis there, and it already lists the pin among its three
+        # suspects. Keyed on `features`, which the sidecar carries, rather than on the
+        # pin KIND, which it does not.
         findings.append({"reason": "hero-unmatched",
                          "detail": "the manifest's hero pin matched no track in this segment — "
                                    "the pinned person may not be in this episode, or the cast "

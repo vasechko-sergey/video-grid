@@ -45,20 +45,50 @@ def test_missing_track_meta_does_not_crash():
     assert findings == []
 
 
+# `features` is TrackMeta's per-track dict — non-empty ⇔ the tracker confirmed
+# somebody. It is what tells the two empty-route stories apart, so every
+# pin_matched=False case below must state it rather than leave it to a default.
+_TRACKED = {"1": {"n": 10, "disp": 0.0, "area": 100.0, "speed": 0.0, "border": 0.0}}
+
+
 def test_unmatched_pin_is_a_contradiction():
     findings = orch.detect_contradictions(motion=None, route=[],
-                                          track_meta={"pin_matched": False},
+                                          track_meta={"pin_matched": False,
+                                                      "features": _TRACKED},
                                           src_w=1920, src_h=1080)
     assert any(f["reason"] == "hero-unmatched" for f in findings)
 
 
 def test_unmatched_pin_outranks_no_track():
     # an unmatched pin PRODUCES the empty route, so "hero never detected" would be
-    # the wrong diagnosis — it would point at the segment or the model
+    # the wrong diagnosis — it would point at the segment or the model. The
+    # rationale needs somebody to have BEEN tracked (else the pin produced nothing
+    # and the detector did), which is what _TRACKED supplies.
     findings = orch.detect_contradictions(motion=None, route=[],
-                                          track_meta={"pin_matched": False},
+                                          track_meta={"pin_matched": False,
+                                                      "features": _TRACKED},
                                           src_w=1920, src_h=1080)
     assert [f["reason"] for f in findings] == ["hero-unmatched"]
+
+
+def test_no_detections_at_all_is_no_track_even_with_a_pin():
+    """Empty `features` = the tracker confirmed NOBODY, so the DETECTOR produced the
+    empty route, not the pin — and hero-unmatched's pre-emption exists only because
+    an unmatched pin produces it. Here that rationale is simply false.
+
+    A rule pin is the plainest proof: `_rule_track({}, "largest")` returns None for
+    an empty feats, so pin_matched=False — yet a rule names no person and claims no
+    identity, so hero-unmatched's "the pinned person may not be in this episode, or
+    the cast descriptor may not survive its lighting" is a diagnosis of a claim the
+    pin never made. no-track's "check the segment, model size, or hero pin" is the
+    honest one, and it already lists the pin as one of the three things to check.
+    """
+    for pin_matched in (False, None):
+        findings = orch.detect_contradictions(motion=None, route=[],
+                                              track_meta={"pin_matched": pin_matched,
+                                                          "features": {}},
+                                              src_w=1920, src_h=1080)
+        assert [f["reason"] for f in findings] == ["no-track"], pin_matched
 
 
 def test_matched_pin_is_not_a_contradiction():

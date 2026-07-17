@@ -2,7 +2,7 @@ import json
 import numpy as np
 import pytest
 from scripts import track
-from scripts.lib import models
+from scripts.lib import models, orchestration
 from scripts.lib.appearance import HIST_BINS
 
 class _FakeBox:
@@ -102,6 +102,31 @@ def test_unmatched_pin_never_falls_back_to_scoring(monkeypatch, tmp_path):
     assert route == []
     meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
     assert meta.pin_matched is False and meta.hero is None
+
+
+def test_a_pin_over_an_empty_segment_reports_no_track_not_hero_unmatched(monkeypatch, tmp_path):
+    """The real producer feeding the real gate, for the case the pre-emption gets wrong.
+
+    A rule pin over frames the detector found nobody in: _rule_track({}, "largest")
+    returns None for an empty feats, so build_route writes pin_matched=False — and
+    the gate used to read that alone and answer hero-unmatched, whose detail talks
+    about "the pinned person" and "the cast descriptor". A rule pin names no person
+    and claims no identity, so that is a diagnosis of a claim it never made; and it
+    was the DETECTOR, not the pin, that emptied the route. `features` is what tells
+    the two apart, which is why this drives build_route rather than hand-writing a
+    sidecar: it pins the producer and the consumer to the same story.
+    """
+    frames = [[] for _ in range(10)]            # detector confirms nobody, ten frames running
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4", fps=30,
+                            pin=models.HeroPin(kind="rule", rule="largest"))
+    route = track.build_route(spec, out=str(out))
+    meta = json.loads(out.with_suffix(".meta.json").read_text())
+    assert route == [] and meta["pin_matched"] is False and meta["features"] == {}
+    findings = orchestration.detect_contradictions(motion=None, route=[], track_meta=meta,
+                                                   src_w=1920, src_h=1080)
+    assert [f["reason"] for f in findings] == ["no-track"]
 
 
 def test_no_pin_leaves_pin_matched_none(monkeypatch, tmp_path):
