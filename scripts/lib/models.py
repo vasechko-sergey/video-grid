@@ -2,6 +2,7 @@
 JSON round-trip, and config-specs that validate in __post_init__ and raise. JSON
 on disk is unchanged — to_dict/to_json reproduce the current schema."""
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +16,33 @@ MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
 INTENTS = ("action", "static")
 HERO_RULES = ("largest", "leftmost")          # §5.10 rule pins — mechanical, no identity claim
 HERO_KINDS = ("bbox", "rule", "track", "cast")
+
+
+def is_bbox_coord(v: object) -> bool:
+    """May `v` be a seed-bbox coordinate? One spelling, two readers — HeroPin's own
+    __post_init__ and hero.resolve(), which must agree because resolve() coerces with
+    float() before handing over and would otherwise launder past HeroPin's guard.
+
+    Three silent landmines, one per term:
+      - isinstance(True, int) is True, so a bare int test lets `hero: [true, ...]`
+        become coordinate 1.0.
+      - json.loads accepts bare Infinity/-Infinity/NaN and float() passes them
+        straight through. _seed_track's IoU then goes nan, matches nobody, and
+        surfaces as hero-unmatched — "the pinned person may not be in this episode"
+        about a pin that named no pixel.
+      - json.loads builds ints of any size, and float() raises OverflowError — NOT
+        ValueError — on one past float range. manifest.validate() catches only
+        ValueError, so that escapes the soft gate as a crash.
+
+    The magnitude term is a comparison, not math.isfinite(v), on purpose: isfinite
+    converts its argument to a double first, so it raises the very OverflowError it
+    is meant to catch on the 400-digit int (verified — it closes Infinity/NaN and
+    nothing else). int-vs-float comparison is exact and cannot overflow, and NaN
+    fails it too, so one term covers both halves. Order matters: the isinstance terms
+    must short-circuit first, or abs() lands on a str.
+    """
+    return (isinstance(v, (int, float)) and not isinstance(v, bool)
+            and abs(v) <= sys.float_info.max)
 
 
 @dataclass(frozen=True)
@@ -292,9 +320,8 @@ class HeroPin:
         if self.kind not in HERO_KINDS:
             raise ValueError(f"HeroPin.kind {self.kind!r} unknown — expected one of {HERO_KINDS}")
         if self.kind == "bbox" and not (isinstance(self.bbox, tuple) and len(self.bbox) == 4
-                                        and all(isinstance(v, (int, float)) and not isinstance(v, bool)
-                                                for v in self.bbox)):
-            raise ValueError(f"HeroPin(kind='bbox').bbox must be a 4-tuple of numbers "
+                                        and all(is_bbox_coord(v) for v in self.bbox)):
+            raise ValueError(f"HeroPin(kind='bbox').bbox must be a 4-tuple of finite numbers "
                              f"(centre-format x,y,w,h in source px), got {self.bbox!r}")
         if self.kind == "rule" and self.rule not in HERO_RULES:
             raise ValueError(f"HeroPin(kind='rule').rule {self.rule!r} unknown — "

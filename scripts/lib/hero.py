@@ -9,13 +9,17 @@ Raising (rather than returning None) on an unresolvable pin is the point of the
 module: None means "no pin, score by intent", and quietly returning it for a
 typo'd cast name is exactly the silent fallback this replaces.
 """
+from scripts.lib import models
 from scripts.lib.footage import Cast
 from scripts.lib.models import HERO_RULES, HeroPin
 
 _FORMS = ("a seed bbox [x, y, w, h] in source px, a rule "
           f"{list(HERO_RULES)}, an integer track id, or a cast name from cast.json")
-# the shared half of the two bbox rejections, so they keep reading as a pair
-_BBOX_FORM = "a bbox pin is 4 numbers [x, y, w, h], centre-format, in source px"
+# the shared half of the two bbox rejections, so they keep reading as a pair.
+# "finite" is not decoration: the element guard below checks it, so the form must
+# say it — a message promising more (or less) than the code checks is this module's
+# most repeated bug.
+_BBOX_FORM = "a bbox pin is 4 finite numbers [x, y, w, h], centre-format, in source px"
 
 
 def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
@@ -33,15 +37,19 @@ def resolve(hero: object, cast: Cast | None = None) -> HeroPin | None:
         if len(hero) != 4:
             raise ValueError(f"hero {list(hero)!r} is not a seed bbox — {_BBOX_FORM}; "
                              f"got {len(hero)}")
-        # Deliberately the same predicate HeroPin.bbox uses (same landmine, same
-        # spelling), and it runs BEFORE float() on purpose: float() would launder
-        # "900"→900.0 and True→1.0, which both defeats that guard on the only wired
-        # path and hands a human float()'s bare "could not convert string to float"
-        # via validate(). float() stays — JSON gives ints, _seed_track wants floats.
-        bad = [v for v in hero if not (isinstance(v, (int, float)) and not isinstance(v, bool))]
+        # Literally the same predicate HeroPin.bbox uses — one spelling, imported, so
+        # the two cannot drift. It runs BEFORE float() on purpose: float() would
+        # launder "900"→900.0 and True→1.0 (defeating that guard on the only wired
+        # path, and handing a human float()'s bare "could not convert string to
+        # float" via validate()), and it raises OverflowError — which validate() does
+        # NOT catch — on an int past float range. float() stays: JSON gives ints,
+        # _seed_track wants floats. is_bbox_coord's docstring carries the three
+        # landmines it closes.
+        bad = [v for v in hero if not models.is_bbox_coord(v)]
         if bad:
             raise ValueError(f'hero {list(hero)!r} is not a seed bbox — {_BBOX_FORM}; got {bad!r}. '
-                             f'Write each as a bare JSON number — 900, not "900" or true.')
+                             f'Write each as a bare, finite JSON number in source px — 900, not '
+                             f'"900", true, Infinity, NaN, or an integer too big for a float.')
         return HeroPin(kind="bbox", bbox=tuple(float(v) for v in hero))
     if isinstance(hero, int):
         return HeroPin(kind="track", track_id=hero)

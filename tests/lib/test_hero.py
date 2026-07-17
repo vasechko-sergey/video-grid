@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from scripts.lib import hero
@@ -44,7 +46,43 @@ def test_bbox_elements_must_be_numbers():
     for bad in (["900", 500, 120, 300], ("a", 500, 120, 300), [None, 500, 120, 300]):
         with pytest.raises(ValueError, match="is not a seed bbox") as e:
             hero.resolve(bad)
-        assert "bare JSON number" in str(e.value)        # the remedy, in hero.py's voice
+        assert "JSON number" in str(e.value)            # the remedy, in hero.py's voice
+
+
+def test_bbox_oversized_int_does_not_escape_validate_as_overflowerror():
+    """resolve() is validate()'s oracle and validate() catches ValueError ONLY, so an
+    OverflowError out of float() escapes the soft gate as a crash — the gate's whole
+    job is not to raise. json.loads happily builds a 400-digit int and
+    isinstance(v, (int, float)) waves it straight through to float(), which cannot
+    represent it.
+
+    Same shape as the type-laundering fix beside it ("900"→900.0, True→1.0): that one
+    closed type, this one closes magnitude.
+    """
+    huge = json.loads("[" + "9" * 400 + ", 500, 120, 300]")
+    assert isinstance(huge[0], int)              # the guard's type test passes it
+    with pytest.raises(ValueError, match="is not a seed bbox"):
+        hero.resolve(huge)
+
+
+def test_bbox_non_finite_elements_are_refused():
+    """json.loads accepts Infinity/-Infinity/NaN by default and float() passes them
+    straight through, so these used to clear validate() clean and reach _seed_track —
+    where the IoU arithmetic goes nan, matches nobody, and comes back out as
+    hero-unmatched: "the pinned person may not be in this episode". The pin is
+    malformed, not absent; a coordinate that names no pixel must die at the gate.
+    """
+    for lit in ("Infinity", "-Infinity", "NaN"):
+        bad = json.loads("[%s, 500, 120, 300]" % lit)
+        with pytest.raises(ValueError, match="is not a seed bbox") as e:
+            hero.resolve(bad)
+        assert "finite" in str(e.value), lit          # the remedy names what it checked
+
+
+def test_bbox_finite_edge_values_still_resolve():
+    # the magnitude guard must reject only what float() cannot carry — a plain
+    # coordinate, a float one, and 0.0 are all legitimate pins
+    assert hero.resolve([0, 0.0, 1e308, 300]).kind == "bbox"
 
 
 def test_bbox_bool_element_is_not_laundered():

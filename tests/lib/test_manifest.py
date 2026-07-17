@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from scripts.lib import manifest as mf
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
@@ -256,6 +258,23 @@ def test_validate_flags_a_malformed_hero():
     for bad in ([1, 2, 3], True, 4.2):
         problems = mf.validate(mf.Manifest.from_dict(_ok_dict(hero=bad)))
         assert any("hero" in p for p in problems), (bad, problems)
+
+
+def test_validate_flags_an_unrepresentable_hero_bbox_softly():
+    """The soft gate must NEVER raise — it returns problems a human answers.
+
+    Both of these are what json.loads produces from a hand-authored manifest, and
+    both used to defeat the gate: a 400-digit int reached float() and came back as
+    OverflowError (which validate() does not catch, so it escaped as a crash), and
+    Infinity/NaN passed clean and were misdiagnosed downstream as hero-unmatched.
+    Driven through json.loads rather than a Python literal because that is the only
+    way the values arrive here — and because json.loads accepting bare Infinity/NaN
+    at all is precisely the surprise.
+    """
+    for hero_json in ("9" * 400, "Infinity", "-Infinity", "NaN"):
+        d = json.loads('{"hero": [%s, 500, 120, 300]}' % hero_json)
+        problems = mf.validate(mf.Manifest.from_dict(_ok_dict(hero=tuple(d["hero"]))))
+        assert any("hero" in p for p in problems), (hero_json, problems)
 
 
 def test_validate_flags_a_non_str_cast():

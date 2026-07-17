@@ -308,6 +308,28 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     return route
 
 
+def _parse_seed(text: str) -> list[float]:
+    """--seed 'x,y,w,h' → the raw bbox hero.resolve() turns into a HeroPin.
+
+    Its own function so main()'s pin chain can test `is not None` like every other
+    rung. `--seed ''` — an unset variable in a wrapper script, `--seed "$SEED"` — is
+    falsy, and under a truthiness test it fell through every rung to raw=None, so
+    resolve(None) returned "no pin" and a PINNED run silently became a scored one:
+    this slice's own thesis, one level down. Refusing it inline was not enough
+    either, because that hands a human float()'s bare "could not convert string to
+    float: ''", which names neither the flag they typed nor the shape it wants.
+
+    Length is deliberately NOT checked here: hero.resolve owns that rejection and
+    words it ("got 2"). This parses, and nothing more.
+    """
+    try:
+        return [float(p) for p in text.split(",")]      # float() strips its own whitespace
+    except ValueError:
+        raise ValueError(f"--seed {text!r} is not a bbox — pass four comma-separated numbers "
+                         f"'x,y,w,h' (centre-format, in source px), e.g. "
+                         f"--seed '900,540,220,480'") from None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
@@ -336,8 +358,12 @@ def main() -> None:
                     help="hero scoring mode (spec §6.1a)")
     a = ap.parse_args()
     # the group guarantees at most one is set, so this reads "whichever pin was
-    # given" (or None for no pin at all) — it is not a tiebreak
-    raw = ([float(v) for v in a.seed.split(",")] if a.seed else
+    # given" (or None for no pin at all) — it is not a tiebreak. Each rung tests
+    # PRESENCE, not truth, and that is what makes the claim above true: --seed '' and
+    # --track-id 0 are both falsy and both real input, so a truthiness test reads
+    # them as "no pin" and silently drops a pin the human gave. --rule is the one
+    # rung argparse already covers — `choices` makes an empty value impossible.
+    raw = (_parse_seed(a.seed) if a.seed is not None else
            a.rule if a.rule else
            a.track_id if a.track_id is not None else
            a.cast_name)

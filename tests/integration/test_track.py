@@ -533,6 +533,47 @@ def test_cli_rejects_two_pin_flags(monkeypatch):
         track.main()
 
 
+def test_cli_empty_seed_is_a_malformed_pin_not_no_pin(monkeypatch, tmp_path):
+    """`--seed ''` is a pin that was GIVEN, so it must be honoured or refused — never
+    read as "no pin at all".
+
+    An unset variable in a wrapper script (`--seed "$SEED"`) is the way this arrives,
+    and '' is falsy: the raw-value chain tested it for truth, fell through every rung
+    to raw=None, and resolve(None) returned "no pin" — silently downgrading a pinned
+    run to a scored one. That is this slice's own thesis one level down, and
+    --cast-name '' already refuses it. --track-id 0 shows the same trap is why every
+    OTHER rung tests `is not None`: 0 is falsy but a real track id.
+    """
+    monkeypatch.setattr(track, "build_route",
+                        lambda spec, out: pytest.fail(f"empty --seed built a pin: {spec.pin!r}"))
+    monkeypatch.setattr("sys.argv", ["track", "s.mp4", str(tmp_path / "route.json"),
+                                     "--seed", ""])
+    with pytest.raises(ValueError, match="--seed"):
+        track.main()
+
+
+def test_cli_malformed_seed_names_the_flag_not_floats_internals(monkeypatch, tmp_path):
+    # the remedy must be one a stranger can act on: float()'s bare "could not convert
+    # string to float: 'x'" names neither the flag they typed nor the shape it wants
+    monkeypatch.setattr(track, "build_route", lambda spec, out: None)
+    monkeypatch.setattr("sys.argv", ["track", "s.mp4", str(tmp_path / "route.json"),
+                                     "--seed", "900,540,x,480"])
+    with pytest.raises(ValueError) as e:
+        track.main()
+    assert "--seed" in str(e.value) and "x,y,w,h" in str(e.value)
+
+
+def test_cli_seed_pin_still_builds_the_pin(monkeypatch, tmp_path):
+    # the rejections above must not have cost the working path: a real --seed still
+    # parses into the bbox pin resolve() turns into a HeroPin
+    seen = {}
+    monkeypatch.setattr(track, "build_route", lambda spec, out: seen.update(pin=spec.pin))
+    monkeypatch.setattr("sys.argv", ["track", "s.mp4", str(tmp_path / "route.json"),
+                                     "--seed", "900,540,220,480"])
+    track.main()
+    assert seen["pin"] == models.HeroPin(kind="bbox", bbox=(900.0, 540.0, 220.0, 480.0))
+
+
 def test_cli_single_pin_flag_still_builds_the_pin(monkeypatch, tmp_path):
     # The rejection test above exits inside argparse and never reaches main()'s
     # body, so on its own it cannot prove the group left the normal path intact --
