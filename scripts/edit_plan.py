@@ -69,14 +69,17 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     return bound
 
 
-def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None) -> EDL:
+def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
+              cast: str | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + re-timed dur, §5.6). Each selection episode references a
     window by (source, integer index) into FOOTAGE and supplies editorial fields;
     window_to_episode projects the mechanical fields. Reel knobs (music/cap/
-    target_dur) ride at the top level. Fail-loud on a source not in FOOTAGE or an
-    out-of-range window index (a typo would else surface as a FileNotFound deep in
-    extract — montage §12)."""
+    target_dur) ride at the top level; cast is the cast.json path (§6.1a) — a driver-level
+    knob like pacing, not an editorial field in selection.json, since it names the registry
+    an episode's hero *name* resolves against, not a per-episode choice. Fail-loud on a
+    source not in FOOTAGE or an out-of-range window index (a typo would else surface as a
+    FileNotFound deep in extract — montage §12)."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -103,16 +106,18 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None) ->
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
     cap = selection.get("cap")
-    return EDL(episodes=tuple(episodes), music=selection.get("music"),
+    return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
                cap=cap if cap is not None else 3, target_dur=selection.get("target_dur"))
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
-                    pacing_path: str | None = None) -> dict:
+                    pacing_path: str | None = None, cast: str | None = None) -> dict:
     """Author EDL.json + EDL.md from FOOTAGE + a selection, gated by the project's
     manifest preflight. Nothing is written when preflight fails — a bad EDL never
-    lands as a half-valid artifact. Returns {"status": "written", ...} or the
-    preflight stop_and_report verbatim."""
+    lands as a half-valid artifact. cast is cast.json from intake — required if any
+    episode pins a cast name (§6.1a); preflight below loads the registry and reports
+    an unresolved name as part of its normal stop_and_report, not a raise. Returns
+    {"status": "written", ...} or the preflight stop_and_report verbatim."""
     footage = Footage.from_json(footage_path)
     try:
         selection = json.loads(Path(selection_path).read_text())
@@ -120,7 +125,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
         raise ValueError(f"{selection_path} is not valid JSON ({e}) — fix the selection syntax") from e
     cfg = ProjectConfig.from_json(project_path)
     pacing = Spine.from_json(pacing_path) if pacing_path else None
-    edl = build_edl(footage, selection, pacing=pacing)
+    edl = build_edl(footage, selection, pacing=pacing, cast=cast)
     _, stop = preflight(edl, cfg, str(Path(out_dir) / "segments"), out_dir)
     if stop:
         return stop
@@ -141,8 +146,9 @@ def main() -> None:
     b.add_argument("--project", required=True, help="project.json — canvas/delivery for the preflight")
     b.add_argument("--out-dir", required=True, help="dir for EDL.json + EDL.md")
     b.add_argument("--pacing", help="PACING.json — bind episodes to the energy spine (optional, §5.6)")
+    b.add_argument("--cast", help="cast.json from intake — required if any episode pins a cast name (§6.1a)")
     a = ap.parse_args()
-    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing)
+    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing, cast=a.cast)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "written" else 1)
 

@@ -78,6 +78,25 @@ def test_build_edl_defaults_cap_when_absent():
     assert edit_plan.build_edl(_footage(), sel).cap == 3
 
 
+def test_build_edl_carries_the_cast_path():
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(_footage(), sel, cast="proj/cast.json")
+    assert edl.cast == "proj/cast.json"
+
+
+def test_build_edl_without_a_cast():
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    assert edit_plan.build_edl(_footage(), sel).cast is None
+
+
+def test_build_edl_empty_cast_string_raises():
+    # "" is EDL.__post_init__'s own guard (EDL.cast must be a path or null) — build_edl
+    # must let it through untouched, not swallow or reinterpret it (§12: never silently fall back).
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match="EDL.cast"):
+        edit_plan.build_edl(_footage(), sel, cast="")
+
+
 def test_build_edl_unknown_source_raises_listing_available():
     sel = {"episodes": [{"source": "Z.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
     with pytest.raises(ValueError, match=r"'Z\.mp4' not in FOOTAGE.*A\.mp4.*B\.mp4"):
