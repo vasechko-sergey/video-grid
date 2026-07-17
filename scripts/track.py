@@ -7,7 +7,7 @@ from typing import Any
 from scripts.lib import appearance, proc
 from scripts.lib import hero as hero_lib
 from scripts.lib.footage import Cast
-from scripts.lib.models import (HERO_KINDS, HERO_RULES, HeroPin, RoutePoint, TrackMeta,
+from scripts.lib.models import (HERO_KINDS, HERO_RULES, RoutePoint, TrackMeta,
                                 TrackSpec, route_to_json)
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute

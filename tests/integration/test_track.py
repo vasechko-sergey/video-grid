@@ -302,7 +302,6 @@ def test_pick_hero_reads_ambig_margin_not_a_reinlined_literal(monkeypatch):
 
 def _desc(*channels):
     """A hand-built descriptor: `channels` are per-channel weights, HIST_BINS wide."""
-    from scripts.lib.appearance import HIST_BINS
     d = []
     for w in channels:
         d.extend([w / HIST_BINS] * HIST_BINS)
