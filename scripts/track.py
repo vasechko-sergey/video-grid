@@ -227,7 +227,7 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     spec: a TrackSpec (scripts/lib/models.py) — carries src/model/pin/intent/fps
     so the orchestrator can pass a manifest-derived intent instead of always
     "action" (#1), and a RESOLVED HeroPin (hero.resolve()) instead of a raw
-    manifest value (§5.10) — never a tuple/str/int, and never seed_bbox.
+    manifest value (§5.10) — never a tuple/str/int.
     """
     fps, src_w, src_h = spec.fps, None, None
     if fps is None:
@@ -308,7 +308,7 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     return route
 
 
-if __name__ == "__main__":
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--fps", type=float, default=None,
@@ -317,16 +317,26 @@ if __name__ == "__main__":
     ap.add_argument("--model", default=MODEL,
                     help="yolo11n-seg.pt (default) / yolo11s-seg.pt / "
                          "yolo11m-seg.pt for small/far subjects")
-    ap.add_argument("--seed", default=None,
-                    help="hero pin: first-frame centre bbox 'x,y,w,h' in source px")
-    ap.add_argument("--rule", default=None, choices=list(HERO_RULES),
-                    help="hero pin: a mechanical rule (§5.10)")
-    ap.add_argument("--track-id", type=int, default=None, help="hero pin: an explicit track id")
-    ap.add_argument("--cast-name", default=None, help="hero pin: a name from --cast-json")
+    # The four pin flags are four SPELLINGS of one pin, so at most one may be
+    # given: the raw chain below resolves them by PRECEDENCE, and ungrouped that
+    # makes `--rule largest --track-id 3` silently honour the rule and drop the
+    # id — a human asking for one pin and quietly getting another, which is the
+    # exact silent substitution this slice deletes everywhere else. The group
+    # turns that tiebreak into an argparse error. --cast-json stays OUT of it: it
+    # is not a pin, it is the registry --cast-name resolves against.
+    pin = ap.add_mutually_exclusive_group()
+    pin.add_argument("--seed", default=None,
+                     help="hero pin: first-frame centre bbox 'x,y,w,h' in source px")
+    pin.add_argument("--rule", default=None, choices=list(HERO_RULES),
+                     help="hero pin: a mechanical rule (§5.10)")
+    pin.add_argument("--track-id", type=int, default=None, help="hero pin: an explicit track id")
+    pin.add_argument("--cast-name", default=None, help="hero pin: a name from --cast-json")
     ap.add_argument("--cast-json", default=None, help="cast.json — required with --cast-name")
     ap.add_argument("--intent", default="action", choices=["action", "static"],
                     help="hero scoring mode (spec §6.1a)")
     a = ap.parse_args()
+    # the group guarantees at most one is set, so this reads "whichever pin was
+    # given" (or None for no pin at all) — it is not a tiebreak
     raw = ([float(v) for v in a.seed.split(",")] if a.seed else
            a.rule if a.rule else
            a.track_id if a.track_id is not None else
@@ -335,3 +345,7 @@ if __name__ == "__main__":
     spec = TrackSpec(src=a.src, model=a.model, pin=hero_lib.resolve(raw, cast),
                      intent=a.intent, fps=a.fps)
     build_route(spec, a.out)
+
+
+if __name__ == "__main__":
+    main()

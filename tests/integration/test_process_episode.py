@@ -297,7 +297,7 @@ def test_delivery_threaded_to_reframe(monkeypatch, tmp_path):
     assert calls["reframe_delivery"].mode == "exact"
 
 
-def test_seed_bbox_threaded_to_track(monkeypatch, tmp_path):
+def test_bbox_pin_threaded_to_track(monkeypatch, tmp_path):
     # a manifest hero value must reach the TrackSpec as a RESOLVED HeroPin —
     # the shell threads it through hero.resolve(), never the raw manifest value
     calls = _stub_engine(monkeypatch, tmp_path)

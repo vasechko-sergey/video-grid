@@ -423,3 +423,34 @@ def test_track_crops_skips_unconfirmed_detections():
     crops = {}
     track._track_crops(_PixelRes(_RED), [unconfirmed], crops)
     assert crops == {}
+
+
+# --- the CLI: four pin spellings, exactly one at a time ---------------------
+
+
+def test_cli_rejects_two_pin_flags(monkeypatch):
+    # The four pin flags are four SPELLINGS of one pin, and main()'s raw-value
+    # chain resolves them by PRECEDENCE -- so ungrouped, `--rule largest
+    # --track-id 3` silently honours the rule and discards the id. A human asking
+    # for one pin and quietly getting a different one is the exact silent
+    # substitution this slice deletes from the manifest path; the CLI must not
+    # reintroduce it at the front door.
+    monkeypatch.setattr("sys.argv", ["track", "s.mp4", "route.json",
+                                     "--rule", "largest", "--track-id", "3"])
+    with pytest.raises(SystemExit):     # argparse group conflict → error() → SystemExit(2)
+        track.main()
+
+
+def test_cli_single_pin_flag_still_builds_the_pin(monkeypatch, tmp_path):
+    # The rejection test above exits inside argparse and never reaches main()'s
+    # body, so on its own it cannot prove the group left the normal path intact --
+    # a stray required=True, or a broken raw-value chain, would still pass it.
+    # This drives main() all the way to the TrackSpec it hands build_route.
+    seen = {}
+    monkeypatch.setattr(track, "build_route",
+                        lambda spec, out: seen.update(pin=spec.pin, out=out))
+    monkeypatch.setattr("sys.argv", ["track", "s.mp4", str(tmp_path / "route.json"),
+                                     "--rule", "largest"])
+    track.main()
+    assert seen["pin"] == models.HeroPin(kind="rule", rule="largest")
+    assert seen["out"] == str(tmp_path / "route.json")
