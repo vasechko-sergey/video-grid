@@ -81,6 +81,13 @@ class TrackMeta:
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":
+        # Top level checked FIRST, before d.get. No production reader today (track.py builds a
+        # TrackMeta directly) — but from_dict is public contract surface, and a guard that holds
+        # only while nobody calls it is not a guard.
+        if not isinstance(d, dict):
+            raise ValueError(f"TrackMeta.from_dict: expected a track-meta object with 'hero'/"
+                             f"'intent' fields, got {type(d).__name__} — re-run track to "
+                             f"regenerate the meta sidecar")
         return cls(hero=d.get("hero"), ambiguous=bool(d.get("ambiguous", False)),
                    intent=d.get("intent", "action"), features=d.get("features", {}),
                    pin_matched=d.get("pin_matched"))
@@ -673,6 +680,14 @@ class MusicSpec:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MusicSpec":
+        # The top level is checked FIRST, before the .get calls below: those defaults hand
+        # __post_init__ something it can reject with a remedy, but only once `d` is a dict at all
+        # — a bare array/string/number/bool/null raised AttributeError out of all four bare
+        # from_json readers (build_reel, mix, draft, pacing) instead.
+        if not isinstance(d, dict):
+            raise ValueError(f"MusicSpec.from_dict: expected a MUSIC.json object with 'beats'/"
+                             f"'energy' lists, got {type(d).__name__} — re-run beats to regenerate "
+                             f"MUSIC.json")
         # .get with validation-tripping defaults → a missing key surfaces a remedy, not a bare KeyError.
         # beats/energy pass through raw (not tuple()-wrapped) so __post_init__ guards a null/scalar with a
         # remedy instead of a bare TypeError from tuple(None) — the malformed-MUSIC.json case (design §2).
@@ -825,6 +840,13 @@ class ReelManifest:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelManifest":
+        # Top level checked FIRST, before d.get — 'episodes' and each element were validated
+        # while `d` itself was not, so a wrong-shaped reel manifest raised a bare AttributeError
+        # out of build_reel.py's bare from_json call.
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"ReelManifest.from_dict: expected a reel-manifest object with an 'episodes' "
+                f"list, got {type(d).__name__} — produce it with process_episode first")
         eps_in = d.get("episodes")
         if not isinstance(eps_in, list):
             raise ValueError(

@@ -45,6 +45,13 @@ class ProjectConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ProjectConfig":
+        # The top level is checked FIRST: __post_init__ produces the clean ValueError only for
+        # values it was handed, and a non-dict `d` never got that far — d.get raised a bare
+        # AttributeError out of all five bare from_json call sites instead.
+        if not isinstance(d, dict):
+            raise ValueError(f"ProjectConfig.from_dict: expected a project.json object with "
+                             f"'purpose'/'canvas'/'delivery' fields, got {type(d).__name__} — "
+                             f"re-run project-init to regenerate project.json")
         # pass raw values through; __post_init__ produces clean ValueError-with-remedy
         # for missing/None/garbage (never a bare KeyError/TypeError)
         return cls(purpose=d.get("purpose"), canvas=d.get("canvas"),

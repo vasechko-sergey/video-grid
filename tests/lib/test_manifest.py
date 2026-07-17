@@ -293,3 +293,30 @@ def test_validate_accepts_an_absent_cast():
     # every cast-less manifest (the overwhelming majority) would fail the gate
     assert mf.validate(mf.Manifest.from_dict(_ok_dict())) == []
     assert mf.validate(mf.Manifest.from_dict(_ok_dict(cast=None))) == []
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_manifest_from_dict_rejects_a_non_object_top_level(d, name):
+    # Manifest.from_dict is already HARD (KeyError for missing/unknown fields); the SOFT gate
+    # lives at its two callers, which turn every raise into needs_input / stop_and_report
+    # (process_episode.py:52 and edl.py:205 both catch (KeyError, TypeError, ValueError)).
+    # So a ValueError here needs no call-site change — it flows into the soft channel already.
+    # Before the guard, `for k in REQUIRED: d.get(k)` raised AttributeError, which NEITHER
+    # caller catches: the one exception that would crash the gate that promises never to.
+    with pytest.raises(ValueError) as ei:
+        mf.Manifest.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a manifest object" in msg
+    assert f"got {name}" in msg
+    assert "segment" in msg                      # names the required fields
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("d", [[], "str", 42, None])
+def test_manifest_non_dict_reaches_the_soft_gate_as_needs_input_not_a_crash(d, tmp_path):
+    # The end-to-end proof of the paragraph above: process_episode's gate must report softly.
+    from scripts import process_episode
+    res = process_episode.process_episode(d, str(tmp_path / "out"))
+    assert res["status"] == "needs_input"
+    assert any("expected a manifest object" in p for p in res["problems"])

@@ -345,3 +345,27 @@ def test_preflight_cast_json_malformed_shape_stops_gracefully_not_crashes(tmp_pa
     assert "expected a cast.json object with a 'members' list" in problem   # from_dict's remedy
     assert "re-run footage-intake" in problem
     assert "AttributeError" not in problem and "has no attribute" not in problem
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_edl_from_dict_rejects_a_non_object_top_level(d, name):
+    # EDL.from_dict validated its NESTED input (episodes is a list, each an object) but not its
+    # own `d` — a valid-JSON-but-wrong-shape top level reached d.get("episodes") and raised a
+    # bare AttributeError. Both production readers (edl_to_reel.py:25, draft.py:38) call
+    # EDL.from_json with no except, so it crashed the driver. coding-standards: wrong-type
+    # construction raises ValueError with the remedy in the message.
+    with pytest.raises(ValueError) as ei:
+        EDL.from_dict(d)
+    msg = str(ei.value)
+    assert "expected an EDL.json object" in msg          # what was expected
+    assert f"got {name}" in msg                          # what actually arrived
+    assert "re-run edit-plan" in msg                     # the remedy
+    assert "has no attribute" not in msg                 # not a laundered AttributeError
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_edl_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "EDL.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run edit-plan"):
+        EDL.from_json(p)

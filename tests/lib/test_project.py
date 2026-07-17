@@ -151,3 +151,24 @@ def test_project_init_cli_bad_canvas_raises(tmp_path, monkeypatch):
                          "--project-dir", str(tmp_path)])
     with pytest.raises(ValueError, match="W:H"):
         project_init.main()
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_projectconfig_from_dict_rejects_a_non_object_top_level(d, name):
+    # Five production readers (edl_to_reel.py:26, reel_brief.py:22, process_episode.py:48,
+    # edit_plan.py:121, draft.py:39) call ProjectConfig.from_json with no except.
+    with pytest.raises(ValueError) as ei:
+        pj.ProjectConfig.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a project.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run project-init" in msg
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_projectconfig_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "project.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run project-init"):
+        pj.ProjectConfig.from_json(p)

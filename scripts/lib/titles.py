@@ -73,6 +73,12 @@ class Titles:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Titles":
+        # Top level checked FIRST, before d.get — 'items' was validated carefully while `d`
+        # itself was not, so a wrong-shaped TITLES.json raised a bare AttributeError out of
+        # deliver.py's bare from_json call instead of naming a remedy.
+        if not isinstance(d, dict):
+            raise ValueError(f"Titles.from_dict: expected a TITLES.json object with an 'items' list, "
+                             f"got {type(d).__name__} — re-run titles to regenerate TITLES.json")
         items_in = d.get("items", ())
         if not isinstance(items_in, (list, tuple)):
             raise ValueError(

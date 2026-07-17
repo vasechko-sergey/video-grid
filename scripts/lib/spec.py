@@ -60,6 +60,13 @@ class Spec:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Spec":
+        # The top level is checked FIRST, before any d.get — __post_init__ can only clean up
+        # values it was handed, and a non-dict `d` never reaches it: d.get raised a bare
+        # AttributeError instead, out of a boundary that reads user JSON. One documented type.
+        if not isinstance(d, dict):
+            raise ValueError(f"Spec.from_dict: expected a SPEC.json object with 'canvas'/'length_s'/"
+                             f"'mood'/'hook' fields, got {type(d).__name__} — re-run reel-brief to "
+                             f"regenerate SPEC.json")
         # Pass required raw values through so __post_init__ yields the clean
         # ValueError-with-remedy for missing/None/garbage; supply defaults for
         # absent optional keys (None → default, matching the manifest null rule).

@@ -144,3 +144,25 @@ def test_to_markdown_full_render_whole_string():
         "- **Ending:** freeze frame\n"
         "- **Notes:** keep it tight"
     )
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_spec_from_dict_rejects_a_non_object_top_level(d, name):
+    # Four production readers (music_find.py:101, titles.py:51, mood.py:78, pacing.py:29) call
+    # Spec.from_json with no except; before the guard a wrong-shaped SPEC.json reached
+    # d.get("canvas") and raised a bare AttributeError out of each of them.
+    with pytest.raises(ValueError) as ei:
+        Spec.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a SPEC.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run reel-brief" in msg
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_spec_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "SPEC.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run reel-brief"):
+        Spec.from_json(p)

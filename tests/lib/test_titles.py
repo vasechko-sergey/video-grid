@@ -161,3 +161,23 @@ def test_titles_margins_are_sourced_from_the_safe_zone_table():
     assert titles._Z is safezones.default_zone()
     assert titles._Y_EXPR["top"] == f"h*{safezones.default_zone().top}"
     assert titles._Y_EXPR["bottom"] == f"h-th-h*{safezones.default_zone().bottom}"
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_titles_from_dict_rejects_a_non_object_top_level(d, name):
+    # deliver.py:70 reads TITLES.json with no except around from_json.
+    with pytest.raises(ValueError) as ei:
+        Titles.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a TITLES.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run titles" in msg
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_titles_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "TITLES.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run titles"):
+        Titles.from_json(p)

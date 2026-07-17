@@ -52,6 +52,17 @@ class Manifest:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Manifest":
+        # The top level is checked FIRST, before the REQUIRED loop's d.get. from_dict is the
+        # HARD half (it raises); the SOFT gate is at its two callers, which turn every raise
+        # into needs_input / stop_and_report — both already catch (KeyError, TypeError,
+        # ValueError), so this ValueError needs no call-site change and reports softly like
+        # the rest. AttributeError was the one type neither caught: it crashed the gate that
+        # exists precisely to never crash. ValueError (not KeyError) per coding-standards —
+        # KeyError is this function's idiom for a MISSING key, not for a wrong-typed argument.
+        if not isinstance(d, dict):
+            raise ValueError(f"Manifest.from_dict: expected a manifest object with the required "
+                             f"fields {REQUIRED}, got {type(d).__name__} — author the manifest as "
+                             f"a JSON object, not a bare value")
         # explicit null counts as absent — LLM-authored JSON emits null for "no value"
         for k in REQUIRED:
             if d.get(k) is None:

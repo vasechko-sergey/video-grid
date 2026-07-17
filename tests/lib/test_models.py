@@ -762,3 +762,59 @@ def test_hero_pin_is_frozen():
     p = m.HeroPin(kind="rule", rule="leftmost")
     with pytest.raises(dataclasses.FrozenInstanceError):
         p.rule = "largest"
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_musicspec_from_dict_rejects_a_non_object_top_level(d, name):
+    # A MUSIC.json whose top level is not an object reached d.get("track") and raised a bare
+    # AttributeError. All four readers (build_reel.py:34, mix.py:226, draft.py:69,
+    # pacing.py:26) call MusicSpec.from_json with no except.
+    with pytest.raises(ValueError) as ei:
+        m.MusicSpec.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a MUSIC.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run beats" in msg
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_musicspec_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "MUSIC.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run beats"):
+        m.MusicSpec.from_json(p)
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_reelmanifest_from_dict_rejects_a_non_object_top_level(d, name):
+    # build_reel.py:91 reads the reel manifest with no except around from_json.
+    with pytest.raises(ValueError) as ei:
+        m.ReelManifest.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a reel-manifest object" in msg
+    assert f"got {name}" in msg
+    assert "process_episode" in msg
+    assert "has no attribute" not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_reelmanifest_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "REEL_MANIFEST.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="process_episode"):
+        m.ReelManifest.from_json(p)
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ("str", "str"), (42, "int"), (None, "NoneType")])
+def test_trackmeta_from_dict_rejects_a_non_object_top_level(d, name):
+    # TrackMeta has no from_json and no production reader today (track.py:165 constructs it
+    # directly), but from_dict is public contract surface and owes the same one type — a guard
+    # that only holds while nobody calls it is not a guard.
+    with pytest.raises(ValueError) as ei:
+        m.TrackMeta.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a track-meta object" in msg
+    assert f"got {name}" in msg
+    assert "re-run track" in msg
+    assert "has no attribute" not in msg
