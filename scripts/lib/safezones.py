@@ -5,7 +5,7 @@ inside it. Advisory — check_reel reports it, never blocks on it. New platforms
 new table entries, not new code (mirrors ExportProfile)."""
 from dataclasses import dataclass
 
-from scripts.lib.geometry import marks_at_times
+from scripts.lib.geometry import marks_at_times, extent_at_times
 from scripts.lib.models import RoutePoint, CropPath, PathMeta
 
 
@@ -65,6 +65,14 @@ def subject_marks(route: list[RoutePoint], path: CropPath, meta: PathMeta,
     """The subject's (fx, fy) canvas fractions at _SAFE_SAMPLES points across the
     episode — the projection lib.geometry already implements, sampled by time."""
     return marks_at_times(route, path, meta, _sample_times(dur))
+
+
+def subject_extents(route: list[RoutePoint], path: CropPath, meta: PathMeta,
+                    dur: float) -> list[tuple[float, float, float, float]]:
+    """The subject's bbox corners (fx0, fy0, fx1, fy1) at _SAFE_SAMPLES points —
+    the extent counterpart of subject_marks, feeding reel_final.evaluate_key_action
+    (§5.13). Same sampling, geometry.extent_at_times instead of marks_at_times."""
+    return extent_at_times(route, path, meta, _sample_times(dur))
 
 
 def evaluate(marks_per_ep: list[list[tuple[float, float]]],

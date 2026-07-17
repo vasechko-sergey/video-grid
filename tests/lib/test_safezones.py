@@ -70,3 +70,10 @@ def test_evaluate_flags_the_worst_offender_episode():
     assert detail["worst_episode"] == 1
     assert detail["worst_mark"] == [0.5, 0.99]
     assert detail["advisory"] is True
+
+
+def test_subject_extents_samples_five_corner_boxes_across_the_episode():
+    route, path, meta = _geom(500.0, 900.0)        # fill 1000x2000, subject 100x200
+    ext = safezones.subject_extents(route, path, meta, dur=2.0)
+    assert len(ext) == 5
+    assert ext == [(0.45, 0.4, 0.55, 0.5)] * 5     # constant route → constant extents
