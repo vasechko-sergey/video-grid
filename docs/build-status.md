@@ -163,7 +163,7 @@ _Last updated: 2026-07-17._
   `from_spec("exact:WxH")` refuses identically. design §12 logged.
 
 - **docs registry + coding standards (2026-07-09)** — specs moved to
-  [`docs/specs/`](./spec/); anna-auth-style standards adopted
+  [`docs/specs/`](./specs/); anna-auth-style standards adopted
   ([coding-standards.md](./coding-standards.md), [testing-guide.md](./testing-guide.md),
   [development-workflow.md](./development-workflow.md)); `CLAUDE.md` became a
   registry; scripts brought into compliance (full type hints, imports-at-top).
