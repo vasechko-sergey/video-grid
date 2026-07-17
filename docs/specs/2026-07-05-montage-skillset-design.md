@@ -399,9 +399,27 @@ Both must pass. Fail → back to reframe.
 
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
 Two parts:
-- **Mechanical** (`check_reel.py`): black frames (blackdetect), loudness (loudnorm measure), cuts-on-beat, color deltas across cuts, **variety-guard** (perceptual hash — no near-duplicates back to back), length, safe-zones.
-- **Editorial** (agent, like `requesting-code-review`): does the reel deliver SPEC's original idea? Mood/story? Hook strong? Ending right? Pacing along the spine? Anything from EDL missing/weak? Classic base **and** trend flavor (not bland, not gimmicky). → findings → fix loop → re-check.
+- **Mechanical** (`check_reel.py`): black frames (blackdetect), loudness (loudnorm measure), cuts-on-beat, color deltas across cuts, **variety-guard** (perceptual hash — no near-duplicates back to back), length, safe-zones, key-action-not-clipped, pad-bars-clean, layout-transitions-not-jarring (the last three **advisory**, built 2026-07-17 — see below).
+- **Editorial** (agent, like `requesting-code-review`): does the reel deliver SPEC's original idea? Mood/story? Hook strong? Ending right? Pacing along the spine? Anything from EDL missing/weak? Classic base **and** trend flavor (not bland, not gimmicky). → findings → fix loop → re-check. **Not yet built (Slice B) — the only part of §5.13 still open.**
 **Gate:** both parts green.
+
+> **Built (2026-07-17, the still-mechanical trio — Slice A):**
+> `scripts/lib/reel_final.py` (new) — `evaluate_key_action` (tracked-subject
+> bbox vs frame edge, via a new `geometry.extent_at_times` corner projection +
+> `safezones.subject_extents`), `evaluate_pad_bars` (non-`fill` filler bars
+> well-formed — content rect inside frame, bars symmetric; **structural**, read
+> from the `path.meta` sidecar only, no pixels), `evaluate_transitions`
+> (adjacent-episode layout-jump proxy — |Δcoverage| + centre-shift + a
+> mode-change penalty, read from `PathMeta` only). All three are **advisory**
+> (`_ADVISORY_CHECKS` widened) — measured, reported into the `ReelReport`,
+> excluded from `overall`, never a `ReelFailure`: zero blast radius on
+> loop-2/`reel_orchestration`/`build_reel`/`deliver`. `ReelCheckSpec` gains
+> `clip_tol`/`bar_symmetry_tol`/`layout_jump_max`; `check_reel.run` wires them
+> into the existing `geometry` block used by `safe_zones`. **This closes the
+> mechanical enumeration under §5.13's editorial half — the stage stays ◐**
+> (the spec's gate is "both parts green"); the **agent editorial review (Slice
+> B)** is the only part of §5.13 still open. See
+> `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
 `deliver.py`: export per platform (codec/bitrate/fps/resolution/container). SPEC picks the **primary canvas**; deliver optionally **re-reframes** to secondary aspects (a good 9:16 ≠ a good 16:9 → re-run, not just letterbox). Default: primary only; extra aspects on request. **Delivery mode** (`MUSIC.json.delivery`, **set from the invocation text**): `baked` (default) muxes the audio — the with-music export; saying it in the prompt (e.g. "without music" / "без музыки" / "platform sound") emits a music-less version (music stem removed, ambient/SFX kept) + a sidecar note (trending-sound + in/out offset) for adding the platform-licensed sound in-app. Can emit both in one run. (The scripts take explicit args; the user just says it in natural language — `using-montage` parses intent into params, see §5.1.)
@@ -559,7 +577,7 @@ See [the layouts design](2026-07-10-layouts-design.md) for the geometry, the
 
 - **Composition rules apply to the visible frame region** — the same math relative to the framed rectangle, not the whole canvas.
 - **Safe-zones** keyed to platform+canvas (IG UI bottom/right).
-- **reel-final-check:** mixed aspect/layout is **intentional**, not a defect. It checks: pad bars clean, subject in safe-zone (now `check_reel.safe_zones` — advisory route-geometry vs a platform `SafeZone` table, built 2026-07-16), key action not clipped, layout transitions not jarring — the other three stay editorial follow-ons.
+- **reel-final-check:** mixed aspect/layout is **intentional**, not a defect. It checks: pad bars clean (`check_reel.pad_bars` — advisory, structural from the `path.meta` sidecar, built 2026-07-17), subject in safe-zone (`check_reel.safe_zones` — advisory route-geometry vs a platform `SafeZone` table, built 2026-07-16), key action not clipped (`check_reel.key_action` — advisory, frame-edge clip tolerance via `geometry.extent_at_times`, built 2026-07-17), layout transitions not jarring (`check_reel.transitions` — advisory, a layout-jump proxy read from PathMeta, built 2026-07-17) — all four now built (mechanical, advisory); only the agent editorial review (§5.13's idea/mood/hook/pacing judgment, Slice B) stays open.
 - **deliver:** primary canvas + optional secondary aspects via re-reframe.
 
 ---

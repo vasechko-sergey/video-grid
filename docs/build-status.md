@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-17._
+_Last updated: 2026-07-18._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -707,6 +707,37 @@ _Last updated: 2026-07-17._
   slice's landing, +12 from the first three review fixes, +12 more from
   completing that review above).
 
+- **reel-final editorial checks (§5.13 Slice A) DONE (2026-07-17)** — plan
+  `docs/plans/2026-07-17-reel-final-editorial-checks.md` + design
+  `docs/specs/2026-07-17-reel-final-editorial-checks-design.md` (branch
+  `feat/reel-final-editorial`, commits `0f18c69`..`bcdedbf`). Completes the
+  still-**mechanical** enumeration under §5.13's editorial half — three new
+  checks, all **advisory** (measured + reported into the `ReelReport`,
+  excluded from `overall`, never a `ReelFailure` — zero blast radius on
+  loop-2/`reel_orchestration`/`build_reel`/`deliver`), mirroring `safe_zones`'s
+  policy exactly: `key_action` (the tracked-subject bbox must not be clipped
+  by the frame edge beyond `clip_tol`, via a new `geometry.extent_at_times`
+  corner projection + `safezones.subject_extents`), `pad_bars` (non-`fill`
+  filler bars well-formed — content rect inside frame, bars symmetric within
+  `bar_symmetry_tol`; **structural**, read from the `path.meta` sidecar only,
+  no pixels), `transitions` (adjacent-episode layout must not jump jarringly —
+  a layout-jump proxy: `|Δcoverage| + centre-shift + a mode-change penalty`
+  against `layout_jump_max`, read from `PathMeta` only). New module
+  `scripts/lib/reel_final.py` (the three pure `evaluate_*` cores, importing
+  only `lib.geometry`/`lib.models` — no driver import); `ReelCheckSpec` grows
+  `clip_tol`/`bar_symmetry_tol`/`layout_jump_max`; `_ADVISORY_CHECKS` widens to
+  `("beat", "safe_zones", "key_action", "pad_bars", "transitions")`;
+  `check_reel.run` wires all three into the existing `geometry` block (no new
+  CLI flag — they ride the same `--geometry` inputs `safe_zones` already
+  consumes); `_UNCHECKED` gains three silent-path entries so a geometry-less
+  reel reports `not-checked`, never a silent pass. **§5.13's gate is "both
+  parts green", so the stage stays ◐** — this slice closes the mechanical
+  enumeration under the editorial half, not the stage itself; the **agent
+  editorial review** (Slice B — does the reel deliver SPEC's idea/mood/hook/
+  ending/spine?) **remains open**, its own future spec → plan → implementation
+  cycle. Pipeline tally unchanged: **14 ✅ · 1 ◐ · 1 ❌**. **1183 passed / 8
+  skipped** (23 new).
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -728,15 +759,14 @@ _Last updated: 2026-07-17._
   networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), ambient
   ducking (DONE 2026-07-15) and SFX whoosh (DONE 2026-07-15, **closing §5.12**)
   have landed. **OR**
-- **§5.13's editorial half** — the stage stays ◐ until it lands (the spec's gate
-  is "both parts green"). In rising order of judgment: **"key action not
-  clipped"** (bbox extent through the same `safezones` projection — the
-  smallest, still mechanical), **"pad bars clean"** (filler-rect validation —
-  mechanical given the `path.meta.json` sidecar), **"transitions not jarring"**
-  (taste; a mechanical proxy at best), then the **agent review** proper
-  (SPEC's idea/mood/hook/ending/spine, modelled on `requesting-code-review`).
-  Its "classic base **and** trend flavor" criterion has no source of truth until
-  §5.4 lands. **OR**
+- **§5.13's editorial half (Slice B — the agent review)** — the stage stays ◐
+  until it lands (the spec's gate is "both parts green"). The three mechanical
+  checks are now done (**"key action not clipped"**, **"pad bars clean"**,
+  **"transitions not jarring"** — all advisory, landed 2026-07-17, see
+  `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`); all that's
+  left is the **agent review** proper (SPEC's idea/mood/hook/ending/spine,
+  modelled on `requesting-code-review`). Its "classic base **and** trend
+  flavor" criterion has no source of truth until §5.4 lands. **OR**
 - **the remaining layouts** — `fit-solid` (a filler, not a branch: add `solid` to
   `BACKGROUNDS` **and** have `reframe` read `ResolvedLayout.background`, which is
   plumbed but ignored — the renderer hardcodes `boxblur`), `split` (two clips →
