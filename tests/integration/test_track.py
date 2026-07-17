@@ -169,6 +169,53 @@ def test_action_intent_prefers_mover_over_bystander(monkeypatch, tmp_path):
     xs = [pt.x for pt in route]
     assert xs[0] == 200 and xs[-1] == 200 + 11 * 120
 
+def _intent_feats() -> dict[int, dict]:
+    # 1 = bystander: stands still, big, in every frame. 2 = mover: crosses the
+    # frame, smaller, fewer frames. Chosen so the two intents DISAGREE.
+    return {1: {"n": 20, "disp": 0.0, "area": 300.0 * 600.0},
+            2: {"n": 12, "disp": 1320.0, "area": 140.0 * 320.0}}
+
+def test_pick_hero_intents_pick_different_heroes():
+    # Pins the premise the guard below rests on: "static" is a REAL scoring mode,
+    # not a neutral default. The two intents resolve this fixture to different
+    # heroes, so falling through to static is not a harmless no-op -- it hands
+    # back a DIFFERENT person than the one the human's intent asked for.
+    feats = _intent_feats()
+    assert track._pick_hero(feats, "action")[0] == 2       # motion dominates
+    assert track._pick_hero(feats, "static")[0] == 1       # size + duration dominate
+
+def test_pick_hero_unknown_intent_raises_instead_of_scoring_as_static():
+    # A typo'd intent must NOT silently score as static -- per the test above that
+    # is a different valid mode, so the tracker would follow the wrong hero with no
+    # signal (bad pixels, not a crash -- CLAUDE.md's silent-corruption class).
+    # TrackSpec.__post_init__ gates intent against INTENTS, so an unrecognised one
+    # reaching here can only come from a caller that bypassed it.
+    with pytest.raises(ValueError) as e:
+        track._pick_hero(_intent_feats(), "actoin")
+    msg = str(e.value)
+    assert "_pick_hero" in msg                             # names the function
+    assert "actoin" in msg                                 # echoes the offending intent
+    for i in models.INTENTS:                               # lists what IS accepted
+        assert i in msg
+
+def test_pick_hero_intent_in_vocab_but_with_no_branch_still_raises(monkeypatch):
+    # The guard is keyed to the branches actually IMPLEMENTED, not to INTENTS
+    # membership. A membership check (`if intent not in INTENTS: raise`) would let a
+    # third intent added to that vocab -- without a rung here -- fall straight
+    # through to static: the same silent substitution through a different door.
+    # Simulate that future vocab; the raise must still fire on the branchless one.
+    monkeypatch.setattr(track, "INTENTS", ("action", "static", "crowd"))
+    with pytest.raises(ValueError) as e:
+        track._pick_hero(_intent_feats(), "crowd")
+    assert "crowd" in str(e.value)
+
+def test_pick_hero_empty_feats_is_unmatched_before_intent_is_read():
+    # Nobody to pick is an honest None, not a caller bug. The empty-feats rung sits
+    # AHEAD of the guard on purpose -- same order as the sibling _rule_track -- so an
+    # empty run reports "unmatched" rather than indicting the intent.
+    assert track._pick_hero({}, "action") == (None, False)
+    assert track._pick_hero({}, "actoin") == (None, False)    # empty short-circuits first
+
 def test_meta_flags_ambiguity(monkeypatch, tmp_path):
     # two indistinguishable static tracks → margin rule fires (spec §6.1a)
     frames = [[_FakeBox([500, 500, 140, 320], 1),

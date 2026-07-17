@@ -7,7 +7,7 @@ from typing import Any
 from scripts.lib import appearance, proc
 from scripts.lib import hero as hero_lib
 from scripts.lib.footage import Cast
-from scripts.lib.models import (HERO_KINDS, HERO_RULES, RoutePoint, TrackMeta,
+from scripts.lib.models import (HERO_KINDS, HERO_RULES, INTENTS, RoutePoint, TrackMeta,
                                 TrackSpec, route_to_json)
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
@@ -204,12 +204,30 @@ def _pick_hero(feats: dict[int, dict], intent: str) -> tuple[int | None, bool]:
 
     intent: "action" (motion dominates) | "static" (size + duration dominate).
     Returns (hero_id, ambiguous) — ambiguous when top-2 scores within 20%.
+
+    An empty feats is an honest "unmatched" — nobody to pick — and returns None.
+    An intent with no branch here is not: TrackSpec.__post_init__ gates intent
+    against INTENTS, so one that reaches this point can only come from a caller
+    that bypassed it, and it raises. Scoring it as static instead would let a
+    typo'd intent silently select a different VALID mode — a wrong-but-plausible
+    hero, delivered with no signal. The raise is keyed to the branches actually
+    implemented, not to INTENTS membership, so growing that vocab without adding
+    a rung here fails loud instead of falling through to static.
     """
     if not feats:
         return None, False
     mx = {k: (max(f[k] for f in feats.values()) or 1.0)
           for k in ("disp", "n", "area")}
-    wd, wn, wa = (2.0, 0.5, 0.3) if intent == "action" else (0.0, 1.0, 1.0)
+    if intent == "action":
+        wd, wn, wa = 2.0, 0.5, 0.3
+    elif intent == "static":
+        wd, wn, wa = 0.0, 1.0, 1.0
+    else:
+        raise ValueError(f"_pick_hero: intent {intent!r} has no branch here — the §6.1a "
+                         f"scoring modes are {list(INTENTS)}. TrackSpec.__post_init__ gates "
+                         f"intent before it reaches here, so an unrecognised one means a "
+                         f"caller bypassed it (build the spec with TrackSpec); an intent "
+                         f"newly added to INTENTS means this function still needs its branch.")
 
     def score(f: dict) -> float:
         return (wd * f["disp"] / mx["disp"] + wn * f["n"] / mx["n"]
