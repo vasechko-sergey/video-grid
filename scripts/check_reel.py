@@ -17,9 +17,10 @@ from scripts.lib import proc, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
-# beat/loudness/safe_zones ARE implemented — they fall through to "not-checked" only when
-# the reel lacks the input each needs (music/audio for beat/loudness, per-episode geometry
-# for safe_zones). Nothing is genuinely "not-implemented" anymore.
+# beat/loudness/safe_zones/key_action/pad_bars/transitions ARE implemented — they fall through
+# to "not-checked" only when the reel lacks the input each needs (music/audio for beat/loudness;
+# per-episode geometry for safe_zones/key_action/pad_bars/transitions). Nothing is genuinely
+# "not-implemented" anymore.
 _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               "loudness": "not checked — no audio stem supplied (silent reel)",
               "safe_zones": "not checked — no per-episode geometry supplied",

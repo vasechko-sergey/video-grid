@@ -67,7 +67,7 @@ def test_transitions_passes_two_identical_layouts():
 
 
 def test_transitions_flags_a_fill_to_insert_jump():
-    # fill (area 1.0, centre 0.5,0.5) → insert card (area 0.09, centre 0.25,0.25)
+    # fill (area 1.0, centre 0.5,0.5) → insert card (area 0.09, centre 0.15,0.15)
     metas = [_meta("fill"), _meta("insert", (0, 0, 300, 600))]
     passed, detail = reel_final.evaluate_transitions(metas, layout_jump_max=0.6)
     assert passed is False and detail["worst_cut"] == 0 and detail["modes"] == ["fill", "insert"]
