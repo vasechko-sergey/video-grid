@@ -137,3 +137,37 @@ def marks_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta"
         fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
         marks.append((fx, fy))
     return marks
+
+
+def extent_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta",
+                    times: list[float]) -> list[tuple[float, float, float, float]]:
+    """The subject bbox corners (fx0, fy0, fx1, fy1) in OUTPUT frame fractions at
+    each sample TIME — the same affine placement `marks_at_times` applies to the
+    centre, applied to the source-px corners (x±w/2, y±h/2). The projection has
+    positive scale, so min-source-corner maps to min-output-corner: fx0 ≤ fx1,
+    fy0 ≤ fy1. Used by reel_final.evaluate_key_action to test the tracked subject
+    against the frame edge (§5.13)."""
+    if not route or len(route) != len(path):
+        raise ValueError(f"route/path must be non-empty parallel arrays, "
+                         f"got {len(route)} vs {len(path)}")
+    ts = [p.t for p in route]
+    xs = [p.x for p in route]
+    ys = [p.y for p in route]
+    ws = [p.w for p in route]
+    hs = [p.h for p in route]
+    cxs = path.xs
+    rx, ry, rw, rh = meta.rect_px
+    out_w, out_h = meta.out_dims
+    extents = []
+    for t in times:
+        x = _interp(ts, xs, t)
+        y = _interp(ts, ys, t)
+        w = _interp(ts, ws, t)
+        h = _interp(ts, hs, t)
+        cx = _interp(ts, cxs, t)
+        fx0 = (rx + rw * ((x - w / 2) - cx) / meta.crop_w) / out_w
+        fx1 = (rx + rw * ((x + w / 2) - cx) / meta.crop_w) / out_w
+        fy0 = (ry + rh * ((y - h / 2) - meta.crop_y) / meta.crop_h) / out_h
+        fy1 = (ry + rh * ((y + h / 2) - meta.crop_y) / meta.crop_h) / out_h
+        extents.append((fx0, fy0, fx1, fy1))
+    return extents

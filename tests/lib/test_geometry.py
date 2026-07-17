@@ -140,3 +140,40 @@ def test_marks_at_times_rejects_desync():
     meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000), (0, 0, 1000, 2000), 0)
     with pytest.raises(ValueError, match="parallel arrays"):
         geometry.marks_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])
+
+
+def test_extent_at_times_projects_bbox_corners_straddling_the_centre():
+    from scripts.lib import geometry
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
+    # fill 1000x2000; subject 100x200 centred at (500, 900) → centre mark (0.5, 0.45)
+    route = [RoutePoint(0.0, 500.0, 900.0, 100.0, 200.0),
+             RoutePoint(2.0, 500.0, 900.0, 100.0, 200.0)]
+    path = CropPath([0, 0])
+    meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000),
+                    (0, 0, 1000, 2000), 0)
+    ext = geometry.extent_at_times(route, path, meta, [0.0, 2.0])
+    # left/top = (450/1000, 800/2000), right/bottom = (550/1000, 1000/2000)
+    assert ext[0] == (0.45, 0.4, 0.55, 0.5)
+    assert ext == [(0.45, 0.4, 0.55, 0.5)] * 2      # constant route → constant extents
+
+
+def test_extent_at_times_pushes_a_corner_past_the_frame_when_subject_hugs_the_edge():
+    from scripts.lib import geometry
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
+    # subject centre x=980, w=100 → right edge 1030 → fx1 = 1.03 (clipped by the frame)
+    route = [RoutePoint(0.0, 980.0, 900.0, 100.0, 200.0),
+             RoutePoint(2.0, 980.0, 900.0, 100.0, 200.0)]
+    path = CropPath([0, 0])
+    meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000),
+                    (0, 0, 1000, 2000), 0)
+    (fx0, fy0, fx1, fy1), _ = geometry.extent_at_times(route, path, meta, [0.0, 2.0])
+    assert fx1 == 1.03 and fx0 == 0.93
+
+
+def test_extent_at_times_rejects_desync():
+    import pytest
+    from scripts.lib import geometry
+    from scripts.lib.models import RoutePoint, CropPath, PathMeta
+    meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000), (0, 0, 1000, 2000), 0)
+    with pytest.raises(ValueError, match="parallel arrays"):
+        geometry.extent_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])
