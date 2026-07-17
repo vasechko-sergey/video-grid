@@ -135,3 +135,20 @@ def test_rank_by_drive_orders_by_energy_plus_pace_desc():
     ranked = rank_by_drive([("lo", lo), ("hi", hi)])
     assert [n for n, _s, _v in ranked] == ["hi", "lo"]
     assert ranked[0][1] == pytest.approx(1.5)      # positive drive in the score slot
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_moodvector_from_dict_rejects_a_non_object_top_level(d, name):
+    # `k not in d` raised a bare TypeError on a scalar top level and mis-reported a list/str
+    # one as "missing key(s)". No production reader (MoodVector is built by beats.mood_features
+    # and serialized into MUSIC_SHORTLIST via to_dict), but from_dict is public contract
+    # surface and owes ValueError-with-remedy per coding-standards.
+    with pytest.raises(ValueError) as ei:
+        MoodVector.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a mood-vector object" in msg
+    assert f"got {name}" in msg
+    assert "re-run music-match" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg

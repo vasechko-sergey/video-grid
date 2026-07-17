@@ -55,6 +55,14 @@ class RoutePoint:
 
     @classmethod
     def from_dict(cls, d: dict) -> "RoutePoint":
+        # Top level checked FIRST, before d["t"] — the subscript raised a bare TypeError on a
+        # non-dict. route_from_json feeds each element here, so a route.json of bare scalars
+        # ([1, 2, ...]) — valid JSON, and route.json is also the §5.10 answer channel a human
+        # supplies — reached the four bare readers (check_episode/check_reel/process_episode/
+        # reframe) as a crash.
+        if not isinstance(d, dict):
+            raise ValueError(f"RoutePoint.from_dict: expected a route-point object with t/x/y/w/h "
+                             f"fields, got {type(d).__name__} — re-run track to regenerate route.json")
         return cls(float(d["t"]), float(d["x"]), float(d["y"]),
                    float(d["w"]), float(d["h"]))
 
@@ -141,6 +149,16 @@ class PathMeta:
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
+        # Top level checked FIRST, before the try. Two distinct failures, two types by design:
+        # a non-dict `d` is wrong-TYPE construction → ValueError-with-remedy (coding-standards
+        # §37), the from_dict CONTRACT boundary; a dict with a missing/bad FIELD is machine-
+        # sidecar corruption → RuntimeError (below), an INTEGRITY check on valid-shaped content.
+        # Without this guard the non-dict case fell into the integrity arm and laundered a bare
+        # "list indices must be integers" into the message.
+        if not isinstance(d, dict):
+            raise ValueError(f"PathMeta.from_dict: expected a path.meta.json object with mode/"
+                             f"crop_w/crop_h/... fields, got {type(d).__name__} — re-run reframe "
+                             f"to regenerate path.meta.json")
         try:
             return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
                        crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
@@ -213,6 +231,13 @@ class Report:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Report":
+        # Top level checked FIRST, before d["checks"] — the subscript raised a bare TypeError on
+        # a non-dict. No production reader (check_episode writes report.json via to_dict; nobody
+        # reads it back through from_dict), but from_dict is public contract surface and owes
+        # ValueError-with-remedy per coding-standards.
+        if not isinstance(d, dict):
+            raise ValueError(f"Report.from_dict: expected a report object with a 'checks' map, "
+                             f"got {type(d).__name__} — re-run check_episode to regenerate the report")
         checks = {}
         for n, cd in d["checks"].items():
             if "pass" in cd:
@@ -716,6 +741,13 @@ class ReelFailure:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelFailure":
+        # Top level checked FIRST, before d["check"] — the subscript raised a bare TypeError on
+        # a non-dict. Read via ReelReport.from_dict (now guarded); from_dict is public contract
+        # surface and owes ValueError-with-remedy.
+        if not isinstance(d, dict):
+            raise ValueError(f"ReelFailure.from_dict: expected a reel-failure object with check/"
+                             f"escalate_to fields, got {type(d).__name__} — re-run check_reel to "
+                             f"regenerate the reel report")
         return cls(check=d["check"], escalate_to=d["escalate_to"],
                    episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
 
@@ -746,6 +778,13 @@ class ReelReport:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelReport":
+        # Top level checked FIRST, before d["checks"] — the subscript raised a bare TypeError on
+        # a non-dict. deliver.py:94 reads ReelReport.from_dict(json.loads(...)) with no except,
+        # so it crashed deliver on a wrong-shaped --report file.
+        if not isinstance(d, dict):
+            raise ValueError(f"ReelReport.from_dict: expected a reel-report object with a 'checks' "
+                             f"map, got {type(d).__name__} — re-run check_reel to regenerate the "
+                             f"reel report")
         checks = {}
         for n, cd in d["checks"].items():
             if "pass" in cd:

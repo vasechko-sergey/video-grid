@@ -33,6 +33,14 @@ class MoodVector:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MoodVector":
+        # Top level checked FIRST, before `k not in d` — a scalar top level raised a bare
+        # TypeError there, a list/str one mis-read as "missing key(s)". No production reader
+        # (MoodVector comes from beats.mood_features and serialises into MUSIC_SHORTLIST via
+        # to_dict), but from_dict is public contract surface and owes ValueError-with-remedy.
+        if not isinstance(d, dict):
+            raise ValueError(f"MoodVector.from_dict: expected a mood-vector object with energy/"
+                             f"brightness/pace fields, got {type(d).__name__} — re-run music-match "
+                             f"to regenerate the shortlist")
         missing = [k for k in ("energy", "brightness", "pace") if k not in d]
         if missing:
             raise ValueError(f"MoodVector.from_dict missing key(s) {missing} — "

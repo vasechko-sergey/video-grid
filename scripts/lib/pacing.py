@@ -52,6 +52,14 @@ class Slot:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Slot":
+        # Top level checked FIRST, before `k not in d` — a scalar top level raised a bare
+        # TypeError, a list/str one mis-read as "missing key(s)". Slot is read via
+        # Spine.from_dict (now guarded), but from_dict is public contract surface and owes
+        # ValueError-with-remedy per coding-standards.
+        if not isinstance(d, dict):
+            raise ValueError(f"Slot.from_dict: expected a slot object with index/start/dur/energy/"
+                             f"kind fields, got {type(d).__name__} — re-run pacing to regenerate "
+                             f"PACING.json")
         missing = [k for k in ("index", "start", "dur", "energy", "kind") if k not in d]
         if missing:
             raise ValueError(f"Slot.from_dict missing key(s) {missing} — a slot needs "
@@ -104,6 +112,13 @@ class Spine:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Spine":
+        # Top level checked FIRST, before `k not in d` — a scalar top level raised a bare
+        # TypeError, a list/str one mis-read as "missing key". edit_plan.py:127 reads
+        # Spine.from_json with no except, so the bare TypeError crashed the driver.
+        if not isinstance(d, dict):
+            raise ValueError(f"Spine.from_dict: expected a PACING.json object with target_dur/"
+                             f"tempo/slots fields, got {type(d).__name__} — re-run pacing to "
+                             f"regenerate PACING.json")
         for k in ("target_dur", "tempo", "slots"):
             if k not in d:
                 raise ValueError(f"Spine.from_dict missing key {k!r} — a spine needs "

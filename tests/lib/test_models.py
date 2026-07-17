@@ -818,3 +818,110 @@ def test_trackmeta_from_dict_rejects_a_non_object_top_level(d, name):
     assert f"got {name}" in msg
     assert "re-run track" in msg
     assert "has no attribute" not in msg
+
+
+# --- the TypeError/RuntimeError leakers (subscript / try-wrap, not `.get`): the a75fe8e
+# sweep killed the AttributeError variant (`.get` on a non-dict); these classes reach their
+# own top level via d["key"] or a try that wraps the resulting TypeError, so a non-dict raised
+# a bare TypeError (or, for PathMeta, a RuntimeError laundering one) instead of the same
+# ValueError-with-remedy. Same first-statement isinstance guard, same three-part message.
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_routepoint_from_dict_rejects_a_non_object_top_level(d, name):
+    # d["t"] raised a bare TypeError ('int' object is not subscriptable) on a non-dict.
+    # route_from_json feeds each element here — a route.json of bare scalars is valid JSON, and
+    # route.json is also the §5.10 answer channel a human can supply — so it reached the four
+    # bare readers (check_episode/check_reel/process_episode/reframe) as a driver crash.
+    with pytest.raises(ValueError) as ei:
+        m.RoutePoint.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a route-point object" in msg
+    assert f"got {name}" in msg
+    assert "re-run track" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+def test_route_from_json_rejects_bare_scalar_elements_with_a_remedy(tmp_path):
+    # the real reader: route.json = [1, 2] is valid JSON; before the guard RoutePoint.from_dict(1)
+    # raised a bare TypeError out of route_from_json's list comprehension.
+    p = tmp_path / "route.json"; p.write_text("[1, 2]")
+    with pytest.raises(ValueError, match="re-run track"):
+        m.route_from_json(p)
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_report_from_dict_rejects_a_non_object_top_level(d, name):
+    # d["checks"] raised a bare TypeError on a non-dict. No production reader (check_episode
+    # writes report.json via to_dict; nobody reads it back through from_dict), but from_dict is
+    # public contract surface and owes ValueError-with-remedy.
+    with pytest.raises(ValueError) as ei:
+        m.Report.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a report object" in msg
+    assert f"got {name}" in msg
+    assert "re-run check_episode" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_reelfailure_from_dict_rejects_a_non_object_top_level(d, name):
+    # d["check"] raised a bare TypeError on a non-dict. Read via ReelReport.from_dict (which now
+    # guards its own top level); from_dict is public contract surface.
+    with pytest.raises(ValueError) as ei:
+        m.ReelFailure.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a reel-failure object" in msg
+    assert f"got {name}" in msg
+    assert "re-run check_reel" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_reelreport_from_dict_rejects_a_non_object_top_level(d, name):
+    # d["checks"] raised a bare TypeError on a non-dict. deliver.py:94 reads
+    # ReelReport.from_dict(json.loads(...)) with no except, so it crashed deliver on a
+    # wrong-shaped --report file.
+    with pytest.raises(ValueError) as ei:
+        m.ReelReport.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a reel-report object" in msg
+    assert f"got {name}" in msg
+    assert "re-run check_reel" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_pathmeta_from_dict_rejects_a_non_object_top_level(d, name):
+    # A non-dict `d` is wrong-TYPE construction → ValueError-with-remedy (coding-standards §37):
+    # the from_dict CONTRACT boundary. This is DISTINCT from a dict with a missing/bad field,
+    # which stays RuntimeError below (a machine-sidecar INTEGRITY failure — see the two tests
+    # above that pass dicts). Before the guard the non-dict fell into the integrity arm and
+    # laundered a bare "list indices must be integers" into the message.
+    with pytest.raises(ValueError) as ei:
+        m.PathMeta.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a path.meta.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run reframe" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable",
+                "indices must be", "unusable field"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_pathmeta_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    # from_json parses then delegates: a valid-JSON non-object top level now surfaces the
+    # from_dict guard's ValueError, not the integrity arm's RuntimeError. The integrity/
+    # corrupt-JSON RuntimeError tests above still hold (they feed a dict / unparseable bytes).
+    p = tmp_path / "path.meta.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run reframe"):
+        m.PathMeta.from_json(p)

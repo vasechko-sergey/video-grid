@@ -191,3 +191,21 @@ def test_preview_clip_ytdlp_section_when_no_preview(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog.subprocess, "run", fake_run)
     path = catalog.preview_clip(c, str(tmp_path))
     assert path.endswith(".preview.m4a")
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_candidate_from_dict_rejects_a_non_object_top_level(d, name):
+    # `k not in d` raised a bare TypeError ("argument of type 'int' is not iterable") on a
+    # scalar top level, and mis-reported a list/str one as "missing key(s)". No production
+    # reader today (music_find writes candidates via to_dict, nobody reads them back through
+    # from_dict), but from_dict is public contract surface and owes one documented type per
+    # coding-standards: ValueError-with-remedy for wrong-type construction.
+    with pytest.raises(ValueError) as ei:
+        Candidate.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a candidate object" in msg          # what was expected
+    assert f"got {name}" in msg                          # what actually arrived
+    assert "re-run music-source" in msg                  # the remedy
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg                            # not a laundered low-level exception

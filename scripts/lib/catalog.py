@@ -54,6 +54,14 @@ class Candidate:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Candidate":
+        # Top level checked FIRST, before `k not in d`: that membership test raised a bare
+        # TypeError on a scalar top level and mis-read a list/str one as "missing key(s)". No
+        # production reader today (music_find writes candidates via to_dict), but from_dict is
+        # public contract surface and owes ValueError-with-remedy per coding-standards.
+        if not isinstance(d, dict):
+            raise ValueError(f"Candidate.from_dict: expected a candidate object with title/artist/"
+                             f"source/ref/license, got {type(d).__name__} — re-run music-source to "
+                             f"regenerate the shortlist")
         missing = [k for k in ("title", "artist", "source", "ref", "license") if k not in d]
         if missing:
             raise ValueError(f"Candidate.from_dict missing key(s) {missing} — a candidate "

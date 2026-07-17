@@ -173,3 +173,42 @@ def test_build_spine_interior_boundaries_are_beat_times():
     sp = pacing.build_spine(beats, energy, energy_hz=2.0, duration=12.0, tempo=120.0)
     beat_set = set(beats)
     assert all(s.start in beat_set for s in sp.slots[1:])
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_slot_from_dict_rejects_a_non_object_top_level(d, name):
+    # `k not in d` raised a bare TypeError on a scalar top level and mis-reported a list/str
+    # one as "missing key(s)". Slot is read via Spine.from_dict (which now guards its own top
+    # level), but from_dict is public contract surface and owes ValueError-with-remedy.
+    with pytest.raises(ValueError) as ei:
+        Slot.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a slot object" in msg
+    assert f"got {name}" in msg
+    assert "re-run pacing" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
+                                    (4.5, "float"), (True, "bool"), (None, "NoneType")])
+def test_spine_from_dict_rejects_a_non_object_top_level(d, name):
+    # `k not in d` raised a bare TypeError on a scalar top level and mis-reported a list/str
+    # one as "missing key". edit_plan.py:127 reads Spine.from_json with no except, so the bare
+    # TypeError crashed the driver on a wrong-shaped PACING.json.
+    with pytest.raises(ValueError) as ei:
+        Spine.from_dict(d)
+    msg = str(ei.value)
+    assert "expected a PACING.json object" in msg
+    assert f"got {name}" in msg
+    assert "re-run pacing" in msg
+    for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
+        assert bad not in msg
+
+
+@pytest.mark.parametrize("body", ["[]", '"str"', "42", "true", "null"])
+def test_spine_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
+    p = tmp_path / "PACING.json"; p.write_text(body)
+    with pytest.raises(ValueError, match="re-run pacing"):
+        Spine.from_json(p)
