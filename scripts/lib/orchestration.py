@@ -21,34 +21,38 @@ def derive_intent(composition: str, motion: str | None) -> str:
     return "action"
 
 
-def is_seed_pin(hero: object) -> bool:
-    """True iff `hero` is a hero value the tracker can ACTUALLY be seeded with
-    this slice: a non-empty seed-bbox tuple. A cast name / rule / empty value is
-    not applicable until the ingestion plan's cast.json lands — the shell only
-    passes a tuple as `seed_bbox`, so only a tuple resolves §6.1a ambiguity. The
-    ambiguity gate and the shell's seed gate MUST share this one predicate or a
-    named-but-unseeded hero silently suppresses stop-and-report."""
-    return isinstance(hero, tuple) and len(hero) > 0
-
-
-def detect_contradictions(motion: str | None, hero: object, route: list[dict],
+def detect_contradictions(motion: str | None, route: list[dict],
                           track_meta: dict, src_w: int, src_h: int,
                           composition: str | None = None) -> list[dict]:
     """Machine-detectable manifest-vs-reality conflicts (§4.1). Returns a list
     of {reason, detail} findings; non-empty ⇒ stop-and-report, never improvise."""
     findings = []
+    meta = track_meta or {}
+    if meta.get("pin_matched") is False:
+        # ORDER IS LOAD-BEARING: an unmatched pin is what PRODUCED the empty
+        # route below, so no-track ("hero never detected") would be the wrong
+        # diagnosis — it points at the segment or the model, when the real answer
+        # is "the person you pinned is not in this clip".
+        findings.append({"reason": "hero-unmatched",
+                         "detail": "the manifest's hero pin matched no track in this segment — "
+                                   "the pinned person may not be in this episode, or the cast "
+                                   "descriptor may not survive its lighting; re-check the window, "
+                                   "or pin a seed bbox instead"})
+        return findings
     if not route:
         findings.append({"reason": "no-track",
                          "detail": "tracker produced an empty route — hero never "
                                    "detected; check the segment, model size, or hero pin"})
         return findings          # nothing else is meaningful without a route
-    if (track_meta or {}).get("ambiguous") and not is_seed_pin(hero):
-        # only an applicable seed pin resolves ambiguity — an empty pin ("" / ()
-        # / []) OR a not-yet-supported cast name / rule is no seed at all
+    if meta.get("ambiguous"):
+        # No pin check: the rungs consume the pin themselves, so `ambiguous` is
+        # honest on its own. A pin that resolved cleanly sets it False; a cast pin
+        # matching two look-alikes sets it True — and then the PIN is what is
+        # ambiguous, so suppressing the gate (as is_seed_pin did) was backwards.
         findings.append({"reason": "hero-ambiguous",
                          "detail": "top-2 candidate scores within margin (§6.1a) — "
-                                   "pin a hero (seed bbox [x,y,w,h]; cast name / rule "
-                                   "needs the ingestion plan) and retry"})
+                                   "pin a hero (seed bbox [x,y,w,h], a rule, a track id, "
+                                   "or a cast name from cast.json) and retry"})
     if composition == "lead":
         obs_type, _ = classify(route, src_w, src_h)
         if obs_type != "lateral":

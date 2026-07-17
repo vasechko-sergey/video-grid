@@ -9,7 +9,7 @@ def _route_right():
 def test_no_contradictions_when_manifest_matches():
     route = _route_right()
     meta = {"ambiguous": False}
-    findings = orch.detect_contradictions(motion="lateral:right", hero=None,
+    findings = orch.detect_contradictions(motion="lateral:right",
                                           route=route, track_meta=meta,
                                           src_w=1920, src_h=1080)
     assert findings == []
@@ -17,70 +17,64 @@ def test_no_contradictions_when_manifest_matches():
 
 def test_direction_reversal_is_a_contradiction():
     route = _route_right()          # tracker sees RIGHT
-    findings = orch.detect_contradictions(motion="lateral:left", hero=None,
+    findings = orch.detect_contradictions(motion="lateral:left",
                                           route=route, track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080)
     assert any(f["reason"] == "motion-mismatch" for f in findings)
 
 
 def test_ambiguous_hero_without_pin_is_a_contradiction():
-    findings = orch.detect_contradictions(motion=None, hero=None,
+    findings = orch.detect_contradictions(motion=None,
                                           route=_route_right(),
                                           track_meta={"ambiguous": True},
                                           src_w=1920, src_h=1080)
     assert any(f["reason"] == "hero-ambiguous" for f in findings)
 
 
-def test_ambiguous_hero_with_pin_is_resolved():
-    findings = orch.detect_contradictions(motion=None, hero=(900, 500, 120, 300),
-                                          route=_route_right(),
-                                          track_meta={"ambiguous": True},
-                                          src_w=1920, src_h=1080)
-    assert all(f["reason"] != "hero-ambiguous" for f in findings)
-
-
 def test_empty_route_is_a_contradiction():
-    findings = orch.detect_contradictions(motion=None, hero=None, route=[],
+    findings = orch.detect_contradictions(motion=None, route=[],
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080)
     assert any(f["reason"] == "no-track" for f in findings)
 
 
-def test_ambiguous_hero_with_empty_pin_is_a_contradiction():
-    # a falsy-but-present hero ("" / () / []) is no pin at all → still ambiguous
-    for empty in ("", (), []):
-        findings = orch.detect_contradictions(motion=None, hero=empty,
-                                              route=_route_right(),
-                                              track_meta={"ambiguous": True},
-                                              src_w=1920, src_h=1080)
-        assert any(f["reason"] == "hero-ambiguous" for f in findings), empty
-
-
 def test_missing_track_meta_does_not_crash():
-    findings = orch.detect_contradictions(motion=None, hero=None,
+    findings = orch.detect_contradictions(motion=None,
                                           route=_route_right(), track_meta=None,
                                           src_w=1920, src_h=1080)
     assert findings == []
 
 
-def test_named_or_rule_hero_does_not_resolve_ambiguity():
-    # a cast name / rule / garbage hero is truthy but is NOT an applicable seed
-    # this slice (cast.json is the ingestion plan) — the shell only seeds a tuple
-    # bbox, so a non-tuple hero must NOT silently suppress the §6.1a gate
-    for named in ("Lena", {"rule": "largest"}, 42):
-        findings = orch.detect_contradictions(motion=None, hero=named,
-                                              route=_route_right(),
-                                              track_meta={"ambiguous": True},
-                                              src_w=1920, src_h=1080)
-        assert any(f["reason"] == "hero-ambiguous" for f in findings), named
+def test_unmatched_pin_is_a_contradiction():
+    findings = orch.detect_contradictions(motion=None, route=[],
+                                          track_meta={"pin_matched": False},
+                                          src_w=1920, src_h=1080)
+    assert any(f["reason"] == "hero-unmatched" for f in findings)
 
 
-def test_is_seed_pin_only_true_for_nonempty_tuple():
-    assert orch.is_seed_pin((900, 500, 120, 300)) is True
-    assert orch.is_seed_pin(()) is False          # empty tuple is no pin
-    assert orch.is_seed_pin(None) is False
-    assert orch.is_seed_pin("Lena") is False       # cast name → ingestion plan
-    assert orch.is_seed_pin({"rule": "largest"}) is False
+def test_unmatched_pin_outranks_no_track():
+    # an unmatched pin PRODUCES the empty route, so "hero never detected" would be
+    # the wrong diagnosis — it would point at the segment or the model
+    findings = orch.detect_contradictions(motion=None, route=[],
+                                          track_meta={"pin_matched": False},
+                                          src_w=1920, src_h=1080)
+    assert [f["reason"] for f in findings] == ["hero-unmatched"]
+
+
+def test_matched_pin_is_not_a_contradiction():
+    findings = orch.detect_contradictions(motion=None, route=_route_right(),
+                                          track_meta={"pin_matched": True, "ambiguous": False},
+                                          src_w=1920, src_h=1080)
+    assert findings == []
+
+
+def test_ambiguity_fires_even_with_a_pin():
+    # a cast pin matching two look-alikes: the pin is what is ambiguous, so the
+    # gate MUST fire — the old is_seed_pin suppression had this exactly backwards
+    findings = orch.detect_contradictions(motion=None, route=_route_right(),
+                                          track_meta={"pin_matched": True, "ambiguous": True},
+                                          src_w=1920, src_h=1080)
+    assert any(f["reason"] == "hero-ambiguous" for f in findings)
 
 
 def test_default_params():
@@ -140,7 +134,7 @@ def test_derive_intent_from_manifest():
 def test_lead_over_nonlateral_is_a_contradiction():
     # lead composition but the tracker route is not lateral → stop_and_report, no wasted reframes
     static_route = [dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)]  # no dx
-    findings = orch.detect_contradictions(motion=None, hero=None, route=static_route,
+    findings = orch.detect_contradictions(motion=None, route=static_route,
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080, composition="lead")
     assert any(f["reason"] == "composition-motion-mismatch" for f in findings)
@@ -148,7 +142,7 @@ def test_lead_over_nonlateral_is_a_contradiction():
 
 def test_lead_over_lateral_is_fine():
     route = _route_right()
-    findings = orch.detect_contradictions(motion=None, hero=None, route=route,
+    findings = orch.detect_contradictions(motion=None, route=route,
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080, composition="lead")
     assert all(f["reason"] != "composition-motion-mismatch" for f in findings)
@@ -156,7 +150,7 @@ def test_lead_over_lateral_is_fine():
 
 def test_center_over_nonlateral_is_fine():
     static_route = [dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)]
-    findings = orch.detect_contradictions(motion=None, hero=None, route=static_route,
+    findings = orch.detect_contradictions(motion=None, route=static_route,
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080, composition="center")
     assert findings == []

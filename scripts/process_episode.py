@@ -123,7 +123,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         timings["track"] = 0.0
 
     # 2. contradiction gate (§4.1: no improvising past the manifest)
-    findings = orch.detect_contradictions(m.motion, m.hero, route, track_meta,
+    findings = orch.detect_contradictions(m.motion, route, track_meta,
                                           src_w, src_h, composition=m.composition)
     if findings:
         return {"status": "stop_and_report", "findings": findings, "attempt": 0,
