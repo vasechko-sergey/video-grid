@@ -631,6 +631,9 @@ class ReelCheckSpec:
     beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
     loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
     loudness_tol: float = 1.0          # ± band around the target
+    clip_tol: float = 0.02             # advisory: frame-edge overshoot fraction tolerated before key_action flags
+    bar_symmetry_tol: float = 0.02     # advisory: max left/right (top/bottom) pad-bar mismatch (canvas fraction)
+    layout_jump_max: float = 0.6       # advisory: max layout-jump score across a cut before transitions flags
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -645,6 +648,12 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.loudness_target must be a number (LUFS), got {self.loudness_target!r}")
         if not isinstance(self.loudness_tol, (int, float)) or self.loudness_tol <= 0:
             raise ValueError(f"ReelCheckSpec.loudness_tol must be a positive number, got {self.loudness_tol!r}")
+        for name in ("clip_tol", "bar_symmetry_tol"):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0.0 <= v < 0.5:
+                raise ValueError(f"ReelCheckSpec.{name} must be a fraction in [0.0, 0.5), got {v!r}")
+        if not isinstance(self.layout_jump_max, (int, float)) or self.layout_jump_max <= 0:
+            raise ValueError(f"ReelCheckSpec.layout_jump_max must be a positive number, got {self.layout_jump_max!r}")
 
 
 @dataclass

@@ -925,3 +925,19 @@ def test_pathmeta_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "path.meta.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run reframe"):
         m.PathMeta.from_json(p)
+
+
+def test_reelcheckspec_editorial_thresholds_default():
+    s = m.ReelCheckSpec(target_dur=6.0)
+    assert s.clip_tol == 0.02 and s.bar_symmetry_tol == 0.02 and s.layout_jump_max == 0.6
+
+
+@pytest.mark.parametrize("kw,msg", [
+    (dict(clip_tol=0.5), "clip_tol"),            # >= 0.5
+    (dict(clip_tol=-0.01), "clip_tol"),          # < 0
+    (dict(bar_symmetry_tol=True), "bar_symmetry_tol"),   # bool is not a fraction
+    (dict(layout_jump_max=0), "layout_jump_max"),        # must be positive
+])
+def test_reelcheckspec_editorial_thresholds_fail_loud(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        m.ReelCheckSpec(target_dur=6.0, **kw)
