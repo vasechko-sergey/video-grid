@@ -22,3 +22,35 @@ def test_key_action_tolerates_a_corner_just_touching_the_edge():
     extents = [[(0.0, 0.0, 1.015, 0.5)]]
     passed, _ = reel_final.evaluate_key_action(extents, clip_tol=0.02)
     assert passed is True
+
+
+from scripts.lib.models import PathMeta
+
+
+def _meta(mode="fill", rect_px=(0, 0, 1000, 2000), out=(1000, 2000)):
+    return PathMeta(mode, 1000, 2000, 0, (1000, 2000), out, out, rect_px, 0)
+
+
+def test_pad_bars_na_when_every_episode_is_fill():
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fill"), _meta("fill")], bar_symmetry_tol=0.02)
+    assert passed is None and detail["status"] == "n/a" and detail["advisory"] is True
+
+
+def test_pad_bars_passes_a_symmetric_letterbox():
+    # fit-blur: 1000-wide content in a 1000x2000 frame, centred vertically (500px bars top+bottom)
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 500, 1000, 1000))],
+                                                  bar_symmetry_tol=0.02)
+    assert passed is True and detail["bars"] == 1 and detail["advisory"] is True
+
+
+def test_pad_bars_flags_a_rect_that_pokes_outside_the_frame():
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 500, 1000, 1600))],
+                                                  bar_symmetry_tol=0.02)
+    assert passed is False and detail["issue"] == "rect_overflow" and detail["worst_episode"] == 0
+
+
+def test_pad_bars_flags_asymmetric_bars():
+    # top bar 300, bottom bar 700 → |300-700|/2000 = 0.2 > tol
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 300, 1000, 1000))],
+                                                  bar_symmetry_tol=0.02)
+    assert passed is False and detail["issue"] == "asymmetric" and detail["worst_episode"] == 0
