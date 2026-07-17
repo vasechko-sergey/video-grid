@@ -941,3 +941,11 @@ def test_reelcheckspec_editorial_thresholds_default():
 def test_reelcheckspec_editorial_thresholds_fail_loud(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.ReelCheckSpec(target_dur=6.0, **kw)
+
+
+def test_reelreport_overall_excludes_the_three_editorial_advisories():
+    checks = {"black": m.CheckResult("black", True, {}),
+              "key_action": m.CheckResult("key_action", False, {"advisory": True}),
+              "pad_bars": m.CheckResult("pad_bars", False, {"advisory": True}),
+              "transitions": m.CheckResult("transitions", False, {"advisory": True})}
+    assert m.ReelReport(checks=checks).overall is True     # advisory Falses never block

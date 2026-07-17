@@ -761,7 +761,7 @@ class ReelFailure:
                    episode_idx=d.get("episode_idx"), detail=d.get("detail", {}))
 
 
-_ADVISORY_CHECKS = ("beat", "safe_zones")   # measured + reported but non-blocking (design §5)
+_ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions")   # measured + reported but non-blocking (design §5)
 
 
 @dataclass
