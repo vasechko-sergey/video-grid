@@ -56,7 +56,8 @@ m.hero ────┘        │                                               
 
 | File | Change | Why |
 |------|--------|-----|
-| `scripts/lib/appearance.py` | **new** — `HIST_BINS`, `CAST_MATCH`, `build_descriptor`, `descriptor_dist`, `crop_and_mask` | The descriptor primitives move out of `intake.py`: `track.py` needs them and a driver must not import a driver. Same move, same reason, as `marks_at_times` → `lib/geometry` in the safe-zones slice. |
+| `scripts/lib/appearance.py` | **new** — `CAST_MATCH`, `build_descriptor`, `descriptor_dist`, `crop_and_mask` (imports `HIST_BINS` from `lib/footage`) | The descriptor primitives move out of `intake.py`: `track.py` needs them and a driver must not import a driver. Same move, same reason, as `marks_at_times` → `lib/geometry` in the safe-zones slice. |
+| `scripts/lib/footage.py` | `HIST_BINS`, `DESCRIPTOR_LEN`; `CastMember.descriptor` gated on the exact length; `Cast` rejects duplicate names | A descriptor's shape is `cast.json`'s **contract**, and `cast.json` is this module's file — so the check sits on the one boundary a foreign descriptor crosses, and the gate path (`manifest` → `hero` → `footage`) stays numpy-free. See §3. |
 | `scripts/lib/hero.py` | **new** — `resolve(hero, cast) -> HeroPin \| None` | The pure resolver. No numpy: it reads descriptors out of a `Cast`, it does not compute them. |
 | `scripts/lib/models.py` | `HERO_RULES`; `HeroPin` config-spec; `TrackSpec.seed_bbox` → `pin`; `TrackMeta.pin_matched` | Vocab + wire-contracts have one home. `HERO_RULES` sits with `COMPOSITIONS`/`GRIDS`/`MOTIONS`/`INTENTS`. |
 | `scripts/intake.py` | descriptor primitives move out; re-import | Keeps `intake.build_descriptor` resolving for the existing tests (the `storyboard` re-export trick). |
@@ -135,6 +136,24 @@ Moved **verbatim** from `intake.py` (`_HIST_BINS` → `HIST_BINS`,
 `crop_and_mask`). `intake.py` re-imports them, so `intake.build_descriptor` and
 the intake tests keep resolving; `CAST_DEDUP` **stays in intake** — it is a
 `surface_crops` dedup policy, not an appearance primitive.
+
+**Amended 2026-07-17 (review):** `HIST_BINS` did not stay here. It defines the
+shape of a `cast.json` descriptor (`DESCRIPTOR_LEN = 3 * HIST_BINS` = 24
+floats), and `cast.json` is `lib/footage`'s file — so both constants live there
+and `appearance` imports `HIST_BINS` from it. Two reasons. **The check needs a
+home on the contract side:** nothing validated a descriptor's *length* until
+`descriptor_dist` ran inside tracking, so a stale registry passed
+`Cast.from_json` → `hero.resolve` → `validate()` → `preflight` and only died
+after every window had been cut; `CastMember` already validated `descriptor` as
+"a non-empty list of numbers", so tightening that to an exact length is the
+minimal move and puts it on the one boundary a foreign descriptor crosses.
+**And the gate must stay cheap:** importing `manifest`/`hero`/`footage`/`edl`
+pulls no numpy and no PIL — measured by diffing `sys.modules` in a fresh
+interpreter, not by reading imports — which is what lets the gate honour "fail
+in ms". Importing `appearance` pulls both and costs several times the whole
+gate's import. The dependency runs one way only —
+`appearance` → `footage`, never the reverse. The "a driver must not import a
+driver" rule is unaffected: `footage` is a contract module, not a driver.
 
 New in `appearance.py`:
 
@@ -324,6 +343,9 @@ episode's manifest at the documented boundary:
 | Cast name, two similar-looking people | `d1 >= 0.8·d2` → `ambiguous` → `hero-ambiguous` → stop-and-report. |
 | `hero` set but the segment has no people at all | `feats` empty → every rung returns `None` → `hero-unmatched` (**not** `no-track`) — the pin is the more specific diagnosis, and the route is empty either way. |
 | Cast member with an empty `descriptor` | impossible: `CastMember.__post_init__` already rejects it. |
+| Cast member with a **wrong-length** `descriptor` (a stale `cast.json`) | rejected by `CastMember.__post_init__` against `DESCRIPTOR_LEN`, at load, with the "re-run footage-intake" remedy (§3). **Was** a hole: nothing checked the length until `descriptor_dist` ran inside tracking, so it passed every gate and died after every window was cut. |
+| **Two cast members with the same name** | rejected by `Cast.__post_init__`. **Was** a hole: `resolve` returned whichever was listed first, so the route followed list order, silently. Not exotic — intake dedups surfaced crops at `CAST_DEDUP=0.30`, so one person in two lightings is surfaced twice and a human names both "Lena". The invariant is on **names** only; identical descriptors under distinct names are `track.py`'s margin rule to judge, not the registry's. |
+| `cast` set to a **non-string** (`{"cast": 123}`) | `validate()` reports it. `Manifest.cast` is the one path field `from_dict` passes through raw, and the registry load necessarily precedes `validate()` (which needs the loaded `Cast`), so the load site guards it too — otherwise `Cast.from_json`'s `Path(123)` raises `TypeError` out of a gate that must never raise. `EDL.cast` never had this hole: `EDL.__post_init__` types it. |
 | Frozen-route path (`route_path` supplied) | untouched — no tracking runs, so no pin is resolved; the answer channel (§5.10) stays a route, not a pin. |
 | Rule pin, one track | it wins; a rule makes no identity claim, so never ambiguous. |
 | `hero: 0` (track id 0) | a valid pin — `0` is falsy but not `None`, so `resolve` must test `is None`, never truthiness. |

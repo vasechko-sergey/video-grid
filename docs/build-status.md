@@ -629,9 +629,11 @@ _Last updated: 2026-07-17._
   or a cast name matched by appearance descriptor — where before only the bbox
   did anything and a rule or cast name silently fell back to intent scoring,
   and `cast.json` (shipped with 5.2) was never read back by anything. Built:
-  `scripts/lib/appearance.py` (**new** — `HIST_BINS`/`CAST_MATCH`/
-  `build_descriptor`/`descriptor_dist`/`crop_and_mask`, moved verbatim out of
-  `intake.py` so a driver need not import a driver) + `scripts/lib/hero.py`
+  `scripts/lib/appearance.py` (**new** — `CAST_MATCH`/`build_descriptor`/
+  `descriptor_dist`/`crop_and_mask`, moved verbatim out of `intake.py` so a
+  driver need not import a driver; `HIST_BINS`/`DESCRIPTOR_LEN` live in
+  `lib/footage` — the descriptor's shape is `cast.json`'s contract, and the gate
+  path must stay numpy-free) + `scripts/lib/hero.py`
   (**new** — `resolve(hero, cast) -> HeroPin | None`, the one boundary; raises
   with a remedy on anything unresolvable, used both as `manifest.validate()`'s
   oracle and as the shell's real resolution, so validation and behaviour
@@ -659,14 +661,28 @@ _Last updated: 2026-07-17._
   slice deletes everywhere else); `Cast.from_dict` needed its own top-level
   guard (a syntactically-valid but wrong-shape `cast.json` crashed
   `AttributeError` through preflight's narrow `except (OSError, ValueError)`,
-  not caught by it). `tests/integration/test_cast_pin.py` (**new**) is the
+  not caught by it). **Three more from the final review (2026-07-17), all
+  registry-shaped — the pin was gated, the file behind it was not:**
+  `validate()` now type-checks `Manifest.cast` (the one path field `from_dict`
+  passes through raw, so `{"cast": 123}` reached `Cast.from_json` → `Path(123)`
+  → a `TypeError` out of the soft gate; the load site needs the guard too, since
+  it necessarily runs *before* `validate()`, which needs the loaded `Cast` as its
+  oracle); `CastMember.descriptor` is checked against `DESCRIPTOR_LEN`, so a
+  stale `cast.json` fails at load instead of passing every gate and detonating in
+  `track.build_route` after every window was cut (`descriptor_dist`'s remedy was
+  right, its *timing* was wrong — and its message promised a `3 * HIST_BINS`
+  check it never made, now corrected to what it does); `Cast` rejects duplicate
+  member names, which `resolve` used to answer by list order — a coin flip, and
+  a plausible one, since intake dedups at `CAST_DEDUP=0.30` and a human names
+  both surfaced crops "Lena". `tests/integration/test_cast_pin.py` (**new**) is the
   proof over real pixels — YOLO mocked (as every test in this repo mocks it),
   but the fake result carries a real BGR frame and a real model-space mask, so
   `crop_and_mask`, `build_descriptor`, `descriptor_dist` and the descriptor
   rung all execute for real. **§6.1a layer 3** (descriptor continuity
   re-match — intra-episode ID-switch repair) is a separate mechanism this
   slice does not build, but it is now **unblocked**: it needed the cast
-  wiring, and the wiring has landed. **936 passed / 8 skipped.**
+  wiring, and the wiring has landed. **948 passed / 8 skipped** (936 at the
+  slice's landing, +12 from the review fixes above).
 
 ## Next action
 

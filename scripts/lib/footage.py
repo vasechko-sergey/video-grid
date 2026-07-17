@@ -16,8 +16,9 @@ from pathlib import Path
 # reader of that file must be able to check a descriptor without importing the CV
 # stack that produced it. lib/appearance imports HIST_BINS from here, so the producer
 # (build_descriptor) and the contract cannot drift apart. Keeping the constant on this
-# side also keeps the manifest gate (manifest → hero → footage) numpy-free: importing
-# appearance costs ~82ms of numpy + PIL, and the gate's whole promise is failing in ms.
+# side also keeps the manifest gate (manifest → hero → footage → edl) numpy-free —
+# importing lib/appearance pulls numpy + PIL and costs several times what the whole
+# gate does, and the gate's entire promise is failing in milliseconds.
 HIST_BINS = 8                     # colour-histogram bins per channel
 DESCRIPTOR_LEN = 3 * HIST_BINS    # 3 channels × HIST_BINS floats, L1-normalized over the grand total
 
@@ -193,7 +194,7 @@ class CastMember:
         # must fail the same way, through the same channel, with the same remedy.
         if len(self.descriptor) != DESCRIPTOR_LEN:
             raise ValueError(f"CastMember {self.name!r}: descriptor must be {DESCRIPTOR_LEN} floats "
-                             f"(3 channels × HIST_BINS = {HIST_BINS}), got {len(self.descriptor)} — "
+                             f"(3 channels × HIST_BINS={HIST_BINS}), got {len(self.descriptor)} — "
                              f"a descriptor built under a different HIST_BINS, i.e. a stale cast.json; "
                              f"re-run footage-intake to regenerate it "
                              f"(`.venv/bin/python -m scripts.intake <footage_root> <out_dir>`)")
