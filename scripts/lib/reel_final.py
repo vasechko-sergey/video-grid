@@ -59,3 +59,30 @@ def evaluate_pad_bars(metas: list[PathMeta], bar_symmetry_tol: float) -> tuple[b
     _, idx, issue, rect, out = worst
     return False, {"worst_episode": idx, "issue": issue, "rect_px": rect,
                    "out_dims": out, "advisory": True}
+
+
+def _layout_of(meta: PathMeta) -> tuple[float, float, float, str]:
+    """(coverage-fraction, centre-fx, centre-fy, mode) of one episode's content rect."""
+    rx, ry, rw, rh = meta.rect_px
+    ow, oh = meta.out_dims
+    return (rw * rh) / (ow * oh), (rx + rw / 2) / ow, (ry + rh / 2) / oh, meta.mode
+
+
+def evaluate_transitions(metas: list[PathMeta], layout_jump_max: float) -> tuple[bool | None, dict]:
+    """Flag a cut whose layout jumps beyond `layout_jump_max`: |Δcoverage| +
+    centre shift + a LAYOUT_MODE_PENALTY when the mode changes. Reads PathMeta
+    only (reel episodes share the canvas, so fractions are comparable). n/a for a
+    single episode. Advisory — 'jarring' is a taste proxy, never a gate."""
+    if len(metas) < 2:
+        return None, {"status": "n/a", "reason": "single episode", "advisory": True}
+    worst = None                                   # (jump, cut_idx, [mode_i, mode_j])
+    for i in range(len(metas) - 1):
+        a0, cx0, cy0, m0 = _layout_of(metas[i])
+        a1, cx1, cy1, m1 = _layout_of(metas[i + 1])
+        jump = abs(a0 - a1) + math.hypot(cx0 - cx1, cy0 - cy1) + (LAYOUT_MODE_PENALTY if m0 != m1 else 0.0)
+        if jump > layout_jump_max and (worst is None or jump > worst[0]):
+            worst = (jump, i, [m0, m1])
+    if worst is None:
+        return True, {"cuts": len(metas) - 1, "advisory": True}
+    jump, idx, modes = worst
+    return False, {"worst_cut": idx, "jump": round(jump, 4), "modes": modes, "advisory": True}

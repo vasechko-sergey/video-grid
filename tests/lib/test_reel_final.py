@@ -54,3 +54,21 @@ def test_pad_bars_flags_asymmetric_bars():
     passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 300, 1000, 1000))],
                                                   bar_symmetry_tol=0.02)
     assert passed is False and detail["issue"] == "asymmetric" and detail["worst_episode"] == 0
+
+
+def test_transitions_na_for_a_single_episode():
+    passed, detail = reel_final.evaluate_transitions([_meta("fill")], layout_jump_max=0.6)
+    assert passed is None and detail["status"] == "n/a" and detail["advisory"] is True
+
+
+def test_transitions_passes_two_identical_layouts():
+    passed, detail = reel_final.evaluate_transitions([_meta("fill"), _meta("fill")], layout_jump_max=0.6)
+    assert passed is True and detail["cuts"] == 1 and detail["advisory"] is True
+
+
+def test_transitions_flags_a_fill_to_insert_jump():
+    # fill (area 1.0, centre 0.5,0.5) → insert card (area 0.09, centre 0.25,0.25)
+    metas = [_meta("fill"), _meta("insert", (0, 0, 300, 600))]
+    passed, detail = reel_final.evaluate_transitions(metas, layout_jump_max=0.6)
+    assert passed is False and detail["worst_cut"] == 0 and detail["modes"] == ["fill", "insert"]
+    assert detail["advisory"] is True
