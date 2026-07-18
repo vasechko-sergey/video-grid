@@ -738,6 +738,30 @@ _Last updated: 2026-07-18._
   cycle. Pipeline tally unchanged: **14 ✅ · 1 ◐ · 1 ❌**. **1183 passed / 8
   skipped** (23 new).
 
+- **reel-review editorial (§5.13 Slice B) DONE (2026-07-18)** — plan
+  `docs/plans/2026-07-18-reel-review-editorial.md` + design
+  `docs/specs/2026-07-18-reel-review-editorial-design.md`. **Closes §5.13** — both
+  parts green, stage ◐ → ✅ (tally 15 ✅ · 0 ◐ · 1 ❌). The agent editorial review:
+  at CP3 a fresh reviewer subagent judges the delivered reel against `SPEC`
+  (idea/mood/hook/ending/spine/edl_completeness/trend_flavor) and emits typed
+  findings, each routed to an existing fixer stage; the human disposes.
+  `scripts/lib/review.py` — `Finding` + `Review` config-specs (`REVIEW_AXES`/
+  `REVIEW_SEVERITY`/`REVIEW_ROUTES`/`REVIEW_CONFIDENCE` vocabs, `Review.verdict`
+  computed property = revise iff any blocking, JSON round-trip, `to_markdown`
+  blocking-first). `scripts/reel_review.py` — thin driver: `build_review` validates
+  the reviewer's RAW findings (fail-loud on a malformed finding, nothing written) →
+  typed `Review`, `write_review` → `REVIEW.json`+`REVIEW.md`, CLI `build`
+  (`--findings` list-or-`{summary,findings}` → artifact) — the `selection.json →
+  EDL.json` idiom. `SKILLS/reel-review/` — the SKILL (build packet → dispatch
+  reviewer → driver → human loop + routing) + `reel-reviewer.md` prompt template
+  (the `requesting-code-review` calque); `montage.py` gains an **optional**
+  `reel-review` Stage (`REVIEW.json`, checkpoint `final`, never `next`);
+  `using-montage` CP3 invokes it. **Human-gated (§4.1)** — `check_reel`/`build_reel`/
+  `deliver`/loop-2 untouched; no auto-fix actuator. **`trend_flavor`** is judged
+  from general knowledge at forced `confidence=low` (no source until §5.4). Text
+  stage — no ffmpeg golden (reel-brief's twin). **33 new unit tests; full suite
+  1216 passed / 8 skipped.**
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -759,14 +783,6 @@ _Last updated: 2026-07-18._
   networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), ambient
   ducking (DONE 2026-07-15) and SFX whoosh (DONE 2026-07-15, **closing §5.12**)
   have landed. **OR**
-- **§5.13's editorial half (Slice B — the agent review)** — the stage stays ◐
-  until it lands (the spec's gate is "both parts green"). The three mechanical
-  checks are now done (**"key action not clipped"**, **"pad bars clean"**,
-  **"transitions not jarring"** — all advisory, landed 2026-07-17, see
-  `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`); all that's
-  left is the **agent review** proper (SPEC's idea/mood/hook/ending/spine,
-  modelled on `requesting-code-review`). Its "classic base **and** trend
-  flavor" criterion has no source of truth until §5.4 lands. **OR**
 - **the remaining layouts** — `fit-solid` (a filler, not a branch: add `solid` to
   `BACKGROUNDS` **and** have `reframe` read `ResolvedLayout.background`, which is
   plumbed but ignored — the renderer hardcodes `boxblur`), `split` (two clips →

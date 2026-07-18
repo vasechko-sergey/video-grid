@@ -26,7 +26,7 @@ _Last updated: 2026-07-18._
 | 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1) | — |
 | 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` | — |
 | 5.12 | audio-mix | `out/audio` | ✅ | music-only mix ✅ + ambient ducking ✅ + SFX whoosh ✅ (synth whoosh on major transitions, `ReelManifest.sfx`); §5.12 complete | **Phase B — music spine** |
-| 5.13 | reel-final-check (gate) | review | ◐ | **Mechanical half ✅ (complete)** — `check_reel`: black/length/colour/variety + loudness (hard), beat + `safe_zones` + `key_action` + `pad_bars` + `transitions` (all advisory — route-geometry/PathMeta checks; the last three landed 2026-07-17). **Editorial half ❌** — the §5.13 agent review (Slice B) is unbuilt, and the spec's gate is "both parts green" | Phase B (audio) + Editorial |
+| 5.13 | reel-final-check (gate) | review | ✅ | **Mechanical half ✅ (complete)** — `check_reel`: black/length/colour/variety + loudness (hard), beat + `safe_zones` + `key_action` + `pad_bars` + `transitions` (all advisory — route-geometry/PathMeta checks; the last three landed 2026-07-17). Editorial half ✅ (2026-07-18) — reel-review SKILL dispatches a fresh reviewer subagent → typed REVIEW.json (Finding/Review), human-gated at CP3. | Phase B (audio) + Editorial |
 | 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate | — |
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
 | 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate | — |
@@ -65,15 +65,16 @@ status table above.
 | 5.10 | process-episode 🔒 | ✅ | — | — | — |
 | 5.11 | episode-postcheck | ✅ | — | — | — |
 | 5.12 | audio-mix | ✅ | — (2026-07-15) | — | richer mix |
-| 5.13 | reel-final-check | ◐ | mechanical half done (2026-07-17 — `key_action`/`pad_bars`/`transitions` landed advisory, closing the trio); **editorial agent-review** (Slice B) is all that's left | none · (soft) 5.4 for the "trend flavor" criterion | tighter gate |
+| 5.13 | reel-final-check | ✅ | — (2026-07-18) | none · (soft) 5.4 for the "trend flavor" criterion | tighter gate |
 | 5.14 | deliver | ✅ | — | — | — |
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
 | — | cast → hero-pin | ✅ | — (2026-07-16) | none — **5.2 cast.json ✅** | §6.1a layer 3 (continuity re-match) |
 
-**Tally:** 14 ✅ · 1 ◐ · 1 ❌. Both automation loops closed. Every **mechanical**
-check the conveyor runs is built; what is left is 5.4 (never started — YAGNI) and
-5.13's editorial half (agent judgment, not a gate you can compute).
+**Tally:** 15 ✅ · 0 ◐ · 1 ❌. Both automation loops closed. Every **mechanical**
+check the conveyor runs is built, and §5.13's editorial half is now built too
+(2026-07-18, the `reel-review` SKILL); what is left is only 5.4 (never started
+— YAGNI), the one remaining ❌.
 
 ### Critical path to autonomous v1
 
@@ -90,10 +91,10 @@ edit-plan → edl_to_reel with the three §4.1 checkpoints, resuming from `monta
 next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-out
 (a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
 Everything else was parallel **quality**, and most of it has since shipped
-(B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13's mechanical gate now complete —
-`safe_zones` 2026-07-16 + `key_action`/`pad_bars`/`transitions` 2026-07-17 —
-cast→hero-pin 2026-07-16). Genuinely open on the quality side:
-**5.13's agent editorial review (Slice B)** and the two **pacing auto-fixes**.
+(B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13 now fully closed — `safe_zones`
+2026-07-16 + `key_action`/`pad_bars`/`transitions` 2026-07-17 + the agent
+review 2026-07-18 — cast→hero-pin 2026-07-16). Genuinely open on the quality
+side: the two **pacing auto-fixes**.
 
 ## What produces a reel today
 
@@ -108,9 +109,9 @@ on loudness (hard) and reports beat alignment (advisory, non-blocking), and
 `deliver` muxes the stem into the export (stream-copy, preserving the measured
 loudness). Segments and per-episode manifests are **no longer hand-supplied**
 outside of tests. What's still missing to a *full* reel: **5.4 trend-scan** (the
-last front-half stage — YAGNI) and **5.13's editorial half**; the audio spine is
-complete, with mood-match + sourcing (5.5), pacing (5.6) and ambient + SFX (5.12)
-all shipped. When a
+last front-half stage — YAGNI); the audio spine is complete, with mood-match +
+sourcing (5.5), pacing (5.6) and ambient + SFX (5.12) all shipped, and §5.13's
+reel-final-check (mechanical **and** editorial) is now fully green. When a
 reel carries no `music`/`audio` (the silent path, unchanged
 from Phase A.5), `check_reel` honestly reports `passed=None` (`"not-checked"`)
 for beat/loudness rather than a silent pass; `safe_zones` now reports an
@@ -134,7 +135,7 @@ advisory pass/False computed from the per-episode route geometry, or
 - [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding) + ambient ducking + SFX whoosh (5.12 complete, landed 2026-07-15). Remaining — the **two** auto-fixes parked together by the pacing design's scope decision 1 ([§10](specs/2026-07-14-pacing-design.md)): the **retry-time length auto-fix** (`build_reel`'s `length` failure re-times the spine — today `reel_orchestration._REPROCESS_CLASS` is `("black", "color_across_cuts")`, so `length` escalates to a human) and the **pacing-gate back-edge** (spine won't fit → auto re-pick `MUSIC.start_offset`; today `beats.choose_offset` is the manual re-pick). Both need `build_reel`/`reel_orchestration` work.
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
 - [ ] **Router + curation** ◐ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design, and `cast.json` itself ships (5.2, 2026-07-12) and is now read back by the cast → hero-pin slice (2026-07-16, see the table above). Remaining: stage 5.1's **cap-3 parallel fan-out** (`edl_to_reel` is a sequential per-episode loop — a perf slice, not a v1 blocker) — its only open sub-item now.
-- [ ] **Editorial reel-final** — stage 5.13's second half; the spec's gate is "both parts green", so **5.13 stays ◐ until this lands**. The mechanical half is now **fully done**: `safe_zones` ✅ (2026-07-16) + `key_action`/`pad_bars`/`transitions` ✅ (2026-07-17, all **advisory** — see `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`). Remaining: only the **agent review** proper (Slice B — does the reel deliver SPEC's idea/mood/hook/ending/spine? — modelled on `requesting-code-review`). Its "classic base **and** trend flavor" criterion has no source of truth until **5.4** lands.
+- [x] **Editorial reel-final** — stage 5.13's second half. **Both halves are now built**: the mechanical half — `safe_zones` ✅ (2026-07-16) + `key_action`/`pad_bars`/`transitions` ✅ (2026-07-17, all **advisory** — see `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`) — and the **agent review** proper ✅ (2026-07-18, Slice B): the `reel-review` SKILL dispatches a fresh reviewer subagent that judges the delivered reel against SPEC's idea/mood/hook/ending/spine (modelled on `requesting-code-review`) and emits typed findings (`REVIEW.json`), human-gated at CP3 — see `docs/specs/2026-07-18-reel-review-editorial-design.md`. **§5.13 is fully closed.** Its "classic base **and** trend flavor" sub-criterion (`trend_flavor`) is still judged at forced low confidence pending **5.4** — no source of truth until trend-scan lands.
 - [ ] **Misc engine** — the tail of the design's §7 five-names list, re-read through the layouts design's crop × rect × filler model: **`split`** is the only genuine remaining *layout* (two sources → two rects; changes the manifest's shape); **`fit-solid`** is a **filler literal**, not a branch (add `solid` to `BACKGROUNDS` and have `reframe` actually read `ResolvedLayout.background` — plumbed but ignored today, the renderer hardcodes `boxblur`); **`pan`** is already expressible as a layout (`fill` + `crop_scale < 1` ⇒ `freedom > 0`) — what's missing is a *generated* x(t) motion source, not a mode ("tracking is not a property of the layout"). Plus **stabilization's apply half** (`vidstabdetect` already ships as 5.2's shake score; `vidstabtransform` is refused at `manifest`/`ReframeSpec`/`reframe`) and the **tracking-degradation ladder** (ultralytics gone / track garbage → optical-flow centroid → manual keyframes, each rung stamped `degraded:` — today `process_episode`'s `"degraded": None` is a reserved placeholder; not the reframe-param retry ladder, which **is** built).
 
 ---
