@@ -210,6 +210,27 @@ def test_shortfall_past_the_band_still_stops_and_reports(monkeypatch, tmp_path):
     assert seen["deliver"] == []
 
 
+def test_retime_rides_along_with_a_colour_reprocess(monkeypatch, tmp_path):
+    # The adopt block runs BEFORE the kind dispatch, so a re-time CARRIED BY a reprocess
+    # round lands in that same round. Folding the adopt into the `kind == "retime"` branch
+    # would still pass every other test in this file — and Task 1's pure next_action test,
+    # which only inspects the returned action — while silently regressing this path: the
+    # length failure would re-fire every round while the colour correction converged.
+    both = ReelReport(
+        checks={"length": CheckResult("length", False, {"dur": 5.3, "target": 6.0}),
+                "color_across_cuts": CheckResult("color_across_cuts", False, {})},
+        fail_reasons=[ReelFailure("length", "pacing", None, {"dur": 5.3, "target": 6.0}),
+                      ReelFailure("color_across_cuts", "reprocess", 1,
+                                  {"target": [120.0, 120.0, 120.0],
+                                   "culprit_mean": [150.0, 120.0, 120.0]})],
+        episode_count=2)
+    seen = _wire(monkeypatch, [both, _pass()])
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["targets"] == [6.0, 5.3]     # adopted on the REPROCESS round, not one round later
+    assert len(seen["reprocess"]) == 1       # and the colour fix still ran
+
+
 # --- music integration (Task 6) --------------------------------------------
 # NOTE: _rm_music/_wire_music are deliberately NOT named _rm/_wire — this file
 # already defines _rm(cap=3, n=2) and _wire(monkeypatch, reports, pe_results=None)
