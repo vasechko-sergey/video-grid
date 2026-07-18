@@ -634,6 +634,8 @@ class ReelCheckSpec:
     clip_tol: float = 0.02             # advisory: frame-edge overshoot fraction tolerated before key_action flags
     bar_symmetry_tol: float = 0.02     # advisory: max left/right (top/bottom) pad-bar mismatch (canvas fraction)
     layout_jump_max: float = 0.6       # advisory: max layout-jump score across a cut before transitions flags
+    length_retime_max: float = 1.0     # max shortfall (target − dur) build_reel absorbs by
+                                       # re-timing the target to the reel's real length (§3)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -654,6 +656,9 @@ class ReelCheckSpec:
                 raise ValueError(f"ReelCheckSpec.{name} must be a fraction in [0.0, 0.5), got {v!r}")
         if not isinstance(self.layout_jump_max, (int, float)) or self.layout_jump_max <= 0:
             raise ValueError(f"ReelCheckSpec.layout_jump_max must be a positive number, got {self.layout_jump_max!r}")
+        if not isinstance(self.length_retime_max, (int, float)) or self.length_retime_max <= 0:
+            raise ValueError(f"ReelCheckSpec.length_retime_max must be a positive number of "
+                             f"seconds, got {self.length_retime_max!r}")
 
 
 @dataclass

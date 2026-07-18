@@ -28,6 +28,9 @@ _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               "pad_bars": "not checked — no per-episode geometry supplied",
               "transitions": "not checked — no per-episode geometry supplied"}
 
+_LENGTH_TOL = 0.5      # the length gate's own ± band; build_reel absorbs a further
+                       # (_LENGTH_TOL, spec.length_retime_max] of SHORTFALL on top (§3)
+
 
 def _probe_dur(video: str) -> float:
     out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -143,7 +146,7 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     for h in hits:
         fails.append(ReelFailure("black", "reprocess", _span_of(h, durations), {"t": h}))
 
-    length_ok = abs(total - spec.target_dur) <= 0.5
+    length_ok = abs(total - spec.target_dur) <= _LENGTH_TOL
     checks["length"] = CheckResult("length", length_ok,
                                    {"dur": round(total, 3), "target": spec.target_dur})
     if not length_ok:

@@ -2,6 +2,7 @@ import dataclasses
 import json
 import pytest
 from scripts.lib import models as m
+from scripts.lib.models import ReelCheckSpec
 
 
 def test_routepoint_roundtrip():
@@ -949,3 +950,19 @@ def test_reelreport_overall_excludes_the_three_editorial_advisories():
               "pad_bars": m.CheckResult("pad_bars", False, {"advisory": True}),
               "transitions": m.CheckResult("transitions", False, {"advisory": True})}
     assert m.ReelReport(checks=checks).overall is True     # advisory Falses never block
+
+
+def test_reel_check_spec_length_retime_max_defaults_to_one_second():
+    # the band build_reel may absorb as a SHORTFALL, on top of the gate's own 0.5s (design §3.1)
+    assert ReelCheckSpec(target_dur=12.0).length_retime_max == 1.0
+
+
+def test_reel_check_spec_length_retime_max_rejects_non_positive():
+    for bad in (0, -1.0):
+        with pytest.raises(ValueError, match="length_retime_max"):
+            ReelCheckSpec(target_dur=12.0, length_retime_max=bad)
+
+
+def test_reel_check_spec_length_retime_max_rejects_non_number():
+    with pytest.raises(ValueError, match="length_retime_max"):
+        ReelCheckSpec(target_dur=12.0, length_retime_max="1.0")
