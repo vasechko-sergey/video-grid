@@ -47,3 +47,52 @@ def test_write_review_emits_both_files(tmp_path):
     assert (tmp_path / "REVIEW.json").exists() and (tmp_path / "REVIEW.md").exists()
     assert Review.from_json(tmp_path / "REVIEW.json").to_dict() == r.to_dict()
     assert (tmp_path / "REVIEW.md").read_text().startswith("# Reel review —")
+
+
+import json
+import sys
+
+
+def _write_findings(tmp_path, obj):
+    p = tmp_path / "review_findings.json"
+    p.write_text(json.dumps(obj))
+    return str(p)
+
+
+def test_cli_build_writes_and_exits_0(tmp_path, monkeypatch, capsys):
+    from scripts import reel_review
+    findings = _write_findings(tmp_path, {"summary": "good", "findings": RAW})
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_review", "build", "--findings", findings,
+                         "--reel", "out/REEL_v1.mp4", "--platform", "tiktok",
+                         "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        reel_review.main()
+    assert e.value.code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "written" and payload["findings"] == 2
+    r = Review.from_json(tmp_path / "REVIEW.json")
+    assert r.verdict == "approve" and r.summary == "good" and r.platform == "tiktok"
+
+
+def test_cli_accepts_bare_list_findings(tmp_path, monkeypatch, capsys):
+    from scripts import reel_review
+    findings = _write_findings(tmp_path, RAW)   # bare list, no summary object
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_review", "build", "--findings", findings,
+                         "--reel", "out/REEL_v1.mp4", "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        reel_review.main()
+    assert e.value.code == 0
+    assert Review.from_json(tmp_path / "REVIEW.json").summary == ""
+
+
+def test_cli_bad_findings_json_fails_loud(tmp_path, monkeypatch):
+    from scripts import reel_review
+    p = tmp_path / "review_findings.json"
+    p.write_text("{not json")
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_review", "build", "--findings", str(p),
+                         "--reel", "out/REEL_v1.mp4", "--out-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match="valid JSON"):
+        reel_review.main()
