@@ -6,13 +6,19 @@ per-episode in loop-1; this shell owns only the mechanical reel loop.
 Deterministic — a reprocess reuses the episode's frozen route, so the only thing
 that changes between rounds is the compounded colour factor."""
 import argparse
+import dataclasses
 import json
+import sys
 from pathlib import Path
 
 from scripts import check_reel, deliver, mix, process_episode
 from scripts.lib import assembly, reel_orchestration
 from scripts.lib.color import corrected
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
+
+
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr)
 
 
 def _compound(prev: tuple[float, float, float], ratio: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -34,18 +40,29 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     music = MusicSpec.from_json(rm.music) if rm.music else None   # None → silent reel, exactly as Phase A.5
     attempts: dict[int, int] = {}
     cc: dict[int, tuple[float, float, float]] = {}
+    spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
     audio: str | None = None
     geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
                 if all(e.path and e.meta for e in rm.episodes) else None)
     need_assemble = True
-    for _ in range(rm.cap * len(rm.episodes) + 2):   # defensive bound; +2 leaves headroom for the
-                                                     # once-after-picture mix `continue` + the deliver pass
+    for _ in range(rm.cap * len(rm.episodes) + 3):   # defensive bound; +3 leaves headroom for the
+                                                     # once-after-picture mix `continue`, one
+                                                     # length-retime `continue`, and the deliver pass
         if need_assemble:
             assembly.assemble(clips, dims, fps, master)
             need_assemble = False
-        report = check_reel.run(master, clips, rm.check_spec, report_path,
+        report = check_reel.run(master, clips, spec, report_path,
                                 music=music, audio=audio, geometry=geometry, platform=rm.platform)
-        action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap)
+        action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
+                                                spec.length_retime_max)
+        if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long
+            _log(f"build_reel: reel is {action.retime:.2f}s against a {spec.target_dur:.2f}s target "
+                 f"— inside the {spec.length_retime_max:.2f}s band, re-timing the target to the "
+                 f"reel's real length (the stem is already cut to the master, so audio stays in sync)")
+            spec = dataclasses.replace(spec, target_dur=action.retime)
+        if action.kind == "retime":
+            continue                       # re-check with the re-timed target; clips unchanged,
+                                           # need_assemble stays False so nothing is re-assembled
         if action.kind == "deliver":
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
                 want = rm.ambient or rm.sfx

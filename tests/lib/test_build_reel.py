@@ -23,10 +23,18 @@ def _color_fail(idx, target, culprit):
         episode_count=2)
 
 
+def _length_fail(dur, target):
+    return ReelReport(
+        checks={"length": CheckResult("length", False, {"dur": dur, "target": target})},
+        fail_reasons=[ReelFailure("length", "pacing", None, {"dur": dur, "target": target})],
+        episode_count=2)
+
+
 def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the
     color_correct passed to each process_episode reprocess."""
-    seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": ""}
+    seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
+            "targets": []}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -40,6 +48,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform=""):
         seen["geometry"] = geometry
         seen["platform"] = platform
+        seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
@@ -182,6 +191,23 @@ def test_build_reel_builds_geometry_and_platform_when_sidecars_present(monkeypat
     build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
     assert seen["geometry"] == [("r0.json", "p0.json", "pm0.json")]
     assert seen["platform"] == "tiktok"
+
+
+def test_within_band_shortfall_retimes_the_target_and_delivers(monkeypatch, tmp_path):
+    # round 1 sees a 0.7s shortfall → adopt 5.3 as the target and re-check; round 2 is clean
+    seen = _wire(monkeypatch, [_length_fail(5.3, 6.0), _pass()])
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"                  # absorbed, not escalated
+    assert seen["targets"] == [6.0, 5.3]                 # re-checked against the reel's real length
+    assert seen["reprocess"] == []                       # nothing was re-rendered to fix a length
+
+
+def test_shortfall_past_the_band_still_stops_and_reports(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_length_fail(3.0, 6.0)])   # 3.0s short — a missing episode, not drift
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["check"] == "length" and res["finding"]["escalate_to"] == "pacing"
+    assert seen["deliver"] == []
 
 
 # --- music integration (Task 6) --------------------------------------------
