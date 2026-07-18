@@ -278,3 +278,40 @@ def test_the_weights_are_warmed_before_any_worker_starts(monkeypatch, tmp_path):
     assert seen["warm"] == [edl_to_reel.track.MODEL]               # one distinct model → warmed once
     assert all(kind == "pe" for kind, _ in seen["order"][1:])
     assert len(seen["order"]) == 7                                 # 1 warm + 6 episodes
+
+
+def test_the_lowest_raising_episode_escapes_with_its_own_type(monkeypatch, tmp_path):
+    # Two episodes raise; the one that escapes must be the LOWER index — the same
+    # one the sequential loop would have hit first — and it must keep its type,
+    # because edl_to_reel's docstring contracts setup failures as ValueError.
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        idx = int(Path(project_dir).name.removeprefix("ep"))
+        if idx in (1, 4):
+            raise ValueError(f"boom {idx}")
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    with pytest.raises(ValueError) as ei:
+        edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert "boom 1" in str(ei.value)                       # not "boom 4"
+    assert any("episode 1" in n for n in ei.value.__notes__)
+
+
+def test_a_raise_beats_a_failing_status_from_a_later_episode(monkeypatch, tmp_path):
+    # The exception channel is read before the status channel, matching the
+    # sequential loop where a raise aborted the function outright.
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        idx = int(Path(project_dir).name.removeprefix("ep"))
+        if idx == 2:
+            raise RuntimeError("ffmpeg died")
+        if idx == 5:
+            return {"status": "needs_input", "problems": ["x"]}
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    with pytest.raises(RuntimeError, match="ffmpeg died"):
+        edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
