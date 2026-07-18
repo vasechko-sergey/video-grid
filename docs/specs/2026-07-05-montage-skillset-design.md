@@ -578,7 +578,7 @@ Aspect is a **parameter**, not a hardcoded 9:16. Layout is **per-episode** (hori
 | `fill` | action, subject moves — a ride | YOLO-tracked crop-to-fill (algorithm §6) | **built** |
 | `fit` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** | **built** |
 | `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background, optional border | **built** |
-| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad | **built** (2026-07-18) |
+| `fit-solid` | clean/graphic look | scale-inside + solid pad | **built** (2026-07-18) |
 | `split` | two clips stacked | stack + pad | planned |
 | `pan` | static subject, slow reveal | slow constant-velocity pan | planned |
 
