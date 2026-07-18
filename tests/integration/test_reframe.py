@@ -13,6 +13,13 @@ def _dims(path):
     s = json.loads(out.stdout)["streams"][0]
     return (s["width"], s["height"])
 
+def _duration(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "json", str(path)],
+        capture_output=True, text=True, check=True)
+    return float(json.loads(out.stdout)["format"]["duration"])
+
 def test_compute_path_lead_right():
     # pure path computation (no ffmpeg): subject slides right → crop_x rises
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
@@ -125,7 +132,7 @@ def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
     # native delivery on a 4K source → crop-native even dims, NOT 1080x1920
     route = [models.RoutePoint(i / 30, 1900 + i * 5, 1080, 200, 480) for i in range(10)]
     models.route_to_json(route, tmp_path / "r.json")
-    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.5))
     captured = {}
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: captured.setdefault("cmd", cmd))
     spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
@@ -136,12 +143,94 @@ def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
     assert "scale=1214:2160" in vf          # 4K 9:16 crop 1215x2160 → even native, no upscale
 
 
+@pytest.mark.integration
+def test_probe_returns_the_source_duration(sample_clip):
+    # the solid filler bounds its synthesized background with `color=:d=<dur>`, so
+    # the duration is now load-bearing engine input, not diagnostics. sample_clip is
+    # 1920x1080 @ 30fps, 3.0s (tests/conftest.py).
+    src_w, src_h, fps, dur = reframe._probe(str(sample_clip))
+    assert (src_w, src_h) == (1920, 1080)
+    assert fps == pytest.approx(30.0, abs=0.01)
+    assert dur == pytest.approx(3.0, abs=0.05)
+
+
+def test_probe_refuses_a_durationless_source(monkeypatch):
+    # An unprobeable duration must RAISE, never fall back to `overlay=:shortest=1`
+    # — that fallback would reintroduce the one-frame truncation invisibly, on
+    # exactly the files nobody looked at (design §4).
+    class _Out:
+        stdout = ('{"streams": [{"width": 1280, "height": 720, '
+                  '"avg_frame_rate": "30/1"}], "format": {}}')
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: _Out())
+    with pytest.raises(ValueError, match="no usable duration"):
+        reframe._probe("weird.mkv")
+
+
 _NATIVE = Delivery("native", None)
+
+
+def test_reframe_bounds_the_render_to_the_source_length(tmp_path, monkeypatch):
+    # `-t` is what actually pins a solid render's length: `color=:d=` alone leaves
+    # the overlay's timebase mismatched with the tail's `fps` filter and a 30fps
+    # source blows up 512x (measured 46080 frames / 1536s from a 90-frame 3s clip).
+    # Pinned as a COMMAND fact, and as an OUTPUT option — before the output path,
+    # after the filter args — because `-t` placed as an input option would seek the
+    # source instead of bounding the render.
+    route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
+    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
+    cmd = {}
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 3.0))
+    monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
+                              layout=models.LayoutSpec(mode="fit", crop_aspect="source",
+                                                       background="solid"))
+    reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
+    v = cmd["v"]
+    assert v[v.index("-t") + 1] == "3.000000"          # the probed source duration
+    assert v.index("-t") > v.index("-filter_complex")  # an output option, not an input seek
+    assert v.index("-t") < len(v) - 1
+
+
+@pytest.mark.integration
+def test_solid_and_blur_are_duration_symmetric_with_the_source(sample_clip, tmp_path):
+    """The measured regression this whole amendment exists for.
+
+    `overlay=:shortest=1` terminates but lands EXACTLY one frame short of the
+    source at any frame rate (golden fixture: source 95 frames, blur 95, solid
+    94). One frame is not cosmetic: check_reel measures the assembled reel
+    against _LENGTH_TOL (0.5s), so ~15 solid episodes at 30fps eat the whole band
+    from this artifact alone. A filler must not change how long the reel is.
+
+    Asserted to within HALF a frame — deliberately tighter than the one-frame
+    truncation it guards against, so a one-frame regression cannot hide inside
+    the tolerance. Task 7 proves the pad's colour and uniformity; this proves the
+    property that is symmetric across fillers.
+    """
+    route_p = tmp_path / "route.json"
+    models.route_to_json([models.RoutePoint(t=i / 30, x=900.0, y=540.0, w=80.0, h=200.0)
+                          for i in range(90)], route_p)
+
+    def _render(name, background):
+        out = tmp_path / f"{name}.mp4"
+        spec = models.ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
+                                  color_means=(105, 122, 137), delivery=_NATIVE,
+                                  layout=models.LayoutSpec(mode="fit", crop_aspect="source",
+                                                           background=background))
+        reframe.reframe(spec, str(sample_clip), str(route_p), str(out),
+                        str(tmp_path / f"{name}_path.json"))
+        return out
+
+    src_dur = _duration(sample_clip)
+    half_frame = 0.5 / 30.0
+    assert _duration(_render("solid", "solid")) == pytest.approx(src_dur, abs=half_frame)
+    assert _duration(_render("blurred", "blur")) == pytest.approx(src_dur, abs=half_frame)
 
 
 def test_filter_args_fill_is_pinned_to_todays_chain():
     rl = layout_lib.resolve(LayoutSpec(mode="fill"), (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="577.0", cy=0, gains=(1.0, 1.1, 1.2), fps=59.94)
+    args = reframe._filter_args(rl, xexpr="577.0", cy=0, gains=(1.0, 1.1, 1.2),
+                                fps=59.94, dur=1.584917)
     assert args == [
         "-vf",
         "crop=405:720:x='577.0':y=0,scale=404:720,"
@@ -152,7 +241,8 @@ def test_filter_args_fill_is_pinned_to_todays_chain():
 def test_filter_args_fit_composites_over_a_blurred_cover():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=59.94, dur=1.584917)
     assert args == [
         "-filter_complex",
         "[0:v]split=2[a][b];"
@@ -167,27 +257,40 @@ def test_filter_args_fit_composites_over_a_blurred_cover():
 def test_filter_args_solid_synthesizes_its_background():
     # blur reads the source TWICE (cover + content) and therefore splits; solid
     # synthesizes its background and reads the source once, so there is no split.
-    # `shortest=1` is load-bearing: `color` is an INFINITE source, and without it
-    # the overlay never sees EOF on either input and the encode does not finish.
+    # `color` is an INFINITE source, so something must end it — but NOT the
+    # overlay: `overlay=:shortest=1` truncates exactly one frame off every render
+    # (design §4). The bound goes on the SOURCE, as `d=`, leaving both inputs
+    # finite and equal and the overlay options empty for both fillers.
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
                                        background="solid"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=59.94, dur=1.584917)
     assert args == [
         "-filter_complex",
-        "color=c=black:s=1280x2276:r=59.94[bg];"
+        "color=c=black:s=1280x2276:r=59.94:d=1.584917[bg];"
         "[0:v]crop=1280:720:x='0.0':y=0,scale=1280:720[fg];"
-        "[bg][fg]overlay=0:778:shortest=1,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "[bg][fg]overlay=0:778,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
         "fps=59.94,format=yuv420p",
     ]
 
 
 def test_filter_args_solid_uses_the_requested_colour():
+    # whole-list equality, like every other pin in this file: this is the SOLE
+    # guard that background_color reaches the graph, and a prefix assertion would
+    # let anything after the colour drift unnoticed.
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
                                        background="solid", background_color="#101820"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
-    assert args[1].startswith("color=c=#101820:s=1280x2276:r=59.94[bg];")
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=59.94, dur=1.584917)
+    assert args == [
+        "-filter_complex",
+        "color=c=#101820:s=1280x2276:r=59.94:d=1.584917[bg];"
+        "[0:v]crop=1280:720:x='0.0':y=0,scale=1280:720[fg];"
+        "[bg][fg]overlay=0:778,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=59.94,format=yuv420p",
+    ]
 
 
 def test_filter_args_solid_insert_keeps_its_border():
@@ -197,12 +300,13 @@ def test_filter_args_solid_insert_keeps_its_border():
                                        rect=(0.05, 0.25, 0.90), background="solid",
                                        border_px=8, border_color="white"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
-        "color=c=black:s=800x1422:r=30[bg];"
+        "color=c=black:s=800x1422:r=30:d=2.500000[bg];"
         "[0:v]crop=720:720:x='0.0':y=0,scale=704:704,pad=720:720:8:8:white[fg];"
-        "[bg][fg]overlay=40:356:shortest=1,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "[bg][fg]overlay=40:356,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
         "fps=30,format=yuv420p",
     ]
 
@@ -210,7 +314,8 @@ def test_filter_args_solid_insert_keeps_its_border():
 def test_filter_args_insert_is_pinned_to_the_rect():
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
         "[0:v]split=2[a][b];"
@@ -226,7 +331,8 @@ def test_filter_args_borderless_insert_is_byte_identical():
     # b == 0 must emit exactly the pre-border string: pad vanishes, overlay is rx:ry
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert "pad=" not in args[1]
     assert "overlay=40:356" in args[1]
 
@@ -235,7 +341,8 @@ def test_filter_args_bordered_insert_pads_the_card():
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
                                        border_px=8, border_color="white"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
         "[0:v]split=2[a][b];"
@@ -248,12 +355,18 @@ def test_filter_args_bordered_insert_pads_the_card():
 
 
 def test_filter_args_never_emit_the_banned_lutrgb():
-    # spec §12: lutrgb produced black frames; colorchannelmixer only
+    # spec §12: lutrgb produced black frames; colorchannelmixer only.
+    # The list is hand-enumerated, so it silently under-covers as the vocabulary
+    # grows — every filler needs its own entry, not just every mode.
     for spec in (LayoutSpec(mode="fill"),
                  LayoutSpec(mode="fit", crop_aspect="source"),
-                 LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))):
+                 LayoutSpec(mode="fit", crop_aspect="source", background="solid"),
+                 LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
+                 LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
+                            background="solid")):
         rl = layout_lib.resolve(spec, (9, 16), (1280, 720), _NATIVE)
-        args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+        args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                    fps=30.0, dur=2.5)
         assert "lutrgb" not in args[1]
         assert "colorchannelmixer" in args[1]
 
@@ -262,7 +375,8 @@ def test_blur_radius_scales_with_canvas_width():
     # a constant radius is nearly sharp on 4K; tie it to the canvas
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (3840, 2160), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert "boxblur=64:2" in args[1]        # 3840 // 60
 
 
@@ -271,7 +385,8 @@ def test_blur_radius_is_capped_by_the_short_side():
     # cover's unclamped 3840//60=64 is refused, so the ceiling caps it at (200-1)//4=49
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.4, 0.02, 0.03)),
                             (21, 9), (3840, 2160), Delivery("exact", (3840, 200)))
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert "boxblur=49:2" in args[1]
 
 
@@ -285,7 +400,8 @@ def test_the_radius_floor_never_beats_the_chroma_ceiling():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect=(256, 1)),
                             (256, 1), (1280, 720), _NATIVE)
     assert (rl.out_w, rl.out_h) == (1280, 4)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+                                fps=30.0, dur=2.5)
     assert "boxblur=0:2" in args[1]
 
 
@@ -345,7 +461,7 @@ def test_reframe_applies_color_correct_onto_the_grade(tmp_path, monkeypatch):
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -359,7 +475,7 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),

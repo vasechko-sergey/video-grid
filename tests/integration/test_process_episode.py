@@ -37,7 +37,8 @@ def _report(overall, fail_reasons, attempt=1):
     return models.Report(checks=checks, attempt=attempt)
 
 
-def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 1080, 30.0)):
+def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
+                 dims=(1920, 1080, 30.0, 3.0)):
     """Patch track/reframe/storyboard/check_episode with canned behavior and
     record the args the shell passes (to assert the contract threading). The
     fakes mirror the REAL typed signatures (TrackSpec/ReframeSpec/CheckSpec/
@@ -67,7 +68,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
         Path(path_out).write_text(json.dumps([100] * len(route)))
         # ...and reframe writes path.meta.json beside path.json; the shell reads
         # it to hand storyboard the SAME crop the checks see (Task 8 layouts).
-        sw, sh, _ = dims
+        sw, sh, _fps, _dur = dims
         models.PathMeta(mode="fill", crop_w=sw, crop_h=sh, crop_y=0, src_dims=(sw, sh),
                         canvas=tuple(spec.canvas), out_dims=(sw, sh),
                         rect_px=(0, 0, sw, sh), freedom=0).write(
@@ -94,7 +95,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
 
 
 def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
-    calls = _stub_engine(monkeypatch, tmp_path, dims=(3840, 2160, 59.94))
+    calls = _stub_engine(monkeypatch, tmp_path, dims=(3840, 2160, 59.94, 1.584917))
     result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
     assert result["attempt"] == 1
@@ -399,7 +400,7 @@ def test_manifest_layout_fields_reach_the_reframe_spec(monkeypatch, tmp_path):
         seen["layout"] = spec.layout
         raise RuntimeError("stop — this test only cares about the spec we were handed")
 
-    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94, 1.584917))
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
     manifest = _manifest(tmp_path, composition="break", layout="insert",
                          crop_aspect=[1, 1], rect=[0.05, 0.25, 0.9], border_px=8)
@@ -417,7 +418,7 @@ def test_a_fill_manifest_still_gets_the_default_layout(monkeypatch, tmp_path):
         seen["layout"] = spec.layout
         raise RuntimeError("stop")
 
-    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94))
+    monkeypatch.setattr(pe.reframe, "_probe", lambda src: (1280, 720, 59.94, 1.584917))
     monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
     with pytest.raises(RuntimeError, match="stop"):
         pe.process_episode(_manifest(tmp_path, composition="break"),

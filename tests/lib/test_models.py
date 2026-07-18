@@ -463,7 +463,10 @@ def test_path_meta_still_raises_on_any_other_missing_field():
                    src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
                    rect_px=(0, 778, 1280, 720), freedom=0, background="blur").to_dict()
     del d["freedom"]
-    with pytest.raises(RuntimeError, match="no field"):
+    # pin WHICH field the message names: a bare "no field" survives the message
+    # being erased down to those two words, and would pass just as well if the
+    # integrity check blamed the wrong key.
+    with pytest.raises(RuntimeError, match=r"no field 'freedom'"):
         m.PathMeta.from_dict(d)
 
 

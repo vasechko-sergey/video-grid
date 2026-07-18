@@ -7,7 +7,7 @@ from scripts.lib import layout as layout_lib
 from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
-                                PathMeta, LayoutSpec)
+                                PathMeta, LayoutSpec, BACKGROUNDS)
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
@@ -98,21 +98,43 @@ def _xexpr(path: list[int], times: list[float]) -> str:
     return expr
 
 
-def _probe(src: str) -> tuple[int, int, float]:
+def _probe(src: str) -> tuple[int, int, float, float]:
+    """(width, height, fps, duration) — one ffprobe call, four numbers.
+
+    The duration is load-bearing engine input, not diagnostics: the `solid` filler
+    bounds its synthesized background with `color=:d=<duration>` (design §4). Both
+    the stream's and the container's duration are asked for in the same call, since
+    some containers carry only the latter; the stream's is preferred.
+    """
     out = proc.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height,avg_frame_rate",
+         "-show_entries", "stream=width,height,avg_frame_rate,duration:format=duration",
          "-of", "json", src], text=True)
-    s = json.loads(out.stdout)["streams"][0]
+    probe = json.loads(out.stdout)
+    s = probe["streams"][0]
     num, den = s["avg_frame_rate"].split("/")
     fps = float(num) / (float(den) or 1.0)
     if fps <= 0:
         raise ValueError(
             f"{src}: probed fps is {fps} — corrupt/streamed source? re-encode it first")
-    return int(s["width"]), int(s["height"]), fps
+    raw = s.get("duration") or probe.get("format", {}).get("duration")
+    try:
+        dur = float(raw)
+    except (TypeError, ValueError):
+        dur = 0.0
+    if dur <= 0:
+        # RAISE — never fall back to `overlay=:shortest=1`. That fallback terminates,
+        # but truncates exactly one frame off every render (design §4), so it would
+        # reintroduce the length regression invisibly on precisely the files nobody
+        # looked at. A source whose length is unknowable is a source to re-encode.
+        raise ValueError(
+            f"{src}: no usable duration (ffprobe gave {raw!r}) — the file may be "
+            "truncated, durationless or streamed. reframe needs the source length to "
+            "bound a solid background's synthesized `color` source; re-encode it first")
+    return int(s["width"]), int(s["height"]), fps, dur
 
 
-def _background_args(rl: ResolvedLayout, fps: float) -> tuple[str, str, str]:
+def _background_args(rl: ResolvedLayout, fps: float, dur: float) -> tuple[str, str, str]:
     """(bg_chain, fg_source_label, overlay_opts) for one filler.
 
     blur reads the source TWICE — a scaled cover for the background and the
@@ -121,13 +143,40 @@ def _background_args(rl: ResolvedLayout, fps: float) -> tuple[str, str, str]:
     does not split. The difference in shape is caused by the filler, which is
     what makes this a parameter and not a branch: both arms hand back a [bg], a
     [fg] and one overlay, over the identical tail.
+
+    The third element is the overlay's options, `""` for both fillers today. It
+    stays in the tuple as the seam a future filler would use — collapsing it now
+    only to re-add it later is churn.
     """
     if rl.background == "solid":
-        # `color` is an INFINITE source. Without shortest=1 the overlay never
-        # sees end-of-stream on either input and the encode does not terminate
-        # (design §4) — it is not a tidiness flag, it is what makes ffmpeg stop.
-        return (f"color=c={rl.background_color}:s={rl.out_w}x{rl.out_h}:r={fps:.6g}[bg];",
-                "[0:v]", ":shortest=1")
+        # `color` is an INFINITE source, so something must end it — but NOT the
+        # overlay. `overlay=:shortest=1` terminates and is the reflex remedy, yet it
+        # lands EXACTLY one frame short of the source (measured: source 95 frames,
+        # blur 95, solid 94; `eof_action=endall` is identical — the truncation is
+        # inherent to ending an overlay against an infinite source). One frame
+        # accumulates into a real gate: check_reel measures the assembled reel
+        # against _LENGTH_TOL (0.5s), so ~30 solid episodes at 59.94fps eat the
+        # whole band. A filler must not change how long the reel is.
+        #
+        # `d=` bounds the source so the graph is finite on its own terms. It is NOT
+        # sufficient by itself: `color`'s timebase is 1/r while the decoded source
+        # carries the container's (1/15360 for a 30fps mp4), and the tail's `fps`
+        # filter reads the overlay's mismatched output timebase as a far longer
+        # stream — measured 46080 frames / 1536s out of a 90-frame 3s source, i.e.
+        # exactly the 512x the two timebases differ by. Whether it bites depends on
+        # the source: the 59.94fps golden fixture is unaffected, the 30fps one is
+        # destroyed. reframe() therefore ALSO bounds the output with `-t` (see
+        # there), which is what actually pins the length. Both are kept: `-t` makes
+        # it correct, `d=` keeps the filtergraph finite for anyone who builds it
+        # without reframe's output args.
+        return (f"color=c={rl.background_color}:s={rl.out_w}x{rl.out_h}:"
+                f"r={fps:.6g}:d={dur:.6f}[bg];",
+                "[0:v]", "")
+    if rl.background != "blur":
+        # Terminal raise even though LayoutSpec validates the vocabulary upstream:
+        # without it a new BACKGROUNDS entry would fall through and render as blur —
+        # wrong pixels, no error. Same discipline as geometry.grid_lines/target_frac.
+        raise ValueError(f"unknown background: {rl.background!r} — expected one of {BACKGROUNDS}")
     # boxblur rejects a radius at/above half the chroma plane; yuv420p halves the
     # plane again, so the ceiling is the largest radius STRICTLY under
     # min(out_w, out_h) / 4 — i.e. (min(out_w, out_h) - 1) // 4. ffmpeg 8.1.2
@@ -148,7 +197,7 @@ def _background_args(rl: ResolvedLayout, fps: float) -> tuple[str, str, str]:
 
 
 def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
-                 gains: tuple[float, ...], fps: float) -> list[str]:
+                 gains: tuple[float, ...], fps: float, dur: float) -> list[str]:
     """The ffmpeg filter arguments for one layout.
 
     fill takes the fast path: one -vf chain, byte-identical to what this script
@@ -167,7 +216,7 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
     rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
     b = rl.border_px
     ox, oy, ow, oh = rx - b, ry - b, rw + 2 * b, rh + 2 * b
-    bg_chain, fg_src, ov_opts = _background_args(rl, fps)
+    bg_chain, fg_src, ov_opts = _background_args(rl, fps, dur)
     pad = f",pad={ow}:{oh}:{b}:{b}:{rl.border_color}" if b else ""
     return ["-filter_complex",
             (f"{bg_chain}"
@@ -190,7 +239,9 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     sidecar — what was actually cut, for check_episode/storyboard to read back instead
     of re-deriving the crop from the canvas (silently wrong under a non-fill layout).
     """
-    src_w, src_h, fps = _probe(src)   # NEVER assume dims/fps: real footage is 4K/60
+    # NEVER assume dims/fps: real footage is 4K/60. `dur` bounds a solid filler's
+    # synthesized background so the render is exactly as long as the source (§4).
+    src_w, src_h, fps, dur = _probe(src)
     route = route_from_json(route_path)               # list[RoutePoint]
     if not route:
         raise ValueError(
@@ -211,8 +262,17 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     xexpr = _xexpr(path, times)
     mean_y = sum(p.y for p in route) / len(route)
     cy = g.crop_y(mean_y, rl.crop_h, src_h)
+    # `-t` pins the render to the source's length. This is what actually makes a
+    # solid filler duration-correct: `color=:d=` alone leaves the overlay's output
+    # timebase mismatched with the tail's `fps` filter, which on a 30fps source
+    # (container timebase 1/15360) turned a 90-frame 3s clip into 46080 frames /
+    # 1536s — while the 59.94fps golden fixture came out right, so the defect is
+    # source-dependent and invisible on one fixture. Applied to EVERY layout, not
+    # just solid: measured a no-op for fill and blur (both already end with the
+    # source), and unconditional means no future filler can forget it.
     cmd = ["ffmpeg", "-y", "-i", src,
-           *_filter_args(rl, xexpr, cy, gains, fps),
+           *_filter_args(rl, xexpr, cy, gains, fps, dur),
+           "-t", f"{dur:.6f}",
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)
 

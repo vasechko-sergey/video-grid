@@ -96,7 +96,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # probe the source ONCE and thread the real dims through the checks (contract
     # fix). This runs BEFORE tracking so a manifest the layout cannot satisfy
     # fails in milliseconds, not after YOLO has walked the whole segment.
-    src_w, src_h, _fps = reframe._probe(m.segment)
+    src_w, src_h, _fps, _dur = reframe._probe(m.segment)
 
     # the layout is editorial intent, not a retry parameter: it does not change
     # between attempts, so build it once. validate() already proved it constructs.
