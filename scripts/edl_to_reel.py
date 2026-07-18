@@ -91,9 +91,12 @@ def main() -> None:
     ap.add_argument("--out-dir", required=True, help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4")
     ap.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the reel (§5.16)")
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                    help=f"episodes to process concurrently (default {DEFAULT_JOBS} — the "
+                         f"measured knee; lower on a memory-constrained box)")
     a = ap.parse_args()
     result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
-                         music=a.music, titles=a.titles)
+                         music=a.music, titles=a.titles, jobs=a.jobs)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "delivered" else 1)
 

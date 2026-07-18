@@ -315,3 +315,41 @@ def test_a_raise_beats_a_failing_status_from_a_later_episode(monkeypatch, tmp_pa
     with pytest.raises(RuntimeError, match="ffmpeg died"):
         edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
                                 str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+
+
+def test_cli_threads_jobs(monkeypatch, tmp_path):
+    import sys
+    seen_jobs = {}
+
+    def fake_driver(*a, **kw):
+        seen_jobs["jobs"] = kw.get("jobs")
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--jobs", "2"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen_jobs["jobs"] == 2          # int, not the string "2"
+
+
+def test_cli_jobs_defaults_to_the_knee(monkeypatch, tmp_path):
+    import sys
+    seen_jobs = {}
+
+    def fake_driver(*a, **kw):
+        seen_jobs["jobs"] = kw.get("jobs")
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit):
+        edl_to_reel.main()
+    assert seen_jobs["jobs"] == edl_to_reel.DEFAULT_JOBS
