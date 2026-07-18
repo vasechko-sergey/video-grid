@@ -1,4 +1,5 @@
 import json
+import threading
 import pytest
 from pathlib import Path
 from scripts import edl_to_reel
@@ -162,3 +163,108 @@ def test_jobs_must_be_a_positive_int(monkeypatch, tmp_path, bad):
     with pytest.raises(ValueError, match="jobs must be an integer >= 1"):
         edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                                 str(tmp_path / "w"), str(tmp_path / "out"), jobs=bad)
+
+
+def _six(tmp_path):
+    """Six episodes — divisible by 3, so a jobs=3 pool fills exactly twice with no
+    ragged tail. Fewer than 6 would let a lucky schedule fake the concurrency."""
+    ep = dict(source="a.mp4", dur=2.0, shot_type="wide",
+              composition="lead", grid="thirds", crop_scale=0.8)
+    return _edl_file(tmp_path, episodes=[{**ep, "start": float(i) * 2.0} for i in range(6)])
+
+
+def test_the_pool_reaches_the_cap_and_never_exceeds_it(monkeypatch, tmp_path):
+    # One fake proves both halves. The barrier forces `jobs` workers to be inside
+    # fake_pe simultaneously: a sequential driver never assembles 3 parties, so
+    # barrier.wait() times out and raises BrokenBarrierError. Because the barrier
+    # HOLDS all three, peak == jobs is forced rather than hoped for — a bare counter
+    # could observe 2 on an unlucky schedule and flake.
+    jobs = 3
+    barrier = threading.Barrier(jobs, timeout=10)     # deadlock backstop, not a timing assumption
+    lock = threading.Lock()
+    state = {"live": 0, "peak": 0}
+
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        with lock:
+            state["live"] += 1
+            state["peak"] = max(state["peak"], state["live"])
+        barrier.wait()
+        with lock:
+            state["live"] -= 1
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    res = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "out"), jobs=jobs)
+    assert res["status"] == "delivered"
+    assert state["peak"] == jobs
+
+
+def test_every_episode_gets_its_own_scratch_and_output(monkeypatch, tmp_path):
+    # The load-bearing precondition for parallelising at all: process_episode's
+    # docstring warns that a shared project_dir clobbers a sibling's route/path/
+    # report. Pin it rather than trust the comment.
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    dirs = [m["project_dir"] for m in seen["pe"]]
+    outs = [m["manifest"]["out_path"] for m in seen["pe"]]
+    assert len(set(dirs)) == 6 and len(set(outs)) == 6
+    assert sorted(Path(d).name for d in dirs) == [f"ep{i}" for i in range(6)]
+
+
+def test_every_episode_runs_even_after_an_earlier_one_fails(monkeypatch, tmp_path):
+    # The deliberate behaviour change (design §4): the sequential loop returned at
+    # the first failure and never processed episodes after it. The pool runs them
+    # all. Pinned so a future reader sees this was chosen, not leaked.
+    seen = _wire(monkeypatch, pe_results={0: {"status": "needs_input", "problems": ["x"]}})
+    res = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert res["finding"]["episode_idx"] == 0
+    assert sorted(m["idx"] for m in seen["pe"]) == [0, 1, 2, 3, 4, 5]
+
+
+def test_the_lowest_failing_index_is_reported(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, pe_results={1: {"status": "needs_input", "problems": ["x"]},
+                                          4: {"status": "escalate", "escalate_to": "edit-plan"}})
+    res = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert res["finding"]["episode_idx"] == 1          # not 4, and not scheduler-dependent
+    assert res["finding"]["sub_status"] == "needs_input"
+    assert seen["rm"] is None and seen["build"] == []
+
+
+def test_jobs_1_reports_the_same_finding_as_the_default(monkeypatch, tmp_path):
+    # The regression guard AND the debugging escape hatch: one semantics at every
+    # jobs value. A jobs=1 run that behaved differently would lie about the thing
+    # being debugged.
+    fails = {1: {"status": "needs_input", "problems": ["x"]},
+             4: {"status": "escalate", "escalate_to": "edit-plan"}}
+    _wire(monkeypatch, pe_results=fails)
+    one = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w1"), str(tmp_path / "out1"), jobs=1)
+    _wire(monkeypatch, pe_results=fails)
+    three = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                    str(tmp_path / "w3"), str(tmp_path / "out3"), jobs=3)
+    assert one["finding"] == three["finding"]
+    assert one["status"] == three["status"] == "stop_and_report"
+
+
+def test_the_weights_are_warmed_before_any_worker_starts(monkeypatch, tmp_path):
+    # A warm-up that runs after the pool starts is no warm-up (design §5). Record
+    # the order and assert ensure_model landed before the first process_episode.
+    order = []
+    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: order.append(("warm", m)))
+    _wire(monkeypatch)
+
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        order.append(("pe", project_dir))
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+
+    edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert order[0] == ("warm", edl_to_reel.track.MODEL)    # the manifest default, by name
+    assert [kind for kind, _ in order].count("warm") == 1   # one distinct model → warmed once
+    assert all(kind == "pe" for kind, _ in order[1:])

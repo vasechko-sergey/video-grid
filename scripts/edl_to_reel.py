@@ -1,15 +1,17 @@
 """Front-half SP1 driver (design docs/specs/2026-07-11-extract-spine-design.md):
-a hand-authored EDL.json → a delivered REEL_v1.mp4. The thin SEQUENTIAL loop-1
-fan-out — extract every window, run process_episode per episode, assemble a
-ReelManifest — then hand off to build_reel (loop-2). The cap-3 PARALLEL router +
-episode-choice curation (montage §5.1) is a later optimization that wraps this.
-Canvas/delivery are resolved ONCE here and stored in each ReelEpisode, because
-build_reel's reprocess re-runs process_episode without project=."""
+a hand-authored EDL.json → a delivered REEL_v1.mp4. Extract every window, run
+process_episode per episode across a bounded thread pool (`jobs`, default 3 — the
+measured knee, see docs/specs/2026-07-18-cap3-fanout-design.md §2), assemble a
+ReelManifest, then hand off to build_reel (loop-2). Every episode runs even when an
+earlier one fails; the reported finding is chosen by INDEX, so it never depends on
+thread scheduling. Canvas/delivery are resolved ONCE here and stored in each
+ReelEpisode, because build_reel's reprocess re-runs process_episode without project=."""
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from scripts import build_reel, extract, process_episode
+from scripts import build_reel, extract, process_episode, track
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
@@ -41,15 +43,33 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
     extract.extract_edl(edl, footage_root, seg_dir)
 
-    # 3. loop-1 fan-out: one process_episode per episode (sequential)
+    # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
+    # Safe to parallelise because each episode owns its scratch (work_dir/ep{i}) and its
+    # output (out_dir/ep{i}.mp4) — process_episode's docstring names the clobber this
+    # would otherwise cause, and preflight built both paths per index.
+    for model in sorted({(md.get("model") or track.MODEL) for md in mds}):
+        track.ensure_model(model)      # before ANY worker: N cold workers would race the
+                                       # same weights download into the same path (§5)
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        futures = [ex.submit(process_episode.process_episode, md,
+                             str(Path(work_dir) / f"ep{i}"))   # md already resolved → no project=
+                   for i, md in enumerate(mds)]
+    # the `with` block joined every worker, so each future below is already done and the
+    # loop reads them IN INDEX ORDER — no dependence on completion order anywhere.
+    results: list[dict] = []
+    for i, fut in enumerate(futures):
+        try:
+            results.append(fut.result())
+        except Exception as e:         # a hard setup error stays an exception, per the docstring
+            e.add_note(f"raised while processing episode {i} (segment {mds[i]['segment']})")
+            raise
     episodes: list[ReelEpisode] = []
-    for i, md in enumerate(mds):
-        epdir = str(Path(work_dir) / f"ep{i}")
-        res = process_episode.process_episode(md, epdir)   # md already resolved → no project= needed
+    for i, (md, res) in enumerate(zip(mds, results, strict=True)):
         if res.get("status") != "mechanical_pass":
             return {"status": "stop_and_report",
                     "finding": {"reason": "episode-failed", "episode_idx": i,
                                 "sub_status": res.get("status")}, "sub": res}
+        epdir = str(Path(work_dir) / f"ep{i}")
         episodes.append(ReelEpisode(manifest=md, clip=res["clip"],
                                     route=str(Path(epdir) / "route.json"),
                                     path=str(Path(epdir) / "path.json"),
