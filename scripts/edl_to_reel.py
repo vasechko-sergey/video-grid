@@ -14,14 +14,20 @@ from scripts.lib.edl import EDL, preflight
 from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
 
+DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
+
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                 work_dir: str, out_dir: str, *, music: str | None = None,
-                titles: str | None = None) -> dict:
+                titles: str | None = None, jobs: int = DEFAULT_JOBS) -> dict:
     """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
     for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
     raise ValueError instead (a hard setup error, not an editorial finding to route)."""
+    if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
+        raise ValueError(f"edl_to_reel: jobs must be an integer >= 1, got {jobs!r} "
+                         f"(default {DEFAULT_JOBS} is the measured knee; lower it on a "
+                         f"memory-constrained box, raise it only with a GPU)")
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
     seg_dir = str(Path(work_dir) / "segments")

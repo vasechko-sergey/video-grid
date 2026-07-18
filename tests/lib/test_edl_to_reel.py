@@ -145,3 +145,20 @@ def test_wire_refuses_the_old_list_shape(monkeypatch):
     # without its canned failure ever landing.
     with pytest.raises(TypeError, match="must be a .*dict"):
         _wire(monkeypatch, pe_results=[{"status": "needs_input", "problems": ["x"]}])
+
+
+def test_default_jobs_is_the_measured_knee():
+    # 3 is measured, not guessed: design §2 clocks 1.70x at cap 3 on six real
+    # episodes and +0.99x (nothing) at cap 4. Pinned so a later edit to the
+    # constant has to argue with the measurement.
+    assert edl_to_reel.DEFAULT_JOBS == 3
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "3", 3.0])
+def test_jobs_must_be_a_positive_int(monkeypatch, tmp_path, bad):
+    # True is in the list on purpose: isinstance(True, int) is True, so an
+    # unguarded check would read it as jobs=1 and silently serialize the fan-out.
+    _wire(monkeypatch)
+    with pytest.raises(ValueError, match="jobs must be an integer >= 1"):
+        edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                                str(tmp_path / "w"), str(tmp_path / "out"), jobs=bad)
