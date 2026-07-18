@@ -211,6 +211,10 @@ if __name__ == "__main__":
     ap.add_argument("--crop-aspect", default=None, help="canvas | source | W:H")
     ap.add_argument("--crop-scale", type=float, default=1.0)
     ap.add_argument("--rect", default=None, help="insert only: x,y,w as canvas fractions")
+    ap.add_argument("--background", default="blur",
+                    help="blur | solid — the filler behind a fit/insert")
+    ap.add_argument("--background-color", default="black",
+                    help="solid only: ffmpeg colour name or hex")
     ap.add_argument("--border-px", type=int, default=0)
     ap.add_argument("--border-color", default="white")
     ap.add_argument("--path-out", required=True)
@@ -223,6 +227,7 @@ if __name__ == "__main__":
         aspect = (aw, ah)
     rect = tuple(float(v) for v in a.rect.split(",")) if a.rect else None
     lspec = LayoutSpec(mode=a.layout, crop_aspect=aspect, crop_scale=a.crop_scale, rect=rect,
+                       background=a.background, background_color=a.background_color,
                        border_px=a.border_px, border_color=a.border_color)
     spec = ReframeSpec(composition=a.composition, grid=a.grid, canvas=(cw, ch),
                        color_means=means, delivery=Delivery.from_spec(a.delivery),

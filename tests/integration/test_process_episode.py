@@ -60,6 +60,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None, dims=(1920, 
         calls["reframe_delivery"] = spec.delivery
         calls["reframe_canvas"] = spec.canvas
         calls["reframe_color_correct"] = spec.color_correct
+        calls["reframe_background"] = (spec.layout.background, spec.layout.background_color)
         Path(out).write_text("clip")
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
@@ -107,6 +108,26 @@ def test_happy_path_returns_mechanical_pass(monkeypatch, tmp_path):
     # sidecar reframe wrote, which is the point of the layouts work.
     assert calls["check"] == dict(attempt=1, composition="lead", grid="thirds",
                                   target_dur=3.0)
+
+
+def test_the_manifests_filler_reaches_the_reframe_spec(monkeypatch, tmp_path):
+    # The hop from the VALIDATED manifest to the LayoutSpec reframe actually renders
+    # with. validate() structurally cannot see a drop here — it builds its OWN oracle
+    # LayoutSpec from the manifest fields — so a regression passes the gate clean and
+    # every authored colour silently renders as the "black" default. Silent
+    # corruption, not a raise, which is why it needs its own pin.
+    #
+    # The colour is deliberately NON-default: "black" reads back identically whether
+    # it was threaded or dropped, so a default-valued fixture would assert nothing.
+    # The pair is asserted whole — `background` alone would survive the colour being
+    # dropped, and vice versa.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(
+        _manifest(tmp_path, composition="break", layout="fit", crop_aspect="source",
+                  background="solid", background_color="#101820"),
+        project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_background"] == ("solid", "#101820")
 
 
 def test_timings_recorded_per_stage(monkeypatch, tmp_path):

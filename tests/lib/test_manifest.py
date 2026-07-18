@@ -230,7 +230,11 @@ def test_manifest_gate_reports_a_bad_background_colour_as_a_problem():
         "composition": "break", "grid": "thirds", "canvas": [9, 16],
         "layout": "fit", "crop_aspect": "source",
         "background": "solid", "background_color": "bla:ck"})
-    assert any("break the ffmpeg filtergraph" in p for p in mf.validate(m))
+    # Pins the FIELD NAME and the OFFENDING VALUE in one substring. The phrase
+    # "break the ffmpeg filtergraph" alone is verbatim in border_color's raise too,
+    # so it survives both erasing the message down to that phrase and the realistic
+    # copy-paste bug where this raise names border_color and prints self.border_color.
+    assert any("background_color 'bla:ck'" in p for p in mf.validate(m))
 
 
 # --- Task 5: cast field + hero.resolve as validate()'s oracle ---
