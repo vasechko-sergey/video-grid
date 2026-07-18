@@ -18,6 +18,23 @@ MODEL = "yolo11n-seg.pt"
 AMBIG_MARGIN = 0.8      # §6.1a margin rule: top-2 within ~20% ⇒ ambiguous ⇒ stop-and-report.
                         # One spelling, two readers (_pick_hero, _descriptor_track).
 
+
+def ensure_model(model_path: str = MODEL) -> None:
+    """Materialize the weights ONCE, before any concurrent tracking starts.
+
+    Ultralytics auto-downloads a bare model NAME on first use (see MODEL), so N
+    workers starting on a cold cache would each begin the same download into the
+    same path — concurrent writers to one file, silent corruption rather than a
+    raise (design §12). Constructing the model here IS the fix: it performs the
+    download, and every worker afterwards finds the file already on disk.
+    Idempotent and cheap once warm. Callers that fan out over episodes MUST call
+    this first (scripts/edl_to_reel.py).
+    """
+    # lazy import: heavy optional dep (ultralytics/torch), mirrors _iter_detections
+    from ultralytics import YOLO
+    YOLO(model_path)
+
+
 _Det = tuple[int, float, float, float, float]
 _Frame = tuple[int, list[_Det]]
 
