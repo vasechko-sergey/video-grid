@@ -18,11 +18,13 @@ numeric core + a thin driver + a SKILL + a real-fixture golden.
    episodes to slots`. Role (2), the **retry-time auto-fix** (`build_reel`'s
    `length` failure re-times the spine), stays deferred — it touches
    `build_reel`/`reel_orchestration` and is a separate slice (landed
-   2026-07-18 as its own slice — see `docs/specs/2026-07-18-length-retime-design.md`.);
+   2026-07-18 as its own slice — see `docs/specs/2026-07-18-length-retime-design.md`);
    the existing `escalate_to="pacing"` stop-and-report is **unchanged**. §5's
    pacing-gate **back-edge** (spine won't fit → auto re-pick
    `MUSIC.start_offset`) is also deferred; v1 **reports** the misfit, never
-   silently re-times.
+   silently re-times. (Also landed 2026-07-18, in the same slice — but as a pure
+   `min(realized, fragment)` re-time in `edit_plan.build_edl`, **not** the literal
+   `start_offset` re-pick above, which stays the manual `beats --auto-start` rung.)
 2. **Sections derived from the energy curve.** `MUSIC.json` stores an `energy[]`
    RMS curve + `energy_hz` but **no** section boundaries; `pacing.py` segments the
    energy curve itself (min-max normalized within the track, beat-aligned bands) —
