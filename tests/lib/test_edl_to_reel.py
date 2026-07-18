@@ -33,6 +33,16 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
         return segs
     monkeypatch.setattr(edl_to_reel.extract, "extract_edl", fake_extract)
 
+    # Refuse the old list shape LOUDLY. dict([{"status": s, "problems": p}]) does not
+    # raise — a one-element list holding an exactly-2-key dict (the canned-result shape
+    # used throughout this file) coerces to {"status": "problems"}, after which every
+    # canned.get(idx, ...) falls through to mechanical_pass and the test passes having
+    # verified nothing. A fixture whose whole job is to be trustworthy must not accept
+    # a wrong-shaped argument in silence.
+    if pe_results is not None and not isinstance(pe_results, dict):
+        raise TypeError(f"_wire: pe_results must be a {{episode_idx: result}} dict, got "
+                        f"{type(pe_results).__name__} — a list coerces silently and "
+                        f"hollows out the test; write {{0: result}}, not [result]")
     canned = dict(pe_results or {})     # {episode_idx: result}; absent → mechanical_pass
 
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
@@ -126,3 +136,12 @@ def test_a_canned_result_lands_on_its_own_episode(monkeypatch, tmp_path):
     assert res["finding"]["episode_idx"] == 1
     assert res["finding"]["sub_status"] == "needs_input"
     assert sorted(m["idx"] for m in seen["pe"]) == [0, 1]
+
+
+def test_wire_refuses_the_old_list_shape(monkeypatch):
+    # The guard exists because dict([{"status": s, "problems": p}]) does NOT raise:
+    # a 2-key result dict coerces to {"status": "problems"} and every episode then
+    # gets the default mechanical_pass, so a test written with a list would pass
+    # without its canned failure ever landing.
+    with pytest.raises(TypeError, match="must be a .*dict"):
+        _wire(monkeypatch, pe_results=[{"status": "needs_input", "problems": ["x"]}])
