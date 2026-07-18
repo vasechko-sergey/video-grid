@@ -47,8 +47,13 @@ scripts/track.py          EDIT  ensure_model(model_path) — materialize weights
 scripts/build_reel.py     EDIT  correct the measurement-refuted "one process_episode
                                 saturates the box" comment (§9)
 tests/lib/test_edl_to_reel.py  EDIT  fixture: index results by episode, not a shared
-                                iterator (§7.1); +6 fan-out tests
-tests/lib/test_track.py   EDIT  ensure_model tests (§7)
+                                iterator, and stub ensure_model (§7.1); +19 tests
+tests/lib/test_track.py   NEW   ensure_model tests + the MODEL/DEFAULT_MODEL pin (§7.3)
+tests/integration/test_front_spine.py,
+tests/integration/test_edit_plan.py  EDIT  stub ensure_model — all three goldens fake
+                                process_episode, so a real YOLO buys them nothing (§7.4)
+.gitignore                EDIT  yolo11*.pt — ultralytics downloads into the CWD when its
+                                configured weights_dir is absent, i.e. into the repo root
 docs                      EDIT  this spec + plan + using-montage §deferred + montage
                                 §5.10 + build-status + pipeline-map + CLAUDE.md (§10)
 ```
@@ -189,11 +194,20 @@ non-pass:
 
 **Channel 2 — a raised exception.** Missing footage, a corrupt sidecar, an
 ffmpeg failure: `edl_to_reel`'s docstring already contracts these as raises, not
-findings. `futures` is read in index order, so the **lowest-index** exception is
-the one that escapes — the same one the sequential loop would have hit first.
-It is re-raised with the episode index prefixed, because a bare `RuntimeError:
-command failed (exit 1)` from a pool gives no clue which of six episodes
-produced it.
+findings. It is re-raised with the episode index attached, because a bare
+`RuntimeError: command failed (exit 1)` from a pool gives no clue which of six
+episodes produced it.
+
+**One pass, not two — the channels are ordered against each other.** This is the
+subtlety the first implementation got wrong, and it is worth stating plainly:
+draining every future's exception first and *then* scanning statuses gives each
+channel its own lowest-index rule but no rule *between* them. A raise at episode 2
+would beat a routable `stop_and_report` at episode 0 — which the sequential loop
+returned before it ever reached episode 2. The caller loses a machine-readable
+finding and gets a traceback. So a single loop walks the indices once, and
+whichever problem sits at the lowest index wins **whatever kind it is**. That,
+not per-channel ordering, is what makes the finding identical to the sequential
+one.
 
 ### The behaviour change, stated plainly
 
@@ -240,9 +254,18 @@ def ensure_model(model_path: str = MODEL) -> None:
     YOLO(model_path)
 ```
 
-The driver warms **every distinct model across the resolved manifests**, not
-just the default — a manifest may pin `yolo11s-seg.pt`/`yolo11m-seg.pt` from
-`MODELS`, and a model nobody warmed is a model three workers will race for.
+The driver warms **every distinct model across the resolved manifests**, not just
+the default. **Today that set always has exactly one element** and the loop is
+forward-compatible only: `EDLEpisode` has no `model` field, `to_manifest_dict`
+deliberately omits one, and `resolve_manifest` fills only canvas/delivery — so
+nothing reaching this driver can pin `yolo11s-seg.pt`/`yolo11m-seg.pt` from
+`MODELS`. The loop is kept because the *cost* is one set comprehension and the
+failure it guards against is silent: if the EDL contract ever gains `model`, a
+driver that warmed only the default would leave three workers racing for the
+pinned one. A second hazard is live right now and pinned by a test instead:
+`track.MODEL` and `manifest.DEFAULT_MODEL` are independent literals, and the
+driver warms the former while every worker constructs the latter — drift between
+them is exactly this landmine with no loop to catch it.
 
 This preflight is **required for correctness**, not a nicety: without it the
 slice introduces a silent-corruption path that does not exist today.
@@ -259,10 +282,12 @@ slice introduces a silent-corruption path that does not exist today.
 - **Two episodes fail** → the lower index is reported and its result is what
   `sub` carries; the higher episode's result is discarded, exactly as in the
   sequential loop, which returned before it ever saw the second failure.
-- **An episode raises while another returns a failing status** → the exception
-  wins, because it is raised before the status loop runs. This matches the
-  sequential loop, where a raise aborts the function outright. Within the
-  exception channel, lowest index wins.
+- **An episode raises while another returns a failing status** → **the lower index
+  wins, whichever kind it is.** A raise at 2 with a `needs_input` at 0 returns the
+  finding for 0 (the sequential loop returned there and never reached 2); a raise
+  at 0 with a `needs_input` at 2 raises. Getting this wrong — ordering each channel
+  only within itself — silently converts a routable finding into a traceback, so
+  both orderings are tested.
 - **ultralytics absent** → `ensure_model` raises `ImportError` at the preflight
   rather than three identical `ImportError`s from three threads. Strictly better
   than today, where the failure surfaced from inside the first episode.
@@ -358,11 +383,21 @@ Two further fixture obligations, both found during implementation:
 ### §7.4 — Integration
 
 The existing real-ffmpeg goldens `tests/integration/test_front_spine.py` and
-`test_edit_plan.py` must stay green **unedited** at the default `jobs` — they
-drive `edl_to_reel` end-to-end, so they are the proof the fan-out did not
-disturb the SP1/SP3 seam. No new integration test: the seam is already covered,
-and re-proving ffmpeg concurrency in CI would buy a slow, machine-dependent test
-for no new information.
+`test_edit_plan.py` must stay green at the default `jobs` — they drive
+`edl_to_reel` end-to-end, so they are the proof the fan-out did not disturb the
+SP1/SP3 seam. No new integration test: the seam is already covered, and
+re-proving ffmpeg concurrency in CI would buy a slow, machine-dependent test for
+no new information.
+
+**They do need one edit, and the reason generalises.** All three fake
+`process_episode` but not `ensure_model`, which the driver calls itself — so each
+was constructing a real YOLO for a tracking pass it never runs, turning
+ffmpeg-only goldens into torch-required ones and, on a cold cache, downloading
+6 MB into the **repo root** (ultralytics falls back to the CWD when its configured
+`weights_dir` is absent — hence the `.gitignore` entry). Invisible on a developer
+box that already has the weights; a fresh CI clone is where it shows. Stubbing
+`ensure_model` costs one line per fixture and restores what the marker promises:
+integration means ffmpeg, not a model download.
 
 ## §8 — Landmines touched (montage §12)
 

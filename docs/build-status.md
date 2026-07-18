@@ -811,9 +811,10 @@ _Last updated: 2026-07-18._
 
 - **cap-3 parallel episode fan-out (§5.1's last sub-item) DONE (2026-07-18)** —
   plan `docs/plans/2026-07-18-cap3-fanout.md` + design
-  `docs/specs/2026-07-18-cap3-fanout-design.md`. **1257 passed / 8 skipped**
-  (+19: 1 fixture pin, 2 `ensure_model`, 6 `jobs` validation, 6 pool, 2
-  exception-channel, 2 CLI). `scripts/edl_to_reel.py`'s sequential per-episode
+  `docs/specs/2026-07-18-cap3-fanout-design.md`. **1259 passed / 8 skipped**
+  (**+22**: 2 fixture pins, 2 `ensure_model` + 1 MODEL-drift pin, 6 `jobs`
+  validation, 6 pool, 3 failure-channel, 2 CLI).
+  `scripts/edl_to_reel.py`'s sequential per-episode
   loop becomes `ThreadPoolExecutor(max_workers=jobs)`, default
   `DEFAULT_JOBS = 3`, exposed as `--jobs`. **Stage 5.1 now has no open
   sub-items.**
@@ -830,9 +831,15 @@ _Last updated: 2026-07-18._
   measurement. *Run every episode, report the lowest index* — a failing episode
   no longer short-circuits later ones (a deliberate behaviour change, pinned by
   its own test), and the finding is chosen by INDEX so it never depends on
-  thread scheduling; the exception channel re-raises the lowest-index error with
-  its **own type** (`add_note` carries the episode) because `edl_to_reel`'s
-  docstring contracts setup failures as `ValueError`. *`edl_to_reel` only* —
+  thread scheduling; a raised setup error keeps its **own type** (`add_note`
+  carries the episode) because `edl_to_reel`'s docstring contracts those as
+  `ValueError`. **The final review caught the subtle half of this:** the first
+  implementation drained the exception channel fully, *then* scanned statuses —
+  giving each channel its own lowest-index rule but none *between* them, so a
+  raise at episode 2 beat a routable `stop_and_report` at episode 0 and a caller
+  branching on `result["status"]` got a traceback instead of a finding. One loop
+  over the indices now decides both, and both orderings are tested.
+  *`edl_to_reel` only* —
   loop-2's reprocess batch is one or two culprits and was hardened days earlier.
   Named `jobs`, not `cap`: `cap` already means loop-2's reprocess cap
   (`EDL.cap` → `ReelManifest.cap`), read a few statements below.
@@ -848,11 +855,19 @@ _Last updated: 2026-07-18._
   old list shape (a one-element list holding a 2-key result dict becomes
   `{"status": "problems"}`, after which every episode falls through to
   `mechanical_pass`) — it now raises, because the coming "every episode runs past
-  a failure" test would otherwise have passed hollow. **Mutation-verified twice:**
-  the barrier concurrency test goes red under `max_workers=1`, and the
-  exception-type test goes red when the bare re-raise is replaced by a wrapper.
-  The real-ffmpeg SP1/SP3 goldens (`test_front_spine.py`, `test_edit_plan.py`)
-  pass **unedited**.
+  a failure" test would otherwise have passed hollow. The final review also found
+  that the three real-ffmpeg SP1/SP3 goldens had silently acquired a torch
+  dependency for the same reason as the unit tier, downloading weights into the
+  **repo root** (ultralytics falls back to the CWD when its configured
+  `weights_dir` is absent) past a `.gitignore` that only covered `models/`; they
+  now stub `ensure_model`, and `yolo11*.pt` is ignored. A `track.MODEL` ==
+  `manifest.DEFAULT_MODEL` pin was added: the driver warms the former while every
+  worker builds the latter, and drift between two independent literals would
+  reinstate the very race the warm-up removes.
+  **Mutation-verified three times:** the barrier test goes red under
+  `max_workers=1`, the exception-type test goes red when the bare re-raise is
+  replaced by a wrapper, and the channel-precedence test goes red against the
+  two-pass code.
 
 ## Next action
 

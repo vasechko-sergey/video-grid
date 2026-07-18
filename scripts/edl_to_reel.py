@@ -54,17 +54,22 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
         futures = [ex.submit(process_episode.process_episode, md,
                              str(Path(work_dir) / f"ep{i}"))   # md already resolved → no project=
                    for i, md in enumerate(mds)]
-    # the `with` block joined every worker, so each future below is already done and the
-    # loop reads them IN INDEX ORDER — no dependence on completion order anywhere.
-    results: list[dict] = []
-    for i, fut in enumerate(futures):
-        try:
-            results.append(fut.result())
-        except Exception as e:         # a hard setup error stays an exception, per the docstring
-            e.add_note(f"raised while processing episode {i} (segment {mds[i]['segment']})")
-            raise
+    # the `with` block joined every worker, so each future below is already done and this
+    # ONE loop reads them in index order — no dependence on completion order anywhere.
+    #
+    # One pass, not two. An episode can fail through either channel (a raised setup error
+    # or a returned non-pass status), and the two must be ordered AGAINST EACH OTHER, not
+    # each within itself: draining every exception first would let a raise at episode 2
+    # beat a routable stop_and_report at episode 0 — which the sequential loop returned
+    # before it ever reached episode 2. Whichever problem sits at the lowest index wins,
+    # whatever kind it is; that is what makes the finding identical to the sequential one.
     episodes: list[ReelEpisode] = []
-    for i, (md, res) in enumerate(zip(mds, results, strict=True)):
+    for i, (md, fut) in enumerate(zip(mds, futures, strict=True)):
+        try:
+            res = fut.result()
+        except Exception as e:         # a hard setup error stays an exception, per the docstring
+            e.add_note(f"raised while processing episode {i} (segment {md['segment']})")
+            raise
         if res.get("status") != "mechanical_pass":
             return {"status": "stop_and_report",
                     "finding": {"reason": "episode-failed", "episode_idx": i,

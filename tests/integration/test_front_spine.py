@@ -62,6 +62,10 @@ def _fake_track_pe(monkeypatch):
         proc.run(["ffmpeg", "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
         return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
+    # the pool — unstubbed, this ffmpeg golden also constructs a real YOLO (importing
+    # torch, and downloading 6MB on a cold cache) for a tracking pass it never runs.
+    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
 
 
 @pytest.mark.integration

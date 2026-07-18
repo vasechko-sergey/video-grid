@@ -31,3 +31,13 @@ def test_ensure_model_defaults_to_the_module_model(monkeypatch):
     monkeypatch.setitem(sys.modules, "ultralytics", _fake_ultralytics(calls))
     track.ensure_model()
     assert calls == [track.MODEL]
+
+
+def test_the_module_model_matches_the_manifest_default():
+    # The fan-out warms track.MODEL (scripts/edl_to_reel.py) while every worker ends up
+    # constructing manifest.DEFAULT_MODEL (Manifest -> TrackSpec -> _iter_detections).
+    # They are independent literals. If they ever drift, the driver warms model A while N
+    # workers race a cold download of model B into one path — precisely the silent
+    # corruption the warm-up exists to prevent, and nothing else asserts they agree.
+    from scripts.lib.manifest import DEFAULT_MODEL
+    assert track.MODEL == DEFAULT_MODEL

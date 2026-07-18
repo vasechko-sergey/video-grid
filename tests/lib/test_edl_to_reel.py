@@ -353,3 +353,25 @@ def test_cli_jobs_defaults_to_the_knee(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         edl_to_reel.main()
     assert seen_jobs["jobs"] == edl_to_reel.DEFAULT_JOBS
+
+
+def test_a_routable_finding_at_a_lower_index_beats_a_raise_above_it(monkeypatch, tmp_path):
+    # The inverted twin of the test above, and the case that actually diverged: the
+    # two failure channels must be ordered AGAINST EACH OTHER, not each within itself.
+    # Draining every exception first would surface ep2's raise and lose ep0's routable
+    # stop_and_report — which the sequential loop returned before it ever reached ep2.
+    # A caller branching on result["status"] would get a traceback instead of a finding.
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        idx = int(Path(project_dir).name.removeprefix("ep"))
+        if idx == 2:
+            raise RuntimeError("ffmpeg died")
+        if idx == 0:
+            return {"status": "needs_input", "problems": ["ambiguous hero"]}
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    res = edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert res["status"] == "stop_and_report"          # NOT a raised RuntimeError
+    assert res["finding"]["episode_idx"] == 0 and res["finding"]["sub_status"] == "needs_input"
