@@ -33,7 +33,7 @@ _BACK_EDGE_TOL = 1e-6      # a realized total within this of the spine target "f
 def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
-    layout/motion/hero/crop_*/rect/background/border_*/color_means/beat_slot
+    layout/motion/hero/crop_*/rect/background*/border_*/color_means/beat_slot
     optional) are forwarded to EDLEpisode, whose __post_init__ is the single
     value-validation site. shot_type/processing_notes default to the window's
     shot_type/description but an editorial value overrides. An unknown or missing

@@ -576,9 +576,9 @@ Aspect is a **parameter**, not a hardcoded 9:16. Layout is **per-episode** (hori
 | Layout | When | reframe.py | Status |
 |--------|------|-----------|--------|
 | `fill` | action, subject moves — a ride | YOLO-tracked crop-to-fill (algorithm §6) | **built** |
-| `fit-blur` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** | **built** |
+| `fit` | a wide/horizontal frame worth keeping whole | scale-inside + **blurred background pad** | **built** |
 | `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background, optional border | **built** |
-| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad | planned |
+| `fit-solid` | clean/graphic look | scale-inside + solid/gradient pad | **built** (2026-07-18) |
 | `split` | two clips stacked | stack + pad | planned |
 | `pan` | static subject, slow reveal | slow constant-velocity pan | planned |
 
@@ -589,6 +589,10 @@ crop (aspect + scale), a rectangle placed in the canvas, and a background filler
 `fill` is "crop to the canvas aspect, rect = the whole canvas, no filler";
 `fit-blur` is "crop nothing, rect = full width, filler = blur"; `insert` is the
 same with a smaller rect. Adding `fit-solid` means adding a filler, not a branch.
+`fit-blur` is the preset `(fit, blur)` and `fit-solid` is `(fit, solid)` — the
+mode names the geometry, `background` names the filler; `fit-solid` landed
+2026-07-18 as exactly this (see
+[the fit-solid design](2026-07-18-fit-solid-design.md)).
 
 **Whether the subject is tracked follows from geometry, not from the layout's
 name.** Horizontal freedom is `freedom = src_w − crop_w`. At zero freedom the
@@ -696,6 +700,46 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - That same auto-download is a **concurrency landmine**: N workers starting a fan-out on a cold cache each begin the *same* download into the *same* path — concurrent writers to one file. It does not raise; it corrupts. Any code running `track.build_route` in parallel MUST call `track.ensure_model(model)` for every distinct model **before** the pool starts (`scripts/edl_to_reel.py` does). Built 2026-07-18 with the cap-3 fan-out.
 - A **unit-tier** test that fakes `process_episode` does **not** thereby avoid ultralytics: `edl_to_reel` calls `ensure_model` itself, above the pool, so the fake never intercepts it. Left real, `tests/lib/` imports torch and, on a cold cache, downloads weights over the network — invisible on a developer box that already has them. Fixtures must stub `ensure_model` too; `tests/integration/` is the only tier whose marker declares weights allowed.
 - madmom 0.16.1 from PyPI is broken on python ≥3.10 / numpy ≥1.24 → git master only, and only as an optional extra.
+- **`color` is an infinite source, and BOTH obvious remedies for bounding it are
+  wrong.** An `overlay` composited against a synthesized `color` background never
+  sees end-of-stream on either input, so the encode does not terminate — measured,
+  4m12s of output from a 2s source in 20s of wall clock, still going.
+  `overlay=…:shortest=1` (or `eof_action=endall`) does terminate, but truncates
+  **exactly one frame** off every render, at any rate — measured on the golden
+  fixture (source 95 frames, blur 95, solid **94**) and reproduced on synthetic
+  1s/3s/5s sources, so it is not a rounding artifact. That one frame is not
+  negligible: it accumulates straight into `check_reel`'s 0.5s length band, so
+  ~30 solid episodes at 59.94fps (or ~15 at 30fps) consume the whole band from
+  this artifact alone. Bounding the *source* instead with `color=…:d={duration}`
+  is necessary but **not sufficient**: `color`'s timebase is `1/r` while a decoded
+  source carries its **container's** (`1/15360` at 30fps), `overlay` inherits the
+  **first** input's timebase — the synthesized background — and the tail's `fps`
+  filter reads the mismatch as a stream longer by exactly `container_tb / fps`
+  (15360/30 = 512, turning a 3s/90-frame clip into 1536s / 46080 frames). The fix
+  is to bound the **output**: `-t {duration}` on the ffmpeg command, applied
+  unconditionally to every layout (measured a no-op for `fill`/`blur`, so no
+  future filler can forget it). **The trigger is an exact rate match, NOT a
+  particular frame rate** — this is the part that misleads: it fires whenever the
+  emitted `r=` reproduces the source's rational rate *exactly*, so integer rates
+  (24/25/30/50/60) blow up while NTSC fractional ones do not. The 59.94fps golden
+  fixture blows up too when handed `r=60000/1001`; it survives only because
+  `f"{fps:.6g}"` mangles that to `59.9401`, which no longer matches — a
+  **formatting accident**, not a tested safety margin. A maintainer adding a
+  29.97fps fixture to "cover another rate" would prove nothing, since NTSC never
+  triggers this class of failure at all — cover an integer rate, or cover
+  nothing. One more consequence follows directly: a filtergraph capable of
+  running forever turns a test failure into a hung suite (measured 90s-and-killed
+  against a 0.8s normal run, on a machine with no `timeout`/`gtimeout` binary to
+  bound it from outside) — `proc.run` now carries a default timeout
+  (`DEFAULT_TIMEOUT_S`) and raises instead of hanging, because an unbounded wait
+  is not a test result. `scripts/reframe.py` (`_background_args`/`reframe`),
+  `scripts/lib/proc.py`. See
+  [the fit-solid design](2026-07-18-fit-solid-design.md) §4/§8.
+- **`background_color` reaches an ffmpeg argument.** It carries the same
+  injection surface as `border_color` and gets the same guard (refuses
+  `,:;'[]\` and an empty string) — a colour string is not a safe literal just
+  because it is short. `scripts/lib/models.py` (`LayoutSpec.__post_init__`). See
+  [the fit-solid design](2026-07-18-fit-solid-design.md) §3/§8.
 - essentia has no macOS arm64 wheels → out of v1 (§5.5).
 - ffmpeg expression parser chokes on long crop-x expressions ("Missing ')' or too many args") — a realistic-length noisy path can produce 1000+ Douglas-Peucker knots → cap knots (~80) by doubling eps; never emit per-frame if() chains.
 - odd output dimensions + yuv420p → libx264 "width not divisible by 2" → force even scale targets for EVERY canvas, not just 9:16 (floor-truncated crop widths are odd half the time). `Delivery` evens native/short_edge/long_edge in `dims()`; `exact` must **not** silently round (the mode is *exact* — shipping 404x720 for a requested 405x721 is the corruption we forbid) → it raises in `Delivery.__post_init__` on odd dims with a fix-it remedy, so a bad exact size cannot be constructed at all.

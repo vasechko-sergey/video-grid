@@ -869,6 +869,69 @@ _Last updated: 2026-07-18._
   replaced by a wrapper, and the channel-precedence test goes red against the
   two-pass code.
 
+- **fit-solid (§7 misc-engine, slice A) DONE (2026-07-18)** — plan
+  `docs/plans/2026-07-18-fit-solid.md` + design
+  `docs/specs/2026-07-18-fit-solid-design.md`. **1304 passed / 8 skipped**
+  (+45 over the 1259 baseline). Makes the background filler a real parameter
+  and ships the rename that had to precede it: **`fit-blur` → `fit`**, atomic,
+  no alias (the `TrackSpec.seed_bbox → pin` precedent) — a second filler would
+  otherwise force an EDL author to write `{"layout": "fit-blur", "background":
+  "solid"}`, contradicting itself, with the half that wins (`background`) not
+  the half read first. `BACKGROUNDS` gains `solid`; `LayoutSpec` gains
+  `background_color` (default `"black"`, validated exactly like `border_color`
+  — non-empty, none of `,:;'[]\`); `fill` refuses any filler but blur, since it
+  covers the canvas edge to edge and a filler would be an inert setting that
+  reads as if it did something. The colour rides the whole authoring path —
+  `LayoutSpec` → `ResolvedLayout` → `Manifest` → `EDLEpisode` →
+  `to_manifest_dict` → `process_episode`, plus `reframe.py`'s
+  `--background`/`--background-color` CLI flags — so it is authorable from
+  JSON, not only from Python (a review-caught gap: `process_episode`'s own
+  `LayoutSpec` construction had zero coverage of the hop and would have
+  silently rendered every authored colour as the default). `PathMeta` gains
+  `background`, read from a missing sidecar key as `"blur"` — a one-key
+  exemption from the sidecar's otherwise-strict integrity check, justified
+  because `blur` was provably the only value the field could ever have held
+  before this slice. `reel_final.evaluate_transitions` keys its layout-jump
+  penalty on the pair `(mode, background)` instead of `mode` alone, since a
+  `(fit, blur)` → `(fit, solid)` cut leaves the mode untouched while the pad's
+  appearance changes hard; advisory, so no gate verdict moves.
+  **Two landmines, both measured rather than reasoned — the most transferable
+  part of this slice, full writeup in design §12:** (1) `color` is an
+  **infinite** source, and **both** obvious ways to end it are wrong.
+  `overlay=…:shortest=1` terminates but truncates **exactly one frame** off
+  every render at any rate (golden fixture: source 95 frames, blur 95, solid
+  94; reproduced on synthetic 1s/3s/5s sources) — enough on its own to eat
+  `check_reel`'s entire 0.5s length band across ~30 solid episodes. Bounding
+  the *source* instead with `color=…:d={duration}` is necessary but **not
+  sufficient**: `overlay` inherits the synthesized background's timebase, and
+  a 3s/30fps clip renders as 1536s (`container_tb / fps` = 15360/30 = 512).
+  The fix is `-t {duration}` on the **output**, applied unconditionally to
+  every layout. **The trigger is an exact rate match, not a frame rate** —
+  integer rates (24/25/30/50/60) blow up, NTSC fractional ones do not, and
+  this repo's 59.94fps fixtures survive only because `f"{fps:.6g}"` mangles
+  `60000/1001` into `59.9401` — a **formatting accident**, so a future
+  29.97fps fixture added to "cover another rate" would prove nothing (an
+  integer-rate proof is the only kind that can see this failure at all). The
+  same infinite-source hazard is why `proc.run` now carries a default timeout
+  (`DEFAULT_TIMEOUT_S = 900.0`) and raises instead of hanging — measured
+  90s-and-killed against a 0.8s normal run, on a machine with no
+  `timeout`/`gtimeout` binary to bound it from outside. (2) `background_color`
+  reaches an ffmpeg argument and carries `border_color`'s injection surface —
+  same guard, because a colour string is not a safe literal just because it
+  is short. **Real-ffmpeg proof** (`tests/integration/test_layouts.py`): a
+  solid render terminates with duration matching the source to within half a
+  frame period, at an **integer** frame rate (not just the 59.94fps golden
+  ride — that rate class is exactly what the timebase landmine does not
+  trigger on), a pad pixel is the requested colour, and the same frame under
+  `blur` differs. **Review-driven fixes beyond the plan's own tasks:** three
+  test-strength gaps a mutation pass caught with the whole suite still green —
+  `proc.run`'s timeout kwarg was asserted as "a positive number" but never
+  exercised end-to-end; `-t` being unconditional (so no future filler can
+  forget it) had no test forcing it off; and `_background_args`' exhaustiveness
+  raise had no test bypassing `LayoutSpec`'s own vocabulary gate to reach it
+  directly. **Deferred (by design, non-goals §9):** gradient fill, an
+  auto-derived background colour, `split`, `pan`, any `fit-blur` alias.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -877,13 +940,12 @@ _Last updated: 2026-07-18._
   built (or knowingly skipped) the front half is complete enough to run the
   whole `using-montage` conveyor end-to-end on Sergei's real footage — the
   milestone the synthetic goldens stand in for today. **OR**
-- **the remaining layouts** — `fit-solid` (a filler, not a branch: add `solid` to
-  `BACKGROUNDS` **and** have `reframe` read `ResolvedLayout.background`, which is
-  plumbed but ignored — the renderer hardcodes `boxblur`), `split` (two clips →
-  two rects), `pan` (a path over a static subject — already expressible as a
-  layout via `fill` + `crop_scale < 1`; what's missing is the generated x(t), not
-  a mode). The three-parameter model was built to absorb these without new code
-  paths; `split` is the one that stresses it, since it needs two sources. **OR**
+- **the remaining layouts** — `split` (two clips → two rects), `pan` (a path
+  over a static subject — already expressible as a layout via `fill` +
+  `crop_scale < 1`; what's missing is the generated x(t), not a mode). The
+  three-parameter model was built to absorb these without new code paths;
+  `split` is the one that stresses it, since it needs two sources. `fit-solid`
+  landed 2026-07-18 — see the Done entry above. **OR**
 - **stabilization's apply half + tracking degradation** — `vidstabdetect` already
   ships as 5.2's shake score (the first runtime vidstab consumer);
   `vidstabtransform` appears nowhere and is refused at three layers

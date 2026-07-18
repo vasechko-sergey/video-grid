@@ -40,7 +40,11 @@ from `FOOTAGE.json`.
    target length, and order them **hook first**. For each episode assign:
    - `composition` ∈ `lead` / `center` / `break` (required)
    - `grid` ∈ `thirds` / `phi` (required)
-   - `layout` ∈ `fill` / `fit-blur` / `insert` (default `fill`)
+   - `layout` ∈ `fill` / `fit` / `insert` (default `fill`)
+   - `background` ∈ `blur` / `solid` (default `blur`; `fill` accepts only `blur` —
+     it covers the canvas edge to edge, so there is nothing else to fill) +
+     optional `background_color` (an ffmpeg colour name or hex, default `black`,
+     `solid` only)
    - `motion` ∈ `lateral:right` / `lateral:left` / `head-on` / `static` (optional)
    - `hero` (optional) — a first-frame seed bbox `[x,y,w,h]` (centre-format,
      source px), a rule (`largest`/`leftmost`), an integer track id, or a cast
