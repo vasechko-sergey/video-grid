@@ -207,7 +207,7 @@ if __name__ == "__main__":
     ap.add_argument("--color", default="105,122,137")
     ap.add_argument("--delivery", default=None,
                     help="native (default) | short_edge:N | long_edge:N | exact:WxH")
-    ap.add_argument("--layout", default="fill", help="fill | fit-blur | insert")
+    ap.add_argument("--layout", default="fill", help="fill | fit | insert")
     ap.add_argument("--crop-aspect", default=None, help="canvas | source | W:H")
     ap.add_argument("--crop-scale", type=float, default=1.0)
     ap.add_argument("--rect", default=None, help="insert only: x,y,w as canvas fractions")

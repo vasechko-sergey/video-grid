@@ -396,7 +396,7 @@ class TrackSpec:
                              f"resolve the manifest's raw hero through hero.resolve() first")
 
 
-LAYOUT_MODES = ("fill", "fit-blur", "insert")
+LAYOUT_MODES = ("fill", "fit", "insert")
 BACKGROUNDS = ("blur",)
 
 
@@ -412,7 +412,7 @@ class LayoutSpec:
 
     `fill` constrains crop_aspect and rect but deliberately not crop_scale: a
     scaled-down fill still fills the canvas, trading resolution for the
-    horizontal freedom the tracker needs — the same trade fit-blur makes.
+    horizontal freedom the tracker needs — the same trade fit makes.
 
     `border_px` may be any non-negative int: the outer card width is already even,
     so the content width `ow - 2*border_px` is even whatever the border's parity.
@@ -427,7 +427,7 @@ class LayoutSpec:
 
     def __post_init__(self) -> None:
         if self.mode not in LAYOUT_MODES:
-            raise ValueError(f"LayoutSpec.mode {self.mode!r} unknown — fill/fit-blur/insert "
+            raise ValueError(f"LayoutSpec.mode {self.mode!r} unknown — fill/fit/insert "
                              "(split and pan are separate plans)")
         if self.background not in BACKGROUNDS:
             raise ValueError(f"LayoutSpec.background {self.background!r} unknown — "
@@ -469,7 +469,7 @@ class LayoutSpec:
         if self.mode == "fill":
             if self.crop_aspect != "canvas":
                 raise ValueError("LayoutSpec: fill must use crop_aspect 'canvas' — a fill that "
-                                 "crops to another aspect needs a background, i.e. it is fit-blur")
+                                 "crops to another aspect needs a background, i.e. it is fit")
             if self.rect not in (None, (0.0, 0.0, 1.0)):
                 raise ValueError(f"LayoutSpec: fill covers the whole canvas, but rect is "
                                  f"{self.rect!r} — a fill with a smaller rect is an insert, "
@@ -478,12 +478,12 @@ class LayoutSpec:
                 raise ValueError(f"LayoutSpec: fill covers the canvas edge to edge, so a "
                                  f"border has nothing to sit on, got border_px="
                                  f"{self.border_px} — a bordered frame is an insert")
-        if self.mode == "fit-blur" and self.rect is not None:
-            raise ValueError(f"LayoutSpec: fit-blur spans the full canvas width, so rect must "
+        if self.mode == "fit" and self.rect is not None:
+            raise ValueError(f"LayoutSpec: fit spans the full canvas width, so rect must "
                              f"be None, got {self.rect!r} — use insert to place a smaller rect")
         if self.mode == "insert" and self.rect is None:
             raise ValueError("LayoutSpec: insert needs a rect (x, y, w) in canvas fractions — "
-                             "without one it is fit-blur")
+                             "without one it is fit")
 
 
 @dataclass

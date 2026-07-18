@@ -37,21 +37,21 @@ def test_pad_bars_na_when_every_episode_is_fill():
 
 
 def test_pad_bars_passes_a_symmetric_letterbox():
-    # fit-blur: 1000-wide content in a 1000x2000 frame, centred vertically (500px bars top+bottom)
-    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 500, 1000, 1000))],
+    # fit: 1000-wide content in a 1000x2000 frame, centred vertically (500px bars top+bottom)
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit", (0, 500, 1000, 1000))],
                                                   bar_symmetry_tol=0.02)
     assert passed is True and detail["bars"] == 1 and detail["advisory"] is True
 
 
 def test_pad_bars_flags_a_rect_that_pokes_outside_the_frame():
-    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 500, 1000, 1600))],
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit", (0, 500, 1000, 1600))],
                                                   bar_symmetry_tol=0.02)
     assert passed is False and detail["issue"] == "rect_overflow" and detail["worst_episode"] == 0
 
 
 def test_pad_bars_flags_asymmetric_bars():
     # top bar 300, bottom bar 700 → |300-700|/2000 = 0.2 > tol
-    passed, detail = reel_final.evaluate_pad_bars([_meta("fit-blur", (0, 300, 1000, 1000))],
+    passed, detail = reel_final.evaluate_pad_bars([_meta("fit", (0, 300, 1000, 1000))],
                                                   bar_symmetry_tol=0.02)
     assert passed is False and detail["issue"] == "asymmetric" and detail["worst_episode"] == 0
 

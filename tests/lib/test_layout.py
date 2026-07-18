@@ -25,8 +25,8 @@ def test_fill_rect_is_the_whole_canvas_however_it_is_spelled():
     assert a.rect_px == b.rect_px == (0, 0, a.out_w, a.out_h)
 
 
-def test_fit_blur_shows_the_whole_frame_at_native_resolution():
-    rl = layout.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+def test_fit_shows_the_whole_frame_at_native_resolution():
+    rl = layout.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                         CANVAS, GOLDEN, NATIVE)
     assert (rl.crop_w, rl.crop_h) == (1280, 720)
     assert (rl.out_w, rl.out_h) == (1280, 2276)    # subject native, background upscaled
@@ -35,8 +35,8 @@ def test_fit_blur_shows_the_whole_frame_at_native_resolution():
     assert rl.fast_path is False
 
 
-def test_fit_blur_with_a_scale_regains_freedom():
-    rl = layout.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source", crop_scale=0.9),
+def test_fit_with_a_scale_regains_freedom():
+    rl = layout.resolve(LayoutSpec(mode="fit", crop_aspect="source", crop_scale=0.9),
                         CANVAS, GOLDEN, NATIVE)
     assert rl.crop_w == 1152
     assert rl.freedom == 128                        # the tracker has room again
@@ -117,13 +117,13 @@ def test_an_oversized_exact_delivery_is_not_told_to_pin_the_output():
                        CANVAS, GOLDEN, Delivery("exact", (9000, 9000)))
 
 
-def test_fit_blur_overflow_does_not_suggest_shrinking_a_rect_it_forbids():
-    """fit-blur pins rect_w to 1.0 and refuses a rect outright, so "shrink rect w"
+def test_fit_overflow_does_not_suggest_shrinking_a_rect_it_forbids():
+    """fit pins rect_w to 1.0 and refuses a rect outright, so "shrink rect w"
     and "move rect y up" are advice it cannot take. A 16:9 crop across a 21:9
     canvas is taller than the canvas: the only levers are the canvas and the crop
     aspect, and the message must say so."""
     with pytest.raises(ValueError, match="Pick a taller canvas, or a wider crop_aspect"):
-        layout.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+        layout.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                        (21, 9), GOLDEN, NATIVE)
 
 

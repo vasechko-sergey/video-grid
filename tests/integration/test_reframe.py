@@ -149,8 +149,8 @@ def test_filter_args_fill_is_pinned_to_todays_chain():
     ]
 
 
-def test_filter_args_fit_blur_composites_over_a_blurred_cover():
-    rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+def test_filter_args_fit_composites_over_a_blurred_cover():
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (1280, 720), _NATIVE)
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
     assert args == [
@@ -207,7 +207,7 @@ def test_filter_args_bordered_insert_pads_the_card():
 def test_filter_args_never_emit_the_banned_lutrgb():
     # spec §12: lutrgb produced black frames; colorchannelmixer only
     for spec in (LayoutSpec(mode="fill"),
-                 LayoutSpec(mode="fit-blur", crop_aspect="source"),
+                 LayoutSpec(mode="fit", crop_aspect="source"),
                  LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))):
         rl = layout_lib.resolve(spec, (9, 16), (1280, 720), _NATIVE)
         args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
@@ -217,7 +217,7 @@ def test_filter_args_never_emit_the_banned_lutrgb():
 
 def test_blur_radius_scales_with_canvas_width():
     # a constant radius is nearly sharp on 4K; tie it to the canvas
-    rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect="source"),
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (3840, 2160), _NATIVE)
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
     assert "boxblur=64:2" in args[1]        # 3840 // 60
@@ -239,7 +239,7 @@ def test_the_radius_floor_never_beats_the_chroma_ceiling():
     requires radius strictly < 1: the ceiling ((4 - 1) // 4 = 0) yields a radius-0
     no-op, not the floor's 2. (An unclamped 2 drew "Invalid chroma_param radius
     value 2, must be >= 0 and < 1" from real ffmpeg.) Below 8px blur is meaningless."""
-    rl = layout_lib.resolve(LayoutSpec(mode="fit-blur", crop_aspect=(256, 1)),
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect=(256, 1)),
                             (256, 1), (1280, 720), _NATIVE)
     assert (rl.out_w, rl.out_h) == (1280, 4)
     args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
@@ -267,7 +267,7 @@ def test_compute_path_takes_crop_w_from_the_caller():
 
 
 def test_compute_path_at_zero_freedom_is_constant_zero():
-    # fit-blur at scale 1.0: crop is the whole frame, so the crop cannot move
+    # fit at scale 1.0: crop is the whole frame, so the crop cannot move
     route = [dict(t=i / 30, x=300 + i * 40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="break", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
@@ -284,10 +284,10 @@ def test_reframe_writes_a_truthful_sidecar(sample_clip, tmp_path):
     out, path_out = tmp_path / "ep.mp4", tmp_path / "path.json"
     spec = models.ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
                               color_means=(105, 122, 137), delivery=_NATIVE,
-                              layout=models.LayoutSpec(mode="fit-blur", crop_aspect="source"))
+                              layout=models.LayoutSpec(mode="fit", crop_aspect="source"))
     reframe.reframe(spec, str(sample_clip), str(route_p), str(out), str(path_out))
     meta = models.PathMeta.from_json(path_out.with_suffix(".meta.json"))
-    assert meta.mode == "fit-blur"
+    assert meta.mode == "fit"
     assert (meta.crop_w, meta.crop_h) == (1920, 1080)
     assert meta.freedom == 0
     assert meta.src_dims == (1920, 1080)

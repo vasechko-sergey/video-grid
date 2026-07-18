@@ -43,12 +43,12 @@ def _dims(path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_fit_blur_on_the_golden_ride(tmp_path):
+def test_fit_on_the_golden_ride(tmp_path):
     out = tmp_path / "fitblur.mp4"
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
                        color_means=COLOR, delivery=NATIVE,
-                       layout=LayoutSpec(mode="fit-blur", crop_aspect="source"))
+                       layout=LayoutSpec(mode="fit", crop_aspect="source"))
     reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
     assert _dims(out) == (1280, 2276)          # subject native, background upscaled
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
@@ -90,14 +90,14 @@ def test_fill_on_the_golden_ride_is_unchanged(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_fit_blur_through_the_orchestrator(tmp_path):
+def test_fit_through_the_orchestrator(tmp_path):
     # composition 'break': a 'lead' at zero freedom is refused by the manifest
     # gate, by design — there is nothing to lead with
     manifest = dict(segment=RIDE,
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="break", grid="thirds", canvas=[9, 16],
                     target_dur=1.58,               # golden clip ~1.585s, tol +/-0.5s
-                    layout="fit-blur", crop_aspect="source")
+                    layout="fit", crop_aspect="source")
     result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=ROUTE)
     assert result["status"] == "mechanical_pass", result
     assert result["report"]["checks"]["framing"] == {
@@ -139,7 +139,7 @@ def test_lead_at_zero_freedom_never_reaches_the_engine(tmp_path):
     manifest = dict(segment=RIDE,
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16], target_dur=1.58,
-                    layout="fit-blur", crop_aspect="source")
+                    layout="fit", crop_aspect="source")
     result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=ROUTE)
     assert result["status"] == "needs_input"
     assert any("crop_scale" in p for p in result["problems"])
@@ -179,7 +179,7 @@ def test_insert_through_the_orchestrator_insets_the_border(tmp_path):
      Delivery("exact", (3840, 200)), (3840, 200)),
     # a 1280x4 cover: the ceiling is 1, below the radius floor of 2. The floor
     # used to win and ffmpeg died.
-    ((256, 1), LayoutSpec(mode="fit-blur", crop_aspect=(256, 1)), NATIVE, (1280, 4)),
+    ((256, 1), LayoutSpec(mode="fit", crop_aspect=(256, 1)), NATIVE, (1280, 4)),
 ])
 def test_extreme_covers_render_at_the_capped_blur_radius(tmp_path, canvas, layout,
                                                          delivery, expect):
@@ -198,9 +198,9 @@ def rendered(tmp_path_factory):
     specs = {
         "fill": ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                             color_means=COLOR, delivery=NATIVE),
-        "fit-blur": ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
+        "fit": ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
                                 color_means=COLOR, delivery=NATIVE,
-                                layout=LayoutSpec(mode="fit-blur", crop_aspect="source")),
+                                layout=LayoutSpec(mode="fit", crop_aspect="source")),
         "insert": ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                               color_means=COLOR, delivery=NATIVE,
                               layout=LayoutSpec(mode="insert", crop_aspect=(1, 1),
@@ -217,7 +217,7 @@ def rendered(tmp_path_factory):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("layout_name", ["fill", "fit-blur", "insert"])
+@pytest.mark.parametrize("layout_name", ["fill", "fit", "insert"])
 def test_the_sidecar_describes_the_file_on_disk(rendered, layout_name):
     # The one assertion that catches geometry drifting between what resolve()
     # computed and what ffmpeg actually produced: the sidecar's own out_dims must
@@ -227,7 +227,7 @@ def test_the_sidecar_describes_the_file_on_disk(rendered, layout_name):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("layout_name", ["fit-blur", "insert"])
+@pytest.mark.parametrize("layout_name", ["fit", "insert"])
 def test_composite_boundary_frames_are_not_black(rendered, layout_name):
     # Spec §9 / §12: the banned lutrgb produced BLACK frames historically, and a
     # composite that silently rendered black would pass every dimension assertion

@@ -42,10 +42,10 @@ def test_validate_unknown_grid():
 
 
 def test_validate_unsupported_layout_refused():
-    # fit-blur/insert are first-class layouts now; a genuinely unknown one still
+    # fit/insert are first-class layouts now; a genuinely unknown one still
     # fails the soft gate, with a message that names what IS supported.
     problems = mf.validate(mf.Manifest.from_dict(_ok_dict(layout="pan")))
-    assert any("pan" in p and "fit-blur" in p for p in problems)
+    assert any("pan" in p and "fit" in p for p in problems)
 
 
 def test_validate_stabilize_refused():
@@ -143,7 +143,7 @@ def test_validate_color_means_nonpositive():
     assert any("color_means" in p for p in problems)
 
 
-# --- Task 9: fit-blur / insert layouts, JSON array coercion, zero-freedom gate ---
+# --- Task 9: fit / insert layouts, JSON array coercion, zero-freedom gate ---
 
 def _base(**over):
     d = dict(segment="a.mp4", out_path="o.mp4", composition="lead", grid="thirds",
@@ -152,8 +152,8 @@ def _base(**over):
     return d
 
 
-def test_fit_blur_and_insert_are_now_supported():
-    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+def test_fit_and_insert_are_now_supported():
+    m = mf.Manifest.from_dict(_base(layout="fit", crop_aspect="source",
                                     composition="break"))
     assert mf.validate(m) == []
     m = mf.Manifest.from_dict(_base(layout="insert", crop_aspect=[1, 1],
@@ -169,7 +169,7 @@ def test_json_arrays_become_tuples():
 
 
 def test_lead_at_zero_freedom_is_refused_with_a_remedy():
-    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+    m = mf.Manifest.from_dict(_base(layout="fit", crop_aspect="source",
                                     composition="lead"))
     problems = mf.validate(m)
     assert len(problems) == 1
@@ -177,7 +177,7 @@ def test_lead_at_zero_freedom_is_refused_with_a_remedy():
 
 
 def test_lead_with_a_scaled_crop_is_allowed():
-    m = mf.Manifest.from_dict(_base(layout="fit-blur", crop_aspect="source",
+    m = mf.Manifest.from_dict(_base(layout="fit", crop_aspect="source",
                                     composition="lead", crop_scale=0.9))
     assert mf.validate(m) == []
 

@@ -67,7 +67,7 @@ def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -
     """Geometry comes from the sidecar reframe wrote — never re-derived here.
 
     Re-deriving crop_w from the canvas is right only while every layout is
-    `fill`. Under fit-blur it returns the canvas-aspect width, and on_line then
+    `fill`. Under fit it returns the canvas-aspect width, and on_line then
     divides by a width that was never cut.
     """
     route = [p.to_dict() for p in route_from_json(route_path)]

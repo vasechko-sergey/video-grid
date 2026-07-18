@@ -112,7 +112,7 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         ox = int(round(rx_f * out_w))
         oy = (out_h - oh) // 2 if spec.rect is None else int(round(ry_f * out_h))
         if ox + ow > out_w or oy + oh > out_h:
-            # fit-blur pins rect_w to 1.0 and forbids a rect outright, so "shrink
+            # fit pins rect_w to 1.0 and forbids a rect outright, so "shrink
             # rect w" and "move rect y up" are advice it cannot take. Its only
             # levers are the crop aspect and the canvas.
             if spec.rect is None:

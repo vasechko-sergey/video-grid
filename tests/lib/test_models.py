@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import pytest
+from scripts.lib import manifest
 from scripts.lib import models as m
 from scripts.lib.models import ReelCheckSpec
 
@@ -263,7 +264,7 @@ def test_delivery_dims_takes_floats_and_evens_each_side():
     d = m.Delivery("native", None)
     # the fill case: canvas floats equal the crop, and the answer is today's output
     assert d.dims(405.0, 720.0) == (404, 720)
-    # the fit-blur case: 1280 wide, 16/9 tall. Evening the width first and
+    # the fit case: 1280 wide, 16/9 tall. Evening the width first and
     # deriving the height from it would give 718, not 720 — hence floats.
     assert d.dims(1280.0, 1280.0 * 16 / 9) == (1280, 2276)
 
@@ -273,30 +274,38 @@ def test_layout_spec_fill_defaults():
     assert (s.mode, s.crop_aspect, s.crop_scale, s.rect) == ("fill", "canvas", 1.0, None)
 
 
-def test_layout_spec_fit_blur_and_insert_construct():
-    assert m.LayoutSpec(mode="fit-blur", crop_aspect="source").rect is None
+def test_layout_spec_fit_and_insert_construct():
+    assert m.LayoutSpec(mode="fit", crop_aspect="source").rect is None
     s = m.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90))
     assert s.rect == (0.05, 0.25, 0.90)
 
 
+def test_layout_modes_are_geometry_names_only():
+    # The mode names a GEOMETRY; the filler is `background`. `fit-blur` is a
+    # preset spelling in prose (design §7), never a value this tuple holds —
+    # pinned so a re-introduction fails here instead of quietly working.
+    assert m.LAYOUT_MODES == ("fill", "fit", "insert")
+    assert manifest.LAYOUTS_SUPPORTED == ("fill", "fit", "insert")
+
+
 def test_layout_spec_rejects_unknown_mode():
-    with pytest.raises(ValueError, match="fill/fit-blur/insert"):
+    with pytest.raises(ValueError, match="fill/fit/insert"):
         m.LayoutSpec(mode="split")
 
 
 def test_layout_spec_rejects_unknown_background():
     with pytest.raises(ValueError, match="solid lands with fit-solid"):
-        m.LayoutSpec(mode="fit-blur", crop_aspect="source", background="solid")
+        m.LayoutSpec(mode="fit", crop_aspect="source", background="solid")
 
 
 def test_layout_spec_rejects_bad_scale():
     with pytest.raises(ValueError, match=r"\(0.0, 1.0\]"):
-        m.LayoutSpec(mode="fit-blur", crop_aspect="source", crop_scale=0.0)
+        m.LayoutSpec(mode="fit", crop_aspect="source", crop_scale=0.0)
 
 
 def test_layout_spec_rejects_bad_aspect():
     with pytest.raises(ValueError, match="canvas.*source.*pair"):
-        m.LayoutSpec(mode="fit-blur", crop_aspect="wide")
+        m.LayoutSpec(mode="fit", crop_aspect="wide")
 
 
 def test_layout_spec_fill_must_be_canvas_aspect_and_full_rect():
@@ -306,9 +315,9 @@ def test_layout_spec_fill_must_be_canvas_aspect_and_full_rect():
         m.LayoutSpec(mode="fill", crop_aspect="source")
 
 
-def test_layout_spec_fit_blur_takes_no_rect():
-    with pytest.raises(ValueError, match="fit-blur spans the full canvas width"):
-        m.LayoutSpec(mode="fit-blur", crop_aspect="source", rect=(0.0, 0.1, 0.8))
+def test_layout_spec_fit_takes_no_rect():
+    with pytest.raises(ValueError, match="fit spans the full canvas width"):
+        m.LayoutSpec(mode="fit", crop_aspect="source", rect=(0.0, 0.1, 0.8))
 
 
 def test_layout_spec_insert_needs_a_rect():

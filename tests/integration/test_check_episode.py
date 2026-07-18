@@ -32,10 +32,10 @@ def _fill(tmp_path):
                   out_dims=(606, 1080), rect_px=(0, 0, 606, 1080))
 
 
-def _fit_blur(tmp_path):
-    """resolve(fit-blur/source, 9:16, 1920x1080, native) -> 1920x3412, the whole
+def _fit(tmp_path):
+    """resolve(fit/source, 9:16, 1920x1080, native) -> 1920x3412, the whole
     frame centred at y=1166. The crop IS the source, so freedom is zero."""
-    return _write(tmp_path, crop_w=1920, freedom=0, mode="fit-blur",
+    return _write(tmp_path, crop_w=1920, freedom=0, mode="fit",
                   out_dims=(1920, 3412), rect_px=(0, 1166, 1920, 1080))
 
 
@@ -64,10 +64,10 @@ def test_run_fails_loud_when_the_sidecar_is_missing(tmp_path, sample_clip):
                                                         ("center", "centered")])
 def test_zero_freedom_makes_the_composition_check_editorial(tmp_path, sample_clip,
                                                             composition, numeric_check):
-    # fit-blur at scale 1.0: the crop is the whole frame, so nobody controls
+    # fit at scale 1.0: the crop is the whole frame, so nobody controls
     # composition — it can neither fail nor silently pass. True of both numeric
     # compositions: the branch keys off freedom, never off the composition name.
-    rp, pp = _fit_blur(tmp_path)
+    rp, pp = _fit(tmp_path)
     spec = CheckSpec(composition=composition, grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
     assert numeric_check not in report.checks
@@ -90,9 +90,9 @@ def test_crop_w_comes_from_the_sidecar_not_the_canvas(tmp_path, sample_clip):
     """The bug this task fixes: re-deriving crop_w from the canvas yields a
     verdict about a crop nobody cut.
 
-    It must be checked where freedom is POSITIVE. Under fit-blur freedom is zero,
+    It must be checked where freedom is POSITIVE. Under fit freedom is zero,
     the editorial-only branch short-circuits, and crop_w is never used for the
-    composition check at all — a fit-blur fixture here cannot tell the two
+    composition check at all — a fit fixture here cannot tell the two
     implementations apart.
 
     So: an `insert` with a 1:1 crop of a 1920x1080 source. reframe cut 1080px;

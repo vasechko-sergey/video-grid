@@ -2,7 +2,7 @@
 
 marks_at_times maps a subject at source (x, y) into OUTPUT-frame fractions by
 placing the crop inside meta.rect_px. For `fill` that rect is the whole output,
-so it reduces to the old (x - cx) / crop_w; under a composite (fit-blur/insert)
+so it reduces to the old (x - cx) / crop_w; under a composite (fit/insert)
 the crop is a card inside a larger canvas and the marker must follow it there —
 otherwise it lands off the hero, sometimes on the blurred background entirely.
 Pure unit tests (no ffmpeg) — they stay unmarked.
@@ -26,14 +26,14 @@ def test_marks_for_fill_are_unchanged():
     assert marks == [((400.0 - 100) / 405, 360.0 / 720)]
 
 
-_FIT_BLUR = PathMeta(mode="fit-blur", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
+_FIT_BLUR = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
                      canvas=(9, 16), out_dims=(1280, 2276), rect_px=(0, 778, 1280, 720),
                      freedom=0)
 
 
 def test_marks_for_a_composite_land_inside_the_rect():
     route, path = _route_and_path()
-    # fit-blur: the whole 1280x720 frame sits at y=778 in a 1280x2276 canvas
+    # fit: the whole 1280x720 frame sits at y=778 in a 1280x2276 canvas
     (fx, fy), = storyboard.marks_at_times(route, path, _FIT_BLUR, [0.0])
     # x: the subject is 400px into a 1280px-wide rect that spans the full canvas
     assert fx == pytest.approx((0 + 1280 * (400.0 - 100) / 1280) / 1280)
@@ -43,7 +43,7 @@ def test_marks_for_a_composite_land_inside_the_rect():
 
 
 def test_a_subject_near_the_frame_top_does_not_land_on_the_background():
-    """The case above cannot fail: fit-blur's rect spans the full width at rx=0,
+    """The case above cannot fail: fit's rect spans the full width at rx=0,
     and a subject at the crop's vertical centre maps to the canvas centre either
     way — so the old `y / src_h` formula produces the identical numbers.
 
