@@ -172,10 +172,35 @@ One frame is not negligible here, because it **accumulates against a real gate**
 `length_retime_max` on top. A filler must not change how long the reel is.
 
 So the background is **bounded at the source** instead: `color=…:d={dur}`, with
-`dur` the probed source duration, and the overlay left alone. Both inputs are then
-finite and the same length, the overlay ends naturally, and blur and solid are
-**duration-symmetric** — which is the property that matters, since a reel mixes
-them freely.
+`dur` the probed source duration, and the overlay left alone.
+
+**That is necessary and not sufficient**, which measurement caught and reasoning
+did not. `d=` alone is correct on the 59.94fps golden fixture and catastrophic on
+a 30fps one:
+
+| variant | golden_ride (59.94fps, tb 1/60000) | sample_clip (30fps, tb 1/15360) |
+|---|---|---|
+| `d=` only | 95 fr / 1.584918s ✓ | **46080 fr / 1536.000000s** — killed |
+| `-t` only | 95 fr ✓ | 90 fr / 3.000000s ✓ |
+| `d=` **and** `-t` | 95 fr ✓ | 90 fr ✓ |
+
+`color`'s timebase is `1/r`; a decoded mp4 carries its **container's** (`1/15360`
+for 30fps). `overlay` inherits the **first** input's timebase — the synthesized
+background — so the tail's `fps` filter reads the mismatch as a stream longer by
+exactly the ratio between them: 15360/30 = 512, and 3s × 512 = 1536s. `settb`
+variants either failed to help or cost a frame.
+
+So the **output** is bounded too: `-t {dur}` on the ffmpeg command. It is applied
+to **every** layout, not just solid — measured a no-op for `fill` and `blur`, and
+unconditional means no future filler can forget it. The two bounds do different
+jobs: `d=` keeps the *filtergraph* finite for anyone who builds it without
+reframe's output arguments; `-t` pins the *output length* regardless of what the
+graph's timebase arithmetic decides.
+
+With both, blur and solid are **duration-symmetric** — the property that matters,
+since a reel mixes them freely. Measured through real `reframe()`: golden_ride
+source 95 fr / 1.584917s, blur 95 fr / 1.584916s, solid 95 fr / 1.584916s;
+sample_clip 90 fr / 3.000000s for all three.
 
 This costs one number: `reframe._probe` already runs `ffprobe` for dims and fps
 and now asks for `duration` in the same call — no extra process. A source whose
@@ -289,6 +314,16 @@ the penalty also fires on a filler change at a constant mode.
   59.94fps eats all of it). Bound the source with `d={duration}` and leave the
   overlay alone. Both failures are silent in the filtergraph string: one is a
   command that never returns, the other is a reel that is mysteriously short.
+- **A synthesized source and a decoded one have different timebases, and
+  `overlay` inherits the FIRST input's.** `color`'s timebase is `1/r`; a decoded
+  mp4 carries its container's — `1/15360` for 30fps. With the synthesized
+  background as the overlay's first input, the tail's `fps` filter reads the
+  mismatch as a stream longer by exactly the ratio: 15360/30 = 512, turning a 3s
+  source into **1536s / 46080 frames**. Bounding the source with `d=` does not
+  prevent it; bounding the *output* with `-t {duration}` does. This is
+  frame-rate-dependent, so it hides completely on some fixtures — the 59.94fps
+  golden ride renders correctly with `d=` alone, and only a 30fps clip exposes it.
+  Test one frame rate and you will not see this.
 - **`proc.run` carried no timeout.** The first filtergraph capable of running
   forever turned a test failure into a hung suite (90s and killed, against a 0.8s
   normal run) — and the machine has no `timeout`/`gtimeout` binary to bound it
