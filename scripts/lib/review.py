@@ -122,3 +122,21 @@ class Review:
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+    def to_markdown(self) -> str:
+        icon = {"approve": "✅", "revise": "🔧"}[self.verdict]
+        head = f"# Reel review — {icon} {self.verdict}"
+        if self.platform:
+            head += f" · {self.platform}"
+        lines = [head, "", f"**Reel:** `{self.reel}`", ""]
+        if self.summary:
+            lines += [self.summary, ""]
+        if not self.findings:
+            lines.append("✅ No findings — the reel delivers the brief.")
+            return "\n".join(lines)
+        order = {"blocking": 0, "important": 1, "minor": 2}
+        for f in sorted(self.findings, key=lambda f: order[f.severity]):
+            lines.append(f"- **[{f.severity}] {f.axis}** → `{f.route}` (confidence: {f.confidence})")
+            lines.append(f"  - {f.evidence}")
+            lines.append(f"  - **Fix:** {f.suggestion}")
+        return "\n".join(lines)

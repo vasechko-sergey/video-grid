@@ -121,3 +121,25 @@ def test_review_write_then_from_json(tmp_path):
     p = tmp_path / "REVIEW.json"
     r.write(p)
     assert Review.from_json(p).to_dict() == r.to_dict()
+
+
+def test_to_markdown_approve_header_and_summary():
+    r = Review(reel="out/REEL_v1.mp4", findings=[F_IMPORTANT], summary="delivers the calm idea",
+               platform="tiktok")
+    md = r.to_markdown()
+    assert md.startswith("# Reel review — ✅ approve · tiktok")
+    assert "delivers the calm idea" in md
+    assert "**[important] hook** → `edit-plan`" in md
+    assert "open on the jump-cut instead" in md
+
+
+def test_to_markdown_revise_orders_blocking_first():
+    r = Review(reel="r.mp4", findings=[F_IMPORTANT, F_BLOCKING])
+    md = r.to_markdown()
+    assert md.startswith("# Reel review — 🔧 revise")
+    assert md.index("[blocking] idea") < md.index("[important] hook")   # severity order, not input order
+
+
+def test_to_markdown_empty_findings_is_clean():
+    md = Review(reel="r.mp4", summary="clean").to_markdown()
+    assert "✅ No findings" in md
