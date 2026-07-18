@@ -57,3 +57,68 @@ class Finding:
     def to_dict(self) -> dict:
         return {"axis": self.axis, "severity": self.severity, "evidence": self.evidence,
                 "route": self.route, "suggestion": self.suggestion, "confidence": self.confidence}
+
+
+@dataclass
+class Review:
+    reel: str                  # path to the reviewed cut (out/REEL_v{n}.mp4); non-empty (gate)
+    findings: tuple = ()       # tuple[Finding, ...] — build via reel_review.build_review (gate)
+    summary: str = ""          # the reviewer's one-paragraph overall read
+    spec_ref: str = ""         # echo of the intent judged (or the SPEC.json path)
+    platform: str = ""         # from SPEC.platform, header only
+    reviewer: str = ""         # free note — which agent/model reviewed
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.reel, str) and self.reel.strip()):
+            raise ValueError("Review.reel must be a non-empty string (the reviewed reel path)")
+        if not (isinstance(self.findings, (tuple, list))
+                and all(isinstance(f, Finding) for f in self.findings)):
+            raise ValueError("Review.findings must be a list of Finding objects "
+                             "(build via reel_review.build_review, which validates each)")
+        self.findings = tuple(self.findings)
+        for name in ("summary", "spec_ref", "platform", "reviewer"):
+            v = getattr(self, name)
+            if not isinstance(v, str):
+                raise ValueError(f"Review.{name} must be a string, got {v!r}")
+
+    @property
+    def verdict(self) -> str:
+        """revise iff any blocking finding, else approve. A computed property, never a
+        stored field — one source of truth, so a hand-edited REVIEW.json cannot lie about
+        its own verdict. Advisory to the human: an approve with important findings is
+        'approve with notes'; a human may waive a blocking finding and approve anyway."""
+        return "revise" if any(f.severity == "blocking" for f in self.findings) else "approve"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Review":
+        if not isinstance(d, dict):
+            raise ValueError(f"Review.from_dict: expected a REVIEW.json object with a 'reel' field "
+                             f"and a 'findings' list, got {type(d).__name__} — re-run reel-review")
+        raw = d.get("findings") or []
+        if not isinstance(raw, (tuple, list)):
+            raise ValueError(f"Review.findings must be a JSON list, got {type(raw).__name__}")
+        findings = tuple(Finding.from_dict(f) for f in raw)   # an incoming 'verdict' is ignored (recomputed)
+
+        def opt(key: str, default: object) -> object:
+            v = d.get(key)
+            return default if v is None else v
+        return cls(reel=d.get("reel"), findings=findings, summary=opt("summary", ""),
+                   spec_ref=opt("spec_ref", ""), platform=opt("platform", ""),
+                   reviewer=opt("reviewer", ""))
+
+    def to_dict(self) -> dict:
+        # verdict is emitted for the .md/.json readers but recomputed on load (never trusted)
+        return {"reel": self.reel, "verdict": self.verdict,
+                "findings": [f.to_dict() for f in self.findings], "summary": self.summary,
+                "spec_ref": self.spec_ref, "platform": self.platform, "reviewer": self.reviewer}
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "Review":
+        try:
+            d = json.loads(Path(path).read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is corrupt ({e}) — re-run reel-review to regenerate it") from e
+        return cls.from_dict(d)
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))

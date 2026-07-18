@@ -63,3 +63,61 @@ def test_vocab_constants_are_the_allowed_sets():
     assert REVIEW_SEVERITY == ("blocking", "important", "minor")
     assert REVIEW_ROUTES == ("edit-plan", "pacing", "music", "reprocess", "titles", "none")
     assert REVIEW_CONFIDENCE == ("high", "medium", "low")
+
+
+from scripts.lib.review import Review
+
+F_IMPORTANT = Finding(**GOOD)
+F_BLOCKING = Finding(axis="idea", severity="blocking", evidence="reel tells a different story",
+                     route="edit-plan", suggestion="reselect windows to the SPEC idea")
+
+
+def test_review_accepts_good_and_defaults():
+    r = Review(reel="out/REEL_v1.mp4", findings=[F_IMPORTANT])
+    assert r.reel == "out/REEL_v1.mp4" and r.findings == (F_IMPORTANT,)
+    assert r.summary == "" and r.platform == "" and r.spec_ref == "" and r.reviewer == ""
+
+
+def test_review_rejects_empty_reel():
+    with pytest.raises(ValueError, match="reel"):
+        Review(reel="  ", findings=[F_IMPORTANT])
+
+
+def test_review_rejects_raw_dict_finding():
+    with pytest.raises(ValueError, match="findings"):
+        Review(reel="out/REEL_v1.mp4", findings=[{"axis": "hook"}])
+
+
+def test_verdict_approve_without_blocking():
+    assert Review(reel="r.mp4", findings=[F_IMPORTANT]).verdict == "approve"
+
+
+def test_verdict_revise_with_blocking():
+    assert Review(reel="r.mp4", findings=[F_IMPORTANT, F_BLOCKING]).verdict == "revise"
+
+
+def test_verdict_approve_when_empty():
+    assert Review(reel="r.mp4").verdict == "approve"
+
+
+def test_review_roundtrip_recomputes_verdict():
+    r = Review(reel="out/REEL_v1.mp4", findings=[F_BLOCKING], summary="s", platform="tiktok")
+    d = r.to_dict()
+    assert d["verdict"] == "revise"
+    d["verdict"] = "approve"                      # a lying stored verdict is ignored on load
+    assert Review.from_dict(d).verdict == "revise"
+    assert Review.from_dict(r.to_dict()).to_dict() == r.to_dict()
+
+
+def test_review_from_json_corrupt_raises(tmp_path):
+    p = tmp_path / "REVIEW.json"
+    p.write_text("{not json")
+    with pytest.raises(ValueError, match="corrupt"):
+        Review.from_json(p)
+
+
+def test_review_write_then_from_json(tmp_path):
+    r = Review(reel="out/REEL_v1.mp4", findings=[F_IMPORTANT], summary="ok")
+    p = tmp_path / "REVIEW.json"
+    r.write(p)
+    assert Review.from_json(p).to_dict() == r.to_dict()
