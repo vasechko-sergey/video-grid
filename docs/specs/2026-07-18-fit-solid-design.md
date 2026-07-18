@@ -103,6 +103,17 @@ It has a default, and a default is indistinguishable from an explicit value of
 the same string — a refusal keyed on "did the author mean it" cannot be written
 honestly, so it is not written.
 
+### The authoring path
+
+`background` already rides manifest → `LayoutSpec`; `background_color` must be
+given the same ride, or the filler is settable only from Python. Three contracts
+carry it: `LayoutSpec` (above), `Manifest` (the field, `OPTIONAL`, `from_dict`,
+and the `LayoutSpec` oracle inside `validate` — so the **soft** gate sees the same
+truth the hard backstop will, and a bad colour comes back as a problem string
+rather than a raise), and `EDLEpisode` (the field, `to_dict`, and the
+`to_manifest_dict` field map). `process_episode` passes it into the `LayoutSpec`
+it builds.
+
 ### insert + solid
 
 Falls out for free. The filler is orthogonal to the rect, which is the whole
