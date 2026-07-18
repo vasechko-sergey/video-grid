@@ -374,8 +374,8 @@ def test_layout_spec_refuses_an_unknown_background():
     # survives near-total erasure of it. `solid` was this test's unknown value
     # until it landed (design 2026-07-18-fit-solid §3), so it names one that stays
     # unknown rather than reusing a now-valid one.
-    with pytest.raises(ValueError, match=r"background 'vignette' unknown") as excinfo:
-        m.LayoutSpec(mode="fit", crop_aspect="source", background="vignette")
+    with pytest.raises(ValueError, match=r"background 'gradient' unknown") as excinfo:
+        m.LayoutSpec(mode="fit", crop_aspect="source", background="gradient")
     assert "'blur', 'solid'" in str(excinfo.value)
 
 
