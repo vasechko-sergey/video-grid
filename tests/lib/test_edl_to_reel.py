@@ -26,13 +26,24 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
     pe_results is a {episode_idx: result} dict — canned results are addressed by
     episode, never by call order (design §7.1), so a test stays correct under the
     thread pool. An episode with no entry gets a mechanical_pass."""
-    seen = {"segments": [], "pe": [], "rm": None, "build": [], "build_titles": None}
+    seen = {"segments": [], "pe": [], "rm": None, "build": [], "build_titles": None,
+            "warm": [], "order": []}
 
     def fake_extract(edl, footage_root, seg_dir):
         segs = [str(Path(seg_dir) / f"ep{i}_raw.mp4") for i in range(len(edl.episodes))]
         seen["segments"] = segs
         return segs
     monkeypatch.setattr(edl_to_reel.extract, "extract_edl", fake_extract)
+
+    def fake_ensure_model(model_path):
+        # Stubbed HERE, not per-test: edl_to_reel calls ensure_model itself, above the
+        # pool, so faking process_episode does NOT intercept it. Left real, this fast-tier
+        # file would import torch and construct a YOLO — and on a cold cache download the
+        # weights over the network, which design §7.3 explicitly keeps out of this tier.
+        # (tests/integration/ may reach weights; pytest.ini's marker says so. tests/lib/ may not.)
+        seen["warm"].append(model_path)
+        seen["order"].append(("warm", model_path))
+    monkeypatch.setattr(edl_to_reel.track, "ensure_model", fake_ensure_model)
 
     # Refuse the old list shape LOUDLY. dict([{"status": s, "problems": p}]) does not
     # raise — a one-element list holding an exactly-2-key dict (the canned-result shape
@@ -51,6 +62,8 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
         # episode. Call ORDER is not usable: under the pool (design §7.1) it is a race.
         idx = int(Path(project_dir).name.removeprefix("ep"))
         seen["pe"].append({"manifest": manifest, "project_dir": project_dir, "idx": idx})
+        seen["order"].append(("pe", project_dir))   # list.append is atomic under the GIL;
+                                                    # only the order AMONG workers is undefined
         return canned.get(idx, {"status": "mechanical_pass", "clip": manifest["out_path"]})
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
 
@@ -252,19 +265,16 @@ def test_jobs_1_reports_the_same_finding_as_the_default(monkeypatch, tmp_path):
 
 
 def test_the_weights_are_warmed_before_any_worker_starts(monkeypatch, tmp_path):
-    # A warm-up that runs after the pool starts is no warm-up (design §5). Record
-    # the order and assert ensure_model landed before the first process_episode.
-    order = []
-    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: order.append(("warm", m)))
-    _wire(monkeypatch)
-
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
-        order.append(("pe", project_dir))
-        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
-    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
-
+    # A warm-up that runs after the pool starts is no warm-up (design §5). The fixture
+    # records both fakes into one seen["order"], so this test reads the ordering the same
+    # way every other test reads seen["pe"] — no per-test patching, and therefore no
+    # patch-order trap between this test and the fixture's own ensure_model stub.
+    seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_six(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
-    assert order[0] == ("warm", edl_to_reel.track.MODEL)    # the manifest default, by name
-    assert [kind for kind, _ in order].count("warm") == 1   # one distinct model → warmed once
-    assert all(kind == "pe" for kind, _ in order[1:])
+    # entry 0 is deterministic: ensure_model runs on the main thread before any submit,
+    # so it strictly happens-before every worker's append.
+    assert seen["order"][0] == ("warm", edl_to_reel.track.MODEL)   # the manifest default, by name
+    assert seen["warm"] == [edl_to_reel.track.MODEL]               # one distinct model → warmed once
+    assert all(kind == "pe" for kind, _ in seen["order"][1:])
+    assert len(seen["order"]) == 7                                 # 1 warm + 6 episodes
