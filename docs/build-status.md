@@ -809,6 +809,51 @@ _Last updated: 2026-07-18._
   auto-fixing an over-length reel; re-deriving a truncated `Spine` for
   `PACING.json`; librosa section detection / phrase-aware grouping.
 
+- **cap-3 parallel episode fan-out (§5.1's last sub-item) DONE (2026-07-18)** —
+  plan `docs/plans/2026-07-18-cap3-fanout.md` + design
+  `docs/specs/2026-07-18-cap3-fanout-design.md`. **1257 passed / 8 skipped**
+  (+19: 1 fixture pin, 2 `ensure_model`, 6 `jobs` validation, 6 pool, 2
+  exception-channel, 2 CLI). `scripts/edl_to_reel.py`'s sequential per-episode
+  loop becomes `ThreadPoolExecutor(max_workers=jobs)`, default
+  `DEFAULT_JOBS = 3`, exposed as `--jobs`. **Stage 5.1 now has no open
+  sub-items.**
+  **The number was measured, not inherited.** The repo's own docs disagreed:
+  montage §5.10 said three saturate the box, `build_reel.py:88` said one does.
+  A spike ran six real 2.5 s windows from `MVI_3739` through the full
+  `process_episode` (YOLO11-seg → reframe → check → storyboard) at each
+  concurrency on a 14-core M-series box: **41.1 s → 27.4 s (1.50×) → 24.2 s
+  (1.70×) → 24.4 s (1.68×)** for jobs 1/2/3/4. The knee is exactly 3; at 4,
+  per-episode latency reaches 1.85× for no throughput. §5.10 was right;
+  `build_reel`'s comment was the wrong one and is corrected in place.
+  **Three decisions.** *Threads, not processes* — `process_episode` is torch plus
+  subprocess ffmpeg, both of which release the GIL, and the 1.70× is a thread
+  measurement. *Run every episode, report the lowest index* — a failing episode
+  no longer short-circuits later ones (a deliberate behaviour change, pinned by
+  its own test), and the finding is chosen by INDEX so it never depends on
+  thread scheduling; the exception channel re-raises the lowest-index error with
+  its **own type** (`add_note` carries the episode) because `edl_to_reel`'s
+  docstring contracts setup failures as `ValueError`. *`edl_to_reel` only* —
+  loop-2's reprocess batch is one or two culprits and was hardened days earlier.
+  Named `jobs`, not `cap`: `cap` already means loop-2's reprocess cap
+  (`EDL.cap` → `ReelManifest.cap`), read a few statements below.
+  **New §12 landmine, required for correctness:** ultralytics auto-downloads a
+  bare model NAME on first use, so N cold workers race to write one weights
+  file — silent corruption, not a raise. `track.ensure_model` warms every
+  distinct model before the pool. A second, subtler entry followed from it: a
+  unit test that fakes `process_episode` does **not** thereby avoid ultralytics,
+  because the driver calls `ensure_model` itself — left real, `tests/lib/`
+  imported torch and would have downloaded 6 MB on a cold CI cache, invisible on
+  a dev box that already has the weights. The fixture stubs it.
+  **Review-driven:** the fixture's `dict(pe_results or {})` silently coerced the
+  old list shape (a one-element list holding a 2-key result dict becomes
+  `{"status": "problems"}`, after which every episode falls through to
+  `mechanical_pass`) — it now raises, because the coming "every episode runs past
+  a failure" test would otherwise have passed hollow. **Mutation-verified twice:**
+  the barrier concurrency test goes red under `max_workers=1`, and the
+  exception-type test goes red when the bare re-raise is replaced by a wrapper.
+  The real-ffmpeg SP1/SP3 goldens (`test_front_spine.py`, `test_edit_plan.py`)
+  pass **unedited**.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -834,9 +879,12 @@ _Last updated: 2026-07-18._
   unbuilt — `process_episode`'s `"degraded": None` is a reserved placeholder, and
   it is *not* the reframe-param retry ladder in `orchestration.py`, which is
   built. **OR**
-- **cap-3 parallel fan-out** — the one open 5.1 sub-item now the `using-montage`
-  entry-skill has shipped (2026-07-12): parallelise `edl_to_reel`'s sequential
-  per-episode `process_episode` loop (concurrency cap 3, design §5.10). **OR**
+- **the real-footage v1 gate** — run the whole `using-montage` conveyor
+  end-to-end on Sergei's own footage. Every seam golden today is synthetic
+  (`sample_clip` is a box, not a person, so the SP1/SP3 goldens honestly fake
+  `process_episode`); the engine's own `MVI_3739` fixtures are the only real
+  pixels in the suite. This is the milestone the synthetic goldens stand in for.
+  **OR**
 - **golden-canon armature + landmine lint** — a check that the banned patterns
   (`lutrgb`, `-ss` before `-i`) cannot re-enter the filtergraphs.
 
@@ -863,8 +911,10 @@ resumability / Phase A.5 retry-state persistence.
   descriptor jump + x-teleport + area jump ⇒ split the route, re-match the
   pieces) against a different failure mode than this slice fixed; the design
   assigns it to the process-episode plan as the natural follow-on.
-- cap-3 parallel fan-out remains deferred — the `using-montage` entry-skill shipped
-  (2026-07-12); parallelising `edl_to_reel`'s per-episode loop is the open sub-item.
+- ~~cap-3 parallel fan-out remains deferred~~ — **landed 2026-07-18** (see the Done
+  entry). `build_reel`'s loop-2 reprocess batch stays sequential by decision, not
+  by oversight: batches are typically one or two culprits, so the fan-out's 1.70×
+  has little to bite on there.
 
 ## External assets (outside this repo)
 

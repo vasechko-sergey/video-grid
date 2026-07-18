@@ -14,7 +14,7 @@ _Last updated: 2026-07-18._
 
 | # | Stage | Output | Status | Module / note | Closed by phase |
 |---|-------|--------|:------:|---------------|-----------------|
-| 5.1  | using-montage (router) | routing + ensure-env | ✅ | `using-montage` SKILL conducts the built stages footage→reel with the three §4.1 checkpoints; `montage.py` inspector (`next_action`) drives resume-from-`next`. cap-3 **parallel** fan-out is the one open sub-item | Router + curation |
+| 5.1  | using-montage (router) | routing + ensure-env | ✅ | `using-montage` SKILL conducts the built stages footage→reel with the three §4.1 checkpoints; `montage.py` inspector (`next_action`) drives resume-from-`next`; `edl_to_reel` fans out episodes across a bounded thread pool (`jobs`, default 3 — the measured knee, 2026-07-18). **No open sub-items.** | Router + curation |
 | 5.2  | footage-intake | `FOOTAGE.json`+`.md` | ✅ | `intake.py`: probe + PySceneDetect + YOLO11-seg + vidstabdetect → sub-scene carve → score → phash cull → `FOOTAGE.json`/`.md` + `cast.json` (SP2) | — |
 | 5.3  | reel-brief | `SPEC.md` | ✅ | `reel_brief` SKILL → CLI + typed `Spec` (`scripts/lib/spec.py`) writes `SPEC.md`+`SPEC.json` atop project-init's machine subset (5.3) | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
@@ -53,7 +53,7 @@ status table above.
 
 | # | Stage | St | Left to build | Blocked by (hard) · (soft) | Unblocks |
 |---|-------|:--:|---------------|----------------------------|----------|
-| 5.1 | using-montage router | ✅ | cap-3 **parallel** fan-out only (sub-item) | — | autonomous v1 |
+| 5.1 | using-montage router | ✅ | — (fan-out landed 2026-07-18) | — | autonomous v1 |
 | 5.2 | footage-intake | ✅ | — (SP2, 2026-07-12) | — | 5.7, 5.3, 5.13 |
 | 5.3 | reel-brief | ✅ | — (2026-07-12) | — | 5.7, 5.5 mood |
 | 5.4 | trend-scan | ❌ | `TRENDS.md` — YAGNI | none | (soft) 5.5 rank · 5.6 · 5.7 · 5.13 editorial |
@@ -88,15 +88,15 @@ check the conveyor runs is built, and §5.13's editorial half is now built too
 **The entry-skill closes the autonomous v1 chain:** footage→EDL→reel now runs from
 one `using-montage` invocation — it conducts project-init → footage-intake →
 edit-plan → edl_to_reel with the three §4.1 checkpoints, resuming from `montage
-next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-out
-(a perf slice — `edl_to_reel` stays sequential today), **not a v1 blocker**.
-Everything else was parallel **quality**, and most of it has since shipped
-(B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13 now fully closed — `safe_zones`
-2026-07-16 + `key_action`/`pad_bars`/`transitions` 2026-07-17 + the agent
-review 2026-07-18 — cast→hero-pin 2026-07-16, and the Phase B tail — the two
-length auto-fixes — 2026-07-18). Genuinely open on the quality side: **5.4
-trend-scan** (never started — YAGNI), stage 5.1's **cap-3 parallel fan-out**,
-and the **§7 misc-engine tail** (see the roadmap below).
+next_action`. **Stage 5.1 has no open sub-items left**: the cap-3 **parallel**
+episode fan-out landed 2026-07-18 (`edl_to_reel` runs episodes across a bounded
+thread pool, 1.70× measured). Everything else was parallel **quality**, and most
+of it has since shipped (B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13 now fully
+closed — `safe_zones` 2026-07-16 + `key_action`/`pad_bars`/`transitions`
+2026-07-17 + the agent review 2026-07-18 — cast→hero-pin 2026-07-16, and the
+Phase B tail — the two length auto-fixes — 2026-07-18). Genuinely open on the
+quality side: **5.4 trend-scan** (never started — YAGNI) and the **§7
+misc-engine tail** (see the roadmap below).
 
 ## What produces a reel today
 
@@ -136,7 +136,7 @@ advisory pass/False computed from the per-episode route geometry, or
 ### Upcoming
 
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
-- [ ] **Router + curation** ◐ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design, and `cast.json` itself ships (5.2, 2026-07-12) and is now read back by the cast → hero-pin slice (2026-07-16, see the table above). Remaining: stage 5.1's **cap-3 parallel fan-out** (`edl_to_reel` is a sequential per-episode loop — a perf slice, not a v1 blocker) — its only open sub-item now.
+- [x] **Router + curation** ✅ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design; `cast.json` ships (5.2, 2026-07-12) and is read back by the cast → hero-pin slice (2026-07-16); and the last item, stage 5.1's **cap-3 parallel fan-out**, landed 2026-07-18 — `edl_to_reel` runs its per-episode loop across a bounded thread pool (`jobs`, default 3). The 3 is measured, not assumed: 1.70× at 3 and nothing at 4, on six real windows through the full `process_episode`. Closed.
 - [x] **Editorial reel-final** — stage 5.13's second half. **Both halves are now built**: the mechanical half — `safe_zones` ✅ (2026-07-16) + `key_action`/`pad_bars`/`transitions` ✅ (2026-07-17, all **advisory** — see `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`) — and the **agent review** proper ✅ (2026-07-18, Slice B): the `reel-review` SKILL dispatches a fresh reviewer subagent that judges the delivered reel against SPEC's idea/mood/hook/ending/spine (modelled on `requesting-code-review`) and emits typed findings (`REVIEW.json`), human-gated at CP3 — see `docs/specs/2026-07-18-reel-review-editorial-design.md`. **§5.13 is fully closed.** Its "classic base **and** trend flavor" sub-criterion (`trend_flavor`) is still judged at forced low confidence pending **5.4** — no source of truth until trend-scan lands.
 - [ ] **Misc engine** — the tail of the design's §7 five-names list, re-read through the layouts design's crop × rect × filler model: **`split`** is the only genuine remaining *layout* (two sources → two rects; changes the manifest's shape); **`fit-solid`** is a **filler literal**, not a branch (add `solid` to `BACKGROUNDS` and have `reframe` actually read `ResolvedLayout.background` — plumbed but ignored today, the renderer hardcodes `boxblur`); **`pan`** is already expressible as a layout (`fill` + `crop_scale < 1` ⇒ `freedom > 0`) — what's missing is a *generated* x(t) motion source, not a mode ("tracking is not a property of the layout"). Plus **stabilization's apply half** (`vidstabdetect` already ships as 5.2's shake score; `vidstabtransform` is refused at `manifest`/`ReframeSpec`/`reframe`) and the **tracking-degradation ladder** (ultralytics gone / track garbage → optical-flow centroid → manual keyframes, each rung stamped `degraded:` — today `process_episode`'s `"degraded": None` is a reserved placeholder; not the reframe-param retry ladder, which **is** built).
 

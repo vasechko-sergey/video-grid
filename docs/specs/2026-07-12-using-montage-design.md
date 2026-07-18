@@ -209,8 +209,11 @@ aspect (defers to project-init's own "ask, don't guess").
 
 ## 5. Non-goals (v1 / 5.1 entry-skill)
 
-- **cap-3 *parallel* fan-out** (§5.10) — `edl_to_reel` stays sequential; a
-  separate later slice.
+- ~~**cap-3 *parallel* fan-out** (§5.10) — `edl_to_reel` stays sequential; a
+  separate later slice.~~ **Landed 2026-07-18** as that separate slice:
+  `edl_to_reel` fans out across a bounded thread pool (`jobs`, default 3 — the
+  measured knee, 1.70×). This was 5.1's last open sub-item, so the stage now has
+  none. See `docs/specs/2026-07-18-cap3-fanout-design.md`.
 - **`draft.mp4`** (SP1b, §5.9) — CP2 approves the `EDL.md` map, no burnt-in draft.
 - **dual-emit "without music" + trending-sound sidecar** (§5.14) — v1 "no music"
   is the plain silent path; the with/without dual export is a deliver enhancement.

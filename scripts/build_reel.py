@@ -85,7 +85,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,
                     "report": report.to_dict(), "attempts": dict(attempts)}
-        for item in action.reprocess:                # sequential — one process_episode saturates the box
+        for item in action.reprocess:                # sequential: a reprocess batch is typically one
+                                                     # or two culprits, so the fan-out's measured 1.70x
+                                                     # (docs/specs/2026-07-18-cap3-fanout-design.md §2)
+                                                     # has little to bite on here. Parallelising loop-2
+                                                     # is deferred — NOT because one process_episode
+                                                     # saturates the box; measured, it takes three.
             # black item (ratio None) adds no new correction but must NOT reset cc — the episode
             # keeps its standing colour factor, else a black fix reverts colour and flip-flops
             if item.color_correct is not None:
