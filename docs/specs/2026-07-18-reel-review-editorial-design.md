@@ -163,7 +163,8 @@ approve anyway. `to_dict` emits `verdict` for the `.md`/`.json` readers;
 
 `to_markdown` renders the human-facing report: a header line with the verdict +
 platform + reel, the `summary` paragraph, then findings grouped **blocking →
-important → minor**, each as `axis · route · confidence — evidence → suggestion`.
+important → minor**, each as a `**[severity] axis** → route (confidence)` line
+followed by its evidence and a **Fix:** suggestion line.
 An empty-findings review renders "✅ no findings — reel delivers the brief".
 
 ## §3 The reviewer subagent (`SKILLS/reel-review/reel-reviewer.md`)
