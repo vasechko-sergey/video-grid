@@ -22,11 +22,14 @@ class ReprocessItem:
 @dataclass(frozen=True)
 class ReelAction:
     """The outcome of one reel-loop round (design §3): deliver the reel as-is,
-    reprocess a set of culprit episodes, or escalate up the chain with a finding.
-    Exactly one kind fires per round; the shell dispatches on it."""
-    kind: str                          # "deliver" | "reprocess" | "escalate"
+    reprocess a set of culprit episodes, re-time the target to the reel's real
+    length, or escalate up the chain with a finding. Exactly one kind fires per
+    round; the shell dispatches on it. `retime` may also ride along with a
+    reprocess — the target is adopted before the round's work."""
+    kind: str                          # "deliver" | "reprocess" | "escalate" | "retime"
     reprocess: tuple[ReprocessItem, ...] = ()
     finding: dict | None = None
+    retime: float | None = None        # new target_dur when a within-band shortfall is absorbed (§3)
 
 
 def _correction(f: ReelFailure) -> tuple[float, float, float]:
@@ -37,14 +40,38 @@ def _correction(f: ReelFailure) -> tuple[float, float, float]:
     return tuple(t / d if d > 0 else 1.0 for t, d in zip(target, culprit))
 
 
-def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: int) -> ReelAction:
+def _shortfall(f: ReelFailure) -> float | None:
+    """target − dur for a length failure, or None when the reel runs LONGER than target.
+    An over-length reel is never absorbed: the stem is cut from a fixed music fragment and
+    mix.mix refuses dur > music.duration, so re-timing UP would trade a clean escalate for
+    a hard raise at the mixer (design §2)."""
+    gap = f.detail["target"] - f.detail["dur"]
+    return gap if gap > 0 else None
+
+
+def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: int,
+                length_retime_max: float = 0.0) -> ReelAction:
     """One decision for the whole reel (design §3). Escalate wins the round: any
     non-auto-fixable or capped failure returns Escalate immediately, so we never
-    spend reprocess rounds on a reel that also carries an unfixable fault."""
+    spend reprocess rounds on a reel that also carries an unfixable fault. `length`
+    is auto-fixable in exactly one shape — a shortfall inside length_retime_max,
+    absorbed by re-timing the target DOWN to the reel's real length; an over-length
+    reel and a shortfall past the band still escalate to pacing. The 0.0 default
+    reproduces the pre-slice behaviour for a caller that passes no band."""
     if not fail_reasons:
         return ReelAction("deliver")
     items: dict[int, ReprocessItem] = {}   # idx → ReprocessItem; colour wins over a bare black re-encode
+    retime: float | None = None
     for f in fail_reasons:
+        if f.check == "length":
+            gap = _shortfall(f)
+            if gap is not None and gap <= length_retime_max:
+                retime = f.detail["dur"]   # the reel IS this long — make it the target
+                continue
+            return ReelAction("escalate", finding={
+                "reason": "not-auto-fixable", "check": f.check,
+                "episode_idx": f.episode_idx, "escalate_to": f.escalate_to,
+                "detail": f.detail})
         if f.check not in _REPROCESS_CLASS:
             return ReelAction("escalate", finding={
                 "reason": "not-auto-fixable", "check": f.check,
@@ -59,4 +86,8 @@ def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: 
         corr = _correction(f) if f.check == "color_across_cuts" else None
         if f.episode_idx not in items or corr is not None:
             items[f.episode_idx] = ReprocessItem(f.episode_idx, corr)
-    return ReelAction("reprocess", reprocess=tuple(items[k] for k in sorted(items)))
+    if items:
+        return ReelAction("reprocess", reprocess=tuple(items[k] for k in sorted(items)), retime=retime)
+    if retime is not None:
+        return ReelAction("retime", retime=retime)
+    return ReelAction("deliver")

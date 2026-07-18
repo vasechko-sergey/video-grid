@@ -103,3 +103,55 @@ def test_colour_then_black_same_episode_still_dedupes_to_colour():
     a = ro.next_action(fails, {}, cap=3)
     assert len(a.reprocess) == 1
     assert a.reprocess[0].idx == 1 and a.reprocess[0].color_correct is not None
+
+
+def _length(dur, target):
+    return ReelFailure("length", "pacing", None, {"dur": dur, "target": target})
+
+
+def test_within_band_shortfall_retimes_to_the_reels_real_length():
+    # the reel is 0.7s SHORT of target, inside a 1.0s band → accept the real length
+    a = ro.next_action([_length(11.3, 12.0)], {}, cap=3, length_retime_max=1.0)
+    assert a.kind == "retime"
+    assert a.retime == 11.3
+    assert a.reprocess == () and a.finding is None
+
+
+def test_shortfall_past_the_band_still_escalates():
+    a = ro.next_action([_length(10.5, 12.0)], {}, cap=3, length_retime_max=1.0)
+    assert a.kind == "escalate"
+    assert a.finding["check"] == "length" and a.finding["escalate_to"] == "pacing"
+    assert a.retime is None
+
+
+def test_over_length_reel_is_never_absorbed_even_inside_the_band():
+    # the one-sided proof: the SAME 0.7s gap that re-times as a shortfall must escalate
+    # when the reel runs LONG — mix refuses a stem longer than its fragment (design §2)
+    a = ro.next_action([_length(12.7, 12.0)], {}, cap=3, length_retime_max=1.0)
+    assert a.kind == "escalate" and a.finding["check"] == "length"
+
+
+def test_within_band_shortfall_rides_along_with_a_colour_reprocess():
+    fails = [_length(11.3, 12.0),
+             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+    a = ro.next_action(fails, {}, cap=3, length_retime_max=1.0)
+    assert a.kind == "reprocess"
+    assert a.reprocess[0].idx == 1
+    assert a.retime == 11.3          # adopted first so length stops re-firing while colour converges
+
+
+def test_escalate_still_wins_over_an_absorbable_shortfall():
+    # a capped colour fail alongside a within-band shortfall → escalate; the pending
+    # re-time is discarded with the round (the reel never delivers on an unfixable fault)
+    fails = [_length(11.3, 12.0),
+             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+    a = ro.next_action(fails, {1: 3}, cap=3, length_retime_max=1.0)
+    assert a.kind == "escalate"
+    assert a.finding["reason"] == "reprocess-capped"
+    assert a.retime is None
+
+
+def test_length_band_defaults_to_zero_so_an_unaware_caller_keeps_escalating():
+    # the pure core's conservative default: opting in lives in the spec the driver threads
+    a = ro.next_action([_length(11.3, 12.0)], {}, cap=3)
+    assert a.kind == "escalate" and a.finding["check"] == "length"
