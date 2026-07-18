@@ -11,6 +11,6 @@ __pycache__/
 config/sourcing.env
 
 # ultralytics resolves weights by NAME and downloads into the CWD when its
-# configured weights_dir is absent — a test run drops yolo11*.pt in the repo root,
-# not in models/ (design §12).
+# weights_dir is unset or missing — a test run drops yolo11*.pt in the repo ROOT,
+# not in models/, which nothing actually configures (montage §12 records the gap).
 yolo11*.pt

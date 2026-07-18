@@ -2,6 +2,7 @@ import sys
 import types
 
 from scripts import track
+from scripts.lib.manifest import DEFAULT_MODEL
 
 
 def _fake_ultralytics(calls):
@@ -39,5 +40,4 @@ def test_the_module_model_matches_the_manifest_default():
     # They are independent literals. If they ever drift, the driver warms model A while N
     # workers race a cold download of model B into one path — precisely the silent
     # corruption the warm-up exists to prevent, and nothing else asserts they agree.
-    from scripts.lib.manifest import DEFAULT_MODEL
     assert track.MODEL == DEFAULT_MODEL

@@ -300,8 +300,9 @@ def test_the_lowest_raising_episode_escapes_with_its_own_type(monkeypatch, tmp_p
 
 
 def test_a_raise_beats_a_failing_status_from_a_later_episode(monkeypatch, tmp_path):
-    # The exception channel is read before the status channel, matching the
-    # sequential loop where a raise aborted the function outright.
+    # A raise at a LOWER index than the failing status wins — not because the
+    # exception channel has priority (it does not; see the inverted twin below),
+    # but because 2 < 5. The sequential loop aborted at 2 for the same reason.
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
         idx = int(Path(project_dir).name.removeprefix("ep"))
         if idx == 2:

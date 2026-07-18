@@ -148,14 +148,20 @@ Step 3 becomes:
         futures = [ex.submit(process_episode.process_episode, md,
                              str(Path(work_dir) / f"ep{i}"))
                    for i, md in enumerate(mds)]
-    # the `with` block joined every worker: each future is done, in index order below
-    results: list[dict] = []
-    for i, fut in enumerate(futures):
+    # the `with` block joined every worker: each future is done, and ONE loop reads
+    # them in index order, deciding BOTH failure channels together (§4)
+    episodes: list[ReelEpisode] = []
+    for i, (md, fut) in enumerate(zip(mds, futures, strict=True)):
         try:
-            results.append(fut.result())
+            res = fut.result()
         except Exception as e:             # a hard setup error stays an exception (§4)
-            e.add_note(f"raised while processing episode {i} (segment {mds[i]['segment']})")
+            e.add_note(f"raised while processing episode {i} (segment {md['segment']})")
             raise
+        if res.get("status") != "mechanical_pass":
+            return {"status": "stop_and_report",
+                    "finding": {"reason": "episode-failed", "episode_idx": i,
+                                "sub_status": res.get("status")}, "sub": res}
+        episodes.append(ReelEpisode(...))
 ```
 
 The bare `raise` re-raises the original exception with its **own type and
@@ -178,19 +184,11 @@ dependence anywhere.
 handling.
 
 **Channel 1 — a returned status.** `needs_input` / `stop_and_report` /
-`escalate` come back as dicts. The existing selection loop, unchanged, already
-picks the lowest index because it iterates in order and returns on the first
-non-pass:
-
-```python
-    episodes: list[ReelEpisode] = []
-    for i, res in enumerate(results):
-        if res.get("status") != "mechanical_pass":
-            return {"status": "stop_and_report",
-                    "finding": {"reason": "episode-failed", "episode_idx": i,
-                                "sub_status": res.get("status")}, "sub": res}
-        episodes.append(ReelEpisode(...))
-```
+`escalate` come back as dicts. The selection is the pre-slice one — iterate in
+order, return on the first non-pass — but it no longer runs as a *separate* loop
+over pre-collected results; it is the second half of the single loop in §3, so
+that a status and a raise at different indices are ranked against each other
+rather than each within its own channel.
 
 **Channel 2 — a raised exception.** Missing footage, a corrupt sidecar, an
 ffmpeg failure: `edl_to_reel`'s docstring already contracts these as raises, not
@@ -358,9 +356,9 @@ Two further fixture obligations, both found during implementation:
   - The 10 s timeout is a deadlock backstop, not a timing assumption: the
     barrier trips as soon as the third worker arrives, so a healthy run never
     approaches it.
-- **Lowest index wins on multiple failing statuses** — episodes 1 and 3 both
+- **Lowest index wins on multiple failing statuses** — episodes 1 and 4 both
   return `needs_input`; the finding names 1.
-- **Lowest index wins on multiple exceptions** — episodes 1 and 3 both raise
+- **Lowest index wins on multiple exceptions** — episodes 1 and 4 both raise
   distinct errors; the escaping one names 1.
 - **Every episode runs past a failure** — episode 0 fails, and all N episodes
   still appear in `seen["pe"]` (the §4 behaviour change, pinned deliberately so
