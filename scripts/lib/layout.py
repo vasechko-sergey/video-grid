@@ -23,6 +23,7 @@ class ResolvedLayout:
     out_h: int
     rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels — the CONTENT rect
     background: str
+    background_color: str
     border_px: int
     border_color: str
     fast_path: bool
@@ -130,5 +131,6 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
 
     return ResolvedLayout(mode=spec.mode, crop_aspect=aspect, crop_w=crop_w, crop_h=crop_h,
                           freedom=free, out_w=out_w, out_h=out_h, rect_px=(rx, ry, rw, rh),
-                          background=spec.background, border_px=spec.border_px,
-                          border_color=spec.border_color, fast_path=(spec.mode == "fill"))
+                          background=spec.background, background_color=spec.background_color,
+                          border_px=spec.border_px, border_color=spec.border_color,
+                          fast_path=(spec.mode == "fill"))

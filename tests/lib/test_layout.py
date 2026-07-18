@@ -127,6 +127,15 @@ def test_fit_overflow_does_not_suggest_shrinking_a_rect_it_forbids():
                        (21, 9), GOLDEN, NATIVE)
 
 
+def test_resolve_carries_the_filler_and_its_colour():
+    # reframe reads BOTH off the resolved layout; a pass-through that works by
+    # accident is a pass-through that can silently stop working.
+    spec = LayoutSpec(mode="fit", crop_aspect="source",
+                      background="solid", background_color="#101820")
+    rl = layout.resolve(spec, CANVAS, GOLDEN, NATIVE)
+    assert (rl.background, rl.background_color) == ("solid", "#101820")
+
+
 def test_fill_out_dims_match_todays_delivery_on_a_non_golden_canvas():
     # the golden 9:16 crop of 1280x720 evens exactly; 21:9 of 4K does not.
     # resolve must agree with what reframe() computes today: dims(crop_w, crop_h)
