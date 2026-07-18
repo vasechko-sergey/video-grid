@@ -397,7 +397,7 @@ class TrackSpec:
 
 
 LAYOUT_MODES = ("fill", "fit", "insert")
-BACKGROUNDS = ("blur",)
+BACKGROUNDS = ("blur", "solid")
 
 
 @dataclass
@@ -422,6 +422,7 @@ class LayoutSpec:
     crop_scale: float = 1.0
     rect: tuple[float, float, float] | None = None
     background: str = "blur"
+    background_color: str = "black"      # `solid` only — an ffmpeg colour name or hex
     border_px: int = 0
     border_color: str = "white"
 
@@ -431,7 +432,7 @@ class LayoutSpec:
                              "(split and pan are separate plans)")
         if self.background not in BACKGROUNDS:
             raise ValueError(f"LayoutSpec.background {self.background!r} unknown — "
-                             f"{BACKGROUNDS}; solid lands with fit-solid")
+                             f"{BACKGROUNDS}")
         if not isinstance(self.crop_scale, (int, float)) or not 0.0 < self.crop_scale <= 1.0:
             raise ValueError(f"LayoutSpec.crop_scale must be in (0.0, 1.0], got "
                              f"{self.crop_scale!r} — 1.0 is the largest crop that fits")
@@ -466,6 +467,14 @@ class LayoutSpec:
             raise ValueError(f"LayoutSpec.border_color {self.border_color!r} contains a "
                              "character that would break the ffmpeg filtergraph — use a "
                              "colour name like 'white' or a hex literal like '#ffffff'")
+        if not isinstance(self.background_color, str) or not self.background_color:
+            raise ValueError(f"LayoutSpec.background_color must be a non-empty ffmpeg colour "
+                             f"name or hex, got {self.background_color!r} — e.g. 'black', "
+                             "'#000000'")
+        if any(c in self.background_color for c in ",:;'[]\\"):
+            raise ValueError(f"LayoutSpec.background_color {self.background_color!r} contains a "
+                             "character that would break the ffmpeg filtergraph — use a "
+                             "colour name like 'black' or a hex literal like '#000000'")
         if self.mode == "fill":
             if self.crop_aspect != "canvas":
                 raise ValueError("LayoutSpec: fill must use crop_aspect 'canvas' — a fill that "
@@ -478,6 +487,10 @@ class LayoutSpec:
                 raise ValueError(f"LayoutSpec: fill covers the canvas edge to edge, so a "
                                  f"border has nothing to sit on, got border_px="
                                  f"{self.border_px} — a bordered frame is an insert")
+            if self.background != "blur":
+                raise ValueError(f"LayoutSpec: fill covers the canvas edge to edge, so there is "
+                                 f"no background to fill, got background="
+                                 f"{self.background!r} — a filler needs fit or insert")
         if self.mode == "fit" and self.rect is not None:
             raise ValueError(f"LayoutSpec: fit spans the full canvas width, so rect must "
                              f"be None, got {self.rect!r} — use insert to place a smaller rect")

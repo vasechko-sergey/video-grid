@@ -294,8 +294,11 @@ def test_layout_spec_rejects_unknown_mode():
 
 
 def test_layout_spec_rejects_unknown_background():
-    with pytest.raises(ValueError, match="solid lands with fit-solid"):
-        m.LayoutSpec(mode="fit", crop_aspect="source", background="solid")
+    # "solid" used to be the forward-referenced example of an unknown value here
+    # (design 2026-07-18-fit-solid §3); it has since landed as a real background,
+    # so this pins a value that stays unknown instead of reusing a now-valid one.
+    with pytest.raises(ValueError, match="unknown"):
+        m.LayoutSpec(mode="fit", crop_aspect="source", background="vignette")
 
 
 def test_layout_spec_rejects_bad_scale():
@@ -351,6 +354,45 @@ def test_layout_spec_rejects_a_bad_border():
 def test_layout_spec_fill_refuses_a_border():
     with pytest.raises(ValueError, match="a bordered frame is an insert"):
         m.LayoutSpec(mode="fill", border_px=8)
+
+
+def test_layout_spec_accepts_a_solid_filler():
+    spec = m.LayoutSpec(mode="fit", crop_aspect="source", background="solid")
+    assert (spec.mode, spec.crop_aspect, spec.crop_scale, spec.rect, spec.background,
+            spec.background_color, spec.border_px, spec.border_color) == (
+        "fit", "source", 1.0, None, "solid", "black", 0, "white")
+
+
+def test_layout_spec_takes_an_explicit_background_colour():
+    spec = m.LayoutSpec(mode="fit", crop_aspect="source",
+                        background="solid", background_color="#101820")
+    assert spec.background_color == "#101820"
+
+
+def test_fill_refuses_a_filler_it_cannot_show():
+    # fill covers the canvas edge to edge — a filler would be an inert setting
+    # that reads as if it did something. Mirrors fill's existing border refusal.
+    with pytest.raises(ValueError, match="no background to fill"):
+        m.LayoutSpec(mode="fill", background="solid")
+
+
+def test_layout_spec_refuses_an_unknown_background():
+    with pytest.raises(ValueError, match="unknown"):
+        m.LayoutSpec(mode="fit", crop_aspect="source", background="gradient")
+
+
+@pytest.mark.parametrize("bad", ["", None, 7])
+def test_background_colour_must_be_a_non_empty_string(bad):
+    with pytest.raises(ValueError, match="non-empty ffmpeg colour"):
+        m.LayoutSpec(mode="fit", crop_aspect="source", background_color=bad)
+
+
+@pytest.mark.parametrize("ch", [",", ":", ";", "'", "[", "]", "\\"])
+def test_background_colour_refuses_filtergraph_breaking_characters(ch):
+    # Same guard border_color gets: this string reaches an ffmpeg filter argument.
+    with pytest.raises(ValueError, match="break the ffmpeg filtergraph"):
+        m.LayoutSpec(mode="fit", crop_aspect="source",
+                    background_color=f"bla{ch}ck")
 
 
 def test_path_meta_round_trips_through_json(tmp_path):
