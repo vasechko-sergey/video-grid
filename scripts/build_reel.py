@@ -38,6 +38,14 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     master = str(Path(work_dir) / "master.mp4")
     report_path = str(Path(work_dir) / "reel_report.json")
     music = MusicSpec.from_json(rm.music) if rm.music else None   # None → silent reel, exactly as Phase A.5
+    # The length re-time only ever SHRINKS the target, so a target that starts outside the music
+    # window can never be rescued downstream — mix refuses a stem longer than its fragment. Refuse
+    # it here, before any ffmpeg, rather than let the absorb carry it into mix's raise (design §6).
+    if music is not None and rm.target_dur > music.duration + 0.1:
+        raise ValueError(f"build_reel: target_dur {rm.target_dur}s exceeds the analyzed music "
+                         f"window {music.duration}s — this reel can never be mixed (mix refuses a "
+                         f"stem longer than its fragment); re-pick the fragment "
+                         f"(beats --auto-start --duration {rm.target_dur:.0f}) or lower the target")
     attempts: dict[int, int] = {}
     cc: dict[int, tuple[float, float, float]] = {}
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur

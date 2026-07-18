@@ -383,6 +383,21 @@ master at 11.5 (1.5 s short) escalates: that is a missing episode, not drift.
   `check_reel` always writes for a length failure; a `KeyError` here would mean
   the checker and the ladder disagree about the contract, which is a caller bug,
   not a runtime condition to swallow.
+- **A target that starts outside the music window** → the absorb's one-sidedness is
+  anchored to `target_dur`, but the real constraint is the *fragment* (§2), and the
+  two are independent inputs (`edl_to_reel`'s `--music` can override the EDL's own
+  field). A `target_dur` above `music.duration` would let a within-band shortfall be
+  absorbed, pass the gate, and hand `mix` a master it must refuse. `build_reel`
+  therefore preflights `target_dur` against `music.duration` right after loading the
+  spec and **raises** with a re-pick remedy before any ffmpeg — an unmixable manifest
+  is a hard setup error, not an editorial finding to route (the `edl_to_reel` split).
+  Since the target only ever shrinks, a target inside the window keeps every re-timed
+  target inside it too. The paced path never reaches this: `spine.target_dur` **is**
+  `music.duration`, and §4 clamps at or below it.
+  **Residual, pre-existing:** the length gate tolerates a master up to `target + 0.5`
+  while `mix` refuses past `music.duration + 0.1`, so a master slightly over the
+  fragment can still reach `mix`'s own guard. That sliver predates this slice and
+  fails loud there, with its own remedy — it is not widened here.
 
 ## §7 — Testing
 

@@ -390,3 +390,46 @@ def test_build_reel_sfx_only_still_passes_segments(tmp_path, monkeypatch):
                           str(tmp_path / "out"), str(tmp_path / "work"))
     assert got["ambient"] is False and got["sfx"] is True
     assert got["segments"] == [("s0.mp4", 3.0), ("s1.mp4", 3.0)]
+
+
+def test_build_reel_refuses_a_target_longer_than_the_music_window(tmp_path, monkeypatch):
+    # An unmixable manifest is a hard SETUP error, not an editorial finding to route. mix
+    # refuses a stem longer than its fragment, and the length re-time only ever SHRINKS the
+    # target — so if the target starts outside the window, nothing downstream can rescue it,
+    # and absorbing a shortfall would only carry it further toward mix's raise. Fail in ms,
+    # before any ffmpeg, with the re-pick remedy.
+    mixed, delivered = [], []
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    ep = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 8.0}, clip="c0.mp4", route="r0.json")
+    rm = ReelManifest(episodes=[ep], target_dur=8.0, music=str(tmp_path / "MUSIC.json"))
+    with pytest.raises(ValueError, match="exceeds the analyzed music window"):
+        build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert mixed == [] and delivered == []      # refused before any work was spent
+
+
+def test_build_reel_music_delivers_after_full_budget_plus_a_length_retime(tmp_path, monkeypatch):
+    # the retime `continue` needs +3 loop headroom, not +2 — a reel that spends its WHOLE
+    # reprocess budget, then takes a within-band re-time, and carries music must still
+    # deliver rather than fall to reel-cap-exhausted after the stem was already built.
+    # Sibling of test_build_reel_music_delivers_after_full_reprocess_budget, which pinned +2.
+    ep = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 6.0}, clip="c0.mp4", route="r0.json")
+    rm = ReelManifest(episodes=[ep], target_dur=6.0, cap=3, music=str(tmp_path / "MUSIC.json"))
+    mixed, delivered = [], []
+    reports = [_color_fail_music(), _color_fail_music(), _color_fail_music(),
+               _length_fail(5.3, 6.0), _passing(), _passing()]
+    monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
+    monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 5.3)
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    monkeypatch.setattr(build_reel.mix, "mix",
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False:
+                        (mixed.append(dur), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.process_episode, "process_episode",
+                        lambda *a, **k: {"status": "mechanical_pass", "clip": "c0.mp4"})
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, audio=None, **k: (delivered.append(audio), "OUT.mp4")[1])
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"                  # NOT reel-cap-exhausted
+    assert mixed == [5.3] and delivered == ["stem.m4a"]  # stem built at the re-timed length
