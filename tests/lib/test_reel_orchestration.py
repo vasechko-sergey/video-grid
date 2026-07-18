@@ -155,3 +155,11 @@ def test_length_band_defaults_to_zero_so_an_unaware_caller_keeps_escalating():
     # the pure core's conservative default: opting in lives in the spec the driver threads
     a = ro.next_action([_length(11.3, 12.0)], {}, cap=3)
     assert a.kind == "escalate" and a.finding["check"] == "length"
+
+
+def test_shortfall_exactly_at_the_band_is_absorbed_the_edge_is_inclusive():
+    # the absorb window is (gate 0.5s, band 1.0s] — CLOSED at the top, so a gap of exactly
+    # the band re-times rather than escalating. Pinned because a threshold's edge is where
+    # an off-by-one hides (the pacing _kind/_beats_per_slot band-boundary ethos).
+    a = ro.next_action([_length(11.0, 12.0)], {}, cap=3, length_retime_max=1.0)
+    assert a.kind == "retime" and a.retime == 11.0

@@ -278,7 +278,7 @@ Note the `length` branch is checked BEFORE the generic `_REPROCESS_CLASS` branch
 ```
 .venv/bin/python -m pytest tests/lib/test_reel_orchestration.py -v ; echo "EXIT: $?"
 ```
-Expected: PASS — all 19 (13 pre-existing, unchanged by the defaulted parameter, + 6 new).
+Expected: PASS — all 18 (12 pre-existing, unchanged by the defaulted parameter, + 6 new).
 
 - [ ] **Step 5: Commit**
 
