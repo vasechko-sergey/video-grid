@@ -45,7 +45,10 @@ def test_validate_unsupported_layout_refused():
     # fit/insert are first-class layouts now; a genuinely unknown one still
     # fails the soft gate, with a message that names what IS supported.
     problems = mf.validate(mf.Manifest.from_dict(_ok_dict(layout="pan")))
-    assert any("pan" in p and "fit" in p for p in problems)
+    # the FULL enumeration, not a bare "fit": "fit" is a substring of "fit-blur",
+    # so the loose form would pass against the pre-rename spelling too and let a
+    # revert of that message regress silently. This is the only test that reads it.
+    assert any("pan" in p and "fill/fit/insert" in p for p in problems)
 
 
 def test_validate_stabilize_refused():

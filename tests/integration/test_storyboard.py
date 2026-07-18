@@ -26,15 +26,15 @@ def test_marks_for_fill_are_unchanged():
     assert marks == [((400.0 - 100) / 405, 360.0 / 720)]
 
 
-_FIT_BLUR = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
-                     canvas=(9, 16), out_dims=(1280, 2276), rect_px=(0, 778, 1280, 720),
-                     freedom=0)
+_FIT = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0, src_dims=(1280, 720),
+                canvas=(9, 16), out_dims=(1280, 2276), rect_px=(0, 778, 1280, 720),
+                freedom=0)
 
 
 def test_marks_for_a_composite_land_inside_the_rect():
     route, path = _route_and_path()
     # fit: the whole 1280x720 frame sits at y=778 in a 1280x2276 canvas
-    (fx, fy), = storyboard.marks_at_times(route, path, _FIT_BLUR, [0.0])
+    (fx, fy), = storyboard.marks_at_times(route, path, _FIT, [0.0])
     # x: the subject is 400px into a 1280px-wide rect that spans the full canvas
     assert fx == pytest.approx((0 + 1280 * (400.0 - 100) / 1280) / 1280)
     # y: the subject is halfway down a 720px rect that starts 778px down a 2276px canvas
@@ -54,7 +54,7 @@ def test_a_subject_near_the_frame_top_does_not_land_on_the_background():
     """
     route = [RoutePoint(t=i / 10, x=400.0 + i * 10, y=50.0, w=60.0, h=160.0) for i in range(5)]
     path = CropPath([100 + i * 10 for i in range(5)])
-    (_, fy), = storyboard.marks_at_times(route, path, _FIT_BLUR, [0.0])
+    (_, fy), = storyboard.marks_at_times(route, path, _FIT, [0.0])
     top, bottom = 778 / 2276, (778 + 720) / 2276
     assert fy == pytest.approx((778 + 720 * (50.0 / 720)) / 2276)
     assert top < fy < bottom                       # on the picture
