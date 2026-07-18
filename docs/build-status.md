@@ -797,8 +797,13 @@ _Last updated: 2026-07-18._
   **A bonus fix:** a paced over-flow EDL with no explicit `target_dur`
   previously fell through to `sum(ep.dur)`, passed the length gate, and hit an
   uncaught `ValueError` inside `mix.mix` after a full picture pass — the §4
-  clamp turns that into a clean stop-and-report at the reel gate. **1235
-  passed / 8 skipped** (17 new unit + 2 new real-ffmpeg integration tests).
+  clamp turns that into a clean stop-and-report at the reel gate. The final
+  whole-slice review found the mirror of that same hole still open — the
+  absorb's one-sidedness was anchored to `target_dur`, not to the music
+  fragment, so a `target_dur` above `music.duration` could still carry a
+  master into `mix`'s raise; `build_reel` now preflights the two and refuses
+  an unmixable manifest before any ffmpeg (design §6). **1237 passed / 8
+  skipped** (19 new unit + 2 new real-ffmpeg integration tests).
   **Deferred:** re-picking `MUSIC.start_offset` via librosa (`beats.
   choose_offset` stays the manual rung); re-cutting footage inside loop-2;
   auto-fixing an over-length reel; re-deriving a truncated `Spine` for
