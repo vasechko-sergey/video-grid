@@ -58,6 +58,25 @@ def test_fit_on_the_golden_ride(tmp_path):
 
 
 @pytest.mark.integration
+def test_solid_background_is_recorded_in_the_sidecar(tmp_path):
+    # Coverage-hole check (Task 5 mutation check): dropping `background=rl.background`
+    # from reframe's PathMeta(...) call left every test in the suite green, because
+    # every one of them renders the field's own default (`blur`) — a from_dict that
+    # silently re-defaulted a dropped key is indistinguishable from one that actually
+    # round-tripped it, UNLESS the fixture uses the non-default value. Render `solid`
+    # and read it back off disk, the same shape as test_fit_on_the_golden_ride above.
+    out = tmp_path / "solid.mp4"
+    path_out = tmp_path / "path.json"
+    spec = ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
+                       color_means=COLOR, delivery=NATIVE,
+                       layout=LayoutSpec(mode="fit", crop_aspect="source",
+                                         background="solid"))
+    reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
+    meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    assert meta.background == "solid"
+
+
+@pytest.mark.integration
 def test_insert_on_the_golden_ride(tmp_path):
     out = tmp_path / "insert.mp4"
     path_out = tmp_path / "path.json"

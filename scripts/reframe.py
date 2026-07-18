@@ -218,7 +218,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
 
     PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
              src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
-             rect_px=rl.rect_px, freedom=rl.freedom
+             rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background
              ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 

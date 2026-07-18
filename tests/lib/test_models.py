@@ -439,6 +439,34 @@ def test_path_meta_from_dict_reports_an_unusable_field_with_a_remedy():
         m.PathMeta.from_dict(d)
 
 
+def test_path_meta_round_trips_the_filler():
+    pm = m.PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                    src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                    rect_px=(0, 778, 1280, 720), freedom=0, background="solid")
+    assert m.PathMeta.from_dict(pm.to_dict()) == pm
+
+
+def test_path_meta_reads_a_pre_filler_sidecar_as_blur():
+    # Before this slice `blur` was the ONLY value the field could hold, so the
+    # substitution is provably the truth for every sidecar written until now —
+    # a fact, not a guessed default.
+    d = m.PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                   src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                   rect_px=(0, 778, 1280, 720), freedom=0, background="solid").to_dict()
+    del d["background"]
+    assert m.PathMeta.from_dict(d).background == "blur"
+
+
+def test_path_meta_still_raises_on_any_other_missing_field():
+    # The exemption is ONE key, not a loosening of the integrity check.
+    d = m.PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                   src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                   rect_px=(0, 778, 1280, 720), freedom=0, background="blur").to_dict()
+    del d["freedom"]
+    with pytest.raises(RuntimeError, match="no field"):
+        m.PathMeta.from_dict(d)
+
+
 def test_export_profile_defaults_are_the_silent_reel():
     p = m.REEL_H264
     assert (p.vcodec, p.crf, p.pix_fmt, p.container) == ("libx264", 18, "yuv420p", "mp4")

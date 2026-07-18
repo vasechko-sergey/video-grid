@@ -140,12 +140,14 @@ class PathMeta:
     out_dims: tuple[int, int]
     rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels
     freedom: int
+    background: str = "blur"
 
     def to_dict(self) -> dict:
         return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
                 "crop_y": self.crop_y, "src_dims": list(self.src_dims),
                 "canvas": list(self.canvas), "out_dims": list(self.out_dims),
-                "rect_px": list(self.rect_px), "freedom": self.freedom}
+                "rect_px": list(self.rect_px), "freedom": self.freedom,
+                "background": self.background}
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
@@ -163,7 +165,13 @@ class PathMeta:
             return cls(mode=d["mode"], crop_w=int(d["crop_w"]), crop_h=int(d["crop_h"]),
                        crop_y=int(d["crop_y"]), src_dims=tuple(d["src_dims"]),
                        canvas=tuple(d["canvas"]), out_dims=tuple(d["out_dims"]),
-                       rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]))
+                       rect_px=tuple(d["rect_px"]), freedom=int(d["freedom"]),
+                       # `.get`, uniquely among these fields: a sidecar written before
+                       # fit-solid has no `background` key, and `blur` was the only value
+                       # the field could have held then — the substitution is provably the
+                       # truth for those files, not a guessed default. Every OTHER missing
+                       # key stays an integrity failure below.
+                       background=d.get("background", "blur"))
         except KeyError as e:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
