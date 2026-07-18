@@ -112,22 +112,22 @@ def _probe(src: str) -> tuple[int, int, float]:
     return int(s["width"]), int(s["height"]), fps
 
 
-def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
-                 gains: tuple[float, ...], fps: float) -> list[str]:
-    """The ffmpeg filter arguments for one layout.
+def _background_args(rl: ResolvedLayout, fps: float) -> tuple[str, str, str]:
+    """(bg_chain, fg_source_label, overlay_opts) for one filler.
 
-    fill takes the fast path: one -vf chain, byte-identical to what this script
-    emitted before layouts existed. That is not an optimization — it is how the
-    golden fixture is protected from a silent change of command.
+    blur reads the source TWICE — a scaled cover for the background and the
+    tracked crop for the content — which is the only reason the composite
+    splits. solid SYNTHESIZES its background and reads the source once, so it
+    does not split. The difference in shape is caused by the filler, which is
+    what makes this a parameter and not a branch: both arms hand back a [bg], a
+    [fg] and one overlay, over the identical tail.
     """
-    mixer = color.mixer_arg(*gains)
-    tail = f"{mixer},fps={fps:.6g},format=yuv420p"
-    if rl.fast_path:
-        return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
-                        f"scale={rl.out_w}:{rl.out_h},{tail}")]
-    rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
-    b = rl.border_px
-    ox, oy, ow, oh = rx - b, ry - b, rw + 2 * b, rh + 2 * b
+    if rl.background == "solid":
+        # `color` is an INFINITE source. Without shortest=1 the overlay never
+        # sees end-of-stream on either input and the encode does not terminate
+        # (design §4) — it is not a tidiness flag, it is what makes ffmpeg stop.
+        return (f"color=c={rl.background_color}:s={rl.out_w}x{rl.out_h}:r={fps:.6g}[bg];",
+                "[0:v]", ":shortest=1")
     # boxblur rejects a radius at/above half the chroma plane; yuv420p halves the
     # plane again, so the ceiling is the largest radius STRICTLY under
     # min(out_w, out_h) / 4 — i.e. (min(out_w, out_h) - 1) // 4. ffmpeg 8.1.2
@@ -141,13 +141,38 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
     # crash the ceiling exists to prevent. Below 8px the blur is meaningless
     # anyway; radius 0 is a legal no-op.
     radius = min(max(2, rl.out_w // 60), (min(rl.out_w, rl.out_h) - 1) // 4)
+    return (f"[0:v]split=2[a][b];"
+            f"[a]scale={rl.out_w}:{rl.out_h}:force_original_aspect_ratio=increase,"
+            f"crop={rl.out_w}:{rl.out_h},boxblur={radius}:2[bg];",
+            "[b]", "")
+
+
+def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
+                 gains: tuple[float, ...], fps: float) -> list[str]:
+    """The ffmpeg filter arguments for one layout.
+
+    fill takes the fast path: one -vf chain, byte-identical to what this script
+    emitted before layouts existed. That is not an optimization — it is how the
+    golden fixture is protected from a silent change of command.
+
+    Otherwise the composite delegates its background to `_background_args` — the
+    one place the two fillers differ — and composes the identical [bg]/[fg]/
+    overlay/tail shape around whatever it returns.
+    """
+    mixer = color.mixer_arg(*gains)
+    tail = f"{mixer},fps={fps:.6g},format=yuv420p"
+    if rl.fast_path:
+        return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
+                        f"scale={rl.out_w}:{rl.out_h},{tail}")]
+    rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
+    b = rl.border_px
+    ox, oy, ow, oh = rx - b, ry - b, rw + 2 * b, rh + 2 * b
+    bg_chain, fg_src, ov_opts = _background_args(rl, fps)
     pad = f",pad={ow}:{oh}:{b}:{b}:{rl.border_color}" if b else ""
     return ["-filter_complex",
-            (f"[0:v]split=2[a][b];"
-             f"[a]scale={rl.out_w}:{rl.out_h}:force_original_aspect_ratio=increase,"
-             f"crop={rl.out_w}:{rl.out_h},boxblur={radius}:2[bg];"
-             f"[b]crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}{pad}[fg];"
-             f"[bg][fg]overlay={ox}:{oy},{tail}")]
+            (f"{bg_chain}"
+             f"{fg_src}crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}{pad}[fg];"
+             f"[bg][fg]overlay={ox}:{oy}{ov_opts},{tail}")]
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: str) -> str:

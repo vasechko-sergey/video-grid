@@ -164,6 +164,49 @@ def test_filter_args_fit_composites_over_a_blurred_cover():
     ]
 
 
+def test_filter_args_solid_synthesizes_its_background():
+    # blur reads the source TWICE (cover + content) and therefore splits; solid
+    # synthesizes its background and reads the source once, so there is no split.
+    # `shortest=1` is load-bearing: `color` is an INFINITE source, and without it
+    # the overlay never sees EOF on either input and the encode does not finish.
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
+                                       background="solid"),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
+    assert args == [
+        "-filter_complex",
+        "color=c=black:s=1280x2276:r=59.94[bg];"
+        "[0:v]crop=1280:720:x='0.0':y=0,scale=1280:720[fg];"
+        "[bg][fg]overlay=0:778:shortest=1,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=59.94,format=yuv420p",
+    ]
+
+
+def test_filter_args_solid_uses_the_requested_colour():
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
+                                       background="solid", background_color="#101820"),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=59.94)
+    assert args[1].startswith("color=c=#101820:s=1280x2276:r=59.94[bg];")
+
+
+def test_filter_args_solid_insert_keeps_its_border():
+    # the filler is orthogonal to the rect: a bordered card over a solid pad is
+    # two colours in one graph, not a third code path.
+    rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1),
+                                       rect=(0.05, 0.25, 0.90), background="solid",
+                                       border_px=8, border_color="white"),
+                            (9, 16), (1280, 720), _NATIVE)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0), fps=30.0)
+    assert args == [
+        "-filter_complex",
+        "color=c=black:s=800x1422:r=30[bg];"
+        "[0:v]crop=720:720:x='0.0':y=0,scale=704:704,pad=720:720:8:8:white[fg];"
+        "[bg][fg]overlay=40:356:shortest=1,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+        "fps=30,format=yuv420p",
+    ]
+
+
 def test_filter_args_insert_is_pinned_to_the_rect():
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
                             (9, 16), (1280, 720), _NATIVE)
