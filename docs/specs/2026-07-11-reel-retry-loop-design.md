@@ -102,7 +102,18 @@ Pure, deterministic, unit-tested — the reel-level twin of
 | `color_across_cuts`, ep `i`, `attempts[i] < cap` | reprocess | **Reprocess**(`i`, `color_correct` from §4) |
 | any reprocess-class, `attempts[i] ≥ cap` | capped | **Escalate**(`edit-plan`, "same fail ×`cap` — window/EDL wrong") |
 | `variety`, ep `i` | escalate | **Escalate**(`edit-plan`, "near-duplicate — different window") |
-| `length` (whole-reel, no `episode_idx`) | escalate | **Escalate**(`pacing`, "spine off target") |
+| `length` (whole-reel, no `episode_idx`), shortfall within `length_retime_max` | retime | **Retime**(target ← the reel's real length) |
+| `length`, over-length or shortfall past the band | escalate | **Escalate**(`pacing`, "spine off target") |
+
+> **Built (2026-07-18):** the `length` retime row above landed — see
+> `docs/specs/2026-07-18-length-retime-design.md`. `build_reel` gained a
+> `ReelCheckSpec.length_retime_max` band (default 1.0s, on top of
+> `check_reel`'s own `_LENGTH_TOL = 0.5` gate): a shortfall inside the band
+> re-times the target to the reel's real length and re-checks — the delivered
+> report is genuinely re-checked, never patched. An over-length reel and a
+> shortfall past the band still escalate exactly as this ladder always
+> specified; the retime can also ride along with a `Reprocess`, adopted before
+> the round's colour work.
 
 **Escalate wins the round.** If any escalate-class or capped failure is
 present, return `Escalate` immediately — do not spend reprocess rounds on a reel
@@ -259,7 +270,11 @@ reprocess-loop *logic* covered by the `build_reel` unit test above:
 ## §8 — Non-goals / deferred
 
 - **`variety` / `length` auto-fix** — need the front-half EDL/pacing stages;
-  A.5 stop-and-reports them with the precise `escalate_to` target.
+  A.5 stop-and-reports them with the precise `escalate_to` target. **`length`
+  landed 2026-07-18** — see `docs/specs/2026-07-18-length-retime-design.md`
+  (the within-band shortfall retime in the ladder table above); **`variety`
+  did not** — a near-duplicate window still needs edit-plan to pick a
+  different one, and stays a stop-and-report.
 - **Parallel reprocess** — one machine, one `process_episode` at a time.
 - **Resumability** (skip a stage when its inputs are unchanged) — the router's
   job (montage §11).

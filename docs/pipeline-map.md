@@ -93,8 +93,10 @@ next_action`. The only open 5.1 sub-item is the cap-3 **parallel** episode fan-o
 Everything else was parallel **quality**, and most of it has since shipped
 (B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13 now fully closed — `safe_zones`
 2026-07-16 + `key_action`/`pad_bars`/`transitions` 2026-07-17 + the agent
-review 2026-07-18 — cast→hero-pin 2026-07-16). Genuinely open on the quality
-side: the two **pacing auto-fixes**.
+review 2026-07-18 — cast→hero-pin 2026-07-16, and the Phase B tail — the two
+length auto-fixes — 2026-07-18). Genuinely open on the quality side: **5.4
+trend-scan** (never started — YAGNI), stage 5.1's **cap-3 parallel fan-out**,
+and the **§7 misc-engine tail** (see the roadmap below).
 
 ## What produces a reel today
 
@@ -129,10 +131,10 @@ advisory pass/False computed from the per-episode route geometry, or
 - [x] **layouts** — crop × rect × filler; `fit-blur` + `insert`; the `path.meta.json` sidecar.
 - [x] **reel back half** — assemble (lossless master) → check_reel (mechanical gate) → deliver (one encode, versioned).
 - [x] **reel retry loop (Phase A.5)** — `build_reel` loop-2 driver; delivered-space `color_correct` convergence; escalate-wins / no-silent-pass.
+- [x] **Phase B — music spine** — beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine + ambient ducking + SFX whoosh + the length re-time tail (`build_reel`'s within-band shortfall absorb + `edit_plan`'s pacing-gate back-edge, both landed 2026-07-18 — see [the length re-time design](specs/2026-07-18-length-retime-design.md)). Closed.
 
 ### Upcoming
 
-- [ ] **Phase B — music spine** ◐ — B1+B2+B3+B4 done (B4 landed 2026-07-14): beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine (authoring role only — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding) + ambient ducking + SFX whoosh (5.12 complete, landed 2026-07-15). Remaining — the **two** auto-fixes parked together by the pacing design's scope decision 1 ([§10](specs/2026-07-14-pacing-design.md)): the **retry-time length auto-fix** (`build_reel`'s `length` failure re-times the spine — today `reel_orchestration._REPROCESS_CLASS` is `("black", "color_across_cuts")`, so `length` escalates to a human) and the **pacing-gate back-edge** (spine won't fit → auto re-pick `MUSIC.start_offset`; today `beats.choose_offset` is the manual re-pick). Both need `build_reel`/`reel_orchestration` work.
 - [ ] **Front-half authoring** ◐ — SP1 (extract spine, 2026-07-11) + SP2 (footage-intake, 2026-07-12) + SP3 (edit-plan, 2026-07-12) done: `EDL.json`→delivered reel, `intake.py` scans raw clips → `FOOTAGE.json`/`.md` scored moment-windows + `cast.json` hero registry, and now `edit_plan.py` projects those windows (via an agent `selection.json`) into the `EDL.json`+`EDL.md` that drives SP1. Remaining: SP4 (trend-scan).
 - [ ] **Router + curation** ◐ — the **episode-choice human loop is built** (`using-montage` CP2 "EDL approval + curation", 2026-07-12) and stays human by design, and `cast.json` itself ships (5.2, 2026-07-12) and is now read back by the cast → hero-pin slice (2026-07-16, see the table above). Remaining: stage 5.1's **cap-3 parallel fan-out** (`edl_to_reel` is a sequential per-episode loop — a perf slice, not a v1 blocker) — its only open sub-item now.
 - [x] **Editorial reel-final** — stage 5.13's second half. **Both halves are now built**: the mechanical half — `safe_zones` ✅ (2026-07-16) + `key_action`/`pad_bars`/`transitions` ✅ (2026-07-17, all **advisory** — see `docs/specs/2026-07-17-reel-final-editorial-checks-design.md`) — and the **agent review** proper ✅ (2026-07-18, Slice B): the `reel-review` SKILL dispatches a fresh reviewer subagent that judges the delivered reel against SPEC's idea/mood/hook/ending/spine (modelled on `requesting-code-review`) and emits typed findings (`REVIEW.json`), human-gated at CP3 — see `docs/specs/2026-07-18-reel-review-editorial-design.md`. **§5.13 is fully closed.** Its "classic base **and** trend flavor" sub-criterion (`trend_flavor`) is still judged at forced low confidence pending **5.4** — no source of truth until trend-scan lands.

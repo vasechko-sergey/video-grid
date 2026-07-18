@@ -154,6 +154,9 @@ deliver ─────────► out/REEL_*.mp4  (codec/fps/bitrate per pl
 
 Gates are hard: a stage does not exit until its exit conditions are met. A failed check → loop back, not forward. Built-in back-edge: when the pacing gate can't fit the spine onto the chosen track fragment, it first re-picks `MUSIC.start_offset`; only if that loop dries out does music selection itself reopen.
 
+> **Built (2026-07-18):** the back-edge ships as a pure re-time — see the
+> table row below and `docs/specs/2026-07-18-length-retime-design.md`.
+
 ### 4.1 Questions and going back (adapted from superpowers)
 
 **When to ask questions:**
@@ -176,6 +179,15 @@ Gates are hard: a stage does not exit until its exit conditions are met. A faile
 
 - **No fixing forward:** a bad crop is never masked in assemble; bad pacing is never rescued in deliver.
 - Check reports carry `attempt` and machine-readable `fail_reasons[]` so the orchestrator can count retries and route escalation.
+
+> **Built (2026-07-18):** the pacing-gate row's back-edge ships as a pure
+> re-time, not the literal `start_offset` re-pick — `edit_plan.build_edl` sets
+> a paced EDL's `target_dur = min(realized footage, spine.target_dur)`, so an
+> under-filled spine re-times DOWN before ever reaching this ladder row; a
+> residual shortfall inside `build_reel`'s 1.0s band also re-times and
+> re-checks rather than escalating. Re-picking `MUSIC.start_offset` stays the
+> manual rung (`beats --auto-start`). See
+> `docs/specs/2026-07-18-length-retime-design.md`.
 
 ---
 

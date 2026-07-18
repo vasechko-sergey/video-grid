@@ -17,10 +17,12 @@ numeric core + a thin driver + a SKILL + a real-fixture golden.
 1. **Authoring spine only.** B4 = role (1): `music → PACING → edit-plan binds
    episodes to slots`. Role (2), the **retry-time auto-fix** (`build_reel`'s
    `length` failure re-times the spine), stays deferred — it touches
-   `build_reel`/`reel_orchestration` and is a separate slice; the existing
-   `escalate_to="pacing"` stop-and-report is **unchanged**. §5's pacing-gate
-   **back-edge** (spine won't fit → auto re-pick `MUSIC.start_offset`) is also
-   deferred; v1 **reports** the misfit, never silently re-times.
+   `build_reel`/`reel_orchestration` and is a separate slice (landed
+   2026-07-18 as its own slice — see `docs/specs/2026-07-18-length-retime-design.md`.);
+   the existing `escalate_to="pacing"` stop-and-report is **unchanged**. §5's
+   pacing-gate **back-edge** (spine won't fit → auto re-pick
+   `MUSIC.start_offset`) is also deferred; v1 **reports** the misfit, never
+   silently re-times.
 2. **Sections derived from the energy curve.** `MUSIC.json` stores an `energy[]`
    RMS curve + `energy_hz` but **no** section boundaries; `pacing.py` segments the
    energy curve itself (min-max normalized within the track, beat-aligned bands) —
@@ -429,10 +431,15 @@ edit; it never blocks the pipeline.
 ## §10 — Non-goals / deferred
 
 - **Retry-time auto-fix** (role 2: `build_reel`'s `length` failure re-times the spine)
-  — deferred (scope 1); the `escalate_to="pacing"` stop-and-report is unchanged. It
-  needs `build_reel`/`reel_orchestration` work and is a separate slice.
+  — **landed 2026-07-18**, `docs/specs/2026-07-18-length-retime-design.md`: a
+  within-band shortfall re-times the target to the reel's real length and
+  re-checks; an over-length reel and a shortfall past the band still escalate
+  to pacing exactly as before.
 - **Pacing-gate back-edge** (spine won't fit the fragment → auto re-pick
-  `MUSIC.start_offset`, §5) — deferred; v1 **reports** the misfit. `choose_offset`
+  `MUSIC.start_offset`, §5) — **landed 2026-07-18** as a pure re-time, not the
+  literal re-pick: `docs/specs/2026-07-18-length-retime-design.md` §4 sets a
+  paced EDL's `target_dur = min(realized footage, spine.target_dur)`.
+  Re-picking `MUSIC.start_offset` via librosa stays **deferred** — `choose_offset`
   already exists to re-pick manually.
 - **Librosa section detection** (`sections[]` in `MUSIC.json` via novelty/recurrence)
   — deferred (scope 2); energy-curve banding is the v1 section source.

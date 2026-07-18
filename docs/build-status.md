@@ -762,6 +762,48 @@ _Last updated: 2026-07-18._
   stage — no ffmpeg golden (reel-brief's twin). **33 new unit tests; full suite
   1216 passed / 8 skipped.**
 
+- **length re-time (Phase B tail) DONE (2026-07-18)** — plan
+  `docs/plans/2026-07-18-length-retime.md` + design
+  `docs/specs/2026-07-18-length-retime-design.md`. Closes the two auto-fixes
+  the pacing design parked together in its scope decision 1
+  (`docs/specs/2026-07-14-pacing-design.md` §10) — the last open items of
+  **Phase B — music spine**, now ◐ → ✅. Both are the same move at two edges:
+  the reel's target length re-times DOWN to what the footage actually
+  delivers. **Fix A — `build_reel`** (commits `99864c5`, `c6d32f6`, `ba5e64d`,
+  `e3c5dcc`, `2fa0258`): `ReelCheckSpec.length_retime_max = 1.0` (max
+  shortfall absorbed, on top of `check_reel`'s newly-named `_LENGTH_TOL = 0.5`
+  gate). `reel_orchestration.next_action` gained a 4th `length_retime_max`
+  parameter (default `0.0` = pre-slice behaviour), a `ReelAction.retime` field
+  and a `"retime"` kind, and `_shortfall()`. `build_reel` keeps the check spec
+  in a round-scoped local, adopts `action.retime` BEFORE dispatching on kind,
+  logs it to stderr, and `continue`s to re-check — it never patches the
+  report, so `deliver`'s hard gate is satisfied by a report the checker
+  genuinely produced. **Fix B — `edit_plan`** (commit `5b851ba`):
+  `_back_edge_target` sets a paced EDL's `target_dur = min(realized footage,
+  spine.target_dur)`; an under-fill re-times down (the montage §4.1
+  pacing-gate back-edge), an over-flow clamps to the fragment, both logged.
+  **Proof** (commit `460d120`): two real-ffmpeg integration tests — a
+  within-band shortfall delivers with a re-timed target; past the band
+  escalates. **Load-bearing invariants:** the band is **one-sided** — only a
+  SHORTER reel is absorbed, since `mix.mix` refuses a stem longer than the
+  analyzed music fragment and `build_reel` cuts the stem at the master's real
+  duration, so re-timing UP would trade a clean stop-and-report for a hard
+  raise in the mixer; loop-2 stays **mechanical** (locked clips, frozen
+  routes, no re-cut, no reach-back into `extract`/`edit_plan`); the delivered
+  `reel_report.json` states the re-timed target because `check_reel`
+  genuinely **re-ran** — re-checked, never patched; **escalate-wins
+  survives** — a capped or unfixable failure alongside an absorbable
+  shortfall still escalates, and the pending re-time dies with the round.
+  **A bonus fix:** a paced over-flow EDL with no explicit `target_dur`
+  previously fell through to `sum(ep.dur)`, passed the length gate, and hit an
+  uncaught `ValueError` inside `mix.mix` after a full picture pass — the §4
+  clamp turns that into a clean stop-and-report at the reel gate. **1235
+  passed / 8 skipped** (17 new unit + 2 new real-ffmpeg integration tests).
+  **Deferred:** re-picking `MUSIC.start_offset` via librosa (`beats.
+  choose_offset` stays the manual rung); re-cutting footage inside loop-2;
+  auto-fixing an over-length reel; re-deriving a truncated `Spine` for
+  `PACING.json`; librosa section detection / phrase-aware grouping.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -770,19 +812,6 @@ _Last updated: 2026-07-18._
   built (or knowingly skipped) the front half is complete enough to run the
   whole `using-montage` conveyor end-to-end on Sergei's real footage — the
   milestone the synthetic goldens stand in for today. **OR**
-- **Phase B remainder — the two pacing auto-fixes**
-  (`docs/specs/2026-07-14-pacing-design.md` §10, both parked by the same scope
-  decision 1): (a) **retry-time length auto-fix** — `build_reel`'s `length`
-  failure re-times the spine; today `reel_orchestration._REPROCESS_CLASS` is
-  `("black", "color_across_cuts")`, so `length` takes the catch-all escalate
-  branch to a human. (b) **the pacing-gate back-edge** — spine won't fit → auto
-  re-pick `MUSIC.start_offset`; today `beats.choose_offset` is the manual
-  re-pick. Both need `build_reel`/`reel_orchestration` work, and they are all
-  that is left of Phase B now that B1+B2 (music spine, DONE 2026-07-11),
-  start-offset intelligence (DONE 2026-07-13), mood-match (DONE 2026-07-14),
-  networked sourcing (DONE 2026-07-14), B4 pacing (DONE 2026-07-14), ambient
-  ducking (DONE 2026-07-15) and SFX whoosh (DONE 2026-07-15, **closing §5.12**)
-  have landed. **OR**
 - **the remaining layouts** — `fit-solid` (a filler, not a branch: add `solid` to
   `BACKGROUNDS` **and** have `reframe` read `ResolvedLayout.background`, which is
   plumbed but ignored — the renderer hardcodes `boxblur`), `split` (two clips →
@@ -806,11 +835,17 @@ _Last updated: 2026-07-18._
 - **golden-canon armature + landmine lint** — a check that the banned patterns
   (`lutrgb`, `-ss` before `-i`) cannot re-enter the filtergraphs.
 
+**Phase B is now closed (2026-07-18)** — the length re-time slice
+(`docs/specs/2026-07-18-length-retime-design.md`) landed the last two
+auto-fixes the pacing design had parked (§10): `build_reel`'s within-band
+length-shortfall absorb and `edit_plan`'s pacing-gate back-edge. See the Done
+entry above.
+
 **Reel-loop deferrals still open** (design §8 non-goals,
-`docs/specs/2026-07-11-reel-retry-loop-design.md`): `variety`/`length`
-auto-fix needs the front-half EDL/pacing fixers (not built yet); reprocess is
-sequential, not parallel; and the loop has no resumability / Phase A.5
-retry-state persistence.
+`docs/specs/2026-07-11-reel-retry-loop-design.md`): `variety` auto-fix still
+needs the front-half EDL fixer (`length` landed 2026-07-18 — see the Done
+entry above); reprocess is sequential, not parallel; and the loop has no
+resumability / Phase A.5 retry-state persistence.
 
 ## Deferred / open
 

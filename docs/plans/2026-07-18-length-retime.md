@@ -35,7 +35,7 @@ Tests extend four existing files; no new test module. Docs sync touches six file
 - Modify: `scripts/check_reel.py` (module constants near the top; the length gate at ~line 146)
 - Test: `tests/lib/test_models.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -58,14 +58,14 @@ def test_reel_check_spec_length_retime_max_rejects_non_number():
 
 If `ReelCheckSpec` / `pytest` are not already imported at the top of that file, add them to the existing import lines rather than duplicating imports mid-file.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_models.py -k length_retime_max -v ; echo "EXIT: $?"
 ```
 Expected: FAIL — `TypeError: ReelCheckSpec.__init__() got an unexpected keyword argument 'length_retime_max'` (and the default test fails with `AttributeError`).
 
-- [ ] **Step 3: Add the field + validation**
+- [x] **Step 3: Add the field + validation**
 
 In `scripts/lib/models.py`, add the field as the LAST field of `ReelCheckSpec` (after `layout_jump_max`):
 
@@ -84,14 +84,14 @@ and the validation as the LAST check in its `__post_init__` (after the `layout_j
 
 Note `isinstance(True, int)` is `True`, matching the neighbouring `color_delta_max`/`layout_jump_max` checks, which accept a bool for the same reason — do not add a bool guard here that its siblings do not have.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_models.py -v ; echo "EXIT: $?"
 ```
 Expected: PASS, whole file green (the new field is defaulted, so no existing construction changes).
 
-- [ ] **Step 5: Promote the length gate's literal to a named constant**
+- [x] **Step 5: Promote the length gate's literal to a named constant**
 
 In `scripts/check_reel.py`, add beside the existing `_UNCHECKED` dict (module level, after it):
 
@@ -108,14 +108,14 @@ and change the gate in `run()` from the literal to the constant:
 
 This is behaviour-preserving — the same number, named.
 
-- [ ] **Step 6: Run the reel-check tests to confirm nothing moved**
+- [x] **Step 6: Run the reel-check tests to confirm nothing moved**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_check_reel.py tests/lib/test_models.py -v ; echo "EXIT: $?"
 ```
 Expected: PASS — the constant is the same number, so every existing length assertion holds.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/models.py scripts/check_reel.py tests/lib/test_models.py
@@ -130,7 +130,7 @@ git commit -m "feat: ReelCheckSpec.length_retime_max + named length gate (§3.1)
 - Modify: `scripts/lib/reel_orchestration.py` (whole file is 63 lines; touch `ReelAction`, add `_shortfall`, rewrite `next_action`'s loop)
 - Test: `tests/lib/test_reel_orchestration.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_reel_orchestration.py`:
 
@@ -187,14 +187,14 @@ def test_length_band_defaults_to_zero_so_an_unaware_caller_keeps_escalating():
     assert a.kind == "escalate" and a.finding["check"] == "length"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_reel_orchestration.py -v ; echo "EXIT: $?"
 ```
 Expected: the six new tests FAIL — `TypeError: next_action() got an unexpected keyword argument 'length_retime_max'`; the 13 pre-existing tests still PASS.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/reel_orchestration.py`, extend `ReelAction`:
 
@@ -273,14 +273,14 @@ def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: 
 
 Note the `length` branch is checked BEFORE the generic `_REPROCESS_CLASS` branch, and both escalate with the identical finding shape — `length` is not added to `_REPROCESS_CLASS` (it is not a reprocess; nothing is re-rendered).
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_reel_orchestration.py -v ; echo "EXIT: $?"
 ```
 Expected: PASS — all 18 (12 pre-existing, unchanged by the defaulted parameter, + 6 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/reel_orchestration.py tests/lib/test_reel_orchestration.py
@@ -295,7 +295,7 @@ git commit -m "feat: next_action absorbs a within-band length shortfall (§3.2)"
 - Modify: `scripts/build_reel.py` (imports; `build_reel()`'s spec/loop)
 - Test: `tests/lib/test_build_reel.py` (extend the shared `_wire` helper at line 26, then append two tests)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 This file drives the loop through `_wire(monkeypatch, reports)`, which feeds `check_reel.run` a **queue** of canned reports (one per round) and records what the driver forwarded into a `seen` dict. To assert the re-timed target reached the second check, record the spec's target — the same additive extension `geometry`/`platform`/`titles` already got, and which the helper's own comment documents.
 
@@ -343,14 +343,14 @@ def test_shortfall_past_the_band_still_stops_and_reports(monkeypatch, tmp_path):
     assert seen["deliver"] == []
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_build_reel.py -v ; echo "EXIT: $?"
 ```
 Expected: the first new test FAILS — `status == "stop_and_report"` (today `length` escalates) and `seen["targets"] == [6.0]`, with the second canned report left unconsumed. The second new test already PASSES (past-the-band escalation is today's behaviour) — it is the regression guard that the band did not swallow everything, so a green run for it here is correct.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/build_reel.py`, extend the imports:
 
@@ -402,14 +402,14 @@ pass the local spec + the band, and adopt a re-time before dispatching on `kind`
 
 Leave the `deliver` / `escalate` / reprocess branches exactly as they are.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_build_reel.py -v ; echo "EXIT: $?"
 ```
 Expected: PASS, whole file green. The existing driver tests are unaffected: on a round with no re-time the local `spec` is exactly the `rm.check_spec` value they always saw, and `seen["targets"]` is additive — no existing assertion reads it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/build_reel.py tests/lib/test_build_reel.py
@@ -424,7 +424,7 @@ git commit -m "feat: build_reel adopts a length re-time and re-checks (§3.3)"
 - Modify: `scripts/edit_plan.py` (a module constant, a helper beside `_bind_pacing`, three lines in `build_edl`)
 - Test: `tests/lib/test_edit_plan.py` (append to the pacing section at the tail)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edit_plan.py` (the pacing section already imports `Slot`/`Spine` and defines `_footage`/`_sel3`/`_spine2`):
 
@@ -465,14 +465,14 @@ def test_build_edl_without_pacing_keeps_the_selections_target(capsys):
     assert "back-edge" not in capsys.readouterr().err
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_edit_plan.py -k back_edge -v ; echo "EXIT: $?"
 ```
 Expected: FAIL — the first asserts `edl.target_dur == 2.0` but gets `5.0` (the selection's optimistic value); the overflow test gets `None`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/edit_plan.py`, add the constant at module level (below the imports, above `_log` or beside any existing module constant):
 
@@ -530,14 +530,14 @@ with
 
 Also extend `build_edl`'s docstring sentence about reel knobs to note that `target_dur` is derived from the spine when pacing is supplied, so the contract is documented where a reader looks for it.
 
-- [ ] **Step 4: Run the whole edit-plan suite to verify the new tests pass and the old ones still do**
+- [x] **Step 4: Run the whole edit-plan suite to verify the new tests pass and the old ones still do**
 
 ```
 .venv/bin/python -m pytest tests/lib/test_edit_plan.py -v ; echo "EXIT: $?"
 ```
-Expected: PASS. Three pre-existing paced tests now produce a non-`None` `target_dur` where they produced `None` — none of them assert on `target_dur`, so they stay green, and `test_build_edl_pacing_overflow_tail_unbound`'s `"exceed the 2-slot spine" in err` still holds because the new line is appended, not substituted. If any assertion did break, fix the TEST only if it asserted the old `None`; a broken assertion about `beat_slot`/`dur` means the implementation is wrong.
+Expected: PASS. Four pre-existing paced tests now produce a non-`None` `target_dur` where they produced `None` — the three direct `build_edl` calls (`test_build_edl_pacing_binds_slot_and_retimes_dur`, `test_build_edl_pacing_overflow_tail_unbound`, `test_build_edl_pacing_shortfall_keeps_window`) plus `test_cli_build_threads_pacing` (an exact-fill case, `null` → `1.0`) — none of them assert on `target_dur`, so they stay green, and `test_build_edl_pacing_overflow_tail_unbound`'s `"exceed the 2-slot spine" in err` still holds because the new line is appended, not substituted. If any assertion did break, fix the TEST only if it asserted the old `None`; a broken assertion about `beat_slot`/`dur` means the implementation is wrong.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -551,7 +551,7 @@ git commit -m "feat: pacing-gate back-edge re-times a paced EDL's target (§4)"
 **Files:**
 - Test: `tests/integration/test_reel_retry.py` (append — reuses the file's existing `_reframe` helper and the `sample_clip` fixture)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/integration/test_reel_retry.py`:
 
@@ -573,9 +573,11 @@ def test_build_reel_absorbs_a_within_band_shortfall(tmp_path, sample_clip):
 
     assert res["status"] == "delivered"
     length = res["report"]["checks"]["length"]
-    assert length["passed"] is True
+    # CheckResult.to_dict() serializes passed under "pass" and flattens detail to the top
+    # level (no nested "detail" key) — see scripts/lib/models.py CheckResult.to_dict()
+    assert length["pass"] is True
     # the delivered report states the reel's REAL length as its target — re-checked, not patched
-    assert abs(length["detail"]["target"] - real) < 0.05
+    assert abs(length["target"] - real) < 0.05
 
 
 @pytest.mark.integration
@@ -592,25 +594,25 @@ def test_build_reel_escalates_a_shortfall_past_the_band(tmp_path, sample_clip):
     assert res["finding"]["check"] == "length" and res["finding"]["escalate_to"] == "pacing"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```
 .venv/bin/python -m pytest tests/integration/test_reel_retry.py -m integration -v ; echo "EXIT: $?"
 ```
 Expected: the first new test FAILS with `status == "stop_and_report"` if Tasks 1–2 were skipped. If Tasks 1–2 are already committed, it should PASS on the first run — that is fine and expected for an integration proof written after the unit work; state which happened in the task report rather than forcing a red run.
 
-- [ ] **Step 3: No implementation — this task is proof only**
+- [x] **Step 3: No implementation — this task is proof only**
 
 If either test fails after Tasks 0–3 are in, the defect is in the implementation, not the test. Debug with `superpowers:systematic-debugging`; do not weaken the assertions.
 
-- [ ] **Step 4: Run the full integration suite to confirm no neighbour moved**
+- [x] **Step 4: Run the full integration suite to confirm no neighbour moved**
 
 ```
 .venv/bin/python -m pytest tests/integration -m integration -v ; echo "EXIT: $?"
 ```
 Expected: PASS (a handful of skips are normal on a machine without libvidstab / drawtext / demucs / network — report the skip count, do not chase it).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_reel_retry.py
@@ -624,7 +626,7 @@ git commit -m "test: real-ffmpeg proof of the length re-time and its band (§7)"
 **Files:**
 - Modify: `docs/specs/2026-07-14-pacing-design.md`, `docs/specs/2026-07-11-reel-retry-loop-design.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`
 
-- [ ] **Step 1: Reconcile the two designs that deferred this work**
+- [x] **Step 1: Reconcile the two designs that deferred this work**
 
 In `docs/specs/2026-07-14-pacing-design.md`:
 - §10's first bullet ("**Retry-time auto-fix** … deferred (scope 1)") and second bullet ("**Pacing-gate back-edge** … deferred") each become **landed 2026-07-18**, naming `docs/specs/2026-07-18-length-retime-design.md`. Keep the librosa `start_offset` re-pick called out as still-deferred inside the back-edge bullet — it is, and the sentence "`choose_offset` already exists to re-pick manually" stays true.
@@ -634,11 +636,11 @@ In `docs/specs/2026-07-11-reel-retry-loop-design.md`:
 - the ladder table row `| length (whole-reel, no episode_idx) | escalate | **Escalate**(pacing, "spine off target") |` gains the within-band shortfall re-time as its new first outcome; over-length and past-the-band still escalate.
 - the deferred bullet "**`variety` / `length` auto-fix** — need the front-half EDL/pacing stages" records that `length` landed 2026-07-18 and `variety` did not.
 
-- [ ] **Step 2: Mark the montage back-edge built**
+- [x] **Step 2: Mark the montage back-edge built**
 
 In `docs/specs/2026-07-05-montage-skillset-design.md`, the §4.1 back-edge row (`| pacing gate (spine won't fit) | re-pick start_offset | music-and-mood: different fragment/track |`) and the §4.1 prose sentence about the built-in back-edge gain a **Built (2026-07-18)** note: the re-time ships as a pure `min(realized, fragment)` in `edit_plan.build_edl`; re-picking `start_offset` stays the manual rung (`beats --auto-start`).
 
-- [ ] **Step 3: Update the status docs**
+- [x] **Step 3: Update the status docs**
 
 In `docs/build-status.md`, add a "Done" entry in the established shape — plan + design links, what shipped per file, the load-bearing invariants (one-sided band; loop-2 stays mechanical; report re-checked not patched), the test count from Step 5's run, and what stays deferred (librosa re-pick, re-cut in loop-2, overflow auto-fix). Refresh `_Last updated:_`.
 
@@ -649,14 +651,14 @@ In `docs/pipeline-map.md`:
 
 In `CLAUDE.md`, add two Quick Reference rows (this design + this plan) in the established one-line style, placed after the reel-review rows.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 ```
 .venv/bin/python -m pytest tests -v ; echo "EXIT: $?"
 ```
 Expected: PASS. Record the exact `N passed, M skipped` line — do NOT pipe through `tail`/`head`, which swallows the exit code. The prior slice's tip was **1216 passed, 8 skipped**; this slice adds ~15 unit + 2 integration tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs CLAUDE.md
