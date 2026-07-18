@@ -37,3 +37,36 @@ def test_run_has_a_default_timeout():
     # hanging exactly as before, and no test would notice.
     assert isinstance(proc.DEFAULT_TIMEOUT_S, (int, float))
     assert proc.DEFAULT_TIMEOUT_S > 0
+
+def test_run_applies_the_default_timeout_when_the_caller_gives_none(monkeypatch):
+    # The WIRING, not the constant. Asserting DEFAULT_TIMEOUT_S is a positive
+    # number says nothing about whether run() passes it on: deleting the
+    # `kwargs.setdefault("timeout", ...)` line left the whole file green, because
+    # the two timeout tests above hand in their own explicit timeout=0.5 and so
+    # never exercise the default path at all.
+    seen = {}
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs)
+        raise AssertionError("stop — the kwargs are the whole point")
+    monkeypatch.setattr(proc.subprocess, "run", fake_run)
+    with pytest.raises(AssertionError, match="the kwargs are the whole point"):
+        proc.run(["ffprobe", "-version"])
+    assert seen["timeout"] == proc.DEFAULT_TIMEOUT_S
+
+def test_the_default_timeout_actually_fires(monkeypatch):
+    # ...and end to end: with no explicit timeout, a command that outlives the
+    # default must raise rather than run to completion. Belt to the braces above —
+    # this one would also catch a setdefault that passed something unusable.
+    monkeypatch.setattr(proc, "DEFAULT_TIMEOUT_S", 0.5)
+    with pytest.raises(RuntimeError, match="timed out after 0.5s"):
+        proc.run(["sleep", "30"])
+
+def test_an_explicit_timeout_still_overrides_the_default(monkeypatch):
+    seen = {}
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs)
+        raise AssertionError("stop")
+    monkeypatch.setattr(proc.subprocess, "run", fake_run)
+    with pytest.raises(AssertionError):
+        proc.run(["ffprobe", "-version"], timeout=12.0)
+    assert seen["timeout"] == 12.0

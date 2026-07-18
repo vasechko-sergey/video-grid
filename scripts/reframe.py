@@ -158,17 +158,28 @@ def _background_args(rl: ResolvedLayout, fps: float, dur: float) -> tuple[str, s
         # against _LENGTH_TOL (0.5s), so ~30 solid episodes at 59.94fps eat the
         # whole band. A filler must not change how long the reel is.
         #
-        # `d=` bounds the source so the graph is finite on its own terms. It is NOT
-        # sufficient by itself: `color`'s timebase is 1/r while the decoded source
-        # carries the container's (1/15360 for a 30fps mp4), and the tail's `fps`
-        # filter reads the overlay's mismatched output timebase as a far longer
-        # stream — measured 46080 frames / 1536s out of a 90-frame 3s source, i.e.
-        # exactly the 512x the two timebases differ by. Whether it bites depends on
-        # the source: the 59.94fps golden fixture is unaffected, the 30fps one is
-        # destroyed. reframe() therefore ALSO bounds the output with `-t` (see
-        # there), which is what actually pins the length. Both are kept: `-t` makes
-        # it correct, `d=` keeps the filtergraph finite for anyone who builds it
-        # without reframe's output args.
+        # `d=` bounds the source, and is NOT sufficient. `color`'s timebase is 1/r
+        # while the decoded source carries its CONTAINER's (1/15360 for a 30fps
+        # mp4); `overlay` inherits the FIRST input's — the synthesized background —
+        # so the tail's `fps` filter reads the mismatch as a stream longer by
+        # exactly container_tb / fps. 15360/30 = 512, and 3s x 512 = 1536s / 46080
+        # frames out of a 90-frame clip.
+        #
+        # The trigger is an EXACT RATE MATCH, not a particular frame rate — the
+        # part that misleads. It fires when the emitted `r=` reproduces the
+        # source's rational rate exactly, so integer rates (24/25/30/50/60) blow up
+        # and NTSC fractional ones do not. golden_ride blows up too when handed
+        # `r=60000/1001` (verified: SIGKILL); it survives only because `{fps:.6g}`
+        # mangles that to `59.9401`, which no longer matches — and even then it
+        # renders 96 frames against the source's 95. So the NTSC fixtures are safe
+        # by a FORMATTING ACCIDENT; a 29.97fps fixture would prove nothing, and the
+        # duration proof must run against an integer rate.
+        #
+        # reframe() therefore bounds the OUTPUT with `-t` (see there), which is
+        # what actually pins the length. `d=` is kept for one narrow reason: a
+        # graph copied out of a test into a shell then terminates AT ALL rather
+        # than running forever. It does not make such a graph the right length,
+        # and in the shipped command it is output-neutral.
         return (f"color=c={rl.background_color}:s={rl.out_w}x{rl.out_h}:"
                 f"r={fps:.6g}:d={dur:.6f}[bg];",
                 "[0:v]", "")
@@ -262,14 +273,17 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     xexpr = _xexpr(path, times)
     mean_y = sum(p.y for p in route) / len(route)
     cy = g.crop_y(mean_y, rl.crop_h, src_h)
-    # `-t` pins the render to the source's length. This is what actually makes a
-    # solid filler duration-correct: `color=:d=` alone leaves the overlay's output
-    # timebase mismatched with the tail's `fps` filter, which on a 30fps source
-    # (container timebase 1/15360) turned a 90-frame 3s clip into 46080 frames /
-    # 1536s — while the 59.94fps golden fixture came out right, so the defect is
-    # source-dependent and invisible on one fixture. Applied to EVERY layout, not
-    # just solid: measured a no-op for fill and blur (both already end with the
-    # source), and unconditional means no future filler can forget it.
+    # `-t` pins the render to the source's length, and is the ONLY thing that does
+    # (design §4). `color=:d=` alone leaves the overlay's output timebase mismatched
+    # with the tail's `fps` filter: a 90-frame 3s clip came out 46080 frames / 1536s.
+    # It fires whenever the emitted `r=` matches the source's rational rate exactly
+    # — so on integer rates (24/25/30/50/60), NOT on the NTSC fixtures this repo
+    # reaches for, which escape only because `{fps:.6g}` mangles 60000/1001.
+    #
+    # Applied to EVERY layout, not just solid: measured a no-op for fill and blur
+    # (both already end with the source), and unconditional means no future filler
+    # can forget it. That decision is pinned by a test — see
+    # test_reframe_bounds_every_layout_to_the_source_length.
     cmd = ["ffmpeg", "-y", "-i", src,
            *_filter_args(rl, xexpr, cy, gains, fps, dur),
            "-t", f"{dur:.6f}",

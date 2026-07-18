@@ -1,9 +1,10 @@
+import dataclasses
 import json, subprocess
 import pytest
 from scripts import reframe
 from scripts.lib import models
 from scripts.lib import layout as layout_lib
-from scripts.lib.models import Delivery, LayoutSpec
+from scripts.lib.models import BACKGROUNDS, Delivery, LayoutSpec
 
 def _dims(path):
     out = subprocess.run(
@@ -169,13 +170,26 @@ def test_probe_refuses_a_durationless_source(monkeypatch):
 _NATIVE = Delivery("native", None)
 
 
-def test_reframe_bounds_the_render_to_the_source_length(tmp_path, monkeypatch):
-    # `-t` is what actually pins a solid render's length: `color=:d=` alone leaves
-    # the overlay's timebase mismatched with the tail's `fps` filter and a 30fps
-    # source blows up 512x (measured 46080 frames / 1536s from a 90-frame 3s clip).
-    # Pinned as a COMMAND fact, and as an OUTPUT option — before the output path,
-    # after the filter args — because `-t` placed as an input option would seek the
-    # source instead of bounding the render.
+@pytest.mark.parametrize("layout", [
+    models.LayoutSpec(mode="fit", crop_aspect="source", background="solid"),
+    models.LayoutSpec(mode="fit", crop_aspect="source", background="blur"),
+    models.LayoutSpec(mode="fill"),                       # the -vf fast path
+    models.LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
+                      background="solid"),
+])
+def test_reframe_bounds_every_layout_to_the_source_length(tmp_path, monkeypatch, layout):
+    """`-t` is what actually pins a render's length — `color=:d=` alone leaves the
+    overlay's timebase mismatched with the tail's `fps` filter, and an exact-rate
+    match blows up (measured 46080 frames / 1536s from a 90-frame 3s clip).
+
+    Parametrized over EVERY layout on purpose: `-t` is deliberately unconditional
+    so no future filler can forget it, and that decision needs a guard. Making it
+    `if background == "solid"` left the entire suite green.
+
+    Pinned as an OUTPUT option — after the filter args, before the output path —
+    because `-t` placed before `-i` would seek the source instead of bounding the
+    render.
+    """
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
@@ -183,13 +197,13 @@ def test_reframe_bounds_the_render_to_the_source_length(tmp_path, monkeypatch):
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
-                              layout=models.LayoutSpec(mode="fit", crop_aspect="source",
-                                                       background="solid"))
+                              layout=layout)
     reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
     v = cmd["v"]
+    assert "-t" in v, f"{layout.mode}/{layout.background}: no -t — the render is unbounded"
     assert v[v.index("-t") + 1] == "3.000000"          # the probed source duration
-    assert v.index("-t") > v.index("-filter_complex")  # an output option, not an input seek
-    assert v.index("-t") < len(v) - 1
+    assert v.index("-t") > v.index("-i") + 1           # an output option, not an input seek
+    assert v.index("-t") < len(v) - 1                  # ...and before the output path
 
 
 @pytest.mark.integration
@@ -206,10 +220,17 @@ def test_solid_and_blur_are_duration_symmetric_with_the_source(sample_clip, tmp_
     truncation it guards against, so a one-frame regression cannot hide inside
     the tolerance. Task 7 proves the pad's colour and uniformity; this proves the
     property that is symmetric across fillers.
+
+    sample_clip is 30fps, and that is the POINT, not an accident of which fixture
+    was nearest: the timebase blow-up fires on an exact rate match, so it hits
+    integer rates and misses the NTSC ones. Run against golden_ride's 59.94 this
+    test would pass even with `-t` deleted (design §8) — an integer-rate source is
+    the only kind that can see this class of failure at all.
     """
+    src_w, src_h, fps, src_probe_dur = reframe._probe(str(sample_clip))
     route_p = tmp_path / "route.json"
-    models.route_to_json([models.RoutePoint(t=i / 30, x=900.0, y=540.0, w=80.0, h=200.0)
-                          for i in range(90)], route_p)
+    models.route_to_json([models.RoutePoint(t=i / fps, x=900.0, y=540.0, w=80.0, h=200.0)
+                          for i in range(int(src_probe_dur * fps))], route_p)
 
     def _render(name, background):
         out = tmp_path / f"{name}.mp4"
@@ -221,8 +242,11 @@ def test_solid_and_blur_are_duration_symmetric_with_the_source(sample_clip, tmp_
                         str(tmp_path / f"{name}_path.json"))
         return out
 
+    assert fps == pytest.approx(round(fps), abs=1e-9), (
+        f"sample_clip is {fps}fps — this test is only meaningful on an INTEGER "
+        "rate; a fractional one cannot trigger the exact-rate-match blow-up")
     src_dur = _duration(sample_clip)
-    half_frame = 0.5 / 30.0
+    half_frame = 0.5 / fps          # derived, not hardcoded: the fixture's rate may change
     assert _duration(_render("solid", "solid")) == pytest.approx(src_dur, abs=half_frame)
     assert _duration(_render("blurred", "blur")) == pytest.approx(src_dur, abs=half_frame)
 
@@ -309,6 +333,39 @@ def test_filter_args_solid_insert_keeps_its_border():
         "[bg][fg]overlay=40:356,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
         "fps=30,format=yuv420p",
     ]
+
+
+def test_background_args_refuses_a_filler_it_does_not_know():
+    """The exhaustiveness guard. `_background_args` returns early for solid and
+    would otherwise fall through to blur, so a future BACKGROUNDS entry with no arm
+    of its own would render as a blurred cover — wrong pixels, no error.
+
+    Constructed by replacing `background` on an already-resolved layout, which
+    deliberately BYPASSES LayoutSpec's vocabulary gate: that gate is exactly what
+    a new entry would pass, so a test routed through it could not reach this line.
+    Turning the guard into `if False:` left the whole suite green.
+    """
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
+                            (9, 16), (1280, 720), _NATIVE)
+    bogus = dataclasses.replace(rl, background="gradient")
+    with pytest.raises(ValueError, match=r"unknown background: 'gradient'") as excinfo:
+        reframe._background_args(bogus, fps=30.0, dur=2.5)
+    # the enumeration is the only thing that tells an author what IS supported —
+    # pin it, not just the word "unknown" (this slice has been bitten three times)
+    assert str(BACKGROUNDS) in str(excinfo.value)
+
+
+def test_every_known_background_has_an_arm():
+    # The guard above proves an UNKNOWN filler raises. This proves the vocabulary
+    # and the implementation have not drifted apart in the other direction: every
+    # value LayoutSpec accepts must actually produce a graph.
+    rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
+                            (9, 16), (1280, 720), _NATIVE)
+    for bg in BACKGROUNDS:
+        chain, fg_src, _ = reframe._background_args(
+            dataclasses.replace(rl, background=bg), fps=30.0, dur=2.5)
+        assert chain.endswith("[bg];"), bg
+        assert fg_src in ("[0:v]", "[b]"), bg
 
 
 def test_filter_args_insert_is_pinned_to_the_rect():
