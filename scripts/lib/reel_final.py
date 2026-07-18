@@ -8,7 +8,8 @@ import math
 
 from scripts.lib.models import PathMeta
 
-LAYOUT_MODE_PENALTY = 0.5      # a mode change (fill↔insert) adds this to the layout-jump score
+LAYOUT_MODE_PENALTY = 0.5      # a layout change — mode (fill↔insert) or filler
+                               # (blur↔solid) — adds this to the layout-jump score
 
 
 def evaluate_key_action(extents_per_ep: list[list[tuple[float, float, float, float]]],
@@ -62,10 +63,16 @@ def evaluate_pad_bars(metas: list[PathMeta], bar_symmetry_tol: float) -> tuple[b
 
 
 def _layout_of(meta: PathMeta) -> tuple[float, float, float, str]:
-    """(coverage-fraction, centre-fx, centre-fy, mode) of one episode's content rect."""
+    """(coverage-fraction, centre-fx, centre-fy, layout-identity) of one episode.
+
+    The identity is (mode, background), not mode alone: a cut from (fit, blur) to
+    (fit, solid) leaves the geometry untouched while the pad's appearance changes
+    hard, and a penalty keyed on mode would call that "unchanged".
+    """
     rx, ry, rw, rh = meta.rect_px
     ow, oh = meta.out_dims
-    return (rw * rh) / (ow * oh), (rx + rw / 2) / ow, (ry + rh / 2) / oh, meta.mode
+    return ((rw * rh) / (ow * oh), (rx + rw / 2) / ow, (ry + rh / 2) / oh,
+            f"{meta.mode}+{meta.background}")
 
 
 def evaluate_transitions(metas: list[PathMeta], layout_jump_max: float) -> tuple[bool | None, dict]:

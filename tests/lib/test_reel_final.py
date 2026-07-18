@@ -68,7 +68,34 @@ def test_transitions_passes_two_identical_layouts():
 
 def test_transitions_flags_a_fill_to_insert_jump():
     # fill (area 1.0, centre 0.5,0.5) → insert card (area 0.09, centre 0.15,0.15)
+    # `_meta` defaults background="blur" for both, so the identity pair is
+    # "mode+blur" on each side — still distinct because mode differs.
     metas = [_meta("fill"), _meta("insert", (0, 0, 300, 600))]
     passed, detail = reel_final.evaluate_transitions(metas, layout_jump_max=0.6)
-    assert passed is False and detail["worst_cut"] == 0 and detail["modes"] == ["fill", "insert"]
+    assert passed is False and detail["worst_cut"] == 0
+    assert detail["modes"] == ["fill+blur", "insert+blur"]
     assert detail["advisory"] is True
+
+
+def test_a_filler_change_at_a_constant_mode_counts_as_a_layout_jump():
+    # (fit, blur) -> (fit, solid) leaves `mode` untouched while the pad's
+    # appearance changes hard. Keying the penalty on mode alone would report
+    # "unchanged" — a wrong verdict the moment solid ships.
+    a = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                 src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                 rect_px=(0, 778, 1280, 720), freedom=0, background="blur")
+    b = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                 src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                 rect_px=(0, 778, 1280, 720), freedom=0, background="solid")
+    passed, detail = reel_final.evaluate_transitions([a, b], layout_jump_max=0.1)
+    assert passed is False
+    assert detail["jump"] >= reel_final.LAYOUT_MODE_PENALTY
+    assert detail["modes"] == ["fit+blur", "fit+solid"]
+
+
+def test_an_identical_layout_and_filler_is_not_a_jump():
+    a = PathMeta(mode="fit", crop_w=1280, crop_h=720, crop_y=0,
+                 src_dims=(1280, 720), canvas=(9, 16), out_dims=(1280, 2276),
+                 rect_px=(0, 778, 1280, 720), freedom=0, background="solid")
+    passed, _ = reel_final.evaluate_transitions([a, a], layout_jump_max=0.1)
+    assert passed is True
