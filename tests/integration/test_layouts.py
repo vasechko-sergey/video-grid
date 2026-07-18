@@ -38,6 +38,33 @@ def _dims(path):
     return (s["width"], s["height"])
 
 
+def _pixel(path, x, y):
+    """RGB of one pixel of the first frame — crop to 1x1, dump raw rgb24.
+
+    `exact=1` is required: crop's default (0) rounds w/h down to the chroma-
+    subsampling boundary of the decoded yuv420p frame, and 1 rounds DOWN to 0 —
+    ffmpeg then refuses the filter ("non positive size for width '0'"). Without
+    `exact=1` this helper cannot crop a single pixel at all, on any input.
+    """
+    out = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"crop=1:1:{x}:{y}:exact=1",
+         "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        capture_output=True, check=True, timeout=60)
+    return tuple(out.stdout[:3])
+
+
+def _render(tmp_path, name, **layout_kw):
+    """fit + crop_aspect='source' render of the golden ride; hand back the clip
+    path. Shared by the solid-pad pixel proof below, which renders the same
+    layout under two fillers and needs both clips to compare pixels."""
+    out = tmp_path / f"{name}.mp4"
+    spec = ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
+                       color_means=COLOR, delivery=NATIVE,
+                       layout=LayoutSpec(mode="fit", crop_aspect="source", **layout_kw))
+    reframe.reframe(spec, RIDE, ROUTE, str(out), str(tmp_path / f"{name}_path.json"))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Step 1: engine-level — reframe() straight onto the golden ride
 # ---------------------------------------------------------------------------
@@ -74,6 +101,54 @@ def test_solid_background_is_recorded_in_the_sidecar(tmp_path):
     reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
     assert meta.background == "solid"
+
+
+@pytest.mark.integration
+def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path):
+    # The filtergraph pins (unit tests) prove which string is emitted, and the
+    # duration tests prove the render terminates at the right length. Neither
+    # looks at a pixel. This does, on real bytes.
+    #
+    # The content rect for a fit + crop_aspect="source" render of the golden
+    # ride is (0, 778, 1280, 720) (test_fit_on_the_golden_ride above), so
+    # y < 778 and y >= 1498 are pad.
+    solid = _render(tmp_path, "solid", background="solid", background_color="red")
+    blurred = _render(tmp_path, "blurred", background="blur")
+
+    # 1. the pad is UNIFORM — three pad pixels across BOTH bars, one value. A
+    #    blurred cover of a moving scene is not uniform; a solid pad is.
+    top_a, top_b, bottom = (_pixel(solid, 10, 10), _pixel(solid, 900, 700),
+                            _pixel(solid, 10, 2000))
+    assert top_a == top_b == bottom
+
+    # 2. it is the colour asked for. color_means grades the whole frame, pad
+    #    included, so assert red DOMINANCE, not an exact triple.
+    r, g, b = top_a
+    assert r > g + 60 and r > b + 60
+
+    # 3. it differs from what blur puts in the same pixel. Without this the
+    #    test could pass against the old code for any layout whose blurred
+    #    cover happens to be flat.
+    assert _pixel(blurred, 10, 10) != top_a
+
+    # 4. the content is untouched: a pixel INSIDE the content rect is (almost)
+    #    the same whichever filler rendered it — the filler must change only
+    #    the pad. This is the property that catches a filler that accidentally
+    #    covers the subject.
+    #
+    #    Not asserted byte-exact: verified by diverting each command's own
+    #    -filter_complex to a raw (no libx264) dump that the two composites are
+    #    IDENTICAL pre-encode at this pixel. The `-crf 18` encode is where the
+    #    difference below comes from — x264's adaptive quantization allocates
+    #    bits per-frame, so a solid pad (near-zero entropy) vs. a blurred one
+    #    (textured) shifts the quantizer's rounding elsewhere in the SAME
+    #    frame. Measured at this pixel across both fixtures: delta <= 2. A
+    #    real content-covering defect — the wrong overlay offset, the wrong
+    #    crop — lands far outside that: either solid's red or a different
+    #    patch of video, not a 1-2 code unit rounding wobble. abs=10 keeps a
+    #    5x margin over the measured noise while remaining an order of
+    #    magnitude under a real defect (confirmed by mutation, see the plan).
+    assert _pixel(solid, 640, 1100) == pytest.approx(_pixel(blurred, 640, 1100), abs=10)
 
 
 @pytest.mark.integration
