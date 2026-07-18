@@ -274,3 +274,39 @@ def test_cli_build_threads_pacing(tmp_path, monkeypatch, capsys):
     assert e.value.code == 0
     edl = json.loads((tmp_path / "EDL.json").read_text())
     assert edl["episodes"][0]["beat_slot"] == 0 and edl["episodes"][0]["dur"] == 1.0
+
+
+def test_build_edl_back_edge_retimes_the_target_to_the_realized_footage(capsys):
+    # slot 0 wants 5s, window A/0 is only 2s → the reel is 2s, so say 2s (design §4)
+    spine = Spine(slots=(Slot(0, 0.0, 5.0, 0.5, "hook"),), target_dur=5.0, tempo=120.0)
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}],
+           "target_dur": 5.0}
+    edl = edit_plan.build_edl(_footage(), sel, pacing=spine)
+    assert edl.target_dur == 2.0                       # re-timed DOWN, not the optimistic 5.0
+    assert "back-edge" in capsys.readouterr().err      # never silent
+
+
+def test_build_edl_back_edge_silent_when_the_footage_fills_the_spine(capsys):
+    # window A/0 is 2s and its only slot wants exactly 2s → nothing to re-time
+    spine = Spine(slots=(Slot(0, 0.0, 2.0, 0.5, "hook"),), target_dur=2.0, tempo=120.0)
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(_footage(), sel, pacing=spine)
+    assert edl.target_dur == 2.0
+    assert "back-edge" not in capsys.readouterr().err
+
+
+def test_build_edl_back_edge_clamps_an_overflow_to_the_fragment(capsys):
+    # 3 episodes realize 5.0s against a 2.5s spine → the target stays at the fragment so the
+    # excess escalates at the reel gate; mix can't stretch music to cover it (design §2)
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2())
+    assert edl.target_dur == 2.5
+    err = capsys.readouterr().err
+    assert "back-edge" in err and "escalates at the reel gate" in err
+
+
+def test_build_edl_without_pacing_keeps_the_selections_target(capsys):
+    # regression guard: the un-paced path is untouched by the back-edge
+    sel = dict(_sel3(), target_dur=9.0)
+    edl = edit_plan.build_edl(_footage(), sel)
+    assert edl.target_dur == 9.0
+    assert "back-edge" not in capsys.readouterr().err

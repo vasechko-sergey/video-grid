@@ -27,6 +27,9 @@ def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
+_BACK_EDGE_TOL = 1e-6      # a realized total within this of the spine target "fills the spine"
+
+
 def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
@@ -69,17 +72,42 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     return bound
 
 
+def _back_edge_target(episodes: list, spine: Spine) -> float:
+    """The paced reel's target length (design §4): the realized footage, clamped to the
+    spine's fragment. An under-fill re-times the target DOWN to what the footage actually
+    delivers — the montage §4.1 pacing-gate back-edge — so the reel's length gate passes by
+    construction instead of escalating a whole pipeline later. An over-flow keeps the
+    fragment length, so the excess escalates at the reel gate rather than reaching mix,
+    which refuses a stem longer than its fragment (§2). `realized` sums EVERY bound episode,
+    including an over-flow tail left at beat_slot=None — the reel is as long as everything
+    in it. Both directions log; neither is silent."""
+    realized = sum(e.dur for e in episodes)
+    if realized < spine.target_dur - _BACK_EDGE_TOL:
+        _log(f"pacing back-edge: the bound footage realizes {realized:.2f}s of the "
+             f"{spine.target_dur:.2f}s spine — re-timing the reel target to {realized:.2f}s; "
+             f"for a tighter cut re-pick a shorter fragment "
+             f"(beats --auto-start --duration {realized:.0f}) and re-derive the spine")
+    elif realized > spine.target_dur + _BACK_EDGE_TOL:
+        _log(f"pacing back-edge: the bound footage realizes {realized:.2f}s against a "
+             f"{spine.target_dur:.2f}s spine — the target stays at the fragment length; the "
+             f"excess {realized - spine.target_dur:.2f}s escalates at the reel gate "
+             f"(extend the fragment or drop episodes — music cannot be invented)")
+    return min(realized, spine.target_dur)
+
+
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + re-timed dur, §5.6). Each selection episode references a
     window by (source, integer index) into FOOTAGE and supplies editorial fields;
     window_to_episode projects the mechanical fields. Reel knobs (music/cap/
-    target_dur) ride at the top level; cast is the cast.json path (§6.1a) — a driver-level
-    knob like pacing, not an editorial field in selection.json, since it names the registry
-    an episode's hero *name* resolves against, not a per-episode choice. Fail-loud on a
-    source not in FOOTAGE or an out-of-range window index (a typo would else surface as a
-    FileNotFound deep in extract — montage §12)."""
+    target_dur) ride at the top level — except target_dur is instead DERIVED from the spine
+    (the pacing-gate back-edge, §4) when pacing is supplied, since pacing owns a paced reel's
+    length; cast is the cast.json path (§6.1a) — a driver-level knob like pacing, not an
+    editorial field in selection.json, since it names the registry an episode's hero *name*
+    resolves against, not a per-episode choice. Fail-loud on a source not in FOOTAGE or an
+    out-of-range window index (a typo would else surface as a FileNotFound deep in extract —
+    montage §12)."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -103,11 +131,13 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
             raise ValueError(f"selection episode {k}: window {window} out of range for {source} "
                              f"(has {len(clip.windows)})")
         episodes.append(window_to_episode(clip, clip.windows[window], **ed))
+    target = selection.get("target_dur")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
+        target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
     cap = selection.get("cap")
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
-               cap=cap if cap is not None else 3, target_dur=selection.get("target_dur"))
+               cap=cap if cap is not None else 3, target_dur=target)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
