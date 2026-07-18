@@ -52,6 +52,8 @@ V1_STAGES: tuple[Stage, ...] = (
           "titles SKILL -> titles build CLI (optional on-screen text)", "final"),
     Stage("deliver", "REEL_v*.*", "required",
           "edl_to_reel CLI", "final", in_out=True),
+    Stage("reel-review", "REVIEW.json", "optional",
+          "reel-review SKILL -> reel_review build CLI (editorial CP3 review)", "final"),
 )
 
 

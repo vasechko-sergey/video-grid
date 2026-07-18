@@ -33,7 +33,8 @@ def test_stage_accepts_good():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "reel-brief", "trend-scan",
-        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "titles", "deliver"]
+        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "titles",
+        "deliver", "reel-review"]
 
 
 def test_v1_stages_kinds_and_flags():
@@ -54,6 +55,10 @@ def test_v1_stages_kinds_and_flags():
     assert by["titles"].artifact == "TITLES.json"
     assert by["titles"].checkpoint == "final"
     assert by["titles"].in_out is False
+    assert by["reel-review"].kind == "optional"
+    assert by["reel-review"].artifact == "REVIEW.json"
+    assert by["reel-review"].checkpoint == "final"
+    assert by["reel-review"].in_out is False
     assert by["deliver"].in_out is True and by["deliver"].artifact == "REEL_v*.*"
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
@@ -148,6 +153,22 @@ def test_titles_optional_absent_then_present(tmp_path):
     res2 = next_action(str(tmp_path))
     assert _state(res2, "titles") == "done"
     assert res2["next"] == "deliver"
+
+
+def test_reel_review_optional_absent_then_present(tmp_path):
+    # review runs AFTER deliver; it is optional and never blocks `next`
+    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+        _touch(tmp_path, n)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "REEL_v1.mp4").write_text("x")
+    res = next_action(str(tmp_path))
+    assert res["delivered"] is True and res["next"] is None
+    assert _state(res, "reel-review") == "optional"   # absent optional never blocks
+    _touch(tmp_path, "REVIEW.json")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "reel-review") == "done"
+    assert res2["next"] is None                        # still nothing required outstanding
 
 
 def test_edl_present_next_is_deliver(tmp_path):
