@@ -298,6 +298,23 @@ fixture must index by episode instead, keyed off `project_dir`'s `ep{i}` suffix
 (the one per-call value that identifies the episode). That is a **test-
 infrastructure fix that precedes the feature**, not a consequence of it.
 
+Two further fixture obligations, both found during implementation:
+
+- **Refuse the old list shape.** `dict(pe_results or {})` does not reject a list,
+  and the silent case is the shape this file uses: `dict([{"status": s,
+  "problems": p}])` coerces a one-element list holding a two-key result dict into
+  `{"status": "problems"}`, after which every lookup falls through to
+  `mechanical_pass` and the test passes having verified nothing. The fixture
+  raises `TypeError` instead.
+- **The fixture must stub `track.ensure_model`, not just `process_episode`.** The
+  driver calls `ensure_model` **itself**, above the pool, so faking
+  `process_episode` does not intercept it — left real, this fast-tier file imports
+  torch, constructs a YOLO, and on a cold cache downloads the weights over the
+  network. `tests/lib/` must reach neither; `pytest.ini`'s `integration` marker is
+  where weights are declared allowed. The stub belongs in `_wire` so every test
+  gets it uniformly, recording into the same `seen` dict the other fakes use —
+  which also avoids a patch-order trap with the warm-up ordering test below.
+
 ### §7.2 — New unit tests (`tests/lib/test_edl_to_reel.py`)
 
 - **The pool reaches the cap, and never exceeds it.** One fake serves both
