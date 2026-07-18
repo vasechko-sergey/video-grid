@@ -20,7 +20,11 @@ def _edl_file(tmp_path, episodes=None, **reel):
 
 
 def _wire(monkeypatch, pe_results=None, build_result=None):
-    """Fake extract_edl / process_episode / build_reel; record what the driver builds."""
+    """Fake extract_edl / process_episode / build_reel; record what the driver builds.
+
+    pe_results is a {episode_idx: result} dict — canned results are addressed by
+    episode, never by call order (design §7.1), so a test stays correct under the
+    thread pool. An episode with no entry gets a mechanical_pass."""
     seen = {"segments": [], "pe": [], "rm": None, "build": [], "build_titles": None}
 
     def fake_extract(edl, footage_root, seg_dir):
@@ -29,11 +33,14 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
         return segs
     monkeypatch.setattr(edl_to_reel.extract, "extract_edl", fake_extract)
 
-    results = iter(pe_results or [])
+    canned = dict(pe_results or {})     # {episode_idx: result}; absent → mechanical_pass
 
     def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
-        seen["pe"].append({"manifest": manifest, "project_dir": project_dir})
-        return next(results, {"status": "mechanical_pass", "clip": manifest["out_path"]})
+        # key off project_dir's ep{i} suffix — the one per-call value that names the
+        # episode. Call ORDER is not usable: under the pool (design §7.1) it is a race.
+        idx = int(Path(project_dir).name.removeprefix("ep"))
+        seen["pe"].append({"manifest": manifest, "project_dir": project_dir, "idx": idx})
+        return canned.get(idx, {"status": "mechanical_pass", "clip": manifest["out_path"]})
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
 
     def fake_build(rm, out_dir, work_dir, titles=None):
@@ -94,7 +101,7 @@ def test_bad_episode_preflights_before_any_ffmpeg(monkeypatch, tmp_path):
 
 
 def test_episode_failure_stops_and_reports_without_building(monkeypatch, tmp_path):
-    seen = _wire(monkeypatch, pe_results=[{"status": "needs_input", "problems": ["ambiguous hero"]}])
+    seen = _wire(monkeypatch, pe_results={0: {"status": "needs_input", "problems": ["ambiguous hero"]}})
     res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
                                   str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
     assert res["status"] == "stop_and_report" and res["finding"]["reason"] == "episode-failed"
@@ -107,3 +114,15 @@ def test_build_reel_stop_is_passed_through(monkeypatch, tmp_path):
     res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
                                   str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
     assert res["status"] == "stop_and_report" and res["finding"]["reason"] == "variety"
+
+
+def test_a_canned_result_lands_on_its_own_episode(monkeypatch, tmp_path):
+    # The fixture keys canned results by EPISODE INDEX, not by call order. Under the
+    # thread pool (design §7.1) call order is a race, so targeting episode 1 by
+    # padding a list would silently retarget episode 0 on an unlucky schedule.
+    seen = _wire(monkeypatch, pe_results={1: {"status": "needs_input", "problems": ["x"]}})
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
+                                  str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert res["finding"]["episode_idx"] == 1
+    assert res["finding"]["sub_status"] == "needs_input"
+    assert sorted(m["idx"] for m in seen["pe"]) == [0, 1]
