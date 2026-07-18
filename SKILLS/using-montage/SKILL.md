@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> [pacing] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> [pacing] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -134,6 +134,14 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
     is surfaced verbatim — never fixed forward; route it to the culprit stage's
     skill.
 
+    Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
+    that judges the reel against `SPEC` (idea/mood/hook/ending/spine) and writes
+    `REVIEW.json` + `REVIEW.md`; present `REVIEW.md` alongside the reel and the
+    `check_reel` report. For each finding the user chooses to act on, re-run the
+    routed stage (`edit-plan`/`pacing`/`music`/`titles`) — never fix the reel
+    forward — then re-review the new cut. reel-review is the §5.13 editorial half;
+    on a bare autonomous run it still runs, judging against the `EDL`.
+
 ## Reading the brief (intent -> param)
 
 The user speaks free text; you pass **explicit args** — the user never types flags.
@@ -153,7 +161,9 @@ aspect (project-init's own "ask, don't guess").
 ## Boundaries
 
 - The **three checkpoints** (SPEC, EDL, final review) are the ONLY user-facing
-  gates (§4.1); everything else is a machine gate inside the sub-stages.
+  gates (§4.1); everything else is a machine gate inside the sub-stages. CP3's
+  review has two mechanisms: check_reel (mechanical) and the reel-review skill
+  (editorial, §5.13 Slice B).
 - **Deferred stages are named, not skipped silently:** trend-scan (5.4) is not
   built; say so when you pass over it. reel-brief (`SPEC.md`, 5.3) is optional —
   offer it; on a bare run, name it as skipped. assemble-draft (`draft.mp4`, 5.9)
@@ -163,7 +173,9 @@ aspect (project-init's own "ask, don't guess").
   skips it without asking (no on-screen text is a valid, complete reel). pacing
   (`PACING.md`, 5.6) is optional too — it runs automatically whenever
   `MUSIC.json` exists; a music-less reel skips it and edit-plan runs pacing-less
-  (`beat_slot` stays unset).
+  (`beat_slot` stays unset). reel-review (§5.13 editorial half) runs at CP3
+  after deliver; it is optional in montage status (never next) and human-gated
+  — the reviewer proposes, you dispose.
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it
