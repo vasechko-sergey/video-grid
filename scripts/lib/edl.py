@@ -38,6 +38,7 @@ class EDLEpisode:
     crop_scale: float = 1.0
     rect: tuple[float, float, float] | None = None
     background: str = "blur"
+    background_color: str = "black"
     border_px: int = 0
     border_color: str = "white"
     motion: str | None = None
@@ -88,7 +89,8 @@ class EDLEpisode:
         return {"source": self.source, "start": self.start, "dur": self.dur,
                 "shot_type": self.shot_type, "composition": self.composition, "grid": self.grid,
                 "layout": self.layout, "crop_aspect": _j(self.crop_aspect), "crop_scale": self.crop_scale,
-                "rect": _j(self.rect), "background": self.background, "border_px": self.border_px,
+                "rect": _j(self.rect), "background": self.background,
+                "background_color": self.background_color, "border_px": self.border_px,
                 "border_color": self.border_color, "motion": self.motion, "hero": _j(self.hero),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
                 "beat_slot": self.beat_slot}
@@ -193,6 +195,7 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         "segment": segment, "out_path": out_path, "target_dur": ep.dur,
         "composition": ep.composition, "grid": ep.grid, "layout": ep.layout,
         "crop_scale": ep.crop_scale, "background": ep.background,
+        "background_color": ep.background_color,
         "border_px": ep.border_px, "border_color": ep.border_color,
         "color_means": list(ep.color_means),
     }

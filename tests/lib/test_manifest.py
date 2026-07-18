@@ -213,6 +213,26 @@ def test_fill_with_a_border_is_a_problem_not_a_crash():
     assert any("border" in p for p in problems)
 
 
+def test_manifest_carries_the_background_colour_to_the_gate():
+    m = mf.Manifest.from_dict({
+        "segment": "a.mp4", "out_path": "o.mp4", "target_dur": 2.0,
+        "composition": "break", "grid": "thirds", "canvas": [9, 16],
+        "layout": "fit", "crop_aspect": "source",
+        "background": "solid", "background_color": "#101820"})
+    assert (m.background, m.background_color) == ("solid", "#101820")
+    assert mf.validate(m) == []
+
+
+def test_manifest_gate_reports_a_bad_background_colour_as_a_problem():
+    # The gate is SOFT: LayoutSpec's ValueError becomes a problem string, never a raise.
+    m = mf.Manifest.from_dict({
+        "segment": "a.mp4", "out_path": "o.mp4", "target_dur": 2.0,
+        "composition": "break", "grid": "thirds", "canvas": [9, 16],
+        "layout": "fit", "crop_aspect": "source",
+        "background": "solid", "background_color": "bla:ck"})
+    assert any("break the ffmpeg filtergraph" in p for p in mf.validate(m))
+
+
 # --- Task 5: cast field + hero.resolve as validate()'s oracle ---
 
 def _cast():

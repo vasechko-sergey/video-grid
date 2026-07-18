@@ -69,6 +69,30 @@ def test_episode_to_dict_keeps_none_optionals():
     assert d["beat_slot"] is None
 
 
+def _solid_episode():
+    # EDLEpisode's six required fields are source/start/dur/shot_type/composition/grid.
+    return EDLEpisode(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                      composition="break", grid="thirds",
+                      layout="fit", crop_aspect="source",
+                      background="solid", background_color="#101820")
+
+
+def test_edl_episode_round_trips_the_background_colour():
+    # EDLEpisode has no from_dict classmethod of its own — only EDL.from_dict does,
+    # and it builds episodes via EDLEpisode(**e) (see EDL.from_dict below). Round-trip
+    # through the constructor instead, matching
+    # test_episode_to_dict_is_json_friendly_and_round_trips above. This file also
+    # imports EDLEpisode/to_manifest_dict directly, with no `edl` module alias bound
+    # anywhere (see test_edl_cast_round_trips's note on the same point).
+    ep = _solid_episode()
+    assert EDLEpisode(**ep.to_dict()) == ep
+
+
+def test_to_manifest_dict_passes_the_background_colour_through():
+    md = to_manifest_dict(_solid_episode(), segment="seg.mp4", out_path="o.mp4")
+    assert (md["background"], md["background_color"]) == ("solid", "#101820")
+
+
 def _edl(**kw):
     ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
               composition="lead", grid="thirds")

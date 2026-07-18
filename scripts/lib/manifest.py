@@ -20,7 +20,8 @@ from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, L
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
 OPTIONAL = ("layout", "motion", "hero", "cast", "color_means", "stabilize", "model", "delivery",
-            "crop_aspect", "crop_scale", "rect", "background", "border_px", "border_color")
+            "crop_aspect", "crop_scale", "rect", "background", "background_color",
+            "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split/pan → their own plans
 DEFAULT_COLOR = (105, 122, 137)
 DEFAULT_MODEL = "yolo11n-seg.pt"
@@ -47,6 +48,7 @@ class Manifest:
     crop_scale: float = 1.0
     rect: tuple[float, float, float] | None = None
     background: str = "blur"
+    background_color: str = "black"
     border_px: int = 0
     border_color: str = "white"
 
@@ -86,6 +88,7 @@ class Manifest:
             rect = tuple(rect)
         crop_scale = d.get("crop_scale")
         background = d.get("background")
+        background_color = d.get("background_color")
         border_px = d.get("border_px")
         border_color = d.get("border_color")
         return cls(
@@ -103,6 +106,7 @@ class Manifest:
             crop_scale=float(crop_scale) if crop_scale is not None else 1.0,
             rect=rect,
             background=background if background is not None else "blur",
+            background_color=background_color if background_color is not None else "black",
             border_px=int(border_px) if border_px is not None else 0,
             border_color=border_color if border_color is not None else "white",
         )
@@ -134,6 +138,7 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
         try:
             LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
                        rect=m.rect, background=m.background,
+                       background_color=m.background_color,
                        border_px=m.border_px, border_color=m.border_color)
         except ValueError as e:
             problems.append(str(e))

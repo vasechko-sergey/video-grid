@@ -102,6 +102,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # between attempts, so build it once. validate() already proved it constructs.
     lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
                        rect=m.rect, background=m.background,
+                       background_color=m.background_color,
                        border_px=m.border_px, border_color=m.border_color)
 
     # 0. layout preflight. Everything below the manifest gate is HARD: resolve()
