@@ -178,24 +178,36 @@ So the background is **bounded at the source** instead: `color=…:d={dur}`, wit
 did not. `d=` alone is correct on the 59.94fps golden fixture and catastrophic on
 a 30fps one:
 
-| variant | golden_ride (59.94fps, tb 1/60000) | sample_clip (30fps, tb 1/15360) |
-|---|---|---|
-| `d=` only | 95 fr / 1.584918s ✓ | **46080 fr / 1536.000000s** — killed |
-| `-t` only | 95 fr ✓ | 90 fr / 3.000000s ✓ |
-| `d=` **and** `-t` | 95 fr ✓ | 90 fr ✓ |
+| source | `d=` only | `-t` only | `d=` **and** `-t` |
+|---|---|---|---|
+| 24fps, 2s (48 fr) | **24576 fr** | 48 ✓ | 48 ✓ |
+| 25fps, 2s (50 fr) | **25600 fr** | 50 ✓ | 50 ✓ |
+| 30fps, 3s (90 fr) | **killed at 24.6s** | 90 ✓ | 90 ✓ |
+| 60fps, 2s (120 fr) | **30720 fr** | 120 ✓ | 120 ✓ |
+| 29.97 NTSC, 2s (60 fr) | 60 ✓ | 60 ✓ | 60 ✓ |
+| golden_ride 59.94 (95 fr) | 96 fr / 1.601599s | 95 ✓ | 95 ✓ |
 
 `color`'s timebase is `1/r`; a decoded mp4 carries its **container's** (`1/15360`
-for 30fps). `overlay` inherits the **first** input's timebase — the synthesized
+at 30fps). `overlay` inherits the **first** input's timebase — the synthesized
 background — so the tail's `fps` filter reads the mismatch as a stream longer by
-exactly the ratio between them: 15360/30 = 512, and 3s × 512 = 1536s. `settb`
-variants either failed to help or cost a frame.
+exactly the ratio between them: 15360/30 = 512, and 3s × 512 = 1536s. Every
+blow-up ratio measured matches `container_tb / fps`. `settb` variants either
+failed to help or cost a frame.
 
-So the **output** is bounded too: `-t {dur}` on the ffmpeg command. It is applied
-to **every** layout, not just solid — measured a no-op for `fill` and `blur`, and
-unconditional means no future filler can forget it. The two bounds do different
-jobs: `d=` keeps the *filtergraph* finite for anyone who builds it without
-reframe's output arguments; `-t` pins the *output length* regardless of what the
-graph's timebase arithmetic decides.
+**What actually discriminates is not the frame rate** — it is whether the emitted
+`r=` string reproduces the source's rational rate *exactly*. golden_ride blows up
+too when given `r=60000/1001`; it escapes only because `f"{fps:.6g}"` mangles that
+into `59.9401`, which no longer matches. Integer rates (24/25/30/50/60) round-trip
+through `:.6g` unchanged, match exactly, and blow up. So the NTSC fixtures this
+repo reaches for by default are safe **by a formatting accident**, and the common
+integer rates are not.
+
+So the **output** is bounded: `-t {dur}` on the ffmpeg command, applied to **every**
+layout — measured a no-op for `fill` and `blur` at both rates, and unconditional
+means no future filler can forget it. **`-t` alone is sufficient**; it is what pins
+the length. `d=` is kept only so that a graph copied out of a test into a shell
+terminates at all rather than running forever — it does **not** make such a graph
+produce the right length, and it is output-neutral in the shipped command.
 
 With both, blur and solid are **duration-symmetric** — the property that matters,
 since a reel mixes them freely. Measured through real `reframe()`: golden_ride
@@ -209,8 +221,10 @@ duration cannot be probed **raises**; it does not silently fall back to
 exactly the files nobody looked at.
 
 Proved by a real-ffmpeg test asserting the rendered duration equals the source's
-**to within one frame period** — tight enough to catch the `shortest=1`
-regression at any frame rate, which is the failure this is guarding.
+**to within HALF a frame period** — deliberately tighter than one frame, because
+the `shortest=1` regression is exactly one frame at any rate and a one-frame
+tolerance would accept precisely the failure being guarded. Measured headroom
+under the shipped command: ~1e-6s.
 
 ### The blur string does not change
 
@@ -280,9 +294,13 @@ the penalty also fires on a filler change at a constant mode.
 
 **Unit — the filtergraph** (`tests/integration/test_reframe.py`, beside the five
 `test_filter_args_*` cases that already pin `fill`, `fit-blur` and `insert`)
-- the solid string, whole, including `shortest=1`.
+- the solid string, whole, including `d=` and the **absence** of `shortest=1`.
 - **the blur string, whole, byte-identical to today's** — the regression pin.
 - `fill`'s `-vf` fast path unchanged.
+- the `-t {duration}` output bound, on **every** layout — the decision to apply it
+  unconditionally needs a guard, or a future filler quietly loses it.
+- an unknown `background` raises out of `_background_args` rather than falling
+  through to blur.
 
 **Unit — the sidecar** (`tests/lib/test_models.py`)
 - `PathMeta` round-trips `background`.
@@ -296,9 +314,13 @@ the penalty also fires on a filler change at a constant mode.
 
 **Real ffmpeg** (`tests/integration/test_layouts.py`)
 - a `fit` + `solid` render **terminates, and its duration matches the source's to
-  within one frame period** — the `d=` proof. The tolerance is one frame, not a
-  loose 50ms: a `shortest=1` regression is exactly one frame at any rate, so a
-  slacker bound would not see it.
+  within HALF a frame period** — the `-t` proof. Half, not one: a `shortest=1`
+  regression is exactly one frame at any rate, so a one-frame tolerance would
+  accept it. Derive the tolerance from the probed fps, not from a literal — a
+  hardcoded `0.5 / 30.0` goes silently wrong when the fixture changes.
+- **at an integer frame rate**, not only on the 59.94fps golden ride. The
+  timebase blow-up fires on exact rate matches, so an NTSC-only proof would have
+  missed it entirely (§8).
 - a pad pixel is the requested colour (sample a corner, assert against the
   colour asked for).
 - the same frame rendered with `blur` differs there — otherwise the test cannot
@@ -306,24 +328,31 @@ the penalty also fires on a filler change at a constant mode.
 
 ## 8. Landmines (candidates for design §12)
 
-- **`color` is infinite, and the reflex fix is wrong.** An unbounded `color`
+- **`color` is infinite, and BOTH obvious fixes are wrong.** An unbounded `color`
   behind an `overlay` never ends — measured, 4m12s of output from a 2s source in
-  20s of wall clock, still going. But `overlay=…:shortest=1`, the obvious remedy,
-  truncates **exactly one frame** off every render at any frame rate, and that
-  accumulates straight into `check_reel`'s 0.5s length band (~30 episodes at
-  59.94fps eats all of it). Bound the source with `d={duration}` and leave the
-  overlay alone. Both failures are silent in the filtergraph string: one is a
-  command that never returns, the other is a reel that is mysteriously short.
+  20s of wall clock, still going. `overlay=…:shortest=1` truncates **exactly one
+  frame** off every render at any rate, which accumulates straight into
+  `check_reel`'s 0.5s length band (~30 episodes at 59.94fps eats all of it).
+  Bounding the source with `d={duration}` does not fix the length either (next
+  entry). **Bound the OUTPUT: `-t {duration}`.** All three failures are silent in
+  the filtergraph string — a command that never returns, a reel that is
+  mysteriously short, or a 3-second clip that renders as 1536 seconds.
 - **A synthesized source and a decoded one have different timebases, and
   `overlay` inherits the FIRST input's.** `color`'s timebase is `1/r`; a decoded
-  mp4 carries its container's — `1/15360` for 30fps. With the synthesized
+  mp4 carries its container's — `1/15360` at 30fps. With the synthesized
   background as the overlay's first input, the tail's `fps` filter reads the
-  mismatch as a stream longer by exactly the ratio: 15360/30 = 512, turning a 3s
-  source into **1536s / 46080 frames**. Bounding the source with `d=` does not
-  prevent it; bounding the *output* with `-t {duration}` does. This is
-  frame-rate-dependent, so it hides completely on some fixtures — the 59.94fps
-  golden ride renders correctly with `d=` alone, and only a 30fps clip exposes it.
-  Test one frame rate and you will not see this.
+  mismatch as a stream longer by exactly `container_tb / fps`: 15360/30 = 512,
+  turning a 3s source into **1536s / 46080 frames**. Bounding the source with `d=`
+  does not prevent it; bounding the *output* with `-t {duration}` does.
+
+  **The trigger is an exact rate match, NOT a particular frame rate** — this is
+  the part that will mislead you. It fires when the emitted `r=` reproduces the
+  source's rational rate exactly, so **integer rates (24/25/30/50/60) blow up**
+  while NTSC fractional ones do not. The 59.94fps golden fixture blows up too
+  when handed `r=60000/1001`; it survives only because `f"{fps:.6g}"` mangles that
+  to `59.9401`. So this repo's default fixtures are safe by a **formatting
+  accident**, and adding a 29.97fps fixture to "cover another rate" would prove
+  nothing. Cover an integer rate, or cover nothing.
 - **`proc.run` carried no timeout.** The first filtergraph capable of running
   forever turned a test failure into a hung suite (90s and killed, against a 0.8s
   normal run) — and the machine has no `timeout`/`gtimeout` binary to bound it
