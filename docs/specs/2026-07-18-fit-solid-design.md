@@ -137,9 +137,9 @@ A solid background is **synthesized**, not derived from the source, so it needs
 no second read and therefore no split:
 
 ```
-color=c={background_color}:s={out_w}x{out_h}:r={fps:.6g}[bg];
+color=c={background_color}:s={out_w}x{out_h}:r={fps:.6g}:d={dur:.6f}[bg];
 [0:v]crop={crop_w}:{crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}{pad}[fg];
-[bg][fg]overlay={ox}:{oy}:shortest=1,{tail}
+[bg][fg]overlay={ox}:{oy},{tail}
 ```
 
 The two graphs differ in shape, and the difference is **caused by the filler** —
@@ -149,14 +149,43 @@ branch: the composite structure (a `[bg]`, a `[fg]`, one `overlay`, the shared
 and the label `[fg]` reads from; `boxblur`'s radius arithmetic moves inside the
 blur arm, so a solid render never computes a blur radius it will not use.
 
-### `shortest=1` is load-bearing
+### Bounding the source with `d=`, not truncating the overlay
 
-`color` is an **infinite** source. Without `shortest=1` the overlay never sees an
-end-of-stream on either input and the encode does not terminate. It is not a
-tidiness flag; it is the thing that makes the command finish.
+`color` is an **infinite** source. Left unbounded the overlay never sees an
+end-of-stream on either input and the encode does not terminate — measured, it
+encoded 4m12s of video from a 2-second source in 20s of wall clock and was still
+going. Something must end it.
 
-It is proved by a real-ffmpeg test asserting the rendered duration equals the
-source duration — not by reading the filtergraph string.
+There are two ways, and **the obvious one is wrong**. `overlay=…:shortest=1` ends
+the output when the shorter input ends, which does terminate — but it lands
+**exactly one frame short of the source, every time**. Measured on the golden
+fixture: source 1.584917s / 95 frames, blur 1.584916s / 95 frames, solid
+1.568232s / **94** frames; reproduced on synthetic 1s/3s/5s sources, always
+exactly one frame, so it is not a rounding artifact. `eof_action=endall` behaves
+identically — the truncation is inherent to ending an overlay against an infinite
+source, not to the spelling.
+
+One frame is not negligible here, because it **accumulates against a real gate**.
+`check_reel` measures the assembled reel's total duration against
+`ReelCheckSpec._LENGTH_TOL` (0.5s), so ~30 solid episodes at 59.94fps — or ~15 at
+30fps — consume the entire length band from this artifact alone, and eat into
+`length_retime_max` on top. A filler must not change how long the reel is.
+
+So the background is **bounded at the source** instead: `color=…:d={dur}`, with
+`dur` the probed source duration, and the overlay left alone. Both inputs are then
+finite and the same length, the overlay ends naturally, and blur and solid are
+**duration-symmetric** — which is the property that matters, since a reel mixes
+them freely.
+
+This costs one number: `reframe._probe` already runs `ffprobe` for dims and fps
+and now asks for `duration` in the same call — no extra process. A source whose
+duration cannot be probed **raises**; it does not silently fall back to
+`shortest=1`, because that fallback would reintroduce the truncation invisibly on
+exactly the files nobody looked at.
+
+Proved by a real-ffmpeg test asserting the rendered duration equals the source's
+**to within one frame period** — tight enough to catch the `shortest=1`
+regression at any frame rate, which is the failure this is guarding.
 
 ### The blur string does not change
 
@@ -241,8 +270,10 @@ the penalty also fires on a filler change at a constant mode.
 - same `mode`, same `background` ⇒ it does not.
 
 **Real ffmpeg** (`tests/integration/test_layouts.py`)
-- a `fit` + `solid` render **terminates and its duration equals the source's** —
-  the `shortest=1` proof.
+- a `fit` + `solid` render **terminates, and its duration matches the source's to
+  within one frame period** — the `d=` proof. The tolerance is one frame, not a
+  loose 50ms: a `shortest=1` regression is exactly one frame at any rate, so a
+  slacker bound would not see it.
 - a pad pixel is the requested colour (sample a corner, assert against the
   colour asked for).
 - the same frame rendered with `blur` differs there — otherwise the test cannot
@@ -250,9 +281,19 @@ the penalty also fires on a filler change at a constant mode.
 
 ## 8. Landmines (candidates for design §12)
 
-- **`color` is infinite.** Any overlay against a synthesized source needs
-  `shortest=1` (or an explicit `d=`), or the encode never ends. Silent in the
-  filtergraph string; visible only as a command that does not return.
+- **`color` is infinite, and the reflex fix is wrong.** An unbounded `color`
+  behind an `overlay` never ends — measured, 4m12s of output from a 2s source in
+  20s of wall clock, still going. But `overlay=…:shortest=1`, the obvious remedy,
+  truncates **exactly one frame** off every render at any frame rate, and that
+  accumulates straight into `check_reel`'s 0.5s length band (~30 episodes at
+  59.94fps eats all of it). Bound the source with `d={duration}` and leave the
+  overlay alone. Both failures are silent in the filtergraph string: one is a
+  command that never returns, the other is a reel that is mysteriously short.
+- **`proc.run` carried no timeout.** The first filtergraph capable of running
+  forever turned a test failure into a hung suite (90s and killed, against a 0.8s
+  normal run) — and the machine has no `timeout`/`gtimeout` binary to bound it
+  from outside. Subprocess calls now take a generous default timeout that raises;
+  an unbounded wait is not a test result.
 - **`background_color` reaches an ffmpeg argument.** It carries the same
   injection surface as `border_color` and gets the same guard. A colour string is
   not a safe literal just because it is short.
