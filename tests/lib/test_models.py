@@ -293,14 +293,6 @@ def test_layout_spec_rejects_unknown_mode():
         m.LayoutSpec(mode="split")
 
 
-def test_layout_spec_rejects_unknown_background():
-    # "solid" used to be the forward-referenced example of an unknown value here
-    # (design 2026-07-18-fit-solid §3); it has since landed as a real background,
-    # so this pins a value that stays unknown instead of reusing a now-valid one.
-    with pytest.raises(ValueError, match="unknown"):
-        m.LayoutSpec(mode="fit", crop_aspect="source", background="vignette")
-
-
 def test_layout_spec_rejects_bad_scale():
     with pytest.raises(ValueError, match=r"\(0.0, 1.0\]"):
         m.LayoutSpec(mode="fit", crop_aspect="source", crop_scale=0.0)
@@ -377,8 +369,14 @@ def test_fill_refuses_a_filler_it_cannot_show():
 
 
 def test_layout_spec_refuses_an_unknown_background():
-    with pytest.raises(ValueError, match="unknown"):
-        m.LayoutSpec(mode="fit", crop_aspect="source", background="gradient")
+    # Pin the ENUMERATION, not just the word "unknown": this message is the only
+    # thing that tells an author what IS supported, and a bare-word matcher
+    # survives near-total erasure of it. `solid` was this test's unknown value
+    # until it landed (design 2026-07-18-fit-solid §3), so it names one that stays
+    # unknown rather than reusing a now-valid one.
+    with pytest.raises(ValueError, match=r"background 'vignette' unknown") as excinfo:
+        m.LayoutSpec(mode="fit", crop_aspect="source", background="vignette")
+    assert "'blur', 'solid'" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("bad", ["", None, 7])
@@ -392,7 +390,7 @@ def test_background_colour_refuses_filtergraph_breaking_characters(ch):
     # Same guard border_color gets: this string reaches an ffmpeg filter argument.
     with pytest.raises(ValueError, match="break the ffmpeg filtergraph"):
         m.LayoutSpec(mode="fit", crop_aspect="source",
-                    background_color=f"bla{ch}ck")
+                     background_color=f"bla{ch}ck")
 
 
 def test_path_meta_round_trips_through_json(tmp_path):
