@@ -437,15 +437,20 @@ class PanSpec:
                     f"PanSpec.{name} must be a number in [0.0, 1.0] — a fraction of the "
                     f"crop's horizontal freedom, where 0.0 is hard left and 1.0 hard "
                     f"right; got {v!r}")
-            if not 0.0 <= float(v) <= 1.0:
+            # NO float() here. json.loads builds ints of any size and float()
+            # raises OverflowError — NOT ValueError — on one past float range;
+            # manifest.validate()'s soft gate catches only ValueError, so that
+            # would escape as a crash. int-vs-float comparison is exact, cannot
+            # overflow, and NaN fails it too. Same landmine is_bbox_coord closes.
+            if not 0.0 <= v <= 1.0:
                 raise ValueError(
                     f"PanSpec.{name} must be within [0.0, 1.0] — a fraction of the crop's "
                     f"horizontal freedom, not a pixel offset; got {v!r}")
         if self.start == self.end:
             raise ValueError(
                 f"PanSpec start and end are both {self.start!r} — a pan that does not move "
-                "is not a pan. Drop the `pan` field entirely; a crop that holds still is "
-                "already what omitting it gives you")
+                "is not a pan. Give it an extent, or drop the `pan` field to let the "
+                "tracked route place the crop instead")
 
     def to_dict(self) -> dict:
         return {"from": self.start, "to": self.end}
