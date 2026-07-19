@@ -77,12 +77,18 @@ def _layout_of(meta: PathMeta) -> tuple[float, float, float, str]:
 
 def evaluate_transitions(metas: list[PathMeta], layout_jump_max: float) -> tuple[bool | None, dict]:
     """Flag a cut whose layout jumps beyond `layout_jump_max`: |Δcoverage| +
-    centre shift + a LAYOUT_MODE_PENALTY when the mode changes. Reads PathMeta
-    only (reel episodes share the canvas, so fractions are comparable). n/a for a
-    single episode. Advisory — 'jarring' is a taste proxy, never a gate."""
+    centre shift + a LAYOUT_MODE_PENALTY when the layout IDENTITY — `_layout_of`'s
+    (mode, background) pair, not mode alone — changes. Reads PathMeta only (reel
+    episodes share the canvas, so fractions are comparable). n/a for a single
+    episode. Advisory — 'jarring' is a taste proxy, never a gate.
+
+    The report's `modes` key (name kept for wire compatibility) holds these
+    `"{mode}+{background}"` identity strings, e.g. "fit+blur" — not bare mode
+    names.
+    """
     if len(metas) < 2:
         return None, {"status": "n/a", "reason": "single episode", "advisory": True}
-    worst = None                                   # (jump, cut_idx, [mode_i, mode_j])
+    worst = None                    # (jump, cut_idx, [identity_i, identity_j]) -- each "mode+background"
     for i in range(len(metas) - 1):
         a0, cx0, cy0, m0 = _layout_of(metas[i])
         a1, cx1, cy1, m1 = _layout_of(metas[i + 1])
