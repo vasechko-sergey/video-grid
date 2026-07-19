@@ -918,12 +918,12 @@ _Last updated: 2026-07-18._
   `timeout`/`gtimeout` binary to bound it from outside. (2) `background_color`
   reaches an ffmpeg argument and carries `border_color`'s injection surface —
   same guard, because a colour string is not a safe literal just because it
-  is short. **Real-ffmpeg proof** (`tests/integration/test_layouts.py`): a
-  solid render terminates with duration matching the source to within half a
-  frame period, at an **integer** frame rate (not just the 59.94fps golden
-  ride — that rate class is exactly what the timebase landmine does not
-  trigger on), a pad pixel is the requested colour, and the same frame under
-  `blur` differs. **Review-driven fixes beyond the plan's own tasks:** three
+  is short. **Real-ffmpeg proof:** a solid render terminates with duration
+  matching the source to within half a frame period, at an **integer** frame
+  rate (not just the 59.94fps golden ride — that rate class is exactly what
+  the timebase landmine does not trigger on) — `tests/integration/test_reframe.py`;
+  a pad pixel is the requested colour, and the same frame under `blur` differs
+  — `tests/integration/test_layouts.py`. **Review-driven fixes beyond the plan's own tasks:** three
   test-strength gaps a mutation pass caught with the whole suite still green —
   `proc.run`'s timeout kwarg was asserted as "a positive number" but never
   exercised end-to-end; `-t` being unconditional (so no future filler can

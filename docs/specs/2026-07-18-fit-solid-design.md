@@ -312,7 +312,9 @@ the penalty also fires on a filler change at a constant mode.
 - two episodes, same `mode`, different `background` ⇒ the mode penalty applies.
 - same `mode`, same `background` ⇒ it does not.
 
-**Real ffmpeg** (`tests/integration/test_layouts.py`)
+**Real ffmpeg — duration** (`tests/integration/test_reframe.py`'s
+`test_solid_and_blur_are_duration_symmetric_with_the_source` and
+`test_reframe_bounds_every_layout_to_the_source_length`)
 - a `fit` + `solid` render **terminates, and its duration matches the source's to
   within HALF a frame period** — the `-t` proof. Half, not one: a `shortest=1`
   regression is exactly one frame at any rate, so a one-frame tolerance would
@@ -321,6 +323,8 @@ the penalty also fires on a filler change at a constant mode.
 - **at an integer frame rate**, not only on the 59.94fps golden ride. The
   timebase blow-up fires on exact rate matches, so an NTSC-only proof would have
   missed it entirely (§8).
+
+**Real ffmpeg — pixels** (`tests/integration/test_layouts.py`)
 - a pad pixel is the requested colour (sample a corner, assert against the
   colour asked for).
 - the same frame rendered with `blur` differs there — otherwise the test cannot
