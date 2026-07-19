@@ -65,6 +65,45 @@ def _render(tmp_path, name, **layout_kw):
     return out
 
 
+def _raw_first_frame(tmp_path, name, **layout_kw):
+    """Render the same composite as `_render`, but intercept reframe's own ffmpeg
+    command instead of letting it run, then re-execute the IDENTICAL `-i`/filter/
+    `-t` arguments with the tail swapped for a single-frame rawvideo dump. Reuses
+    the production filter graph verbatim (no logic duplicated) — the only thing
+    missing versus a real render is the lossy `-c:v libx264` encode step, so two
+    composites that are byte-identical here are identical BEFORE any encoder
+    noise has a chance to exist, not merely close after it.
+
+    `_probe`'s own ffprobe call also goes through `proc.run` — only the final
+    encode invocation (identifiable by `-c:v`) is intercepted; everything else
+    passes through to the real runner.
+    """
+    real_run = reframe.proc.run
+    captured: dict = {}
+
+    def _capture(cmd, **kwargs):
+        if "-c:v" in cmd:
+            captured["cmd"] = cmd
+            return None
+        return real_run(cmd, **kwargs)
+
+    reframe.proc.run = _capture
+    try:
+        _render(tmp_path, name, **layout_kw)
+    finally:
+        reframe.proc.run = real_run
+    cmd = captured["cmd"]
+    head = cmd[:cmd.index("-t") + 2]        # ffmpeg -y -i SRC <filter args> -t DUR
+    raw = subprocess.run([*head, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                        capture_output=True, check=True, timeout=60)
+    return raw.stdout
+
+
+def _raw_pixel(buf: bytes, width: int, x: int, y: int) -> tuple[int, int, int]:
+    i = (y * width + x) * 3
+    return (buf[i], buf[i + 1], buf[i + 2])
+
+
 # ---------------------------------------------------------------------------
 # Step 1: engine-level — reframe() straight onto the golden ride
 # ---------------------------------------------------------------------------
@@ -131,24 +170,30 @@ def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path):
     #    cover happens to be flat.
     assert _pixel(blurred, 10, 10) != top_a
 
-    # 4. the content is untouched: a pixel INSIDE the content rect is (almost)
+    # 4. the content is untouched: a pixel INSIDE the content rect is EXACTLY
     #    the same whichever filler rendered it — the filler must change only
-    #    the pad. This is the property that catches a filler that accidentally
-    #    covers the subject.
+    #    the pad, never the content. This is the property that catches a
+    #    filler that accidentally covers the subject, or shifts the overlay.
     #
-    #    Not asserted byte-exact: verified by diverting each command's own
-    #    -filter_complex to a raw (no libx264) dump that the two composites are
-    #    IDENTICAL pre-encode at this pixel. The `-crf 18` encode is where the
-    #    difference below comes from — x264's adaptive quantization allocates
-    #    bits per-frame, so a solid pad (near-zero entropy) vs. a blurred one
-    #    (textured) shifts the quantizer's rounding elsewhere in the SAME
-    #    frame. Measured at this pixel across both fixtures: delta <= 2. A
-    #    real content-covering defect — the wrong overlay offset, the wrong
-    #    crop — lands far outside that: either solid's red or a different
-    #    patch of video, not a 1-2 code unit rounding wobble. abs=10 keeps a
-    #    5x margin over the measured noise while remaining an order of
-    #    magnitude under a real defect (confirmed by mutation, see the plan).
-    assert _pixel(solid, 640, 1100) == pytest.approx(_pixel(blurred, 640, 1100), abs=10)
+    #    Compared PRE-ENCODE, not on the delivered file, so there is no
+    #    tolerance to justify: `-crf 18` is lossy, and x264's adaptive
+    #    quantization allocates bits per-frame, so a solid pad (near-zero
+    #    entropy) vs. a blurred one (textured) shifts the quantizer's rounding
+    #    elsewhere in the SAME frame. A prior version of this assertion
+    #    compared the ENCODED files and claimed "delta <= 2, a 5x margin"
+    #    justified an abs=10 tolerance — measured at ONE lucky sample point. A
+    #    full sweep of the content rect found encode-induced noise up to 35
+    #    there (nearly 2x that tolerance), uncomfortably close to the ~30 a
+    #    realistic 2px overlay-shift defect produces at THIS SAME pixel — not
+    #    the clean separation the tolerance assumed. Comparing the identical
+    #    filter graph's output before libx264 ever touches it removes the
+    #    ambiguity outright: the two composites differ only in the filler, so
+    #    content pixels must match exactly, not approximately (confirmed by
+    #    mutation: a simulated 2px overlay shift breaks this equality).
+    solid_raw = _raw_first_frame(tmp_path, "solid_raw", background="solid", background_color="red")
+    blurred_raw = _raw_first_frame(tmp_path, "blurred_raw", background="blur")
+    raw_w = _dims(solid)[0]
+    assert _raw_pixel(solid_raw, raw_w, 640, 1100) == _raw_pixel(blurred_raw, raw_w, 640, 1100)
 
 
 @pytest.mark.integration
