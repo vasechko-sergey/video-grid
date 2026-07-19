@@ -300,7 +300,7 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
-           path_out: str) -> str:
+            path_out: str) -> str:
     """Compose one episode from a tracked route OR a generated pan (spec §6):
     crop/scale/color per `spec`.
 
