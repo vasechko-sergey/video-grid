@@ -54,6 +54,17 @@ from `FOOTAGE.json`.
      re-run), and a pin that matches nobody in the episode's segment is a
      `hero-unmatched` stop-and-report at process-episode time — never a silent
      fallback to intent scoring.
+   - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
+     camera move: two fractions of the crop's horizontal freedom (`0.0` hard
+     left, `1.0` hard right; direction is the sign of `to - from`). It replaces
+     tracked motion for the episode — no route is read, no hero is followed.
+     The gate enforces two constraints: `composition` must be `center` (a pan
+     positions the crop by its own law, so `lead`/`break`'s subject-relative
+     framing has nothing to consult — a preflight `edl-invalid` names the
+     conflict), and no `hero` pin may be set alongside it (the pin says
+     "follow this person", the pan says "follow nobody"). `motion` may still
+     be set — it describes the *subject*, the pan describes the *camera*, and
+     the canonical pan is `motion: static` with a moving frame, both at once.
    - `processing_notes` — a short note for the draft labels (optional)
 
    The shape (integer window indices + editorial only — no timestamps):

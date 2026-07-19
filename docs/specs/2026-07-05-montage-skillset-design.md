@@ -580,7 +580,7 @@ Aspect is a **parameter**, not a hardcoded 9:16. Layout is **per-episode** (hori
 | `insert` | a horizontal clip as a framed card in a vertical canvas | scale into a placed rectangle over a background, optional border | **built** |
 | `fit-solid` | clean/graphic look | scale-inside + solid pad | **built** (2026-07-18) |
 | `split` | two clips stacked | stack + pad | planned |
-| `pan` | static subject, slow reveal | slow constant-velocity pan | planned |
+| `pan` | static subject, slow reveal | slow constant-velocity pan | **built** (2026-07-19) |
 
 Proven in the session: the wade-in = `fit-blur` ("wide frame + blurred background top/bottom"), the rides = `fill`.
 
@@ -593,6 +593,17 @@ same with a smaller rect. Adding `fit-solid` means adding a filler, not a branch
 mode names the geometry, `background` names the filler; `fit-solid` landed
 2026-07-18 as exactly this (see
 [the fit-solid design](2026-07-18-fit-solid-design.md)).
+
+**`pan` is not a layout mode at all, and landed 2026-07-19 on that basis.** Its
+row above reads like a fifth preset, but the layouts model already refutes
+that: `pan`'s crop/rect/background are `fill`'s, exactly — canvas-aspect crop,
+whole-canvas rect, no filler. What a pan actually adds is a second, *declared*
+source for the crop's x(t) — a constant-velocity path generated from two
+fractions of horizontal freedom (`{"from": f, "to": f}`), used *instead of* a
+tracked route, never alongside one. So this slice touches `LayoutSpec` not at
+all: no new mode, no new branch in `reframe`'s layout resolution — only a new
+motion source next to the existing tracked one. See
+[the pan design](2026-07-19-pan-design.md).
 
 **Whether the subject is tracked follows from geometry, not from the layout's
 name.** Horizontal freedom is `freedom = src_w − crop_w`. At zero freedom the
@@ -744,6 +755,10 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - ffmpeg expression parser chokes on long crop-x expressions ("Missing ')' or too many args") — a realistic-length noisy path can produce 1000+ Douglas-Peucker knots → cap knots (~80) by doubling eps; never emit per-frame if() chains.
 - odd output dimensions + yuv420p → libx264 "width not divisible by 2" → force even scale targets for EVERY canvas, not just 9:16 (floor-truncated crop widths are odd half the time). `Delivery` evens native/short_edge/long_edge in `dims()`; `exact` must **not** silently round (the mode is *exact* — shipping 404x720 for a requested 405x721 is the corruption we forbid) → it raises in `Delivery.__post_init__` on odd dims with a fix-it remedy, so a bad exact size cannot be constructed at all.
 - ByteTrack unconfirmed detections carry `id=None` → bucketing them under one sentinel id splices different people into a fake track that can win hero scoring → drop id=None detections; the gap is bridged by smoothing.
+- **Never smooth a generated path, and the endpoints alone cannot prove it.** `pathsmooth.smooth` is for observation noise; its rate limiter only bites near `max_speed`, so a realistic slow reveal (1920px/10s = 192 px/s, the dominant case) survives a full `smooth()` pass with **byte-identical endpoints** — measured: routing `generate_pan_path`'s output through the real smoother left 11 of 12 tests green, including the one whose comment claimed to be the proof. Only a test that monkeypatches the smoother to fail if called at all — asserting the branch, not an outcome the other branch can also produce — catches it. `scripts/reframe.py` (`generate_pan_path`). See [the pan design](2026-07-19-pan-design.md) §4.2/§10/§11.
+- **Never synthesize a route to keep a consumer working.** An empty or fabricated `route.json` is not a neutral placeholder: an empty route already means "the tracker found nobody" (fires `no-track` if run through the contradiction gate), and a fabricated one turns `check_episode`'s composition check circular (scores the crop against a subject derived from that same crop) and makes the storyboard mark a hero who does not exist. `checks.continuity([])` returns `pass=True` — its `zip` over an empty route never iterates — so the absence is not even loud. `scripts/process_episode.py`, `scripts/check_episode.py`. See [the pan design](2026-07-19-pan-design.md) §2/§2.1/§6.1.
+- **A validator that checks a ratio cannot see the quantity it will be multiplied by.** `PanSpec` honestly refuses `start == end`, but it validates *fractions of freedom*, not pixels — a span under half a pixel (e.g. `0.5 → 0.5004` at `freedom=875`) rounds both ends onto the same integer, and the render is a static frame nobody asked for, the same silent-static-frame failure a `freedom <= 0` guard exists to prevent, reached by a different road. `scripts/reframe.py` (`generate_pan_path`'s `x0 == x1` raise, downstream of `PanSpec`, where the pixel arithmetic is actually visible). See [the pan design](2026-07-19-pan-design.md) §11.
+- **`is not None` is not truthiness on a dict-valued optional.** An empty dict is falsy, so `if m.pan:` (instead of `if m.pan is not None:`) silently treats `{}` the same as absent — skipping validation in `manifest.validate()` (a clean gate for a pan that cannot construct) or dropping the key entirely in `edl.to_manifest_dict` (so `Manifest.from_dict` never even sees it). Both mutations left the whole suite green. `pan: {}` means an author started a pan and stopped; `pan` absent means none was intended — only one of those is a mistake, and truthiness cannot tell them apart. `scripts/lib/manifest.py`, `scripts/lib/edl.py`. See [the pan design](2026-07-19-pan-design.md) §11.
 
 ---
 

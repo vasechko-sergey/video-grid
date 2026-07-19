@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-18._
+_Last updated: 2026-07-19._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -932,6 +932,71 @@ _Last updated: 2026-07-18._
   directly. **Deferred (by design, non-goals §9):** gradient fill, an
   auto-derived background colour, `split`, `pan`, any `fit-blur` alias.
 
+- **pan (§7 misc-engine, slice B) DONE (2026-07-19)** — plan
+  `docs/plans/2026-07-19-pan.md` + design `docs/specs/2026-07-19-pan-design.md`
+  (branch `feat/pan`). **1400 passed / 8 skipped** (+96 over the 1304
+  baseline). Gives the crop's x(t) a second, *declared* source: a
+  constant-velocity pan generated from two fractions of horizontal freedom,
+  used *instead of* a tracked route. **Not a layout, despite sitting in the
+  design's §7 five-names table** — the layouts model already gives `pan` the
+  identical row to `fill` (canvas-aspect crop, whole-canvas rect, no filler),
+  so this slice touches `LayoutSpec` not at all; what distinguishes a pan is
+  where the crop's x(t) comes from, a motion-source question. Built:
+  `PanSpec` (`scripts/lib/models.py` — two fractions `start`/`end` of
+  `freedom = src_w − crop_w`, wire keys `from`/`to` since `from` is a Python
+  keyword, direction is the sign of `end − start`, no direction vocabulary);
+  `reframe.generate_pan_path` — a pure generator with **four** refusals
+  (`freedom <= 0`, `dur <= 0`, `x0 == x1` after rounding, `v > max_speed`) and
+  deliberately **no smoothing** (`pathsmooth` is for observation noise; a
+  generated line has none); `reframe()`'s pan branch, where `route_path`
+  becomes optional and **no route is read, and none is written**;
+  `PathMeta.pan` — the one-bit provenance the sidecar carries, read with the
+  same `.get`-based one-key exemption `background` took; `check_episode`
+  branches framing to `editorial-only` and continuity to `not-checked` under
+  a pan (jitter/length/black_frames keep running — they judge the rendered
+  clip, not an observation); the manifest gate's two refusals (a
+  `lead`/`break` composition, since a pan consults no subject; a `hero` pin,
+  since a pan follows nobody) with `motion` deliberately **not** refused (the
+  canonical pan is `motion: static` *and* a pan — a still subject, a moving
+  frame); `process_episode` skips tracking and the contradiction gate outright
+  under a pan (a real saving — a whole YOLO pass — and the honest statement
+  that no observation exists) and treats a generated path as **not
+  retryable** (the ladder's one lever, `max_speed`, is only a ceiling for a
+  pan, so a retry would re-render byte-identical pixels, or worse, break on a
+  damped ceiling); the EDL authoring path (`EDLEpisode.pan` → `to_manifest_dict`
+  → `Manifest.pan`, riding the same rails `background_color` did); and a
+  real-ffmpeg pixel proof (`tests/integration/test_pan.py`) that a `0→1` pan
+  starts on one edge marker and ends on the other, with a centre-pinned
+  control that sees neither.
+  **Two measured blast-radius facts, not reasoned:** with `pan=None`,
+  `reframe`'s emitted ffmpeg argv is byte-identical to before this slice; and
+  a tracked episode's `report.json` is byte-for-byte identical before and
+  after the whole slice. **Four landmines, all measured rather than assumed,
+  full writeup in design §11/§12:** (1) `pathsmooth.smooth`'s rate limiter
+  only bites near `max_speed`, so a realistic slow reveal (192 px/s) survives
+  a full smoothing pass with **byte-identical endpoints** — measured: 11 of
+  12 endpoint-based tests stayed green under that exact regression, so only a
+  test that monkeypatches the smoother to fail on call proves the refusal.
+  (2) An empty or fabricated `route.json` is not a neutral placeholder — an
+  empty route already means "the tracker found nobody", a fabricated one
+  makes `check_episode`'s composition check circular, and
+  `checks.continuity([])` returns `pass=True` (its `zip` over an empty route
+  never iterates), so the absence is not even loud. (3) `PanSpec` honestly
+  refuses `start == end` in **fractions**, but cannot see the `freedom`
+  those fractions get multiplied by — a span under half a pixel rounds both
+  ends onto the same integer and renders a static frame nobody asked for;
+  closed by `generate_pan_path`'s own `x0 == x1` raise, one level down, where
+  the pixel arithmetic is visible. (4) `is not None` is not truthiness on a
+  dict-valued optional — an empty dict is falsy, so `if m.pan:` silently
+  skips validation in `manifest.validate()` and drops the key entirely in
+  `edl.to_manifest_dict`; both mutations left the **whole suite green**.
+  **Final Task 10 mutation battery: 18 checks against the finished tree, 0
+  survivors** — including two escalation-order guards and both
+  `is-not-None`-vs-truthiness sites found by review after the original
+  14-check plan was written. **Closes §7's `pan` row** — see
+  `docs/pipeline-map.md`'s misc-engine bullet for what's left (`split`,
+  stabilization's apply half, the tracking-degradation ladder).
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -940,12 +1005,13 @@ _Last updated: 2026-07-18._
   built (or knowingly skipped) the front half is complete enough to run the
   whole `using-montage` conveyor end-to-end on Sergei's real footage — the
   milestone the synthetic goldens stand in for today. **OR**
-- **the remaining layouts** — `split` (two clips → two rects), `pan` (a path
-  over a static subject — already expressible as a layout via `fill` +
-  `crop_scale < 1`; what's missing is the generated x(t), not a mode). The
-  three-parameter model was built to absorb these without new code paths;
-  `split` is the one that stresses it, since it needs two sources. `fit-solid`
-  landed 2026-07-18 — see the Done entry above. **OR**
+- **`split`** — the one genuinely remaining item of the design's §7
+  five-names list (two clips → two rects; changes the manifest's shape). The
+  three-parameter layout model was built to absorb it without a new code
+  path, and it is the one that will actually stress that model, since it
+  needs two sources — unlike `fit-solid` (2026-07-18) and `pan` (2026-07-19),
+  both of which turned out to need no new layout code at all; see the two
+  Done entries above. **OR**
 - **stabilization's apply half + tracking degradation** — `vidstabdetect` already
   ships as 5.2's shake score (the first runtime vidstab consumer);
   `vidstabtransform` appears nowhere and is refused at three layers

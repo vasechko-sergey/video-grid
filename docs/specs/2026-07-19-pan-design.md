@@ -2,10 +2,11 @@
 
 _Design · 2026-07-19 · §7 misc-engine slice B (the `fit-solid` slice's successor)._
 
-**Status:** design. Implements the design spec's §7 `pan` row, re-read through
-the [layouts model](2026-07-10-layouts-design.md) (crop × rect × filler) and the
-[fit-solid slice](2026-07-18-fit-solid-design.md) (a preset is a parameter, not a
-branch).
+**Status:** built (2026-07-19, branch `feat/pan`). Implements the design spec's
+§7 `pan` row, re-read through the [layouts model](2026-07-10-layouts-design.md)
+(crop × rect × filler) and the [fit-solid slice](2026-07-18-fit-solid-design.md)
+(a preset is a parameter, not a branch). Verified by an 18-check mutation
+battery over the finished tree (§10–§11); full suite 1400 passed / 8 skipped.
 
 ---
 
@@ -156,9 +157,12 @@ Validation, each with a remedy:
 - both finite real numbers (not `bool` — `isinstance(True, int)` is `True` in
   Python, and `{"from": true}` must not silently mean `1.0`)
 - both within `[0.0, 1.0]`
-- `start != end` — a pan that does not move is not a pan. The remedy says to drop
-  the `pan` field rather than write a degenerate one, since a static crop is
-  already what omitting it gives you.
+- `start != end` — a pan that does not move is not a pan. The remedy says to
+  give it an extent, or drop the `pan` field rather than write a degenerate
+  one — dropping it is **not** the same as a static crop, though: it hands the
+  crop back to the tracked route (§2), which follows the subject if one moves.
+  A genuinely static frame is what a *static subject* under a tracked route
+  produces, not what omitting `pan` produces by itself.
 
 ## 4. The generator: two deliberate refusals
 
@@ -422,13 +426,26 @@ since `isinstance(True, int)` is `True`.
 - both directions (`0→1` and `1→0`)
 - a partial extent (`0.2 → 0.7`) lands on exactly `0.2*freedom` and `0.7*freedom`
 - `n < 2` guard
-- the three raises (§4.3, §4.4, degenerate `PanSpec`)
+- the four raises: `freedom <= 0` (§4.4), `dur <= 0` (a public pure function
+  must guard the division even though `reframe._probe` already refuses
+  `dur <= 0` upstream), `v > max_speed` (§4.3), and `x0 == x1` — a span that
+  rounds to the same pixel on both ends (§11 landmine 3) — plus the degenerate
+  `PanSpec(start=end)` refusal one level up
 
-**The no-smoothing proof.** The generated path's first and last elements equal
-exactly `round(start*freedom)` and `round(end*freedom)`. This is the test that
-goes red if anyone routes the generated path through `pathsmooth.smooth` — the
-rate limiter shortens the travel, and savgol bends the ends. Name it for what it
-protects, not for what it calls.
+**The no-smoothing proof — and it is not the endpoint-exactness tests.** The
+generated path's first and last elements equal exactly `round(start*freedom)`
+and `round(end*freedom)`, and that is worth pinning, but it does **not** prove
+no-smoothing: `pathsmooth`'s rate limiter only bites near `max_speed`, so a
+realistic slow reveal (1920px over 10s = 192 px/s, the dominant case) survives a
+full `smooth()` pass with **byte-identical endpoints**. Measured: routing the
+generator's output through the real smoother left 11 of 12 tests in the file
+green, including the one whose comment claimed to be the proof. The actual proof
+has to assert the **branch**, not an outcome the other branch can also produce —
+`test_generate_pan_path_never_calls_the_smoother` monkeypatches
+`pathsmooth.smooth` to fail the test if it is ever called, then runs the
+generator at that dominant, sub-ceiling speed. Only a test shaped this way goes
+red when someone re-routes the generator through the smoother; name it for what
+it protects, not for what it calls.
 
 **The 2-knot expectation.** `_simplify` over a generated path returns exactly 2
 knots (§4.5).
@@ -470,22 +487,66 @@ by mutation and none by the suite going red). At minimum:
 | delete the `freedom == 0` raise | the zero-freedom test |
 | change the speed gate from `>` to `>=` (or delete it) | the speed-gate test |
 
+This table is the floor, not the whole battery: Task 10's final run over the
+complete tree grew it to **18 checks**, adding the ones two more rungs of
+review found (the rounding mutations, the `dur <= 0` guard, the `x0 == x1`
+guard, both escalation-guard shapes, the `is not None`-vs-truthiness pair) —
+see the plan's Task 10 and `docs/build-status.md`.
+
 ## 11. Landmines (design spec §12)
 
-Two, both of the silent-corruption class this repo keeps in always-loaded
-context:
+Four, all of the silent-corruption class this repo keeps in always-loaded
+context. The first two were anticipated before implementation; the last two
+were found by mutation during execution and are just as silent.
 
-1. **Never smooth a generated path.** `pathsmooth.smooth` is for observation
-   noise. Its rate limiter silently prevents a pan from reaching where it was
-   told to go, and savgol distorts the endpoints. The failure is a reveal that
-   does not happen, with a green report.
+1. **Never smooth a generated path — and the endpoints cannot prove it.**
+   `pathsmooth.smooth` is for observation noise. Its rate limiter only bites
+   near `max_speed`, so a realistic slow reveal (1920px over 10s = 192 px/s,
+   the case this design calls dominant) survives a full `smooth()` pass with
+   **byte-identical endpoints** — measured: routing the generator's output
+   through the real smoother left 11 of 12 tests in the file green, including
+   the one whose comment claimed to be the proof. The failure is a reveal that
+   silently does not happen, with a green report. Closed only by a test that
+   asserts the *branch* — monkeypatching `pathsmooth.smooth` to fail if it is
+   ever called, then running the generator at that dominant, sub-ceiling
+   speed — not by any tolerance on the output.
 
-2. **Never synthesize a route to keep a consumer working.** An empty or fabricated
-   `route.json` is not a neutral placeholder — an empty route already means "the
-   tracker found nobody", and a fabricated one turns `check_episode`'s
-   composition check circular (it scores the crop against a subject derived from
-   that crop) and makes the storyboard mark a hero who does not exist.
-   `checks.continuity([])` returns `pass=True`, so the absence is not even loud.
+2. **Never synthesize a route to keep a consumer working.** An empty or
+   fabricated `route.json` is not a neutral placeholder — an empty route
+   already means "the tracker found nobody", and a fabricated one turns
+   `check_episode`'s composition check circular (it scores the crop against a
+   subject derived from that crop) and makes the storyboard mark a hero who
+   does not exist. `checks.continuity([])` returns `pass=True`, so the absence
+   is not even loud.
+
+3. **A validator that checks a ratio cannot see the quantity it will be
+   multiplied by.** `PanSpec` honestly refuses `start == end` — but it
+   validates *fractions of freedom*, not pixels, and cannot see the `freedom`
+   those fractions get multiplied by. A span under half a pixel (e.g.
+   `0.5 → 0.5004` at `freedom=875`) rounds both ends onto the same integer,
+   and the render is a static frame nobody asked for — the same
+   silent-static-frame failure the `freedom <= 0` guard (§4.4) exists to
+   prevent, reached by a different road. Closed by `generate_pan_path`'s own
+   `x0 == x1` raise, downstream of `PanSpec`, at the one point where the
+   actual pixel arithmetic is visible.
+
+4. **`is not None` versus truthiness on a dict-valued optional.** An empty
+   dict is falsy, so code written as `if m.pan:` (rather than
+   `if m.pan is not None:`) silently treats `{}` the same as absent. In
+   `manifest.validate()` that skips the whole pan validation block, handing a
+   clean gate to a pan that cannot construct; in `edl.to_manifest_dict` it
+   drops the `pan` key entirely, so `Manifest.from_dict` never even sees a
+   pan was intended. Both mutations left the **whole suite green**. Absent and
+   empty are different statements, and only one of them is a mistake:
+   `pan: {}` means an author started to write a pan and stopped; `pan` absent
+   means no pan was ever intended.
+
+**A related lesson, not itself a landmine.** An ordering constraint between two
+guards is invisible to any test that exercises only one of them. Hoisting the
+`pan-not-retryable` guard (§6.1) above `orch.escalation` turned **zero** tests
+red — every existing scenario happened to hand the two guards the same
+answer — until a test was written that gives `orch.escalation` a reason of its
+own (an unfixable `length` failure) specifically to prove which one must win.
 
 ## 12. Non-goals
 
@@ -511,7 +572,8 @@ Each its own slice, if ever:
 - design spec §7: the `pan` row → **built**, and the paragraph under the table
   gains the §1 finding (a pan is a motion source, not a preset — its preset row
   was `fill`'s).
-- design spec §12: the two landmines from §11.
+- design spec §12: the four landmines from §11 (plus the ordering-constraint
+  note).
 - `docs/pipeline-map.md`: the misc-engine roadmap bullet — `pan` done, remaining
   list narrowed to `split`, stabilization's apply half, and the tracking
   degradation ladder.
