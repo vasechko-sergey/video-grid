@@ -652,6 +652,19 @@ def test_a_tracked_episode_still_retries(sample_clip, tmp_path, monkeypatch):
     assert len(calls) == 3
 
 
+def test_an_empty_pan_comes_back_as_needs_input(sample_clip, tmp_path):
+    # The end-to-end half of the same guarantee. The shell builds
+    # PanSpec.from_dict(m.pan) bare, so if the gate ever stopped catching an
+    # empty pan this would be a traceback rather than a status dict.
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": 2.0, "layout": "fill", "crop_scale": 0.5,
+          "pan": {}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "needs_input"
+    assert any("from" in p and "to" in p for p in res["problems"])
+
+
 def test_a_pan_with_no_freedom_comes_back_as_needs_input(sample_clip, tmp_path):
     # crop_scale 1.0 on a canvas-aspect fill still leaves freedom, so use the one
     # spelling that provably has none: crop_aspect 'source' at full scale

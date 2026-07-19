@@ -382,6 +382,17 @@ def test_validate_reports_a_pan_missing_a_key():
     assert any("to" in p for p in problems)
 
 
+def test_validate_reports_an_empty_pan_as_a_problem():
+    # `if m.pan is not None:` must not become `if m.pan:` — an empty dict is
+    # FALSY, so truthiness would skip the whole block and return a clean gate for
+    # a pan that cannot construct. process_episode then builds PanSpec.from_dict
+    # bare, trusting "validate() already proved it constructs", and raises out of
+    # a shell whose job is to never raise.
+    m = mf.Manifest.from_dict(_base(composition="center", pan={}))
+    problems = mf.validate(m)
+    assert any("from" in p and "to" in p for p in problems), problems
+
+
 @pytest.mark.parametrize("comp", ["lead", "break"])
 def test_validate_refuses_a_pan_with_a_subject_relative_composition(comp):
     m = mf.Manifest.from_dict(_base(composition=comp, pan={"from": 0.0, "to": 1.0}))
