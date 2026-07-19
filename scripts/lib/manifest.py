@@ -16,11 +16,11 @@ from scripts.lib import hero as hero_lib   # aliased: this module already has a 
                                            # glance next to `m.hero`. hero_lib keeps every call
                                            # site unambiguous.
 from scripts.lib.footage import Cast
-from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec
+from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec, PanSpec
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "hero", "cast", "color_means", "stabilize", "model", "delivery",
-            "crop_aspect", "crop_scale", "rect", "background", "background_color",
+OPTIONAL = ("layout", "motion", "pan", "hero", "cast", "color_means", "stabilize", "model",
+            "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split → its own plan; pan is not a layout
 DEFAULT_COLOR = (105, 122, 137)
@@ -37,6 +37,10 @@ class Manifest:
     target_dur: float
     layout: str = "fill"
     motion: str | None = None
+    pan: dict | None = None          # {"from": f, "to": f} — a GENERATED crop path
+                                     # (design 2026-07-19). Kept as the raw wire dict here
+                                     # and built into a PanSpec by process_episode, exactly
+                                     # as layout fields are built into a LayoutSpec.
     hero: tuple | str | int | None = None
     cast: str = ""                       # cast.json path — a cast-name hero needs the registry,
                                          # and the manifest is a self-contained brief (§14.4)
@@ -96,6 +100,7 @@ class Manifest:
             composition=d["composition"], grid=d["grid"],
             canvas=tuple(d["canvas"]), target_dur=float(d["target_dur"]),
             layout=layout if layout is not None else "fill", motion=d.get("motion"),
+            pan=d.get("pan"),
             hero=hero, cast=d.get("cast") or "",
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             stabilize=bool(d.get("stabilize", False)),
@@ -190,6 +195,25 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
         problems.append(f"target_dur must be positive; got {m.target_dur}")
     if m.motion is not None and m.motion not in MOTIONS:
         problems.append(f"motion {m.motion!r} unknown — expected one of {MOTIONS} or null")
+    if m.pan is not None:
+        # PanSpec is the HARD backstop; here it is the soft gate's oracle — the same
+        # LayoutSpec/hero.resolve pattern used twice above. One constructor for
+        # validation and for the shell's real build, so the two cannot drift apart.
+        try:
+            PanSpec.from_dict(m.pan)
+        except ValueError as e:
+            problems.append(str(e))
+        if m.composition in ("lead", "break"):
+            problems.append(
+                f"composition {m.composition!r} cannot be combined with a pan: 'lead' and "
+                "'break' are SUBJECT-RELATIVE framing rules, and a pan positions the crop "
+                "by its own law without consulting any subject. Set composition to 'center' "
+                "(read as 'no framing rule'), or drop the pan")
+        if m.hero is not None:
+            problems.append(
+                "a hero pin cannot be combined with a pan: the pin says 'follow this "
+                f"person' and the pan says 'follow nobody'. Drop `hero` ({m.hero!r}) to "
+                "keep the pan, or drop `pan` to track the hero")
     if m.model not in MODELS:
         problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
     try:

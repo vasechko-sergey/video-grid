@@ -347,3 +347,66 @@ def test_manifest_non_dict_reaches_the_soft_gate_as_needs_input_not_a_crash(d, t
     res = process_episode.process_episode(d, str(tmp_path / "out"))
     assert res["status"] == "needs_input"
     assert any("expected a manifest object" in p for p in res["problems"])
+
+
+# --- Task 6: Manifest.pan + the gate's two refusals ---
+#
+# _base()'s own default composition is "lead" (see above), not "center" — every
+# test below that expects a CLEAN validate() (or a single, isolated problem)
+# pins composition="center" explicitly, or the pre-existing lead/break refusal
+# would ride along uninvited and either fail the clean-validate assertion or
+# inflate a len(problems) == 1 count. See the task report for the full audit.
+
+def test_manifest_carries_a_pan():
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.2, "to": 0.7}))
+    assert m.pan == {"from": 0.2, "to": 0.7}
+    assert mf.validate(m) == []
+
+
+def test_manifest_defaults_to_no_pan():
+    assert mf.Manifest.from_dict(_base()).pan is None
+
+
+def test_validate_reports_a_malformed_pan_as_a_problem_not_a_raise():
+    # the soft gate uses PanSpec as its ORACLE: one constructor for validation
+    # and for the shell's real build, so the two cannot drift apart
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0, "to": 3.0}))
+    problems = mf.validate(m)
+    assert len(problems) == 1
+    assert "[0.0, 1.0]" in problems[0] and "3.0" in problems[0]
+
+
+def test_validate_reports_a_pan_missing_a_key():
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0}))
+    problems = mf.validate(m)
+    assert any("to" in p for p in problems)
+
+
+@pytest.mark.parametrize("comp", ["lead", "break"])
+def test_validate_refuses_a_pan_with_a_subject_relative_composition(comp):
+    m = mf.Manifest.from_dict(_base(composition=comp, pan={"from": 0.0, "to": 1.0}))
+    problems = mf.validate(m)
+    assert any("pan" in p and comp in p and "center" in p for p in problems), problems
+
+
+def test_validate_allows_a_pan_with_center():
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0, "to": 1.0}))
+    assert mf.validate(m) == []
+
+
+def test_validate_refuses_a_pan_that_also_pins_a_hero():
+    # "largest" is a HERO_RULES rule pin — hero.resolve accepts it with cast=None
+    # (see test_validate_accepts_a_rule_hero_without_a_cast above), so it isolates
+    # the pan+hero refusal instead of also collecting a malformed-pin problem.
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0, "to": 1.0},
+                                    hero="largest"))
+    problems = mf.validate(m)
+    assert any("pan" in p and "hero" in p for p in problems), problems
+
+
+def test_validate_allows_a_pan_beside_a_static_motion():
+    # motion describes the SUBJECT, pan describes the CAMERA. The canonical pan
+    # is a still subject and a moving frame — both true at once.
+    m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0, "to": 1.0},
+                                    motion="static"))
+    assert mf.validate(m) == []
