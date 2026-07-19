@@ -583,6 +583,7 @@ class ReframeSpec:
     max_speed: float = 750.0
     stabilize: bool = False
     color_correct: tuple | None = None
+    pan: "PanSpec | None" = None
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
@@ -607,6 +608,11 @@ class ReframeSpec:
         if self.color_correct is not None and not _positive_seq(self.color_correct, 3):
             raise ValueError(f"ReframeSpec.color_correct must be 3 positive per-channel "
                              f"factors or None, got {self.color_correct!r}")
+        if self.pan is not None and not isinstance(self.pan, PanSpec):
+            raise ValueError(
+                f"ReframeSpec.pan must be a PanSpec or None, got {type(self.pan).__name__} — "
+                "build it with PanSpec.from_dict({'from': …, 'to': …}); a pan replaces the "
+                "tracked route as the source of the crop's x(t)")
 
 
 @dataclass

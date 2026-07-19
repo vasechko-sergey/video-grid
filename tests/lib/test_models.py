@@ -1152,3 +1152,29 @@ def test_panspec_from_dict_names_a_missing_key():
     with pytest.raises(ValueError) as e:
         PanSpec.from_dict({"from": 0.0})
     assert "to" in str(e.value)
+
+
+# --- ReframeSpec.pan (design 2026-07-19 §5.1): the crop's second x(t) source ---
+
+def test_reframespec_defaults_to_no_pan():
+    spec = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                         color_means=(105, 122, 137), delivery=m.Delivery("native"))
+    assert spec.pan is None
+
+
+def test_reframespec_carries_a_panspec():
+    p = PanSpec(start=0.2, end=0.7)          # off-default values on purpose
+    spec = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                         color_means=(105, 122, 137), delivery=m.Delivery("native"), pan=p)
+    assert spec.pan == p
+
+
+@pytest.mark.parametrize("bad", [{"from": 0.0, "to": 1.0}, (0.0, 1.0), "0->1", 0.5])
+def test_reframespec_refuses_a_pan_that_is_not_a_panspec(bad):
+    # the dict form is the WIRE shape; the spec takes the constructed type, so a
+    # caller that forgot PanSpec.from_dict fails here rather than at render time
+    with pytest.raises(ValueError) as e:
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                     color_means=(105, 122, 137), delivery=m.Delivery("native"), pan=bad)
+    msg = str(e.value)
+    assert "ReframeSpec.pan" in msg and "PanSpec" in msg
