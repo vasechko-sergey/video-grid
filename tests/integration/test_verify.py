@@ -199,3 +199,94 @@ def test_black_frames_fails_on_fully_black_clip(tmp_path):
         check=True, capture_output=True)
     res = check_episode._black_frames_check(str(black), black_floor=6.0, black_rel=0.35)
     assert res["pass"] is False
+
+
+def _pan_sidecar(tmp_path, xs, *, freedom=875, crop_w=405):
+    """A rendered path + a sidecar that says it was GENERATED."""
+    models.CropPath(xs).to_json(str(tmp_path / "path.json"))
+    models.PathMeta(mode="fill", crop_w=crop_w, crop_h=720, crop_y=0, src_dims=(1280, 720),
+                    canvas=(9, 16), out_dims=(404, 720), rect_px=(0, 0, 404, 720),
+                    freedom=freedom, pan=True).write(tmp_path / "path.meta.json")
+    return str(tmp_path / "path.json")
+
+
+@pytest.mark.integration
+def test_check_reports_framing_editorial_on_a_generated_path(sample_clip, tmp_path):
+    pp = _pan_sidecar(tmp_path, [0, 200, 400, 600, 875])
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    fr = rep.checks["framing"]
+    assert fr.passed is None
+    assert fr.detail["status"] == "editorial-only"
+    # the REASON must name the provenance, not the geometry — freedom is 875 here,
+    # so "no horizontal freedom" would be an actively wrong explanation
+    assert "generated" in fr.detail["reason"]
+    assert "centered" not in rep.checks
+
+
+@pytest.mark.integration
+def test_check_does_not_green_light_continuity_on_a_generated_path(sample_clip, tmp_path):
+    # checks.continuity([]) returns pass=True — its zip over an empty route never
+    # iterates. Without the provenance branch this reports a PASS for a check
+    # that examined nothing.
+    pp = _pan_sidecar(tmp_path, [0, 200, 400, 600, 875])
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    cont = rep.checks["continuity"]
+    assert cont.passed is None
+    assert cont.detail["status"] == "not-checked"
+
+
+@pytest.mark.integration
+def test_check_still_runs_the_clip_checks_on_a_generated_path(sample_clip, tmp_path):
+    # jitter/length/black_frames judge the RENDERED CLIP, not an observation, so
+    # they must keep running — a pan is not an excuse to check nothing
+    pp = _pan_sidecar(tmp_path, [0, 200, 400, 600, 875])
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    for name in ("jitter", "length", "black_frames"):
+        assert rep.checks[name].passed is not None, f"{name} must still be measured"
+
+
+@pytest.mark.integration
+def test_check_takes_jitter_direction_from_a_right_to_left_pan(sample_clip, tmp_path):
+    # a 1→0 pan moves left every frame. classify() would need a route and default
+    # to "right", and jitter would then read every legitimate step as a reversal.
+    pp = _pan_sidecar(tmp_path, [875, 600, 400, 200, 0])
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    assert rep.checks["jitter"].passed is True
+    assert rep.checks["jitter"].detail["worst_reversal"] == 0
+
+
+@pytest.mark.integration
+def test_check_overall_survives_a_generated_path(sample_clip, tmp_path):
+    # Report.overall is all(c.passed is not False), so two None checks must not
+    # turn a good pan episode into a failure
+    pp = _pan_sidecar(tmp_path, [0, 200, 400, 600, 875])
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    assert rep.overall is True
+    assert rep.fail_reasons == []
+
+
+@pytest.mark.integration
+def test_check_still_refuses_a_missing_route_on_a_tracked_path(sample_clip, tmp_path):
+    # the regression half: sidecar says pan=false, so a None route is a caller bug
+    # and must be named, not crash inside route_from_json with a bare TypeError
+    models.CropPath([0, 100, 200]).to_json(str(tmp_path / "path.json"))
+    models.PathMeta(mode="fill", crop_w=405, crop_h=720, crop_y=0, src_dims=(1280, 720),
+                    canvas=(9, 16), out_dims=(404, 720), rect_px=(0, 0, 404, 720),
+                    freedom=875).write(tmp_path / "path.meta.json")
+    dur = check_episode._duration(str(sample_clip))
+    spec = models.CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    with pytest.raises(ValueError) as e:
+        check_episode.run(str(sample_clip), None, str(tmp_path / "path.json"), spec,
+                          str(tmp_path / "r.json"))
+    msg = str(e.value)
+    assert "route" in msg and "pan=false" in msg

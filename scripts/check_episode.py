@@ -63,27 +63,49 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
             "body_median": round(ref, 1)}
 
 
-def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -> Report:
-    """Geometry comes from the sidecar reframe wrote — never re-derived here.
+def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str) -> Report:
+    """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
+    rest of this function branches on, before anything asks for a route at all.
 
+    Geometry comes from the sidecar reframe wrote — never re-derived here.
     Re-deriving crop_w from the canvas is right only while every layout is
     `fill`. Under fit it returns the canvas-aspect width, and on_line then
     divides by a width that was never cut.
     """
-    route = [p.to_dict() for p in route_from_json(route_path)]
     path = CropPath.from_json(path_path).xs
     meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
     crop_w = meta.crop_w
     src_w, src_h = meta.src_dims
-    _, direction = classify(route, src_w, src_h)
-    # static/head-on routes have no direction; "right" is an arbitrary but
-    # deterministic default for the lead-line pick (the spec has no answer here —
-    # a lead composition over non-lateral motion is already a soft mismatch, and
-    # the manifest gate refuses it before this runs)
-    direction = direction or "right"
+    if meta.pan:
+        # A GENERATED path (design 2026-07-19 §5). There is no route, so there is
+        # nothing to classify — take the direction off the path itself, or a
+        # right-to-left pan would be read as reversing on every single frame.
+        route: list[dict] = []
+        direction = "right" if path[-1] >= path[0] else "left"
+    else:
+        if route_path is None:
+            raise ValueError(
+                f"check_episode needs a route for {path_path}: the sidecar says this path "
+                "was tracked (pan=false), but route_path is None — pass the route.json "
+                "reframe used, or re-render with a pan")
+        route = [p.to_dict() for p in route_from_json(route_path)]
+        _, direction = classify(route, src_w, src_h)
+        # static/head-on routes have no direction; "right" is an arbitrary but
+        # deterministic default for the lead-line pick (the spec has no answer here —
+        # a lead composition over non-lateral motion is already a soft mismatch, and
+        # the manifest gate refuses it before this runs)
+        direction = direction or "right"
     checks = {}
 
-    if meta.freedom == 0:
+    if meta.pan:
+        # NOT "no horizontal freedom" — a pan needs freedom and has it. Nobody is
+        # being composed because nobody was observed, which is a different fact and
+        # deserves a different reason. Judging composition here would compare the
+        # crop against a subject derived from that same crop.
+        checks["framing"] = CheckResult("framing", None,
+                                        {"status": "editorial-only",
+                                         "reason": "generated path — no tracked subject"})
+    elif meta.freedom == 0:
         # the crop is as wide as the source: nobody controls composition, so it
         # can neither be failed nor silently passed (design 2026-07-10 §6)
         checks["framing"] = CheckResult("framing", None,
@@ -105,8 +127,16 @@ def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -
 
     dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005))
     checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
-    dc = checks_mod.continuity(route, src_w)
-    checks["continuity"] = CheckResult("continuity", dc["pass"], {k: v for k, v in dc.items() if k != "pass"})
+    if meta.pan:
+        # checks.continuity([]) returns pass=True — its zip never iterates — so the
+        # honest answer has to be stated, not left to fall through to a green tick.
+        checks["continuity"] = CheckResult("continuity", None,
+                                           {"status": "not-checked",
+                                            "reason": "generated path — no tracked subject"})
+    else:
+        dc = checks_mod.continuity(route, src_w)
+        checks["continuity"] = CheckResult("continuity", dc["pass"],
+                                           {k: v for k, v in dc.items() if k != "pass"})
     dl = checks_mod.length(_duration(clip), spec.target_dur)
     checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
     bf = _black_frames_check(clip, black_floor=spec.black_floor, black_rel=spec.black_rel)
@@ -122,7 +152,10 @@ def run(clip: str, route_path: str, path_path: str, spec: CheckSpec, out: str) -
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("clip"); ap.add_argument("route"); ap.add_argument("path")
+    ap.add_argument("clip")
+    ap.add_argument("route", nargs="?", default=None,
+                    help="route.json (omit under a generated pan — the sidecar says so)")
+    ap.add_argument("path")
     ap.add_argument("out")
     ap.add_argument("--composition", default="lead")
     ap.add_argument("--grid", default="thirds")
