@@ -109,6 +109,44 @@ def test_parse_trf_bad_header_raises():
         intake._parse_trf("not a vidstab file\nFrame 1 (List 0 [])")
 
 
+def _stub_vidstabdetect_run(seen: dict):
+    """A proc.run stand-in that writes a minimal valid .trf to whatever path the
+    real vidstabdetect command would have written, and records the kwargs it was
+    called with — so the timeout wiring can be asserted without a real ffmpeg
+    pass over a real clip."""
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs)
+        trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1]
+        with open(trf_path, "w") as f:
+            f.write("VID.STAB 1\n")
+        return types.SimpleNamespace(stdout=b"")
+    return fake_run
+
+
+def test_shake_by_window_scales_its_timeout_to_clip_length(monkeypatch):
+    # vidstabdetect runs over the WHOLE raw clip — the one unbounded-input
+    # analysis pass in this repo (everything else works on 15-60s reels or
+    # extracted windows) — so a flat proc.run default is not generous enough for
+    # a long raw take (see SHAKE_TIMEOUT_REALTIME_MULTIPLE's derivation). This
+    # pins the WIRING: the timeout actually handed to proc.run scales with
+    # `dur`, past the floor.
+    monkeypatch.setattr(intake, "_require_vidstab", lambda: None)
+    seen: dict = {}
+    monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
+    intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=500.0)
+    assert seen["timeout"] == pytest.approx(500.0 * intake.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+
+
+def test_shake_by_window_keeps_the_default_floor_for_a_short_clip(monkeypatch):
+    # A 2s clip must not get a 20s timeout — the floor keeps a short clip at the
+    # already-generous default rather than an unrealistically tight one.
+    monkeypatch.setattr(intake, "_require_vidstab", lambda: None)
+    seen: dict = {}
+    monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
+    intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=2.0)
+    assert seen["timeout"] == intake.proc.DEFAULT_TIMEOUT_S
+
+
 def test_windowed_shake_averages_and_normalises():
     # fps=1 → frame i at second i; window 1–3s covers frames [1,3) = mags[1:3] = [10, 0] → avg 5 / width 1000
     mags = [0.0, 10.0, 0.0, 0.0]
@@ -253,7 +291,7 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
     monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res: [0.0 for _ in spans])
+                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
     import imagehash
     from PIL import Image as I
     monkeypatch.setattr(intake, "_phash_at",

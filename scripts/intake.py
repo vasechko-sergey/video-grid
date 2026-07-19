@@ -26,6 +26,14 @@ MOTION_PEAK = 0.35                                # motion value scored highest 
 DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
 BEST_FLOOR = 0.50
 SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage
+# shake_by_window's vidstabdetect pass runs over the WHOLE raw clip — the one
+# analysis in this repo whose input is unbounded raw footage (everything else
+# works on 15-60s reels or extracted windows). A same-class motion-estimation
+# proxy (mestimate=epzs; this ffmpeg build lacks vidstab) measured 13.6 fps
+# analysing 4K/30 footage — ~2.2x realtime (30/13.6) — and 4K/60 doubles the
+# per-second frame count, so ~4.4x realtime is the worst measured case. 10x
+# leaves > 2x headroom above that for slower hardware or larger frames.
+SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
@@ -160,13 +168,24 @@ def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: 
     return out
 
 
-def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, res: tuple[int, int]) -> list[float]:
+def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
+                    res: tuple[int, int], dur: float) -> list[float]:
     """vidstabdetect once per clip → per-frame magnitudes → averaged per window,
-    normalized by frame width. No per-window cutting → no -ss seek landmine."""
+    normalized by frame width. No per-window cutting → no -ss seek landmine.
+
+    `dur` (the clip's own length, already probed by the caller) scales the
+    timeout handed to `proc.run`: unlike everything else in this repo, this pass
+    runs over the WHOLE raw clip rather than a 15-60s reel or extracted window,
+    so `proc.run`'s flat default is not generous enough for a long take (see
+    SHAKE_TIMEOUT_REALTIME_MULTIPLE's derivation above). The floor keeps a short
+    clip at that same generous default instead of an unrealistically tight one.
+    """
     _require_vidstab()
+    timeout = max(proc.DEFAULT_TIMEOUT_S, dur * SHAKE_TIMEOUT_REALTIME_MULTIPLE)
     with tempfile.TemporaryDirectory() as d:
         trf = str(Path(d) / "t.trf")
-        proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"])
+        proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"],
+                 timeout=timeout)
         mags = _parse_trf(Path(trf).read_text())
     return _windowed_shake(mags, windows, fps, res[0])
 
@@ -324,7 +343,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> f
         for tid, entry in crops.items():
             all_crops[(p.name, tid)] = entry          # composite key — ids restart per clip
         spans = carve_windows(cuts, timeline, dur)
-        shakes = shake_by_window(src, spans, info.fps, res)
+        shakes = shake_by_window(src, spans, info.fps, res, dur)
         windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
         med = statistics.median([w.shake for w in windows]) if windows else 0.0
         clips.append(footage.FootageClip(source=p.name, dur=dur, res=res, fps=info.fps,

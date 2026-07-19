@@ -48,7 +48,7 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
     monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res: [0.0 for _ in spans])
+                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
 
     out = tmp_path / "out"
     result = intake.intake(str(root), str(out))

@@ -33,9 +33,13 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
             f"command timed out after {e.timeout:g}s: {' '.join(map(str, cmd))}\n"
-            "a filtergraph that cannot terminate is the usual cause — an unbounded "
-            "synthesized source (`color`/`testsrc` with no `d=`) never sends "
-            "end-of-stream, so ffmpeg encodes until something kills it") from e
+            "two causes are common: a filtergraph that cannot terminate — an "
+            "unbounded synthesized source (`color`/`testsrc` with no `d=`) never "
+            "sends end-of-stream, so ffmpeg encodes until something kills it — or "
+            "a genuinely long pass over raw footage (e.g. vidstabdetect over an "
+            "un-extracted clip) that simply needs more time than this default. If "
+            "it's the latter, pass an explicit `timeout=` at the call site, scaled "
+            "to the input's length, rather than raising this default") from e
     except subprocess.CalledProcessError as e:
         err = e.stderr or b""
         if isinstance(err, bytes):
