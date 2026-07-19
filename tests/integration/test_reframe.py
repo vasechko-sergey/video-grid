@@ -167,6 +167,21 @@ def test_probe_refuses_a_durationless_source(monkeypatch):
         reframe._probe("weird.mkv")
 
 
+def test_probe_prefers_the_stream_duration_over_the_container(monkeypatch):
+    # _probe asks for BOTH stream= and format= duration in one ffprobe call,
+    # since some containers carry only the latter -- but the docstring says the
+    # STREAM's is preferred when both are present. Fake a probe where they
+    # disagree (stream=5.0, container=9.0) and pin which one wins: with `-t
+    # {duration}` now bounding every render (design §4), silently preferring the
+    # wrong source would silently change output length, not just diagnostics.
+    class _Out:
+        stdout = ('{"streams": [{"width": 1280, "height": 720, "avg_frame_rate": "30/1", '
+                  '"duration": "5.0"}], "format": {"duration": "9.0"}}')
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: _Out())
+    _, _, _, dur = reframe._probe("whatever.mp4")
+    assert dur == pytest.approx(5.0)
+
+
 _NATIVE = Delivery("native", None)
 
 
