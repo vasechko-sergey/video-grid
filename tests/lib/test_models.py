@@ -664,6 +664,59 @@ def test_reel_manifest_rejects_missing_route():
             episodes=[{"manifest": {}, "clip": "c.mp4", "route": ""}]))
 
 
+def test_reel_manifest_accepts_a_none_route_for_a_generated_pan_path():
+    # a pan writes NO route.json — process_episode skips tracking, and an empty
+    # route.json would already mean "the tracker ran and found nobody". The
+    # contract has to be able to say the observation never existed.
+    rm = m.ReelManifest(
+        episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route=None,
+                                path="p.json", meta="pm.json")],
+        target_dur=6.0)
+    assert rm.episodes[0].route is None
+    # the sidecars are REAL under a pan — only the route is absent
+    assert rm.episodes[0].path == "p.json" and rm.episodes[0].meta == "pm.json"
+
+
+def test_reel_manifest_still_accepts_a_string_route():
+    rm = m.ReelManifest(
+        episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+        target_dur=6.0)
+    assert rm.episodes[0].route == "r.json"
+
+
+def test_reel_manifest_rejects_an_empty_string_route_even_though_none_is_legal():
+    # "" is NOT the pan spelling: it is a caller who meant to pass a path and lost
+    # it. None states the absence deliberately; "" states nothing.
+    with pytest.raises(ValueError, match="a generated pan path, which has no route"):
+        m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="")],
+                       target_dur=6.0)
+
+
+def test_reel_manifest_rejects_a_non_string_route():
+    with pytest.raises(ValueError, match="must be a route.json path or None"):
+        m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route=123)],
+                       target_dur=6.0)
+
+
+def test_reel_manifest_from_dict_carries_an_explicit_null_route_through():
+    # the wire spelling of "there was never a route here" is an explicit null. It
+    # has to survive from_dict, or a pan reel cannot be hand-authored at all.
+    rm = m.ReelManifest.from_dict(_reel_dict(
+        episodes=[{"manifest": {}, "clip": "c.mp4", "route": None,
+                   "path": "p.json", "meta": "pm.json"}]))
+    assert rm.episodes[0].route is None
+
+
+def test_reel_manifest_from_dict_still_rejects_an_omitted_route_key():
+    # an OMITTED key is not the pan spelling either — from_dict maps it to "", the
+    # same "lost it" value a caller passes directly. A pan must say `null` out loud,
+    # for the same reason the all-pan reel check says "not-checked" instead of
+    # silently passing: the absence is stated, never inferred from a gap.
+    with pytest.raises(ValueError, match="a generated pan path, which has no route"):
+        m.ReelManifest.from_dict(_reel_dict(
+            episodes=[{"manifest": {}, "clip": "c.mp4"}]))
+
+
 def test_reel_manifest_rejects_bad_cap():
     with pytest.raises(ValueError, match="cap"):
         m.ReelManifest.from_dict(_reel_dict(cap=0))

@@ -933,10 +933,18 @@ class ReelEpisode:
     rebuild it), the locked clip loop-1 produced, and the frozen route.json (a
     reprocess reuses it — colour/black fixes never move the track). `path`/`meta`
     are the frozen path.json / path.meta.json sidecars — safe_zones (§5.13) projects
-    the subject through them; empty = geometry unavailable (safe_zones not-checked)."""
+    the subject through them; empty = geometry unavailable (safe_zones not-checked).
+
+    `route` is None when the episode's path was GENERATED — a pan (design
+    2026-07-19). There is then no observation to freeze and no route.json on disk:
+    process_episode deliberately writes none, because an empty route.json already
+    means "the tracker ran and found nobody". `path`/`meta` are still set for a pan
+    — reframe wrote both sidecars, and they are as real as any tracked episode's;
+    only the route is absent.
+    """
     manifest: dict
     clip: str
-    route: str
+    route: str | None = None
     path: str = ""
     meta: str = ""
 
@@ -969,9 +977,14 @@ class ReelManifest:
                                  "per-episode manifest a reprocess rebuilds the episode from")
             if not (isinstance(e.clip, str) and e.clip):
                 raise ValueError(f"ReelManifest.episodes[{k}].clip is empty — the locked clip path")
-            if not (isinstance(e.route, str) and e.route):
-                raise ValueError(f"ReelManifest.episodes[{k}].route is empty — the frozen route.json "
-                                 "path; a reprocess reuses it to skip tracking")
+            # route is None under a pan: the path was GENERATED, so there is no
+            # observation to freeze and process_episode wrote no route.json. An
+            # empty STRING is still a bug — that is a caller who meant to pass a
+            # path and lost it, which None states deliberately and "" does not.
+            if e.route is not None and not (isinstance(e.route, str) and e.route):
+                raise ValueError(f"ReelManifest.episodes[{k}].route must be a route.json path "
+                                 "or None (None = a generated pan path, which has no route); "
+                                 "got an empty or non-string value")
             if bool(e.path) != bool(e.meta):
                 raise ValueError(f"ReelManifest.episodes[{k}]: path and meta must both be set or "
                                  "both empty — a lone sidecar cannot project the subject for safe_zones")
