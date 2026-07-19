@@ -1208,5 +1208,8 @@ def test_pathmeta_reads_an_older_sidecar_as_not_a_pan():
 def test_pathmeta_still_hard_fails_on_a_missing_non_exempt_key():
     d = m.PathMeta(**_META_KW).to_dict()
     del d["crop_w"]
-    with pytest.raises(RuntimeError):
+    # pin WHICH field the message names: a bare pytest.raises(RuntimeError) would
+    # be satisfied by a regression that raised for the wrong reason or blamed the
+    # wrong key — the same bar its sibling above already holds "freedom" to.
+    with pytest.raises(RuntimeError, match=r"no field 'crop_w'"):
         m.PathMeta.from_dict(d)
