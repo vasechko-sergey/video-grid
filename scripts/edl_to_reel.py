@@ -75,10 +75,17 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                     "finding": {"reason": "episode-failed", "episode_idx": i,
                                 "sub_status": res.get("status")}, "sub": res}
         epdir = str(Path(work_dir) / f"ep{i}")
-        episodes.append(ReelEpisode(manifest=md, clip=res["clip"],
-                                    route=str(Path(epdir) / "route.json"),
-                                    path=str(Path(epdir) / "path.json"),
-                                    meta=str(Path(epdir) / "path.meta.json")))
+        # A pan episode has no route.json — process_episode wrote none, deliberately.
+        # Naming a path that was never written would be a lie the reel manifest then
+        # carries around; None states the absence. check_reel does not depend on this
+        # (it branches on the meta sidecar's provenance bit, which is what actually
+        # happened rather than what a caller remembered to pass) — this is the
+        # contract telling the truth, not the crash fix.
+        episodes.append(ReelEpisode(
+            manifest=md, clip=res["clip"],
+            route=None if md.get("pan") is not None else str(Path(epdir) / "route.json"),
+            path=str(Path(epdir) / "path.json"),
+            meta=str(Path(epdir) / "path.meta.json")))
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)
