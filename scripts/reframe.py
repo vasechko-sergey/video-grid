@@ -7,7 +7,7 @@ from scripts.lib import layout as layout_lib
 from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
-                                PathMeta, LayoutSpec, BACKGROUNDS)
+                                PathMeta, LayoutSpec, BACKGROUNDS, PanSpec)
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
@@ -31,6 +31,70 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
     # At zero freedom (crop_w == src_w) this clamps to a constant 0 — a
     # whole-frame layout has nowhere to travel, and needs no special case.
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
+
+
+def generate_pan_path(pan: PanSpec, freedom: int, fps: float, dur: float,
+                      max_speed: float) -> tuple[list[int], list[float]]:
+    """A constant-velocity crop path with no route behind it (design 2026-07-19 §4).
+
+    Returns (path, times) at the clip's own frame cadence — the same pair
+    `reframe` otherwise derives from a tracked route, so `_xexpr` and
+    `CropPath` are reached identically either way.
+
+    IT DOES NOT SMOOTH, and that is a rule about provenance rather than shape.
+    `pathsmooth.smooth` exists to tame OBSERVATION NOISE; a generated line has
+    none, and running it through the smoother can only hurt in two ways — the
+    rate limiter caps each per-frame delta and so silently prevents the pan from
+    ever reaching `end` (the reveal the author asked for does not happen, and
+    nothing in the report says so), while savgol fits a polynomial across the
+    endpoints and bends a line that was already exactly right.
+
+    Because the rate limiter is gone, the speed cap becomes a GATE instead of a
+    silent correction (see the raise below). `max_speed` is reused as a CEILING,
+    not a target: a cinematic reveal sits far below it, and its job here is to
+    catch the absurd (a crop_scale typo turning a slow pan into a whip), not to
+    express taste. No new threshold is invented.
+
+    The pan spans the WHOLE episode by construction — there is no parameter for
+    when it starts or stops, which is what makes dividing by `dur` correct below.
+    Both degenerate inputs — no freedom to travel across, and no duration to
+    travel during — are REFUSED rather than absorbed: each would otherwise
+    produce a plausible-looking path that is not the move the author asked for.
+    """
+    if freedom <= 0:
+        raise ValueError(
+            f"a pan needs horizontal freedom and this layout has {freedom}px: the crop is "
+            "as wide as the source, so the pan would clamp to a constant and render a "
+            "STATIC frame — which looks like an ffmpeg bug, not a manifest one. Set "
+            "crop_scale below 1.0, or pick a narrower crop_aspect")
+    # Guards the division below. Without it dur=0 raises ZeroDivisionError, which
+    # names neither the offending value nor a remedy, and a NEGATIVE dur is worse:
+    # v comes out negative, slips under the max_speed ceiling untouched, and n
+    # collapses to 2 — a silently truncated two-frame pan. Unreachable through
+    # reframe today (_probe already refuses dur <= 0), but this is a public pure
+    # function, and the freedom guard one line up would be arbitrary without its twin.
+    if dur <= 0:
+        raise ValueError(
+            f"a pan needs a duration to travel across and this episode has {dur}s — "
+            "a clip with no length has no room for a camera move. Check that the "
+            "segment probes to a real duration, or drop the `pan` field")
+    x0 = round(pan.start * freedom)
+    x1 = round(pan.end * freedom)
+    v = abs(x1 - x0) / dur
+    if v > max_speed:
+        raise ValueError(
+            f"pan {pan.start}→{pan.end} travels {abs(x1 - x0)}px across {dur:.3f}s = "
+            f"{v:.0f} px/s, past max_speed {max_speed:.0f} px/s. Shrink the extent "
+            f"(a smaller from→to span), give the episode a longer duration, or raise "
+            f"max_speed if the whip is deliberate")
+    # floored at 2 so the i/(n-1) denominator below can never be zero; a clip that
+    # rounds to a single frame had no time to travel anyway, and two knots at the
+    # same instant render as the constant that honestly describes it
+    n = max(2, round(dur * fps))
+    times = [i / fps for i in range(n)]
+    # endpoints are EXACT: at i=0 the term is 0, at i=n-1 the ratio is exactly 1.0
+    path = [round(x0 + (x1 - x0) * i / (n - 1)) for i in range(n)]
+    return path, times
 
 
 def _simplify(path: list[int], times: list[float], eps: float = 2.0,

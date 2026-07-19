@@ -4,7 +4,7 @@ import pytest
 from scripts import reframe
 from scripts.lib import models
 from scripts.lib import layout as layout_lib
-from scripts.lib.models import BACKGROUNDS, Delivery, LayoutSpec
+from scripts.lib.models import BACKGROUNDS, Delivery, LayoutSpec, PanSpec
 
 def _dims(path):
     out = subprocess.run(
@@ -561,3 +561,108 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
                               layout=models.LayoutSpec(mode="fill"))
     reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
     assert "colorchannelmixer=rr=1.000:gg=1.000:bb=1.000" in " ".join(cmd["v"])
+
+
+# --- reframe.generate_pan_path (design 2026-07-19 §4): the pure generator ---
+
+def test_generate_pan_path_travels_the_declared_extent():
+    # freedom 760, 2s at 10fps → 20 samples, 19 intervals, 40px each. The extent
+    # is chosen to divide EXACTLY by n-1 so that "constant velocity" can be
+    # asserted as written; the non-divisible case is its own test below.
+    path, times = reframe.generate_pan_path(
+        PanSpec(start=0.0, end=1.0), freedom=760, fps=10.0, dur=2.0, max_speed=750.0)
+    assert len(path) == len(times) == 20
+    assert path[0] == 0 and path[-1] == 760
+    assert times[0] == 0.0 and times[-1] == pytest.approx(1.9)
+    # constant velocity: pin the actual step size, not merely that one exists
+    steps = {path[i] - path[i - 1] for i in range(1, len(path))}
+    assert steps == {40}
+
+
+def test_generate_pan_path_spreads_rounding_evenly_when_the_extent_does_not_divide():
+    # The REAL case — a freedom of 875 rarely divides by n-1. Integer rounding of
+    # an exact line can deviate by at most one pixel per step; anything wider
+    # means the ramp is not linear (an ease, a rate limit, a savgol bend). This
+    # is the assertion the divisible fixture above cannot make.
+    path, _ = reframe.generate_pan_path(
+        PanSpec(start=0.0, end=1.0), freedom=875, fps=10.0, dur=2.0, max_speed=750.0)
+    assert path[0] == 0 and path[-1] == 875
+    steps = {path[i] - path[i - 1] for i in range(1, len(path))}
+    assert max(steps) - min(steps) <= 1
+
+
+def test_generate_pan_path_runs_right_to_left_when_end_is_below_start():
+    path, _ = reframe.generate_pan_path(
+        PanSpec(start=1.0, end=0.0), freedom=800, fps=10.0, dur=2.0, max_speed=750.0)
+    assert path[0] == 800 and path[-1] == 0
+    assert all(path[i] < path[i - 1] for i in range(1, len(path)))
+
+
+def test_generate_pan_path_lands_exactly_on_a_partial_extent():
+    # THE NO-SMOOTHING PROOF. Off-default fractions on purpose: a path routed
+    # through pathsmooth.smooth would be rate-limited (landing short of the far
+    # end) and savgol-bent (moving BOTH ends). Exact equality is the assertion
+    # that catches it — a tolerance would let the regression through.
+    path, _ = reframe.generate_pan_path(
+        PanSpec(start=0.2, end=0.7), freedom=1000, fps=30.0, dur=3.0, max_speed=750.0)
+    assert path[0] == 200
+    assert path[-1] == 700
+
+
+def test_generate_pan_path_refuses_a_crop_with_nowhere_to_go():
+    with pytest.raises(ValueError) as e:
+        reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=0,
+                                  fps=30.0, dur=3.0, max_speed=750.0)
+    msg = str(e.value)
+    # "has 0px", not a bare "0": the remedy's own "crop_scale below 1.0" contains
+    # a "0", so the loose form survives {freedom} failing to interpolate entirely.
+    # "px" appears nowhere else in the message, so this can only come from the f-string.
+    assert "freedom" in msg and "has 0px" in msg
+    assert "crop_scale" in msg          # the remedy names the actual lever
+
+
+@pytest.mark.parametrize("bad", [0.0, 0, -1.0])
+def test_generate_pan_path_refuses_a_clip_with_no_duration(bad):
+    # 0 would be ZeroDivisionError — no offending value, no remedy. A NEGATIVE dur
+    # is worse: the speed comes out negative, slides under the max_speed ceiling
+    # untouched, and n collapses to 2, silently returning a two-frame pan.
+    with pytest.raises(ValueError) as e:
+        reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=800,
+                                  fps=30.0, dur=bad, max_speed=750.0)
+    msg = str(e.value)
+    assert "duration" in msg and f"{bad}s" in msg
+
+
+def test_generate_pan_path_refuses_a_pan_faster_than_max_speed():
+    # 1000px in 1.0s = 1000 px/s, past the 750 px/s ceiling
+    with pytest.raises(ValueError) as e:
+        reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=1000,
+                                  fps=30.0, dur=1.0, max_speed=750.0)
+    msg = str(e.value)
+    assert "1000" in msg and "750" in msg          # measured value AND the ceiling
+    # all three remedies, because only one of them may be available to the author
+    assert "extent" in msg and "longer" in msg and "max_speed" in msg
+
+
+def test_generate_pan_path_allows_a_pan_exactly_at_max_speed():
+    # the gate is `>`, not `>=` — a pan at the ceiling is legal
+    path, _ = reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=750,
+                                        fps=30.0, dur=1.0, max_speed=750.0)
+    assert path[-1] == 750
+
+
+def test_generate_pan_path_survives_a_clip_shorter_than_two_frames():
+    # n is floored at 2 so i/(n-1) can never divide by zero
+    path, times = reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=100,
+                                            fps=1.0, dur=0.2, max_speed=750.0)
+    assert len(path) == len(times) == 2
+    assert path == [0, 100]
+
+
+def test_a_generated_pan_simplifies_to_exactly_two_knots():
+    # a straight line is two knots; integer rounding deviates by <= 0.5px, far
+    # under _simplify's eps=2.0. Pins that the dense path costs nothing in the
+    # emitted expression.
+    path, times = reframe.generate_pan_path(
+        PanSpec(start=0.0, end=1.0), freedom=800, fps=30.0, dur=3.0, max_speed=750.0)
+    assert len(reframe._simplify(path, times)) == 2
