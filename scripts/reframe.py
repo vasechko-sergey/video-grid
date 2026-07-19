@@ -80,6 +80,16 @@ def generate_pan_path(pan: PanSpec, freedom: int, fps: float, dur: float,
             "segment probes to a real duration, or drop the `pan` field")
     x0 = round(pan.start * freedom)
     x1 = round(pan.end * freedom)
+    if x0 == x1:
+        # PanSpec refuses start == end, but it validates FRACTIONS and cannot see
+        # the freedom they get multiplied by. A span narrower than half a pixel
+        # rounds both ends onto the same integer, and the render is then a static
+        # frame the author never asked for — the same silent-static-frame failure
+        # the freedom guard above exists to prevent, reached by a different road.
+        raise ValueError(
+            f"pan {pan.start}→{pan.end} spans {abs(pan.end - pan.start):.6g} of {freedom}px "
+            f"of freedom, so both ends round to {x0}px — the render would be a STATIC "
+            "frame. Widen the from→to span, or drop the `pan` field")
     v = abs(x1 - x0) / dur
     if v > max_speed:
         raise ValueError(

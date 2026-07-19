@@ -76,11 +76,21 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
     crop_w = meta.crop_w
     src_w, src_h = meta.src_dims
+    # The sidecar is authoritative about provenance — reframe wrote it. A caller
+    # that also hands over a route under a pan is redundant, not wrong, so the
+    # route is ignored rather than refused; the reverse (a tracked sidecar with no
+    # route) IS refused below, because there the missing input is load-bearing.
     if meta.pan:
         # A GENERATED path (design 2026-07-19 §5). There is no route, so there is
         # nothing to classify — take the direction off the path itself, or a
         # right-to-left pan would be read as reversing on every single frame.
+        # Not read anywhere under a pan — centered/on_line/continuity all sit behind
+        # arms the meta.pan branches short-circuit past. Bound anyway so the two
+        # arms stay symmetric and a future ungated read fails on the empty list
+        # rather than on an unbound name.
         route: list[dict] = []
+        # `>=`, not `>`: a flat-ended path has no direction of its own, and "right"
+        # matches the tracked branch's own default-to-right convention one arm down.
         direction = "right" if path[-1] >= path[0] else "left"
     else:
         if route_path is None:

@@ -647,6 +647,23 @@ def test_generate_pan_path_refuses_a_crop_with_nowhere_to_go():
     assert "crop_scale" in msg          # the remedy names the actual lever
 
 
+def test_generate_pan_path_refuses_an_extent_that_rounds_away():
+    # PanSpec validates FRACTIONS and cannot see the freedom they multiply. A span
+    # under half a pixel collapses to a constant — the freedom guard's own failure
+    # mode by another road, and just as silent.
+    with pytest.raises(ValueError) as e:
+        reframe.generate_pan_path(PanSpec(start=0.5, end=0.5004), freedom=875,
+                                  fps=30.0, dur=3.0, max_speed=750.0)
+    msg = str(e.value)
+    assert "STATIC" in msg
+    # 0.5*875 = 437.5 and 0.5004*875 = 437.85, and BOTH round to 438 — 437.5 goes
+    # up under banker's rounding because 438 is the even neighbour. "438px" rather
+    # than a bare "438": the px suffix can only come from the f-string, and pins
+    # that the message names the collapsed coordinate rather than some other number.
+    assert "438px" in msg
+    assert "`pan`" in msg          # the remedy names the actual field to drop
+
+
 @pytest.mark.parametrize("bad", [0.0, 0, -1.0])
 def test_generate_pan_path_refuses_a_clip_with_no_duration(bad):
     # 0 would be ZeroDivisionError — no offending value, no remedy. A NEGATIVE dur

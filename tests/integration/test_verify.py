@@ -276,6 +276,24 @@ def test_check_overall_survives_a_generated_path(sample_clip, tmp_path):
 
 
 @pytest.mark.integration
+def test_check_reads_a_flat_ended_path_as_moving_right(sample_clip, tmp_path):
+    # A path whose ends are equal has no direction of its own. generate_pan_path
+    # now refuses to produce one, but check_episode reads a path.json from disk
+    # and cannot assume its writer. `>=` picks "right", matching the tracked
+    # branch's own "default to right when ambiguous" convention one arm down.
+    #
+    # The steps are +20, -10, -10. Under "right" (sign=+1) the two backward steps
+    # count and worst_reversal is 10; under "left" (sign=-1) the single forward
+    # step counts instead and it is 20. Pinning 10 is therefore exactly the
+    # assertion that distinguishes `>=` from `>` — measured, not assumed.
+    pp = _pan_sidecar(tmp_path, [400, 420, 410, 400])
+    spec = models.CheckSpec(composition="center", grid="thirds",
+                            target_dur=check_episode._duration(str(sample_clip)))
+    rep = check_episode.run(str(sample_clip), None, pp, spec, str(tmp_path / "r.json"))
+    assert rep.checks["jitter"].detail["worst_reversal"] == 10      # "left" would give 20
+
+
+@pytest.mark.integration
 def test_check_still_refuses_a_missing_route_on_a_tracked_path(sample_clip, tmp_path):
     # the regression half: sidecar says pan=false, so a None route is a caller bug
     # and must be named, not crash inside route_from_json with a bare TypeError
