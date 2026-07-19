@@ -93,6 +93,56 @@ def test_to_manifest_dict_passes_the_background_colour_through():
     assert (md["background"], md["background_color"]) == ("solid", "#101820")
 
 
+def test_edl_episode_carries_a_pan():
+    e = _ep(pan={"from": 0.2, "to": 0.7})
+    assert e.pan == {"from": 0.2, "to": 0.7}
+
+
+def test_edl_episode_defaults_to_no_pan():
+    assert _ep().pan is None
+
+
+def test_edl_episode_round_trips_a_pan_through_json():
+    e = _ep(pan={"from": 0.2, "to": 0.7})
+    back = EDL.from_dict(EDL(episodes=(e,)).to_dict()).episodes[0]
+    assert back.pan == {"from": 0.2, "to": 0.7}
+
+
+def test_to_manifest_dict_carries_the_pan_across():
+    # off-default fractions: (0.0, 1.0) could not tell "threaded" from "dropped
+    # and re-defaulted" (test-strength rule: never fixture a field's own default)
+    md = to_manifest_dict(_ep(pan={"from": 0.2, "to": 0.7}), "seg.mp4", "out.mp4")
+    assert md["pan"] == {"from": 0.2, "to": 0.7}
+
+
+def test_to_manifest_dict_omits_an_absent_pan():
+    # the established idiom: omit rather than carry an explicit null, so
+    # Manifest.from_dict falls to its own default
+    assert "pan" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+
+
+def _motion_cell(md: str, row_prefix: str) -> str:
+    """The exact `motion` column of one rendered EDL.md row, located via the real
+    header rather than a hardcoded column index — this pins the CELL a value
+    lands in, not merely that its text appears somewhere in the document."""
+    header = [c.strip() for c in next(
+        ln for ln in md.splitlines() if ln.startswith("| # |")).split("|")[1:-1]]
+    row = [c.strip() for c in next(
+        ln for ln in md.splitlines() if ln.startswith(row_prefix)).split("|")[1:-1]]
+    return row[header.index("motion")]
+
+
+def test_edl_markdown_renders_a_pan_in_the_motion_column():
+    md = EDL(episodes=(_ep(pan={"from": 0.2, "to": 0.7}),)).to_markdown()
+    assert _motion_cell(md, "| 0 |") == "pan 0.2→0.7"
+
+
+def test_edl_markdown_shows_both_a_motion_and_its_pan():
+    # motion describes the subject, pan the camera — the canonical pan has both
+    md = EDL(episodes=(_ep(motion="static", pan={"from": 0.0, "to": 1.0}),)).to_markdown()
+    assert _motion_cell(md, "| 0 |") == "static · pan 0.0→1.0"
+
+
 def _edl(**kw):
     ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
               composition="lead", grid="thirds")

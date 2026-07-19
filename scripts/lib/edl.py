@@ -42,6 +42,10 @@ class EDLEpisode:
     border_px: int = 0
     border_color: str = "white"
     motion: str | None = None
+    pan: dict | None = None   # {"from": f, "to": f} — a GENERATED crop path (design
+                              # 2026-07-19). NOT validated here: like `hero` and the
+                              # layout params, its one home is the manifest gate
+                              # reached via preflight, which uses PanSpec as its oracle.
     hero: tuple | str | int | None = None   # seed bbox / rule / track id / cast name (§5.10);
                                             # NOT validated here — see the class docstring: the
                                             # manifest gate reached via preflight is its one home
@@ -92,7 +96,8 @@ class EDLEpisode:
                 "layout": self.layout, "crop_aspect": _j(self.crop_aspect), "crop_scale": self.crop_scale,
                 "rect": _j(self.rect), "background": self.background,
                 "background_color": self.background_color, "border_px": self.border_px,
-                "border_color": self.border_color, "motion": self.motion, "hero": _j(self.hero),
+                "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
+                "hero": _j(self.hero),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
                 "beat_slot": self.beat_slot}
 
@@ -173,6 +178,11 @@ class EDL:
                  "|---|--------|--------|------|--------|------|------|--------|:----:|-------|"]
         for i, e in enumerate(self.episodes):
             motion = e.motion if e.motion is not None else "–"
+            if e.pan is not None:
+                # the camera move rides the same column as the subject's motion —
+                # they describe different things and can both be present
+                pan = f"pan {e.pan.get('from')}→{e.pan.get('to')}"
+                motion = pan if motion == "–" else f"{motion} · {pan}"
             beat = str(e.beat_slot) if e.beat_slot is not None else "–"
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
@@ -186,8 +196,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model/stabilize (manifest
-    defaults). EDL-only fields (source/start/dur/shot_type/processing_notes/
-    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
+    defaults). `pan` crosses the boundary the same way `motion`/`hero` do below:
+    copied through only when the episode sets one, so an absent pan leaves the
+    key out of the dict rather than carrying an explicit null — Manifest.from_dict
+    then falls to its own None default. EDL-only fields (source/start/dur/
+    shot_type/processing_notes/beat_slot) do NOT cross — this map is the
+    documented EDL↔manifest boundary.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
     brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""
@@ -206,6 +220,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["rect"] = list(ep.rect)
     if ep.motion is not None:
         md["motion"] = ep.motion
+    if ep.pan is not None:
+        md["pan"] = ep.pan
     if ep.hero is not None:
         md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
     if cast is not None:
