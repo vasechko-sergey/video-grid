@@ -6,7 +6,11 @@ _Design · 2026-07-19 · §7 misc-engine slice B (the `fit-solid` slice's succes
 §7 `pan` row, re-read through the [layouts model](2026-07-10-layouts-design.md)
 (crop × rect × filler) and the [fit-solid slice](2026-07-18-fit-solid-design.md)
 (a preset is a parameter, not a branch). Verified by an 18-check mutation
-battery over the finished tree (§10–§11); full suite 1400 passed / 8 skipped.
+battery over the finished single-episode tree (§10–§11); suite 1400 passed / 8
+skipped at that point. **Reel-level support landed after, as three follow-up
+commits** — an EDL-authored pan surviving `edl_to_reel` → `build_reel` →
+`check_reel` was not exercised until then (§2.2, §11 landmine 5); final suite
+1415 passed / 8 skipped.
 
 ---
 
@@ -43,7 +47,7 @@ rects, a changed manifest shape). `pan` never was.
 
 ## 2. A generated path is not an observation
 
-`route.json` is read by **four** consumers, and every one of them treats it as
+`route.json` is read by **five** consumers, and every one of them treats it as
 *evidence about the world*:
 
 | Consumer | What it does with the route |
@@ -52,10 +56,15 @@ rects, a changed manifest shape). `pan` never was.
 | `reframe.compute_path` | aims the crop at the subject |
 | `check_episode.run` | judges composition (`checks.centered` / `checks.on_line`) by comparing the path against the route; `checks.continuity` looks for subject teleports |
 | `storyboard.build` | draws the §6.1a hero marker at the route's positions |
+| `check_reel.run`'s geometry section | `safe_zones`/`key_action` project the route through the crop to check subject framing — route-dependent; `pad_bars`/`transitions` read only the meta sidecars and never touch the route |
+
+(§2.2 below: the fifth row was missing from this table until the whole-slice
+review that closed this design — see there before trusting this count on any
+future slice.)
 
 A pan has no subject to observe. The cheap move is to **synthesize a route** —
-a list of `RoutePoint`s tracing the intended crop centre — so all four consumers
-keep working untouched, and this slice becomes a twenty-line generator.
+a list of `RoutePoint`s tracing the intended crop centre — so every consumer
+keeps working untouched, and this slice becomes a twenty-line generator.
 
 That is the wrong move, and it is worth naming exactly what breaks, because each
 failure is silent:
@@ -89,6 +98,32 @@ An empty route therefore does not crash continuity — it **passes** it. Any des
 that reaches `check_episode` with no route and no marker gets a green
 `continuity` verdict on a check that examined nothing. This is the concrete
 reason the provenance bit in §5 is load-bearing rather than decorative.
+
+### 2.2 The fifth consumer, missed
+
+The table above counted **four**. There is a **fifth**: `check_reel.run`'s
+geometry section, added by two slices that had already landed before this one
+was written — safe-zones (2026-07-16, `safe_zones`/`key_action`) and
+reel-final-editorial-checks (2026-07-17, `pad_bars`/`transitions`). Neither
+this design's own audit nor Task 10's 18-check mutation battery (§10, §11)
+re-verified `route.json`'s callers against the tree as it actually stood —
+both are scoped to a single episode, and the gap only exists one level up.
+
+The consequence: `edl_to_reel` (the one multi-episode driver this slice's own
+authoring path builds) sent every reel containing a pan episode into
+`check_reel.run` opening a `route.json` no episode had written. Every such
+reel crashed with `FileNotFoundError`. Found only by a final whole-slice
+review, after this slice's own tests — and check_reel's — were already green.
+Fixed across two commits: `caa6505` (check_reel reads the meta's provenance
+bit before it will touch a route, and states an all-pan reel's coverage rather
+than passing it vacuously) and the `edl_to_reel` contract fix that followed —
+plan `docs/plans/2026-07-19-pan.md` Tasks 11-13.
+
+**The lesson:** an audit of consumers is only true as of the date it was
+*actually re-checked*, not the date stamped on the document that carries it. A
+slice that lands anywhere in that gap — before the audit was written or after
+— invalidates it exactly as silently as one landing later. Recorded as
+landmine 5, §11.
 
 ## 3. Surface: `pan` is a sibling of `motion`, not a layout and not a hero
 
@@ -495,9 +530,11 @@ see the plan's Task 10 and `docs/build-status.md`.
 
 ## 11. Landmines (design spec §12)
 
-Four, all of the silent-corruption class this repo keeps in always-loaded
-context. The first two were anticipated before implementation; the last two
-were found by mutation during execution and are just as silent.
+Five, all of the silent-corruption class this repo keeps in always-loaded
+context. The first two were anticipated before implementation; the third and
+fourth were found by mutation during execution; the fifth was found by a final
+whole-slice review, after this slice's own tests — and the tests of the two
+slices that had unknowingly created it — were already green.
 
 1. **Never smooth a generated path — and the endpoints cannot prove it.**
    `pathsmooth.smooth` is for observation noise. Its rate limiter only bites
@@ -540,6 +577,24 @@ were found by mutation during execution and are just as silent.
    empty are different statements, and only one of them is a mistake:
    `pan: {}` means an author started to write a pan and stopped; `pan` absent
    means no pan was ever intended.
+
+5. **An audit of consumers is only true as of the date it was actually
+   re-checked.** §2's table counted four readers of `route.json`. A fifth —
+   `check_reel.run`'s geometry section — had already landed via two unrelated
+   slices (safe-zones, 2026-07-16; reel-final-editorial-checks, 2026-07-17)
+   before this design was written, and the audit never re-verified against the
+   tree as it stood: it was wrong on the day it was written, not invalidated
+   later. `edl_to_reel` is the only multi-episode driver this slice's own
+   authoring path builds, and it is what reached the missed consumer — every
+   reel containing a pan episode crashed with `FileNotFoundError`. Neither this
+   slice's own tests nor the two other slices' caught it, because none of the
+   three exercises a pan through a multi-episode driver. Found only by a final
+   whole-slice review; fixed by `caa6505` (branch on the meta's provenance bit,
+   not on file existence or a route value a caller happened to pass) and the
+   `edl_to_reel` contract fix that followed — plan `docs/plans/2026-07-19-pan.md`
+   Tasks 11-13. The fix for the class of mistake is not "audit harder, once" —
+   it is either re-grep the consumer list at the point of use, or make the
+   check structural, as `caa6505` now is.
 
 **A related lesson, not itself a landmine.** An ordering constraint between two
 guards is invisible to any test that exercises only one of them. Hoisting the

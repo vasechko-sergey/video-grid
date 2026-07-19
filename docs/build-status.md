@@ -996,6 +996,40 @@ _Last updated: 2026-07-19._
   14-check plan was written. **Closes §7's `pan` row** — see
   `docs/pipeline-map.md`'s misc-engine bullet for what's left (`split`,
   stabilization's apply half, the tracking-degradation ladder).
+  **Reel-level support was NOT part of the above — it landed after, as three
+  more commits (Tasks 11-13, plan `docs/plans/2026-07-19-pan.md`), because a
+  fifth consumer of `route.json` had been missed.** Task 10's audit (design §2)
+  counted four readers; a fifth — `check_reel.run`'s geometry section — had
+  already landed via two unrelated slices (safe-zones, 2026-07-16;
+  reel-final-editorial-checks, 2026-07-17) before this design was even written,
+  and nothing re-checked. `edl_to_reel` is the only multi-episode driver this
+  slice's own authoring path builds, and every reel it built containing a pan
+  episode crashed with `FileNotFoundError` — invisible to every test above,
+  since all of them (this slice's own, and check_reel's) stop at a single
+  episode. Found only by a final whole-slice review. Fixed by: `c1b3ffd`
+  (`ReelEpisode.route: str | None = None` — `None` states a generated path has
+  no observation to freeze; an empty *string* stays refused, since that is a
+  caller who lost a path, not one who never had one); `caa6505` (`check_reel`
+  reads each meta's `pan` bit before it will open a route, contributes an EMPTY
+  mark list for a generated episode rather than dropping it — so
+  `worst_episode` still names the reel's own index — and states an all-pan
+  reel's coverage as `not-checked` instead of passing it vacuously); and the
+  `edl_to_reel` fix itself (`route=None if md.get("pan") is not None else
+  str(...)`, the same `is not None`-not-truthiness rule as landmine 4, a third
+  instance of that exact substitution surviving elsewhere in this slice).
+  Proved end to end by two new real-ffmpeg tests in
+  `tests/integration/test_front_spine.py` — an all-pan EDL and a mixed
+  tracked+pan EDL through the real `edl_to_reel` → `build_reel` → `check_reel`
+  wiring, the level nothing exercised before, because
+  `tests/lib/test_edl_to_reel.py` fakes `process_episode` entirely and a canned
+  status dict never writes or fails to write a route file. **Final: 1415
+  passed / 8 skipped** (+2 over the 1413 after `caa6505`, +15 over the 1400
+  Task-10 baseline above). Mutation-checked: reverting the `edl_to_reel` fix to
+  an unconditional route path turns **only** the two new tests red — nothing
+  else in the suite depends on the value, because `check_reel` already branches
+  on the meta rather than the route; the `is not None`→truthiness substitution
+  stays unreachable here too, since the manifest gate refuses `pan={}` before
+  `edl_to_reel` ever builds a `ReelEpisode`.
 
 ## Next action
 
