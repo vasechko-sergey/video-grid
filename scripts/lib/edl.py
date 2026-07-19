@@ -65,7 +65,8 @@ class EDLEpisode:
                              "(golden-canon is a static editorial layer, not a tracking grid)")
         if self.layout not in LAYOUTS_SUPPORTED:
             raise ValueError(f"EDLEpisode.layout {self.layout!r} not supported — {LAYOUTS_SUPPORTED} only; "
-                             "split and pan land in their own plans")
+                             "split lands in its own plan, and a pan is not a layout — "
+                             "set the `pan` field instead")
         if self.motion is not None and self.motion not in MOTIONS:
             raise ValueError(f"EDLEpisode.motion {self.motion!r} unknown — expected one of {MOTIONS} or null")
         if self.beat_slot is not None and (isinstance(self.beat_slot, bool) or not isinstance(self.beat_slot, int)):

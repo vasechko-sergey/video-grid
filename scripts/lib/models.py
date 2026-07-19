@@ -404,6 +404,66 @@ class TrackSpec:
                              f"resolve the manifest's raw hero through hero.resolve() first")
 
 
+@dataclass(frozen=True)
+class PanSpec:
+    """A generated, constant-velocity camera move (design 2026-07-19).
+
+    `start`/`end` are fractions of the crop's AVAILABLE HORIZONTAL FREEDOM
+    (`freedom = src_w - crop_w`), not of the source width: 0.0 puts the crop hard
+    left, 1.0 hard right. Freedom is the right denominator because it is what
+    actually exists to travel, and it is already the number the layouts model
+    uses to decide whether a composition is controllable at all.
+
+    DIRECTION IS THE SIGN of `end - start`. No direction vocabulary exists — that
+    would be a second spelling for what the numbers already say, and this repo
+    has just spent a slice deleting a name that duplicated a parameter
+    (`fit-blur` -> `fit`).
+
+    WIRE NAMES DIFFER FROM FIELD NAMES, uniquely in this repo: the JSON keys are
+    `from`/`to`, because that is what reads correctly in an EDL, while `from` is
+    a Python keyword and cannot be a field name. A `from_`-with-underscore field
+    would leak that constraint into the wire contract. `from_dict`/`to_dict`
+    carry the mapping, and it lives in exactly one place. Do not "fix" this.
+    """
+    start: float
+    end: float
+
+    def __post_init__(self) -> None:
+        for name, v in (("start", self.start), ("end", self.end)):
+            # bool BEFORE int: isinstance(True, int) is True, so {"from": true}
+            # would otherwise silently mean 1.0
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"PanSpec.{name} must be a number in [0.0, 1.0] — a fraction of the "
+                    f"crop's horizontal freedom, where 0.0 is hard left and 1.0 hard "
+                    f"right; got {v!r}")
+            if not 0.0 <= float(v) <= 1.0:
+                raise ValueError(
+                    f"PanSpec.{name} must be within [0.0, 1.0] — a fraction of the crop's "
+                    f"horizontal freedom, not a pixel offset; got {v!r}")
+        if self.start == self.end:
+            raise ValueError(
+                f"PanSpec start and end are both {self.start!r} — a pan that does not move "
+                "is not a pan. Drop the `pan` field entirely; a crop that holds still is "
+                "already what omitting it gives you")
+
+    def to_dict(self) -> dict:
+        return {"from": self.start, "to": self.end}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PanSpec":
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"PanSpec.from_dict: expected an object with 'from' and 'to' fractions, "
+                f"got {type(d).__name__} — write pan as {{\"from\": 0.0, \"to\": 1.0}}")
+        missing = [k for k in ("from", "to") if k not in d]
+        if missing:
+            raise ValueError(
+                f"PanSpec.from_dict: missing {', '.join(missing)} — pan needs both "
+                "'from' and 'to' as fractions of the crop's horizontal freedom")
+        return cls(start=d["from"], end=d["to"])
+
+
 LAYOUT_MODES = ("fill", "fit", "insert")
 BACKGROUNDS = ("blur", "solid")
 
@@ -437,7 +497,7 @@ class LayoutSpec:
     def __post_init__(self) -> None:
         if self.mode not in LAYOUT_MODES:
             raise ValueError(f"LayoutSpec.mode {self.mode!r} unknown — fill/fit/insert "
-                             "(split and pan are separate plans)")
+                             "(split is a separate plan)")
         if self.background not in BACKGROUNDS:
             raise ValueError(f"LayoutSpec.background {self.background!r} unknown — "
                              f"{BACKGROUNDS}")

@@ -22,7 +22,7 @@ REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur"
 OPTIONAL = ("layout", "motion", "hero", "cast", "color_means", "stabilize", "model", "delivery",
             "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
-LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split/pan → their own plans
+LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split → its own plan; pan is not a layout
 DEFAULT_COLOR = (105, 122, 137)
 DEFAULT_MODEL = "yolo11n-seg.pt"
 
@@ -130,7 +130,8 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
                         "(golden-canon is a static editorial layer, not a tracking target)")
     if m.layout not in LAYOUTS_SUPPORTED:
         problems.append(f"layout {m.layout!r} not supported — fill/fit/insert only; "
-                        "split and pan land in their own plans")
+                        "split lands in its own plan, and a pan is not a layout — "
+                        "set the `pan` field instead")
     if m.layout in LAYOUTS_SUPPORTED:
         # LayoutSpec is the HARD backstop; here it is the soft gate's oracle. Its
         # ValueError (unknown mode/bg, bad scale/aspect/rect, fill+border, list

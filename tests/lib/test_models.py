@@ -3,7 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
-from scripts.lib.models import ReelCheckSpec
+from scripts.lib.models import LayoutSpec, PanSpec, ReelCheckSpec
 
 
 def test_routepoint_roundtrip():
@@ -291,6 +291,17 @@ def test_layout_modes_are_geometry_names_only():
 def test_layout_spec_rejects_unknown_mode():
     with pytest.raises(ValueError, match="fill/fit/insert"):
         m.LayoutSpec(mode="split")
+
+
+def test_layoutspec_no_longer_claims_pan_is_a_pending_layout():
+    # pan is a motion source, not a mode — its preset row is fill's row exactly
+    # (design 2026-07-19 §1). A message promising a future `pan` mode would send
+    # an author looking for a layout that will never exist.
+    with pytest.raises(ValueError) as e:
+        LayoutSpec(mode="pan")
+    msg = str(e.value)
+    assert "fill/fit/insert" in msg
+    assert "pan" not in msg.replace("LayoutSpec.mode 'pan'", "")
 
 
 def test_layout_spec_rejects_bad_scale():
@@ -1046,3 +1057,76 @@ def test_reel_check_spec_length_retime_max_rejects_non_positive():
 def test_reel_check_spec_length_retime_max_rejects_non_number():
     with pytest.raises(ValueError, match="length_retime_max"):
         ReelCheckSpec(target_dur=12.0, length_retime_max="1.0")
+
+
+# --- PanSpec (design 2026-07-19): two fractions of horizontal freedom, not a layout ---
+
+def test_panspec_holds_two_fractions_of_freedom():
+    p = PanSpec(start=0.2, end=0.7)
+    assert (p.start, p.end) == (0.2, 0.7)
+
+
+def test_panspec_direction_is_the_sign_of_the_travel():
+    # right-to-left is spelled by the numbers, not by a direction vocabulary
+    assert PanSpec(start=1.0, end=0.0).end < PanSpec(start=1.0, end=0.0).start
+
+
+@pytest.mark.parametrize("start,end", [(-0.1, 1.0), (0.0, 1.5), (1.2, 0.3)])
+def test_panspec_refuses_a_fraction_outside_the_unit_interval(start, end):
+    with pytest.raises(ValueError) as e:
+        PanSpec(start=start, end=end)
+    msg = str(e.value)
+    # pin the offending value AND the interval — not one word of the message
+    assert "PanSpec" in msg and "[0.0, 1.0]" in msg
+    assert repr(start) in msg or repr(end) in msg
+
+
+def test_panspec_refuses_a_pan_that_does_not_move():
+    with pytest.raises(ValueError) as e:
+        PanSpec(start=0.4, end=0.4)
+    msg = str(e.value)
+    assert "0.4" in msg
+    # the remedy must say to DROP the field, not to write a different degenerate one
+    assert "drop" in msg.lower() or "omit" in msg.lower()
+
+
+@pytest.mark.parametrize("bad", [True, False])
+def test_panspec_refuses_a_bool_masquerading_as_a_fraction(bad):
+    # isinstance(True, int) is True in Python — {"from": true} must not mean 1.0
+    with pytest.raises(ValueError) as e:
+        PanSpec(start=bad, end=0.5)
+    assert "PanSpec" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", ["0.5", None, [0.5]])
+def test_panspec_refuses_a_non_number(bad):
+    with pytest.raises(ValueError) as e:
+        PanSpec(start=bad, end=0.5)
+    assert "PanSpec" in str(e.value)
+
+
+def test_panspec_round_trips_through_from_and_to_keys():
+    # the WIRE keys are from/to; the FIELD names are start/end (`from` is a Python
+    # keyword). This is the only place in the repo where the two differ.
+    d = {"from": 0.2, "to": 0.7}
+    p = PanSpec.from_dict(d)
+    assert (p.start, p.end) == (0.2, 0.7)
+    assert p.to_dict() == d
+
+
+def test_panspec_from_dict_refuses_a_non_object():
+    with pytest.raises(ValueError) as e:
+        PanSpec.from_dict([0.0, 1.0])
+    msg = str(e.value)
+    assert "from" in msg and "to" in msg
+    # pin the TYPE-guard branch specifically: for a list, "from" not in d and
+    # "to" not in d are BOTH true too, so the missing-key branch would raise a
+    # message that also contains "from"/"to" — asserting only that would still
+    # pass with the type guard deleted entirely.
+    assert "expected an object" in msg and "list" in msg
+
+
+def test_panspec_from_dict_names_a_missing_key():
+    with pytest.raises(ValueError) as e:
+        PanSpec.from_dict({"from": 0.0})
+    assert "to" in str(e.value)
