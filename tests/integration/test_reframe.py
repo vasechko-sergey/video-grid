@@ -370,17 +370,24 @@ def test_background_args_refuses_a_filler_it_does_not_know():
     assert str(BACKGROUNDS) in str(excinfo.value)
 
 
+_EXPECTED_FG_SRC = {"solid": "[0:v]", "blur": "[b]"}  # solid reads the source once (no split); blur splits it
+
+
 def test_every_known_background_has_an_arm():
     # The guard above proves an UNKNOWN filler raises. This proves the vocabulary
     # and the implementation have not drifted apart in the other direction: every
-    # value LayoutSpec accepts must actually produce a graph.
+    # value LayoutSpec accepts must actually produce a graph -- and the RIGHT
+    # one. Asserting fg_src is merely "one of" the two labels stayed green even
+    # if the blur arm returned "[0:v]" (the unsplit source) instead of "[b]" --
+    # a real defect, since fg would then read footage nothing had scaled/cropped
+    # for the background yet.
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (1280, 720), _NATIVE)
     for bg in BACKGROUNDS:
         chain, fg_src, _ = reframe._background_args(
             dataclasses.replace(rl, background=bg), fps=30.0, dur=2.5)
         assert chain.endswith("[bg];"), bg
-        assert fg_src in ("[0:v]", "[b]"), bg
+        assert fg_src == _EXPECTED_FG_SRC[bg], bg
 
 
 def test_filter_args_insert_is_pinned_to_the_rect():
