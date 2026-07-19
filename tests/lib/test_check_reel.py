@@ -315,3 +315,125 @@ def test_editorial_checks_not_checked_when_silent(tmp_path, monkeypatch):
     for name in ("key_action", "pad_bars", "transitions"):
         assert rep.checks[name].passed is None
         assert rep.checks[name].detail["status"] == "not-checked"
+
+
+def _write_geom_pan(dir_path, mode="fill", rect_px=(0, 0, 1000, 2000)):
+    """A GENERATED (pan) episode's sidecars — and deliberately NO route.json, which
+    is exactly what process_episode leaves on disk for a pan. The returned triple
+    still names a route path, because edl_to_reel builds that path unconditionally
+    for every episode; the file at the end of it simply never exists."""
+    d = Path(dir_path)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "path.json").write_text(json.dumps([0, 0]))
+    (d / "path.meta.json").write_text(json.dumps(
+        {"mode": mode, "crop_w": 1000, "crop_h": 2000, "crop_y": 0, "src_dims": [1000, 2000],
+         "canvas": [1000, 2000], "out_dims": [1000, 2000], "rect_px": list(rect_px),
+         "freedom": 400, "pan": True}))       # pan written EXPLICITLY, never left to the default
+    return (str(d / "route.json"), str(d / "path.json"), str(d / "path.meta.json"))
+
+
+def test_pan_episode_does_not_crash_on_the_route_file_it_never_wrote(tmp_path, monkeypatch):
+    # THE REGRESSION. check_reel opened route.json for every episode; a pan writes
+    # none, so every reel containing one died with FileNotFoundError — and
+    # edl_to_reel is the only multi-episode driver.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom_pan(tmp_path / "ep0"), _write_geom_pan(tmp_path / "ep1")]
+    assert not Path(geom[0][0]).exists()      # the fixture really is the production situation
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.episode_count == 2 and rep.overall is True
+
+
+def test_all_pan_reel_states_the_absence_instead_of_passing_vacuously(tmp_path, monkeypatch):
+    # evaluate() over a list of empty lists returns pass=True — a green tick for
+    # having examined nothing, the same shape checks.continuity([]) has one level
+    # down. It must be stated, not fallen through.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom_pan(tmp_path / "ep0"), _write_geom_pan(tmp_path / "ep1")]
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    for name in ("safe_zones", "key_action"):
+        assert rep.checks[name].passed is None
+        assert rep.checks[name].detail["status"] == "not-checked"
+        # the reason names the PROVENANCE — not _UNCHECKED's "no per-episode
+        # geometry supplied", which is a different absence entirely (geometry WAS
+        # supplied here; it just has no observation behind it)
+        assert "every episode is a generated pan" in rep.checks[name].detail["reason"]
+
+
+def test_all_pan_reel_still_runs_the_meta_only_checks(tmp_path, monkeypatch):
+    # pad_bars and transitions read the metas alone, so a generated path is no
+    # excuse to skip them — the same reason check_episode keeps running
+    # jitter/length/black_frames under a pan.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom_pan(tmp_path / "ep0", "fit", (0, 500, 1000, 1000)),
+            _write_geom_pan(tmp_path / "ep1", "fit", (0, 500, 1000, 1000))]
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    # the counts prove the checks ACTUALLY RAN over both episodes — a not-checked
+    # fall-through carries a "status" key and neither of these
+    assert rep.checks["pad_bars"].passed is True
+    assert rep.checks["pad_bars"].detail["bars"] == 2
+    assert rep.checks["transitions"].passed is True
+    assert rep.checks["transitions"].detail["cuts"] == 1
+
+
+def test_mixed_reel_checks_the_tracked_episodes_and_names_the_skipped_ones(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # tracked, safe
+            _write_geom_pan(tmp_path / "ep1")]                # generated
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is True            # the tracked one was examined
+    assert rep.checks["key_action"].passed is True
+    # naming what was NOT examined is what stops "episodes: 2" overstating coverage
+    assert rep.checks["safe_zones"].detail["skipped_episodes"] == [1]
+    assert rep.checks["key_action"].detail["skipped_episodes"] == [1]
+
+
+def test_a_pan_at_a_lower_index_does_not_renumber_the_episode_that_is_blamed(tmp_path, monkeypatch):
+    # THE INDEX-ATTRIBUTION TEST. A generated episode contributes an EMPTY mark list
+    # rather than being dropped: evaluate() enumerates the list it is handed, so
+    # FILTERING the pans out would renumber every later episode and send a human to
+    # the wrong clip — silently. Here the pan sits BELOW the offender, so a filtered
+    # list would report worst_episode 0 for a violation that is episode 1's.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom_pan(tmp_path / "ep0"),                # generated
+            _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # tracked, fy 0.98 → violates
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is False
+    assert rep.checks["safe_zones"].detail["worst_episode"] == 1      # 0 under a filtering impl
+    assert rep.checks["safe_zones"].detail["skipped_episodes"] == [0]
+    assert rep.checks["key_action"].detail["skipped_episodes"] == [0]
+
+
+def test_provenance_not_file_existence_decides_whether_a_route_is_read(tmp_path, monkeypatch):
+    # The branch is PathMeta.pan — reframe's own record of what it did — not
+    # os.path.exists(route). A stale route.json left beside a generated path is not
+    # an observation of THIS crop, so reading it would judge the pan against a
+    # subject the pan never followed.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom_pan(tmp_path / "ep0"),
+            _write_geom(tmp_path / "ep1", 500.0, 900.0)]      # tracked, safe
+    Path(geom[0][0]).write_text(json.dumps(                   # stray route beside the pan
+        [{"t": 0.0, "x": 500.0, "y": 1960.0, "w": 100.0, "h": 200.0},
+         {"t": 3.0, "x": 500.0, "y": 1960.0, "w": 100.0, "h": 200.0}]))   # would violate if read
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is True            # False if the stray file were read
+    assert rep.checks["safe_zones"].detail["skipped_episodes"] == [0]
+
+
+def test_an_all_tracked_reel_is_untouched_by_the_pan_branch(tmp_path, monkeypatch):
+    # pins that this fix changed nothing for a reel with no pan in it: the offender
+    # is still named by its own index, and no skipped_episodes key appears at all.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # safe
+            _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # violates
+    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is False
+    assert rep.checks["safe_zones"].detail["worst_episode"] == 1
+    assert "skipped_episodes" not in rep.checks["safe_zones"].detail
+    assert "skipped_episodes" not in rep.checks["key_action"].detail

@@ -209,18 +209,46 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
 
     if geometry is not None:
-        routes = [route_from_json(r) for (r, _, _) in geometry]
+        # metas FIRST: each carries the provenance bit the route-dependent checks
+        # branch on, exactly as check_episode reads its sidecar before deciding
+        # what it is entitled to judge.
         paths = [CropPath.from_json(p) for (_, p, _) in geometry]
         metas = [PathMeta.from_json(m) for (_, _, m) in geometry]
+        # A pan episode has NO route file — process_episode wrote none, because an
+        # empty route.json already means "the tracker found nobody". Read only the
+        # ones that exist; the generated episodes contribute an EMPTY mark list
+        # below rather than being dropped, so `worst_episode` keeps pointing at the
+        # reel's own episode number instead of an index into a filtered list.
+        routes = [None if me.pan else route_from_json(r)
+                  for (r, _, _), me in zip(geometry, metas)]
+        panned = [i for i, me in enumerate(metas) if me.pan]
         zone = safezones.safe_zone_for(platform)
-        marks_per_ep = [safezones.subject_marks(rt, pa, me, dur)
+        marks_per_ep = [[] if rt is None else safezones.subject_marks(rt, pa, me, dur)
                         for rt, pa, me, dur in zip(routes, paths, metas, durations)]
-        sz_pass, sz_detail = safezones.evaluate(marks_per_ep, zone)
-        checks["safe_zones"] = CheckResult("safe_zones", sz_pass, sz_detail)
-        extents_per_ep = [safezones.subject_extents(rt, pa, me, dur)
+        extents_per_ep = [[] if rt is None else safezones.subject_extents(rt, pa, me, dur)
                           for rt, pa, me, dur in zip(routes, paths, metas, durations)]
-        ka_pass, ka_detail = reel_final.evaluate_key_action(extents_per_ep, spec.clip_tol)
-        checks["key_action"] = CheckResult("key_action", ka_pass, ka_detail)
+        if len(panned) == len(metas):
+            # EVERY episode is generated. evaluate() over a list of empty lists
+            # returns pass=True — a green tick for having examined nothing, the
+            # same shape checks.continuity([]) has one level down. Say so instead.
+            for name in ("safe_zones", "key_action"):
+                checks[name] = CheckResult(name, None,
+                                           {"status": "not-checked", "advisory": True,
+                                            "reason": "every episode is a generated pan — "
+                                                      "no tracked subject to project"})
+        else:
+            sz_pass, sz_detail = safezones.evaluate(marks_per_ep, zone)
+            ka_pass, ka_detail = reel_final.evaluate_key_action(extents_per_ep, spec.clip_tol)
+            if panned:
+                # name what was NOT examined; a count of "episodes" that silently
+                # included un-examined ones would overstate the coverage
+                sz_detail = {**sz_detail, "skipped_episodes": panned}
+                ka_detail = {**ka_detail, "skipped_episodes": panned}
+            checks["safe_zones"] = CheckResult("safe_zones", sz_pass, sz_detail)
+            checks["key_action"] = CheckResult("key_action", ka_pass, ka_detail)
+        # pad_bars and transitions read ONLY the metas, so a generated path is no
+        # excuse to skip them — the same reason check_episode keeps running
+        # jitter/length/black_frames under a pan.
         pb_pass, pb_detail = reel_final.evaluate_pad_bars(metas, spec.bar_symmetry_tol)
         checks["pad_bars"] = CheckResult("pad_bars", pb_pass, pb_detail)
         tr_pass, tr_detail = reel_final.evaluate_transitions(metas, spec.layout_jump_max)
