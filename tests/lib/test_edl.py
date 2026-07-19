@@ -121,6 +121,15 @@ def test_to_manifest_dict_omits_an_absent_pan():
     assert "pan" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
 
 
+def test_to_manifest_dict_carries_an_empty_pan_across():
+    # `is not None`, not truthiness: an empty dict is FALSY, so truthiness would
+    # drop the key silently, Manifest.from_dict would see pan=None, and the gate
+    # would report zero problems for a malformed authoring intent. Absent and
+    # empty are different statements and only one of them is a mistake — the gate
+    # is where that gets said, so the bridge must carry it there intact.
+    assert to_manifest_dict(_ep(pan={}), "seg.mp4", "out.mp4")["pan"] == {}
+
+
 def _motion_cell(md: str, row_prefix: str) -> str:
     """The exact `motion` column of one rendered EDL.md row, located via the real
     header rather than a hardcoded column index — this pins the CELL a value

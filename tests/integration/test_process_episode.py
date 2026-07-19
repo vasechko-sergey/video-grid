@@ -633,6 +633,54 @@ def test_a_failing_pan_escalates_instead_of_retrying(sample_clip, tmp_path, monk
     assert len(calls) == 1, "a generated path must be rendered once, not three times"
 
 
+def test_a_pan_with_an_unfixable_failure_keeps_that_reason(sample_clip, tmp_path, monkeypatch):
+    # THE ORDERING PIN. orch.escalation must run BEFORE the pan guard, so a
+    # reason that actually describes the failure wins over the generic
+    # "a generated path is not retryable". `length` is in orch's _UNFIXABLE, so
+    # escalation returns a reason on attempt 1 and the pan guard must not
+    # overwrite it. Hoisting the guard above escalation turns this red and
+    # nothing else — measured.
+    calls = []
+    real = reframe.reframe
+    monkeypatch.setattr(reframe, "reframe", lambda *a, **k: calls.append(1) or real(*a, **k))
+    monkeypatch.setattr(check_episode, "run", lambda *a, **k: _failing_report("length"))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "escalate"
+    assert res["reason"] == "unfixable-by-reframe"   # NOT pan-not-retryable
+    assert len(calls) == 1
+
+
+def test_a_pan_hands_reframe_no_route_path(sample_clip, tmp_path, monkeypatch):
+    # This slice's thesis stated as a contract rather than left implicit: under a
+    # pan the shell hands over NO route path at all. Unobservable through behaviour
+    # today — reframe dispatches on spec.pan and check_episode on meta.pan, so
+    # neither consumer looks at route_path's nullness — which is exactly why it
+    # needs its own pin: the day one of them does, a phantom path would be a
+    # fabricated observation, and nothing else in the suite would notice.
+    #
+    # The shell passes all five arguments POSITIONALLY (route_path 3rd); the named
+    # parameter below binds it under either call style, so this asserts the
+    # ARGUMENT the shell hands over rather than the spelling of the call.
+    seen = {}
+    real = reframe.reframe
+
+    def spy(spec, src, route_path, out, path_out):
+        seen["route_path"] = route_path
+        return real(spec, src, route_path, out, path_out)
+    monkeypatch.setattr(reframe, "reframe", spy)
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "mechanical_pass", res
+    assert seen["route_path"] is None
+
+
 def test_a_tracked_episode_still_retries(sample_clip, tmp_path, monkeypatch):
     # the guard must NOT change the tracked path — this is the regression half
     calls = []
