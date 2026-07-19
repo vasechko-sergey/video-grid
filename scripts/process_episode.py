@@ -19,7 +19,8 @@ from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
-                                Delivery, LayoutSpec, route_from_json, CropPath, PathMeta)
+                                Delivery, LayoutSpec, route_from_json, CropPath, PathMeta,
+                                PanSpec)
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -112,14 +113,40 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # probed. Resolving here turns a manifest typo back into needs_input, the
     # same channel every other manifest problem uses, instead of letting a
     # ValueError escape the shell as a traceback on attempt 1. The engine keeps
-    # raising for anyone who calls reframe directly.
+    # raising for anyone who calls reframe directly. `rl` is kept (not discarded)
+    # — the pan preflight just below needs its `freedom`, and resolving a second
+    # time would only repeat the same computation.
     try:
-        layout_lib.resolve(lspec, m.canvas, (src_w, src_h), delivery)
+        rl = layout_lib.resolve(lspec, m.canvas, (src_w, src_h), delivery)
     except ValueError as e:
         return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
 
-    # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10)
-    if route_path is None:
+    # the pan is editorial intent, not a retry parameter — build it once, beside
+    # the layout. validate() already proved it constructs.
+    pan = PanSpec.from_dict(m.pan) if m.pan is not None else None
+
+    # 0b. pan preflight. Like the layout above, the HARD engine gate needs numbers
+    # validate() cannot see: freedom and the implied px/s both depend on the probed
+    # source. Resolving here turns them back into needs_input rather than letting a
+    # ValueError escape as a traceback on attempt 1. Reuses `rl` from the layout
+    # preflight above instead of resolving a second time.
+    if pan is not None:
+        try:
+            reframe.generate_pan_path(pan, rl.freedom, _fps, _dur,
+                                      orch.DEFAULT_PARAMS["max_speed"])
+        except ValueError as e:
+            return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
+
+    # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10),
+    #    or NOTHING AT ALL when the path is generated.
+    if pan is not None:
+        # A pan follows nobody, so there is nothing to track and no route to write.
+        # This is a real saving (a whole YOLO pass) and the honest statement that
+        # no observation exists — see design 2026-07-19 §6.1 for why an empty
+        # route.json would be a fabricated one.
+        route, track_meta, rp = [], {"ambiguous": False}, None
+        timings["track"] = 0.0
+    elif route_path is None:
         rp = str(Path(project_dir) / "route.json")
         # resolve() cannot raise here: validate() above already ran hero_lib.resolve
         # on this same (m.hero, cast) pair and returned no problems, so a second,
@@ -135,12 +162,17 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         rp = route_path
         timings["track"] = 0.0
 
-    # 2. contradiction gate (§4.1: no improvising past the manifest)
-    findings = orch.detect_contradictions(m.motion, route, track_meta,
-                                          src_w, src_h, composition=m.composition)
-    if findings:
-        return {"status": "stop_and_report", "findings": findings, "attempt": 0,
-                "timings": timings, "route": rp}
+    # 2. contradiction gate (§4.1: no improvising past the manifest). SKIPPED under
+    # a pan: this gate compares a manifest CLAIM against a tracker OBSERVATION, and
+    # with no observation there is nothing to contradict. Running it on the empty
+    # route would fire `no-track`, whose remedy ("check the segment, model size, or
+    # hero pin") misdescribes a deliberate authoring choice.
+    if pan is None:
+        findings = orch.detect_contradictions(m.motion, route, track_meta,
+                                              src_w, src_h, composition=m.composition)
+        if findings:
+            return {"status": "stop_and_report", "findings": findings, "attempt": 0,
+                    "timings": timings, "route": rp}
 
     # 3. reframe → check retry loop
     params = dict(orch.DEFAULT_PARAMS)
@@ -149,7 +181,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     for attempt in range(1, max_attempts + 1):
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,
-                            max_speed=params["max_speed"], color_correct=color_correct)
+                            max_speed=params["max_speed"], color_correct=color_correct,
+                            pan=pan)
         _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
                           attempt=attempt)
@@ -164,7 +197,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             # reading the SAME path.meta.json sidecar the checks read so the
             # marker maps into canvas coords under any layout (Task 8), not just
             # fill.
-            route_pts = route_from_json(rp)
+            route_pts = None if pan is not None else route_from_json(rp)
             path_obj = CropPath.from_json(path_out)
             path_meta = PathMeta.from_json(Path(path_out).with_suffix(".meta.json"))
             sspec = StoryboardSpec(n=6, grids=(m.grid,))
@@ -175,6 +208,23 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                     "storyboard": sheet, "attempt": attempt, "timings": timings,
                     "degraded": None}
         esc = orch.escalation(attempt, report.fail_reasons, max_attempts)
+        if esc is None and pan is not None:
+            # The retry ladder tunes ONE thing: max_speed, via
+            # adjust_reframe_params. For a tracked path that is the smoothing
+            # damper. For a generated one it is only the speed CEILING, so a
+            # retry re-renders byte-identical pixels — three identical ffmpeg
+            # passes ending in "max-retries", a reason that describes nothing.
+            #
+            # Worse, the ladder would actively break the pan: a jitter fail
+            # multiplies max_speed by 0.6, so a pan that cleared the ceiling at
+            # 750 px/s on attempt 1 hits generate_pan_path's raise at 450 on
+            # attempt 2 — a ValueError escaping the loop as a traceback.
+            #
+            # orch.escalation runs FIRST so its better-attributed reasons
+            # (unfixable-by-reframe, conflicting-framing-fails) still win where
+            # they apply; this only catches what it would have retried.
+            esc = {"escalate_to": "edit-plan", "reason": "pan-not-retryable",
+                   "fail_reasons": report.fail_reasons}
         if esc:
             return {"status": "escalate", **esc, "report": report.to_dict(),
                     "attempt": attempt, "timings": timings}

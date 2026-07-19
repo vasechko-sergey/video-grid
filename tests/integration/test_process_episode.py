@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 import pytest
 from scripts import process_episode as pe
+from scripts import check_episode, reframe, storyboard, track
 from scripts.lib import models
+from scripts.lib import orchestration as orch
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
 
 
@@ -35,6 +37,25 @@ def _report(overall, fail_reasons, attempt=1):
     assert overall == (not fail_reasons), (
         "_report: overall must be False iff fail_reasons is non-empty")
     return models.Report(checks=checks, attempt=attempt)
+
+
+def _dur(clip) -> float:
+    """The clip's own probed duration. A pan spans the WHOLE episode by
+    construction, so a pan-episode manifest's target_dur must equal the
+    source's real length, not an arbitrary number the length check would
+    then have to reconcile."""
+    return check_episode._duration(str(clip))
+
+
+def _failing_report(name: str) -> models.Report:
+    """A Report whose one check failed — for driving the retry ladder directly.
+
+    `jitter` on purpose: it is the one fail_reason orch.escalation would RETRY
+    (it is not in _UNFIXABLE and does not pair with a line-lag), so a test built
+    on it proves the pan guard fired rather than an unrelated escalation.
+    """
+    return models.Report(checks={name: models.CheckResult(name, False, {"worst_reversal": 99.0})},
+                         attempt=1)
 
 
 def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
@@ -522,3 +543,122 @@ def test_color_correct_defaults_to_none(monkeypatch, tmp_path):
     calls = _stub_engine(monkeypatch, tmp_path)
     pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert calls["reframe_color_correct"] is None
+
+
+# --- Task 7: process_episode skips tracking and the contradiction gate for a
+# pan, and a generated path is not retryable (design 2026-07-19) ---
+
+def test_pan_episode_never_tracks(sample_clip, tmp_path, monkeypatch):
+    # asserts the BRANCH, not an outcome the other branch could also produce
+    monkeypatch.setattr(track, "build_route",
+                        lambda *a, **k: pytest.fail("a pan must not run the tracker"))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.2, "to": 0.7}}
+    res = pe.process_episode(md, str(tmp_path / "proj"))
+    assert res["status"] == "mechanical_pass", res
+    assert res["timings"]["track"] == 0.0
+
+
+def test_pan_episode_writes_no_route_json(sample_clip, tmp_path):
+    # an empty route.json would MEAN "the tracker found nobody" — a fabricated
+    # observation. Nothing must be written.
+    proj = tmp_path / "proj"
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    pe.process_episode(md, str(proj))
+    assert not (proj / "route.json").exists()
+
+
+def test_pan_episode_skips_the_contradiction_gate(sample_clip, tmp_path, monkeypatch):
+    # with no observation there is nothing to contradict; running the gate on an
+    # empty route would fire `no-track`, whose remedy ("check the segment, model
+    # size, or hero pin") misdescribes a deliberate choice
+    monkeypatch.setattr(orch, "detect_contradictions",
+                        lambda *a, **k: pytest.fail("no observation ⇒ nothing to contradict"))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    assert pe.process_episode(md, str(tmp_path / "p"))["status"] == "mechanical_pass"
+
+
+def test_pan_episode_storyboard_draws_no_hero_marker(sample_clip, tmp_path, monkeypatch):
+    seen = {}
+    real = storyboard.build
+
+    def spy(*a, **k):
+        seen.update(k)
+        return real(*a, **k)
+    monkeypatch.setattr(storyboard, "build", spy)
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    pe.process_episode(md, str(tmp_path / "p"))
+    assert seen["route"] is None
+
+
+def test_a_bad_pan_comes_back_as_needs_input(sample_clip, tmp_path):
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": 2.0, "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 9.0}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "needs_input"
+    assert any("[0.0, 1.0]" in p for p in res["problems"])
+
+
+def test_a_failing_pan_escalates_instead_of_retrying(sample_clip, tmp_path, monkeypatch):
+    # The retry ladder tunes max_speed, which for a generated path is only the
+    # speed ceiling — a retry re-renders byte-identical pixels. Worse, a jitter
+    # fail multiplies max_speed by 0.6, so attempt 2 would hit
+    # generate_pan_path's ceiling raise as a traceback out of the loop.
+    calls = []
+    real = reframe.reframe
+    monkeypatch.setattr(reframe, "reframe",
+                        lambda *a, **k: calls.append(1) or real(*a, **k))
+    # force a mechanical failure the ladder would otherwise retry
+    monkeypatch.setattr(check_episode, "run", lambda *a, **k: _failing_report("jitter"))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.0, "to": 1.0}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "escalate"
+    assert res["reason"] == "pan-not-retryable"
+    assert len(calls) == 1, "a generated path must be rendered once, not three times"
+
+
+def test_a_tracked_episode_still_retries(sample_clip, tmp_path, monkeypatch):
+    # the guard must NOT change the tracked path — this is the regression half
+    calls = []
+    real = reframe.reframe
+    monkeypatch.setattr(reframe, "reframe",
+                        lambda *a, **k: calls.append(1) or real(*a, **k))
+    monkeypatch.setattr(check_episode, "run", lambda *a, **k: _failing_report("jitter"))
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([{"t": i / 30, "x": 640, "y": 360, "w": 100, "h": 200}
+                                 for i in range(30)]))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5}
+    res = pe.process_episode(md, str(tmp_path / "p"), route_path=str(route))
+    assert res["status"] == "escalate"
+    assert res["reason"] == "max-retries"
+    assert len(calls) == 3
+
+
+def test_a_pan_with_no_freedom_comes_back_as_needs_input(sample_clip, tmp_path):
+    # crop_scale 1.0 on a canvas-aspect fill still leaves freedom, so use the one
+    # spelling that provably has none: crop_aspect 'source' at full scale
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": 2.0, "layout": "fit", "crop_aspect": "source", "crop_scale": 1.0,
+          "pan": {"from": 0.0, "to": 1.0}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "needs_input"
+    assert any("crop_scale" in p for p in res["problems"])
