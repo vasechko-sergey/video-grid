@@ -299,16 +299,23 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
              f"[bg][fg]overlay={ox}:{oy}{ov_opts},{tail}")]
 
 
-def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: str) -> str:
-    """Compose one episode from a tracked route (spec §6): crop/scale/color per `spec`.
+def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
+           path_out: str) -> str:
+    """Compose one episode from a tracked route OR a generated pan (spec §6):
+    crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/layout/max_speed/color_correct. src/route_path/out/path_out stay explicit
+    delivery/layout/max_speed/color_correct/pan. src/route_path/out/path_out stay explicit
     per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
     independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
     optional per-channel factor the reel retry loop composes onto the grade to pull one
     episode toward the reel median (None = base grade only). stabilize is refused
     upstream (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
+
+    route_path is OPTIONAL and must be None under a pan: a pan's path is
+    generated, so there is no route to read, and writing an empty route.json to
+    keep a consumer happy would be a fabricated observation — an empty route
+    already MEANS "the tracker ran and found nobody" (design 2026-07-19 §6.1).
 
     Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
     sidecar — what was actually cut, for check_episode/storyboard to read back instead
@@ -317,26 +324,38 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
     # NEVER assume dims/fps: real footage is 4K/60. `dur` bounds a solid filler's
     # synthesized background so the render is exactly as long as the source (§4).
     src_w, src_h, fps, dur = _probe(src)
-    route = route_from_json(route_path)               # list[RoutePoint]
-    if not route:
-        raise ValueError(
-            f"route {route_path} is empty — tracker found no hero frames; "
-            "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
     rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
-    route_dicts = [p.to_dict() for p in route]        # compute_path/classify still take dicts
-    motion = classify(route_dicts, src_w, src_h)
-    path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
-                        (src_w, src_h), motion, max_step=spec.max_speed / fps,
-                        crop_w=rl.crop_w)
+    if spec.pan is not None:
+        # A GENERATED path: no route is read, and none is written. See
+        # generate_pan_path for why it is neither smoothed nor rate-limited.
+        path, times = generate_pan_path(spec.pan, rl.freedom, fps, dur, spec.max_speed)
+        # no mean_y to place, so centre vertically (design §4.1)
+        cy = max(0, (src_h - rl.crop_h) // 2)
+    else:
+        if route_path is None:
+            raise ValueError(
+                "reframe needs a route: route_path is None but spec.pan is None too, so "
+                "there is no source for the crop's x(t). Pass a tracked route.json, or "
+                "set spec.pan to generate the path instead")
+        route = route_from_json(route_path)               # list[RoutePoint]
+        if not route:
+            raise ValueError(
+                f"route {route_path} is empty — tracker found no hero frames; "
+                "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
+        route_dicts = [p.to_dict() for p in route]        # compute_path/classify still take dicts
+        motion = classify(route_dicts, src_w, src_h)
+        path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
+                            (src_w, src_h), motion, max_step=spec.max_speed / fps,
+                            crop_w=rl.crop_w)
+        times = [p.t for p in route]
+        mean_y = sum(p.y for p in route) / len(route)
+        cy = g.crop_y(mean_y, rl.crop_h, src_h)
     CropPath(path).to_json(path_out)
 
     gains = color.gains_for_means(spec.color_means)
     if spec.color_correct is not None:  # reel retry loop; see docstring
         gains = color.corrected(gains, spec.color_correct)
-    times = [p.t for p in route]
     xexpr = _xexpr(path, times)
-    mean_y = sum(p.y for p in route) / len(route)
-    cy = g.crop_y(mean_y, rl.crop_h, src_h)
     # `-t` pins the render to the source's length, and is the ONLY thing that does
     # (design §4). `color=:d=` alone leaves the overlay's output timebase mismatched
     # with the tail's `fps` filter: a 90-frame 3s clip came out 46080 frames / 1536s.
@@ -356,14 +375,16 @@ def reframe(spec: ReframeSpec, src: str, route_path: str, out: str, path_out: st
 
     PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
              src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
-             rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background
+             rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background,
+             pan=spec.pan is not None
              ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("src"); ap.add_argument("route"); ap.add_argument("out")
+    ap.add_argument("src"); ap.add_argument("route", nargs="?", default=None)
+    ap.add_argument("out")
     ap.add_argument("--composition", default="lead")
     ap.add_argument("--grid", default="thirds")
     ap.add_argument("--canvas", default="9:16")
@@ -381,6 +402,9 @@ if __name__ == "__main__":
     ap.add_argument("--border-px", type=int, default=0)
     ap.add_argument("--border-color", default="white")
     ap.add_argument("--path-out", required=True)
+    ap.add_argument("--pan", default=None,
+                    help="generated pan as FROM,TO — fractions of horizontal freedom "
+                         "(e.g. 0,1 or 1,0 for right-to-left); replaces the route")
     a = ap.parse_args()
     cw, ch = (int(v) for v in a.canvas.split(":"))
     means = tuple(float(v) for v in a.color.split(","))
@@ -392,7 +416,11 @@ if __name__ == "__main__":
     lspec = LayoutSpec(mode=a.layout, crop_aspect=aspect, crop_scale=a.crop_scale, rect=rect,
                        background=a.background, background_color=a.background_color,
                        border_px=a.border_px, border_color=a.border_color)
+    pan = None
+    if a.pan is not None:
+        pf, pt = (float(v) for v in a.pan.split(","))
+        pan = PanSpec(start=pf, end=pt)
     spec = ReframeSpec(composition=a.composition, grid=a.grid, canvas=(cw, ch),
                        color_means=means, delivery=Delivery.from_spec(a.delivery),
-                       layout=lspec)
+                       layout=lspec, pan=pan)
     reframe(spec, a.src, a.route, a.out, a.path_out)

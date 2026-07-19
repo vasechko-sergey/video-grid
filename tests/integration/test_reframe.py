@@ -4,7 +4,7 @@ import pytest
 from scripts import reframe
 from scripts.lib import models
 from scripts.lib import layout as layout_lib
-from scripts.lib.models import BACKGROUNDS, Delivery, LayoutSpec, PanSpec
+from scripts.lib.models import BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec, PathMeta
 
 def _dims(path):
     out = subprocess.run(
@@ -700,3 +700,123 @@ def test_a_generated_pan_simplifies_to_exactly_two_knots():
     path, times = reframe.generate_pan_path(
         PanSpec(start=0.0, end=1.0), freedom=800, fps=30.0, dur=3.0, max_speed=750.0)
     assert len(reframe._simplify(path, times)) == 2
+
+
+# --- reframe() wiring the pan generator in (design 2026-07-19 §6): route_path
+# becomes optional, and a pan must never read (or write) a route ---
+
+def test_reframe_without_a_pan_still_reads_the_route(sample_clip, tmp_path, monkeypatch):
+    # THE REGRESSION PIN, and it is deliberately not the filtergraph: a pan
+    # changes xexpr, which _filter_args merely interpolates, and
+    # test_filter_args_fill_is_pinned_to_todays_chain already pins that whole
+    # string. What this slice owes is one level up — proof that an ordinary
+    # episode did NOT get quietly routed through the generator.
+    seen = []
+    real = reframe.route_from_json
+    monkeypatch.setattr(reframe, "route_from_json", lambda p: seen.append(p) or real(p))
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([{"t": 0.0, "x": 640, "y": 360, "w": 100, "h": 200},
+                                 {"t": 1.0, "x": 700, "y": 360, "w": 100, "h": 200}]))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"))
+    reframe.reframe(spec, str(sample_clip), str(route), str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    assert seen == [str(route)]
+
+
+def test_reframe_with_a_pan_never_reads_a_route(sample_clip, tmp_path, monkeypatch):
+    # Not merely "it works with route_path=None" — that would also pass if the
+    # code read a route it happened to find. This asserts the BRANCH.
+    monkeypatch.setattr(reframe, "route_from_json",
+                        lambda p: pytest.fail("a pan must not read a route"))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.2, end=0.7))
+    reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    assert (tmp_path / "o.mp4").exists()
+
+
+def test_reframe_writes_the_pan_bit_into_the_sidecar(sample_clip, tmp_path):
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.2, end=0.7))
+    reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    meta = PathMeta.from_json(tmp_path / "path.meta.json")
+    assert meta.pan is True
+
+
+def test_reframe_without_a_pan_writes_a_sidecar_that_says_so(sample_clip, tmp_path):
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([{"t": 0.0, "x": 640, "y": 360, "w": 100, "h": 200},
+                                 {"t": 1.0, "x": 700, "y": 360, "w": 100, "h": 200}]))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"))
+    reframe.reframe(spec, str(sample_clip), str(route), str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    assert PathMeta.from_json(tmp_path / "path.meta.json").pan is False
+
+
+def test_reframe_pan_path_lands_on_the_declared_fractions(sample_clip, tmp_path):
+    # end-to-end through the real render: what reframe WROTE to path.json must
+    # still be the exact extent, i.e. nothing between the generator and disk
+    # re-smoothed or re-clamped it
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.0, end=1.0))
+    reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    meta = PathMeta.from_json(tmp_path / "path.meta.json")
+    xs = CropPath.from_json(str(tmp_path / "path.json")).xs
+    assert xs[0] == 0
+    assert xs[-1] == meta.freedom
+
+
+def test_reframe_writes_no_route_json_for_a_pan(sample_clip, tmp_path):
+    # an empty route.json would MEAN "the tracker found nobody" — a fabricated
+    # observation. Nothing route-shaped may appear beside the outputs.
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.0, end=1.0))
+    reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    assert not (tmp_path / "route.json").exists()
+
+
+def test_reframe_refuses_a_missing_route_when_there_is_no_pan(sample_clip, tmp_path):
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137), delivery=Delivery("native"))
+    with pytest.raises(ValueError) as e:
+        reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                        str(tmp_path / "path.json"))
+    msg = str(e.value)
+    assert "route" in msg and "pan" in msg
+
+
+def test_reframe_pan_centres_the_crop_vertically(sample_clip, tmp_path):
+    # no route means no mean_y, and a headroom rule with nothing to give headroom
+    # TO is arbitrary — centre is the neutral choice.
+    #
+    # canvas=(1,1) + crop_scale=0.5 against sample_clip (1920x1080) resolves to
+    # crop_w=crop_h=540 — STRICTLY less than src_h=1080 (measured), so this does
+    # NOT degenerate into the crop_h>=src_h→0 special case that g.crop_y and the
+    # centre formula would otherwise share trivially. The expected value here is
+    # 270, which g.crop_y(subject_y, 540, 1080) only reproduces at subject_y=513
+    # — not any "natural" value (0, crop_h/2, src_h/2, crop_h, src_h) a stray
+    # reuse of the route branch could plausibly produce — so the two formulas
+    # are genuinely distinguished by this fixture.
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(1, 1),
+                              color_means=(105, 122, 137), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.0, end=1.0))
+    reframe.reframe(spec, str(sample_clip), None, str(tmp_path / "o.mp4"),
+                    str(tmp_path / "path.json"))
+    meta = PathMeta.from_json(tmp_path / "path.meta.json")
+    src_h = meta.src_dims[1]
+    assert meta.crop_h < src_h          # guard: the fixture must not have degenerated
+    assert meta.crop_y == max(0, (src_h - meta.crop_h) // 2)
