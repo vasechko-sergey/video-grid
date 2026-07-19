@@ -437,3 +437,28 @@ def test_an_all_tracked_reel_is_untouched_by_the_pan_branch(tmp_path, monkeypatc
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1
     assert "skipped_episodes" not in rep.checks["safe_zones"].detail
     assert "skipped_episodes" not in rep.checks["key_action"].detail
+
+
+def test_check_reel_names_the_tracked_episode_missing_its_route(tmp_path, monkeypatch):
+    # THE GUARD's missing twin, one level up. check_episode has refused a
+    # route_path of None against a pan=false sidecar since the pan slice landed
+    # (scripts/check_episode.py ~line 96); check_reel's geometry section never
+    # grew the symmetric check, so a hand-authored (or agent-authored) reel
+    # manifest whose route/pan fields contradict each other — sidecar says
+    # tracked, but ReelEpisode.route is None — fell through to
+    # route_from_json(None) and died inside pathlib, naming neither the episode
+    # nor a remedy. Unreachable via edl_to_reel (it derives both values from the
+    # same manifest field so they cannot diverge there); reachable via
+    # build_reel's own CLI on a manifest carrying an inconsistent "route": null.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    ep0 = _write_geom(tmp_path / "ep0", 500.0, 900.0)         # tracked, fine
+    _, p1, m1 = _write_geom(tmp_path / "ep1", 500.0, 900.0)   # tracked (pan=false)...
+    geom = [ep0, (None, p1, m1)]                              # ...but its route is None
+    with pytest.raises(ValueError) as e:
+        check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                       str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    msg = str(e.value)
+    assert "episode 1" in msg                  # names the OFFENDING episode, not "an episode"
+    assert "pan=false" in msg                  # the sidecar's own provenance phrasing
+    assert "route_path is None" in msg
+    assert "re-render with a pan" in msg       # the remedy, not just the complaint

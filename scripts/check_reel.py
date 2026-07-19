@@ -219,8 +219,23 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         # ones that exist; the generated episodes contribute an EMPTY mark list
         # below rather than being dropped, so `worst_episode` keeps pointing at the
         # reel's own episode number instead of an index into a filtered list.
-        routes = [None if me.pan else route_from_json(r)
-                  for (r, _, _), me in zip(geometry, metas)]
+        #
+        # A TRACKED episode (pan=false) whose route is None is a self-contradicting
+        # manifest, not a fact about the footage — check_episode has refused this
+        # exact mismatch one level down since the pan slice landed. Without the
+        # guard, route_from_json(None) dies inside pathlib naming neither the
+        # episode nor a remedy.
+        routes = []
+        for i, ((r, _, _), me) in enumerate(zip(geometry, metas)):
+            if me.pan:
+                routes.append(None)
+            elif r is None:
+                raise ValueError(
+                    f"check_reel needs a route for episode {i}: the sidecar says this path "
+                    "was tracked (pan=false), but route_path is None — pass the route.json "
+                    "reframe used, or re-render with a pan")
+            else:
+                routes.append(route_from_json(r))
         panned = [i for i, me in enumerate(metas) if me.pan]
         zone = safezones.safe_zone_for(platform)
         marks_per_ep = [[] if rt is None else safezones.subject_marks(rt, pa, me, dur)
