@@ -591,6 +591,19 @@ def test_generate_pan_path_spreads_rounding_evenly_when_the_extent_does_not_divi
     assert max(steps) - min(steps) <= 1
 
 
+def test_generate_pan_path_rounds_to_nearest_rather_than_truncating():
+    # int() truncation yields the SAME step multiset as round() — merely phase-
+    # shifted — so neither a spread bound nor a multiset can tell them apart.
+    # Compare against the exact line: every sample must sit within half a pixel
+    # of it, which truncation violates as soon as a fraction exceeds .5.
+    freedom, fps, dur = 875, 10.0, 2.0
+    path, _ = reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=freedom,
+                                        fps=fps, dur=dur, max_speed=750.0)
+    n = len(path)
+    exact = [freedom * i / (n - 1) for i in range(n)]
+    assert all(abs(p - e) <= 0.5 for p, e in zip(path, exact))
+
+
 def test_generate_pan_path_runs_right_to_left_when_end_is_below_start():
     path, _ = reframe.generate_pan_path(
         PanSpec(start=1.0, end=0.0), freedom=800, fps=10.0, dur=2.0, max_speed=750.0)
@@ -599,14 +612,27 @@ def test_generate_pan_path_runs_right_to_left_when_end_is_below_start():
 
 
 def test_generate_pan_path_lands_exactly_on_a_partial_extent():
-    # THE NO-SMOOTHING PROOF. Off-default fractions on purpose: a path routed
-    # through pathsmooth.smooth would be rate-limited (landing short of the far
-    # end) and savgol-bent (moving BOTH ends). Exact equality is the assertion
-    # that catches it — a tolerance would let the regression through.
+    # Exact equality, not a tolerance: a tolerance would let a re-introduced
+    # smoothing pass regress the travel invisibly. (This pins that the declared
+    # fractions land exactly; the no-smoothing refusal itself is proved by
+    # test_generate_pan_path_never_calls_the_smoother, because a slow pan
+    # survives the smoother with these very endpoints intact.)
     path, _ = reframe.generate_pan_path(
         PanSpec(start=0.2, end=0.7), freedom=1000, fps=30.0, dur=3.0, max_speed=750.0)
     assert path[0] == 200
     assert path[-1] == 700
+
+
+def test_generate_pan_path_never_calls_the_smoother(monkeypatch):
+    # THE ACTUAL no-smoothing proof, and it has to be this shape. The endpoint
+    # assertions CANNOT make it: pathsmooth's rate limiter only bites near
+    # max_speed, so a realistic slow reveal (192 px/s here) survives a full
+    # smooth() pass with byte-identical endpoints — measured, not assumed.
+    # Assert the BRANCH, not an outcome the other branch also produces.
+    monkeypatch.setattr(reframe.pathsmooth, "smooth", lambda *a, **k: pytest.fail(
+        "generate_pan_path must not smooth — a generated line has no observation noise"))
+    reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=1920,
+                              fps=30.0, dur=10.0, max_speed=750.0)
 
 
 def test_generate_pan_path_refuses_a_crop_with_nowhere_to_go():
@@ -657,6 +683,14 @@ def test_generate_pan_path_survives_a_clip_shorter_than_two_frames():
                                             fps=1.0, dur=0.2, max_speed=750.0)
     assert len(path) == len(times) == 2
     assert path == [0, 100]
+
+
+def test_generate_pan_path_rounds_the_frame_count_rather_than_truncating():
+    # 29.97 × 1.0 = 29.97 → round gives 30 samples, int() would give 29. Every
+    # other fixture here has an integer dur*fps, so nothing else can see this.
+    path, times = reframe.generate_pan_path(PanSpec(start=0.0, end=1.0), freedom=700,
+                                            fps=29.97, dur=1.0, max_speed=750.0)
+    assert len(path) == len(times) == 30
 
 
 def test_a_generated_pan_simplifies_to_exactly_two_knots():
