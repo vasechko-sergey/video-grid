@@ -130,6 +130,12 @@ class PathMeta:
     the canvas. Under a non-fill layout the re-derivation is silently wrong: it
     returns the canvas-aspect crop width, divides by it, and reports a verdict
     about a composition that never happened.
+
+    `pan` is the PROVENANCE bit. A generated path has no observation behind it,
+    so check_episode must not judge composition against a route (there is none)
+    nor report a green `continuity` (checks.continuity([]) returns pass=True —
+    the absence is not even loud). One bit here is what keeps those reports
+    honest; see design 2026-07-19 §2.1.
     """
     mode: str
     crop_w: int
@@ -141,13 +147,14 @@ class PathMeta:
     rect_px: tuple[int, int, int, int]      # x, y, w, h in output pixels
     freedom: int
     background: str = "blur"
+    pan: bool = False      # True ⇒ the path was GENERATED, not observed (design 2026-07-19 §5)
 
     def to_dict(self) -> dict:
         return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
                 "crop_y": self.crop_y, "src_dims": list(self.src_dims),
                 "canvas": list(self.canvas), "out_dims": list(self.out_dims),
                 "rect_px": list(self.rect_px), "freedom": self.freedom,
-                "background": self.background}
+                "background": self.background, "pan": self.pan}
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
@@ -171,7 +178,11 @@ class PathMeta:
                        # the field could have held then — the substitution is provably the
                        # truth for those files, not a guessed default. Every OTHER missing
                        # key stays an integrity failure below.
-                       background=d.get("background", "blur"))
+                       background=d.get("background", "blur"),
+                       # Same one-key exemption, same reasoning: a sidecar written before
+                       # the pan slice has no `pan` key, and its absence honestly means the
+                       # path came from a route — `pan` did not exist as a source yet.
+                       pan=d.get("pan", False))
         except KeyError as e:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "

@@ -1178,3 +1178,35 @@ def test_reframespec_refuses_a_pan_that_is_not_a_panspec(bad):
                      color_means=(105, 122, 137), delivery=m.Delivery("native"), pan=bad)
     msg = str(e.value)
     assert "ReframeSpec.pan" in msg and "PanSpec" in msg
+
+
+# --- PathMeta.pan (design 2026-07-19 §2.1): the provenance bit ---
+
+_META_KW = dict(mode="fill", crop_w=405, crop_h=720, crop_y=0, src_dims=(1280, 720),
+                canvas=(9, 16), out_dims=(404, 720), rect_px=(0, 0, 404, 720), freedom=875)
+
+
+def test_pathmeta_defaults_to_a_tracked_path():
+    assert m.PathMeta(**_META_KW).pan is False
+
+
+def test_pathmeta_records_that_the_path_was_generated():
+    pm = m.PathMeta(**_META_KW, pan=True)
+    assert pm.to_dict()["pan"] is True
+    assert m.PathMeta.from_dict(pm.to_dict()).pan is True
+
+
+def test_pathmeta_reads_an_older_sidecar_as_not_a_pan():
+    # the one-key exemption: a sidecar written before this slice has no `pan`
+    # key, and its absence honestly means "this path came from a route".
+    # Every OTHER key stays a hard integrity check.
+    d = m.PathMeta(**_META_KW).to_dict()
+    del d["pan"]
+    assert m.PathMeta.from_dict(d).pan is False
+
+
+def test_pathmeta_still_hard_fails_on_a_missing_non_exempt_key():
+    d = m.PathMeta(**_META_KW).to_dict()
+    del d["crop_w"]
+    with pytest.raises(RuntimeError):
+        m.PathMeta.from_dict(d)
