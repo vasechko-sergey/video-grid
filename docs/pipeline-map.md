@@ -128,7 +128,7 @@ advisory pass/False computed from the per-episode route geometry, or
 - [x] **process-episode orchestrator** — loop-1 shell (contradiction detect + retry ladder + escalation).
 - [x] **engine dataclass-hardening** — typed wire-contracts + config-specs; aspect/resolution-agnostic `Delivery`.
 - [x] **project-init** — `purpose→canvas` / `quality→delivery`; episode inheritance; `native` default.
-- [x] **layouts** — crop × rect × filler; `fit-blur` + `insert`; the `path.meta.json` sidecar.
+- [x] **layouts** — crop × rect × filler; `fit` (blur/solid) + `insert`; the `path.meta.json` sidecar.
 - [x] **reel back half** — assemble (lossless master) → check_reel (mechanical gate) → deliver (one encode, versioned).
 - [x] **reel retry loop (Phase A.5)** — `build_reel` loop-2 driver; delivered-space `color_correct` convergence; escalate-wins / no-silent-pass.
 - [x] **Phase B — music spine** — beats-core + music-only mix + loudness/beat gates + autonomous sourcing (free/any rights lanes) + the pacing energy spine + ambient ducking + SFX whoosh + the length re-time tail (`build_reel`'s within-band shortfall absorb + `edit_plan`'s pacing-gate back-edge, both landed 2026-07-18 — see [the length re-time design](specs/2026-07-18-length-retime-design.md)). Closed.
