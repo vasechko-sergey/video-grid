@@ -89,6 +89,45 @@ def test_ss_is_input_side_when_any_i_follows_it_not_only_the_first():
     assert len(lint.check_argv(cmd)) == 1
 
 
+def test_a_stream_copy_window_is_exempt():
+    """A copy-trim cannot produce the landmine: with no re-encode there is no
+    re-encode boundary to put black frames at — it can only cut on a keyframe.
+    No site pairs `-c copy` with a `-ss` window today, but assembly.py:84,
+    draft.py:66/:71 and deliver.py:81 already stream-copy, so the first to gain
+    a window would otherwise raise mid-render."""
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c", "copy",
+           "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_video_stream_copy_window_is_exempt():
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "copy",
+           "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_an_audio_only_copy_does_not_exempt_a_re_encoded_window():
+    """`-c:a copy` copies AUDIO while the video is still re-encoded — precisely
+    when the landmine bites. Excluding it from the exemption is deliberate."""
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:a", "copy",
+           "-c:v", "libx264", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
+def test_a_copy_flag_without_the_copy_value_does_not_exempt():
+    """The value position matters: `-c:v libx264` is a re-encode, not a copy."""
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "libx264",
+           "-metadata", "comment=copy", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
+def test_a_to_bounded_window_is_still_a_window():
+    """`-to` sits beside `-t` in the contract and had no test in either check."""
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-to", "7.0",
+           "-c:v", "libx264", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
 def test_the_seek_message_names_both_remedies():
     cmd = ["ffmpeg", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "libx264", "o.mp4"]
     msg = lint.check_argv(cmd)[0]
@@ -112,9 +151,60 @@ def test_an_output_bound_makes_a_synth_source_clean():
 
 def test_a_source_side_duration_makes_a_synth_source_clean():
     """scripts/mix.py:109 — anoisesrc with d= and no -t. The d= IS the whoosh's
-    length; there is no real input for it to mismatch."""
+    length; there is no real input for it to mismatch.
+
+    The real command also carries `seed=7`, dropped here so the `d=` is the only
+    thing that can be answering. With it present this test passed whether or not
+    the `d=` was there at all, because `seed=` contains the substring `d=`.
+    """
     cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
-           "anoisesrc=color=pink:r=48000:d=0.35:a=0.9:seed=7", "out.wav"]
+           "anoisesrc=color=pink:r=48000:d=0.35:a=0.9", "out.wav"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_an_unbounded_anoisesrc_is_reported():
+    """The positive half. Without it `anoisesrc` could drop out of SYNTH_SOURCES
+    and every anoisesrc test would stay green — an unrecognised source and a
+    bounded one are indistinguishable to an `== []` assertion."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:r=48000",
+           "out.wav"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "anoisesrc" in msgs[0]
+
+
+def test_a_seed_or_speed_parameter_does_not_bound_a_source():
+    """`seed=` and `speed=` both CONTAIN `d=`. A substring test reads either as
+    the source's duration and exempts a genuinely infinite source — the first is
+    scripts/mix.py:109's own shape with its `d=` removed, i.e. exactly the
+    command this check exists to catch."""
+    seeded = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+              "anoisesrc=color=pink:r=48000:a=0.9:seed=7", "out.wav"]
+    speeded = ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=2x2:speed=2",
+               "out.mp4"]
+    assert len(lint.check_argv(seeded)) == 1
+    assert len(lint.check_argv(speeded)) == 1
+
+
+def test_the_duration_spelling_also_bounds_a_source():
+    """§4.3 names `d=` OR `duration=`. The long spelling had no test at all."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=s=64x64:duration=2",
+           "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_an_unbounded_sine_source_is_reported():
+    """`sine=` appeared in no test — it could leave SYNTH_SOURCES unnoticed."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440", "out.wav"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "sine=" in msgs[0]
+
+
+def test_an_output_to_bound_also_makes_a_synth_source_clean():
+    """`-to` is documented contract beside `-t` and had no test in either check."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+           "-to", "3.0", "out.wav"]
     assert lint.check_argv(cmd) == []
 
 
@@ -140,6 +230,35 @@ def test_a_synth_source_after_a_graph_separator_is_still_seen():
     cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
            "[0:v]scale=64:64[v];testsrc=s=64x64[t];[v][t]overlay=0:0", "out.mp4"]
     assert len(lint.check_argv(cmd)) == 1
+
+
+def test_a_synth_source_after_a_comma_is_seen():
+    """`,` is in the boundary set. ffmpeg itself would reject a source mid-chain
+    (a source takes no input), so this shape is defensive breadth rather than a
+    form the repo emits — pinned so that narrowing the set is a deliberate act
+    with a red test, not a silent loss of coverage."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
+           "[0:v]scale=64:64,testsrc=s=64x64", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
+def test_a_synth_source_after_a_label_close_is_seen():
+    """`]` is in the boundary set — same defensive rationale as the comma."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
+           "[0:v]anullsrc=r=48000", "out.wav"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
+def test_whitespace_after_a_separator_does_not_disable_the_check():
+    """Every graph here is built with `";".join(...)`, so no whitespace appears
+    today. A future `"; ".join(...)` for readability would otherwise turn this
+    check off silently — the worst kind of regression, since nothing goes red."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
+           "[0:v]scale=64:64[v]; color=c=black:s=64x64[bg];[v][bg]overlay=0:0",
+           "out.mp4"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "color=" in msgs[0]
 
 
 def test_a_colour_parameter_is_not_a_colour_source():
@@ -192,8 +311,6 @@ def test_a_neighbours_duration_does_not_exempt_an_unbounded_source():
     assert "anullsrc" in msgs[0]
 
 
-
-
 # --- the drawtext font check --------------------------------------------------
 
 def test_drawtext_without_fontfile_is_reported():
@@ -217,4 +334,9 @@ def test_each_drawtext_in_a_chain_needs_its_own_font():
     cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf",
            ("drawtext=fontfile='/f.ttf':text='a':x=0:y=0,"
             "drawtext=text='b':x=0:y=100"), "out.mp4"]
-    assert len(lint.check_argv(cmd)) == 1
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    # WHICH one, not just how many: quoting the whole -vf argument leaves the
+    # reader of a six-title chain no way to find the offender.
+    assert "#2 of 2" in msgs[0]
+    assert "text='b'" in msgs[0]
