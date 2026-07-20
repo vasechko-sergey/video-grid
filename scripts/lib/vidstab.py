@@ -206,6 +206,17 @@ def stabilize(src: str, out: str, dims: tuple[int, int], fps: float,
     something; it does not prove it should have. In particular it does NOT catch
     the wade-in landmine (design spec §12) — "rolling ground" is a warp, and a
     successfully flattened wade shot reports a LOW residual (§7).
+
+    `after` is comparable to `before` (identical recipe both sides, which is the
+    comparison this slice rests on) but NOT to FootageWindow.shake's SHAKY_CLIP
+    (0.02), even though §5 gave it that unit and that name on purpose. Pass 3 runs
+    shakiness=8's wide search over near-motionless frames, where the extra
+    candidate displacements find spurious minima in weak or repetitive texture;
+    and on any frame whose displacement outran zoom=2, crop=keep's border fill
+    leaves a seam between moving and frozen content that no single displacement
+    fits. parse_trf's per-frame median suppresses a minority of such fields, not
+    all of them, so the floor sits above zero — a successful stabilization does
+    not report after ≈ 0, and reading one against SHAKY_CLIP would call it shaky.
     """
     require()
     with tempfile.TemporaryDirectory() as d:
@@ -233,9 +244,8 @@ def _assert_geometry_held(out: str, dims: tuple[int, int], fps: float, dur: floa
     scripts.lib, so reaching back for it would close an import cycle.
     """
     info = assembly.probe_stream(out)
-    # indexed, like assembly.matches — comparing (info.w, info.h) against `dims`
-    # as a whole would make the check depend on the caller's SEQUENCE TYPE, and a
-    # list of the right numbers would raise "1920x1080 is not 1920x1080".
+    # indexed, and the 0.01 fps epsilon, both exactly as assembly.matches spells
+    # the same comparison one module over.
     if info.w != dims[0] or info.h != dims[1] or abs(info.fps - fps) > 0.01:
         raise ValueError(
             f"vidstabtransform changed the geometry: asked to preserve {dims} @ {fps:.4g}fps, "
@@ -248,4 +258,6 @@ def _assert_geometry_held(out: str, dims: tuple[int, int], fps: float, dur: floa
         raise ValueError(
             f"vidstabtransform changed the duration: expected {dur:.4f}s (±{tol:.4f}s, two "
             f"frames), {out} is {got:.4f}s — the episode's target_dur and the reel's length "
-            "gate both key on the original")
+            "gate both key on the original. Re-check the vidstabtransform options and confirm "
+            "the source segment's own duration; if the source is short, re-extract it rather "
+            "than widening this tolerance")

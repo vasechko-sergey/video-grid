@@ -257,8 +257,10 @@ def test_stabilize_raises_when_the_transform_moved_the_duration(monkeypatch, tmp
 
 def test_stabilize_tolerates_a_two_frame_duration_wobble(monkeypatch, tmp_path):
     # a re-encode can shift the container duration by a frame or two; that is not
-    # the failure this guard exists for.
+    # the failure this guard exists for. 1.9 frames, not 1: the tolerance is two
+    # frames, and stubbing a one-frame wobble would leave its actual width untested
+    # anywhere between one frame and the raise test's half-second.
     monkeypatch.setattr(vidstab, "require", lambda: None)
-    _stub_geometry(monkeypatch, dur=2.0 + 1.0 / 30.0)
+    _stub_geometry(monkeypatch, dur=2.0 + 1.9 / 30.0)
     monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run([]))
     vidstab.stabilize("seg.mp4", str(tmp_path / "o.mp4"), (1920, 1080), 30.0, 2.0)  # no raise
