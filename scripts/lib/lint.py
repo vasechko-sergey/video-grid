@@ -25,9 +25,35 @@ def _banned_filters(cmd: list[str]) -> list[str]:
             for a in cmd for b in BANNED_FILTERS if b in a]
 
 
+def _seek_order(cmd: list[str]) -> list[str]:
+    """The §12 seek landmine: an input-side -ss on a re-encoded WINDOW puts black
+    frames at the cut boundary.
+
+    Comparison is exact-token throughout. Substring matching would flag `-sseof`,
+    which starts with `-ss`, must precede `-i` by ffmpeg's own contract, and is a
+    different option — a false positive on correct code, which for a guard that
+    raises in production is worse than a miss.
+    """
+    if "-accurate_seek" in cmd:      # §12 names this as one of its three remedies
+        return []
+    if "-frames:v" in cmd:           # a still grab is not a cut (storyboard.py:30)
+        return []
+    if "-t" not in cmd and "-to" not in cmd:
+        return []                    # not cutting a window ⇒ no cut boundary
+    for i, a in enumerate(cmd):
+        # Input-side iff some -i FOLLOWS this -ss — not "before the first -i".
+        # ffmpeg binds -ss to the input after it, so `-i a -ss 5 -i b` seeks b.
+        if a == "-ss" and "-i" in cmd[i + 1:]:
+            return ["input-side -ss on a re-encoded window — design §12: this is the "
+                    "black-frames-at-a-cut landmine. Move -ss after the -i it applies "
+                    "to (output seek), or pass -accurate_seek if the input seek is "
+                    "deliberate (see scripts/mix.py:193)."]
+    return []
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
-    for check in (_banned_filters,):
+    for check in (_banned_filters, _seek_order):
         out.extend(check(cmd))
     return out
