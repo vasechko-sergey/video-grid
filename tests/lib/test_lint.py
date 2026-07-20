@@ -93,3 +93,50 @@ def test_the_seek_message_names_both_remedies():
     cmd = ["ffmpeg", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "libx264", "o.mp4"]
     msg = lint.check_argv(cmd)[0]
     assert "output seek" in msg and "accurate_seek" in msg
+
+
+# --- the unbounded synthesized source check -----------------------------------
+
+def test_an_unbounded_color_source_is_reported():
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=30", "out.mp4"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "color=" in msgs[0]
+
+
+def test_an_output_bound_makes_a_synth_source_clean():
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+           "-t", "3.0", "out.wav"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_source_side_duration_makes_a_synth_source_clean():
+    """scripts/mix.py:109 — anoisesrc with d= and no -t. The d= IS the whoosh's
+    length; there is no real input for it to mismatch."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+           "anoisesrc=color=pink:r=48000:d=0.35:a=0.9:seed=7", "out.wav"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_synth_source_inside_a_filter_complex_is_seen():
+    """reframe emits `color=...` inside -filter_complex, not as an -i value."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
+           "color=c=black:s=64x64:r=30[bg];[bg][0:v]overlay=0:0", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
+def test_boxcolor_is_not_mistaken_for_a_color_source():
+    """THE substring trap: 'color=' sits inside boxcolor= and fontcolor=, which
+    scripts/lib/draft.py:28 emits on every draft render. Matching 'color=' as a
+    bare substring raises on correct code — and this guard raises in production."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf",
+           ("drawtext=fontfile='/f.ttf':textfile='/t.txt':fontsize=h/24:"
+            "fontcolor=white:box=1:boxcolor=black@0.5:x=40:y=40"), "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_synth_source_after_a_graph_separator_is_still_seen():
+    """The boundary rule must not become 'only at the start of the string'."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
+           "[0:v]scale=64:64[v];testsrc=s=64x64[t];[v][t]overlay=0:0", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1

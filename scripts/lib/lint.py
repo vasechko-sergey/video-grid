@@ -18,6 +18,16 @@ import re
 # design §12: lutrgb renders black frames. colorchannelmixer is the only colour op.
 BANNED_FILTERS = ("lutrgb",)
 
+# lavfi sources that never send end-of-stream unless bounded (design §12).
+SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
+
+# A source NAME, not a parameter that merely ends in one. `color=` occurs inside
+# `boxcolor=`/`fontcolor=` (scripts/lib/draft.py:28 emits both on every draft
+# render), so the name must start a filtergraph element: string start, or just
+# after a graph separator. Matching it as a bare substring raises on correct code.
+_SYNTH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:" + "|".join(
+    re.escape(s) for s in SYNTH_SOURCES) + r")")
+
 
 def _banned_filters(cmd: list[str]) -> list[str]:
     return [f"banned filter {b!r} in {a!r} — design §12: lutrgb renders black frames. "
@@ -51,9 +61,34 @@ def _seek_order(cmd: list[str]) -> list[str]:
     return []
 
 
+def _unbounded_source(cmd: list[str]) -> list[str]:
+    """The §12 infinite-source hang: an unbounded `color`/`testsrc`/`anullsrc`
+    never sends end-of-stream, so the encode runs until something kills it —
+    measured at 90s-and-killed against a 0.8s normal run.
+
+    Bounded means EITHER an output `-t`/`-to` OR a source-side `d=`/`duration=`.
+    Both stop the hang. Only `-t` also fixes the LENGTH (a `d=` frame count need
+    not match a real input's — 96 rendered against a source's 95), and that half
+    stays pinned by test_reframe_bounds_every_layout_to_the_source_length. Two
+    failures, two guards; do not collapse them.
+    """
+    if "-t" in cmd or "-to" in cmd:
+        return []
+    out = []
+    for a in cmd:
+        m = _SYNTH_RE.search(a)
+        if m and "d=" not in a and "duration=" not in a:
+            out.append(
+                f"unbounded synthesized source {m.group()!r} in {a!r} — design §12: "
+                "a lavfi source with no duration never sends end-of-stream, so the "
+                "encode runs until it is killed. Bound the OUTPUT with -t (preferred: "
+                "it also fixes the frame count) or give the source a d=.")
+    return out
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
-    for check in (_banned_filters, _seek_order):
+    for check in (_banned_filters, _seek_order, _unbounded_source):
         out.extend(check(cmd))
     return out
