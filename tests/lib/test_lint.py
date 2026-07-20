@@ -142,6 +142,35 @@ def test_a_synth_source_after_a_graph_separator_is_still_seen():
     assert len(lint.check_argv(cmd)) == 1
 
 
+def test_a_colour_parameter_is_not_a_colour_source():
+    """`color=` after ':' names a filter's PARAMETER; only after a graph separator
+    does it name the lavfi source. Excluding just [A-Za-z0-9_] catches boxcolor=
+    but still admits `:color=` — and this exact argv is live at
+    tests/integration/test_pan.py:27-31, feeding three real render assertions. The
+    guard raises in production, so admitting it breaks a working test.
+    """
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1280x720:d=2.0:r=30",
+           "-vf", ("drawbox=x=40:y=310:w=120:h=120:color=red@1.0:t=fill,"
+                   "drawbox=x=1120:y=310:w=120:h=120:color=blue@1.0:t=fill"),
+           "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "edges.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_the_letterbox_pad_colour_parameter_is_not_a_source():
+    """pad's own `color=` — the canonical letterbox form this repo will reach for.
+
+    It reads clean today only by accident: `pad=` itself contains the substring
+    `d=`, which the whole-argument duration test mistook for a source bound. Once
+    that test became per-element this shape had nothing left masking it, so the
+    boundary rule is the only thing holding it out.
+    """
+    cmd = ["ffmpeg", "-i", "a.mp4", "-vf",
+           "scale=1080:1920,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black", "o.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+
+
 # --- the drawtext font check --------------------------------------------------
 
 def test_drawtext_without_fontfile_is_reported():

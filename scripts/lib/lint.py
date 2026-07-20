@@ -21,11 +21,16 @@ BANNED_FILTERS = ("lutrgb",)
 # lavfi sources that never send end-of-stream unless bounded (design §12).
 SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
 
-# A source NAME, not a parameter that merely ends in one. `color=` occurs inside
-# `boxcolor=`/`fontcolor=` (scripts/lib/draft.py:28 emits both on every draft
-# render), so the name must start a filtergraph element: string start, or just
-# after a graph separator. Matching it as a bare substring raises on correct code.
-_SYNTH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:" + "|".join(
+# A source NAME, not a parameter that merely ends in one. The name must START a
+# filtergraph element: string start, or just after a `,` / `;` / `]`. Two distinct
+# ways to be a parameter, and excluding only word characters catches just the first:
+#   * `boxcolor=` / `fontcolor=` — glued to a letter (scripts/lib/draft.py:28).
+#   * `:color=` / `=color=` — a parameter of drawbox, pad, anoisesrc. Live at
+#     tests/integration/test_pan.py:27-31, which a word-only rule flags on correct
+#     code. This guard raises in production, so a false positive breaks a render.
+# `(?<![^,;\]])` succeeds at string start too: a negative lookbehind with nothing
+# behind it has nothing to reject.
+_SYNTH_RE = re.compile(r"(?<![^,;\]])(?:" + "|".join(
     re.escape(s) for s in SYNTH_SOURCES) + r")")
 
 
