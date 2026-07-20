@@ -81,9 +81,10 @@ def test_ascii_trf_decodes_unchanged(tmp_path):
 
 
 def test_the_detect_recipe_sets_shakiness_and_nothing_that_is_already_default():
-    """Design §4/§5. `shakiness=8` is the one non-default in the recipe — accuracy
-    is 15 by default and optzoom is 1 by default, so writing them would perform a
-    choice that was never made and a later reader could not tell the two apart.
+    """Design §4/§5. `shakiness=8` is the one non-default detect option — accuracy
+    is 15 by default, so writing it would perform a choice that was never made and
+    a later reader could not tell the two apart. The transform pass's options are
+    a different namespace and belong in TRANSFORM_ARGS, not here.
 
     This is pinned rather than left to review because the constant is SHARED with
     intake specifically so both report the same measurement (§5). Anyone adding a

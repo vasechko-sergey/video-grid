@@ -393,9 +393,10 @@ Append to `tests/lib/test_vidstab.py`:
 
 ```python
 def test_the_detect_recipe_sets_shakiness_and_nothing_that_is_already_default():
-    """Design §4/§5. `shakiness=8` is the one non-default in the recipe — accuracy
-    is 15 by default and optzoom is 1 by default, so writing them would perform a
-    choice that was never made and a later reader could not tell the two apart.
+    """Design §4/§5. `shakiness=8` is the one non-default detect option — accuracy
+    is 15 by default, so writing it would perform a choice that was never made and
+    a later reader could not tell the two apart. The transform pass's options are
+    a different namespace and belong in TRANSFORM_ARGS, not here.
 
     This is pinned rather than left to review because the constant is SHARED with
     intake specifically so both report the same measurement (§5). Anyone adding a
@@ -420,11 +421,19 @@ In `scripts/lib/vidstab.py`, below `SHAKE_TIMEOUT_REALTIME_MULTIPLE`:
 # — "shake" in FOOTAGE.md and "before" in process_episode's result — with nothing
 # saying they were incomparable. Changing this re-scales both.
 #
-# shakiness=8 is the only non-default here. accuracy=15 and optzoom=1 are the
-# binary's own defaults (probed with `ffmpeg -h filter=vidstabdetect`), and
-# spelling a default performs a choice that was never made.
+# shakiness=8 is the only non-default here. The recipe's other detect option,
+# accuracy=15, is the binary's own default (probed with `-h filter=vidstabdetect`),
+# and spelling a default performs a choice that was never made. Nothing else in
+# the recorded recipe belongs in this string: the transform pass has its own
+# option namespace, and its knobs live in TRANSFORM_ARGS.
 DETECT_ARGS = "shakiness=8"
 ```
+
+**Corrected mid-slice.** This comment first said "accuracy=15 and optzoom=1 are
+the binary's own defaults (probed with `ffmpeg -h filter=vidstabdetect`)". That
+command lists no `optzoom` — it is a `vidstabtransform` option. Review caught it
+against the real binary. The design spec's §4 table has been split by pass, which
+is where the conflation came from.
 
 - [ ] **Step 4: Use it in `intake.shake_by_window`**
 

@@ -27,9 +27,11 @@ SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 # — "shake" in FOOTAGE.md and "before" in process_episode's result — with nothing
 # saying they were incomparable. Changing this re-scales both.
 #
-# shakiness=8 is the only non-default here. accuracy=15 and optzoom=1 are the
-# binary's own defaults (probed with `ffmpeg -h filter=vidstabdetect`), and
-# spelling a default performs a choice that was never made.
+# shakiness=8 is the only non-default here. The recipe's other detect option,
+# accuracy=15, is the binary's own default (probed with `-h filter=vidstabdetect`),
+# and spelling a default performs a choice that was never made. Nothing else in
+# the recorded recipe belongs in this string: the transform pass has its own
+# option namespace, and its knobs live in TRANSFORM_ARGS.
 DETECT_ARGS = "shakiness=8"
 
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")

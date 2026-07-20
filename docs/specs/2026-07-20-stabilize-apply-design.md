@@ -169,18 +169,31 @@ pass 2   vidstabtransform=input=T.trf:smoothing=40:zoom=2:crop=keep,unsharp=5:5:
 pass 3   vidstabdetect=<same params as pass 1>   over the OUTPUT → residual
 ```
 
-Probed from the installed binary (`ffmpeg -h filter=…`), not from memory:
+Probed from the installed binary (`ffmpeg -h filter=…`), not from memory. **Split
+by pass, because the two filters do not share an option namespace** — an earlier
+draft of this table listed all six together, and Task 1's code comment then cited
+`ffmpeg -h filter=vidstabdetect` as the source of `optzoom`'s default. `optzoom`
+is not a `vidstabdetect` option at all; that command lists no such thing. A reader
+who ran it to check would have found the comment lying and stopped trusting the
+rest of it.
+
+`vidstabdetect` (passes 1 and 3):
+
+| option | binary default | §10 recipe | this slice |
+|---|---|---|---|
+| `shakiness` | `5` | `8` | `8` |
+| `accuracy` | `15` | `15` | omitted |
+
+`vidstabtransform` (pass 2):
 
 | option | binary default | §10 recipe | this slice |
 |---|---|---|---|
 | `crop` | `keep` | `black` | **`keep`** |
-| `optzoom` | `1` | `1` | omitted |
-| `accuracy` | `15` | `15` | omitted |
-| `shakiness` | `5` | `8` | `8` |
 | `smoothing` | `15` | `40` | `40` |
 | `zoom` | `0` | `2` | `2` |
+| `optzoom` | `1` | `1` | omitted |
 
-`optzoom=1` and `accuracy=15` are dropped because writing a value identical to the
+`accuracy=15` and `optzoom=1` are dropped because writing a value identical to the
 default performs a choice that was never made — a later reader cannot tell a
 deliberate setting from transcription.
 
