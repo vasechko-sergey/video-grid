@@ -809,11 +809,27 @@ and insert at the very start of `run`'s body, **before** `kwargs.setdefault`:
 > of running — a guard that breaks correct code. The coercion is for the **check only**;
 > `cmd` itself still reaches `subprocess.run` untouched. The error paths below already
 > assumed non-`str` elements were legal (`' '.join(map(str, cmd))`), which is where the
-> inconsistency showed. Fixed in `7738868`, together with two hollow tests in this task's own
-> Step 1 — `test_the_refusal_reports_every_violation_not_only_the_first` and
-> `test_the_refusal_is_a_value_error_not_a_runtime_error` both passed a `pytest.fail` lambda
-> to `monkeypatch.setattr`, so a deleted guard would have raised `Failed` inside
-> `pytest.raises(ValueError)` and *still* looked green for the wrong reason.
+> inconsistency showed. Fixed in `7738868`, together with a hollow test in this task's own
+> Step 1: `test_the_refusal_reports_every_violation_not_only_the_first` asserted
+> `"lutrgb" in str(e.value) and "-ss" in str(e.value)`, but the refusal message ends by
+> echoing the whole command — **and the command contains `-ss 1.0`**. So `_seek_order`
+> could be deleted from `check_argv` entirely, `_banned_filters` would still raise, and
+> the echoed argv would still supply the `-ss` substring. Verified green under exactly
+> that mutation. The fix asserts on text only the per-violation messages carry
+> (`"banned filter"`, `"input-side -ss"`).
+>
+> **The `pytest.fail`-lambda idiom in these tests is sound and was NOT the defect.** An
+> earlier reading of this step claimed a deleted guard would raise `Failed` inside
+> `pytest.raises(ValueError)` and look green. It would not: `_pytest.outcomes.Failed`
+> derives from **`BaseException`, not `Exception`**, so `pytest.raises(ValueError)` never
+> catches it — it propagates and the test goes red, which is precisely why the idiom is
+> the right one. Recorded because misdiagnosing *why* a test was hollow teaches the wrong
+> lesson, and this slice produced four hollow tests worth learning from accurately.
+> `test_the_refusal_is_a_value_error_not_a_runtime_error` was **redundant**, not hollow —
+> subsumed by the `pytest.raises(ValueError, match="lutrgb")` above it — and was replaced
+> with the claim nothing else made: a landmine command whose *binary does not exist* must
+> report the landmine, not the missing binary. That pins the guard's **position** ahead of
+> the `try:` block, which nothing else did.
 
 - [x] **Step 4: Run to verify they pass**
 
@@ -1175,9 +1191,17 @@ git commit -m "docs: sync the landmine lint slice; landmines.md becomes a pointe
 
 The number worth carrying out of this slice: **twelve real defects were found by review, and
 none by the suite going red.** Four were **hollow tests** — assertions that held for a reason
-other than the behaviour they named (Task 4's mislabelled exemptions, Task 5's two
-`monkeypatch`/`pytest.fail` refusals, Task 6's real-tree `== []` that also passes when
-extraction is broken). Each is recorded at its own task above.
+other than the behaviour they named: Task 1's still-grab fixture (an earlier condition
+answered first, so the condition it was named for was never consulted), Task 5's refusal
+message test (the message echoes the command, so asserting `"-ss"` matched the *argv*, not
+the finding), Task 6's real-tree `== []` (also passes when extraction is broken), and Task
+6's planted violation (sat at the fake tree's root, so widening the skip to `lib/` — where
+most filtergraph producers live — left it green). Each is recorded at its own task above.
+
+Three of the four were authored **in this plan**, not introduced by the implementer. Writing
+a test that cannot fail is easy to do while writing a plan, because a plan is not executed as
+it is written; the mutation battery exists precisely because reading a test is not enough to
+know it pins anything.
 
 **The technique that outperformed both the unit tests and the mutation battery was running
 the predicate over every argv the real suite issues (~700) and looking at what it flagged.**
