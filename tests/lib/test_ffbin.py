@@ -113,3 +113,48 @@ def test_require_filter_fails_loud_carrying_binary_and_remedy(monkeypatch):
     monkeypatch.setenv("FFMPEG", "/opt/slim/ffmpeg")
     with pytest.raises(ValueError, match="/opt/slim/ffmpeg.*vidstabdetect.*setup.sh"):
         ffbin.require_filter("vidstabdetect", "run `bash setup.sh`")
+
+
+# Assembled, never spelled. A line scan that occurs in its own search space matches
+# its own source and can then never go green — which is how the version of this
+# check proposed in the plan failed: it flagged itself plus the two docstrings above.
+_PROBE_FLAG = "-" + "filters"
+_QUOTES = ("'", '"')
+
+
+def test_no_test_runs_its_own_filter_probe():
+    """Design §5: a guard that probes PATH itself finds the slim build, skips
+    forever, and reports green while three integration tests go uncovered. So no
+    test may put the probe flag in an argv — ask ffbin.has_filter instead.
+
+    The tell is universal: there is no way to ask ffmpeg what it supports without
+    passing that flag. Pinning the property directly beats a meta-test per guard,
+    which would cover only the guards that exist today while the failure mode is a
+    FUTURE test file growing its own probe.
+
+    EMISSION, not mention — the same line tests/lib/test_landmine_scan.py draws for
+    scripts/, and for the same reason: this file's own docstrings name `ffmpeg
+    -filters` twice in prose, at exactly the place a reader looks to understand the
+    probe, so a scan that banned the characters would make the rule undocumentable
+    at its own site. The flag counts only when QUOTED, i.e. when it is an argv
+    element rather than a word in a sentence.
+
+    The limit is real and worth naming: a probe whose flag is built from a variable
+    or an f-string slips through. That is the same limit the AST scan documents for
+    itself, and it costs little here — there is no reason to construct this flag
+    dynamically, and ffbin.has_filter is the shorter path anyway.
+    """
+    root = Path(__file__).resolve().parents[1]
+    files = sorted(root.rglob("*.py"))
+    # A glob that matched nothing would make the assertion below pass vacuously —
+    # the same trap tests/lib/test_landmine_scan.py guards with its own positive
+    # control. Deriving the root from __file__ rather than a CWD-relative
+    # Path("tests") is half of that: pytest invoked from elsewhere would sweep an
+    # empty tree and report success.
+    assert len(files) > 20, f"the sweep matched nothing under {root}"
+    guilty = [f"{p.relative_to(root.parent)}:{i}"
+              for p in files
+              for i, line in enumerate(p.read_text().splitlines(), 1)
+              if any(q + _PROBE_FLAG in line for q in _QUOTES)]
+    assert guilty == [], (
+        f"ask ffbin.has_filter instead of probing ffmpeg directly: {guilty}")

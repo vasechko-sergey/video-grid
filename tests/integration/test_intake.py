@@ -8,21 +8,24 @@ process_episode). The vidstabdetect `.trf` path has its own real-vidstab test
 that skips when libvidstab is absent.
 """
 import shutil
-import subprocess
 
 import pytest
 
 from scripts import intake
-from scripts.lib import footage
+from scripts.lib import ffbin, footage
 
 pytestmark = pytest.mark.integration
 
 
 def _has_vidstab() -> bool:
-    if not shutil.which("ffmpeg"):
+    """Collection-time, so this cannot be the shared `need_filter` fixture — the
+    skipif below is evaluated at import. It delegates to the same one
+    implementation, which is the part that matters: probe the RESOLVED binary,
+    never PATH. A box with no ffmpeg at all resolves to nothing and skips."""
+    try:
+        return ffbin.has_filter("vidstabdetect")
+    except (ValueError, RuntimeError):
         return False
-    out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True).stdout
-    return b"vidstabdetect" in out
 
 
 class _FakeBox:
@@ -63,7 +66,7 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     assert "# Footage —" in result.to_markdown()
 
 
-@pytest.mark.skipif(not _has_vidstab(), reason="needs vidstab-enabled ffmpeg (bash setup.sh --with-vidstab)")
+@pytest.mark.skipif(not _has_vidstab(), reason="needs vidstab-enabled ffmpeg (bash setup.sh)")
 def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     # the real vidstabdetect + .trf parse path on real bytes (skips without libvidstab)
     root = tmp_path / "footage"; root.mkdir()

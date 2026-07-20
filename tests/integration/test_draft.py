@@ -5,7 +5,6 @@ draft.mp4 with a muxed music bed. Unlike test_front_spine, process_episode is NO
 the loop, so the draft's scale-fit is real: this also proves crop-to-canvas
 (the draft dims == the project canvas) on real bytes."""
 import json
-import shutil
 
 import pytest
 
@@ -15,12 +14,8 @@ from scripts.lib.models import MusicSpec
 
 
 @pytest.fixture(autouse=True)
-def _need_drawtext():
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
-    filters = proc.run(["ffmpeg", "-hide_banner", "-filters"]).stdout.decode(errors="replace")
-    if "drawtext" not in filters:
-        pytest.skip("ffmpeg built without the drawtext filter (run: bash setup.sh)")
+def _need_drawtext(need_filter):
+    need_filter("drawtext")
 
 
 def _project(tmp_path):

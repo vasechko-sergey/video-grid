@@ -2,7 +2,6 @@
 §5.16): a TITLES.json burned by deliver changes pixels in the title's time window, and
 (with audio) rides the mux branch's single encode. Uses the shared sample_clip fixture;
 skips where this machine's ffmpeg lacks drawtext (same guard as the draft golden)."""
-import shutil
 from pathlib import Path
 
 import pytest
@@ -14,12 +13,8 @@ from scripts.lib.titles import Title, Titles
 
 
 @pytest.fixture(autouse=True)
-def _need_drawtext():
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
-    filters = proc.run(["ffmpeg", "-hide_banner", "-filters"]).stdout.decode(errors="replace")
-    if "drawtext" not in filters:
-        pytest.skip("ffmpeg built without the drawtext filter (run: bash setup.sh)")
+def _need_drawtext(need_filter):
+    need_filter("drawtext")
 
 
 def _passing_report():

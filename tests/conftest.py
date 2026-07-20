@@ -1,12 +1,15 @@
-import subprocess, shutil
-from pathlib import Path
 import pytest
+
+from scripts.lib import ffbin, proc
+
 
 @pytest.fixture(scope="session")
 def sample_clip(tmp_path_factory):
     """3s 1920x1080 30fps clip: a bright box sliding left→right on dark bg."""
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
+    try:
+        binary = ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
     out = tmp_path_factory.mktemp("media") / "sample.mp4"
     # box centre x moves from 270 to 1560 over 3s; y fixed; on a dark grey field.
     # NOTE: drawbox's x/y expressions are inert under ffmpeg 8.1.1 (the `t` var reads
@@ -14,9 +17,26 @@ def sample_clip(tmp_path_factory):
     # position expressions DO evaluate per-frame, so we composite a white box source.
     bg = "color=c=0x303030:s=1920x1080:d=3:r=30"
     box = "color=c=white:s=140x320:d=3:r=30"
-    subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", bg, "-f", "lavfi", "-i", box,
+    proc.run(
+        [binary, "-y", "-f", "lavfi", "-i", bg, "-f", "lavfi", "-i", box,
          "-filter_complex", "[0][1]overlay=x='200+t*430':y=380",
-         "-t", "3", "-pix_fmt", "yuv420p", str(out)],
-        check=True, capture_output=True)
+         "-t", "3", "-pix_fmt", "yuv420p", str(out)])
     return out
+
+
+@pytest.fixture
+def need_filter():
+    """Skip unless the RESOLVED ffmpeg carries `name`.
+
+    Both skip reasons live here. ffbin.has_filter fails loud when nothing
+    resolves at all, which is right for production and wrong for a test run on a
+    box without ffmpeg — that should skip, not error.
+    """
+    def _need(name: str) -> None:
+        try:
+            present = ffbin.has_filter(name)
+        except (ValueError, RuntimeError) as e:
+            pytest.skip(str(e))
+        if not present:
+            pytest.skip(f"ffmpeg lacks the {name} filter (run: bash setup.sh)")
+    return _need
