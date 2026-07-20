@@ -85,8 +85,8 @@ def _stub_vidstabdetect_run(seen: dict):
     pass over a real clip."""
     def fake_run(cmd, **kwargs):
         seen.update(kwargs)
-        # the -vf value is `vidstabdetect=result=<path>:fileformat=ascii`, so the
-        # path ends at the next option separator — not at end-of-string.
+        # the -vf value is `vidstabdetect=shakiness=8:result=<path>:fileformat=ascii`,
+        # so the path ends at the next option separator — not at end-of-string.
         trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1].split(":", 1)[0]
         with open(trf_path, "w") as f:
             f.write("VID.STAB 1\n")

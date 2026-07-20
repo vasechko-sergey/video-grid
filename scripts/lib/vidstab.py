@@ -11,7 +11,7 @@ consumer — the same move scripts/lib/appearance.py made in the cast slice.
 import re
 from pathlib import Path
 
-from scripts.lib import ffbin
+from scripts.lib import ffbin, proc
 
 # vidstabdetect over a whole raw clip is the one analysis in this repo whose
 # input is unbounded raw footage; everything else works on 15-60s reels or
@@ -100,3 +100,34 @@ def parse_trf(text: str) -> list[float]:
         else:
             mags.append(0.0)
     return mags
+
+
+def _timeout(dur: float) -> float:
+    return max(proc.DEFAULT_TIMEOUT_S, dur * SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+
+
+def detect(src: str, trf: str, dur: float) -> list[float]:
+    """One vidstabdetect pass over `src` writing `trf` → per-frame magnitudes.
+
+    `fileformat=ascii` is REQUIRED, not a preference: libvidstab defaults to a
+    BINARY .trf (magic "TRF1") while parse_trf reads the ASCII serializer's
+    "VID.STAB" text. Omitting it does not degrade gracefully — the read dies on
+    the first non-UTF-8 byte. That was invisible until 2026-07-20, because no
+    machine in this project carried libvidstab and the one covering test was
+    skipped everywhere it ever ran.
+
+    Does NOT call require(): the gate belongs at the entry points, so one caller
+    does not pay three uncached `ffmpeg -filters` probes for one operation.
+    """
+    proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf",
+              f"vidstabdetect={DETECT_ARGS}:result={trf}:fileformat=ascii",
+              "-f", "null", "-"], timeout=_timeout(dur))
+    return parse_trf(read_trf(Path(trf)))
+
+
+def mean_shake(mags: list[float], width: int) -> float:
+    """Mean per-frame magnitude as a FRACTION OF FRAME WIDTH — the same unit
+    FootageWindow.shake carries, so the two are directly comparable (design §5)."""
+    if not mags:
+        return 0.0
+    return (sum(mags) / len(mags)) / (width or 1)

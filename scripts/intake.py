@@ -14,7 +14,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, ffbin, footage, proc, vidstab
+from scripts.lib import assembly, footage, proc, vidstab
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.track import MODEL                    # reuse the tracker's model choice
 
@@ -135,22 +135,16 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     normalized by frame width. No per-window cutting → no -ss seek landmine.
 
     `dur` (the clip's own length, already probed by the caller) scales the timeout
-    handed to proc.run: this pass runs over the WHOLE raw clip, so proc's flat
-    default is not generous enough for a long take. The .trf primitives and the
-    timeout multiple live in scripts/lib/vidstab.py (design 2026-07-20 §3).
+    vidstab.detect hands to proc.run: this pass runs over the WHOLE raw clip,
+    unlike everything else in this repo, so proc's flat default is not generous
+    enough for a long take. The detect recipe, the timeout derivation and the
+    .trf parsing all live in scripts/lib/vidstab.py, shared with process_episode's
+    planned stabilize pre-stage so both would report the same measurement
+    (design 2026-07-20 §5).
     """
     vidstab.require()
-    timeout = max(proc.DEFAULT_TIMEOUT_S, dur * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
     with tempfile.TemporaryDirectory() as d:
-        trf = str(Path(d) / "t.trf")
-        # fileformat=ascii is REQUIRED, not a preference: libvidstab defaults to a
-        # BINARY .trf (magic "TRF1") while parse_trf reads the ASCII serializer's
-        # "VID.STAB" text. Omitting it does not degrade gracefully — the read dies on
-        # the first non-UTF-8 byte.
-        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf",
-                  f"vidstabdetect={vidstab.DETECT_ARGS}:result={trf}:fileformat=ascii", "-f", "null", "-"],
-                 timeout=timeout)
-        mags = vidstab.parse_trf(vidstab.read_trf(Path(trf)))
+        mags = vidstab.detect(clip, str(Path(d) / "t.trf"), dur)
     return _windowed_shake(mags, windows, fps, res[0])
 
 

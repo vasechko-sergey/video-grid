@@ -91,3 +91,54 @@ def test_the_detect_recipe_sets_shakiness_and_nothing_that_is_already_default():
     knob here silently re-scales FOOTAGE.md's shake column.
     """
     assert vidstab.DETECT_ARGS == "shakiness=8"
+
+
+def _stub_detect_run(seen: dict):
+    """A proc.run stand-in that writes a minimal valid .trf wherever the real
+    vidstabdetect command would have written one, and records the argv and kwargs."""
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen.update(kwargs)
+        # the -vf value is `vidstabdetect=<args>:result=<path>:fileformat=ascii`,
+        # so the path ends at the next option separator, not at end-of-string.
+        trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1].split(":", 1)[0]
+        with open(trf_path, "w") as f:
+            f.write(_TRF)
+        return types.SimpleNamespace(stdout=b"")
+    return fake_run
+
+
+def test_detect_emits_the_recipe_and_returns_parsed_magnitudes(monkeypatch, tmp_path):
+    seen: dict = {}
+    monkeypatch.setattr(vidstab.proc, "run", _stub_detect_run(seen))
+    trf = str(tmp_path / "t.trf")
+    assert vidstab.detect("in.mp4", trf, dur=2.0) == [0.0, 10.0, 0.0]
+    vf = seen["cmd"][seen["cmd"].index("-vf") + 1]
+    assert vf == f"vidstabdetect=shakiness=8:result={trf}:fileformat=ascii"
+    assert "-f" in seen["cmd"] and seen["cmd"][seen["cmd"].index("-f") + 1] == "null"
+
+
+def test_detect_scales_its_timeout_to_the_input_length(monkeypatch, tmp_path):
+    seen: dict = {}
+    monkeypatch.setattr(vidstab.proc, "run", _stub_detect_run(seen))
+    vidstab.detect("in.mp4", str(tmp_path / "t.trf"), dur=500.0)
+    assert seen["timeout"] == pytest.approx(500.0 * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+
+
+def test_detect_keeps_the_default_floor_for_a_short_input(monkeypatch, tmp_path):
+    # A 2s segment must not get a 20s timeout — the floor keeps a short input at
+    # proc's already-generous default rather than an unrealistically tight one.
+    seen: dict = {}
+    monkeypatch.setattr(vidstab.proc, "run", _stub_detect_run(seen))
+    vidstab.detect("in.mp4", str(tmp_path / "t.trf"), dur=2.0)
+    assert seen["timeout"] == vidstab.proc.DEFAULT_TIMEOUT_S
+
+
+def test_mean_shake_normalises_by_frame_width():
+    assert vidstab.mean_shake([0.0, 10.0, 0.0, 0.0], 1000) == pytest.approx(0.0025)
+
+
+def test_mean_shake_of_nothing_is_zero_not_a_crash():
+    # a .trf with a header and no Frame lines parses to []; dividing by len() there
+    # would be a ZeroDivisionError inside an error path, hiding the real cause.
+    assert vidstab.mean_shake([], 1000) == 0.0
