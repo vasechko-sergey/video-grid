@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps
-> use checkbox (`- [x]`) syntax for tracking.
+> use checkbox syntax for tracking.
 
 **Goal:** One ffmpeg install carrying every library the pipeline needs, resolved from a
 path that `setup.sh` records — and a `setup.sh` that can no longer uninstall a working
@@ -88,8 +88,14 @@ def test_a_missing_config_falls_through_to_PATH(monkeypatch, tmp_path):
     assert ffbin.ffmpeg() == "/usr/bin/ffmpeg"
 
 
+# As built: REPLACED. This assertion cannot fail against an absolute mock — it
+# cannot tell "returned which's result" from "returned something absolute", and the
+# realistic mutation it claims to guard is already pinned by the test above. Worse,
+# it hid a real gap: shutil.which returns a RELATIVE path when PATH carries a
+# relative entry, and _resolve passed it straight through, so the docstring's
+# "always absolute" promise was false. The shipped test mocks which to "./ffmpeg"
+# and asserts the result is absolute; _resolve gained os.path.abspath.
 def test_the_PATH_rung_yields_an_absolute_path_not_a_bare_name(monkeypatch, tmp_path):
-    # shutil.which, never a bare "ffmpeg" — a log must name the binary that ran.
     monkeypatch.delenv("FFMPEG", raising=False)
     monkeypatch.setattr(ffbin, "_FFMPEG_ENV", tmp_path / "absent.env")
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"/opt/x/{name}")
@@ -898,21 +904,21 @@ corrected, unlike the dated Done entries above it.
 **Blocked on the user running `brew install ffmpeg-full` and `bash setup.sh`.** Do not run
 either. Ask, then wait.
 
-- [ ] **Step 1: Confirm the record exists**
+- [x] **Step 1: Confirm the record exists**
 
 ```bash
 cat config/ffmpeg.env
 .venv/bin/python -c "from scripts.lib import ffbin; print(ffbin.ffmpeg(), ffbin.ffprobe())"
 ```
 
-- [ ] **Step 2: Confirm the filters are live**
+- [x] **Step 2: Confirm the filters are live**
 
 ```bash
 .venv/bin/python -c "from scripts.lib import ffbin; print(ffbin.has_filter('drawtext'), ffbin.has_filter('vidstabdetect'))"
 ```
 Expected: `True True`.
 
-- [ ] **Step 3: The skip-count proof**
+- [x] **Step 3: The skip-count proof**
 
 Run: `.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
 
@@ -938,10 +944,10 @@ anything else — and asserting it would have read as proof.
 The claims worth checking are which skips survive, that EXIT is 0, and that the passed count
 never *drops*.
 
-- [ ] **Step 4: The goldens are the version argument's only real test**
+- [x] **Step 4: The goldens are the version argument's only real test**
 
 Design §2 argues the build swap is safe because version and revision are identical. The
 goldens are the instrument. If any moves, **record the finding — do not re-pin it away**;
 a moved golden is a real pixel difference and the spec's §11 says so.
 
-- [ ] **Step 5: Whole-slice review, then `superpowers:finishing-a-development-branch`.**
+- [x] **Step 5: Whole-slice review, then `superpowers:finishing-a-development-branch`.**

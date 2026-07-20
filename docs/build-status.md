@@ -1192,7 +1192,7 @@ _Last updated: 2026-07-20._
     twice. Each of the three widenings was mutation-checked in isolation:
     reverting it turns its own new test red and nothing else in the suite.
 
-- **ffmpeg baseline — Tasks 0–6 DONE (2026-07-20); Task 7 blocked on the user** —
+- **ffmpeg baseline — Tasks 0–7 DONE (2026-07-20)** —
   plan `docs/plans/2026-07-20-ffmpeg-baseline.md` + design
   `docs/specs/2026-07-20-ffmpeg-baseline-design.md` (branch
   `feat/ffmpeg-baseline`, commits `04b7600`..`a789431` + this docs sync).
@@ -1365,3 +1365,20 @@ resumability / Phase A.5 retry-state persistence.
 - The Jul 3–5 montage session that this design was reverse-engineered from
   produced Reel A (ODESZA) and Reel B (Billie Eilish); real-footage validation
   happens when Sergei re-montages that footage — user-driven, not a milestone.
+
+- **ffmpeg baseline — Task 7, the proof (2026-07-20)** — `bash setup.sh` run against
+  the rewritten script: verified both filters, recorded `config/ffmpeg.env`, pinned;
+  core `ffmpeg` untouched and `openai-whisper`/`summarize` still installed. Suite
+  **1539 passed / 2 skipped** — exactly the two predicted (demucs opt-in, an SSL
+  certificate failure unrelated to this slice). The six drawtext/vidstab skips are
+  gone, which is design §5's trap proven closed rather than merely argued. **No
+  golden moved**, so §2's "same version, same revision" argument survives its only
+  real test. What did break was better: `test_intake_real_vidstab_shake` failed on
+  its **first-ever execution** — libvidstab writes a BINARY `.trf` (magic `TRF1`) by
+  default while `_parse_trf` reads the ASCII serializer, so the shake path had never
+  worked on any machine and no machine could see it. Fixed with the filter's own
+  `fileformat=ascii` rather than a reverse-engineered binary reader (guessing that
+  layout risks silently wrong shake magnitudes — the §12 class); `_read_trf` now
+  checks the magic on bytes so `_parse_trf`'s fail-loud promise is reachable at all,
+  which it was not while `read_text()` raised `UnicodeDecodeError` several frames
+  earlier. See design §12.

@@ -103,11 +103,11 @@ away, because each is the evidence for a decision this slice made.
   8.1.2_1 by hand and pinned both `ffmpeg` and `ffmpeg-full`. The finding stands as dated:
   the pin the old comments relied on had never applied, and that is precisely why §6 removes
   the `2>/dev/null || true` instead of keeping a pin that cannot report failure.
-- **`config/ffmpeg.env` does not exist yet.** `setup.sh` is what writes it, and the new
-  script has not been run. Until it is, `ffbin` falls through to its third rung (§3) and
-  resolves the slim core `ffmpeg` on PATH — so the drawtext and vidstab integration tests
-  still skip, and §10's skip-count proof is blocked on `bash setup.sh`, not on any
-  remaining code.
+- **`config/ffmpeg.env` now exists.** `bash setup.sh` has since been run against the
+  rewritten script: it installed nothing new (`ffmpeg-full` was already present), verified
+  both filters, recorded the paths and pinned. Core `ffmpeg` is untouched —
+  `/opt/homebrew/bin/ffmpeg` still resolves to `Cellar/ffmpeg/8.1.2_1`, and `openai-whisper`
+  and `summarize` are still installed. §10's proof ran; see [§12](#12-what-the-proof-actually-found-2026-07-20-after-bash-setupsh).
 
 ## 2. The version: `ffmpeg-full` from homebrew-core
 
@@ -369,3 +369,39 @@ than `brew install ffmpeg`.
 uninstalling — but `ffmpeg` on their interactive PATH stays the slim one. Anyone debugging
 by hand must use the recorded path to reproduce what the pipeline did. The absolute-path
 resolution in §3 is what makes that discoverable from a log.
+
+## 12. What the proof actually found (2026-07-20, after `bash setup.sh`)
+
+**Result: 1539 passed, 2 skipped** — exactly the two §10 predicted, `test_offset` (demucs,
+opt-in) and `test_sourcing` (an SSL certificate failure unrelated to this slice). The six
+drawtext and vidstab skips are gone. §5's trap is closed and, more importantly, *proven*
+closed: the guards flipped from skipping to running the moment the resolver found a capable
+build, which is exactly what a guard still probing PATH could not have done.
+
+**No golden moved.** §2's "same version, same revision" argument survives its only real
+test, and §11's first risk did not materialise.
+
+**What did break was better than a moved golden.** `test_intake_real_vidstab_shake` failed
+on its first-ever execution — not a regression, but a bug that had been unobservable since
+the shake path was written. `_parse_trf` reads libvidstab's ASCII serializer
+(`VID.STAB` header); libvidstab **writes binary by default** (magic `TRF1`). Every machine
+this project has ever run on lacked libvidstab, so the only test covering the path was
+skipped everywhere, forever, and the disagreement could not surface.
+
+Three things are worth keeping from it.
+
+*The fix is the filter's own option, not a binary reader.* `vidstabdetect` exposes
+`fileformat` (`ascii`=1, `binary`=2, default binary). Reverse-engineering the `TRF1` layout
+from 104 bytes of a synthetic clip would have risked silently wrong shake magnitudes — the
+§12 failure class this repo is built around — to save one filter argument.
+
+*A fail-loud promise can be unreachable.* `_parse_trf`'s docstring promised to refuse an
+unrecognized header rather than report `shake=0`, and could not keep it: `read_text()`
+raised `UnicodeDecodeError` several frames earlier, naming a byte offset instead of a
+remedy. `_read_trf` checks the magic on bytes first so the intended error is reachable.
+A guard placed downstream of the thing that actually fails is not a guard.
+
+*This is the argument for the slice, stated as a result.* Making a capability baseline does
+not only enable a feature — it makes the tests that cover it **run**, and a test that has
+never executed carries no evidence whatsoever, however green the suite looked. Six tests
+were in that state; one of them was covering broken code.
