@@ -169,6 +169,29 @@ def test_the_letterbox_pad_colour_parameter_is_not_a_source():
     assert lint.check_argv(cmd) == []
 
 
+def test_each_source_in_a_graph_needs_its_own_bound():
+    """§4.3 asks whether EVERY synthesized source is bounded, not whether the
+    argument mentions a duration somewhere. A bounded source beside an unbounded
+    one must still report the unbounded one."""
+    cmd = ["ffmpeg", "-y", "-filter_complex",
+           "color=c=black:s=64x64:r=30:d=2[bg];testsrc=s=64x64[t];[bg][t]overlay=0:0",
+           "out.mp4"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "testsrc" in msgs[0]
+
+
+def test_a_neighbours_duration_does_not_exempt_an_unbounded_source():
+    """The `d=` must belong to the SOURCE. Here it belongs to the afade beside it
+    — a real shape (scripts/mix.py builds afade chains) — and an argument-wide
+    test would read it as the anullsrc's bound and stay silent."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+           "anullsrc=r=48000:cl=stereo,afade=t=in:st=0:d=0.5", "out.wav"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "anullsrc" in msgs[0]
+
+
 
 
 # --- the drawtext font check --------------------------------------------------

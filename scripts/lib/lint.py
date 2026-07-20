@@ -66,6 +66,21 @@ def _seek_order(cmd: list[str]) -> list[str]:
     return []
 
 
+def _element(text: str, start: int) -> str:
+    """The filtergraph element beginning at `start` — up to the next separator.
+
+    §4.3 asks about EACH source's own bound. Testing the whole argument lets a
+    `d=` belonging to a neighbour (`afade=...:d=0.5`, or the `d=` hiding inside
+    the literal `pad=`) exempt an unbounded source sitting beside it.
+    """
+    end = len(text)
+    for sep in (",", ";", "["):
+        i = text.find(sep, start)
+        if i != -1:
+            end = min(end, i)
+    return text[start:end]
+
+
 def _unbounded_source(cmd: list[str]) -> list[str]:
     """The §12 infinite-source hang: an unbounded `color`/`testsrc`/`anullsrc`
     never sends end-of-stream, so the encode runs until something kills it —
@@ -76,13 +91,18 @@ def _unbounded_source(cmd: list[str]) -> list[str]:
     not match a real input's — 96 rendered against a source's 95), and that half
     stays pinned by test_reframe_bounds_every_layout_to_the_source_length. Two
     failures, two guards; do not collapse them.
+
+    Every source is judged on its OWN element (finditer, not search): one graph
+    may hold several, and a bound on one says nothing about the next.
     """
     if "-t" in cmd or "-to" in cmd:
         return []
     out = []
     for a in cmd:
-        m = _SYNTH_RE.search(a)
-        if m and "d=" not in a and "duration=" not in a:
+        for m in _SYNTH_RE.finditer(a):
+            el = _element(a, m.start())
+            if "d=" in el or "duration=" in el:
+                continue
             out.append(
                 f"unbounded synthesized source {m.group()!r} in {a!r} — design §12: "
                 "a lavfi source with no duration never sends end-of-stream, so the "
