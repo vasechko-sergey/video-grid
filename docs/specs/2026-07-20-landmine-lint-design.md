@@ -232,9 +232,20 @@ guarded by anything but review today.
 Named here because a lint that is believed to cover more than it does is worse than no
 lint — it converts an unexamined risk into a false sense of safety.
 
-- **`tests/conftest.py:17` bypasses `proc.run`.** The shared `sample_clip` fixture
-  calls `subprocess.run` directly, so the runtime guard never sees it. It is correct
-  today (`d=` and `-t`), and it is a genuine blind spot.
+- **Ten test-side sites bypass `proc.run`**, calling `subprocess.run` directly, so the
+  runtime guard never sees them: `tests/conftest.py:17`,
+  `tests/integration/test_extract.py:8`, `test_intake.py:24`, `test_layouts.py:33`,
+  `:49`, `:97`, `test_reframe.py:10`, `:18`, `test_verify.py:170`, `:196`.
+
+  Most are read-only probes — ffprobe queries and raw-frame grabs — which cannot carry
+  these landmines. The one that genuinely emits a filtergraph is **`conftest.py:17`**,
+  the session-scoped `sample_clip` fixture that feeds roughly twenty tests: two `color=`
+  lavfi sources composited through `overlay`. It is correct today (`d=` on both sources
+  **and** an output `-t`), and it is a real blind spot — the fixture every pixel proof
+  in the suite is measured against is the one command the guard cannot see.
+
+  This is the production/test asymmetry stated plainly: `scripts/` funnels through one
+  choke point, `tests/` does not have to.
 - **Runtime coverage equals test coverage.** An unexercised path is unguarded at
   runtime.
 - **A splat-assembled graph on an unexercised path is covered by neither layer.**
