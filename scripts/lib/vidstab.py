@@ -21,6 +21,17 @@ from scripts.lib import ffbin
 # leaves > 2x headroom above that for slower hardware or larger frames.
 SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
+# The detect recipe, shared by BOTH consumers on purpose (design 2026-07-20 §5).
+# intake used to detect at the binary's default shakiness=5 while the §10 recipe
+# asked for 8; two different measurements would then have appeared under one word
+# — "shake" in FOOTAGE.md and "before" in process_episode's result — with nothing
+# saying they were incomparable. Changing this re-scales both.
+#
+# shakiness=8 is the only non-default here. accuracy=15 and optzoom=1 are the
+# binary's own defaults (probed with `ffmpeg -h filter=vidstabdetect`), and
+# spelling a default performs a choice that was never made.
+DETECT_ARGS = "shakiness=8"
+
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
 
 _REMEDY = ("run `bash setup.sh`, which installs ffmpeg-full (libvidstab included) "

@@ -25,7 +25,11 @@ MOTION_GAIN = 10.0                                # scales mean per-sample centr
 MOTION_PEAK = 0.35                                # motion value scored highest (triangular)
 DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
 BEST_FLOOR = 0.50
-SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage
+SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage.
+                                                   # Its INPUT changed on 2026-07-20: the detect pass moved from the binary's default
+                                                   # shakiness=5 to vidstab.DETECT_ARGS' 8, so recorded shake values shifted. The
+                                                   # threshold is deliberately NOT re-tuned to compensate — no real footage has been
+                                                   # through this pipeline, so any new value would be invented (design §5).
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
@@ -144,7 +148,7 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
         # "VID.STAB" text. Omitting it does not degrade gracefully — the read dies on
         # the first non-UTF-8 byte.
         proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf",
-                  f"vidstabdetect=result={trf}:fileformat=ascii", "-f", "null", "-"],
+                  f"vidstabdetect={vidstab.DETECT_ARGS}:result={trf}:fileformat=ascii", "-f", "null", "-"],
                  timeout=timeout)
         mags = vidstab.parse_trf(vidstab.read_trf(Path(trf)))
     return _windowed_shake(mags, windows, fps, res[0])
