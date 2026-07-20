@@ -10,7 +10,7 @@ import re
 import statistics
 import tempfile
 
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import MusicSpec
 
 _TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12)
@@ -21,7 +21,7 @@ _FADE = 0.5
 
 def _measure(audio: str) -> dict[str, str]:
     """loudnorm analysis pass → the measured stats the accurate second pass needs."""
-    r = proc.run(["ffmpeg", "-i", audio, "-af", "loudnorm=print_format=json", "-f", "null", "-"])
+    r = proc.run([ffbin.ffmpeg(), "-i", audio, "-af", "loudnorm=print_format=json", "-f", "null", "-"])
     err = (r.stderr or b"").decode("utf-8", errors="replace")
     stats = {}
     for k in ("input_i", "input_tp", "input_lra", "input_thresh"):
@@ -49,7 +49,7 @@ _SFX_SEED = 42          # anoisesrc seed → a deterministic whoosh
 
 def _has_audio(path: str) -> bool:
     """True iff `path` has at least one audio stream (a video-only segment does not)."""
-    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "a",
+    r = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a",
                   "-show_entries", "stream=codec_name", "-of", "default=nk=1:nw=1", path])
     return bool(r.stdout.decode("utf-8", errors="replace").strip())
 
@@ -69,10 +69,10 @@ def _build_ambient(segments: list[tuple[str, float]], tmp_dir: str) -> str | Non
             any_audio = True
             # audio seek exempt from the -ss-after-i rule; re-encode from 0, apad the
             # tail then -t caps → exactly `dur`, uniform 48k/stereo/s16.
-            proc.run(["ffmpeg", "-y", "-i", seg, "-t", f"{dur}", "-vn", "-ac", "2",
+            proc.run([ffbin.ffmpeg(), "-y", "-i", seg, "-t", f"{dur}", "-vn", "-ac", "2",
                       "-ar", str(_AR), "-af", "apad", "-c:a", "pcm_s16le", bed])
         else:
-            proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+            proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
                       f"anullsrc=r={_AR}:cl=stereo", "-t", f"{dur}",
                       "-c:a", "pcm_s16le", bed])
         beds.append(bed)
@@ -106,7 +106,7 @@ def _whoosh(tmp_dir: str) -> str:
     through a resonant bandpass, a fast attack then a decay — a swell that reads as a
     whoosh. No asset, deterministic (fixed seed)."""
     out = os.path.join(tmp_dir, "whoosh.wav")
-    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
               f"anoisesrc=color=pink:r={_AR}:d={_SFX_DUR}:a=0.9:seed={_SFX_SEED}",
               "-af", (f"bandpass=f={_SFX_FREQ}:width_type=q:w={_SFX_Q},"
                       f"afade=t=in:st=0:d={_SFX_ATTACK},"
@@ -134,7 +134,7 @@ def _build_sfx(durs: list[float], tmp_dir: str) -> str | None:
         fc.append(f"[w{i}]adelay={ms}:all=1[d{i}]")
     terms = "[0:a]" + "".join(f"[d{i}]" for i in range(k))
     fc.append(f"{terms}amix=inputs={k + 1}:duration=first:normalize=0[sfx]")
-    proc.run(["ffmpeg", "-y", "-t", f"{total}", "-f", "lavfi", "-i",
+    proc.run([ffbin.ffmpeg(), "-y", "-t", f"{total}", "-f", "lavfi", "-i",
               f"anullsrc=r={_AR}:cl=stereo", "-i", whoosh,
               "-filter_complex", ";".join(fc), "-map", "[sfx]",
               "-c:a", "pcm_s16le", out])
@@ -190,7 +190,7 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
         frag = os.path.join(d, "frag.wav")
         # accurate-seek the fragment (audio seek is exempt from the frame-accurate-video
         # landmine, but placed exactly), trim to the reel length, fade in/out
-        proc.run(["ffmpeg", "-y", "-accurate_seek", "-ss", f"{music.start_offset}",
+        proc.run([ffbin.ffmpeg(), "-y", "-accurate_seek", "-ss", f"{music.start_offset}",
                   "-i", music.track, "-t", f"{dur}",
                   "-af", f"afade=t=in:st=0:d={_FADE},afade=t=out:st={max(0.0, dur - _FADE)}:d={_FADE}",
                   frag])
@@ -204,12 +204,12 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
             if sfx_bed is not None:
                 inputs += ["-i", sfx_bed]
             mixed = os.path.join(d, "mixed.wav")
-            proc.run(["ffmpeg", "-y", *inputs, "-filter_complex",
+            proc.run([ffbin.ffmpeg(), "-y", *inputs, "-filter_complex",
                       _mix_graph(amb is not None, sfx_bed is not None),
                       "-map", "[mixed]", mixed])
             norm_src = mixed
         st = _measure(norm_src)
-        proc.run(["ffmpeg", "-y", "-i", norm_src, "-af",
+        proc.run([ffbin.ffmpeg(), "-y", "-i", norm_src, "-af",
                   (f"loudnorm=I={_TARGET_LUFS}:TP={_TP_MAX}:LRA={_LRA_TARGET}:"
                    f"measured_I={st['input_i']}:measured_TP={st['input_tp']}:"
                    f"measured_LRA={st['input_lra']}:measured_thresh={st['input_thresh']}"),

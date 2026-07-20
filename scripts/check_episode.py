@@ -3,14 +3,14 @@ import argparse
 import tempfile
 from pathlib import Path
 from PIL import Image, ImageStat
-from scripts.lib import checks as checks_mod, geometry, proc
+from scripts.lib import checks as checks_mod, ffbin, geometry, proc
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath
 from scripts.lib.motion import classify
 
 
 def _duration(clip: str) -> float:
     out = proc.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "default=nk=1:nw=1", clip], text=True)
     return float(out.stdout.strip())
 
@@ -20,8 +20,8 @@ def _frame_lumas(clip: str, where: str, n: int = 3) -> list[float]:
     lumas = []
     with tempfile.TemporaryDirectory() as tmp:
         if where == "boundary":
-            proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", str(n), f"{tmp}/head%02d.png"])
-            proc.run(["ffmpeg", "-y", "-sseof", "-0.5", "-i", clip, f"{tmp}/tail%02d.png"])
+            proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-frames:v", str(n), f"{tmp}/head%02d.png"])
+            proc.run([ffbin.ffmpeg(), "-y", "-sseof", "-0.5", "-i", clip, f"{tmp}/tail%02d.png"])
             files = sorted(Path(tmp).glob("head*.png")) + sorted(Path(tmp).glob("tail*.png"))[-n:]
         else:  # body: sample the interior via an even fps grab, drop the extremes
             # fps normalized to the clip's own duration so the n+2 grabs land
@@ -29,7 +29,7 @@ def _frame_lumas(clip: str, where: str, n: int = 3) -> list[float]:
             # -frames:v and only ever sample the first ~1s, letting a leading
             # defect (e.g. a black lead-in) contaminate the body reference itself
             dur = max(_duration(clip), 0.001)
-            proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"fps={n + 2}/{dur}",
+            proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf", f"fps={n + 2}/{dur}",
                       "-frames:v", str(n + 2), f"{tmp}/b%02d.png"])
             files = sorted(Path(tmp).glob("b*.png"))[1:-1]
         for f in files:

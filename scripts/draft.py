@@ -51,7 +51,7 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
         tf.write_text(label_text(i, ep.shot_type, ep.processing_notes))
         vf = segment_filter(dims, fps, fontfile, str(tf))
         bout = str(burn_dir / f"ep{i}_draft.mp4")
-        proc.run(["ffmpeg", "-y", "-i", seg, "-vf", vf,
+        proc.run([ffbin.ffmpeg(), "-y", "-i", seg, "-vf", vf,
                   "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-an", bout])
         burned.append(bout)
 
@@ -61,11 +61,11 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
 
     src = music or edl.music
     if src is None:
-        proc.run(["ffmpeg", "-y", "-i", master, "-c", "copy", out])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, "-c", "copy", out])
     else:
         dur = assembly.probe_duration(master)
         audio = mix.mix(MusicSpec.from_json(src), str(work / "audio"), dur)
-        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio,
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, "-i", audio,
                   "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy",
                   "-shortest", out])
     return {"status": "written", "draft": out,

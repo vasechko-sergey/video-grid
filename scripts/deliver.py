@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Titles, build_filterchain
 
@@ -73,11 +73,11 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     n = _next_version(out_dir, profile.container)
     out = str(Path(out_dir) / f"REEL_v{n}.{profile.container}")
     if audio is None:
-        proc.run(["ffmpeg", "-y", "-i", master, *vf, *profile.args(), out])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, *vf, *profile.args(), out])
     else:
         # mux the pre-normalized aac stem: profile audio settings don't apply — we
         # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy
-        proc.run(["ffmpeg", "-y", "-i", master, "-i", audio, *vf, *_video_only_args(profile),
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, "-i", audio, *vf, *_video_only_args(profile),
                   "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
     return out

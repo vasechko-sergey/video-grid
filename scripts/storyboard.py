@@ -3,13 +3,13 @@ import argparse, json, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw
 from scripts.lib.geometry import grid_lines, marks_at_times
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.models import StoryboardSpec, RoutePoint, CropPath, PathMeta
 
 
 def _duration(src: str) -> float:
     r = proc.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "json", src], text=True)
     return float(json.loads(r.stdout)["format"]["duration"])
 
@@ -33,7 +33,7 @@ def _sample_frames(src: str, n: int, tmp: str, times: list[float]) -> list[Path]
     files = []
     for i, t in enumerate(times):
         f = f"{tmp}/f{i:02d}.png"
-        proc.run(["ffmpeg", "-y", "-ss", f"{t}", "-i", src, "-frames:v", "1", f])
+        proc.run([ffbin.ffmpeg(), "-y", "-ss", f"{t}", "-i", src, "-frames:v", "1", f])
         files.append(Path(f))
     return files
 

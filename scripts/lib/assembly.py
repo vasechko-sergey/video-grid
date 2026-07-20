@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ def probe_stream(path: str) -> StreamInfo:
     if not p.exists():
         raise RuntimeError(f"{p} is missing — assemble needs every locked episode on disk; "
                            "check the EDL paths or re-run process-episode for it")
-    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0",
+    cmd = [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
            "-show_entries", "stream=width,height,r_frame_rate,pix_fmt,codec_name",
            "-of", "json", str(p)]
     out = proc.run(cmd).stdout.decode("utf-8", errors="replace")
@@ -39,7 +39,7 @@ def probe_stream(path: str) -> StreamInfo:
 def probe_duration(path: str) -> float:
     """Container duration in seconds (format=duration). StreamInfo carries w/h/fps
     only; this is the shared duration probe (was extract._probe_dur)."""
-    out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
                     "-of", "default=nk=1:nw=1", path]).stdout.decode().strip()
     try:
         return float(out)
@@ -57,7 +57,7 @@ def _normalize(src: str, dims: tuple[int, int], fps: float, out: str) -> str:
     # the landmine (§12): concat of non-uniform streams desyncs. Normalize the
     # outlier ONLY — matched episodes are copied untouched.
     vf = f"scale={dims[0]}:{dims[1]},fps={fps},format=yuv420p"
-    proc.run(["ffmpeg", "-y", "-i", src, "-vf", vf,
+    proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", vf,
               "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out])
     return out
 
@@ -80,7 +80,7 @@ def concat(entries: list[str], out_master: str) -> str:
     listfile = work / "_concat.txt"
     listfile.write_text("".join(
         f"file '{_concat_quote(str(Path(p).resolve()))}'\n" for p in entries))
-    proc.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
               "-c", "copy", out_master])
     return out_master
 

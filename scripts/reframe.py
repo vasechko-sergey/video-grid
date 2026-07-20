@@ -2,7 +2,7 @@
 import argparse, json
 from pathlib import Path
 from scripts.lib import geometry as g
-from scripts.lib import pathsmooth, color, proc
+from scripts.lib import pathsmooth, color, ffbin, proc
 from scripts.lib import layout as layout_lib
 from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify
@@ -181,7 +181,7 @@ def _probe(src: str) -> tuple[int, int, float, float]:
     some containers carry only the latter; the stream's is preferred.
     """
     out = proc.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height,avg_frame_rate,duration:format=duration",
          "-of", "json", src], text=True)
     probe = json.loads(out.stdout)
@@ -377,7 +377,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     # (both already end with the source), and unconditional means no future filler
     # can forget it. That decision is pinned by a test — see
     # test_reframe_bounds_every_layout_to_the_source_length.
-    cmd = ["ffmpeg", "-y", "-i", src,
+    cmd = [ffbin.ffmpeg(), "-y", "-i", src,
            *_filter_args(rl, xexpr, cy, gains, fps, dur),
            "-t", f"{dur:.6f}",
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]

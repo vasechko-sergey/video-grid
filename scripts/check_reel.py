@@ -13,7 +13,7 @@ import imagehash
 import numpy as np
 from PIL import Image
 
-from scripts.lib import proc, reel_final, safezones
+from scripts.lib import ffbin, proc, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -33,7 +33,7 @@ _LENGTH_TOL = 0.5      # the length gate's own ± band; build_reel absorbs a fur
 
 
 def _probe_dur(video: str) -> float:
-    out = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
                     "-of", "default=nk=1:nw=1", video]).stdout.decode().strip()
     try:
         return float(out)
@@ -44,7 +44,7 @@ def _probe_dur(video: str) -> float:
 
 def _black_hits(master: str) -> list[float]:
     # blackdetect prints "black_start:<t>" to stderr; any hit fails (spec §9 gate)
-    r = proc.run(["ffmpeg", "-i", master, "-vf", "blackdetect=d=0.05:pic_th=0.98",
+    r = proc.run([ffbin.ffmpeg(), "-i", master, "-vf", "blackdetect=d=0.05:pic_th=0.98",
                   "-an", "-f", "null", "-"])
     err = (r.stderr or b"").decode("utf-8", errors="replace")
     return [float(m) for m in re.findall(r"black_start:(\d+\.?\d*)", err)]
@@ -62,7 +62,7 @@ def _span_of(t: float, durations: list[float]) -> int:
 def _sample_frame(video: str, t: float, dst: str) -> str:
     # output-seek (-ss AFTER -i) keeps the landmine lint clean; clips are short so
     # decoding to t is cheap. One still frame at t.
-    proc.run(["ffmpeg", "-y", "-i", video, "-ss", f"{t}", "-frames:v", "1", dst])
+    proc.run([ffbin.ffmpeg(), "-y", "-i", video, "-ss", f"{t}", "-frames:v", "1", dst])
     return dst
 
 
@@ -103,7 +103,7 @@ def _hamming(a: imagehash.ImageHash, b: imagehash.ImageHash) -> int:
 def _loudnorm_measure(audio: str) -> float:
     """Integrated loudness (LUFS) via ffmpeg loudnorm's analysis pass — the same
     measure loudnorm normalizes to, so the gate reads what deliver ships (§5)."""
-    r = proc.run(["ffmpeg", "-i", audio, "-af", "loudnorm=print_format=json", "-f", "null", "-"])
+    r = proc.run([ffbin.ffmpeg(), "-i", audio, "-af", "loudnorm=print_format=json", "-f", "null", "-"])
     err = (r.stderr or b"").decode("utf-8", errors="replace")
     m = re.search(r'"input_i"\s*:\s*"?(-?\d+\.?\d*)"?', err)
     if not m:

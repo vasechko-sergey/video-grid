@@ -184,7 +184,7 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     timeout = max(proc.DEFAULT_TIMEOUT_S, dur * SHAKE_TIMEOUT_REALTIME_MULTIPLE)
     with tempfile.TemporaryDirectory() as d:
         trf = str(Path(d) / "t.trf")
-        proc.run(["ffmpeg", "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"],
+        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"],
                  timeout=timeout)
         mags = _parse_trf(Path(trf).read_text())
     return _windowed_shake(mags, windows, fps, res[0])

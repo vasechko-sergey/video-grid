@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from scripts.lib import appearance, proc
+from scripts.lib import appearance, ffbin, proc
 from scripts.lib import hero as hero_lib
 from scripts.lib.footage import Cast
 from scripts.lib.models import (HERO_KINDS, HERO_RULES, INTENTS, RoutePoint, TrackMeta,
@@ -41,7 +41,7 @@ _Frame = tuple[int, list[_Det]]
 
 def _probe_meta(src: str) -> tuple[float, int, int]:
     """fps + dims from the source — never trust a caller-supplied default (4K/59.94 footage is the norm)."""
-    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+    r = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
                   "-show_entries", "stream=width,height,avg_frame_rate",
                   "-of", "json", src], text=True)
     s = json.loads(r.stdout)["streams"][0]

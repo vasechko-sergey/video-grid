@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.assembly import probe_duration as _probe_dur   # keep the local name its callers use
 from scripts.lib.edl import EDL
 
@@ -14,7 +14,7 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     # Audio is PRESERVED (spec §5.8): segments are the ambient bed for audio-mix;
     # sources without an audio stream simply produce video-only segments.
     cmd = [
-        "ffmpeg", "-y", "-i", src,
+        ffbin.ffmpeg(), "-y", "-i", src,
         "-ss", f"{start}", "-t", f"{dur}",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
