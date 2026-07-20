@@ -36,13 +36,18 @@ def _resolve(key: str, binary: str) -> str:
     The PATH rung goes through shutil.which rather than returning a bare name, so
     a log or an error message always names the binary that actually ran — the
     machine may carry two ffmpeg builds and mixing them is the thing worth seeing.
+
+    abspath on which's result is not belt-and-braces: shutil.which returns a
+    RELATIVE path when PATH carries a relative entry (a bare "." is enough), and
+    passing that through would make this docstring's promise false the moment the
+    process changed directory.
     """
     for candidate in (os.environ.get(key), _from_file(key)):
         if candidate:
             return candidate
     found = shutil.which(binary)
     if found:
-        return found
+        return os.path.abspath(found)
     raise ValueError(
         f"cannot find {binary}: ${key} is unset, {_FFMPEG_ENV} has no {key}=, and "
         f"{binary} is not on PATH — run `bash setup.sh`, which installs ffmpeg-full "

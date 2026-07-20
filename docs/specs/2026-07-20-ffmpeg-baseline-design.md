@@ -255,8 +255,11 @@ one.
   `test_intake` (vidstab) are this slice's, and must turn green. The remaining two are
   not: `test_offset` needs demucs, which stays opt-in (§8), and `test_sourcing` fails an
   SSL certificate verification, which is an environment defect unrelated to ffmpeg.
-  **The target is 1518 passed / 2 skipped.** A run still reporting 8 skips means the
-  guards are probing the wrong binary — the exact trap §5 exists to close.
+  **The target is 2 skips, and specifically those two.** The passed count is deliberately
+  not a criterion: every task adds tests, so it moves, and a figure picked in advance can
+  match by coincidence while proving nothing. Check the `-rs` list by identity — a run
+  still reporting a drawtext or vidstab skip means the guards are probing the wrong
+  binary, the exact trap §5 exists to close, and a count alone cannot see it.
 - Full suite green against `ffmpeg-full`, which is the real test of §2's version argument.
   The goldens are the instrument: if the build swap moves pixels, they say so.
 - Mutation checks on the new AST rule: substring-instead-of-equality must fail (it would

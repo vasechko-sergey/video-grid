@@ -1,4 +1,6 @@
 """ffbin resolves the binaries the pipeline runs (design 2026-07-20 §3)."""
+from pathlib import Path
+
 import pytest
 
 from scripts.lib import ffbin
@@ -30,12 +32,20 @@ def test_a_missing_config_falls_through_to_PATH(monkeypatch, tmp_path):
     assert ffbin.ffmpeg() == "/usr/bin/ffmpeg"
 
 
-def test_the_PATH_rung_yields_an_absolute_path_not_a_bare_name(monkeypatch, tmp_path):
-    # shutil.which, never a bare "ffmpeg" — a log must name the binary that ran.
+def test_a_relative_PATH_hit_is_made_absolute(monkeypatch, tmp_path):
+    """shutil.which returns a RELATIVE path when PATH carries a relative entry —
+    a bare "." is enough. The contract says absolute, so passing which's result
+    straight through would make it false as soon as anything chdir'd.
+
+    Replaces a `.startswith("/")` assertion that could not fail here: with an
+    absolute mock it could not tell "returned which's result" from "returned
+    something absolute", and the realistic mutation it claimed to guard is
+    already pinned by test_a_missing_config_falls_through_to_PATH.
+    """
     monkeypatch.delenv("FFMPEG", raising=False)
     monkeypatch.setattr(ffbin, "_FFMPEG_ENV", tmp_path / "absent.env")
-    monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"/opt/x/{name}")
-    assert ffbin.ffmpeg().startswith("/")
+    monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"./{name}")
+    assert ffbin.ffmpeg() == str(Path.cwd() / "ffmpeg")
 
 
 def test_an_empty_value_in_the_file_is_not_a_path(monkeypatch, tmp_path):

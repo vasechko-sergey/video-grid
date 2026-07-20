@@ -376,9 +376,11 @@ scan cannot see them either, so `proc.py` needs no exemption.
 - [ ] **Step 3: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
-Expected: `1512 passed, 8 skipped`, EXIT 0 — identical to the pre-slice baseline. Nothing
-about behaviour changes yet: with no `config/ffmpeg.env` present, the PATH rung resolves to
-the same binary that the literals named.
+
+Expected: EXIT 0, **8 skipped**, and a passed count *no lower* than the previous task's.
+Do not pin the passed number — see "On counting" below. Nothing about behaviour changes
+here: with no `config/ffmpeg.env` present, the PATH rung resolves to the same binary that
+the literals named.
 
 - [ ] **Step 4: Verify no argv literal survives**
 
@@ -475,8 +477,9 @@ running it; a test that cannot fail is worse than no test.
 - [ ] **Step 4: Run**
 
 Run: `.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
-Expected: still `1512 passed, 8 skipped` on a machine without ffmpeg-full — the guards now
-consult the resolver but the resolver still finds the slim PATH binary. **The skip count
+
+Expected: EXIT 0 and **still 8 skipped** on a machine without ffmpeg-full — the guards now
+consult the resolver, but the resolver still finds the slim PATH binary. **The skip count
 drops only after the user installs ffmpeg-full (Task 7).**
 
 - [ ] **Step 5: Commit**
@@ -756,10 +759,27 @@ Expected: `True True`.
 
 Run: `.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
 
-Expected: **1518 passed, 2 skipped**. The two survivors must be `test_offset` (demucs,
-opt-in) and `test_sourcing` (SSL certificate verification — an environment defect unrelated
-to this slice). Any drawtext or vidstab skip still present means the guards are probing the
-wrong binary and Task 3 did not land.
+Expected: EXIT 0 and **exactly 2 skips, and specifically these two** —
+
+- `tests/integration/test_offset.py` — needs demucs, which stays opt-in (design §8)
+- `tests/integration/test_sourcing.py` — SSL certificate verification failure, an
+  environment defect unrelated to this slice
+
+Read the `-rs` list and check the *identity* of the survivors, not just the count. Any
+`test_draft`, `test_titles` or `test_intake` skip still present means the guards are probing
+the wrong binary and Task 3 did not land — which is precisely the failure design §5 says
+this slice can introduce, and it is invisible in a count.
+
+#### On counting
+
+**Do not pin the passed number, in this task or any other.** Every task here adds tests, so
+the total is a moving target: an earlier draft of this plan predicted "1518 passed" as the
+*final* figure, and Task 0 alone reached 1518 by adding its own six. A target that a third
+of the way through the slice already matches by coincidence cannot distinguish success from
+anything else — and asserting it would have read as proof.
+
+The claims worth checking are which skips survive, that EXIT is 0, and that the passed count
+never *drops*.
 
 - [ ] **Step 4: The goldens are the version argument's only real test**
 
