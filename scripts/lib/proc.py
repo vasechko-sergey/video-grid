@@ -37,7 +37,15 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     # Every command is inspected, not just those whose argv[0] is "ffmpeg":
     # scripts/draft.py:24 passes the binary as a parameter, which is the template
     # for a future bypass of any check keyed on argv[0] (design §5).
-    problems = lint.check_argv(cmd)
+    #
+    # str() for the CHECK only — `cmd` itself goes to subprocess.run untouched.
+    # subprocess accepts os.PathLike natively and this repo passes Paths around
+    # everywhere, but check_argv's `in`/regex tests raise TypeError on a Path.
+    # Without the coercion `proc.run(["ffmpeg", "-i", src_path])` would die with
+    # a traceback pointing at the lint instead of running, or instead of the
+    # ValueError-with-a-remedy this guard exists to give. The error paths below
+    # already assume non-str elements are legal (`' '.join(map(str, cmd))`).
+    problems = lint.check_argv([str(a) for a in cmd])
     if problems:
         raise ValueError(
             "refusing to run a command carrying a design §12 landmine:\n  "

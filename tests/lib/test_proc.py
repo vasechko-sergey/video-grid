@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from scripts.lib import proc
 
@@ -100,13 +102,45 @@ def test_the_refusal_reports_every_violation_not_only_the_first(monkeypatch):
     with pytest.raises(ValueError) as e:
         proc.run(["ffmpeg", "-y", "-ss", "1.0", "-i", "a.mp4", "-t", "2.0",
                   "-vf", "lutrgb=r=val", "out.mp4"])
-    assert "lutrgb" in str(e.value) and "-ss" in str(e.value)
+    # Assert on text only the per-violation MESSAGES carry. The refusal ends with
+    # `command: <the argv>`, which contains both "lutrgb" and "-ss" verbatim — so
+    # asserting on those pins nothing: deleting _seek_order from check_argv left
+    # this test green.
+    assert "banned filter" in str(e.value) and "input-side -ss" in str(e.value)
 
-def test_the_refusal_is_a_value_error_not_a_runtime_error(monkeypatch):
-    """proc.run's RuntimeErrors describe the ENVIRONMENT failing (binary missing,
-    timeout, non-zero exit). A landmine is the CALLER being wrong — a programming
-    error, which every config-spec in models.py raises ValueError for."""
+def test_the_guard_fires_before_the_environment_is_consulted(monkeypatch):
+    """A landmine command whose binary does not even exist must report the
+    LANDMINE, not the missing binary.
+
+    proc.run's RuntimeErrors describe the ENVIRONMENT failing (binary missing,
+    timeout, non-zero exit); a landmine is the CALLER being wrong — a programming
+    error, which every config-spec in models.py raises ValueError for. The guard
+    sits before the try: block precisely so the caller's own bug surfaces first,
+    and this is what pins that ordering: move the guard inside the try: and the
+    FileNotFoundError handler answers instead, with a remedy about PATH that
+    would send the author off to reinstall ffmpeg over a filtergraph bug.
+    """
+    with pytest.raises(ValueError, match="lutrgb"):
+        proc.run(["vg-nonexistent-binary-xyz", "-vf", "lutrgb=r=val", "o.mp4"])
+
+def test_a_path_element_reaches_subprocess_unchanged(monkeypatch):
+    """subprocess.run accepts os.PathLike and this repo passes Paths everywhere,
+    but check_argv's `in`/regex tests raise TypeError on one. The guard therefore
+    coerces with str() for the CHECK only — proc.run(["ffmpeg", "-i", src_path])
+    must still reach subprocess.run with the Path intact, not a stringified copy,
+    and must not die inside the lint."""
+    seen = {}
+    monkeypatch.setattr(proc.subprocess, "run",
+                        lambda cmd, **k: seen.setdefault("cmd", cmd))
+    src, out = Path("/w/a.mp4"), Path("/w/o.mp4")
+    proc.run(["ffmpeg", "-y", "-i", src, "-c", "copy", out])
+    assert seen["cmd"] == ["ffmpeg", "-y", "-i", src, "-c", "copy", out]
+    assert seen["cmd"][3] is src            # the object, not a str() of it
+
+def test_the_guard_still_reads_a_landmine_carried_by_a_path_element(monkeypatch):
+    """The coercion must feed the check, not bypass it: a banned filter riding in
+    a non-str element is still a landmine."""
     monkeypatch.setattr(proc.subprocess, "run",
                         lambda *a, **k: pytest.fail("guard did not fire"))
-    with pytest.raises(ValueError):
-        proc.run(["ffmpeg", "-vf", "lutrgb=r=val", "o.mp4"])
+    with pytest.raises(ValueError, match="lutrgb"):
+        proc.run(["ffmpeg", "-vf", Path("lutrgb=r=val"), "o.mp4"])
