@@ -130,10 +130,18 @@ primitives.
 | `parse_trf(text) -> list[float]` | per-frame median localmotion magnitudes, unchanged |
 | `detect(src, trf, dur) -> list[float]` | one detect pass → parsed magnitudes |
 | `mean_shake(mags, width) -> float` | mean magnitude ÷ frame width — the shared normalisation |
-| `stabilize(src, out, dur) -> tuple[float, float]` | the whole pre-stage; returns `(before, after)` |
+| `stabilize(src, out, dims, fps, dur) -> tuple[float, float]` | the whole pre-stage; returns `(before, after)` |
 
-`dur` is passed, not re-probed: `process_episode` has it from the preflight probe
-(`reframe._probe` returns it), and the timeout in §3.1 scales by it.
+The geometry is **passed in, not re-probed**, and that is the point: `dims`/`fps`/
+`dur` are exactly the numbers the preflight probe produced and the layout
+resolution already computed with. Handing them to `stabilize` states the belief
+the guard in §2 then proves still holds. `dims[0]` is also the width `mean_shake`
+normalises by, and `dur` scales the timeout in §3.1.
+
+`stabilize` cannot call `reframe._probe`, the obvious source of all four numbers:
+`scripts.reframe` imports from `scripts.lib`, so a library reaching back for it
+would close an import cycle. The guard's re-probe uses `assembly.probe_stream` and
+`assembly.probe_duration`, which already live in `lib/`.
 
 `require()` widening is not cosmetic. Today's `_require_vidstab` checks
 `vidstabdetect` only, which was honest when detect was the only pass. A build
@@ -256,8 +264,8 @@ is noted in the intake constant's comment.
 | contract | change |
 |---|---|
 | `Manifest.stabilize` | kept. The `validate()` **refusal is deleted**; a capability gate replaces it — `stabilize=true` on a build without `vidstabtransform` appends a remedy-bearing problem, so it surfaces as `needs_input` like every other manifest problem, not as a traceback |
-| `ReframeSpec.stabilize` | **deleted**, along with its `__post_init__` refusal. `reframe` never sees stabilization; a field it cannot act on is a lie in the type |
-| `PathMeta.stabilized` | new `bool` provenance bit, exact mirror of `pan` (2026-07-19 §5) |
+| `ReframeSpec.stabilize` | **deleted**, along with its `__post_init__` refusal. `reframe` never sees stabilization; a field it cannot act on is a lie in the type. Its replacement is a `stabilized=` **parameter** — see §6.2 |
+| `PathMeta.stabilized` | new `bool` provenance bit, exact mirror of `pan` (2026-07-19 §5), fed by that parameter |
 | `EDLEpisode.stabilize` | new `bool` field, default `False`; `to_dict` carries it; `to_manifest_dict` copies it **only when True**, the same shape `pan`/`motion`/`hero` use, so an absent flag leaves the key out rather than carrying an explicit `false` |
 | `process_episode` result | new key `"stabilize": {"before": …, "after": …}`, beside `"timings"` |
 
@@ -274,7 +282,30 @@ Only stabilize-bearing manifests pay, and those tests monkeypatch it. The hard
 backstop stays in the engine (`vidstab.require()`), the same soft-manifest /
 hard-engine pairing the layout preflight uses.
 
-### 6.2 The numbers go in the result, not in `Report`
+### 6.2 Where `PathMeta.stabilized` comes from
+
+`reframe()` writes the sidecar, but does not stabilize — so, unlike `pan`, it
+cannot derive the bit from its own spec. Deleting `ReframeSpec.stabilize` (an
+instruction `reframe` cannot carry out) and then asking `reframe` to record
+stabilization looks contradictory. It is not, and the distinction is the tense:
+
+- **`stabilize`** is imperative — "perform this". `reframe` cannot, so the field
+  is a lie in the type and goes.
+- **`stabilized`** is declarative — "the `src` you were handed already is". That
+  is a true fact about an argument, and recording facts about its input in the
+  sidecar is exactly `PathMeta`'s job.
+
+So it arrives as a **parameter**, not a spec field:
+`reframe(spec, src, route_path, out, path_out, stabilized=False)`. `reframe`'s own
+docstring already draws that line — "src/route_path/out/path_out stay explicit
+per-call I/O paths, not config" — and `stabilized` describes `src`, so it belongs
+on the same side of it. The only thing `reframe` does with the flag is pass it to
+`PathMeta`.
+
+The alternative, having `process_episode` re-read and rewrite the sidecar after
+`reframe` returns, would give one file two writers for no gain.
+
+### 6.3 The numbers go in the result, not in `Report`
 
 `check_episode.Report` is read by `check_reel` and the storyboard path. Adding
 stabilization figures there would invite a consumer to gate on them, and this
