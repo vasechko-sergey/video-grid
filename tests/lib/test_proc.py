@@ -70,3 +70,43 @@ def test_an_explicit_timeout_still_overrides_the_default(monkeypatch):
     with pytest.raises(AssertionError):
         proc.run(["ffprobe", "-version"], timeout=12.0)
     assert seen["timeout"] == 12.0
+
+def test_run_refuses_a_command_carrying_a_landmine(monkeypatch):
+    """The guard must fire BEFORE the command executes. Asserting on the outcome
+    would pass for the wrong reason (ffmpeg failing on its own), so subprocess.run
+    is monkeypatched to fail if it is called at all — the shape §12's smoothing
+    entry prescribes, for the same reason."""
+    def _never(*a, **k):
+        raise AssertionError("subprocess.run was reached — the guard did not fire")
+    monkeypatch.setattr(proc.subprocess, "run", _never)
+    with pytest.raises(ValueError, match="lutrgb"):
+        proc.run(["ffmpeg", "-y", "-i", "a.mp4", "-vf", "lutrgb=r=val", "out.mp4"])
+
+def test_run_lets_a_clean_command_through(monkeypatch):
+    seen = {}
+    def _fake(cmd, **k):
+        seen["cmd"] = cmd
+        return "ok"
+    monkeypatch.setattr(proc.subprocess, "run", _fake)
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf", "colorchannelmixer=rr=1.0", "o.mp4"]
+    assert proc.run(cmd) == "ok"
+    assert seen["cmd"] == cmd
+
+def test_the_refusal_reports_every_violation_not_only_the_first(monkeypatch):
+    """Two landmines in one command should surface together — fixing one and
+    re-running to discover the next is a slow way to learn."""
+    monkeypatch.setattr(proc.subprocess, "run",
+                        lambda *a, **k: pytest.fail("guard did not fire"))
+    with pytest.raises(ValueError) as e:
+        proc.run(["ffmpeg", "-y", "-ss", "1.0", "-i", "a.mp4", "-t", "2.0",
+                  "-vf", "lutrgb=r=val", "out.mp4"])
+    assert "lutrgb" in str(e.value) and "-ss" in str(e.value)
+
+def test_the_refusal_is_a_value_error_not_a_runtime_error(monkeypatch):
+    """proc.run's RuntimeErrors describe the ENVIRONMENT failing (binary missing,
+    timeout, non-zero exit). A landmine is the CALLER being wrong — a programming
+    error, which every config-spec in models.py raises ValueError for."""
+    monkeypatch.setattr(proc.subprocess, "run",
+                        lambda *a, **k: pytest.fail("guard did not fire"))
+    with pytest.raises(ValueError):
+        proc.run(["ffmpeg", "-vf", "lutrgb=r=val", "o.mp4"])

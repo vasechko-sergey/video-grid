@@ -1,6 +1,8 @@
 """Loud subprocess wrapper: ffmpeg/ffprobe failures surface stderr (hard rule §12)."""
 import subprocess
 
+from scripts.lib import lint
+
 
 # Generous on purpose: a real 4K encode runs for minutes, and this ceiling exists
 # to catch a command that can NEVER finish, not to police a slow one. An unbounded
@@ -21,6 +23,26 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     A caller that genuinely needs longer passes its own `timeout=`; passing
     `timeout=None` restores the old unbounded behaviour and should be rare.
     """
+    # Always on, never behind an env flag. The obvious argument for gating this is
+    # "keep production fast" — a handful of string scans over a ~20-element list,
+    # against a command that runs for seconds to minutes. The saving is
+    # unmeasurable and a guard that is off in production does not protect
+    # production. Refusing to run a command that will silently corrupt the output
+    # beats running it (design §3).
+    #
+    # Before the try: block on purpose, so it cannot disturb the FileNotFoundError
+    # / TimeoutExpired / CalledProcessError handling below. Those RuntimeErrors
+    # say the ENVIRONMENT failed; this ValueError says the CALLER is wrong.
+    #
+    # Every command is inspected, not just those whose argv[0] is "ffmpeg":
+    # scripts/draft.py:24 passes the binary as a parameter, which is the template
+    # for a future bypass of any check keyed on argv[0] (design §5).
+    problems = lint.check_argv(cmd)
+    if problems:
+        raise ValueError(
+            "refusing to run a command carrying a design §12 landmine:\n  "
+            + "\n  ".join(problems)
+            + f"\ncommand: {' '.join(map(str, cmd))}")
     kwargs.setdefault("check", True)
     kwargs.setdefault("capture_output", True)
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT_S)
