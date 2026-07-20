@@ -89,7 +89,11 @@ site then passes the real path, so `argv[0]` is the binary that actually ran —
 argv inspection sees the truth, and `proc.run`'s error messages echo a command you can
 paste into a shell.
 
-New module `scripts/lib/ffmpeg.py`, three rungs:
+New module `scripts/lib/ffbin.py` — "the ffmpeg binaries". Named for the binaries rather
+than the tool so the accessors read as `ffbin.ffmpeg()` and `ffbin.ffprobe()`; a module
+called `ffmpeg` would force `ffmpeg.ffmpeg()` at every call site.
+
+Three rungs:
 
 ```
 $FFMPEG / $FFPROBE     explicit override (CI, non-macOS, bisecting a build)
@@ -126,9 +130,15 @@ since replaced, the code skips its own gate and proceeds on a false premise. Tha
 §12-shaped failure — bad output, not a crash — manufactured by an optimisation worth
 roughly 30ms.
 
-So: the path is frozen at install, the filters are probed at runtime. `lru_cache` makes the
-probe once-per-process, which is honest — the binary genuinely cannot change under a live
-process.
+So: the path is frozen at install, the filters are probed at runtime, every time.
+
+Memoizing the probe was considered and dropped. A process-lifetime cache is *defensible*
+— the binary genuinely cannot change under a live process — but it buys back only the
+~50ms of an `ffmpeg -filters` spawn, against encodes measured in minutes, and it pays for
+that with a stateful trap: any test that forgets `cache_clear()` reads a stale answer and
+can pass for the wrong reason. This repo has already shipped four hollow tests found only
+by review; adding a mechanism whose failure mode is *a test that passes when it should
+not* is a bad trade at any price, let alone this one.
 
 ## 5. One capability chokepoint, and the trap it closes
 
@@ -137,7 +147,7 @@ shells out and greps, `intake._require_vidstab` shells out and greps, and three 
 (`tests/integration/test_intake.py:21`, `test_draft.py:22`, `test_titles.py:21`) each run
 their own `subprocess`.
 
-This slice gives them one implementation — `ffmpeg.has_filter(name) -> bool` — and the
+This slice gives them one implementation — `ffbin.has_filter(name) -> bool` — and the
 production gates become thin wrappers that add their own remedy text.
 
 **This is the load-bearing part of the slice, not tidiness.** Move production onto
@@ -172,8 +182,10 @@ happened. It checks, or it has not finished.
 
 ## 7. The literal ban — and what it is honestly worth
 
-`"ffmpeg"` appears as a literal 29 times and `"ffprobe"` 8 times across 11 files. Once the
-resolver exists, a new call site can still type the literal and quietly go back to PATH.
+`"ffmpeg"` appears as a string literal 27 times and `"ffprobe"` 8 times across 11 files.
+(`proc.py` names them twice more, but inside comments — Python never sees those, and
+neither does an AST scan, so the guard file needs no exemption.) Once the resolver exists,
+a new call site can still type the literal and quietly go back to PATH.
 The landmine-lint slice already built an AST scan over `scripts/`, so a fifth check costs
 little: **a string literal equal to exactly `"ffmpeg"` or `"ffprobe"` is banned.**
 
@@ -196,6 +208,10 @@ it runs on every command in production, and widening it with a rule that does no
 bar would dilute what a `check_argv` refusal means. Filing this correctly matters more than
 filing it impressively: a future reader who believes this check guards against silent
 corruption will trust it to do something it does not do.
+
+`ffbin.py` is exempt, because it is the one file that must name the binaries. That is the
+same shape as the existing scan's `lint.py` exemption — a hole by construction, pinned to
+exactly one file by its own test, so nothing else can hide behind it.
 
 Scope: `scripts/` only, as the existing scan already is. `tests/` is deliberately excluded —
 test files legitimately contain `"ffmpeg"` argv literals as fixtures (`test_lint.py`'s
@@ -230,7 +246,7 @@ one.
 
 ## 10. Testing
 
-- `lib/ffmpeg.py` unit tests: each resolution rung in isolation, precedence between them,
+- `lib/ffbin.py` unit tests: each resolution rung in isolation, precedence between them,
   absolute-path guarantee, missing-config fallback, `has_filter` true/false, and the
   fail-loud remedy when nothing resolves.
 - The three integration guards and `conftest` move to `has_filter`. On a machine with
