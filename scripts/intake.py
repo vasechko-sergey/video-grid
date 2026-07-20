@@ -131,11 +131,9 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     normalized by frame width. No per-window cutting → no -ss seek landmine.
 
     `dur` (the clip's own length, already probed by the caller) scales the timeout
-    vidstab.detect hands to proc.run: this pass runs over the WHOLE raw clip, so
-    proc's flat default is not generous enough for a long take. The detect recipe
-    and the timeout derivation both live in scripts/lib/vidstab.py, shared with
-    process_episode's stabilize pre-stage so the two report the same measurement
-    (design 2026-07-20 §5).
+    handed to proc.run: this pass runs over the WHOLE raw clip, so proc's flat
+    default is not generous enough for a long take. The .trf primitives and the
+    timeout multiple live in scripts/lib/vidstab.py (design 2026-07-20 §3).
     """
     vidstab.require()
     timeout = max(proc.DEFAULT_TIMEOUT_S, dur * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)

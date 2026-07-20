@@ -11,7 +11,7 @@ consumer — the same move scripts/lib/appearance.py made in the cast slice.
 import re
 from pathlib import Path
 
-from scripts.lib import ffbin, proc
+from scripts.lib import ffbin
 
 # vidstabdetect over a whole raw clip is the one analysis in this repo whose
 # input is unbounded raw footage; everything else works on 15-60s reels or
@@ -19,10 +19,6 @@ from scripts.lib import ffbin, proc
 # measured 13.6 fps analysing 4K/30 footage — ~2.2x realtime — and 4K/60 doubles
 # the per-second frame count, so ~4.4x realtime is the worst measured case. 10x
 # leaves > 2x headroom above that for slower hardware or larger frames.
-#
-# stabilize() reuses the same multiple on a SHORT extracted segment, where it is
-# simply generous rather than load-bearing. The floor below keeps both cases at
-# proc's already-generous default when the input is short.
 SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
@@ -36,9 +32,8 @@ def require() -> None:
 
     Both, not just detect: libvidstab supplies the pair, so checking one and
     using the other would let a strange build through to a mid-encode failure.
-    Called at the ENTRY points (intake's shake_by_window, and stabilize below) —
-    deliberately not inside detect(), so one stabilize() does not pay three
-    uncached `ffmpeg -filters` probes for one operation.
+    Called at a consumer's ENTRY point, once per operation — `ffbin.has_filter`
+    is uncached by design, so each call is a real `ffmpeg -filters` spawn.
     """
     ffbin.require_filter("vidstabdetect", _REMEDY)
     ffbin.require_filter("vidstabtransform", _REMEDY)
