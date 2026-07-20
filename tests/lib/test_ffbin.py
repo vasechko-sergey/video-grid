@@ -63,3 +63,32 @@ def test_nothing_resolves_fails_loud_with_the_remedy(monkeypatch, tmp_path):
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: None)
     with pytest.raises(ValueError, match="bash setup.sh"):
         ffbin.ffmpeg()
+
+
+def _filters(monkeypatch, text: str):
+    """Stand in for `ffmpeg -filters` output."""
+    class _R:
+        stdout = text.encode()
+    monkeypatch.setattr(ffbin.proc, "run", lambda cmd, **kw: _R())
+
+
+def test_has_filter_true_when_the_build_lists_it(monkeypatch):
+    _filters(monkeypatch, " T.. drawtext   V->V   Draw text on top of video.\n")
+    assert ffbin.has_filter("drawtext") is True
+
+
+def test_has_filter_false_when_it_does_not(monkeypatch):
+    _filters(monkeypatch, " ... scale   V->V   Scale the input video.\n")
+    assert ffbin.has_filter("vidstabdetect") is False
+
+
+def test_require_filter_is_silent_when_present(monkeypatch):
+    _filters(monkeypatch, " T.. drawtext   V->V   Draw text.\n")
+    assert ffbin.require_filter("drawtext", "run `bash setup.sh`") is None
+
+
+def test_require_filter_fails_loud_carrying_binary_and_remedy(monkeypatch):
+    _filters(monkeypatch, " ... scale   V->V   Scale.\n")
+    monkeypatch.setenv("FFMPEG", "/opt/slim/ffmpeg")
+    with pytest.raises(ValueError, match="/opt/slim/ffmpeg.*vidstabdetect.*setup.sh"):
+        ffbin.require_filter("vidstabdetect", "run `bash setup.sh`")

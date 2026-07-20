@@ -60,3 +60,25 @@ def ffmpeg() -> str:
 
 def ffprobe() -> str:
     return _resolve("FFPROBE", "ffprobe")
+
+
+def has_filter(name: str) -> bool:
+    """Is `name` in the resolved ffmpeg's filter list?
+
+    The ONE place this question is asked. Four sites used to ask it four ways —
+    two production gates and three test guards — and the moment production moved
+    to a different binary than the guards probed, those guards would have skipped
+    forever against a working pipeline: a green suite with three integration tests
+    silently uncovered (design §5).
+
+    Deliberately uncached: see design §4 on why a stale answer is worth more than
+    the 50ms it would save.
+    """
+    out = proc.run([ffmpeg(), "-hide_banner", "-filters"]).stdout
+    return name.encode() in out
+
+
+def require_filter(name: str, remedy: str) -> None:
+    """Fail loud when the resolved build lacks `name`, naming the binary."""
+    if not has_filter(name):
+        raise ValueError(f"{ffmpeg()} has no {name} filter — {remedy}")

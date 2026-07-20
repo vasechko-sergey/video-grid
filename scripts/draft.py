@@ -9,23 +9,21 @@ import json
 from pathlib import Path
 
 from scripts import extract, mix
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.draft import label_text, resolve_font, segment_filter
 from scripts.lib.edl import EDL
 from scripts.lib.models import MusicSpec
 from scripts.lib.project import ProjectConfig
 
 
-def ensure_drawtext(ffmpeg: str = "ffmpeg") -> None:
-    """Fail loud if `ffmpeg` lacks the drawtext filter — the draft label burn needs
+def ensure_drawtext() -> None:
+    """Fail loud if the resolved ffmpeg lacks drawtext — the draft label burn needs
     it, and a missing filter otherwise surfaces as a cryptic 'No such filter:
-    drawtext' mid-render. setup.sh installs a drawtext-capable ffmpeg; this is the
-    runtime backstop (a different ffmpeg may be on PATH)."""
-    filters = proc.run([ffmpeg, "-hide_banner", "-filters"]).stdout.decode("utf-8", errors="replace")
-    if "drawtext" not in filters:
-        raise ValueError(
-            f"{ffmpeg} has no drawtext filter — the draft labels need it. Run "
-            "`bash setup.sh`, which installs a drawtext-capable ffmpeg (libfreetype).")
+    drawtext' mid-render."""
+    ffbin.require_filter(
+        "drawtext",
+        "the draft labels need it. Run `bash setup.sh`, which installs ffmpeg-full "
+        "(libfreetype included)")
 
 
 def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: str,

@@ -2,7 +2,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
-from scripts.lib import appearance
+from scripts.lib import appearance, ffbin
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
 
 
@@ -20,14 +20,17 @@ def test_shot_type_buckets():
 
 
 def test_require_vidstab_raises_when_absent(monkeypatch):
-    monkeypatch.setattr(intake.proc, "run",
+    # the probe now happens inside ffbin.has_filter (design 2026-07-20 §5) —
+    # patch the resolver's proc, not intake's, so this exercises where the
+    # filter-list check actually lives.
+    monkeypatch.setattr(ffbin.proc, "run",
                         lambda *a, **k: types.SimpleNamespace(stdout=b"... scale ... overlay ..."))
     with pytest.raises(ValueError, match="vidstab"):
         intake._require_vidstab()
 
 
 def test_require_vidstab_ok_when_present(monkeypatch):
-    monkeypatch.setattr(intake.proc, "run",
+    monkeypatch.setattr(ffbin.proc, "run",
                         lambda *a, **k: types.SimpleNamespace(stdout=b"... vidstabdetect ..."))
     intake._require_vidstab()   # no raise
 

@@ -14,7 +14,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, footage, proc
+from scripts.lib import assembly, ffbin, footage, proc
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.track import MODEL                    # reuse the tracker's model choice
 
@@ -55,10 +55,10 @@ def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, in
 
 def _require_vidstab() -> None:
     """Intake is the repo's first runtime vidstab consumer — fail loud with the remedy."""
-    r = proc.run(["ffmpeg", "-hide_banner", "-filters"])
-    if b"vidstabdetect" not in r.stdout:
-        raise ValueError("footage-intake needs a vidstab-enabled ffmpeg (vidstabdetect filter missing) — "
-                         "run `bash setup.sh --with-vidstab`")
+    ffbin.require_filter(
+        "vidstabdetect",
+        "footage-intake measures shake with it. Run `bash setup.sh`, which installs "
+        "ffmpeg-full (libvidstab included)")
 
 
 def carve_windows(scene_cuts: list[float],
@@ -145,7 +145,7 @@ def _parse_trf(text: str) -> list[float]:
                          "failed; check the clip is readable")
     if not lines[0].startswith("VID.STAB"):
         raise ValueError("vidstabdetect .trf has an unrecognized header — libvidstab version mismatch? "
-                         "cannot trust the shake estimate (run `bash setup.sh --with-vidstab`)")
+                         "cannot trust the shake estimate (run `bash setup.sh`)")
     mags: list[float] = []
     for line in lines[1:]:
         if not line.startswith("Frame"):

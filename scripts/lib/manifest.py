@@ -183,7 +183,7 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
     if m.stabilize:
         problems.append("stabilize=true not supported yet — vidstab lands in the "
                         "reframe-extensions plan (and needs a vidstab-enabled ffmpeg, "
-                        "see setup.sh --with-vidstab)")
+                        "see setup.sh)")
     if not (isinstance(m.canvas, tuple) and len(m.canvas) == 2
             and all(isinstance(v, (int, float)) and v > 0 for v in m.canvas)):
         problems.append(f"canvas must be [w, h] with positive numbers; got {m.canvas!r}")
