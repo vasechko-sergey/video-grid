@@ -133,10 +133,18 @@ def test_a_to_bounded_window_is_still_a_window():
 def test_every_input_side_seek_is_reported_not_only_the_first():
     """check_argv promises EVERY violation. _seek_order used to `return` inside
     its loop, so a command with two input-side seeks confessed to one and the
-    author would fix it, re-run, and meet the next."""
+    author would fix it, re-run, and meet the next.
+
+    Each message must also say WHICH seek it means. Two byte-identical messages
+    satisfy `len == 2` while leaving the reader nothing to act on — the same gap
+    _drawtext_font's '#n of m' already closes.
+    """
     cmd = ["ffmpeg", "-y", "-ss", "1.0", "-i", "a.mp4", "-ss", "2.0", "-i", "b.mp4",
            "-t", "2.0", "-c:v", "libx264", "out.mp4"]
-    assert len(lint.check_argv(cmd)) == 2
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 2
+    assert "#1 of 2" in msgs[0] and "argv[2]" in msgs[0] and "'1.0'" in msgs[0]
+    assert "#2 of 2" in msgs[1] and "argv[6]" in msgs[1] and "'2.0'" in msgs[1]
 
 
 def test_the_seek_message_names_both_remedies():

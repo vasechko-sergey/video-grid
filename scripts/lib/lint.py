@@ -3,14 +3,19 @@
 Pure: every function takes an argv list and returns a list of violation messages
 (empty = clean). No I/O, no ffmpeg, no filesystem.
 
-Two consumers are PLANNED, and neither will subsume the other (design §2).
-Neither is wired up yet — this module is currently called only by its own tests:
-  * proc.run's runtime guard (Task 5) — will see the ASSEMBLED command, including
-    the graphs that reach it through a splat (`*_filter_args(...)`), but only on
-    paths some test actually exercises.
-  * tests/lib/test_landmine_scan.py (Task 6) — a literal scan of scripts/,
-    complete for filter NAMES (they are never computed anywhere in this repo)
-    including on paths no test reaches, but blind through those same splats.
+Two consumers, both wired up, and neither subsumes the other (design §2):
+  * scripts/lib/proc.py's run() — an always-on guard that raises before
+    subprocess.run, so it sees the ASSEMBLED command including the graphs that
+    reach it through a splat (`*_filter_args(...)`), but only on paths some test
+    actually exercises.
+  * tests/lib/test_landmine_scan.py — an AST scan of scripts/ for banned filter
+    names in string literals, complete for those names (they are never computed
+    anywhere in this repo) including on paths no test reaches, but blind through
+    those same splats.
+
+check_argv's contract is list[str]. proc.run coerces every element with str()
+before calling in: subprocess.run accepts os.PathLike, and the `in` tests below
+raise TypeError on a Path rather than reporting a landmine.
 
 A recurring trap in here, hit three times during review: ffmpeg's vocabulary is
 full of tokens that CONTAIN a shorter token. `boxcolor=` contains `color=`,
@@ -106,16 +111,19 @@ def _seek_order(cmd: list[str]) -> list[str]:
         return []                    # not cutting a window ⇒ no cut boundary
     if _copies_video(cmd):
         return []                    # no re-encode ⇒ no re-encode boundary
-    out: list[str] = []
-    for i, a in enumerate(cmd):
-        # Input-side iff some -i FOLLOWS this -ss — not "before the first -i".
-        # ffmpeg binds -ss to the input after it, so `-i a -ss 5 -i b` seeks b.
-        if a == "-ss" and "-i" in cmd[i + 1:]:
-            out.append("input-side -ss on a re-encoded window — design §12: this is the "
-                       "black-frames-at-a-cut landmine. Move -ss after the -i it applies "
-                       "to (output seek), or pass -accurate_seek if the input seek is "
-                       "deliberate (see scripts/mix.py:193).")
-    return out
+    # Input-side iff some -i FOLLOWS this -ss — not "before the first -i".
+    # ffmpeg binds -ss to the input after it, so `-i a -ss 5 -i b` seeks b.
+    # Collected before reporting so each message can say "#n of m": a multi-seek
+    # command otherwise yields byte-identical messages and the reader cannot tell
+    # WHICH seek to move. Same reason _drawtext_font numbers its offenders.
+    # cmd[i + 1] is safe to read: a trailing -ss has no -i after it, so it is
+    # never flagged.
+    seeks = [i for i, a in enumerate(cmd) if a == "-ss" and "-i" in cmd[i + 1:]]
+    return [f"input-side -ss #{n} of {len(seeks)} (argv[{i}], seeking to "
+            f"{cmd[i + 1]!r}) — design §12: this is the black-frames-at-a-cut "
+            "landmine. Move -ss after the -i it applies to (output seek), or pass "
+            "-accurate_seek if the input seek is deliberate (see scripts/mix.py:193)."
+            for n, i in enumerate(seeks, 1)]
 
 
 def _element(text: str, start: int) -> str:
