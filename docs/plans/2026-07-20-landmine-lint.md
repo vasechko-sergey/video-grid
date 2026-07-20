@@ -301,7 +301,7 @@ confirm the named test goes RED, then revert and purge `__pycache__` again.
 | 2 | delete the `-frames:v` early return | `test_a_still_grab_is_exempt_because_it_is_not_a_cut` |
 | 3 | delete the `-t`/`-to` early return | `test_an_open_ended_input_seek_is_exempt_because_it_is_not_a_window` |
 | 4 | `a == "-ss"` → `a.startswith("-ss")` | `test_sseof_is_never_mistaken_for_ss` |
-| 5 | `"-i" in cmd[i + 1:]` → `"-i" in cmd[i:]` … then check test 2 of the pair | `test_output_side_ss_on_a_window_is_clean` |
+| 5 | `"-i" in cmd[i + 1:]` → `"-i" in cmd` (drop the positional restriction entirely) | `test_output_side_ss_on_a_window_is_clean` |
 | 6 | search only up to the first `-i` (`cmd[i+1:cmd.index("-i")+1]`) | `test_ss_is_input_side_when_any_i_follows_it_not_only_the_first` |
 
 All six must go red. If any stays green, the corresponding test is hollow — fix the test,
@@ -526,7 +526,7 @@ def _drawtext_font(cmd: list[str]) -> list[str]:
                     f"drawtext without fontfile= in {a!r} — design §12: drawtext and "
                     "its font are decoupled, so with no explicit path it fails or "
                     "picks a garbage face on macOS. Resolve one with "
-                    "scripts/lib/fonts.py resolve() and pass fontfile='<path>'.")
+                    "scripts/lib/fonts.py resolve_font() and pass fontfile='<path>'.")
     return out
 ```
 

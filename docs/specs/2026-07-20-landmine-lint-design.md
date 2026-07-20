@@ -245,6 +245,32 @@ lint — it converts an unexamined risk into a false sense of safety.
   down rather than derived from the slogan.
 - **Substring matching on option tokens is wrong** (§4.2). `-sseof` is the live
   example; `-ss` is a prefix of it.
+- **Two bugs in one check can mask each other, and fixing either one alone makes
+  things worse.** Found during implementation, and it is the sharpest lesson here.
+  §4.3's first cut had two defects: the source-name boundary admitted `color=`
+  after any non-word character (so `drawbox=…:color=red` and `pad=…:color=black`
+  read as *sources*), and the bound test asked whether `d=` appeared anywhere in
+  the **whole argument** rather than in the source's own element.
+
+  The second bug hid the first. **`pad=` contains the substring `d=`** — so any
+  argument carrying a letterbox filter looked "bounded" and was exempted wholesale,
+  which is also why the predicate appeared to survive `pad=…:color=black` when it
+  did not. The two failures pointed opposite ways: the boundary bug was a false
+  positive, the bound bug a silent miss, and the miss was swallowing the false
+  positive.
+
+  Fixing only the bound test would have converted `pad` from a quiet miss into a
+  **live raise on every letterbox render** — a new broken render shipped as a fix.
+  The two corrections had to land together, boundary first, so that every commit
+  is green on its own.
+
+  The generalisable form: **when a check has an early exemption and a detector, a
+  bug in the exemption can conceal a bug in the detector.** Neither unit tests nor
+  the mutation battery caught this pair — both mutation rows passed against a
+  predicate that was wrong in two places. What caught it was running the predicate
+  over every argv the real suite issues (702 of them) and looking at what it
+  flagged. **Measure the predicate against the codebase, not only against its own
+  fixtures.**
 
 ## 7. Deliberately out of scope
 
