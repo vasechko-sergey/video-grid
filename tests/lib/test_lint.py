@@ -381,6 +381,26 @@ def test_each_drawtext_in_a_chain_needs_its_own_font():
 #   * The shapes that were live false positives: `drawbox=…:color=red@1.0`
 #     (test_pan.py:27), `pad=…` (whose literal `d=` masked a second bug, design
 #     §6), `seed=` beside a real `d=`, and `-sseof`.
+#
+# WHAT THESE PIN, EXACTLY: that no production command fires. They are not where
+# the individual exemption CONDITIONS are pinned, and reading a clean verdict as
+# evidence for a particular rule is the "an earlier condition answers first" trap
+# this slice has already hit once. Most of these argvs are answered by an early
+# return long before the interesting rule is consulted. Measured, not reasoned:
+#   * check_episode.py:24 carries no -t, so _seek_order exits at not-a-window and
+#     the -sseof exact-token rule is never reached. That rule is pinned by
+#     test_sseof_is_never_mistaken_for_ss, which supplies a -t.
+#   * check_reel.py:47 holds no synth-source token at all, so its blackdetect
+#     `d=` is never examined. The bound rule is pinned by
+#     test_a_seed_or_speed_parameter_does_not_bound_a_source.
+#   * both reframe solid variants carry an output -t, so _unbounded_source
+#     returns immediately: neither the boundary rule nor the per-element bound
+#     runs, the bordered `pad=` included. Those are pinned by
+#     test_the_letterbox_pad_colour_parameter_is_not_a_source and
+#     test_each_source_in_a_graph_needs_its_own_bound.
+# Two fixtures do reach the scanner and earn their keep there: test_pan.py:27
+# (matches a bounded `color=` AND boundary-rejects two drawbox `color=` params)
+# and mix.py:109 (per-element bound, with `seed=` sitting beside a real `d=`).
 
 _FONT = "/System/Library/Fonts/Helvetica.ttc"
 
@@ -389,7 +409,7 @@ REAL_SITES = {
         "ffmpeg", "-y", "-i", "src.mp4", "-ss", "3.5", "-t", "2.0",
         "-c:v", "libx264", "-crf", "18", "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "out.mp4"],
-    "check_reel.py:47 — blackdetect, a d= that is not a source bound": [
+    "check_reel.py:47 — blackdetect analysis pass": [
         "ffmpeg", "-i", "master.mp4", "-vf", "blackdetect=d=0.05:pic_th=0.98",
         "-an", "-f", "null", "-"],
     "check_reel.py:65 — output seek, still grab": [
@@ -439,7 +459,7 @@ REAL_SITES = {
          "fps=30,format=yuv420p"),
         "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
         "-an", "out.mp4"],
-    "reframe.py:380 — solid background, d= AND an output -t": [
+    "reframe.py:380 — solid background composite": [
         "ffmpeg", "-y", "-i", "src.mp4", "-filter_complex",
         ("color=c=black:s=1080x1920:r=30:d=2.000000[bg];"
          "[0:v]crop=405:720:x='0.0':y=0,scale=1080:1920[fg];"
@@ -456,11 +476,12 @@ REAL_SITES = {
          "fps=30,format=yuv420p"),
         "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
         "-an", "out.mp4"],
-    # Design §6's masking pair, as one live command: a bounded `color=…:d=`
-    # source sitting in the same argument as a `pad=` whose literal `d=` used to
-    # read as that source's bound. Both bugs were present here at once and each
-    # hid the other.
-    "reframe.py:380 — insert over solid, bordered (`pad=` carries a literal d=)": [
+    # Shape-wise this is design §6's masking pair in one command — a bounded
+    # `color=…:d=` beside a `pad=` whose literal `d=` once read as that source's
+    # bound. It does NOT exercise it: the output -t makes _unbounded_source
+    # return first. Kept as the shipped shape; the masking pair itself is pinned
+    # by test_the_letterbox_pad_colour_parameter_is_not_a_source.
+    "reframe.py:380 — insert over solid, bordered": [
         "ffmpeg", "-y", "-i", "src.mp4", "-filter_complex",
         ("color=c=black:s=1080x1920:r=30:d=2.000000[bg];"
          "[0:v]crop=720:720:x='0.0':y=0,scale=956:956,pad=972:972:8:8:white[fg];"
