@@ -50,6 +50,22 @@ themselves such strings. No site builds a filter name from a variable. So a lite
 scan of `scripts/` catches `lutrgb` on **every** emission path, including paths no
 test exercises.
 
+**The scan reads string literals out of the AST, not lines of text** — and that is not
+a refinement, it is the difference between a scan that can ship and one that cannot.
+A line-level scan **cannot distinguish documenting a ban from violating it**, and this
+repo documents the ban in exactly the two places a future author would look:
+`scripts/lib/color.py:1` ("lutrgb is banned; use mixer") and
+`scripts/check_episode.py:56` ("only the seek/lutrgb corruption we're guarding"). Both
+would be flagged. The escapes were a path allowlist — forbidden by §6, and rotten the
+moment a third file documents the ban — or deleting the documentation, which makes a
+landmine undocumentable at its own site. Both are worse than the problem.
+
+Reading the AST dissolves it: comments never enter the AST at all, and docstrings are
+subtracted. What remains is exactly the set the completeness argument above covers —
+constants, f-strings' static portions, `join()` operands. **The check measures
+*emission*, which is what its name always claimed.** Line-scanning measured *mention*,
+and the two differ precisely where the codebase is most careful.
+
 **Static is blind through splats.** Three sites hand `proc.run` the return value of a
 builder:
 
@@ -224,6 +240,15 @@ lint — it converts an unexamined risk into a false sense of safety.
 - **A splat-assembled graph on an unexercised path is covered by neither layer.**
   Static is blind through the splat; runtime never reaches it. This is the residual
   hole and it is real.
+
+- **The static layer sees literals, not every route a name could take.** Because it
+  reads AST string constants (§2), a filter name assembled by `%`, `.format()`, string
+  concatenation of single characters, or `chr()` arithmetic would pass it. No such site
+  exists — every filter string in `scripts/` is a constant, an f-string, or a `join()`
+  over those — so the completeness claim holds *for this codebase as it stands*, which
+  is the only claim worth making. It is not a claim about Python in general, and the
+  day someone builds a filter name a new way, the static layer stops covering it
+  silently. Runtime still would, on any path a test reaches.
 - **The three yt-dlp `subprocess.run` sites** (`scripts/lib/catalog.py:197`, `:254`,
   `scripts/lib/fetch.py:80`) are out of reach — yt-dlp spawns its own ffmpeg child,
   and `catalog.py:255` passes `--download-sections`, an `-ss`-adjacent operation whose
