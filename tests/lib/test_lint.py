@@ -128,6 +128,15 @@ def test_a_to_bounded_window_is_still_a_window():
     assert len(lint.check_argv(cmd)) == 1
 
 
+def test_every_input_side_seek_is_reported_not_only_the_first():
+    """check_argv promises EVERY violation. _seek_order used to `return` inside
+    its loop, so a command with two input-side seeks confessed to one and the
+    author would fix it, re-run, and meet the next."""
+    cmd = ["ffmpeg", "-y", "-ss", "1.0", "-i", "a.mp4", "-ss", "2.0", "-i", "b.mp4",
+           "-t", "2.0", "-c:v", "libx264", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 2
+
+
 def test_the_seek_message_names_both_remedies():
     cmd = ["ffmpeg", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "libx264", "o.mp4"]
     msg = lint.check_argv(cmd)[0]
