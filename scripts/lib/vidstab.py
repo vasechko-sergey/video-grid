@@ -9,9 +9,10 @@ Extracted from intake.py, which held these as privates while it was the only
 consumer — the same move scripts/lib/appearance.py made in the cast slice.
 """
 import re
+import tempfile
 from pathlib import Path
 
-from scripts.lib import ffbin, proc
+from scripts.lib import assembly, ffbin, proc
 
 # vidstabdetect over a whole raw clip is the one analysis in this repo whose
 # input is unbounded raw footage; everything else works on 15-60s reels or
@@ -19,6 +20,10 @@ from scripts.lib import ffbin, proc
 # measured 13.6 fps analysing 4K/30 footage — ~2.2x realtime — and 4K/60 doubles
 # the per-second frame count, so ~4.4x realtime is the worst measured case. 10x
 # leaves > 2x headroom above that for slower hardware or larger frames.
+#
+# stabilize() reuses the same multiple on a SHORT extracted segment, where it is
+# simply generous rather than load-bearing. The floor in _timeout keeps both cases
+# at proc's already-generous default when the input is short.
 SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
 # The detect recipe, shared by BOTH consumers on purpose (design 2026-07-20 §5).
@@ -33,6 +38,32 @@ SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 # the recorded recipe belongs in this string: the transform pass has its own
 # option namespace, and its knobs live in TRANSFORM_ARGS.
 DETECT_ARGS = "shakiness=8"
+
+# The transform recipe (design 2026-07-20 §4). smoothing=40 and zoom=2 come from
+# the session's proven recipe (design spec §10); crop=keep is stated explicitly
+# even though it is the binary's default, because §10 says the opposite and a
+# decision documented nowhere is a decision waiting to be reverted.
+#
+# crop=black is refused: it fills the uncovered border with black, and under a
+# fill layout the crop takes the source's full height, so that band lands in the
+# delivered frame whole. check_episode's black gate compares frame MEDIANS and a
+# few percent of the frame does not move a median, so nothing would catch it.
+# crop=keep fills from the previous frame instead — the failure class stops
+# existing rather than being detected (§4.1).
+TRANSFORM_ARGS = "smoothing=40:zoom=2:crop=keep"
+
+# unsharp counters the softening from vidstabtransform's bilinear interpolation
+# (design spec §10, proven on real footage). It is the one parameter whose
+# POSITION changed relative to where it was proven — there it shared a chain with
+# the crop at delivery scale, here it runs on an intermediate that a crop and a
+# scale then consume (§4.3).
+SHARPEN = "unsharp=5:5:0.4"
+
+# The intermediate is consumed twice (YOLO, then reframe) and thrown away, and
+# reframe re-encodes at 18 with deliver encoding again after that. At 18 this
+# would spend a generation nothing can recover; 12 is visually lossless at a size
+# that is irrelevant for a 1.2-4.0s window (§4.2).
+INTERMEDIATE_CRF = "12"
 
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
 
@@ -150,3 +181,71 @@ def mean_shake(mags: list[float], width: int) -> float:
     if not mags:
         return 0.0
     return (sum(mags) / len(mags)) / width
+
+
+def stabilize(src: str, out: str, dims: tuple[int, int], fps: float,
+              dur: float) -> tuple[float, float]:
+    """Two-pass stabilization of `src` into `out`, plus a third pass that measures
+    the residual; returns (before, after) shake as fractions of frame width.
+
+    A PRE-STAGE, not a filter in reframe's chain, and the distinction is the whole
+    point (design 2026-07-20 §1): the route is measured on unstabilized pixels, so
+    a crop placed from it against transformed pixels leaves the subject offset by
+    exactly the shake vidstab removed — a steady background with a jittering
+    subject. check_episode would not catch it either, because path and route are
+    both in source coordinates and agree with each other; only the pixels disagree.
+    Writing a file that BOTH track and reframe read makes route and pixels one
+    coordinate system by construction.
+
+    `dims`/`fps`/`dur` are the caller's already-probed numbers, not re-probed here.
+    They are what the layout resolution computed with, so handing them in states
+    the belief the geometry guard below then proves still holds. dims[0] is also
+    the width the returned fractions are normalised by.
+
+    The residual is a MEASUREMENT, not a gate. It proves stabilization ran and did
+    something; it does not prove it should have. In particular it does NOT catch
+    the wade-in landmine (design spec §12) — "rolling ground" is a warp, and a
+    successfully flattened wade shot reports a LOW residual (§7).
+    """
+    require()
+    with tempfile.TemporaryDirectory() as d:
+        # one local, read by both the detect call and the transform's filtergraph:
+        # spelling the path twice would let a rename leave the transform reading a
+        # .trf nothing wrote.
+        in_trf = str(Path(d) / "in.trf")
+        before = mean_shake(detect(src, in_trf, dur), dims[0])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf",
+                  f"vidstabtransform=input={in_trf}:{TRANSFORM_ARGS},{SHARPEN}",
+                  "-c:v", "libx264", "-crf", INTERMEDIATE_CRF, "-preset", "medium",
+                  "-an", out], timeout=_timeout(dur))
+        _assert_geometry_held(out, dims, fps, dur)
+        after = mean_shake(detect(out, str(Path(d) / "out.trf"), dur), dims[0])
+    return before, after
+
+
+def _assert_geometry_held(out: str, dims: tuple[int, int], fps: float, dur: float) -> None:
+    """vidstabtransform preserves width/height/fps/duration — `zoom` is internal to
+    the transform and the output frame is the input frame's size. But "preserves"
+    is a promise from a library, and if it were ever false the caller's layout
+    numbers would be stale while everything downstream kept computing with them.
+
+    Uses assembly's probes rather than reframe._probe: scripts.reframe imports from
+    scripts.lib, so reaching back for it would close an import cycle.
+    """
+    info = assembly.probe_stream(out)
+    # indexed, like assembly.matches — comparing (info.w, info.h) against `dims`
+    # as a whole would make the check depend on the caller's SEQUENCE TYPE, and a
+    # list of the right numbers would raise "1920x1080 is not 1920x1080".
+    if info.w != dims[0] or info.h != dims[1] or abs(info.fps - fps) > 0.01:
+        raise ValueError(
+            f"vidstabtransform changed the geometry: asked to preserve {dims} @ {fps:.4g}fps, "
+            f"{out} is {(info.w, info.h)} @ {info.fps:.4g}fps — the layout was already "
+            "resolved against the original numbers, so every crop below this is stale. "
+            "Re-check the vidstabtransform options (zoom must not resize the frame)")
+    got = assembly.probe_duration(out)
+    tol = 2.0 / fps          # two frames: a re-encode may shift the container slightly
+    if abs(got - dur) > tol:
+        raise ValueError(
+            f"vidstabtransform changed the duration: expected {dur:.4f}s (±{tol:.4f}s, two "
+            f"frames), {out} is {got:.4f}s — the episode's target_dur and the reel's length "
+            "gate both key on the original")

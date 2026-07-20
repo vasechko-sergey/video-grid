@@ -3,7 +3,7 @@ import types
 
 import pytest
 
-from scripts.lib import ffbin, vidstab
+from scripts.lib import assembly, ffbin, vidstab
 
 
 def _filters(monkeypatch, text: str) -> None:
@@ -159,3 +159,106 @@ def test_mean_shake_refuses_a_broken_width_even_with_no_magnitudes():
     # or the failed probe goes unreported on exactly the windows that carry no frames.
     with pytest.raises(ValueError, match="frame width is 0"):
         vidstab.mean_shake([], 0)
+
+
+def _stub_stabilize_run(cmds: list):
+    """Records every argv and writes a valid .trf for each detect pass. The
+    transform pass writes nothing — the geometry guard is stubbed separately."""
+    def fake_run(cmd, **kwargs):
+        cmds.append(list(cmd))
+        vf = cmd[cmd.index("-vf") + 1] if "-vf" in cmd else ""
+        if vf.startswith("vidstabdetect"):
+            trf_path = vf.split("result=", 1)[1].split(":", 1)[0]
+            with open(trf_path, "w") as f:
+                f.write(_TRF)
+        return types.SimpleNamespace(stdout=b"")
+    return fake_run
+
+
+def _stub_geometry(monkeypatch, w=1920, h=1080, fps=30.0, dur=2.0):
+    """Patch `assembly` itself, not `vidstab.assembly` — Python caches modules, so
+    `vidstab.assembly is assembly` is one object and setting an attribute on it is
+    visible to every importer. Do not "fix" this into two patches."""
+    monkeypatch.setattr(assembly, "probe_stream",
+                        lambda p: assembly.StreamInfo(w, h, fps, "yuv420p", "h264"))
+    monkeypatch.setattr(assembly, "probe_duration", lambda p: dur)
+
+
+def test_stabilize_emits_detect_transform_detect(monkeypatch, tmp_path):
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    _stub_geometry(monkeypatch)
+    cmds: list = []
+    monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run(cmds))
+
+    out = str(tmp_path / "stabilized.mp4")
+    before, after = vidstab.stabilize("seg.mp4", out, (1920, 1080), 30.0, 2.0)
+
+    assert len(cmds) == 3
+    # pass 1 reads the SOURCE, pass 3 reads the OUTPUT — measuring the output with
+    # the source would report a residual that never fell, however broken the
+    # transform was.
+    assert cmds[0][cmds[0].index("-i") + 1] == "seg.mp4"
+    assert cmds[2][cmds[2].index("-i") + 1] == out
+    # both magnitudes come from the same stubbed .trf, so before == after here;
+    # that they are equal is the stub's doing, that they are REPORTED is the point.
+    assert before == pytest.approx(after)
+    assert before == pytest.approx(vidstab.mean_shake([0.0, 10.0, 0.0], 1920))
+
+
+def test_stabilize_transform_chain_is_the_recipe(monkeypatch, tmp_path):
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    _stub_geometry(monkeypatch)
+    cmds: list = []
+    monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run(cmds))
+
+    out = str(tmp_path / "stabilized.mp4")
+    vidstab.stabilize("seg.mp4", out, (1920, 1080), 30.0, 2.0)
+
+    vf = cmds[1][cmds[1].index("-vf") + 1]
+    trf = cmds[0][cmds[0].index("-vf") + 1].split("result=", 1)[1].split(":", 1)[0]
+    assert vf == (f"vidstabtransform=input={trf}:smoothing=40:zoom=2:crop=keep,"
+                  "unsharp=5:5:0.4")
+    assert cmds[1][cmds[1].index("-crf") + 1] == "12"    # intermediate, not a deliverable
+    assert "-an" in cmds[1]
+
+
+def test_stabilize_requires_the_filters_before_spending_two_passes(monkeypatch):
+    def _no_filters():
+        raise ValueError("/opt/slim/ffmpeg has no vidstabtransform filter — run `bash setup.sh`")
+
+    def _must_not_run(*a, **k):
+        pytest.fail("ffmpeg ran before the capability gate")
+
+    monkeypatch.setattr(vidstab, "require", _no_filters)
+    monkeypatch.setattr(vidstab.proc, "run", _must_not_run)
+    with pytest.raises(ValueError, match="vidstabtransform"):
+        vidstab.stabilize("seg.mp4", "out.mp4", (1920, 1080), 30.0, 2.0)
+
+
+def test_stabilize_raises_when_the_transform_moved_the_geometry(monkeypatch, tmp_path):
+    """The caller's layout resolution already computed with (dims, fps, dur). If
+    vidstabtransform ever changed them, every number downstream would be stale
+    while the pipeline carried on using it — silently. vidstab preserves
+    dimensions today; this makes the day it does not a raise."""
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    _stub_geometry(monkeypatch, w=1918)          # two pixels narrower than promised
+    monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run([]))
+    with pytest.raises(ValueError, match="geometry"):
+        vidstab.stabilize("seg.mp4", str(tmp_path / "o.mp4"), (1920, 1080), 30.0, 2.0)
+
+
+def test_stabilize_raises_when_the_transform_moved_the_duration(monkeypatch, tmp_path):
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    _stub_geometry(monkeypatch, dur=1.0)         # half a second short of 2.0
+    monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run([]))
+    with pytest.raises(ValueError, match="duration"):
+        vidstab.stabilize("seg.mp4", str(tmp_path / "o.mp4"), (1920, 1080), 30.0, 2.0)
+
+
+def test_stabilize_tolerates_a_two_frame_duration_wobble(monkeypatch, tmp_path):
+    # a re-encode can shift the container duration by a frame or two; that is not
+    # the failure this guard exists for.
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    _stub_geometry(monkeypatch, dur=2.0 + 1.0 / 30.0)
+    monkeypatch.setattr(vidstab.proc, "run", _stub_stabilize_run([]))
+    vidstab.stabilize("seg.mp4", str(tmp_path / "o.mp4"), (1920, 1080), 30.0, 2.0)  # no raise
