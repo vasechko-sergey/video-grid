@@ -350,7 +350,7 @@ the seam that let production and tests disagree about which build they meant."
 
 ---
 
-### Task 2: the 37 literals move onto the resolver
+### Task 2: the production argv literals move onto the resolver
 
 **Files (11):** `scripts/track.py`, `check_reel.py`, `intake.py`, `reframe.py`,
 `check_episode.py`, `storyboard.py`, `deliver.py`, `extract.py`, `mix.py`, `draft.py`,
@@ -565,6 +565,67 @@ The added guard-follows-the-resolver tests exist because the obvious version of
 this change is untestable by its own suite: a guard that ignored has_filter would
 pass everything else here."
 ```
+
+---
+
+### Task 3b: the integration suite runs the same binary production does
+
+**Added mid-slice.** Task 3's implementer found that Task 2 moved literals in `scripts/`
+only, so test *bodies* still name the binaries. Measured: **37 sites across 16 files** under
+`tests/integration/` — sine-tone builds, test-clip synthesis, `ffprobe` codec and duration
+reads.
+
+**Why this is not scope creep.** Post-install those helpers run PATH's *slim* build while
+production runs `ffmpeg-full`. Nothing is silently uncovered — none of them needs drawtext
+or vidstab, so this is not a repeat of §5's trap. What it damages is **Task 7's proof**.
+Task 7 reads the goldens as the only real test of design §2's "same version, same revision"
+argument. A golden whose fixture was built by one build and whose output came from another
+cannot answer that question: if it holds, it proves cross-build agreement rather than the
+thing claimed; if it moves, the cause is ambiguous. The suite must exercise the
+configuration the user will actually run.
+
+The cheap alternative — prepending ffmpeg-full's directory to `PATH` inside `conftest` —
+is rejected. It would fix the binary without fixing the *path*: tests would stop exercising
+the resolution production uses, so a broken `ffbin` would leave them green. That is the
+hollow-verification shape this slice has already had to correct four times.
+
+**Files:** the 16 under `tests/integration/` carrying `"ffmpeg"` / `"ffprobe"` argv literals.
+
+**`tests/lib/` is exempt, and the reason is not laziness:**
+- `test_lint.py` (69 hits) — its `REAL_SITES` fixtures are *printed output from the real
+  builders*. The literals **are** the test data; resolving them would destroy the fixture.
+- `test_proc.py` — tests the wrapper's timeout/error handling, not the pipeline. Its
+  `["ffprobe", "-version"]` calls work identically on either build, and several of its
+  commands are deliberately fake (`a.mp4`) and never execute.
+
+- [ ] **Step 1: Enumerate**
+
+```bash
+grep -rn '"ffmpeg"\|"ffprobe"' tests/integration/ | wc -l    # 37 at time of writing
+```
+
+Count what you see; do not trust this number. Task 2's equivalent step was wrong twice.
+
+- [ ] **Step 2: Replace**
+
+Same substitution as Task 2: add `ffbin` to the `from scripts.lib import ...` line, then
+`"ffmpeg"` → `ffbin.ffmpeg()`, `"ffprobe"` → `ffbin.ffprobe()`. Read each line — some are
+inside `subprocess.run` rather than `proc.run`, and a few build commands across multiple
+lines.
+
+- [ ] **Step 3: Widen the machine check to argv literals**
+
+`tests/lib/test_ffbin.py` already bans the probe flag everywhere under `tests/`. Add a
+sibling banning bare binary names under `tests/integration/` only, with the `tests/lib/`
+exemption stated above as its docstring. Reuse the assembled-needle and non-vacuity
+techniques already in that file — the flag check documents why both are needed.
+
+- [ ] **Step 4: Run**
+
+`.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
+Expected: EXIT 0, **still 8 skipped**, same identity. Passed count not pinned.
+
+- [ ] **Step 5: Commit**
 
 ---
 

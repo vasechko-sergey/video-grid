@@ -213,10 +213,30 @@ corruption will trust it to do something it does not do.
 same shape as the existing scan's `lint.py` exemption — a hole by construction, pinned to
 exactly one file by its own test, so nothing else can hide behind it.
 
-Scope: `scripts/` only, as the existing scan already is. `tests/` is deliberately excluded —
-test files legitimately contain `"ffmpeg"` argv literals as fixtures (`test_lint.py`'s
-`REAL_SITES` are *printed output from the real builders*, and banning them would be wrong).
-The test-side exposure is covered by §5's chokepoint instead.
+Scope: `scripts/` only, as the existing scan already is.
+
+`tests/` needs a different instrument, and the original version of this section got it
+wrong by treating the whole tree as one thing. Three zones, three answers:
+
+- **`tests/integration/`** must run the *same* binary production runs — 37 argv literals
+  across 16 files build fixtures and probe outputs. Leaving them on PATH would make the
+  suite exercise a configuration no user has, and would specifically hollow out §10's
+  golden proof: a golden whose fixture came from one build and whose output came from
+  another cannot answer whether the build swap moved pixels. Banned, by a check in
+  `test_ffbin.py`.
+- **`tests/lib/`** is exempt. `test_lint.py`'s `REAL_SITES` fixtures are *printed output
+  from the real builders* — the literals **are** the test data, and resolving them would
+  destroy the fixture. `test_proc.py` tests the wrapper's timeout and error handling, not
+  the pipeline.
+- **Nowhere under `tests/`** may spell ffmpeg's `-filters` flag in an argv, since an
+  independent capability probe is precisely §5's trap. `has_filter` is the only way to ask.
+
+That last check had to be built as an **emission** test, not a line scan, for a reason
+worth recording: the first draft asserted in its own docstring that the file "never spells
+the flag", and that claim was false as written — two docstrings in the same file name
+`ffmpeg -filters` in prose, at exactly the place a reader looks to understand the probe.
+A scan that banned the characters would have made its own rule undocumentable at its own
+site, and could never have gone green.
 
 ## 8. Flags
 
