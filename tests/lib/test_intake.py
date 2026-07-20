@@ -78,44 +78,22 @@ def test_describe():
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
 
 
-def _stub_vidstabdetect_run(seen: dict):
-    """A proc.run stand-in that writes a minimal valid .trf to whatever path the
-    real vidstabdetect command would have written, and records the kwargs it was
-    called with — so the timeout wiring can be asserted without a real ffmpeg
-    pass over a real clip."""
-    def fake_run(cmd, **kwargs):
-        seen.update(kwargs)
-        # the -vf value is `vidstabdetect=shakiness=8:result=<path>:fileformat=ascii`,
-        # so the path ends at the next option separator — not at end-of-string.
-        trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1].split(":", 1)[0]
-        with open(trf_path, "w") as f:
-            f.write("VID.STAB 1\n")
-        return types.SimpleNamespace(stdout=b"")
-    return fake_run
-
-
-def test_shake_by_window_scales_its_timeout_to_clip_length(monkeypatch):
-    # vidstabdetect runs over the WHOLE raw clip — the one unbounded-input
-    # analysis pass in this repo (everything else works on 15-60s reels or
-    # extracted windows) — so a flat proc.run default is not generous enough for
-    # a long raw take (see SHAKE_TIMEOUT_REALTIME_MULTIPLE's derivation). This
-    # pins the WIRING: the timeout actually handed to proc.run scales with
-    # `dur`, past the floor.
+def test_shake_by_window_hands_detect_the_clip_and_the_clip_s_own_length(monkeypatch):
+    """The collapse onto vidstab.detect left intake only its windowing, so the
+    handoff is what can still break: the clip itself, and the clip's OWN length
+    (not a window's) — that length is what scales detect's timeout. The timeout
+    arithmetic is vidstab's, pinned in tests/lib/test_vidstab.py."""
     monkeypatch.setattr(vidstab, "require", lambda: None)
-    seen: dict = {}
-    monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
-    intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=500.0)
-    assert seen["timeout"] == pytest.approx(500.0 * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+    seen: list = []
 
+    def fake_detect(src, trf, dur):
+        seen.append((src, dur))
+        return [0.0, 10.0, 0.0, 0.0]
 
-def test_shake_by_window_keeps_the_default_floor_for_a_short_clip(monkeypatch):
-    # A 2s clip must not get a 20s timeout — the floor keeps a short clip at the
-    # already-generous default rather than an unrealistically tight one.
-    monkeypatch.setattr(vidstab, "require", lambda: None)
-    seen: dict = {}
-    monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
-    intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=2.0)
-    assert seen["timeout"] == intake.proc.DEFAULT_TIMEOUT_S
+    monkeypatch.setattr(vidstab, "detect", fake_detect)
+    out = intake.shake_by_window("clip.mp4", [(1.0, 2.0)], fps=1.0, res=(1000, 1080), dur=500.0)
+    assert seen == [("clip.mp4", 500.0)]     # once, with the clip's own duration
+    assert out == [5.0 / 1000]               # windowing + width normalisation stay intake's
 
 
 def test_windowed_shake_averages_and_normalises():

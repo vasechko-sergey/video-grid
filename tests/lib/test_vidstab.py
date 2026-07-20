@@ -142,3 +142,20 @@ def test_mean_shake_of_nothing_is_zero_not_a_crash():
     # a .trf with a header and no Frame lines parses to []; dividing by len() there
     # would be a ZeroDivisionError inside an error path, hiding the real cause.
     assert vidstab.mean_shake([], 1000) == 0.0
+
+
+def test_mean_shake_refuses_a_width_the_probe_could_not_supply():
+    """A zero width is a FAILED PROBE, not a degenerate frame. The inherited
+    `or 1` did not return a wrong magnitude, it returned a different unit — raw
+    pixels named "fraction of frame width" — which then meets SHAKY_CLIP and
+    culls footage that was never shaky. FootageClip already rejects a res with a
+    zero side; this is the same refusal one layer earlier."""
+    with pytest.raises(ValueError, match="frame width is 0.*probe_stream.*re-render"):
+        vidstab.mean_shake([10.0], 0)
+
+
+def test_mean_shake_refuses_a_broken_width_even_with_no_magnitudes():
+    # order matters: the empty-mags early return must not shadow a broken width,
+    # or the failed probe goes unreported on exactly the windows that carry no frames.
+    with pytest.raises(ValueError, match="frame width is 0"):
+        vidstab.mean_shake([], 0)

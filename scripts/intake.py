@@ -14,7 +14,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, footage, proc, vidstab
+from scripts.lib import assembly, footage, vidstab
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.track import MODEL                    # reuse the tracker's model choice
 
@@ -124,8 +124,7 @@ def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: 
     out = []
     for a, d in windows:
         f0, f1 = int(a * fps), int((a + d) * fps)
-        seg = mags[f0:f1] or [0.0]
-        out.append((sum(seg) / len(seg)) / (w or 1))   # fraction of frame width
+        out.append(vidstab.mean_shake(mags[f0:f1], w))   # fraction of frame width
     return out
 
 
@@ -135,12 +134,11 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     normalized by frame width. No per-window cutting → no -ss seek landmine.
 
     `dur` (the clip's own length, already probed by the caller) scales the timeout
-    vidstab.detect hands to proc.run: this pass runs over the WHOLE raw clip,
-    unlike everything else in this repo, so proc's flat default is not generous
-    enough for a long take. The detect recipe, the timeout derivation and the
-    .trf parsing all live in scripts/lib/vidstab.py, shared with process_episode's
-    planned stabilize pre-stage so both would report the same measurement
-    (design 2026-07-20 §5).
+    `vidstab.detect` derives: this pass runs over the WHOLE raw clip, unlike
+    everything else in this repo, so a flat default is not generous enough for a
+    long take. The detect recipe, the timeout derivation and the .trf parsing all
+    live in scripts/lib/vidstab.py, so every consumer of that module reports the
+    same measurement (design 2026-07-20 §5).
     """
     vidstab.require()
     with tempfile.TemporaryDirectory() as d:

@@ -116,8 +116,8 @@ def detect(src: str, trf: str, dur: float) -> list[float]:
     machine in this project carried libvidstab and the one covering test was
     skipped everywhere it ever ran.
 
-    Does NOT call require(): the gate belongs at the entry points, so one caller
-    does not pay three uncached `ffmpeg -filters` probes for one operation.
+    Does NOT call require(): the gate belongs at the entry points, so a caller
+    running several passes pays it once rather than once per pass.
     """
     proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf",
               f"vidstabdetect={DETECT_ARGS}:result={trf}:fileformat=ascii",
@@ -127,7 +127,26 @@ def detect(src: str, trf: str, dur: float) -> list[float]:
 
 def mean_shake(mags: list[float], width: int) -> float:
     """Mean per-frame magnitude as a FRACTION OF FRAME WIDTH — the same unit
-    FootageWindow.shake carries, so the two are directly comparable (design §5)."""
+    FootageWindow.shake carries, so the two are directly comparable (design §5).
+
+    A non-positive width is refused rather than defended against. It is not a
+    degenerate-but-valid frame; it means the probe that produced it failed.
+    Substituting 1 would not yield a wrong magnitude, it would yield a different
+    UNIT — raw pixels wearing the name "fraction of frame width" — which then
+    meets intake.SHAKY_CLIP (0.02), saturates every window's stability term to
+    zero and culls footage that was never shaky. FootageClip already rejects a
+    res with a zero side, so the silent substitution was this module disagreeing
+    with the contract its own output feeds.
+    """
+    if width <= 0:
+        raise ValueError(
+            f"frame width is {width} — shake cannot be expressed as a fraction of it. "
+            "The width comes from assembly.probe_stream's `width` field (intake passes "
+            "res[0]); a non-positive one means ffprobe reported no usable video "
+            "geometry for the clip, so re-probe it or re-render it")
+    # Checked AFTER the width, on purpose: an empty magnitude list is a legitimate
+    # input (a window whose frame slice is empty), a broken width never is, and the
+    # broken width is worth reporting even when there are no magnitudes to scale.
     if not mags:
         return 0.0
-    return (sum(mags) / len(mags)) / (width or 1)
+    return (sum(mags) / len(mags)) / width
