@@ -112,6 +112,34 @@ def test_parse_trf_bad_header_raises():
         intake._parse_trf("not a vidstab file\nFrame 1 (List 0 [])")
 
 
+def test_a_binary_trf_names_the_format_and_the_option(tmp_path):
+    """libvidstab's DEFAULT serializer is binary, and the whole shake path was
+    written against the ASCII one — so this is the shape a caller actually hits
+    when the `fileformat=ascii` option goes missing.
+
+    Before this, Path.read_text() raised UnicodeDecodeError several frames up,
+    naming a byte offset rather than a remedy, and _parse_trf's promise to fail
+    loud on an unrecognized header could never be kept on a binary file.
+    """
+    trf = tmp_path / "t.trf"
+    trf.write_bytes(b"TRF1\x0f\x00\x00\x00\x05\x00\x00\x00\xd0?")
+    with pytest.raises(ValueError, match="BINARY .trf.*fileformat=ascii"):
+        intake._read_trf(trf)
+
+
+def test_an_undecodable_trf_with_no_known_magic_still_fails_loud(tmp_path):
+    trf = tmp_path / "t.trf"
+    trf.write_bytes(b"\xd0\xd0\xd0 not utf-8 and not TRF")
+    with pytest.raises(ValueError, match="cannot trust the shake estimate"):
+        intake._read_trf(trf)
+
+
+def test_ascii_trf_decodes_unchanged(tmp_path):
+    trf = tmp_path / "t.trf"
+    trf.write_text(_TRF)
+    assert intake._read_trf(trf) == _TRF
+
+
 def _stub_vidstabdetect_run(seen: dict):
     """A proc.run stand-in that writes a minimal valid .trf to whatever path the
     real vidstabdetect command would have written, and records the kwargs it was
@@ -119,7 +147,9 @@ def _stub_vidstabdetect_run(seen: dict):
     pass over a real clip."""
     def fake_run(cmd, **kwargs):
         seen.update(kwargs)
-        trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1]
+        # the -vf value is `vidstabdetect=result=<path>:fileformat=ascii`, so the
+        # path ends at the next option separator — not at end-of-string.
+        trf_path = cmd[cmd.index("-vf") + 1].split("result=", 1)[1].split(":", 1)[0]
         with open(trf_path, "w") as f:
             f.write("VID.STAB 1\n")
         return types.SimpleNamespace(stdout=b"")

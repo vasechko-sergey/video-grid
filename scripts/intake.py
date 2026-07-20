@@ -135,6 +135,30 @@ def _describe(people: int, shot: str, motion: float) -> str:
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
 
 
+def _read_trf(path: Path) -> str:
+    """Decode a .trf, turning the binary-format case into the loud error the parser
+    already meant to raise.
+
+    _parse_trf promises to fail loud on an unrecognized header rather than report a
+    silent shake=0 — but it could never keep that promise against a binary file,
+    because `Path.read_text()` raises UnicodeDecodeError several frames earlier,
+    naming a byte offset instead of a remedy. Checking the magic on bytes first puts
+    the intended error back within reach.
+    """
+    raw = path.read_bytes()
+    if raw.startswith(b"TRF"):
+        raise ValueError(
+            f"vidstabdetect wrote a BINARY .trf (magic {raw[:4]!r}) — this parser reads "
+            "the ASCII serializer. `fileformat=ascii` on the vidstabdetect call selects "
+            "it; libvidstab's own default is binary")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(
+            f"vidstabdetect .trf at {path} is neither UTF-8 text nor a known binary "
+            "format — cannot trust the shake estimate") from e
+
+
 def _parse_trf(text: str) -> list[float]:
     """Per-frame shake magnitude (median localmotion vector length, px) from a
     libvidstab VID.STAB transforms file. Fail loud on an unrecognized header —
@@ -184,9 +208,16 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     timeout = max(proc.DEFAULT_TIMEOUT_S, dur * SHAKE_TIMEOUT_REALTIME_MULTIPLE)
     with tempfile.TemporaryDirectory() as d:
         trf = str(Path(d) / "t.trf")
-        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf", f"vidstabdetect=result={trf}", "-f", "null", "-"],
+        # fileformat=ascii is REQUIRED, not a preference: libvidstab defaults to a
+        # BINARY .trf (magic "TRF1") while _parse_trf reads the ASCII serializer's
+        # "VID.STAB" text. Omitting it does not degrade gracefully — the read dies on
+        # the first non-UTF-8 byte. This never surfaced before because no machine in
+        # this project carried libvidstab at all, so the one test covering the path
+        # was skipped everywhere it ever ran.
+        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf",
+                  f"vidstabdetect=result={trf}:fileformat=ascii", "-f", "null", "-"],
                  timeout=timeout)
-        mags = _parse_trf(Path(trf).read_text())
+        mags = _parse_trf(_read_trf(Path(trf)))
     return _windowed_shake(mags, windows, fps, res[0])
 
 
