@@ -2,7 +2,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
-from scripts.lib import appearance, ffbin
+from scripts.lib import appearance, vidstab
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
 
 
@@ -17,22 +17,6 @@ def test_shot_type_buckets():
     assert intake.shot_type((500, 500, 300, 300), res) == "medium"   # area 0.09 in [0.08, 0.30)
     assert intake.shot_type((500, 500, 100, 100), res) == "wide"     # area 0.01 < MEDIUM_AREA
     assert intake.shot_type(None, res) == "wide"
-
-
-def test_require_vidstab_raises_when_absent(monkeypatch):
-    # the probe now happens inside ffbin.has_filter (design 2026-07-20 §5) —
-    # patch the resolver's proc, not intake's, so this exercises where the
-    # filter-list check actually lives.
-    monkeypatch.setattr(ffbin.proc, "run",
-                        lambda *a, **k: types.SimpleNamespace(stdout=b"... scale ... overlay ..."))
-    with pytest.raises(ValueError, match="vidstab"):
-        intake._require_vidstab()
-
-
-def test_require_vidstab_ok_when_present(monkeypatch):
-    monkeypatch.setattr(ffbin.proc, "run",
-                        lambda *a, **k: types.SimpleNamespace(stdout=b"... vidstabdetect ..."))
-    intake._require_vidstab()   # no raise
 
 
 def _line(n_from_to):   # helper: build a timeline [(t, people, bbox)] at 1s steps
@@ -94,52 +78,6 @@ def test_describe():
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
 
 
-_TRF = "\n".join([
-    "VID.STAB 1",
-    "Frame 1 (List 0 [])",
-    "Frame 2 (List 2 [(LM 3 4 100 100 0.5 0.9) (LM 6 8 200 200 0.5 0.9)])",  # mags 5, 10 → median 10
-    "Frame 3 (List 1 [(LM 0 0 100 100 0.5 0.9)])",                            # mag 0
-])
-
-
-def test_parse_trf_median_magnitudes():
-    mags = intake._parse_trf(_TRF)
-    assert mags == [0.0, 10.0, 0.0]
-
-
-def test_parse_trf_bad_header_raises():
-    with pytest.raises(ValueError, match="unrecognized header"):
-        intake._parse_trf("not a vidstab file\nFrame 1 (List 0 [])")
-
-
-def test_a_binary_trf_names_the_format_and_the_option(tmp_path):
-    """libvidstab's DEFAULT serializer is binary, and the whole shake path was
-    written against the ASCII one — so this is the shape a caller actually hits
-    when the `fileformat=ascii` option goes missing.
-
-    Before this, Path.read_text() raised UnicodeDecodeError several frames up,
-    naming a byte offset rather than a remedy, and _parse_trf's promise to fail
-    loud on an unrecognized header could never be kept on a binary file.
-    """
-    trf = tmp_path / "t.trf"
-    trf.write_bytes(b"TRF1\x0f\x00\x00\x00\x05\x00\x00\x00\xd0?")
-    with pytest.raises(ValueError, match="BINARY .trf.*fileformat=ascii"):
-        intake._read_trf(trf)
-
-
-def test_an_undecodable_trf_with_no_known_magic_still_fails_loud(tmp_path):
-    trf = tmp_path / "t.trf"
-    trf.write_bytes(b"\xd0\xd0\xd0 not utf-8 and not TRF")
-    with pytest.raises(ValueError, match="cannot trust the shake estimate"):
-        intake._read_trf(trf)
-
-
-def test_ascii_trf_decodes_unchanged(tmp_path):
-    trf = tmp_path / "t.trf"
-    trf.write_text(_TRF)
-    assert intake._read_trf(trf) == _TRF
-
-
 def _stub_vidstabdetect_run(seen: dict):
     """A proc.run stand-in that writes a minimal valid .trf to whatever path the
     real vidstabdetect command would have written, and records the kwargs it was
@@ -163,17 +101,17 @@ def test_shake_by_window_scales_its_timeout_to_clip_length(monkeypatch):
     # a long raw take (see SHAKE_TIMEOUT_REALTIME_MULTIPLE's derivation). This
     # pins the WIRING: the timeout actually handed to proc.run scales with
     # `dur`, past the floor.
-    monkeypatch.setattr(intake, "_require_vidstab", lambda: None)
+    monkeypatch.setattr(vidstab, "require", lambda: None)
     seen: dict = {}
     monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
     intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=500.0)
-    assert seen["timeout"] == pytest.approx(500.0 * intake.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+    assert seen["timeout"] == pytest.approx(500.0 * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
 
 
 def test_shake_by_window_keeps_the_default_floor_for_a_short_clip(monkeypatch):
     # A 2s clip must not get a 20s timeout — the floor keeps a short clip at the
     # already-generous default rather than an unrealistically tight one.
-    monkeypatch.setattr(intake, "_require_vidstab", lambda: None)
+    monkeypatch.setattr(vidstab, "require", lambda: None)
     seen: dict = {}
     monkeypatch.setattr(intake.proc, "run", _stub_vidstabdetect_run(seen))
     intake.shake_by_window("clip.mp4", [(0.0, 2.0)], fps=30.0, res=(1920, 1080), dur=2.0)

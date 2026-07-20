@@ -6,7 +6,7 @@ sub-scene carve + score + phash cull. The interactive hero-naming lives in the
 footage-intake SKILL — Python cannot ask a human — this module only surfaces
 crops and builds descriptors.
 """
-import argparse, json, re, statistics, tempfile
+import argparse, json, statistics, tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -14,7 +14,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, ffbin, footage, proc
+from scripts.lib import assembly, ffbin, footage, proc, vidstab
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.track import MODEL                    # reuse the tracker's model choice
 
@@ -26,14 +26,6 @@ MOTION_PEAK = 0.35                                # motion value scored highest 
 DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
 BEST_FLOOR = 0.50
 SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage
-# shake_by_window's vidstabdetect pass runs over the WHOLE raw clip — the one
-# analysis in this repo whose input is unbounded raw footage (everything else
-# works on 15-60s reels or extracted windows). A same-class motion-estimation
-# proxy (mestimate=epzs; this ffmpeg build lacks vidstab) measured 13.6 fps
-# analysing 4K/30 footage — ~2.2x realtime (30/13.6) — and 4K/60 doubles the
-# per-second frame count, so ~4.4x realtime is the worst measured case. 10x
-# leaves > 2x headroom above that for slower hardware or larger frames.
-SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
@@ -51,14 +43,6 @@ def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, in
     if area >= MEDIUM_AREA:
         return "medium"
     return "wide"
-
-
-def _require_vidstab() -> None:
-    """Intake is the repo's first runtime vidstab consumer — fail loud with the remedy."""
-    ffbin.require_filter(
-        "vidstabdetect",
-        "footage-intake measures shake with it. Run `bash setup.sh`, which installs "
-        "ffmpeg-full (libvidstab included)")
 
 
 def carve_windows(scene_cuts: list[float],
@@ -132,57 +116,6 @@ def _describe(people: int, shot: str, motion: float) -> str:
     return f"{who}, {shot}, {dyn}"
 
 
-_LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
-
-
-def _read_trf(path: Path) -> str:
-    """Decode a .trf, turning the binary-format case into the loud error the parser
-    already meant to raise.
-
-    _parse_trf promises to fail loud on an unrecognized header rather than report a
-    silent shake=0 — but it could never keep that promise against a binary file,
-    because `Path.read_text()` raises UnicodeDecodeError several frames earlier,
-    naming a byte offset instead of a remedy. Checking the magic on bytes first puts
-    the intended error back within reach.
-    """
-    raw = path.read_bytes()
-    if raw.startswith(b"TRF"):
-        raise ValueError(
-            f"vidstabdetect wrote a BINARY .trf (magic {raw[:4]!r}) — this parser reads "
-            "the ASCII serializer. `fileformat=ascii` on the vidstabdetect call selects "
-            "it; libvidstab's own default is binary")
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError as e:
-        raise ValueError(
-            f"vidstabdetect .trf at {path} is neither UTF-8 text nor a known binary "
-            "format — cannot trust the shake estimate") from e
-
-
-def _parse_trf(text: str) -> list[float]:
-    """Per-frame shake magnitude (median localmotion vector length, px) from a
-    libvidstab VID.STAB transforms file. Fail loud on an unrecognized header —
-    never a silent shake=0 (the format is libvidstab-version dependent)."""
-    lines = text.splitlines()
-    if not lines:
-        raise ValueError("vidstabdetect produced an empty .trf (no transforms) — the analysis "
-                         "failed; check the clip is readable")
-    if not lines[0].startswith("VID.STAB"):
-        raise ValueError("vidstabdetect .trf has an unrecognized header — libvidstab version mismatch? "
-                         "cannot trust the shake estimate (run `bash setup.sh`)")
-    mags: list[float] = []
-    for line in lines[1:]:
-        if not line.startswith("Frame"):
-            continue
-        lms = _LM_RE.findall(line)
-        if lms:
-            vecs = sorted((int(x) ** 2 + int(y) ** 2) ** 0.5 for x, y in lms)
-            mags.append(vecs[len(vecs) // 2])          # upper-median localmotion magnitude (vecs[len//2])
-        else:
-            mags.append(0.0)
-    return mags
-
-
 def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: float, w: int) -> list[float]:
     out = []
     for a, d in windows:
@@ -197,27 +130,25 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     """vidstabdetect once per clip → per-frame magnitudes → averaged per window,
     normalized by frame width. No per-window cutting → no -ss seek landmine.
 
-    `dur` (the clip's own length, already probed by the caller) scales the
-    timeout handed to `proc.run`: unlike everything else in this repo, this pass
-    runs over the WHOLE raw clip rather than a 15-60s reel or extracted window,
-    so `proc.run`'s flat default is not generous enough for a long take (see
-    SHAKE_TIMEOUT_REALTIME_MULTIPLE's derivation above). The floor keeps a short
-    clip at that same generous default instead of an unrealistically tight one.
+    `dur` (the clip's own length, already probed by the caller) scales the timeout
+    vidstab.detect hands to proc.run: this pass runs over the WHOLE raw clip, so
+    proc's flat default is not generous enough for a long take. The detect recipe
+    and the timeout derivation both live in scripts/lib/vidstab.py, shared with
+    process_episode's stabilize pre-stage so the two report the same measurement
+    (design 2026-07-20 §5).
     """
-    _require_vidstab()
-    timeout = max(proc.DEFAULT_TIMEOUT_S, dur * SHAKE_TIMEOUT_REALTIME_MULTIPLE)
+    vidstab.require()
+    timeout = max(proc.DEFAULT_TIMEOUT_S, dur * vidstab.SHAKE_TIMEOUT_REALTIME_MULTIPLE)
     with tempfile.TemporaryDirectory() as d:
         trf = str(Path(d) / "t.trf")
         # fileformat=ascii is REQUIRED, not a preference: libvidstab defaults to a
-        # BINARY .trf (magic "TRF1") while _parse_trf reads the ASCII serializer's
+        # BINARY .trf (magic "TRF1") while parse_trf reads the ASCII serializer's
         # "VID.STAB" text. Omitting it does not degrade gracefully — the read dies on
-        # the first non-UTF-8 byte. This never surfaced before because no machine in
-        # this project carried libvidstab at all, so the one test covering the path
-        # was skipped everywhere it ever ran.
+        # the first non-UTF-8 byte.
         proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-vf",
                   f"vidstabdetect=result={trf}:fileformat=ascii", "-f", "null", "-"],
                  timeout=timeout)
-        mags = _parse_trf(_read_trf(Path(trf)))
+        mags = vidstab.parse_trf(vidstab.read_trf(Path(trf)))
     return _windowed_shake(mags, windows, fps, res[0])
 
 
