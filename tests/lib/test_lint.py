@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.lib import lint
 
 
@@ -349,3 +351,152 @@ def test_each_drawtext_in_a_chain_needs_its_own_font():
     # reader of a six-title chain no way to find the offender.
     assert "#2 of 2" in msgs[0]
     assert "text='b'" in msgs[0]
+
+
+# --- every real call site in the tree must lint clean -------------------------
+# Design §4.2's table, as executable fixtures. If a future edit to the predicate
+# starts firing on production code, THIS is what goes red — before the guard has
+# a chance to raise in the middle of somebody's render.
+#
+# Transcribed from the SHIPPED commands, not from the design's prose: the filter
+# strings below were printed out of the real builders (reframe._filter_args,
+# mix._mix_graph, titles.build_filterchain, draft.segment_filter), so a fixture
+# edited to satisfy a wrong predicate destroys the only evidence that the lint
+# matches reality. Fix the predicate; never the fixture.
+#
+# Wider than the design's seven-row table, in two directions the fix rounds
+# proved load-bearing:
+#   * The three SPLAT sites design §2 names — reframe.py:380, deliver.py:76/:80,
+#     mix.py:207 — assemble their argv through `*builder(...)`. Static analysis
+#     cannot see through that, so runtime is the ONLY layer covering them and
+#     one fixture per background variant is cheap insurance.
+#   * The shapes that were live false positives: `drawbox=…:color=red@1.0`
+#     (test_pan.py:27), `pad=…` (whose literal `d=` masked a second bug, design
+#     §6), `seed=` beside a real `d=`, and `-sseof`.
+
+_FONT = "/System/Library/Fonts/Helvetica.ttc"
+
+REAL_SITES = {
+    "extract.py:16 — output seek on a window": [
+        "ffmpeg", "-y", "-i", "src.mp4", "-ss", "3.5", "-t", "2.0",
+        "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "out.mp4"],
+    "check_reel.py:47 — blackdetect, a d= that is not a source bound": [
+        "ffmpeg", "-i", "master.mp4", "-vf", "blackdetect=d=0.05:pic_th=0.98",
+        "-an", "-f", "null", "-"],
+    "check_reel.py:65 — output seek, still grab": [
+        "ffmpeg", "-y", "-i", "reel.mp4", "-ss", "1.5", "-frames:v", "1", "f.png"],
+    "check_episode.py:24 — sseof tail grab": [
+        "ffmpeg", "-y", "-sseof", "-0.5", "-i", "clip.mp4", "/w/tail%02d.png"],
+    "check_episode.py:32 — body sample on an fps grid": [
+        "ffmpeg", "-y", "-i", "clip.mp4", "-vf", "fps=5/2.0",
+        "-frames:v", "5", "/w/b%02d.png"],
+    "storyboard.py:36 — input seek, still grab, no window": [
+        "ffmpeg", "-y", "-ss", "1.2", "-i", "src.mp4", "-frames:v", "1", "/w/f00.png"],
+    "mix.py:72 — a segment's nat-sound bed": [
+        "ffmpeg", "-y", "-i", "seg.mp4", "-t", "2.5", "-vn", "-ac", "2",
+        "-ar", "48000", "-af", "apad", "-c:a", "pcm_s16le", "amb_000.wav"],
+    "mix.py:75 — anullsrc bounded by -t": [
+        "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "-t", "2.5", "-c:a", "pcm_s16le", "amb_000.wav"],
+    "mix.py:109 — anoisesrc bounded by d=, with seed= beside it": [
+        "ffmpeg", "-y", "-f", "lavfi", "-i",
+        "anoisesrc=color=pink:r=48000:d=0.35:a=0.9:seed=42",
+        "-af", ("bandpass=f=1200:width_type=q:w=0.7,afade=t=in:st=0:d=0.08,"
+                "afade=t=out:st=0.08:d=0.27"),
+        "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "whoosh.wav"],
+    "mix.py:137 — sfx bed, the -t sitting AHEAD of the lavfi source": [
+        "ffmpeg", "-y", "-t", "18.000000", "-f", "lavfi", "-i",
+        "anullsrc=r=48000:cl=stereo", "-i", "whoosh.wav", "-filter_complex",
+        ("[1:a]asplit=2[w0][w1];[w0]adelay=2800:all=1[d0];"
+         "[w1]adelay=7300:all=1[d1];"
+         "[0:a][d0][d1]amix=inputs=3:duration=first:normalize=0[sfx]"),
+        "-map", "[sfx]", "-c:a", "pcm_s16le", "sfx.wav"],
+    "mix.py:193 — input seek on a window, accurate_seek": [
+        "ffmpeg", "-y", "-accurate_seek", "-ss", "12.5", "-i", "track.mp3",
+        "-t", "18.0",
+        "-af", "afade=t=in:st=0:d=0.5,afade=t=out:st=17.5:d=0.5", "frag.wav"],
+    "mix.py:207 — the ducking mix graph (a splat site)": [
+        "ffmpeg", "-y", "-i", "frag.wav", "-i", "ambient.wav", "-i", "sfx.wav",
+        "-filter_complex",
+        ("[0:a]asplit=2[msum][mkey];[1:a]volume=0.6[amb];"
+         "[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:attack=20:"
+         "release=300[duck];[2:a]volume=1.0[sfx];"
+         "[msum][duck][sfx]amix=inputs=3:duration=first[mixed]"),
+        "-map", "[mixed]", "mixed.wav"],
+    "reframe.py:380 — fill, the fast path (the crown-jewel -vf)": [
+        "ffmpeg", "-y", "-i", "src.mp4", "-vf",
+        ("crop=405:720:x='if(lt(t,1.0000),(100.0+(12.500)*(t-0.0000)),200.0)':y=0,"
+         "scale=1080:1920,colorchannelmixer=rr=1.000:gg=1.050:bb=1.100,"
+         "fps=30,format=yuv420p"),
+        "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-an", "out.mp4"],
+    "reframe.py:380 — solid background, d= AND an output -t": [
+        "ffmpeg", "-y", "-i", "src.mp4", "-filter_complex",
+        ("color=c=black:s=1080x1920:r=30:d=2.000000[bg];"
+         "[0:v]crop=405:720:x='0.0':y=0,scale=1080:1920[fg];"
+         "[bg][fg]overlay=0:0,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+         "fps=30,format=yuv420p"),
+        "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-an", "out.mp4"],
+    "reframe.py:380 — blur background composite": [
+        "ffmpeg", "-y", "-i", "src.mp4", "-filter_complex",
+        ("[0:v]split=2[a][b];[a]scale=1080:1920:"
+         "force_original_aspect_ratio=increase,crop=1080:1920,boxblur=18:2[bg];"
+         "[b]crop=405:720:x='0.0':y=0,scale=1080:1920[fg];"
+         "[bg][fg]overlay=0:0,colorchannelmixer=rr=1.000:gg=1.000:bb=1.000,"
+         "fps=30,format=yuv420p"),
+        "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-an", "out.mp4"],
+    # Design §6's masking pair, as one live command: a bounded `color=…:d=`
+    # source sitting in the same argument as a `pad=` whose literal `d=` used to
+    # read as that source's bound. Both bugs were present here at once and each
+    # hid the other.
+    "reframe.py:380 — insert over solid, bordered (`pad=` carries a literal d=)": [
+        "ffmpeg", "-y", "-i", "src.mp4", "-filter_complex",
+        ("color=c=black:s=1080x1920:r=30:d=2.000000[bg];"
+         "[0:v]crop=720:720:x='0.0':y=0,scale=956:956,pad=972:972:8:8:white[fg];"
+         "[bg][fg]overlay=54:480,colorchannelmixer=rr=0.900:gg=1.000:bb=1.100,"
+         "fps=30,format=yuv420p"),
+        "-t", "2.000000", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-an", "out.mp4"],
+    "draft.py:56 — drawtext label with a resolved font": [
+        "ffmpeg", "-y", "-i", "seg.mp4", "-vf",
+        ("scale=1080:1920:force_original_aspect_ratio=decrease:"
+         "force_divisible_by=2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30.0,"
+         f"format=yuv420p,drawtext=fontfile='{_FONT}':"
+         "textfile='/w/labels/label_0.txt':fontsize=h/24:fontcolor=white:box=1:"
+         "boxcolor=black@0.5:boxborderw=12:x=40:y=h-th-40"),
+        "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-an", "ep0.mp4"],
+    "draft.py:66 — silent draft, stream copy": [
+        "ffmpeg", "-y", "-i", "draft_master.mp4", "-c", "copy", "draft.mp4"],
+    "deliver.py:76 — a two-title drawtext chain (a splat site)": [
+        "ffmpeg", "-y", "-i", "master.mp4", "-vf",
+        (f"drawtext=fontfile='{_FONT}':textfile='/o/title_0.txt':fontsize=h/18:"
+         "fontcolor=white:x=(w-tw)/2:y=h*0.08:box=1:boxcolor=black@0.5:"
+         "boxborderw=16:enable='between(t,0.0,1.5)',"
+         f"drawtext=fontfile='{_FONT}':textfile='/o/title_1.txt':fontsize=h/18:"
+         "fontcolor=white:x=(w-tw)/2:y=h-th-h*0.12:"
+         "enable='between(t,8.0,10.0)'"),
+        "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", "REEL_v1.mp4"],
+    "deliver.py:80 — mux the pre-normalized stem (a splat site)": [
+        "ffmpeg", "-y", "-i", "master.mp4", "-i", "audio.m4a",
+        "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest",
+        "REEL_v1.mp4"],
+    "assembly.py:83 — lossless concat": [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "/w/_concat.txt",
+        "-c", "copy", "master.mp4"],
+    "test_pan.py:27 — drawbox colour PARAMS over a bounded colour source": [
+        "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1280x720:d=2.0:r=30",
+        "-vf", ("drawbox=x=40:y=310:w=120:h=120:color=red@1.0:t=fill,"
+                "drawbox=x=1120:y=310:w=120:h=120:color=blue@1.0:t=fill"),
+        "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "edges.mp4"],
+}
+
+
+@pytest.mark.parametrize("name", sorted(REAL_SITES))
+def test_every_real_call_site_lints_clean(name):
+    assert lint.check_argv(REAL_SITES[name]) == [], name
