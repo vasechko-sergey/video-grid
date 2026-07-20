@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from scripts import storyboard, check_episode
-from scripts.lib import models
+from scripts.lib import ffbin, models
 
 @pytest.mark.integration
 def test_storyboard_creates_sheet(sample_clip, tmp_path):
@@ -168,7 +168,7 @@ def test_black_frames_boundary_luma_fails_on_black_lead_in(tmp_path, sample_clip
     import subprocess
     bad = tmp_path / "bad.mp4"
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1920x1080:d=0.5:r=30",
+        [ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "color=c=black:s=1920x1080:d=0.5:r=30",
          "-i", str(sample_clip), "-filter_complex",
          "[0:v][1:v]concat=n=2:v=1:a=0", "-pix_fmt", "yuv420p", str(bad)],
         check=True, capture_output=True)
@@ -194,7 +194,7 @@ def test_black_frames_fails_on_fully_black_clip(tmp_path):
     import subprocess
     black = tmp_path / "black.mp4"
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1:r=30",
+        [ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1:r=30",
          "-pix_fmt", "yuv420p", str(black)],
         check=True, capture_output=True)
     res = check_episode._black_frames_check(str(black), black_floor=6.0, black_rel=0.35)

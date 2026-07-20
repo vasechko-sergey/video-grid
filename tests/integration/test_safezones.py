@@ -2,18 +2,17 @@
 on a genuinely assembled master, and the reel still passes overall (deliver's gate is
 overall, which advisory checks never drop). Mirrors tests/integration/test_ambient.py."""
 import json
-import shutil
 from pathlib import Path
 
 import pytest
 
 from scripts import check_reel
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import ReelCheckSpec
 
 
 def _solid(path, color, secs):
-    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c={color}:s=320x568:d={secs}:r=30",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", f"color=c={color}:s=320x568:d={secs}:r=30",
               "-pix_fmt", "yuv420p", str(path)])
     return str(path)
 
@@ -35,8 +34,10 @@ def _write_geom(dir_path, y):
 
 @pytest.mark.integration
 def test_safe_zones_flags_low_subject_without_blocking_delivery(tmp_path):
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
+    try:
+        ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
     clips = [_solid(tmp_path / "c0.mp4", "red", 1.0), _solid(tmp_path / "c1.mp4", "blue", 1.0)]
     master = str(tmp_path / "master.mp4")
     assembly.assemble(clips, (320, 568), 30.0, master)               # a genuinely assembled master

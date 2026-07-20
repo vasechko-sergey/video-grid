@@ -14,6 +14,7 @@ import pytest
 
 from scripts import check_episode, reframe
 from scripts import process_episode as pe
+from scripts.lib import ffbin
 from scripts.lib.models import Delivery, LayoutSpec, PathMeta, ReframeSpec
 
 FIX = Path(__file__).parent.parent / "fixtures"
@@ -31,7 +32,7 @@ COLOR = (105, 122, 137)
 # convention in this suite.
 def _dims(path):
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "json", str(path)],
         capture_output=True, text=True, check=True)
     s = json.loads(out.stdout)["streams"][0]
@@ -47,7 +48,7 @@ def _pixel(path, x, y):
     `exact=1` this helper cannot crop a single pixel at all, on any input.
     """
     out = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"crop=1:1:{x}:{y}:exact=1",
+        [ffbin.ffmpeg(), "-v", "error", "-i", str(path), "-vf", f"crop=1:1:{x}:{y}:exact=1",
          "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
         capture_output=True, check=True, timeout=60)
     return tuple(out.stdout[:3])

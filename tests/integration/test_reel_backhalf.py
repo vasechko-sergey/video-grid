@@ -4,7 +4,7 @@ assemble → check_reel → deliver. Design §7."""
 import json
 import pytest
 from scripts import check_reel, deliver, reframe
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelCheckSpec, REEL_H264)
 
 
@@ -67,7 +67,7 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
 
 def _solid(tmp, name, color, fps, dur=2, w=606, h=1080):
     out = str(tmp / f"{name}.mp4")
-    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
               f"color=c={color}:s={w}x{h}:d={dur}:r={fps}",
               "-pix_fmt", "yuv420p", "-c:v", "libx264", "-crf", "18", "-an", out])
     return out

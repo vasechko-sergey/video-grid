@@ -1,14 +1,12 @@
 """Real-ffmpeg proofs for the ambient bed (design §8): (A) mix with a bed still hits
 −14 LUFS; (B) sidechaincompress ducks — the ambient band is quieter under loud music.
 Synthetic known-answer signals, mirroring tests/integration/test_mood.py / test_offset.py."""
-import shutil
-
 import numpy as np
 import pytest
 from scipy.io import wavfile
 
 from scripts import check_reel, mix
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.models import MusicSpec
 
 _SR = 22050
@@ -41,8 +39,10 @@ def _band_rms(samples, sr, freq):
 
 @pytest.mark.integration
 def test_mix_with_ambient_hits_target_loudness(tmp_path):
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
+    try:
+        ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
     ms = _music(tmp_path / "m.wav", secs=6)
     seg = _tone_wav(tmp_path / "seg.wav", secs=6, freq=880, amp=0.5)
     stem = mix.mix(ms, str(tmp_path / "out"), dur=6.0, segments=[(seg, 6.0)])
@@ -52,14 +52,16 @@ def test_mix_with_ambient_hits_target_loudness(tmp_path):
 
 @pytest.mark.integration
 def test_ambient_ducks_under_loud_music(tmp_path):
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
+    try:
+        ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
     # music (220 Hz) loud for the first half, silent after; ambient (880 Hz) constant.
     ms = _music(tmp_path / "m.wav", secs=6, first_half_only=True)
     seg = _tone_wav(tmp_path / "seg.wav", secs=6, freq=880, amp=0.5)
     stem = mix.mix(ms, str(tmp_path / "out"), dur=6.0, segments=[(seg, 6.0)])
     dec = str(tmp_path / "dec.wav")
-    proc.run(["ffmpeg", "-y", "-i", stem, "-ac", "1", "-ar", str(_SR), dec])
+    proc.run([ffbin.ffmpeg(), "-y", "-i", stem, "-ac", "1", "-ar", str(_SR), dec])
     sr, y = wavfile.read(dec)
     y = y.astype(np.float64)
     half = len(y) // 2

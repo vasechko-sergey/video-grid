@@ -2,13 +2,13 @@ import dataclasses
 import json, subprocess
 import pytest
 from scripts import reframe
-from scripts.lib import models
+from scripts.lib import ffbin, models
 from scripts.lib import layout as layout_lib
 from scripts.lib.models import BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec, PathMeta
 
 def _dims(path):
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "json", str(path)],
         capture_output=True, text=True, check=True)
     s = json.loads(out.stdout)["streams"][0]
@@ -16,7 +16,7 @@ def _dims(path):
 
 def _duration(path):
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "json", str(path)],
         capture_output=True, text=True, check=True)
     return float(json.loads(out.stdout)["format"]["duration"])

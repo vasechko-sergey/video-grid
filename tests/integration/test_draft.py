@@ -9,7 +9,7 @@ import json
 import pytest
 
 from scripts import draft
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import MusicSpec
 
 
@@ -37,14 +37,14 @@ def _edl(tmp_path, source, music=None):
 
 
 def _dims(path):
-    out = proc.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0", "-show_entries",
                     "stream=width,height", "-of", "csv=p=0:s=x", str(path)]).stdout.decode().strip()
     w, h = out.split("x")
     return int(w), int(h)
 
 
 def _has_aac(path):
-    return "aac" in proc.run(["ffprobe", "-v", "error", "-select_streams", "a",
+    return "aac" in proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a",
                               "-show_entries", "stream=codec_name", "-of", "csv=p=0",
                               str(path)]).stdout.decode()
 
@@ -52,7 +52,7 @@ def _has_aac(path):
 @pytest.mark.integration
 def test_draft_fits_canvas_and_muxes_music(sample_clip, tmp_path):
     tone = tmp_path / "tone.wav"
-    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
               "-ac", "2", str(tone)])
     music = tmp_path / "MUSIC.json"
     music.write_text(json.dumps(

@@ -17,7 +17,7 @@ import json
 import pytest
 from pathlib import Path
 from scripts import edl_to_reel
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 
 
 def _project(tmp_path):
@@ -64,7 +64,7 @@ def _fake_track_pe(monkeypatch):
             {"mode": "fill", "crop_w": 1920, "crop_h": 1080, "crop_y": 0,
              "src_dims": [1920, 1080], "canvas": [1920, 1080], "out_dims": [1920, 1080],
              "rect_px": [0, 0, 1920, 1080], "freedom": 0}))
-        proc.run(["ffmpeg", "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
         return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
     # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
@@ -83,7 +83,7 @@ def test_edl_drives_a_silent_reel_end_to_end(sample_clip, tmp_path, monkeypatch)
     assert res["status"] == "delivered", res
     out = Path(res["output"])
     assert out.exists() and out.name == "REEL_v1.mp4"
-    codecs = proc.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",
+    codecs = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v", "-show_entries",
                        "stream=codec_type", "-of", "csv=p=0", str(out)]).stdout.decode()
     assert "video" in codecs
 
@@ -92,7 +92,7 @@ def test_edl_drives_a_silent_reel_end_to_end(sample_clip, tmp_path, monkeypatch)
 def test_edl_drives_a_reel_with_music(sample_clip, tmp_path, monkeypatch):
     _fake_track_pe(monkeypatch)
     tone = tmp_path / "tone.wav"
-    proc.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
               "-ac", "2", str(tone)])
     from scripts.lib.models import MusicSpec
     music = tmp_path / "MUSIC.json"
@@ -102,7 +102,7 @@ def test_edl_drives_a_reel_with_music(sample_clip, tmp_path, monkeypatch):
         str(sample_clip.parent), str(tmp_path / "w"), str(tmp_path / "out"),
         music=str(music))
     assert res["status"] == "delivered", res
-    audio = proc.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+    audio = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a", "-show_entries",
                       "stream=codec_name", "-of", "csv=p=0", str(Path(res["output"]))]).stdout.decode()
     assert "aac" in audio
 
@@ -129,7 +129,7 @@ def _fake_track_or_pan_pe(monkeypatch):
             {"mode": "fill", "crop_w": 1920, "crop_h": 1080, "crop_y": 0,
              "src_dims": [1920, 1080], "canvas": [1920, 1080], "out_dims": [1920, 1080],
              "rect_px": [0, 0, 1920, 1080], "freedom": 0, "pan": is_pan}))
-        proc.run(["ffmpeg", "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
         return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
     monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)

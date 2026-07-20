@@ -8,7 +8,7 @@ import pytest
 from scipy.io import wavfile
 
 from scripts import build_reel, check_reel, mix, reframe
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.models import (Delivery, LayoutSpec, MusicSpec, ReframeSpec,
                                 ReelCheckSpec, ReelEpisode, ReelManifest)
 
@@ -68,7 +68,7 @@ def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
         target_dur=dur, variety_min=4, color_delta_max=40.0, music=str(music_json))
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
     assert res["status"] == "delivered"
-    r = proc.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+    r = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a", "-show_entries",
                   "stream=codec_name", "-of", "default=nk=1:nw=1", res["output"]])
     assert r.stdout.decode().strip().startswith("aac")           # the delivered reel carries an aac stem
     assert res["report"]["checks"]["loudness"]["pass"] is True    # loudness gate green

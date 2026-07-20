@@ -1,12 +1,12 @@
 import json, subprocess
 import pytest
 from scripts import extract
-from scripts.lib import assembly
+from scripts.lib import assembly, ffbin
 from scripts.lib.edl import EDL
 
 def _duration(path):
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "json", str(path)], capture_output=True, text=True, check=True)
     return float(json.loads(out.stdout)["format"]["duration"])
 

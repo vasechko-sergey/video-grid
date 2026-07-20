@@ -1,4 +1,5 @@
 """ffbin resolves the binaries the pipeline runs (design 2026-07-20 §3)."""
+import ast
 from pathlib import Path
 
 import pytest
@@ -158,3 +159,54 @@ def test_no_test_runs_its_own_filter_probe():
               if any(q + _PROBE_FLAG in line for q in _QUOTES)]
     assert guilty == [], (
         f"ask ffbin.has_filter instead of probing ffmpeg directly: {guilty}")
+
+
+# Task 3b (design 2026-07-20-ffmpeg-baseline §"the integration suite runs the
+# same binary production does"): the sibling of the check above, one layer
+# down. That one bans the PROBE FLAG anywhere under tests/; this bans the bare
+# BINARY NAME, but only under tests/integration/ — the fixture-building and
+# codec/duration-reading argv that would otherwise run PATH's slim ffmpeg
+# alongside a production that has moved to ffmpeg-full.
+#
+# tests/lib/ is deliberately OUT of the swept root, not merely skipped — the
+# narrower root does the exempting by construction:
+#   - test_lint.py's REAL_SITES fixtures are PRINTED OUTPUT from the real
+#     builders; the literals ARE the test data, and resolving them would
+#     destroy the fixture.
+#   - test_proc.py tests the wrapper's timeout/error handling, not the
+#     pipeline; several of its commands are deliberately fake ("a.mp4") and
+#     never execute.
+#
+# EQUALITY on ast.Constant string values, not the substring/quote scan the
+# flag check above uses. The probe flag is asymmetric enough that no other
+# token in this codebase ends the same way, but "ffmpeg" is an ordinary word
+# this very suite says constantly in prose ("ffmpeg not installed", a
+# docstring explaining a skip guard, an error message) — a substring-plus-
+# quote scan would flag every one of them. No skip reason or docstring is
+# ever exactly "ffmpeg" or "ffprobe" and nothing longer, so comparing whole
+# string-literal values for equality sidesteps the false positives without
+# needing the docstring-subtraction tests/lib/test_landmine_scan.py's own
+# literal scan uses for its substring form.
+_BANNED_BARE_BINARIES = ("ffmpeg", "ffprobe")
+
+
+def test_no_integration_test_names_a_binary_instead_of_resolving_it():
+    """Post-install, ffmpeg-full never reaches PATH (design §3) — so a bare
+    "ffmpeg"/"ffprobe" argv[0] anywhere under tests/integration/ builds a
+    fixture or reads a codec with the SLIM PATH binary while production runs
+    the full one. Nothing goes silently uncovered (none of this is a filter
+    capability probe — that trap is test_no_test_runs_its_own_filter_probe's),
+    but it does mean the golden fixtures and the pipeline that processes them
+    were never proven against the SAME binary, which is exactly what design
+    §2's "same version, same revision" argument needs to be checking.
+    """
+    root = Path(__file__).resolve().parents[1] / "integration"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 10, f"the sweep matched nothing under {root}"
+    guilty = [f"{p.relative_to(root.parent.parent)}:{node.lineno}"
+              for p in files
+              for node in ast.walk(ast.parse(p.read_text()))
+              if isinstance(node, ast.Constant) and isinstance(node.value, str)
+              and node.value in _BANNED_BARE_BINARIES]
+    assert guilty == [], (
+        f"use ffbin.ffmpeg()/ffbin.ffprobe() instead of a bare literal: {guilty}")

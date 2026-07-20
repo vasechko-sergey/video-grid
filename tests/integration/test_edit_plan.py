@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from scripts import edit_plan, edl_to_reel
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 pytestmark = pytest.mark.integration
@@ -32,7 +32,7 @@ def _fake_track_pe(monkeypatch):
             {"mode": "fill", "crop_w": 1920, "crop_h": 1080, "crop_y": 0,
              "src_dims": [1920, 1080], "canvas": [1920, 1080], "out_dims": [1920, 1080],
              "rect_px": [0, 0, 1920, 1080], "freedom": 0}))
-        proc.run(["ffmpeg", "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
         return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
     # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
@@ -85,6 +85,6 @@ def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     assert reel["status"] == "delivered", reel
     out = Path(reel["output"])
     assert out.exists() and out.name == "REEL_v1.mp4"
-    codecs = proc.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",
+    codecs = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v", "-show_entries",
                        "stream=codec_type", "-of", "csv=p=0", str(out)]).stdout.decode()
     assert "video" in codecs

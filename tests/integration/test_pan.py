@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from scripts import reframe
-from scripts.lib import proc
+from scripts.lib import ffbin, proc
 from scripts.lib.models import Delivery, LayoutSpec, PanSpec, ReframeSpec
 
 pytestmark = pytest.mark.integration
@@ -24,7 +24,7 @@ def edge_marked_clip(tmp_path):
     INT32_MAX under this ffmpeg; constants are fine.
     """
     out = tmp_path / "edges.mp4"
-    proc.run(["ffmpeg", "-y", "-f", "lavfi",
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
               "-i", f"color=c=gray:s={SRC_W}x{SRC_H}:d={DUR}:r={FPS}",
               "-vf", ("drawbox=x=40:y=310:w=120:h=120:color=red@1.0:t=fill,"
                       "drawbox=x=1120:y=310:w=120:h=120:color=blue@1.0:t=fill"),
@@ -35,13 +35,13 @@ def edge_marked_clip(tmp_path):
 def _frame(clip: str, where: str, tmp_path: Path) -> Image.Image:
     png = tmp_path / f"{where}.png"
     if where == "first":
-        proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", "1", "-update", "1", str(png)])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-frames:v", "1", "-update", "1", str(png)])
     else:
         # -sseof BEFORE -i is the established form in this repo (check_episode
         # uses it) and is a DIFFERENT option that must precede -i. The §12 landmine
         # is an input-side `-ss` on a re-encoded window — scripts/lib/lint.py holds
         # the predicate; this command trips none of its five conditions.
-        proc.run(["ffmpeg", "-y", "-sseof", "-0.1", "-i", clip, "-update", "1", str(png)])
+        proc.run([ffbin.ffmpeg(), "-y", "-sseof", "-0.1", "-i", clip, "-update", "1", str(png)])
     return Image.open(png).convert("RGB")
 
 

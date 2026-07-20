@@ -5,7 +5,7 @@ matching test_reel_backhalf.py's precedent."""
 import json
 import pytest
 from scripts import build_reel, check_reel, reframe
-from scripts.lib import assembly, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelEpisode, ReelManifest)
 
 
@@ -13,7 +13,7 @@ def _tinted(sample_clip, tmp):
     """A warm copy of the grey sample clip — its red channel is boosted so its
     delivered mean sits off any neutral reference."""
     out = str(tmp / "warm.mp4")
-    proc.run(["ffmpeg", "-y", "-i", str(sample_clip),
+    proc.run([ffbin.ffmpeg(), "-y", "-i", str(sample_clip),
               "-vf", "colorchannelmixer=rr=1.4", "-pix_fmt", "yuv420p",
               "-c:v", "libx264", "-crf", "18", "-an", out])
     return out

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from scripts import process_episode as pe
 from scripts import check_episode, reframe, storyboard, track
-from scripts.lib import models
+from scripts.lib import ffbin, models
 from scripts.lib import orchestration as orch
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
 
@@ -469,7 +469,7 @@ def test_golden_ride_through_orchestrator(tmp_path):
 
     import json as _j
     probe = _j.loads(pe.check_episode.proc.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "json", result["clip"]],
         text=True).stdout)["streams"][0]
     assert (probe["width"], probe["height"]) == (1080, 1920)
@@ -524,7 +524,7 @@ def test_project_native_delivery_end_to_end(tmp_path):
     assert result["status"] == "mechanical_pass", result
     import json as _j
     probe = _j.loads(pe.check_episode.proc.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "json", result["clip"]],
         text=True).stdout)["streams"][0]
     # golden source 1280×720 → 9:16 crop 405×720 → even native → 404×720
