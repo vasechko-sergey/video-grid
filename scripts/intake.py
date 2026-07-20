@@ -26,10 +26,10 @@ MOTION_PEAK = 0.35                                # motion value scored highest 
 DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
 BEST_FLOOR = 0.50
 SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage.
-                                                   # Its INPUT changed on 2026-07-20: the detect pass moved from the binary's default
-                                                   # shakiness=5 to vidstab.DETECT_ARGS' 8, so recorded shake values shifted. The
-                                                   # threshold is deliberately NOT re-tuned to compensate — no real footage has been
-                                                   # through this pipeline, so any new value would be invented (design §5).
+                                                  # Its INPUT changed on 2026-07-20: the detect pass moved from the binary's default
+                                                  # shakiness=5 to vidstab.DETECT_ARGS' 8, so recorded shake values shifted. The
+                                                  # threshold is deliberately NOT re-tuned to compensate — no real footage has been
+                                                  # through this pipeline, so any new value would be invented (design §5).
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
