@@ -23,7 +23,7 @@ SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
 
-_REMEDY = ("Run `bash setup.sh`, which installs ffmpeg-full (libvidstab included) "
+_REMEDY = ("run `bash setup.sh`, which installs ffmpeg-full (libvidstab included) "
            "and records where it landed")
 
 
@@ -60,7 +60,9 @@ def read_trf(path: Path) -> str:
     except UnicodeDecodeError as e:
         raise ValueError(
             f"vidstabdetect .trf at {path} is neither UTF-8 text nor a known binary "
-            "format — cannot trust the shake estimate") from e
+            "format — cannot trust the shake estimate. The detect pass wrote something "
+            "this parser has no name for, which points at the library rather than the "
+            f"footage: {_REMEDY}") from e
 
 
 def parse_trf(text: str) -> list[float]:

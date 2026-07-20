@@ -20,17 +20,17 @@ def test_require_is_silent_when_both_filters_are_present(monkeypatch):
 
 def test_require_raises_when_detect_is_absent(monkeypatch):
     _filters(monkeypatch, " .. scale ...\n .. overlay ...\n")
-    with pytest.raises(ValueError, match="vidstabdetect"):
+    with pytest.raises(ValueError, match="vidstabdetect.*setup.sh"):
         vidstab.require()
 
 
 def test_require_raises_when_only_transform_is_absent(monkeypatch):
     """The gate used to check vidstabdetect alone, which was honest while detect
-    was the only pass. Now that stabilize() issues a transform, a build carrying
-    one filter and not the other must not pass — libvidstab supplies both or
-    neither, so this failing means something stranger than a missing library."""
+    was the only pass. This slice adds a transform pass, so a build carrying one
+    filter and not the other must not get through — libvidstab supplies both or
+    neither, and this firing means something stranger than a missing library."""
     _filters(monkeypatch, " .. vidstabdetect ...\n .. scale ...\n")
-    with pytest.raises(ValueError, match="vidstabtransform"):
+    with pytest.raises(ValueError, match="vidstabtransform.*setup.sh"):
         vidstab.require()
 
 
@@ -47,7 +47,7 @@ def test_parse_trf_median_magnitudes():
 
 
 def test_parse_trf_bad_header_raises():
-    with pytest.raises(ValueError, match="unrecognized header"):
+    with pytest.raises(ValueError, match="unrecognized header.*setup.sh"):
         vidstab.parse_trf("not a vidstab file\nFrame 1 (List 0 [])")
 
 
@@ -70,7 +70,7 @@ def test_a_binary_trf_names_the_format_and_the_option(tmp_path):
 def test_an_undecodable_trf_with_no_known_magic_still_fails_loud(tmp_path):
     trf = tmp_path / "t.trf"
     trf.write_bytes(b"\xd0\xd0\xd0 not utf-8 and not TRF")
-    with pytest.raises(ValueError, match="cannot trust the shake estimate"):
+    with pytest.raises(ValueError, match="cannot trust the shake estimate.*setup.sh"):
         vidstab.read_trf(trf)
 
 
