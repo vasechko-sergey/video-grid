@@ -458,43 +458,88 @@ def sample_clip(tmp_path_factory):
 
 Keep the existing `drawbox`-is-inert comment verbatim — it records a live §12 landmine.
 
-- [ ] **Step 2: Rewrite the three guards to one call**
+- [ ] **Step 2: One shared fixture, three thin users**
 
-`tests/integration/test_intake.py`:
+**As built — read this before writing code; the original plan mis-described these guards.**
+`test_draft.py` and `test_titles.py` do not use `skipif`: each has an **autouse fixture**
+`_need_drawtext`. And all three guards open with `shutil.which("ffmpeg")`, which is a second
+bare-name PATH probe hiding inside the first.
+
+That `which` pre-check is why a shared fixture earns its place rather than three copies.
+Deleting it naively changes behaviour: on a box with no ffmpeg at all, `ffbin.has_filter`
+now raises `ValueError` (fail-loud, by design), so a test that used to *skip* would *error*.
+Both skip conditions — "nothing resolves" and "filter absent" — belong in one place.
+
+In `tests/conftest.py`:
+
+```python
+@pytest.fixture
+def need_filter():
+    """Skip unless the RESOLVED ffmpeg carries `name`.
+
+    Both skip reasons live here. ffbin.has_filter fails loud when nothing
+    resolves at all, which is right for production and wrong for a test run on a
+    box without ffmpeg — that should skip, not error.
+    """
+    def _need(name: str) -> None:
+        try:
+            present = ffbin.has_filter(name)
+        except (ValueError, RuntimeError) as e:
+            pytest.skip(str(e))
+        if not present:
+            pytest.skip(f"ffmpeg lacks the {name} filter (run: bash setup.sh)")
+    return _need
+```
+
+`test_draft.py` and `test_titles.py` each collapse to:
+
+```python
+@pytest.fixture(autouse=True)
+def _need_drawtext(need_filter):
+    need_filter("drawtext")
+```
+
+`test_intake.py`'s guard is a **collection-time `skipif`**, so it cannot take a fixture —
+it stays a module-level function delegating to the same one implementation:
 
 ```python
 def _has_vidstab() -> bool:
-    return ffbin.has_filter("vidstabdetect")
+    try:
+        return ffbin.has_filter("vidstabdetect")
+    except (ValueError, RuntimeError):
+        return False
 ```
 
-`test_draft.py` and `test_titles.py`, replacing each local `subprocess` probe:
+Update `test_intake.py:66`'s skip reason: `--with-vidstab` -> `bash setup.sh`. Drop the now
+unused `shutil` / `subprocess` imports from all three files.
+
+- [ ] **Step 3: Machine-check that no test reinvents the probe**
+
+The anti-hollow step. The original plan proposed three meta-tests, one per guard, each
+extracting a helper so that a forced `has_filter=False` could be observed. **That is more
+code than the property is worth and it pins the wrong thing** — it covers only the guards
+that exist today, while the failure mode is a *future* test file growing its own probe.
+
+Pin the property directly. The tell is universal: there is no way to ask ffmpeg what it
+supports without passing `-filters`.
 
 ```python
-    if not ffbin.has_filter("drawtext"):
-        pytest.skip("ffmpeg built without the drawtext filter (run: bash setup.sh)")
+def test_no_test_runs_its_own_filter_probe():
+    """Design section 5: a guard that probes PATH itself finds the slim build,
+    skips forever, and reports green while three integration tests go uncovered.
+
+    tests/lib/test_ffbin.py fakes proc.run's OUTPUT rather than running a probe,
+    so it never spells the flag; that asymmetry is what makes this checkable.
+    """
+    guilty = [f"{p}:{i}" for p in sorted(Path("tests").rglob("*.py"))
+              for i, line in enumerate(p.read_text().splitlines(), 1)
+              if "-filters" in line]
+    assert guilty == [], (
+        f"ask ffbin.has_filter instead of probing ffmpeg directly: {guilty}")
 ```
 
-Update `test_intake.py:66`'s skip reason: `--with-vidstab` → `bash setup.sh`.
-
-- [ ] **Step 3: Prove the guards actually consult the resolver**
-
-This is the anti-hollow step. A guard that ignores its input would still pass every test
-above, so force the answer and check the skip flips:
-
-```python
-def test_the_draft_guard_follows_the_resolver(monkeypatch):
-    """If has_filter says no, the guard must skip — pinning that the guard reads
-    the RESOLVED binary rather than whatever `ffmpeg` means on PATH."""
-    monkeypatch.setattr(ffbin, "has_filter", lambda name: False)
-    with pytest.raises(Exception) as e:   # pytest.skip raises Skipped (BaseException)
-        _skip_without_drawtext()
-    assert "drawtext" in str(e.value)
-```
-
-Extract the skip body into a named helper in each file so it is callable. Note `Skipped`
-derives from `BaseException`, so `pytest.raises(Exception)` will **not** catch it — use
-`pytest.raises(BaseException)` or import `_pytest.outcomes.Skipped`. Verify which by
-running it; a test that cannot fail is worse than no test.
+Put it in `tests/lib/test_ffbin.py`. **Verify it can fail**: drop `"-filters"` into a
+scratch test file, confirm red, remove it.
 
 - [ ] **Step 4: Run**
 
