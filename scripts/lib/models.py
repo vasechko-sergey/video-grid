@@ -191,10 +191,10 @@ class PathMeta:
                        # the pan slice has no `pan` key, and its absence honestly means the
                        # path came from a route — `pan` did not exist as a source yet.
                        pan=d.get("pan", False),
-                       # Third and last key on the same exemption, same reasoning:
-                       # a sidecar written before the stabilize slice has no
-                       # `stabilized` key, and its absence honestly means the source
-                       # was raw — stabilization was refused upstream until then.
+                       # Third key on the same exemption, same reasoning: a sidecar
+                       # written before the stabilize slice has no `stabilized` key,
+                       # and its absence honestly means the source was raw —
+                       # stabilization was refused upstream until then.
                        stabilized=d.get("stabilized", False))
         except KeyError as e:
             raise RuntimeError(
