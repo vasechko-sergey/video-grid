@@ -202,9 +202,8 @@ def require() -> None:
 
     Both, not just detect: libvidstab supplies the pair, so checking one and
     using the other would let a strange build through to a mid-encode failure.
-    Called at the ENTRY points (intake's shake_by_window, and stabilize below) —
-    deliberately not inside detect(), so one stabilize() does not pay three
-    uncached `ffmpeg -filters` probes for one operation.
+    Called at a consumer's ENTRY point, once per operation — `ffbin.has_filter`
+    is uncached by design, so each call is a real `ffmpeg -filters` spawn.
     """
     ffbin.require_filter("vidstabdetect", _REMEDY)
     ffbin.require_filter("vidstabtransform", _REMEDY)
@@ -582,8 +581,8 @@ def detect(src: str, trf: str, dur: float) -> list[float]:
     machine in this project carried libvidstab and the one covering test was
     skipped everywhere it ever ran.
 
-    Does NOT call require(): the gate belongs at the entry points, so one
-    stabilize() does not pay three uncached `ffmpeg -filters` probes.
+    Does NOT call require(): the gate belongs at the entry points, so a caller
+    running several passes pays it once rather than once per pass.
     """
     proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf",
               f"vidstabdetect={DETECT_ARGS}:result={trf}:fileformat=ascii",
@@ -616,17 +615,28 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     normalized by frame width. No per-window cutting → no -ss seek landmine.
 
     `dur` (the clip's own length, already probed by the caller) scales the timeout
-    vidstab.detect hands to proc.run: this pass runs over the WHOLE raw clip,
-    unlike everything else in this repo, so proc's flat default is not generous
-    enough for a long take. The detect recipe, the timeout derivation and the
-    .trf parsing all live in scripts/lib/vidstab.py, shared with process_episode's
-    stabilize pre-stage so both report the same measurement (design 2026-07-20 §5).
+    `vidstab.detect` derives: this pass runs over the WHOLE raw clip, unlike
+    everything else in this repo, so a flat default is not generous enough for a
+    long take. The detect recipe, the timeout derivation and the .trf parsing all
+    live in scripts/lib/vidstab.py, so every consumer of that module reports the
+    same measurement (design 2026-07-20 §5).
     """
     vidstab.require()
     with tempfile.TemporaryDirectory() as d:
         mags = vidstab.detect(clip, str(Path(d) / "t.trf"), dur)
     return _windowed_shake(mags, windows, fps, res[0])
 ```
+
+**Corrected mid-slice — two defects this plan handed the implementer.** Both
+docstrings above originally named code that did not exist yet: `detect`'s said
+"one `stabilize()` does not pay **three** uncached probes", and `shake_by_window`'s
+said the recipe is "shared with process_episode's stabilize pre-stage". The first
+carried a count nothing backs (`require()` issues **two** probes, and the three was
+only ever `stabilize()`'s three ffmpeg passes); the second re-introduced the exact
+sentence commit `27434ff` had deleted from this branch three commits earlier.
+Both now state what is true at this point in the slice. The rule the branch
+settled on: **delete a forward reference, do not hedge it** — "planned" and
+"would" keep the grep-and-find-nothing problem and add an apology to it.
 
 Remove `ffbin` from `scripts/intake.py`'s lib import **only if** no other line in
 the file still uses it (check with `grep -n 'ffbin' scripts/intake.py`).
