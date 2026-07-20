@@ -208,7 +208,11 @@ which one ran is the difference between seeing a mixed pipeline and inferring it
 - Modify: `scripts/lib/ffbin.py`
 - Modify: `scripts/draft.py:19-27` (`ensure_drawtext`)
 - Modify: `scripts/intake.py:56-61` (`_require_vidstab`), `scripts/intake.py:148`
-- Test: `tests/lib/test_ffbin.py`, existing `tests/test_draft.py`
+- Modify: `scripts/lib/manifest.py:186` — **As built:** a *third* `--with-vidstab` remedy
+  (inside the `stabilize=true` refusal) that this list originally missed. Found only by
+  grepping all of `scripts/` rather than the two files named here. Grep, do not trust
+  the list.
+- Test: `tests/lib/test_ffbin.py`, existing `tests/test_draft.py`, `tests/lib/test_intake.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -309,9 +313,18 @@ Add `ffbin` to the `from scripts.lib import ...` line in both files.
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py tests/test_draft.py tests/test_intake.py -q ; echo "EXIT: $?"`
-Expected: all pass. `tests/test_draft.py:14` fakes the filter list — if it patched
-`draft.proc` it must now patch `ffbin.proc`; fix it if red.
+Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py tests/test_draft.py tests/lib/test_intake.py -q ; echo "EXIT: $?"`
+
+Expected: all pass. (**As built:** the path is `tests/lib/test_intake.py`; there is no
+`tests/test_intake.py`.)
+
+`tests/test_draft.py:14` fakes the filter list by patching `draft.proc`. **As built: that
+patch never goes red, and the reason is worth knowing.** `draft.proc` and `ffbin.proc` are
+the *same module object* — Python caches modules, so every name bound to `scripts.lib.proc`
+shares one object and patching through any of them patches all of them. The retarget to
+`ffbin.proc` is therefore about making the test *read* correctly, not about keeping it
+green. `tests/lib/test_intake.py` has two tests with the identical pattern; retarget those
+too.
 
 - [ ] **Step 5: Verify no `--with-vidstab` string survives in `scripts/`**
 

@@ -87,6 +87,27 @@ def test_require_filter_is_silent_when_present(monkeypatch):
     assert ffbin.require_filter("drawtext", "run `bash setup.sh`") is None
 
 
+def test_has_filter_re_probes_and_is_not_cached(monkeypatch):
+    """Design §4 chose UNCACHED deliberately; this pins it instead of trusting prose.
+
+    An lru_cache here would buy back one ~50ms `ffmpeg -filters` spawn against
+    encodes measured in minutes, and pay for it with a stateful trap: any test that
+    forgets cache_clear() reads a stale answer and passes for the wrong reason.
+    Without this test that decision rests on review alone, and the next contributor
+    to notice the repeated spawn will "optimise" it back.
+    """
+    answers = iter([b" T.. drawtext   V->V   Draw text.\n",
+                    b" ... scale      V->V   Scale.\n"])
+
+    class _R:
+        def __init__(self, out: bytes) -> None:
+            self.stdout = out
+
+    monkeypatch.setattr(ffbin.proc, "run", lambda cmd, **kw: _R(next(answers)))
+    assert ffbin.has_filter("drawtext") is True
+    assert ffbin.has_filter("drawtext") is False    # asked the binary again, not a memo
+
+
 def test_require_filter_fails_loud_carrying_binary_and_remedy(monkeypatch):
     _filters(monkeypatch, " ... scale   V->V   Scale.\n")
     monkeypatch.setenv("FFMPEG", "/opt/slim/ffmpeg")
