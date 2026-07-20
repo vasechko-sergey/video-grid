@@ -1067,7 +1067,7 @@ with:
 - [x] **Step 2: Turn `references/landmines.md` into a pointer**
 
 Its header claims two incompatible things — "Copied verbatim from design spec §12" **and**
-"this is the canonical list" — and neither is true: 17 entries against §12's 28, and its
+"this is the canonical list" — and neither is true: 17 entries against §12's 26, and its
 `ultralytics` entry still asserts something §12 has since struck through as "never true".
 Re-syncing produces a duplicate that drifts again.
 
@@ -1083,7 +1083,7 @@ _Last updated: 2026-07-20._
 It is the single canonical list; add entries there.
 
 This file used to carry a copy that claimed to be verbatim and was not — it had
-drifted to 17 entries against §12's 28, and still asserted an `ultralytics` detail
+drifted to 17 entries against §12's 26, and still asserted an `ultralytics` detail
 §12 had struck through as never true. A second copy of a safety-critical list is a
 second thing to forget to update, so it is now a pointer rather than a duplicate.
 

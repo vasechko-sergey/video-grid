@@ -1042,7 +1042,7 @@ _Last updated: 2026-07-20._
   `-ss` on a re-encoded window, an unbounded synthesized lavfi source, and
   `drawtext` without `fontfile=` — are now machine-checked at two layers, and
   `references/landmines.md` stops being a drifted second copy of §12 (17 entries
-  against 28, one of them asserting something §12 had struck through as never
+  against 26, one of them asserting something §12 had struck through as never
   true) and becomes a pointer to it.
   **Built:** `scripts/lib/lint.py` — pure, argv in, violation messages out, no
   I/O; `scripts/lib/proc.py`'s `run()` gains an always-on guard (never behind an
@@ -1102,9 +1102,9 @@ _Last updated: 2026-07-20._
   - **Runtime coverage equals test coverage**, so a splat-assembled graph on an
     unexercised path is covered by **neither** layer. That is the residual hole
     and it is real.
-  - **`SYNTH_SOURCES` is a five-entry denylist and it under-covers** — by at
-    least a dozen other infinite lavfi sources (`nullsrc`, `aevalsrc`,
-    `rgbtestsrc`, `smptebars`, `gradients`, `cellauto`, `life`, `mandelbrot`,
+  - **`SYNTH_SOURCES` is a five-entry denylist and it under-covers** — by a
+    dozen other infinite lavfi sources (`nullsrc`, `aevalsrc`, `rgbtestsrc`,
+    `yuvtestsrc`, `smptebars`, `gradients`, `cellauto`, `life`, `mandelbrot`,
     `allrgb`, `allyuv`, `haldclutsrc`). **`nullsrc` is one keystroke from the
     covered `anullsrc`.** These are misses, not false positives — the safe
     direction — but structurally the same flaw this slice was chartered to fix.
@@ -1149,6 +1149,48 @@ _Last updated: 2026-07-20._
   crop-expression-ceiling and dependency-pin family, all of which fail **loud** —
   worth guarding eventually, but adding them would dilute this lint's claim, that
   it catches the landmines which do *not* announce themselves.
+  - **Cleanup round (2026-07-20, whole-slice review, commit `c01618b` + this
+    docs sync). Final: 1512 passed / 8 skipped** (+21 over the 1491 above). The
+    review returned READY TO MERGE with nothing blocking; **all three code
+    findings were false positives**, which §6 ranks as the worst direction for a
+    guard that raises in production, so they landed before the merge rather than
+    after. Two were the same defect one option apart: ffmpeg spells a video copy
+    seven ways and `_VIDEO_COPY_FLAGS` knew two, so `-vcodec copy`,
+    `-codec:v copy`, `-c:v:0 copy` and `-codec copy` each raised on a correct
+    windowed command — re-opening the door §4.2 added condition 5 to shut, one
+    spelling over — and `-vframes 1`, the alias every tutorial still teaches, was
+    not read as a still grab. Both became `fullmatch` regexes rather than wider
+    string tests, because `-acodec`/`-codec:a` end in the same letters and copy
+    AUDIO while the video is re-encoded, which is exactly when the landmine
+    bites; `-c:0`, bare `-frames` and `-frames:a` stay unmatched on purpose,
+    since matching them would EXEMPT a re-encoded window.
+    **The third was the fifth instance of the boundary family**, and the first to
+    point the other way: `_SYNTH_RE` was anchored only on its left, and string
+    start is where that anchor is weakest, because an `-i` value is an element
+    too — so `-i testsrc.mp4` read as a synthesized source and raised. Only a
+    bare basename bit; the same path written absolutely was clean because `/`
+    sits in the lookbehind's reject set, which is precisely what kept it hidden.
+    Argv position would settle it but a per-element scan cannot see argv
+    position; **spelling can** — a real source is `name` or `name=params`, never
+    `name.ext` — so an `=`-less name now needs a `=`, an element separator, or
+    end-of-element after it. `color=`/`sine=` were left alone: their trailing `=`
+    already spells that requirement, and widening them would have silently
+    changed §5's recorded parameterless trade-off.
+    **Docs corrections:** §4.3's prose said a source is bounded by a `-t` "on the
+    output" while the code accepts one **anywhere** in the argv — the prose was
+    wrong and the code right, because `scripts/mix.py:137` ships a `-t` *ahead*
+    of its lavfi `-i`; the loose reading's price (a `-t` bound to input #1 leaves
+    an unbounded input #2 reading clean, and still hanging) is now recorded in
+    §5, along with two measured `drawtext` gaps — a miss when a later filter in
+    the same argv element carries `fontfile=`, and the converse false positive
+    when a literal `drawtext=` sits inside a quoted `text=` value. **And the
+    arithmetic: §12 carries 26 entries, not 28** — the "17 against 28" claim was
+    wrong in all three places it appeared (this file, the lint design §9,
+    `references/landmines.md`); the 17 was exact. `lint.py`'s comment naming the
+    uncovered infinite sources had drifted to ten of twelve and now points at §5
+    instead of carrying a third copy — the drift this slice was already bitten by
+    twice. Each of the three widenings was mutation-checked in isolation:
+    reverting it turns its own new test red and nothing else in the suite.
 
 ## Next action
 

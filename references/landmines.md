@@ -7,7 +7,7 @@ _Last updated: 2026-07-20._
 entries there.
 
 This file used to carry a copy that claimed to be verbatim and was not — it had
-drifted to 17 entries against §12's 28, and still asserted an `ultralytics` detail
+drifted to 17 entries against §12's 26, and still asserted an `ultralytics` detail
 §12 had struck through as never true. A second copy of a safety-critical list is a
 second thing to forget to update, so it is now a pointer rather than a duplicate.
 

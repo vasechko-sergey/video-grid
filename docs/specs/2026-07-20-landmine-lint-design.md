@@ -191,8 +191,16 @@ match flags it, which is a bug in the lint, not a finding.
 ### 4.3 An unbounded synthesized source
 
 A command whose filtergraph contains a synthesized lavfi source — `color=`, `testsrc`,
-`anullsrc`, `anoisesrc`, `sine=` — must be bounded, either by `-t`/`-to` on the output
-or by `d=`/`duration=` on every synthesized source. Unbounded is a violation.
+`anullsrc`, `anoisesrc`, `sine=` — must be bounded, either by a `-t`/`-to` **anywhere in
+the argv** or by `d=`/`duration=` on every synthesized source. Unbounded is a violation.
+
+**"Anywhere in the argv", not "on the output" — and the loose reading is the correct
+one.** ffmpeg binds `-t` to whatever follows it, so a `-t` ahead of an `-i` is an *input*
+option. `scripts/mix.py:137` ships exactly that shape: `-t 18.0` sits before the lavfi
+`-i`, binding to that input, and it bounds the source perfectly well. A predicate
+insisting on an output `-t` would raise on a shipped command — the direction §6 forbids.
+The price of the loose reading is a miss, recorded in §5: the check cannot tell *which*
+input a `-t` binds to, so a multi-input command can satisfy it and still hang.
 
 **This check closes the hang, not the length. Saying otherwise would overclaim.**
 
@@ -304,6 +312,17 @@ lint — it converts an unexamined risk into a false sense of safety.
   friends), so the legal, infinite `-f lavfi -i color` and `-f lavfi -i sine`
   read clean. The asymmetry with the other three entries is a deliberate
   disambiguation trade-off, recorded here because the code cannot express it.
+  The other three are anchored on their right-hand side instead — a name must be
+  followed by `=`, an element separator, or nothing — which is what stops
+  `-i testsrc.mp4` being read as a source.
+
+- **One `-t` anywhere silences the check for the WHOLE command.** §4.3 explains
+  why the reading has to be that loose. The consequence is a real miss: a command
+  that bounds input #1 and leaves an unbounded lavfi input #2 reads clean —
+  measured — and would still hang, because the `-t` never applied to the
+  infinite source. Closing it needs argv-position parsing (which `-i` does this
+  `-t` bind to?) that the predicate does not attempt. No site in the tree has
+  that shape today, which is why this is recorded rather than fixed.
 
 - **`drawtext` has no real-argv corroboration on this machine.** §8's "the real
   call sites are fixtures" reasoning does not transfer to §4.4 here: this
@@ -312,6 +331,29 @@ lint — it converts an unexamined risk into a false sense of safety.
   across the whole suite. `_drawtext_font` is pinned by its unit tests and by
   reading both producers, not by measurement. A drawtext-capable ffmpeg
   (homebrew-core's `ffmpeg-full`, which also carries libvidstab) would close this.
+
+- **A fontless `drawtext` is missed when a LATER filter in the same argv element
+  carries `fontfile=`.** The check splits on `drawtext=` and asks whether the
+  following segment contains `fontfile=`, but that segment runs to the end of the
+  *argument*, not to the end of that filter — so a downstream
+  `subtitles=…:force_style='fontfile=…'` answers on the fontless drawtext's
+  behalf. Measured:
+  `drawtext=text='a',subtitles=f.srt:force_style='fontfile=/f.ttf'` → **0
+  violations**. A miss, so the safe direction, and not live — deliver's chain is
+  the whole `-vf` and both producers put `fontfile=` first — but it is
+  structurally the same "the segment is wider than the filter" defect §6 records
+  for the `d=` bound test, which was a silent miss swallowing a false positive.
+
+- **The converse is a false positive: a literal `drawtext=` inside a quoted
+  `text=` value is counted as a second filter and flagged.** Measured:
+  `drawtext=fontfile='/f.ttf':text='use drawtext=here'` → **1 violation** on a
+  correct command. Unreachable today only because both producers
+  (`scripts/lib/draft.py:28`, `scripts/lib/titles.py:148`) route free text through
+  `textfile=` rather than `text=` — and they do that for filtergraph escaping, not
+  for this. `_drawtext_font`'s own docstring already warns of it; it belongs here
+  too, because §5 is the section a reader consults for what this thing gets wrong,
+  and a false positive is the class §6 ranks worst. A producer that ever inlines
+  `text=` needs a real parser, not a wider split.
 
 - **The judgment-call landmines stay judgment calls.** "Never stabilize wade-in/out
   shots" cannot be mechanically checked — no static or runtime predicate can know which
@@ -407,7 +449,7 @@ Both are drift the lint would otherwise inherit or contradict.
   repo. Introduced by the pan slice (2026-07-19). A comment that inverts a landmine is
   worse than no comment.
 - **`references/landmines.md` claims to be verbatim from §12 and is not** — 17 entries
-  against §12's 28, and its `ultralytics` entry still asserts something §12 has since
+  against §12's 26, and its `ultralytics` entry still asserts something §12 has since
   struck through as "never true". Re-syncing creates a duplicate that will drift again;
   **it becomes a pointer to §12 instead of a copy.** A lint that read its ban list from
   the drifted file would silently under-enforce — the same failure
