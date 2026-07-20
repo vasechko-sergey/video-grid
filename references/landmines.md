@@ -1,42 +1,50 @@
-# Landmine registry
+# Landmine registry — pointer
 
-From the source montage session. Each entry: cause → symptom → fix. Copied
-verbatim from design spec §12 — this is the canonical list; don't add new
-entries without updating the spec first.
+_Last updated: 2026-07-20._
 
-- `lutrgb` → black frames. Use `colorchannelmixer`.
-- Black frames on cut — the **landmine is in the seek-argument order, NOT in
-  4K**. Fix: correct seek-arg order (`-ss` after `-i` / output seek,
-  `-accurate_seek`, re-encode the window for frame accuracy), **not** a
-  downscale to 1080. Cut and process 4K natively.
-- OpenCV HSV auto-tracker catches foam/other surfers → YOLO person +
-  ByteTrack.
-- Stabilizing the wade-in → "rolling ground". Don't stabilize.
-- ImageMagick `montage` reorders tiles → false "sawtooth" motion readings.
-  Verify order.
-- Loading all frames into memory → OOM. Process frame by frame.
-- `vidstabdetect` warning "cannot read frame local motions… got 255" —
-  cosmetic, stabilization still works.
-- pip behind a corporate mirror (`nexus.*`) times out off-VPN → `setup.sh`
-  pins `PIP_INDEX_URL=https://pypi.org/simple` (env-overridable).
-- `drawtext` without an explicit `fontfile=` fails or picks garbage on
-  macOS → always pass a font path.
-- concat of non-uniform segments (size/fps/codec) breaks or desyncs →
-  normalize before concat (§5.9).
-- pytest without `pythonpath = .` in `pytest.ini` can't import `scripts.*`
-  (no `tests/__init__.py`) → keep it set.
-- ultralytics downloads weights by model **name** (`yolo11n-seg.pt`), not
-  into an arbitrary path → pass names; cache lives in `models/`.
-- madmom 0.16.1 from PyPI is broken on python ≥3.10 / numpy ≥1.24 → git
-  master only, and only as an optional extra.
-- essentia has no macOS arm64 wheels → out of v1 (§5.5).
-- ffmpeg expression parser chokes on long crop-x expressions ("Missing ')'
-  or too many args") — a realistic-length noisy path can produce 1000+
-  Douglas-Peucker knots → cap knots (~80) by doubling eps; never emit
-  per-frame if() chains.
-- odd output dimensions + yuv420p → libx264 "width not divisible by 2" →
-  force even scale targets for EVERY canvas, not just 9:16 (floor-truncated
-  crop widths are odd half the time).
-- ByteTrack unconfirmed detections carry `id=None` → bucketing them under
-  one sentinel id splices different people into a fake track that can win
-  hero scoring → drop id=None detections; smoothing bridges the gap.
+**The registry lives in design spec §12**, in the
+[montage skillset design spec][spec]. It is the single canonical list; add
+entries there.
+
+This file used to carry a copy that claimed to be verbatim and was not — it had
+drifted to 17 entries against §12's 28, and still asserted an `ultralytics` detail
+§12 had struck through as never true. A second copy of a safety-critical list is a
+second thing to forget to update, so it is now a pointer rather than a duplicate.
+
+## Four entries are machine-checked
+
+`lutrgb`, an input-side `-ss` on a re-encoded window, an unbounded synthesized
+lavfi source, and `drawtext` without `fontfile=` can no longer re-enter the
+codebase silently. The predicate is [scripts/lib/lint.py](../scripts/lib/lint.py),
+enforced at two layers:
+
+- **`proc.run`'s runtime guard** — always on, raises before `subprocess.run`, and
+  sees the *assembled* argv including graphs that arrive through a splat.
+- **an AST scan of `scripts/`** (`tests/lib/test_landmine_scan.py`) — it reads
+  string *literals*, so it measures what a module **emits**, not what it mentions.
+  Naming a banned filter in a comment or docstring stays legal at exactly the site
+  that documents the ban, which a line-level scan could not allow.
+
+**The rules are narrower than the slogans.** "`-ss` after `-i`" is not the rule
+this codebase lives by: a violation needs **five** conditions together (an
+input-side seek, a `-t`/`-to` window, no `-accurate_seek`, no `-frames:v`, and not
+a stream copy). A naive positional check produces four false positives out of
+seven hits on a clean tree — and this guard raises in production, so a false
+positive breaks a live render.
+
+**What the lint does not cover is written down.** Ten test-side sites bypass
+`proc.run`; runtime coverage equals test coverage; `SYNTH_SOURCES` is a five-entry
+denylist that misses at least a dozen other infinite lavfi sources; and the
+`drawtext` check has no real-argv corroboration on a machine whose ffmpeg lacks
+libfreetype. The full list is [the landmine lint design][lint] §5 — read it
+before trusting the lint with anything.
+
+## The rest stays human
+
+Entries like "never stabilize a wade-in shot" are judgment about content, and
+nothing in the codebase classifies a wade shot. §12's entries on route synthesis,
+path smoothing and ratio-vs-quantity validation are discipline invariants, guarded
+by targeted tests rather than by a lint.
+
+[spec]: ../docs/specs/2026-07-05-montage-skillset-design.md
+[lint]: ../docs/specs/2026-07-20-landmine-lint-design.md

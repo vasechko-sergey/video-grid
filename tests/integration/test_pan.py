@@ -38,7 +38,9 @@ def _frame(clip: str, where: str, tmp_path: Path) -> Image.Image:
         proc.run(["ffmpeg", "-y", "-i", clip, "-frames:v", "1", "-update", "1", str(png)])
     else:
         # -sseof BEFORE -i is the established form in this repo (check_episode
-        # uses it); the banned pattern is `-ss` AFTER `-i` for frame-accurate cuts
+        # uses it) and is a DIFFERENT option that must precede -i. The §12 landmine
+        # is an input-side `-ss` on a re-encoded window — scripts/lib/lint.py holds
+        # the predicate; this command trips none of its five conditions.
         proc.run(["ffmpeg", "-y", "-sseof", "-0.1", "-i", clip, "-update", "1", str(png)])
     return Image.open(png).convert("RGB")
 

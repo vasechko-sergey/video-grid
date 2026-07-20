@@ -2,8 +2,10 @@
 
 Exact command snippets used by the scripts, kept in sync with the source —
 if a script's ffmpeg call changes, update the matching entry here. Each
-recipe: command shape + one-line why. See `references/landmines.md` for the
-failure modes these recipes are designed around.
+recipe: command shape + one-line why. The failure modes these recipes are
+designed around are design spec §12 (`references/landmines.md` is a pointer to
+it, not a copy); four of them are machine-checked by `scripts/lib/lint.py` and
+refused by `proc.run` before ffmpeg ever starts.
 
 ## Output-seek extract (`scripts/extract.py`)
 

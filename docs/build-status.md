@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-19._
+_Last updated: 2026-07-20._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -1031,6 +1031,125 @@ _Last updated: 2026-07-19._
   stays unreachable here too, since the manifest gate refuses `pan={}` before
   `edl_to_reel` ever builds a `ReelEpisode`.
 
+- **landmine lint DONE (2026-07-20)** — plan
+  `docs/plans/2026-07-20-landmine-lint.md` + design
+  `docs/specs/2026-07-20-landmine-lint-design.md` (branch `feat/landmine-lint`,
+  commits `b02a467`..`908d2e2` plus this docs sync). **1491 passed / 8 skipped**
+  (+75 over the 1416 baseline — the pan entry above records 1415 because it
+  predates pan's own last fix commit `25ec48e`, which added one test). Closes the
+  §11 charter item that three places in this repo committed to and none had
+  built. The four §12 patterns that fail **silently** — `lutrgb`, an input-side
+  `-ss` on a re-encoded window, an unbounded synthesized lavfi source, and
+  `drawtext` without `fontfile=` — are now machine-checked at two layers, and
+  `references/landmines.md` stops being a drifted second copy of §12 (17 entries
+  against 28, one of them asserting something §12 had struck through as never
+  true) and becomes a pointer to it.
+  **Built:** `scripts/lib/lint.py` — pure, argv in, violation messages out, no
+  I/O; `scripts/lib/proc.py`'s `run()` gains an always-on guard (never behind an
+  env flag — a guard that is off in production does not protect production) that
+  raises `ValueError` **before** `subprocess.run`, so it sees the *assembled*
+  command including the graphs that arrive through a splat. `ValueError` and not
+  `RuntimeError` deliberately: `proc.run`'s existing `RuntimeError`s say the
+  ENVIRONMENT failed; a landmine says the CALLER is wrong.
+  `tests/lib/test_landmine_scan.py` is the static half.
+  **The static scan reads AST string literals, not lines — the plan prescribed a
+  line-level scan and asserted the tree was clean. It is not.**
+  `scripts/lib/color.py:1` and `scripts/check_episode.py:56` both name `lutrgb`
+  in prose, documenting the ban at exactly the two places an author would look. A
+  line scan cannot tell documenting a ban from violating it, and both escapes
+  were worse than the problem — a path allowlist is forbidden by design §6, and
+  deleting the documentation makes a landmine undocumentable at its own site.
+  Reading the AST dissolves it: comments never enter it, and docstrings are
+  subtracted by node identity. **The check measures *emission*, not *mention*** —
+  which is what its name always claimed, and the two differ precisely where the
+  codebase is most careful.
+  **The rules are narrower than the slogans.** A `-ss` violation needs **five**
+  conditions together (input-side seek · a `-t`/`-to` window · no
+  `-accurate_seek` · no `-frames:v` · not a stream copy); a naive positional
+  check produces four false positives out of seven hits on a clean tree, and this
+  guard raises in production, so a false positive breaks a live render. The fifth
+  condition arrived *after* the first implementation: the message and docstring
+  both said *re-encoded* window while nothing checked for re-encoding, so a
+  `-c copy` fast trim was flagged — a claim asserted but never verified. Every
+  comparison is anchored, because ffmpeg's vocabulary is full of tokens that
+  contain shorter tokens (`-sseof` ⊃ `-ss`, `boxcolor=` ⊃ `color=`, `seed=` and
+  `pad=` ⊃ `d=`).
+  **The choke point the whole runtime layer stands on is itself machine-checked**
+  — the scan refuses any module under `scripts/` that imports `subprocess`
+  outside `_MAY_IMPORT_SUBPROCESS` (`proc.py`, plus the two documented yt-dlp
+  sites `catalog.py`/`fetch.py`). Design §2's "all 35 invocations funnel through
+  `proc.run`" was hand-verified at design time — in the one slice whose entire
+  thesis is that hand-verified invariants decay. **That constant, not prose, is
+  now the authority on the list**, so the two copies cannot drift.
+  **`REAL_SITES` grew from the plan's 9 to 22 fixtures**, with the filter strings
+  printed from the real builders rather than hand-transcribed. It is the
+  regression guard that matters: it proves the predicate matches the codebase
+  rather than the slogan. Roughly **30 mutation rows** across the slice; one
+  survivor, judged **equivalent** — dropping `[` from `_element`'s separators
+  changes the verdict only on `testsrc=…[d=1]`, and ffmpeg link labels are
+  identifiers, so that graph is invalid.
+  **What this lint does NOT cover** (design §5, stated plainly because a lint
+  believed to cover more than it does converts an unexamined risk into a false
+  sense of safety):
+  - **Ten test-side sites bypass `proc.run`.** Most are read-only ffprobe/raw-frame
+    probes that cannot carry these landmines; the one that genuinely emits a
+    filtergraph is **`tests/conftest.py:17`**, the session-scoped `sample_clip`
+    fixture that roughly twenty tests measure their pixels against. It is correct
+    today (`d=` on both sources **and** an output `-t`) and it is still a real
+    blind spot — the fixture every pixel proof in the suite is measured against
+    is the one command the guard cannot see. `scripts/` funnels through one choke
+    point; `tests/` does not have to.
+  - **Runtime coverage equals test coverage**, so a splat-assembled graph on an
+    unexercised path is covered by **neither** layer. That is the residual hole
+    and it is real.
+  - **`SYNTH_SOURCES` is a five-entry denylist and it under-covers** — by at
+    least a dozen other infinite lavfi sources (`nullsrc`, `aevalsrc`,
+    `rgbtestsrc`, `smptebars`, `gradients`, `cellauto`, `life`, `mandelbrot`,
+    `allrgb`, `allyuv`, `haldclutsrc`). **`nullsrc` is one keystroke from the
+    covered `anullsrc`.** These are misses, not false positives — the safe
+    direction — but structurally the same flaw this slice was chartered to fix.
+  - **A parameterless `-f lavfi -i color` is not detected.** `color=` and `sine=`
+    carry a trailing `=` to disambiguate `color=` from `colorchannelmixer`, so
+    the legal, infinite bare forms read clean. A deliberate trade-off, recorded
+    because the code cannot express it.
+  - **`drawtext` has zero real-argv corroboration on this machine.** This ffmpeg
+    is built without libfreetype, so all of its integration tests skip and **not
+    one** `drawtext=` argv reaches the predicate across the whole suite. That
+    check is pinned by unit tests and by reading both producers — not by
+    measurement. A drawtext-capable ffmpeg would close it.
+  - **The static layer sees literals**, so a filter name assembled by `%`,
+    `.format()` or concatenation would pass it. No such site exists today — every
+    filter string in `scripts/` is a constant, an f-string, or a `join()` over
+    those — so the completeness claim holds *for this codebase as it stands*, and
+    the day someone builds a name a new way it stops holding silently.
+  **The slice's most transferable lesson: twelve real defects were found by
+  review, and none by the suite going red.** Four were **hollow tests** —
+  assertions that held for a reason other than the behaviour they named (a
+  `REAL_SITES` label crediting an exemption that never ran; `proc` tests that
+  passed with the guard deleted; a real-tree scan asserting `== []`, which also
+  passes when literal extraction is broken — now pinned by a positive control
+  that requires a known-present filter name to be found). **The technique that
+  found what neither the unit tests nor the mutation battery could was running
+  the predicate over every argv the real suite issues (~700) and looking at what
+  it flagged.** That is how a **masking pair** surfaced: `pad=` contains the
+  substring `d=`, so every letterbox argument read as "bounded" and was exempted
+  wholesale — a silent miss that was swallowing a false positive in the
+  source-name boundary rule. Both mutation rows passed against a predicate that
+  was wrong in two places, and fixing only the bound test would have converted a
+  quiet miss into a **live raise on every letterbox render**. The two corrections
+  had to land together, boundary first, so each commit is green on its own.
+  Generalised: **when a check has an early exemption and a detector, a bug in the
+  exemption can conceal a bug in the detector — so measure the predicate against
+  the codebase, not only against its own fixtures.**
+  **Drive-bys:** `tests/integration/test_pan.py:41`'s comment stated the seek
+  landmine backwards (introduced by the pan slice, 2026-07-19) and is corrected;
+  the two live links that promised `landmines.md` was a list
+  (`references/ffmpeg-recipes.md`, `SKILLS/process-episode/SKILL.md`) now point
+  at §12. **Deliberately out of scope** (design §7): the even-`scale=`,
+  crop-expression-ceiling and dependency-pin family, all of which fail **loud** —
+  worth guarding eventually, but adding them would dilute this lint's claim, that
+  it catches the landmines which do *not* announce themselves.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -1062,8 +1181,14 @@ _Last updated: 2026-07-19._
   `process_episode`); the engine's own `MVI_3739` fixtures are the only real
   pixels in the suite. This is the milestone the synthetic goldens stand in for.
   **OR**
-- **golden-canon armature + landmine lint** — a check that the banned patterns
-  (`lutrgb`, `-ss` before `-i`) cannot re-enter the filtergraphs.
+- **golden-canon armature** — the storyboard's dynamic-symmetry overlay (root
+  rectangle + diagonals + reciprocals + the "eye" horizontals/verticals,
+  `references/editing-canon.md`). Still unbuilt: `geometry.grid_lines` knows
+  `thirds` and `phi` and **raises** on `golden-canon`, and `storyboard._overlay`'s
+  palette has no entry for it — the vocabulary is accepted as a *static editorial*
+  grid (`manifest.py:135`, `edl.py:69` both refuse it as a tracking target) but
+  nothing draws it. ~~+ landmine lint~~ — **the lint half landed 2026-07-20**
+  (see the Done entry above); the two were only ever paired here by proximity.
 
 **Phase B is now closed (2026-07-18)** — the length re-time slice
 (`docs/specs/2026-07-18-length-retime-design.md`) landed the last two

@@ -48,7 +48,7 @@ video-grid/                             # the skill-set repo (github.com/vasechk
 │   └── plans/
 ├── references/
 │   ├── editing-canon.md                # classic editing rules + grid library (thirds/phi/golden-canon-grid)
-│   ├── landmines.md                    # learned failures (see §12)
+│   ├── landmines.md                    # pointer to §12 (was a drifting copy)
 │   └── montage-debugging.md            # phased stage-failure debugging (patterned on systematic-debugging)
 ├── scripts/
 │   ├── lib/                            # pure logic, unit-tested: geometry, motion, pathsmooth, color, checks
@@ -688,12 +688,12 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 **Requirements for the follow-on plans (binding, not nice-to-have):**
 - **Version log** (assembly/deliver plan): `REEL_v{n}` naming + one-line changelog per version, lock registry — the session ran v2→v18; iteration is the norm.
 - **Resumability** (router plan): every stage skips itself when its artifact exists and the input hash is unchanged — a dead session resumes for free.
-- **Executable landmine lint** (recipes plan): lint generated ffmpeg commands — grep for `lutrgb`, for `-ss` before `-i`. Machine-checked landmines don't recur.
+- **Executable landmine lint** (recipes plan): lint generated ffmpeg commands — grep for `lutrgb`, for `-ss` before `-i`. Machine-checked landmines don't recur. **Landed 2026-07-20** — `scripts/lib/lint.py`, enforced by `proc.run` at runtime and by an AST scan of `scripts/` statically; see [the landmine lint design](2026-07-20-landmine-lint-design.md), whose §5 lists what it does **not** cover. Two corrections to this charter's own shorthand, both measured: "`-ss` before `-i`" is not by itself a violation (it takes **five** conditions together — a naive positional check false-positives four times out of seven on a clean tree), and a **grep** cannot do this job, because it cannot tell a filtergraph from a comment documenting the ban.
 - **Wall-time per stage** (checks plans): recorded in every check report — where the minutes burn stays visible.
 
 ---
 
-## 12. Landmine registry (`references/landmines.md`, from the session)
+## 12. Landmine registry (canonical — `references/landmines.md` points *here*; from the session)
 
 - `lutrgb` → black frames. Use `colorchannelmixer`.
 - Black frames on cut — the **landmine is in the seek-argument order, NOT in 4K**. Fix: correct seek-arg order (`-ss` after `-i` / output seek, `-accurate_seek`, re-encode the window for frame accuracy), **not** a downscale to 1080. Cut and process 4K natively.
