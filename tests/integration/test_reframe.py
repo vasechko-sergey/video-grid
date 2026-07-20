@@ -837,3 +837,25 @@ def test_reframe_pan_centres_the_crop_vertically(sample_clip, tmp_path):
     src_h = meta.src_dims[1]
     assert meta.crop_h < src_h          # guard: the fixture must not have degenerated
     assert meta.crop_y == max(0, (src_h - meta.crop_h) // 2)
+
+
+# --- reframe(stabilized=): a FACT ABOUT `src`, recorded and nowhere else
+# consumed (design 2026-07-20 §6.2) ---
+
+def test_reframe_records_that_its_source_was_stabilized(monkeypatch, tmp_path):
+    """reframe does not stabilize — the flag is a FACT ABOUT ITS `src`, handed in
+    by the caller that did. It flows to the sidecar and nowhere else; a
+    ReframeSpec.stabilize would have been an instruction reframe cannot carry out
+    (design 2026-07-20 §6.2)."""
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: None)
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                              color_means=(105, 122, 137), delivery=Delivery())
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([{"t": 0.0, "x": 960.0, "y": 540.0, "w": 100.0, "h": 200.0},
+                                 {"t": 1.0, "x": 960.0, "y": 540.0, "w": 100.0, "h": 200.0}]))
+    path_out = tmp_path / "path.json"
+    reframe.reframe(spec, "seg.mp4", str(route), str(tmp_path / "o.mp4"), str(path_out),
+                    stabilized=True)
+    meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    assert meta.stabilized is True

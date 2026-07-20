@@ -136,6 +136,11 @@ class PathMeta:
     nor report a green `continuity` (checks.continuity([]) returns pass=True —
     the absence is not even loud). One bit here is what keeps those reports
     honest; see design 2026-07-19 §2.1.
+
+    `stabilized` is the other provenance bit. It says the pixels reframe cut were
+    already vidstab-corrected, which is what makes the route it cut them by
+    trustworthy — that pairing is the load-bearing claim of design 2026-07-20 §1,
+    and a reader of the sidecar has no other way to check it.
     """
     mode: str
     crop_w: int
@@ -148,13 +153,16 @@ class PathMeta:
     freedom: int
     background: str = "blur"
     pan: bool = False      # True ⇒ the path was GENERATED, not observed (design 2026-07-19 §5)
+    stabilized: bool = False   # True ⇒ reframe's `src` was a vidstab pre-stage output, not the
+                               # raw segment (design 2026-07-20 §6.2)
 
     def to_dict(self) -> dict:
         return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
                 "crop_y": self.crop_y, "src_dims": list(self.src_dims),
                 "canvas": list(self.canvas), "out_dims": list(self.out_dims),
                 "rect_px": list(self.rect_px), "freedom": self.freedom,
-                "background": self.background, "pan": self.pan}
+                "background": self.background, "pan": self.pan,
+                "stabilized": self.stabilized}
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
@@ -182,7 +190,12 @@ class PathMeta:
                        # Same one-key exemption, same reasoning: a sidecar written before
                        # the pan slice has no `pan` key, and its absence honestly means the
                        # path came from a route — `pan` did not exist as a source yet.
-                       pan=d.get("pan", False))
+                       pan=d.get("pan", False),
+                       # Third and last key on the same exemption, same reasoning:
+                       # a sidecar written before the stabilize slice has no
+                       # `stabilized` key, and its absence honestly means the source
+                       # was raw — stabilization was refused upstream until then.
+                       stabilized=d.get("stabilized", False))
         except KeyError as e:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "

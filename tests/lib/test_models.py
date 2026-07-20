@@ -1266,3 +1266,26 @@ def test_pathmeta_still_hard_fails_on_a_missing_non_exempt_key():
     # wrong key — the same bar its sibling above already holds "freedom" to.
     with pytest.raises(RuntimeError, match=r"no field 'crop_w'"):
         m.PathMeta.from_dict(d)
+
+
+# --- PathMeta.stabilized (design 2026-07-20 §6.2): the other provenance bit ---
+
+def test_path_meta_carries_the_stabilized_provenance_bit():
+    pm = m.PathMeta(mode="fill", crop_w=608, crop_h=1080, crop_y=0,
+                    src_dims=(1920, 1080), canvas=(1080, 1920), out_dims=(1080, 1920),
+                    rect_px=(0, 0, 1080, 1920), freedom=1312, stabilized=True)
+    assert pm.to_dict() == {
+        "mode": "fill", "crop_w": 608, "crop_h": 1080, "crop_y": 0,
+        "src_dims": [1920, 1080], "canvas": [1080, 1920], "out_dims": [1080, 1920],
+        "rect_px": [0, 0, 1080, 1920], "freedom": 1312,
+        "background": "blur", "pan": False, "stabilized": True}
+
+
+def test_a_sidecar_written_before_this_slice_reads_as_not_stabilized():
+    """Same one-key exemption background and pan already have: a sidecar with no
+    `stabilized` key was written when stabilization could not happen at all, so
+    False is provably the truth for those files rather than a guessed default."""
+    d = {"mode": "fill", "crop_w": 608, "crop_h": 1080, "crop_y": 0,
+         "src_dims": [1920, 1080], "canvas": [1080, 1920], "out_dims": [1080, 1920],
+         "rect_px": [0, 0, 1080, 1920], "freedom": 1312}
+    assert m.PathMeta.from_dict(d).stabilized is False

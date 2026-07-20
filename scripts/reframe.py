@@ -310,7 +310,7 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
-            path_out: str) -> str:
+            path_out: str, *, stabilized: bool = False) -> str:
     """Compose one episode from a tracked route OR a generated pan (spec §6):
     crop/scale/color per `spec`.
 
@@ -326,6 +326,13 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     generated, so there is no route to read, and writing an empty route.json to
     keep a consumer happy would be a fabricated observation — an empty route
     already MEANS "the tracker ran and found nobody" (design 2026-07-19 §6.1).
+
+    `stabilized` is a FACT ABOUT `src`, not an instruction: it says the caller
+    already ran the vidstab pre-stage and handed us its output. reframe cannot
+    stabilize — a ReframeSpec.stabilize would be a lie in the type — but it does
+    write the sidecar, and whether the pixels were corrected is exactly the kind of
+    thing PathMeta exists to record (design 2026-07-20 §6.2). It flows to PathMeta
+    and nowhere else.
 
     Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
     sidecar — what was actually cut, for check_episode/storyboard to read back instead
@@ -386,7 +393,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
              src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
              rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background,
-             pan=spec.pan is not None
+             pan=spec.pan is not None, stabilized=stabilized
              ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 
