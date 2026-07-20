@@ -372,13 +372,22 @@ Representative diff (`scripts/extract.py:17`):
 - [ ] **Step 1: Enumerate the sites, so the count is checked not assumed**
 
 ```bash
-grep -rn '"ffmpeg"' scripts/ | grep -v 'scripts/lib/proc.py' | wc -l   # 26 after Task 1
-grep -rn '"ffprobe"' scripts/ | wc -l                                  # 8
+grep -rn '"ffmpeg"' scripts/ | grep -v 'scripts/lib/proc.py' | grep -v 'scripts/lib/ffbin.py'
+grep -rn '"ffprobe"' scripts/ | grep -v 'scripts/lib/ffbin.py'
 ```
 
-Measured on the pre-slice tree: 27 `"ffmpeg"` outside `proc.py`, of which
-`scripts/draft.py:19`'s default parameter was already removed in Task 1 → **26 argv sites**,
-plus **8** `"ffprobe"` → 34 replacements here.
+**As built: 25 + 8 = 33 replacements, not the 34 this step originally predicted — and the
+way that number was wrong is the point.**
+
+The original text said "27 pre-slice minus draft.py:19's default parameter = 26". Two
+errors compounded. It counted a raw grep, which includes `ffbin.py`'s own
+`_resolve("FFMPEG", "ffmpeg")` — the one literal Step 4 of *this same task* says must
+survive. And it was computed against the pre-slice tree, before Task 1 also dissolved
+`intake.py`'s `["ffmpeg", "-hide_banner", "-filters"]` probe into `ffbin.has_filter`.
+
+So the count moves under you: Task 0 *adds* two literals (ffbin's own), Task 1 *removes*
+two. Both exclusions above are needed, and the honest instruction is the one at the top of
+this step — enumerate and count what you actually see, then reconcile against Step 4.
 
 `scripts/lib/proc.py`'s two matches are inside **comments**, not string literals. Leave
 them: they explain the guard, Python never sees them, and — relevant to Task 4 — the AST
