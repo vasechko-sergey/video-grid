@@ -59,7 +59,8 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     except FileNotFoundError as e:
         raise RuntimeError(
             f"{cmd[0]!r} not found on PATH — install it "
-            "(ffmpeg/ffprobe: `brew install ffmpeg`)") from e
+            "(ffmpeg/ffprobe: `bash setup.sh`, which installs ffmpeg-full and "
+            "records where it landed; `brew install ffmpeg` gets the slim build)") from e
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
             f"command timed out after {e.timeout:g}s: {' '.join(map(str, cmd))}\n"

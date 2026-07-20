@@ -10,6 +10,9 @@ __pycache__/
 # per-user music-sourcing config (Jamendo client_id) — never committed
 config/sourcing.env
 
+# per-machine ffmpeg-full paths that setup.sh records — never committed
+config/ffmpeg.env
+
 # ultralytics resolves weights by NAME and downloads into the CWD when its
 # weights_dir is unset or missing — a test run drops yolo11*.pt in the repo ROOT,
 # not in models/, which nothing actually configures (montage §12 records the gap).
