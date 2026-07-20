@@ -73,12 +73,57 @@ def _guilty(banned: str, paths: list[Path]) -> list[str]:
             for line, text in _literals(p.read_text()) if banned in text]
 
 
+# The runtime layer's load-bearing assumption: every ffmpeg/ffprobe invocation in
+# scripts/ funnels through proc.run, so guarding that one function guards them
+# all. proc.py is the wrapper itself; catalog.py and fetch.py are the documented
+# yt-dlp sites design §5 already records as out of reach (yt-dlp spawns its own
+# ffmpeg child, whose argv no lint here can observe).
+_MAY_IMPORT_SUBPROCESS = ("catalog.py", "fetch.py", "proc.py")
+
+
+def _imports_subprocess(src: str) -> bool:
+    """True if the module pulls in `subprocess` in any import form.
+
+    Import-level, not call-level, and that is the honest limit: `os.system` and
+    friends cannot be caught this way because `os` is imported legitimately all
+    over the tree. subprocess is the realistic bypass — it is what every existing
+    site uses — and design §2's sweep for the alternatives came back empty.
+    """
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Import):
+            if any(a.name.split(".")[0] == "subprocess" for a in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] == "subprocess":
+                return True
+    return False
+
+
 def test_the_scan_actually_finds_files():
     """A glob that silently matches nothing would make every scan below pass
     vacuously — the failure mode this whole file exists to prevent."""
     found = _sources()
     assert len(found) > 20
     assert any(p.name == "reframe.py" for p in found)
+
+
+def test_literal_extraction_works_on_the_real_tree():
+    """The POSITIVE control, and _sources() being non-empty is not one.
+
+    Every detection test above runs on synthetic tmp_path files, and the real-tree
+    test asserts `== []` — which also passes when extraction is broken. Breaking
+    _literals so it returned [] for real scripts/ sources while still working on
+    tmp_path files left all five tests in this file green.
+
+    So: a real filter name, known present, that the scan MUST find.
+    scripts/lib/color.py:24 emits `f"colorchannelmixer=rr={rr:.3f}..."` and is the
+    only place in scripts/ that does (lint.py names it too, in the lutrgb remedy,
+    and is skipped). Asserted at file granularity so reformatting color.py does
+    not redden an unrelated test.
+    """
+    emitters = sorted({g.rsplit(":", 1)[0]
+                       for g in _guilty("colorchannelmixer", _sources())})
+    assert emitters == [str(SCRIPTS / "lib" / "color.py")]
 
 
 @pytest.mark.parametrize("banned", lint.BANNED_FILTERS)
@@ -116,12 +161,62 @@ def test_an_fstring_filtergraph_is_covered(tmp_path):
 
 
 def test_the_self_exemption_is_one_file_wide(tmp_path):
-    """Plant a violation in a DIFFERENT file and prove the scan still catches it.
-    Without this, widening the skip to a directory (or to lib/) would go unnoticed
-    and the static layer would quietly stop covering anything."""
+    """Plant violations around the skipped file and prove the scan still catches
+    them. Without this, widening the skip would go unnoticed and the static layer
+    would quietly stop covering anything.
+
+    One of the two plants is a SIBLING of the skipped file, and that is the whole
+    point. With only the root-level plant, widening the skip from `p != skip` to
+    `p.parent != skip.parent` — i.e. exempting all of scripts/lib/ — left this
+    test green, because the root plant is still caught. scripts/lib/ is where
+    color.py, draft.py, titles.py and assembly.py live: most of the filtergraph
+    producers in the repo. The mutation that blinds the scan to nearly everything
+    it exists for has to be the one it catches.
+    """
     fake = tmp_path / "scripts"
     (fake / "lib").mkdir(parents=True)
     (fake / "lib" / "lint.py").write_text('BANNED_FILTERS = ("lutrgb",)\n')
+    (fake / "lib" / "grade.py").write_text('VF = "lutrgb=r=1"\n')
     (fake / "renderer.py").write_text('VF = "lutrgb=r=val*1.1"\n')
     guilty = _guilty("lutrgb", _sources(fake, fake / "lib" / "lint.py"))
-    assert guilty == [f"{fake / 'renderer.py'}:1"]
+    assert guilty == [f"{fake / 'lib' / 'grade.py'}:1",
+                      f"{fake / 'renderer.py'}:1"]
+
+
+def test_only_the_documented_sites_reach_subprocess_directly():
+    """The assumption the ENTIRE runtime layer stands on, finally machine-checked.
+
+    Design §2 claims all 35 ffmpeg/ffprobe invocations funnel through proc.run,
+    "verified three ways" — by hand, at design time, in the one slice whose whole
+    thesis is that hand-verified invariants decay. If a future module calls
+    subprocess directly it sits outside the guard permanently and silently, and
+    no test in this repo would notice.
+
+    Every file is scanned, including scripts/lib/lint.py: its self-exemption is
+    about the banned-filter tokens it declares and has no bearing on subprocess.
+
+    Widening this allowlist is a real decision — a new entry is a new hole in the
+    runtime layer, and it belongs in design §5's list of what the lint does not
+    cover.
+    """
+    importers = sorted(p.name for p in sorted(SCRIPTS.rglob("*.py"))
+                       if _imports_subprocess(p.read_text()))
+    assert importers == sorted(_MAY_IMPORT_SUBPROCESS)
+
+
+def test_every_import_form_of_subprocess_is_seen(tmp_path):
+    """The detector itself, on synthetic files. The real-tree test above compares
+    against a NON-empty allowlist, so a detector that always returned False goes
+    red there — but one that merely missed `from subprocess import run` would not,
+    since every current site happens to use plain `import subprocess`."""
+    def seen(src: str) -> bool:
+        f = tmp_path / "m.py"
+        f.write_text(src)
+        return _imports_subprocess(f.read_text())
+
+    assert seen("import subprocess\n")
+    assert seen("import subprocess as sp\n")
+    assert seen("from subprocess import run\n")
+    assert seen("import os\nimport subprocess\n")
+    assert not seen("import os\nfrom pathlib import Path\n")
+    assert not seen('"""subprocess is banned here."""\nX = "subprocess"\n')
