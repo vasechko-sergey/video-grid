@@ -220,3 +220,47 @@ def test_every_import_form_of_subprocess_is_seen(tmp_path):
     assert seen("import os\nimport subprocess\n")
     assert not seen("import os\nfrom pathlib import Path\n")
     assert not seen('"""subprocess is banned here."""\nX = "subprocess"\n')
+
+
+_NAMES_THE_BINARIES = SCRIPTS / "lib" / "ffbin.py"
+_BANNED_BARE = ("ffmpeg", "ffprobe")
+
+
+def _exact(banned: str, paths: list[Path]) -> list[str]:
+    """`file:line` for every non-docstring literal EQUAL to `banned`.
+
+    Equality, not the substring test _guilty uses. Docstrings and error messages
+    say the word "ffmpeg" constantly and must stay legal; no prose string is ever
+    exactly those six characters. Same mention-versus-emission line the filter
+    checks already had to draw.
+    """
+    return [f"{p}:{line}" for p in paths
+            for line, text in _literals(p.read_text()) if text == banned]
+
+
+@pytest.mark.parametrize("banned", _BANNED_BARE)
+def test_no_script_names_a_binary_instead_of_resolving_it(banned):
+    guilty = _exact(banned, _sources(skip=_NAMES_THE_BINARIES))
+    assert guilty == [], (
+        f"bare {banned!r} in argv goes to PATH, which on a keg-only ffmpeg-full "
+        f"install is the WRONG build — use ffbin.{banned}(): {guilty}")
+
+
+def test_prose_naming_a_binary_is_not_an_emission(tmp_path):
+    """The discriminator: equality, not substring."""
+    (tmp_path / "m.py").write_text(
+        'X = "ffmpeg is not on PATH"\nY = "run ffprobe by hand"\n')
+    assert _exact("ffmpeg", _sources(tmp_path, skip=tmp_path / "none.py")) == []
+
+
+def test_a_bare_binary_literal_is_caught(tmp_path):
+    (tmp_path / "m.py").write_text('cmd = ["ffmpeg", "-y"]\n')
+    assert len(_exact("ffmpeg", _sources(tmp_path, skip=tmp_path / "none.py"))) == 1
+
+
+def test_the_binary_exemption_is_one_file_wide(tmp_path):
+    """ffbin.py must name them; nothing else may hide behind that hole."""
+    (tmp_path / "ffbin.py").write_text('B = "ffmpeg"\n')
+    (tmp_path / "other.py").write_text('B = "ffmpeg"\n')
+    found = _exact("ffmpeg", _sources(tmp_path, skip=tmp_path / "ffbin.py"))
+    assert len(found) == 1 and "other.py" in found[0]
