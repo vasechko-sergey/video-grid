@@ -118,12 +118,22 @@ current, clean tree a naive positional check produces **four false positives out
 seven hits**. The real invariant is narrower, and until this design nobody had written
 it down.
 
-**Violation ⟺ all four hold:**
+**Violation ⟺ all five hold:**
 
 1. the `-ss` is an *input-side* seek, **and**
 2. `-t` or `-to` is present — the command is cutting a *window*, **and**
 3. `-accurate_seek` is **not** present, **and**
-4. `-frames:v` is **not** present — a still grab is not a cut.
+4. `-frames:v` is **not** present — a still grab is not a cut, **and**
+5. the command is not a stream copy (`-c copy` / `-c:v copy`).
+
+Condition 5 was added after the first implementation, because the message and
+docstring both said *re-encoded* window while nothing checked for re-encoding —
+a claim asserted but not verified. A `-c copy` fast trim cannot produce this
+landmine: there is no re-encode for a boundary to be black at, and such a trim
+gives up frame accuracy deliberately. No site combines `-ss` with `-c copy`
+today, but `scripts/lib/assembly.py:84`, `scripts/draft.py:66`, `scripts/draft.py:71`
+and `scripts/deliver.py:81` already stream-copy; the first one to gain a window
+would have raised mid-render.
 
 **Condition 1 is "some `-i` appears after this `-ss`", not "before the first `-i`".**
 The two agree on every command in the tree today and diverge on multi-input commands,
@@ -222,6 +232,34 @@ lint — it converts an unexamined risk into a false sense of safety.
   default `"ffmpeg"`). Harmless today, but it is the template for a future bypass of
   any check keyed on argv[0] being the literal `"ffmpeg"`. The runtime guard therefore
   inspects **every** command it is handed rather than filtering on argv[0].
+- **`SYNTH_SOURCES` is a five-entry denylist and it under-covers.** It names
+  `color=`, `testsrc`, `anullsrc`, `anoisesrc`, `sine=` — the five this repo
+  actually uses. ffmpeg has many more infinite sources, and every one of them
+  reads clean: `nullsrc`, `aevalsrc`, `rgbtestsrc`, `yuvtestsrc`, `smptebars`,
+  `gradients`, `cellauto`, `life`, `mandelbrot`, `allrgb`, `allyuv`,
+  `haldclutsrc`. **`nullsrc` deserves singling out — it is one keystroke from
+  `anullsrc`, which *is* covered.**
+
+  Five is a defensible v1 and the direction is safe (a miss, never a false
+  positive). Leaving this unsaid would not be: it is structurally the same flaw
+  §1 quotes `test_reframe.py:438` confessing to — "silently under-covers as the
+  vocabulary grows." A lint whose denylist is believed complete is exactly the
+  false sense of safety this section exists to prevent.
+
+- **A parameterless synthesized source is not detected.** `color=` and `sine=`
+  carry a trailing `=` (to disambiguate `color=` from `colorchannelmixer` and
+  friends), so the legal, infinite `-f lavfi -i color` and `-f lavfi -i sine`
+  read clean. The asymmetry with the other three entries is a deliberate
+  disambiguation trade-off, recorded here because the code cannot express it.
+
+- **`drawtext` has no real-argv corroboration on this machine.** §8's "the real
+  call sites are fixtures" reasoning does not transfer to §4.4 here: this
+  machine's ffmpeg is built without `libfreetype`, so all five drawtext
+  integration tests skip and **not one** `drawtext=` argv reaches the predicate
+  across the whole suite. `_drawtext_font` is pinned by its unit tests and by
+  reading both producers, not by measurement. A drawtext-capable ffmpeg
+  (homebrew-core's `ffmpeg-full`, which also carries libvidstab) would close this.
+
 - **The judgment-call landmines stay judgment calls.** "Never stabilize wade-in/out
   shots" cannot be mechanically checked — no static or runtime predicate can know which
   shot is a wade-in, and nothing in the codebase classifies one (`grep -rn wade
