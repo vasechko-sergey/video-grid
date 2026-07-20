@@ -246,6 +246,23 @@ lint — it converts an unexamined risk into a false sense of safety.
 
   This is the production/test asymmetry stated plainly: `scripts/` funnels through one
   choke point, `tests/` does not have to.
+
+  **That choke point is itself machine-checked** — `tests/lib/test_landmine_scan.py`
+  refuses any module under `scripts/` that imports `subprocess`, except the allowlist
+  `_MAY_IMPORT_SUBPROCESS` (`proc.py`, plus `catalog.py` and `fetch.py`, the documented
+  yt-dlp sites below). Design §2's claim that all 35 invocations funnel through
+  `proc.run` was hand-verified at design time; in a slice whose whole thesis is
+  machine-checking, the assumption the runtime layer *stands on* should not have been
+  the one thing left to prose.
+
+  **`_MAY_IMPORT_SUBPROCESS` is the authority on that list, not this section.** Widening
+  it widens what the runtime layer cannot see, so the constant carries the reasoning and
+  this paragraph points at it. Two copies of "what the lint does not cover" would drift
+  — which is precisely the failure §9 records `references/landmines.md` already
+  committing, and there is no reason to repeat it inside the fix.
+
+  The check is import-level by design: `os.system` cannot be caught this way, because
+  `os` is imported legitimately almost everywhere. `subprocess` is the realistic bypass.
 - **Runtime coverage equals test coverage.** An unexercised path is unguarded at
   runtime.
 - **A splat-assembled graph on an unexercised path is covered by neither layer.**
