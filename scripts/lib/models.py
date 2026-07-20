@@ -605,7 +605,6 @@ class ReframeSpec:
     delivery: Delivery
     layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
-    stabilize: bool = False
     color_correct: tuple | None = None
     pan: "PanSpec | None" = None
 
@@ -626,9 +625,6 @@ class ReframeSpec:
                              "build it from the manifest's layout fields")
         if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
             raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
-        if self.stabilize:
-            raise ValueError("ReframeSpec.stabilize must be False — the manifest refuses "
-                             "stabilize upstream (needs_input); a True here is a bug")
         if self.color_correct is not None and not _positive_seq(self.color_correct, 3):
             raise ValueError(f"ReframeSpec.color_correct must be 3 positive per-channel "
                              f"factors or None, got {self.color_correct!r}")

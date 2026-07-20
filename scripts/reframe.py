@@ -319,8 +319,10 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
     independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
     optional per-channel factor the reel retry loop composes onto the grade to pull one
-    episode toward the reel median (None = base grade only). stabilize is refused
-    upstream (manifest gate + ReframeSpec.__post_init__) — this function never sees it.
+    episode toward the reel median (None = base grade only). Stabilization is a
+    PRE-STAGE, not part of this chain: the caller runs vidstab.stabilize and hands
+    its output in as `src`, and `stabilized` (below) records that it did (design
+    2026-07-20 §1).
 
     route_path is OPTIONAL and must be None under a pan: a pan's path is
     generated, so there is no route to read, and writing an empty route.json to

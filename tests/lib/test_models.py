@@ -203,8 +203,6 @@ def test_reframespec_validation():
         m.ReframeSpec(**{**ok, "composition": "hero"})
     with pytest.raises(ValueError, match="color_means"):
         m.ReframeSpec(**{**ok, "color_means": (105, 0, 137)})     # #G positivity
-    with pytest.raises(ValueError, match="stabilize"):
-        m.ReframeSpec(**{**ok, "stabilize": True})
     with pytest.raises(ValueError, match="canvas"):
         m.ReframeSpec(**{**ok, "canvas": (9, 0)})
 
@@ -1289,3 +1287,15 @@ def test_a_sidecar_written_before_this_slice_reads_as_not_stabilized():
          "src_dims": [1920, 1080], "canvas": [1080, 1920], "out_dims": [1080, 1920],
          "rect_px": [0, 0, 1080, 1920], "freedom": 1312}
     assert m.PathMeta.from_dict(d).stabilized is False
+
+
+def test_reframe_spec_has_no_stabilize_field_at_all():
+    """Not "refuses True" — GONE. The field existed only to be refused, back when
+    stabilization was unimplemented. Keeping a refused field once the feature
+    exists invites someone to flip it to True and expect the pre-stage to run
+    inside reframe, which is exactly the arrangement design 2026-07-20 §1 rules
+    out. A TypeError says so at construction."""
+    with pytest.raises(TypeError, match="stabilize"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                      color_means=(105, 122, 137), delivery=m.Delivery(),
+                      stabilize=True)
