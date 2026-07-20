@@ -14,14 +14,18 @@ Two consumers, both wired up, and neither subsumes the other (design §2):
     those same splats.
 
 check_argv's contract is list[str]. proc.run coerces every element with str()
-before calling in: subprocess.run accepts os.PathLike, and the `in` tests below
+before calling in: subprocess.run accepts os.PathLike, and the string tests below
 raise TypeError on a Path rather than reporting a landmine.
 
-A recurring trap in here, hit three times during review: ffmpeg's vocabulary is
-full of tokens that CONTAIN a shorter token. `boxcolor=` contains `color=`,
-`-sseof` contains `-ss`, `seed=` and `pad=` contain `d=`. Every comparison below
-is therefore anchored — exact token, or a regex with a boundary. A bare `in` is
-almost always a bug here.
+A recurring trap in here, hit five times during review, and it cuts both ways.
+ffmpeg's vocabulary is full of tokens that CONTAIN a shorter token — `boxcolor=`
+contains `color=`, `-sseof` contains `-ss`, `seed=` and `pad=` contain `d=` — and
+just as many that are CONTAINED BY a longer one: `testsrc` opens the filename
+`testsrc.mp4`, and `-c:v` opens `-c:v:0`. The first direction produces false
+positives, the second silent misses, and this guard raises in production, so
+neither is affordable. Every comparison below is therefore anchored on BOTH
+sides — an exact token via fullmatch, or a regex with a boundary at each end. A
+bare `in` is almost always a bug here, and so is an unanchored prefix.
 
 See docs/specs/2026-07-20-landmine-lint-design.md.
 """
@@ -31,27 +35,55 @@ import re
 BANNED_FILTERS = ("lutrgb",)
 
 # lavfi sources that never send end-of-stream unless bounded (design §12).
-# Five is deliberately not exhaustive — design §5 lists the uncovered infinite
-# sources (nullsrc, aevalsrc, smptebars, gradients, cellauto, life, mandelbrot,
-# allrgb, allyuv, haldclutsrc). Those are MISSES, the safe direction; widening is
-# a later call, but the under-coverage is written down rather than implied away.
+# Five is deliberately not exhaustive: ffmpeg has a dozen more infinite sources
+# and every one reads clean here. Those are MISSES, the safe direction; widening
+# is a later call, but the under-coverage is written down rather than implied
+# away — in the landmine-lint design §5, which NAMES them and is the one place
+# that does. This comment deliberately does not repeat the list: it carried a
+# copy that had already drifted to ten of the twelve, and a stale roster of what
+# a safety check misses is worse than a pointer to a current one.
 SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
 
-# A source NAME, not a parameter that merely ends in one. The name must START a
-# filtergraph element: string start, or just after a `,` / `;` / `]`. Two distinct
-# ways to be a parameter, and excluding only word characters catches just the first:
+# Where a filtergraph element ENDS: at the next filter (`,`), the next chain
+# (`;`), or a label (`[`). One constant, two readers — _element slices on it and
+# _SYNTH_RE anchors its right-hand boundary against it. Two copies of this set
+# could drift into a checker that finds a source its own slicer cannot delimit.
+_GRAPH_SEPS = ",;["
+
+# A source NAME — not a parameter that merely ends in one, and not a FILENAME that
+# merely begins with one. Both anchors are load-bearing.
+#
+# LEFT: the name must START an element — string start, or just after a `,` / `;` /
+# `]`. Two distinct ways to be a parameter, and excluding only word characters
+# catches just the first:
 #   * `boxcolor=` / `fontcolor=` — glued to a letter (scripts/lib/draft.py:28).
 #   * `:color=` / `=color=` — a parameter of drawbox, pad, anoisesrc. Live at
 #     tests/integration/test_pan.py:27-31, which a word-only rule flags on correct
 #     code. This guard raises in production, so a false positive breaks a render.
 # `(?<![^,;\]])` succeeds at string start too: a negative lookbehind with nothing
 # behind it has nothing to reject.
+#
+# RIGHT: and string start is exactly where the left anchor is WEAKEST, because an
+# `-i` value is an element too. With no right anchor, `-i testsrc.mp4` reads as a
+# source and RAISES — measured, one violation on a command with nothing wrong.
+# Argv position would settle it (a source is only a source inside a filtergraph or
+# an `-i` value, and a filename is neither), but a per-element scan cannot see argv
+# position. What it CAN see is spelling: a real source is `name` or `name=params`,
+# never `name.ext` — so the name must be followed by `=`, by an element separator,
+# or by nothing at all. That distinction is exact, not heuristic, and it needs no
+# guess about which argv slot the element occupies.
+# The anchor applies only to the `=`-less entries: for `color=` and `sine=` the
+# trailing `=` in the name already IS this requirement, spelled literally.
+#
 # `\s*` after the separator: every graph in this repo is built with `";".join(...)`
 # so no whitespace appears today, but a future `"; ".join(...)` for readability
 # would otherwise switch this check off silently. The source name is group 1 —
-# the whitespace must not land in the reported name or in the element slice.
+# the whitespace must not land in the reported name or in the element slice, and
+# the right anchor is a lookahead so it stays out of group 1 too.
 _SYNTH_RE = re.compile(r"(?<![^,;\]])\s*(" + "|".join(
-    re.escape(s) for s in SYNTH_SOURCES) + r")")
+    re.escape(s) if s.endswith("=")
+    else re.escape(s) + r"(?=[=" + re.escape(_GRAPH_SEPS) + r"]|\Z)"
+    for s in SYNTH_SOURCES) + r")")
 
 # The source's own duration. `d=` cannot be a substring test: `seed=` contains it,
 # and so do `speed=` and the literal `pad=`. `seed=` is a real parameter of
@@ -63,9 +95,28 @@ _SYNTH_RE = re.compile(r"(?<![^,;\]])\s*(" + "|".join(
 _BOUND_RE = re.compile(r"(?<![A-Za-z0-9_])(?:d|duration)=")
 
 # Copying the video stream means no re-encode, so no re-encode boundary to corrupt.
-# `-c:a copy` is deliberately NOT here: it copies audio while the video is still
-# re-encoded, which is precisely when the seek landmine bites.
-_VIDEO_COPY_FLAGS = ("-c", "-c:v")
+# ffmpeg spells that one instruction seven ways: `-c` / `-codec` for every stream,
+# a `:v` specifier for the video one, `:v:N` to pick among several, and the
+# deprecated `-vcodec` alias every tutorial still teaches. A tuple naming only the
+# two forms this repo happens to emit raises on the other five — measured, on
+# otherwise clean argvs, which re-opens the door §4.2 added this exemption to shut.
+#
+# fullmatch, never a prefix or endswith test: `-acodec` and `-codec:a` end in the
+# same letters, copy AUDIO while the video is still re-encoded, and that is
+# precisely when the seek landmine bites. Excluding them is the point, and it is
+# why this is a regex rather than a wider string test.
+#
+# Two spellings are left out on purpose, both because matching them would EXEMPT a
+# re-encoded window — a miss, and this module widens toward false positives from
+# nobody: `-c:0 copy` (copy stream 0 by index) cannot be known from argv to mean
+# video, and bare `-frames` below is the same shape.
+_VIDEO_COPY_RE = re.compile(r"-(?:vcodec|(?:c|codec)(?::v(?::\d+)?)?)")
+
+# A still grab is not a cut (storyboard.py:30) — the same spellings problem one
+# option over. `-vframes 1` is the deprecated alias, `-frames:v:N` the stream-
+# specifier form. Anchored on `:v`, not on the word `frames`, so `-frames:a` — an
+# audio frame count, which grabs no still — cannot exempt a video window.
+_STILL_GRAB_RE = re.compile(r"-(?:vframes|frames:v(?::\d+)?)")
 
 
 def _banned_filters(cmd: list[str]) -> list[str]:
@@ -83,14 +134,14 @@ def _banned_filters(cmd: list[str]) -> list[str]:
 def _copies_video(cmd: list[str]) -> bool:
     """True when the video stream is stream-copied rather than re-encoded.
 
-    Exact tokens in the value position: `-c copy` / `-c:v copy`. A copy-trim
-    cannot produce the §12 black-frames-at-a-re-encode failure because it does
-    not re-encode — it can only cut on a keyframe. No site pairs a copy with a
-    `-ss` window today, but assembly.py:84, draft.py:66/:71 and deliver.py:81
-    already pass `-c copy`, so the first one to gain a window would otherwise
-    raise mid-render.
+    Any of the seven spellings of a video codec flag (see _VIDEO_COPY_RE) with
+    `copy` in the value position. A copy-trim cannot produce the §12
+    black-frames-at-a-re-encode failure because it does not re-encode — it can
+    only cut on a keyframe. No site pairs a copy with a `-ss` window today, but
+    assembly.py:84, draft.py:66/:71 and deliver.py:81 already pass `-c copy`, so
+    the first one to gain a window would otherwise raise mid-render.
     """
-    return any(a in _VIDEO_COPY_FLAGS and cmd[i + 1:i + 2] == ["copy"]
+    return any(_VIDEO_COPY_RE.fullmatch(a) and cmd[i + 1:i + 2] == ["copy"]
                for i, a in enumerate(cmd))
 
 
@@ -105,7 +156,7 @@ def _seek_order(cmd: list[str]) -> list[str]:
     """
     if "-accurate_seek" in cmd:      # §12 names this as one of its three remedies
         return []
-    if "-frames:v" in cmd:           # a still grab is not a cut (storyboard.py:30)
+    if any(_STILL_GRAB_RE.fullmatch(a) for a in cmd):   # a still grab is not a cut
         return []
     if "-t" not in cmd and "-to" not in cmd:
         return []                    # not cutting a window ⇒ no cut boundary
@@ -134,7 +185,7 @@ def _element(text: str, start: int) -> str:
     sitting beside it.
     """
     end = len(text)
-    for sep in (",", ";", "["):
+    for sep in _GRAPH_SEPS:
         i = text.find(sep, start)
         if i != -1:
             end = min(end, i)

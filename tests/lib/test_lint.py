@@ -66,6 +66,28 @@ def test_a_still_grab_is_exempt_because_it_is_not_a_cut():
     assert lint.check_argv(cmd) == []
 
 
+@pytest.mark.parametrize("flag", ["-frames:v", "-vframes", "-frames:v:0"])
+def test_every_spelling_of_a_still_grab_is_exempt(flag):
+    """Same class as the copy-flag spellings, same measured false positive:
+    `-vframes 1` is the deprecated alias every ffmpeg tutorial still teaches, so
+    a still grab written that way and carrying a `-t` raised on correct code.
+
+    The `-t` isolates this exemption — without it the not-a-window early return
+    answers first and the condition under test is never consulted.
+    """
+    cmd = ["ffmpeg", "-y", "-ss", "1.2", "-i", "a.mp4", "-t", "0.5", flag, "1", "f.png"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_an_audio_frame_count_is_not_a_still_grab():
+    """`-frames:a` is the same option family aimed at audio: it grabs no still,
+    so it must not exempt a re-encoded video window. Pins that the widening is
+    anchored on `:v` rather than on the word `frames`."""
+    cmd = ["ffmpeg", "-y", "-ss", "1.2", "-i", "a.mp4", "-t", "0.5", "-frames:a", "1",
+           "-c:v", "libx264", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
+
+
 def test_an_open_ended_input_seek_is_exempt_because_it_is_not_a_window():
     """No -t/-to: the command is not cutting a window, so the cut-boundary
     landmine cannot apply."""
@@ -106,6 +128,38 @@ def test_a_video_stream_copy_window_is_exempt():
     cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", "-c:v", "copy",
            "out.mp4"]
     assert lint.check_argv(cmd) == []
+
+
+@pytest.mark.parametrize(
+    "flag", ["-c", "-codec", "-c:v", "-codec:v", "-vcodec", "-c:v:0", "-codec:v:1"])
+def test_every_spelling_of_a_video_copy_exempts_a_window(flag):
+    """ffmpeg spells one instruction seven ways and a two-entry tuple knew two.
+
+    Each unknown spelling was MEASURED as a false positive on this exact argv —
+    and a false positive re-opens precisely the door design §4.2 added condition
+    5 to close: "the first stream-copy site to gain a window would have raised
+    mid-render." Recognising `-c:v` but not `-vcodec` closes that door one
+    spelling over and calls it shut.
+
+    `-codec` is included although the review named only three: it is the long
+    form of the already-exempt `-c`, and it measured as a false positive too.
+    """
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", flag, "copy",
+           "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+@pytest.mark.parametrize("flag", ["-c:a", "-acodec", "-codec:a", "-c:a:0"])
+def test_no_spelling_of_an_audio_copy_exempts_a_re_encoded_window(flag):
+    """The widening must not leak into the exempting direction, which is a MISS.
+
+    Every one of these copies AUDIO while the video is still re-encoded —
+    exactly when the landmine bites. `-acodec` matters most: it ends in the same
+    `codec` the video spellings do, so a substring or endswith test admits it.
+    """
+    cmd = ["ffmpeg", "-y", "-ss", "5.0", "-i", "a.mp4", "-t", "2.0", flag, "copy",
+           "-c:v", "libx264", "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1
 
 
 def test_an_audio_only_copy_does_not_exempt_a_re_encoded_window():
@@ -305,6 +359,46 @@ def test_the_letterbox_pad_colour_parameter_is_not_a_source():
     cmd = ["ffmpeg", "-i", "a.mp4", "-vf",
            "scale=1080:1920,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black", "o.mp4"]
     assert lint.check_argv(cmd) == []
+
+
+def test_a_filename_that_merely_starts_with_a_source_name_is_not_a_source():
+    """The FIFTH instance of the boundary family, and a measured false positive.
+
+    The boundary rule's "string start counts" arm exists so a bare `-i` VALUE
+    like `color=c=black:…` matches — but it also means any argv element merely
+    BEGINNING with a source name reads as a source. Measured before the fix:
+    `-i testsrc.mp4` reported one violation on a command with nothing wrong.
+
+    Only a bare basename bites. The same path written absolutely is clean by
+    accident — the `/` sits in the lookbehind's reject set — which is exactly
+    the kind of accident that makes a bug look absent until someone passes a
+    relative path. Both directions are pinned so neither can drift.
+    """
+    for name in ("testsrc.mp4", "anullsrc.wav", "anoisesrc_take2.mov"):
+        assert lint.check_argv(["ffmpeg", "-y", "-i", name, "out.mp4"]) == [], name
+    assert lint.check_argv(["ffmpeg", "-y", "-i", "/w/testsrc.mp4", "out.mp4"]) == []
+
+
+@pytest.mark.parametrize("graph, expect", [
+    # A real source is `name` alone or `name=params` — never `name.ext`. These
+    # are every shape of "alone" the graph syntax allows, and all must survive.
+    ("anullsrc=r=48000:cl=stereo", "anullsrc"),   # params — mix.py:75's own form
+    ("anullsrc", "anullsrc"),                     # parameterless, ends the element
+    ("testsrc[t]", "testsrc"),                    # an output label follows
+    ("testsrc,format=yuv420p", "testsrc"),        # a filter chain follows
+    ("testsrc;[0:v]null", "testsrc"),             # a new graph chain follows
+])
+def test_a_real_source_still_matches_after_the_filename_fix(graph, expect):
+    """The other half of the fix: narrowing must not switch the check off.
+
+    Written as the five things that may legally follow a source NAME (`=`, end
+    of element, `[`, `,`, `;`), because that set is what the fix keys on — if it
+    is ever narrowed further, one of these goes green-to-red rather than the
+    check going quietly blind, which is the failure mode this module fears most.
+    """
+    msgs = lint.check_argv(["ffmpeg", "-y", "-f", "lavfi", "-i", graph, "out.mp4"])
+    assert len(msgs) == 1
+    assert expect in msgs[0]
 
 
 def test_each_source_in_a_graph_needs_its_own_bound():
