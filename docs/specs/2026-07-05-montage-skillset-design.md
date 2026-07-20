@@ -71,10 +71,15 @@ PYTHON="${PYTHON:-python3.13}"                                     # explicit ve
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
 "$PYTHON" -m venv "$SKILL_DIR/.venv"
 "$SKILL_DIR/.venv/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# preflight AND self-install: missing python3.13/ffmpeg are brew-installed automatically
-# (hard fail only when brew itself is absent); vidstab = opt-in `setup.sh --with-vidstab`
-# (homebrew-ffmpeg tap REPLACES core ffmpeg formula — invasive, so never automatic);
-# otherwise vidstab → WARNING (core never calls it; process-episode re-checks hard);
+# preflight AND self-install: missing python3.13 is brew-installed automatically.
+# ffmpeg = ONE keg-only `ffmpeg-full` beside core ffmpeg, carrying drawtext AND
+# vidstab as BASELINE (2026-07-20). The old `--with-vidstab`/`--with-fonts` flags
+# and the homebrew-ffmpeg tap build that REPLACED core ffmpeg are both deleted —
+# so is the claim that "core never calls vidstab", false since §5.2 intake became
+# its first runtime consumer. keg-only means the binaries never reach PATH, so
+# setup.sh records them in config/ffmpeg.env and scripts/lib/ffbin.py resolves
+# through it ($FFMPEG → that file → PATH). Every brew block warns-and-continues
+# without brew, so a non-macOS box still builds its venv.
 # YOLO weights into models/ if missing
 ```
 
@@ -454,7 +459,7 @@ Two parts:
 Not a stage — a library. Snippets for crop/color/vidstab/seek/concat + the **landmine registry** (§12). Used by extract, assemble-draft, process-episode, audio-mix, deliver. Goal: "don't reinvent ffmpeg."
 
 ### 5.16 titles → `TITLES.json` (optional, on-screen text)
-Agent-authored hook / mid-caption / ending text, drawn from `SPEC.hook/text/ending` (§5.3). A typed `TITLES.json` (text, start/dur, font, position, style) is the stage's own artifact — the **render rides `deliver`'s single encode** (§5.14): `drawtext` cannot ride `-c copy`, so titles never get a second-pass intermediate. Positions are **safe-by-construction** presets (top/center/bottom margins), now drawn from the same `SafeZone` table that `check_reel.safe_zones` (§5.13, built 2026-07-16) checks the tracked subject against — an advisory route-geometry check, not pixel-level CV. Fonts resolve by name through an opt-in curated library (`setup.sh --with-fonts`); the `drawtext`/`fontfile=` landmine (§12) already covers the failure mode.
+Agent-authored hook / mid-caption / ending text, drawn from `SPEC.hook/text/ending` (§5.3). A typed `TITLES.json` (text, start/dur, font, position, style) is the stage's own artifact — the **render rides `deliver`'s single encode** (§5.14): `drawtext` cannot ride `-c copy`, so titles never get a second-pass intermediate. Positions are **safe-by-construction** presets (top/center/bottom margins), now drawn from the same `SafeZone` table that `check_reel.safe_zones` (§5.13, built 2026-07-16) checks the tracked subject against — an advisory route-geometry check, not pixel-level CV. Fonts resolve by name through a curated library that plain `bash setup.sh` installs (**baseline since 2026-07-20**; the `--with-fonts` flag is deleted); the `drawtext`/`fontfile=` landmine (§12) already covers the failure mode.
 **Gate:** every title's text/timing/position/style validates; deliver's encode carries the burned text.
 
 > **Built (2026-07-13, §5.16):** `scripts/lib/fonts.py` (`resolve_font` extracted
@@ -759,6 +764,21 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - **Never synthesize a route to keep a consumer working.** An empty or fabricated `route.json` is not a neutral placeholder: an empty route already means "the tracker found nobody" (fires `no-track` if run through the contradiction gate), and a fabricated one turns `check_episode`'s composition check circular (scores the crop against a subject derived from that same crop) and makes the storyboard mark a hero who does not exist. `checks.continuity([])` returns `pass=True` — its `zip` over an empty route never iterates — so the absence is not even loud. `scripts/process_episode.py`, `scripts/check_episode.py`. See [the pan design](2026-07-19-pan-design.md) §2/§2.1/§6.1.
 - **A validator that checks a ratio cannot see the quantity it will be multiplied by.** `PanSpec` honestly refuses `start == end`, but it validates *fractions of freedom*, not pixels — a span under half a pixel (e.g. `0.5 → 0.5004` at `freedom=875`) rounds both ends onto the same integer, and the render is a static frame nobody asked for, the same silent-static-frame failure a `freedom <= 0` guard exists to prevent, reached by a different road. `scripts/reframe.py` (`generate_pan_path`'s `x0 == x1` raise, downstream of `PanSpec`, where the pixel arithmetic is actually visible). See [the pan design](2026-07-19-pan-design.md) §11.
 - **`is not None` is not truthiness on a dict-valued optional.** An empty dict is falsy, so `if m.pan:` (instead of `if m.pan is not None:`) silently treats `{}` the same as absent — skipping validation in `manifest.validate()` (a clean gate for a pan that cannot construct) or dropping the key entirely in `edl.to_manifest_dict` (so `Manifest.from_dict` never even sees it). Both mutations left the whole suite green. `pan: {}` means an author started a pan and stopped; `pan` absent means none was intended — only one of those is a mistake, and truthiness cannot tell them apart. `scripts/lib/manifest.py`, `scripts/lib/edl.py`. See [the pan design](2026-07-19-pan-design.md) §11.
+- **`cmd | grep -q pattern` under `set -o pipefail` can only ever report "not found".**
+  `grep -q` exits 0 at its first match, so a producer with output still to write loses its
+  reader, takes `SIGPIPE` and exits **141**; `pipefail` promotes that to the pipeline's
+  status. When the pattern is genuinely absent, `grep` reads to EOF and exits 1. Both arms
+  are non-zero, so the test is a tautology — and `if ! …` around it makes the guarded
+  branch unconditional. `setup.sh` gated `brew uninstall --ignore-dependencies ffmpeg` on
+  exactly this shape, so it ran that uninstall on machines where the filter it was checking
+  for was **present** (measured 141 on 5 of 5 runs against a build carrying `drawtext`, and
+  0 on the same command without `pipefail`); the branch's own post-install verification used
+  the same idiom without the `!`, so it aborted with "drawtext still missing" on a build that
+  had it. It needs a producer whose output outruns the pipe buffer — a ~36KB
+  `ffmpeg -filters` with the match ~15.8KB in does, a short one may not — which is why the
+  idiom survives casual testing and reads as obviously correct. In any script with `pipefail`
+  set: capture once and match in-shell (`OUT="$(cmd)"` then `case`), never `| grep -q`.
+  `setup.sh`. See [the ffmpeg baseline design](2026-07-20-ffmpeg-baseline-design.md) §1/§6.
 
 ---
 

@@ -34,8 +34,10 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 `reel_brief build --project <run>/project.json --out-dir <run>`, `edit_plan build --out-dir <run>`,
 `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
 
-0. **Ensure env.** `bash setup.sh` (add `--with-vidstab` — footage-intake is the
-   first runtime vidstab consumer, §5.2).
+0. **Ensure env.** `bash setup.sh` — one install, no capability flags. It puts
+   keg-only `ffmpeg-full` (drawtext + vidstab) beside core ffmpeg and records
+   the path in `config/ffmpeg.env`, which is how every stage resolves its
+   binary.
 
 1. **Locate the run.** `.venv/bin/python -m scripts.montage status --run-dir <run>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from

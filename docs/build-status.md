@@ -1192,6 +1192,99 @@ _Last updated: 2026-07-20._
     twice. Each of the three widenings was mutation-checked in isolation:
     reverting it turns its own new test red and nothing else in the suite.
 
+- **ffmpeg baseline — Tasks 0–6 DONE (2026-07-20); Task 7 blocked on the user** —
+  plan `docs/plans/2026-07-20-ffmpeg-baseline.md` + design
+  `docs/specs/2026-07-20-ffmpeg-baseline-design.md` (branch
+  `feat/ffmpeg-baseline`, commits `04b7600`..`a789431` + this docs sync).
+  **1530 passed / 8 skipped.** One ffmpeg install carrying every library the
+  pipeline needs, resolved from a path `setup.sh` records — and a `setup.sh`
+  that can no longer uninstall a working binary. Before this slice the box's
+  homebrew-core ffmpeg carried neither `libfreetype` nor `libvidstab`, so §5.9
+  assemble-draft, §5.16 titles and 5.2 intake's shake score were dead on it and
+  three integration tests skipped permanently.
+  - **The headline finding is why `setup.sh`'s repair branch was destructive,
+    and it is not what the design first said.** The branch guarding
+    `brew uninstall --ignore-dependencies ffmpeg` was
+    `if ! ffmpeg -filters | grep -q drawtext`, read as "fires when drawtext is
+    missing". It is a **tautology**: under the script's own `set -o pipefail`,
+    `grep -q` exits at its first match, ffmpeg still has 20KB of a ~36KB filter
+    list to write, takes `SIGPIPE` and exits 141, and `pipefail` promotes that
+    to the pipeline's status — while a genuinely absent filter exits 1. Both
+    arms are non-zero, `!` inverts both, so the check can never report
+    "present" and **the uninstall ran on machines where the filter was there**,
+    against an `--enable-shared` build that `openai-whisper` and `summarize`
+    link. Measured 141 on 5 of 5 runs, 0 without `pipefail`. The branch could
+    not have completed either: its own post-install verification used the same
+    idiom *without* the `!`, so the guaranteed path was uninstall → compile a
+    tap build → abort with a false "drawtext still missing". Registered as a
+    **new §12 landmine** (counted, not trusted: §12 is now **27** entries, up
+    from the 26 the lint slice measured) and rewritten as design §1; the
+    replacement captures the filter list once and matches in-shell.
+  - **Built:** `scripts/lib/ffbin.py` — `$FFMPEG`/`$FFPROBE` →
+    `config/ffmpeg.env` → `shutil.which`, always an **absolute** path (a machine
+    now carries two ffmpeg builds, and a log that names which one ran is the
+    difference between seeing a mixed pipeline and inferring it), plus
+    `has_filter`/`require_filter`. **The path is frozen at install, the filters
+    are probed every time** (design §4): a stale path fails loud through
+    `FileNotFoundError`, a stale *capability* record would fail silently — the
+    §12 shape — for the ~50ms it would save, and memoizing was dropped on the
+    same argument (a test forgetting `cache_clear()` passes for the wrong
+    reason). 33 production argv literals (11 files) and 37 integration-test
+    literals (16 files) moved onto the resolver.
+  - **§5 was the load-bearing half, not tidiness.** Four sites asked "does this
+    build have that filter" four ways. Move production onto keg-only
+    `ffmpeg-full` and leave the three test guards plus `conftest.sample_clip`
+    probing PATH, and they find the *slim* build, skip forever, and report green
+    with three integration tests silently uncovered. All four now go through one
+    `need_filter` fixture, which also owns both skip reasons (nothing resolves →
+    skip, not error). Three machine checks stop the drift back: bare
+    `"ffmpeg"`/`"ffprobe"` literals are banned in `scripts/` (AST scan, **exact
+    equality** — prose says "ffmpeg" constantly and stays legal) and in
+    `tests/integration/`, and **no test anywhere may spell `-filters`**, since an
+    independent capability probe is precisely the trap. Filed as a *convention*
+    check, deliberately **not** in `check_argv`: a drawtext graph on a build
+    without libfreetype exits `No such filter`, which `proc.run` raises loudly,
+    so widening the silent-corruption guard with it would dilute what a
+    `check_argv` refusal means.
+  - **`setup.sh` stops being destructive.** Both `brew uninstall` branches
+    deleted outright rather than guarded — `ffmpeg-full` is keg-only (same
+    version *and* revision as core ffmpeg, 8.1.2_1), so it installs beside core
+    ffmpeg and nothing needs removing. It now verifies rather than assumes (both
+    binaries executable, both filters really present) before recording
+    `config/ffmpeg.env`, and pins **without** `2>/dev/null || true` — that idiom
+    is why the pin the old comments credited with protecting the goldens had
+    never once applied. `--with-vidstab` and `--with-fonts` are deleted; both
+    fold into baseline (fonts are four small casks, and without them titles
+    fails loud). `--with-demucs` / `--with-sourcing` stay opt-in — torch and
+    yt-dlp are size, not capability. Three brew gates warn-and-continue so a
+    no-brew box still builds its venv, which hoisting `need_brew` had silently
+    turned into a hard requirement.
+  - **Found by the docs sync (Task 6), beyond the plan's file list:**
+    `scripts/lib/fonts.py` still emitted `bash setup.sh --with-fonts` as its
+    **runtime** remedy for an uninstalled font — a fail-loud message naming a
+    flag this slice deleted — on *both* of its raises, with
+    `tests/lib/test_fonts.py` pinning that exact string. **The obvious repair is
+    a hollow test, and the mutation check caught it:** retargeting the assertion
+    to `match="bash setup.sh"` can never fail, because the stale
+    `bash setup.sh --with-fonts` contains it as a substring. Restoring the flag
+    left the suite green. The property needs both halves — the installer named
+    **and** the dead flag absent — and both raises now carry it (three
+    mutations, each killed by exactly one test).  Worse,
+    `SKILLS/footage-intake/SKILL.md` told the agent to check vidstab by running
+    `ffmpeg -hide_banner -filters` itself, which on a keg-only install probes
+    the *wrong build* — §5's trap written into the instructions. Five SKILL/spec
+    sites in total plus two runtime strings; historical plans keep their
+    original wording, per the `fit-blur`→`fit` precedent.
+  - **Task 7 (the proof) is blocked on the user, not on code.**
+    `config/ffmpeg.env` does not exist yet — `setup.sh` writes it and has not
+    been run — so `ffbin` falls through to PATH and the 8 skips stand. After
+    `bash setup.sh` the target is **2 skips, checked by identity**: `test_offset`
+    (demucs, opt-in) and `test_sourcing` (an SSL failure unrelated to ffmpeg).
+    Any surviving `test_draft`/`test_titles`/`test_intake` skip means the guards
+    are probing the wrong binary — invisible in a count. The **goldens are the
+    only real test of the design's same-version argument**; if one moves, that is
+    a real pixel difference to record, not to re-pin away.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -1246,9 +1339,12 @@ resumability / Phase A.5 retry-state persistence.
 
 ## Deferred / open
 
-- vidstab-capable ffmpeg (`bash setup.sh --with-vidstab`) — already a **hard**
-  runtime gate for 5.2 intake's `vidstabdetect` shake score (`_require_vidstab`);
-  the *apply* half (`vidstabtransform`) is what remains unbuilt.
+- ~~vidstab-capable ffmpeg (`bash setup.sh --with-vidstab`)~~ — **the flag is
+  gone and vidstab is baseline since 2026-07-20** (see the ffmpeg-baseline entry
+  above): `ffmpeg-full` carries `libvidstab`, so 5.2 intake's `vidstabdetect`
+  shake score gets its filter from a plain `bash setup.sh`. It remains a **hard**
+  runtime gate (`_require_vidstab`, now an `ffbin.require_filter` wrapper); the
+  *apply* half (`vidstabtransform`) is what remains unbuilt.
 - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
   repair) is now **unblocked**: the cast wiring it needed landed with cast →
   hero-pin (2026-07-16, see Done above). A different mechanism (per-frame

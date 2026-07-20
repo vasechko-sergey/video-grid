@@ -36,7 +36,7 @@ and **names** the deferred ones so a skipped stage is visible, never silent.
 
 ```
 using-montage (SKILL) ── parses the brief, conducts:
-  0. ensure-env         bash setup.sh [--with-vidstab]
+  0. ensure-env         bash setup.sh
   1. project-init  ───► project.json          [CP1: spec approval]
   2. footage-intake ──► FOOTAGE.json (+cast.json)
      (3 reel-brief SPEC.md — optional, enriches CP1 · 4 trend-scan TRENDS.md — DEFERRED, named)
@@ -150,8 +150,10 @@ entry-router intent. Sections:
 - **The Process** — point **every** stage's output at the one run dir
   (`project_init --project-dir`, `intake <root> <run_dir>`, `edit_plan --out-dir`,
   `edl_to_reel --work-dir/--out-dir`) so the inspector sees a coherent run:
-  0. **Ensure env** — `bash setup.sh`; add `--with-vidstab` (intake is the first
-     runtime vidstab consumer, §5.2).
+  0. **Ensure env** — `bash setup.sh`, one install with no capability flags: it
+     puts keg-only `ffmpeg-full` (drawtext + vidstab, the latter for §5.2 intake)
+     beside core ffmpeg and records the path every stage resolves through. See
+     [the ffmpeg baseline design](2026-07-20-ffmpeg-baseline-design.md).
   1. Consult `python -m scripts.montage status --run-dir <dir>` — **resume from
      `next`**; a stage whose artifact exists is already done.
   2. **project-init** (if `next`) → `project.json`. **CP1 (spec approval):** read

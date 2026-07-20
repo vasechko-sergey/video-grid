@@ -12,12 +12,14 @@ Related: [landmine lint](2026-07-20-landmine-lint-design.md) (the AST scan this 
 
 ## 1. What is broken
 
-Measured on the development machine, 2026-07-20.
+Measured on the development machine, **2026-07-20, before this slice landed**. Two of these
+measurements have since moved — see [what has changed](#what-has-changed-since) at the end
+of the section; the findings they support have not.
 
 The installed `ffmpeg` is homebrew-core 8.1.2_1, configured with 13 `--enable-*` switches.
 It carries **neither `libfreetype` nor `libvidstab`**:
 
-```
+```bash
 $ ffmpeg -hide_banner -filters | grep -c drawtext   # 0
 $ ffmpeg -hide_banner -filters | grep -c vidstab    # 0
 ```
@@ -28,21 +30,84 @@ skip permanently.
 
 Three separate defects follow from how `setup.sh` tries to fix that.
 
-**The drawtext branch is destructive and not opt-in.** `setup.sh:53-61` fires whenever
-drawtext is missing — which is now — and runs `brew uninstall --ignore-dependencies ffmpeg`
-before installing a tap build. `brew uses --installed ffmpeg` reports `openai-whisper` and
-`summarize`; the build is `--enable-shared`. Removing it with `--ignore-dependencies` leaves
-both dependents linked against libraries that no longer exist. **A bare `bash setup.sh` on
-this machine today would break two unrelated tools and swap the ffmpeg the goldens were
-pinned against.**
+### The drawtext branch is destructive, and its condition is a tautology
 
-**The pin never took.** `setup.sh:119` runs `brew pin ffmpeg 2>/dev/null || true`.
-`brew list --pinned` is empty. The comment above that line claims the pin exists to stop
-version drift from moving the goldens; it has never once applied. A pin that cannot fail is
-not a pin — the `|| true` swallowed whatever went wrong, forever.
+`setup.sh:53` guards the branch that runs `brew uninstall --ignore-dependencies ffmpeg`
+(line 58):
 
-**The vidstab branch repeats the same destructive dance** under `--with-vidstab`, so a user
-following the documented remedy pays the uninstall twice.
+```bash
+if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext; then
+```
+
+The obvious reading — "fires when drawtext is missing" — is wrong, and the correct reading
+is worse. **That condition is true on every build, including builds that have drawtext.**
+The cause is the script's first line: `set -euo pipefail`.
+
+`grep -q` exits 0 the instant it matches. `drawtext` sits ~15.8KB into a ~36KB filter list,
+so ffmpeg still has 20KB to write when the read end disappears; it takes `SIGPIPE` and exits
+**141**. `pipefail` promotes 141 to the pipeline's status, and `!` inverts it to true.
+Measured against a build that *does* carry drawtext, five runs out of five:
+
+```bash
+$ FF=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg    # a build that HAS drawtext
+$ for i in 1 2 3 4 5; do
+    bash -c "set -o pipefail; $FF -hide_banner -filters 2>/dev/null | grep -q drawtext; echo -n \"\$? \""
+  done
+141 141 141 141 141
+```
+
+Drop `pipefail` and the same command reports 0. The failure is **asymmetric**: when the
+filter is genuinely absent, `grep` reads to EOF and exits 1 — also non-zero, also inverted
+to true. Both arms take the branch, so the check can never report "present" and the guard
+is decoration.
+
+**`brew uninstall --ignore-dependencies ffmpeg` therefore ran on any machine that reached
+that line, not only ones missing the filter.** `brew uses --installed ffmpeg` reports
+`openai-whisper` and `summarize`; the build is `--enable-shared`. Removing it with
+`--ignore-dependencies` leaves both dependents linked against libraries that are gone.
+
+The branch could not have completed either. Its own post-install verification
+(`setup.sh:60`) carried the identical idiom, without even the `!` to disguise it:
+
+```bash
+ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext || { echo "ERROR: drawtext still missing after tap install"; exit 1; }
+```
+
+141 is falsy, so `||` fires on a build that has the filter. The old script's **guaranteed**
+path was: uninstall the working ffmpeg, compile a tap build, then abort with a false
+"drawtext still missing". `setup.sh:102`/`:110` are the same two lines again for vidstab.
+
+This is why the branches are deleted rather than repaired, and why §6's replacement captures
+the filter list **once** into a variable and matches in-shell — no pipeline, no exit status
+to misread. It is also a §12 landmine in its own right (a check that reports the opposite of
+reality while looking obviously correct), and is registered there.
+
+### The pin never took
+
+`setup.sh:119` runs `brew pin ffmpeg 2>/dev/null || true`, and `brew list --pinned` was
+empty. The comment above that line credits the pin with stopping version drift from moving
+the goldens; it had never once applied. A pin that cannot fail is not a pin — the `|| true`
+swallowed whatever went wrong, forever, which is why §6's replacement drops the idiom.
+
+### The vidstab branch repeats the destructive dance
+
+...under `--with-vidstab`, so a user following the documented remedy pays the uninstall
+twice — and, by the tautology above, pays it whether or not vidstab was actually missing.
+
+### What has changed since
+
+Two of the measurements above no longer reproduce. Both are stated here rather than edited
+away, because each is the evidence for a decision this slice made.
+
+- **`brew list --pinned` is no longer empty.** The user has since installed `ffmpeg-full`
+  8.1.2_1 by hand and pinned both `ffmpeg` and `ffmpeg-full`. The finding stands as dated:
+  the pin the old comments relied on had never applied, and that is precisely why §6 removes
+  the `2>/dev/null || true` instead of keeping a pin that cannot report failure.
+- **`config/ffmpeg.env` does not exist yet.** `setup.sh` is what writes it, and the new
+  script has not been run. Until it is, `ffbin` falls through to its third rung (§3) and
+  resolves the slim core `ffmpeg` on PATH — so the drawtext and vidstab integration tests
+  still skip, and §10's skip-count proof is blocked on `bash setup.sh`, not on any
+  remaining code.
 
 ## 2. The version: `ffmpeg-full` from homebrew-core
 
@@ -280,6 +345,10 @@ one.
   match by coincidence while proving nothing. Check the `-rs` list by identity — a run
   still reporting a drawtext or vidstab skip means the guards are probing the wrong
   binary, the exact trap §5 exists to close, and a count alone cannot see it.
+  **As of the code slice landing this is still 8, and that is expected, not a failure:**
+  `config/ffmpeg.env` is written by `setup.sh`, which nobody has run yet, so `ffbin`
+  resolves the slim PATH build (§1, "what has changed since"). The 2-skip proof is gated
+  on the install, not on code.
 - Full suite green against `ffmpeg-full`, which is the real test of §2's version argument.
   The goldens are the instrument: if the build swap moves pixels, they say so.
 - Mutation checks on the new AST rule: substring-instead-of-equality must fail (it would

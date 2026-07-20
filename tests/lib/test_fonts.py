@@ -37,12 +37,26 @@ def test_known_name_maps_to_installed_cask_file(tmp_path, monkeypatch):
     assert fonts.resolve_font("Montserrat") == str(lib / "Montserrat-Regular.ttf")
 
 
-def test_known_name_not_installed_points_at_with_fonts(tmp_path, monkeypatch):
+def test_known_name_not_installed_points_at_the_installer(tmp_path, monkeypatch):
+    """The remedy must name a command that still EXISTS. It used to say
+    `setup.sh --with-fonts`; that flag was deleted when the curated set became
+    baseline (ffmpeg-baseline design 2026-07-20 §8).
+
+    The absence assertion is the load-bearing one. Matching only `bash setup.sh`
+    cannot fail — the stale `bash setup.sh --with-fonts` contains it as a
+    substring — so that half alone would pin nothing, which is how this test was
+    first written and what a mutation check caught.
+    """
     monkeypatch.setattr(fonts.Path, "home", staticmethod(lambda: tmp_path))
-    with pytest.raises(ValueError, match="--with-fonts"):
+    with pytest.raises(ValueError) as e:
         fonts.resolve_font("Oswald")
+    assert "bash setup.sh" in str(e.value)
+    assert "--with-fonts" not in str(e.value)
 
 
 def test_unknown_name_fails_loud():
-    with pytest.raises(ValueError, match="known name"):
+    """Same deleted-flag guard on the OTHER raise — it carried the stale remedy too."""
+    with pytest.raises(ValueError) as e:
         fonts.resolve_font("Comic Papyrus")
+    assert "known name" in str(e.value)
+    assert "--with-fonts" not in str(e.value)

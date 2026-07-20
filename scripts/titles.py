@@ -15,7 +15,7 @@ from scripts.lib.titles import Title, Titles
 def build_titles(spec: Spec, total_s: float) -> Titles:
     """A sensible starting Titles from a Spec: the hook opens [0, 2], spec.text (when
     set) a mid caption, spec.ending (when set) a closing title in the last 3s. All
-    font='system' so the draft renders without --with-fonts. total_s (reel length) is
+    font='system' so the draft renders on any box, curated set or not. total_s (reel length) is
     the caller's — EDL sum or a probed master — build_titles never guesses it."""
     if (isinstance(total_s, bool) or not isinstance(total_s, (int, float))
             or not math.isfinite(total_s) or total_s <= 0):

@@ -55,8 +55,8 @@ def resolve_font(font: str | None = None) -> str:
         if p.exists():
             return str(p)
         raise ValueError(
-            f"font {font!r} is not installed at {p} — run `bash setup.sh --with-fonts` "
-            "to install the curated set, or pass a .ttf/.ttc path")
+            f"font {font!r} is not installed at {p} — run `bash setup.sh`, which installs "
+            "the curated set, or pass a .ttf/.ttc path")
     raise ValueError(
         f"font {font!r} is neither an existing path nor a known name {tuple(FONT_NAMES)} "
-        "— pass a .ttf/.ttc/.otf path, or install & name one via `bash setup.sh --with-fonts`")
+        "— pass a .ttf/.ttc/.otf path, or install & name one via `bash setup.sh`")

@@ -3,34 +3,55 @@
 Environment, commands, and the execution protocol for video-grid. Adapted from
 the anna-auth workflow doc to a superpowers-driven Python skill set.
 
-_Last updated: 2026-07-13._
+_Last updated: 2026-07-20._
 
 ## Environment
 
 - **Python 3.13** in a skill-local `.venv`. One `requirements.txt`, one pypi
-  index. Bootstrap with `bash setup.sh` (adds `--with-vidstab` for a
-  stabilization-capable ffmpeg; the core never calls vidstab).
-- Requires `ffmpeg` + `ffprobe` on PATH, and the `ffmpeg` must include the
-  `drawtext` filter (libfreetype) **plus a usable `.ttf`/`.ttc` font on disk** —
-  the assemble-draft stage (§5.9) burns labels with it, and drawtext needs an
-  explicit `fontfile=` (the filter and the font are decoupled). `setup.sh` provides
-  both: a drawtext-capable ffmpeg, and — since macOS ships Arial/Helvetica so this
-  is normally already satisfied — it installs DejaVu (`brew install --cask
-  font-dejavu`) if no system font is found, rather than dead-ending the user. On
-  top of that floor, `bash setup.sh --with-fonts` installs a curated title set
-  (Montserrat, Inter, Bebas Neue, Oswald) that the titles stage (§5.16) resolves
-  **by name**, not path; naming a font that isn't installed makes `deliver` fail
-  loud with the `--with-fonts` remedy — never a silent fallback to a different
-  font. Every script also fails loud with a remedy if a binary, filter, or font is
-  still missing.
+  index. Bootstrap with `bash setup.sh` — **one install, no capability flags.**
+- **One ffmpeg carrying every library the pipeline needs.** `setup.sh` installs
+  homebrew-core's `ffmpeg-full`, which is the same version and revision as core
+  `ffmpeg` but ships `libfreetype` (drawtext — §5.9 draft labels, §5.16 titles)
+  and `libvidstab` (§5.2 intake's shake score). It is **keg-only**, so it lands
+  beside core `ffmpeg` instead of replacing it — nothing is ever uninstalled, and
+  a machine's other ffmpeg dependents keep working.
+- **Consequence: the binaries are not on PATH, and the code does not look there
+  first.** `scripts/lib/ffbin.py` resolves them — `$FFMPEG`/`$FFPROBE`, then the
+  `config/ffmpeg.env` that `setup.sh` writes, then `shutil.which` — always to an
+  absolute path. Never hard-code `"ffmpeg"` in an argv: on a keg-only install
+  that silently selects the *wrong* build, and a machine check in
+  [`tests/lib/test_landmine_scan.py`](../tests/lib/test_landmine_scan.py)
+  rejects the literal in `scripts/`. Ask `ffbin.has_filter` about capabilities
+  rather than shelling out — that probe is the seam where production and the
+  test guards can drift onto different binaries.
+- **The PATH rung is the portability fallback,** not the normal path: `setup.sh`
+  is macOS/homebrew-only, so a Linux box has no `config/ffmpeg.env` and must
+  still import. `$FFMPEG` is the override for CI or for bisecting a build.
+- **Fonts are baseline too.** drawtext needs an actual `.ttf`/`.ttc` on disk as
+  well as the filter — the two are decoupled, and it needs an explicit
+  `fontfile=`. macOS ships Arial/Helvetica, so the floor is normally already
+  met; `setup.sh` installs DejaVu if no system font is found rather than
+  dead-ending the user, plus the curated title set (Montserrat, Inter, Bebas
+  Neue, Oswald) that §5.16 resolves **by name**, not path. Naming an
+  uninstalled font makes `deliver` fail loud — never a silent fallback to a
+  different font. Every script fails loud with a remedy if a binary, filter, or
+  font is missing.
+- **Still opt-in, for size not capability:** `--with-demucs` (torch, 2–3 GB) and
+  `--with-sourcing` (yt-dlp + the optional Jamendo key).
 - `setup.sh` is **macOS/homebrew only for now** (cross-platform auto-install is a
-  TODO). The runtime code is already portable — `scripts/lib/fonts.py`
-  `FONT_CANDIDATES` carries Linux font paths, and `--font PATH` overrides on any OS.
+  TODO), and warns-and-continues without brew so the venv still gets built. The
+  runtime code is already portable — `scripts/lib/fonts.py` `FONT_CANDIDATES`
+  carries Linux font paths, `ffbin` falls through to PATH, and `--font PATH`
+  overrides on any OS.
+
+See [the ffmpeg baseline design](specs/2026-07-20-ffmpeg-baseline-design.md) for
+why the path is frozen at install time while the filters are probed at runtime,
+every time.
 
 ## Commands
 
 ```bash
-bash setup.sh                                   # create .venv, install requirements
+bash setup.sh                                   # ffmpeg-full + fonts + .venv + requirements
 .venv/bin/python -m scripts.<name> --help       # run any script (as a module, never by path)
 .venv/bin/python -m pytest -q                    # full test suite
 .venv/bin/python -m pytest -q -m "not integration"   # skip real-ffmpeg tests

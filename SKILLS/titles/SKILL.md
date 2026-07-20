@@ -39,10 +39,10 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    above) — the number `--total` needs below.
 2. **Propose the titles.** For each line: its window (`start`/`dur`, seconds),
    `pos` (`top`/`center`/`bottom`), `style` (`bold-box`/`outline`/`plain`), and
-   `font`. Default `font="system"` — it always renders, no setup required. Offer
-   a named font (Montserrat / Inter / Bebas Neue / Oswald) ONLY if the user has
-   run `bash setup.sh --with-fonts`; a named-but-uninstalled font is not a silent
-   fallback — `deliver` fails loud instead (Landmines, below).
+   `font`. Default `font="system"` — it always renders, no setup required. A
+   named font (Montserrat / Inter / Bebas Neue / Oswald) needs the curated set,
+   which `bash setup.sh` installs as baseline; a named-but-uninstalled font is
+   not a silent fallback — `deliver` fails loud instead (Landmines, below).
 3. **Build.** Run the authoring script (explicit args; the user never types
    flags):
 
@@ -93,10 +93,11 @@ exactly as it does without this stage.
   macOS. `resolve_font` always supplies the path; a title never reaches the
   filtergraph with a bare, unresolved name.
 - A **named** font (Montserrat / Inter / Bebas Neue / Oswald) must already be
-  installed (`bash setup.sh --with-fonts`). `Title.font` accepts any non-empty
-  string at write time — a typo'd or uninstalled name still writes cleanly — but
-  `deliver` fails loud the moment it tries to resolve it, naming the missing font
-  and the `--with-fonts` remedy. It never silently substitutes a different font
+  installed (`bash setup.sh`, which installs the curated set as baseline).
+  `Title.font` accepts any non-empty string at write time — a typo'd or
+  uninstalled name still writes cleanly — but `deliver` fails loud the moment it
+  tries to resolve it, naming the missing font and the installer remedy. It
+  never silently substitutes a different font
   (that would change the reel's look without telling anyone). Stick to the
   default `font="system"` unless the named set is confirmed installed.
 

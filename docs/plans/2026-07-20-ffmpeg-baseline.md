@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps
-> use checkbox (`- [ ]`) syntax for tracking.
+> use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** One ffmpeg install carrying every library the pipeline needs, resolved from a
 path that `setup.sh` records — and a `setup.sh` that can no longer uninstall a working
@@ -53,7 +53,7 @@ literals move onto the resolver, and the landmine AST scan bans them from coming
 - Create: `scripts/lib/ffbin.py`
 - Test: `tests/lib/test_ffbin.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """ffbin resolves the binaries the pipeline runs (design 2026-07-20 §3)."""
@@ -113,12 +113,12 @@ def test_nothing_resolves_fails_loud_with_the_remedy(monkeypatch, tmp_path):
         ffbin.ffmpeg()
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py -q ; echo "EXIT: $?"`
 Expected: collection error — `ModuleNotFoundError: scripts.lib.ffbin`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 """Resolve the ffmpeg/ffprobe binaries the pipeline runs (design 2026-07-20 §3).
@@ -180,12 +180,12 @@ def ffprobe() -> str:
     return _resolve("FFPROBE", "ffprobe")
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py -q ; echo "EXIT: $?"`
 Expected: `6 passed`, EXIT 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/ffbin.py tests/lib/test_ffbin.py
@@ -214,7 +214,7 @@ which one ran is the difference between seeing a mixed pipeline and inferring it
   the list.
 - Test: `tests/lib/test_ffbin.py`, existing `tests/test_draft.py`, `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_ffbin.py`:
 
@@ -248,12 +248,12 @@ def test_require_filter_fails_loud_carrying_binary_and_remedy(monkeypatch):
         ffbin.require_filter("vidstabdetect", "run `bash setup.sh`")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py -q ; echo "EXIT: $?"`
 Expected: 4 failures, `AttributeError: module 'scripts.lib.ffbin' has no attribute 'has_filter'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/ffbin.py`:
 
@@ -311,7 +311,7 @@ And at `scripts/intake.py:148`, the `.trf` header error still says `run bash set
 
 Add `ffbin` to the `from scripts.lib import ...` line in both files.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ffbin.py tests/test_draft.py tests/lib/test_intake.py -q ; echo "EXIT: $?"`
 
@@ -326,12 +326,12 @@ shares one object and patching through any of them patches all of them. The reta
 green. `tests/lib/test_intake.py` has two tests with the identical pattern; retarget those
 too.
 
-- [ ] **Step 5: Verify no `--with-vidstab` string survives in `scripts/`**
+- [x] **Step 5: Verify no `--with-vidstab` string survives in `scripts/`**
 
 Run: `grep -rn 'with-vidstab' scripts/ ; echo "EXIT: $?"`
 Expected: no matches (EXIT 1).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/ffbin.py scripts/draft.py scripts/intake.py tests/
@@ -369,7 +369,7 @@ Representative diff (`scripts/extract.py:17`):
         ffbin.ffmpeg(), "-y", "-i", src,
 ```
 
-- [ ] **Step 1: Enumerate the sites, so the count is checked not assumed**
+- [x] **Step 1: Enumerate the sites, so the count is checked not assumed**
 
 ```bash
 grep -rn '"ffmpeg"' scripts/ | grep -v 'scripts/lib/proc.py' | grep -v 'scripts/lib/ffbin.py'
@@ -393,9 +393,9 @@ this step — enumerate and count what you actually see, then reconcile against 
 them: they explain the guard, Python never sees them, and — relevant to Task 4 — the AST
 scan cannot see them either, so `proc.py` needs no exemption.
 
-- [ ] **Step 2: Replace, file by file**
+- [x] **Step 2: Replace, file by file**
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 
@@ -404,14 +404,14 @@ Do not pin the passed number — see "On counting" below. Nothing about behaviou
 here: with no `config/ffmpeg.env` present, the PATH rung resolves to the same binary that
 the literals named.
 
-- [ ] **Step 4: Verify no argv literal survives**
+- [x] **Step 4: Verify no argv literal survives**
 
 ```bash
 grep -rn '"ffmpeg"\|"ffprobe"' scripts/ ; echo "EXIT: $?"
 ```
 Expected: only `scripts/lib/proc.py` comment lines and `scripts/lib/ffbin.py`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/
@@ -437,7 +437,7 @@ something you can paste into a shell."
 This is the task design §5 calls load-bearing. Get it wrong and the slice reports success
 while three integration tests skip forever.
 
-- [ ] **Step 1: Rewrite `conftest.sample_clip`**
+- [x] **Step 1: Rewrite `conftest.sample_clip`**
 
 Replace `shutil.which("ffmpeg")` with a resolver call and the direct `subprocess.run` with
 `proc.run`:
@@ -458,7 +458,7 @@ def sample_clip(tmp_path_factory):
 
 Keep the existing `drawbox`-is-inert comment verbatim — it records a live §12 landmine.
 
-- [ ] **Step 2: One shared fixture, three thin users**
+- [x] **Step 2: One shared fixture, three thin users**
 
 **As built — read this before writing code; the original plan mis-described these guards.**
 `test_draft.py` and `test_titles.py` do not use `skipif`: each has an **autouse fixture**
@@ -513,7 +513,7 @@ def _has_vidstab() -> bool:
 Update `test_intake.py:66`'s skip reason: `--with-vidstab` -> `bash setup.sh`. Drop the now
 unused `shutil` / `subprocess` imports from all three files.
 
-- [ ] **Step 3: Machine-check that no test reinvents the probe**
+- [x] **Step 3: Machine-check that no test reinvents the probe**
 
 The anti-hollow step. The original plan proposed three meta-tests, one per guard, each
 extracting a helper so that a forced `has_filter=False` could be observed. **That is more
@@ -541,7 +541,7 @@ def test_no_test_runs_its_own_filter_probe():
 Put it in `tests/lib/test_ffbin.py`. **Verify it can fail**: drop `"-filters"` into a
 scratch test file, confirm red, remove it.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 Run: `.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
 
@@ -549,7 +549,7 @@ Expected: EXIT 0 and **still 8 skipped** on a machine without ffmpeg-full — th
 consult the resolver, but the resolver still finds the slim PATH binary. **The skip count
 drops only after the user installs ffmpeg-full (Task 7).**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/
@@ -598,7 +598,7 @@ hollow-verification shape this slice has already had to correct four times.
   `["ffprobe", "-version"]` calls work identically on either build, and several of its
   commands are deliberately fake (`a.mp4`) and never execute.
 
-- [ ] **Step 1: Enumerate**
+- [x] **Step 1: Enumerate**
 
 ```bash
 grep -rn '"ffmpeg"\|"ffprobe"' tests/integration/ | wc -l    # 37 at time of writing
@@ -606,26 +606,26 @@ grep -rn '"ffmpeg"\|"ffprobe"' tests/integration/ | wc -l    # 37 at time of wri
 
 Count what you see; do not trust this number. Task 2's equivalent step was wrong twice.
 
-- [ ] **Step 2: Replace**
+- [x] **Step 2: Replace**
 
 Same substitution as Task 2: add `ffbin` to the `from scripts.lib import ...` line, then
 `"ffmpeg"` → `ffbin.ffmpeg()`, `"ffprobe"` → `ffbin.ffprobe()`. Read each line — some are
 inside `subprocess.run` rather than `proc.run`, and a few build commands across multiple
 lines.
 
-- [ ] **Step 3: Widen the machine check to argv literals**
+- [x] **Step 3: Widen the machine check to argv literals**
 
 `tests/lib/test_ffbin.py` already bans the probe flag everywhere under `tests/`. Add a
 sibling banning bare binary names under `tests/integration/` only, with the `tests/lib/`
 exemption stated above as its docstring. Reuse the assembled-needle and non-vacuity
 techniques already in that file — the flag check documents why both are needed.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 `.venv/bin/python -m pytest -q -rs ; echo "EXIT: $?"`
 Expected: EXIT 0, **still 8 skipped**, same identity. Passed count not pinned.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -634,7 +634,7 @@ Expected: EXIT 0, **still 8 skipped**, same identity. Passed count not pinned.
 **Files:**
 - Modify: `tests/lib/test_landmine_scan.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 _NAMES_THE_BINARIES = SCRIPTS / "lib" / "ffbin.py"
@@ -681,20 +681,20 @@ def test_the_binary_exemption_is_one_file_wide(tmp_path):
     assert len(found) == 1 and "other.py" in found[0]
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_landmine_scan.py -q ; echo "EXIT: $?"`
 Expected: `NameError: _exact` / `_NAMES_THE_BINARIES`.
 
-- [ ] **Step 3: Implement** — add the constants and `_exact` above.
+- [x] **Step 3: Implement** — add the constants and `_exact` above.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_landmine_scan.py -q ; echo "EXIT: $?"`
 Expected: all pass. If `test_no_script_names_a_binary...` is red, Task 2 missed a site —
 fix the site, not the test.
 
-- [ ] **Step 5: Mutation checks — steps, not suggestions**
+- [x] **Step 5: Mutation checks — steps, not suggestions**
 
 Purge bytecode first (equal-length edits at the same mtime reuse stale `.pyc`):
 
@@ -714,7 +714,7 @@ Run each with `.venv/bin/python -m pytest tests/lib/test_landmine_scan.py -q -p 
 Count `FAILED` **and** `ERROR` lines — a battery that greps only `FAILED` reads a collection
 error as green. Revert each mutation before the next.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/lib/test_landmine_scan.py
@@ -742,14 +742,14 @@ Equality, not substring: docstrings say 'ffmpeg' constantly and stay legal."
 
 **Do not run this script.** Edit only.
 
-- [ ] **Step 1: Delete both destructive branches**
+- [x] **Step 1: Delete both destructive branches**
 
 Remove the drawtext block (`setup.sh:53-61`) and the vidstab block entirely. Both contain
 `brew uninstall --ignore-dependencies ffmpeg`, which strips a `--enable-shared` build that
 `openai-whisper` and `summarize` link against. With a keg-only formula nothing needs
 removing, so the safest version of that code is none of it.
 
-- [ ] **Step 2: Replace with install + verify + record**
+- [x] **Step 2: Replace with install + verify + record**
 
 ```bash
 # ffmpeg: ONE build carrying every library the pipeline needs — libfreetype for
@@ -783,7 +783,7 @@ printf 'FFMPEG=%s\nFFPROBE=%s\n' "$FFMPEG_BIN" "$FFPROBE_BIN" > "$SKILL_DIR/conf
 echo "recorded config/ffmpeg.env -> $FFMPEG_BIN"
 ```
 
-- [ ] **Step 3: Fix the pin**
+- [x] **Step 3: Fix the pin**
 
 `setup.sh:119` currently reads `brew pin ffmpeg 2>/dev/null || true` and has never once
 applied — `brew list --pinned` is empty. Replace:
@@ -794,26 +794,26 @@ applied — `brew list --pinned` is empty. Replace:
 if command -v brew >/dev/null; then brew pin ffmpeg-full; fi
 ```
 
-- [ ] **Step 4: Delete `--with-vidstab` and `--with-fonts`**
+- [x] **Step 4: Delete `--with-vidstab` and `--with-fonts`**
 
 Remove both from the arg scan and the `WANT_*` variables. Move the four title casks
 (`font-montserrat`, `font-inter`, `font-bebas-neue`, `font-oswald`) into the unconditional
 path, keeping the already-installed guard on each. `--with-demucs` and `--with-sourcing`
 stay exactly as they are.
 
-- [ ] **Step 5: `.gitignore`**
+- [x] **Step 5: `.gitignore`**
 
 ```
 # per-machine ffmpeg-full paths that setup.sh records — never committed
 config/ffmpeg.env
 ```
 
-- [ ] **Step 6: `proc.py`'s remedy**
+- [x] **Step 6: `proc.py`'s remedy**
 
 `scripts/lib/proc.py:61-62` tells the user to `brew install ffmpeg`. That is now the wrong
 remedy — it installs the slim build. Change to `bash setup.sh`.
 
-- [ ] **Step 7: Syntax-check without executing**
+- [x] **Step 7: Syntax-check without executing**
 
 ```bash
 bash -n setup.sh ; echo "EXIT: $?"
@@ -821,11 +821,11 @@ grep -c 'brew uninstall' setup.sh   # expect 0
 grep -c 'with-vidstab\|with-fonts' setup.sh   # expect 0
 ```
 
-- [ ] **Step 8: Suite still green**
+- [x] **Step 8: Suite still green**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add setup.sh .gitignore scripts/lib/proc.py
@@ -854,13 +854,42 @@ comments credited with protecting the goldens had never applied once —
 (registry rows), `docs/specs/2026-07-05-montage-skillset-design.md` (§12 if a landmine
 entry is warranted)
 
-- [ ] **Step 1:** `development-workflow.md` — the Environment section still documents
+**As built: that list is a third of the real one, and the misses were the load-bearing
+ones.** A `--with-vidstab|--with-fonts` sweep of the *whole tree* (not just `docs/`) found
+two **runtime** strings and five live instruction sites the list did not name:
+
+- `scripts/lib/fonts.py` raised `run \`bash setup.sh --with-fonts\`` as its fail-loud
+  remedy for an uninstalled font — Task 5 deleted the flag and left the message that names
+  it — with `tests/lib/test_fonts.py` asserting `match="--with-fonts"`, so the suite was
+  *pinning* the stale remedy. **The obvious repair is hollow.** Retargeting the assertion
+  to `match="bash setup.sh"` cannot fail: the stale `bash setup.sh --with-fonts` contains
+  it as a substring, and restoring the flag left the suite green — measured, not reasoned.
+  The real property is two-sided (installer named **and** dead flag absent), and both of
+  `resolve_font`'s raises carried the stale text, so both are now pinned. Three mutations,
+  each killed by exactly one test.
+- `SKILLS/footage-intake/SKILL.md` instructed the agent to check for vidstab by running
+  `ffmpeg -hide_banner -filters` itself. On a keg-only install that probes the **wrong
+  build** — design §5's trap, written into the prose rather than the code.
+- `SKILLS/titles/SKILL.md` (×2), `SKILLS/using-montage/SKILL.md`,
+  `docs/specs/2026-07-12-using-montage-design.md` (×2), `scripts/titles.py`'s docstring,
+  and two `CLAUDE.md` Titles rows.
+
+**Historical plans and superseded designs keep their original wording**, per the
+`fit-blur`→`fit` precedent: the fit-solid slice renamed the mode and did not retro-edit
+`docs/plans/2026-07-10-layouts.md` or the layouts design. `using-montage-design.md` is the
+exception because every router-touching slice amends it, so it is live text.
+
+Also note `docs/build-status.md`'s "Deferred / open" list carried
+`bash setup.sh --with-vidstab` as an open item — a forward-looking section, so it is
+corrected, unlike the dated Done entries above it.
+
+- [x] **Step 1:** `development-workflow.md` — the Environment section still documents
   `--with-vidstab` and `--with-fonts` and says "the core never calls vidstab". Rewrite for
   one baseline install. Bump `_Last updated:_` to 2026-07-20.
-- [ ] **Step 2:** `CLAUDE.md` — add design + plan rows to the Quick Reference table.
-- [ ] **Step 3:** `build-status.md` — record the slice and the new skip baseline.
-- [ ] **Step 4:** Tick this plan's checkboxes.
-- [ ] **Step 5:** Commit.
+- [x] **Step 2:** `CLAUDE.md` — add design + plan rows to the Quick Reference table.
+- [x] **Step 3:** `build-status.md` — record the slice and the new skip baseline.
+- [x] **Step 4:** Tick this plan's checkboxes.
+- [x] **Step 5:** Commit.
 
 ---
 

@@ -28,9 +28,12 @@ are later stages.
 ## The Process
 
 1. **Ensure env.** Intake needs a vidstab-enabled ffmpeg (it is the first runtime
-   vidstab consumer). If `ffmpeg -hide_banner -filters` lacks `vidstabdetect`,
-   run `bash setup.sh --with-vidstab` before continuing — the scan fails loud
-   otherwise.
+   vidstab consumer). `bash setup.sh` installs one — `ffmpeg-full` carries
+   `libvidstab` as baseline, no flag. Do **not** check by running
+   `ffmpeg -hide_banner -filters` yourself: `ffmpeg-full` is keg-only, so a bare
+   `ffmpeg` is a *different, slimmer* build and that probe answers about the
+   wrong binary. The scan already fails loud with a remedy if the resolved
+   binary lacks the filter.
 
 2. **Scan.** `python -m scripts.intake <footage_root> <out_dir>`. This writes
    `<out_dir>/FOOTAGE.json` + `FOOTAGE.md` (every clip logged: resolution, fps,
