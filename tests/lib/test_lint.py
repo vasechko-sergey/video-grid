@@ -140,3 +140,29 @@ def test_a_synth_source_after_a_graph_separator_is_still_seen():
     cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-filter_complex",
            "[0:v]scale=64:64[v];testsrc=s=64x64[t];[v][t]overlay=0:0", "out.mp4"]
     assert len(lint.check_argv(cmd)) == 1
+
+
+# --- the drawtext font check --------------------------------------------------
+
+def test_drawtext_without_fontfile_is_reported():
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf", "drawtext=text='hi':fontsize=24",
+           "out.mp4"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1
+    assert "fontfile" in msgs[0]
+
+
+def test_drawtext_with_fontfile_is_clean():
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf",
+           "drawtext=fontfile='/f.ttf':text='hi':fontsize=24", "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_each_drawtext_in_a_chain_needs_its_own_font():
+    """scripts/lib/titles.py:152 joins per-title drawtext pieces with ','. Asking
+    whether the WHOLE string contains 'fontfile=' passes a chain where only the
+    first piece has one — and the fontless title is the one that renders garbage."""
+    cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-vf",
+           ("drawtext=fontfile='/f.ttf':text='a':x=0:y=0,"
+            "drawtext=text='b':x=0:y=100"), "out.mp4"]
+    assert len(lint.check_argv(cmd)) == 1

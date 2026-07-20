@@ -86,9 +86,29 @@ def _unbounded_source(cmd: list[str]) -> list[str]:
     return out
 
 
+def _drawtext_font(cmd: list[str]) -> list[str]:
+    """§12: drawtext without an explicit fontfile= fails, or picks garbage on
+    macOS — the filter and the font are decoupled.
+
+    Split on the filter name so EACH drawtext is judged on its own segment.
+    scripts/lib/titles.py:152 joins per-title pieces with ',', so a whole-string
+    test would pass a chain in which only the first piece carries a font.
+    """
+    out = []
+    for a in cmd:
+        for seg in a.split("drawtext=")[1:]:
+            if "fontfile=" not in seg:
+                out.append(
+                    f"drawtext without fontfile= in {a!r} — design §12: drawtext and "
+                    "its font are decoupled, so with no explicit path it fails or "
+                    "picks a garbage face on macOS. Resolve one with "
+                    "scripts/lib/fonts.py resolve_font() and pass fontfile='<path>'.")
+    return out
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
-    for check in (_banned_filters, _seek_order, _unbounded_source):
+    for check in (_banned_filters, _seek_order, _unbounded_source, _drawtext_font):
         out.extend(check(cmd))
     return out
