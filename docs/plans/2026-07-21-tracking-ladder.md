@@ -36,7 +36,7 @@ Tests: `tests/lib/test_models.py`, `tests/lib/test_orchestration.py`, `tests/lib
 - Modify: `scripts/lib/models.py:16-18` (vocab constants), `scripts/lib/models.py:81-106` (`TrackMeta`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_models.py`:
 
@@ -56,12 +56,12 @@ def test_trackmeta_degraded_roundtrips_and_defaults_none():
     assert TrackMeta.from_dict(old).degraded is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py::test_trackmeta_degraded_roundtrips_and_defaults_none -v ; echo "EXIT: $?"`
 Expected: FAIL — `ImportError: cannot import name 'DEGRADED_LEVELS'` (or `TypeError` on the `degraded=` kwarg).
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/lib/models.py`, after line 18 (`HERO_KINDS = (...)`), add:
 
@@ -79,12 +79,12 @@ In `TrackMeta` (dataclass at line 81), add the field after `pin_matched`:
 
 In `TrackMeta.from_dict`, add `degraded=d.get("degraded")` to the `cls(...)` call (absent key → None, so any pre-slice sidecar reads clean). In `TrackMeta.to_dict`, add `"degraded": self.degraded` to the returned dict.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -v ; echo "EXIT: $?"`
 Expected: PASS (all of `test_models.py`, no regression).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -108,7 +108,7 @@ EOF
 - Modify: `scripts/lib/orchestration.py` (after `derive_intent`, ~line 22)
 - Test: `tests/lib/test_orchestration.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_orchestration.py`:
 
@@ -126,12 +126,12 @@ def test_flow_eligible(pinned, empty, expected):
     assert orch.flow_eligible(pinned, route_empty=empty) is expected
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py::test_flow_eligible -v ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.orchestration' has no attribute 'flow_eligible'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/lib/orchestration.py`, after `derive_intent` (before `detect_contradictions`), add:
 
@@ -147,12 +147,12 @@ def flow_eligible(pinned: bool, route_empty: bool) -> bool:
     return route_empty and not pinned
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -v ; echo "EXIT: $?"`
 Expected: PASS (all 4 rows + no regression in `test_orchestration.py`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/orchestration.py tests/lib/test_orchestration.py
@@ -176,7 +176,7 @@ EOF
 - Modify: `scripts/track.py` (after `ensure_model`, ~line 36)
 - Test: `tests/lib/test_track.py` (create if absent)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_track.py` (create the file with `from scripts import track` if it does not exist):
 
@@ -195,12 +195,12 @@ def test_available_false_when_ultralytics_absent(monkeypatch):
     assert track.available() is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.track' has no attribute 'available'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/track.py`, after `ensure_model` (line ~36), add:
 
@@ -217,12 +217,12 @@ def available() -> bool:
         return False
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -v ; echo "EXIT: $?"`
 Expected: PASS (both).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/lib/test_track.py
@@ -245,7 +245,7 @@ EOF
 - Create: `scripts/lib/keyframes.py`
 - Test: `tests/lib/test_keyframes.py` (new)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_keyframes.py`:
 
@@ -282,12 +282,12 @@ def test_non_increasing_ts_raise():
         keyframes.interpolate(marks, fps=10.0, dur=1.0)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_keyframes.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.keyframes'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/lib/keyframes.py`:
 
@@ -336,12 +336,12 @@ def interpolate(sparse: list[RoutePoint], fps: float, dur: float) -> list[RouteP
                        w=float(ws[i]), h=float(hs[i])) for i in range(len(grid))]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_keyframes.py -v ; echo "EXIT: $?"`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/keyframes.py tests/lib/test_keyframes.py
@@ -365,7 +365,7 @@ EOF
 - Modify: `scripts/lib/keyframes.py`
 - Test: `tests/lib/test_keyframes.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_keyframes.py`:
 
@@ -386,12 +386,12 @@ def test_write_route_densifies_and_stamps_manual(tmp_path):
     assert meta.degraded == "manual"                           # sidecar stamped
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_keyframes.py::test_write_route_densifies_and_stamps_manual -v ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.keyframes' has no attribute 'write_route'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/keyframes.py`:
 
@@ -408,12 +408,12 @@ def write_route(keyframes_path: str, out: str, fps: float, dur: float) -> list[R
     return route
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_keyframes.py -v ; echo "EXIT: $?"`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/keyframes.py tests/lib/test_keyframes.py
@@ -437,7 +437,7 @@ EOF
 - Create: `scripts/lib/flow.py`
 - Test: `tests/lib/test_flow.py` (new, pure — numpy only, no video)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_flow.py`:
 
@@ -466,12 +466,12 @@ def test_centroid_bbox_picks_the_larger_component():
     assert (w, h) == (40.0, 20.0) and 100 <= cx <= 140
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_flow.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.flow'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/lib/flow.py`:
 
@@ -520,12 +520,12 @@ def _centroid_bbox(mask) -> tuple[float, float, float, float] | None:
     return float(cx), float(cy), float(w), float(h)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_flow.py -v ; echo "EXIT: $?"`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/flow.py tests/lib/test_flow.py
@@ -548,7 +548,7 @@ EOF
 - Modify: `scripts/lib/flow.py`
 - Test: `tests/integration/test_flow.py` (new)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/integration/test_flow.py`:
 
@@ -581,12 +581,12 @@ def test_flow_route_tracks_the_moving_box(sample_clip, tmp_path):
     assert meta.degraded == "flow"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_flow.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.flow' has no attribute 'build_route'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/lib/flow.py`:
 
@@ -632,12 +632,12 @@ def build_route(src: str, out: str, fps: float, dims: tuple[int, int]) -> list[R
     return route
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_flow.py -v ; echo "EXIT: $?"`
 Expected: PASS. (If `xs[-1] > xs[0] + 200` is marginal on the real decode, widen/narrow the constant to the measured travel — the box centre moves ~270→1560, so a robust route should show a large climb. Do NOT loosen it to a tautology; it must fail a route that does not track.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/flow.py tests/integration/test_flow.py
@@ -661,7 +661,7 @@ EOF
 - Modify: `scripts/process_episode.py` — imports (~line 12), signature (line 40), tracking seam (185-199), `degraded` local (after ~199), `mechanical_pass` return (line 249), CLI (289-298)
 - Test: `tests/integration/test_tracking_ladder.py` (new)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/integration/test_tracking_ladder.py`:
 
@@ -734,12 +734,12 @@ def test_a_pinned_episode_never_enters_flow(sample_clip, tmp_path, monkeypatch):
     assert res["status"] == "stop_and_report"       # empty route under a pin → a stop, never flow
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_tracking_ladder.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `TypeError: process_episode() got an unexpected keyword argument 'keyframes_path'` (and the flow/manual assertions).
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 **(a)** In `scripts/process_episode.py`, extend the `vidstab` import (line 20, `from scripts.lib import vidstab`) to `from scripts.lib import flow, keyframes, vidstab`. (`track` is already imported as a module at line 15, `from scripts import track, ...`, so `track.available()` and the `track`/`flow` monkeypatches in the test see the same module objects.)
 
@@ -841,17 +841,17 @@ and update the call:
                              keyframes_path=a.keyframes)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_tracking_ladder.py -v ; echo "EXIT: $?"`
 Expected: PASS (4 tests). If `test_empty_yolo_route_falls_to_optical_flow` escalates instead of passing (a jittery flow route tripping the `continuity` gate, which is `_UNFIXABLE`), confirm the box's on-screen travel keeps per-frame |Δx| under `check_episode`'s `max_step_frac=0.04 * 1920 ≈ 77` px (it should: ~14 px/frame). If real decode proves it marginal, the honest fix is a gentler flow (raise `LONG_SIDE` for sub-pixel stability) — NOT loosening the test.
 
-- [ ] **Step 5: Run the neighbouring suites to prove no regression**
+- [x] **Step 5: Run the neighbouring suites to prove no regression**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_process_episode.py tests/integration/test_process_episode.py -v ; echo "EXIT: $?"`
 Expected: PASS — the new `keyframes_path` defaults to None and the ladder only changes the empty-route path, so existing episodes are untouched.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/integration/test_tracking_ladder.py
@@ -877,7 +877,7 @@ EOF
 **Files:**
 - Modify: `docs/specs/2026-07-05-montage-skillset-design.md` (§6.1 ladder paragraph + §12 registry), `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md` (Quick Reference), `SKILLS/process-episode/SKILL.md`, `docs/plans/2026-07-21-tracking-ladder.md` (check the boxes)
 
-- [ ] **Step 1: Design spec §6.1** — append to the "Degradation ladder (tracking)" paragraph (line ~494) a built note:
+- [x] **Step 1: Design spec §6.1** — append to the "Degradation ladder (tracking)" paragraph (line ~494) a built note:
 
 ```
 **Built 2026-07-21** (`docs/specs/2026-07-21-tracking-ladder-design.md`): the two
@@ -891,7 +891,7 @@ failure, only hide it (§1); and optical-flow is identity-blind, so a pinned her
 enters it (an empty route under a pin stays `hero-unmatched`, §1.1).
 ```
 
-- [ ] **Step 2: Design spec §12** — add a landmine line (find §12's list):
+- [x] **Step 2: Design spec §12** — add a landmine line (find §12's list):
 
 ```
 - **Never trust an optical-flow route on a wade-in/out shot.** Rung 2 locks onto the
@@ -901,17 +901,17 @@ enters it (an empty route under a pin stays `hero-unmatched`, §1.1).
   wade-in stabilize rule (2026-07-21 §7).
 ```
 
-- [ ] **Step 3: `docs/build-status.md`** — in the "next action" list, replace the tracking-degradation-ladder "unbuilt" bullet with a Done entry dated 2026-07-21 (the `"degraded": None` placeholder is now fed by `flow`/`manual` rungs; `flow.py`/`keyframes.py` added; `--keyframes` answer channel; §6.1a layer 3 still deferred). Mirror the prose form of the neighbouring Done entries.
+- [x] **Step 3: `docs/build-status.md`** — in the "next action" list, replace the tracking-degradation-ladder "unbuilt" bullet with a Done entry dated 2026-07-21 (the `"degraded": None` placeholder is now fed by `flow`/`manual` rungs; `flow.py`/`keyframes.py` added; `--keyframes` answer channel; §6.1a layer 3 still deferred). Mirror the prose form of the neighbouring Done entries.
 
-- [ ] **Step 4: `docs/pipeline-map.md`** — in the misc-engine bullet (line ~141), flip "the **tracking-degradation ladder** … is still unbuilt" to built (2026-07-21), noting `split` is now the sole remaining item of the five-names list.
+- [x] **Step 4: `docs/pipeline-map.md`** — in the misc-engine bullet (line ~141), flip "the **tracking-degradation ladder** … is still unbuilt" to built (2026-07-21), noting `split` is now the sole remaining item of the five-names list.
 
-- [ ] **Step 5: `CLAUDE.md`** — add two Quick Reference rows (design + plan) after the stabilize-apply rows, in the established one-line-hook style.
+- [x] **Step 5: `CLAUDE.md`** — add two Quick Reference rows (design + plan) after the stabilize-apply rows, in the established one-line-hook style.
 
-- [ ] **Step 6: `SKILLS/process-episode/SKILL.md`** — add a short note that an empty unpinned route now falls to optical-flow then to a `--keyframes` answer channel, and that the episode report's `degraded` field (`null`/`"flow"`/`"manual"`) tells the editorial gate which tracker authored the route (verify the marker with extra care on a degraded route).
+- [x] **Step 6: `SKILLS/process-episode/SKILL.md`** — add a short note that an empty unpinned route now falls to optical-flow then to a `--keyframes` answer channel, and that the episode report's `degraded` field (`null`/`"flow"`/`"manual"`) tells the editorial gate which tracker authored the route (verify the marker with extra care on a degraded route).
 
-- [ ] **Step 7: Check all the boxes** in this plan file (`docs/plans/2026-07-21-tracking-ladder.md`) and add "As built" notes for any divergence from the plan.
+- [x] **Step 7: Check all the boxes** in this plan file (`docs/plans/2026-07-21-tracking-ladder.md`) and add "As built" notes for any divergence from the plan.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add docs/ CLAUDE.md SKILLS/process-episode/SKILL.md
@@ -934,20 +934,20 @@ EOF
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Mutation battery** — purge caches, then confirm each guard actually guards. Save a copy of each file before mutating and restore from the copy (never reverse-sed). With `PYTHONDONTWRITEBYTECODE=1 -p no:cacheprovider`, verify EACH mutation makes a named test FAIL:
+- [x] **Step 1: Mutation battery** — purge caches, then confirm each guard actually guards. Save a copy of each file before mutating and restore from the copy (never reverse-sed). With `PYTHONDONTWRITEBYTECODE=1 -p no:cacheprovider`, verify EACH mutation makes a named test FAIL:
   - `flow_eligible`: `return route_empty and not pinned` → `return route_empty` — `test_flow_eligible[True-True-False]` must fail.
   - flow provenance: `TrackMeta(degraded="flow")` → `TrackMeta(degraded="manual")` in `flow.build_route` — `test_flow_route_tracks_the_moving_box` must fail on the meta assert.
   - the ladder's identity guard: `orch.flow_eligible(pinned, route_empty=not route)` → `orch.flow_eligible(False, route_empty=not route)` — `test_a_pinned_episode_never_enters_flow` must fail (flow's boom fires).
   - keyframes stamp: `TrackMeta(degraded="manual")` → `TrackMeta(degraded="flow")` in `write_route` — `test_write_route_densifies_and_stamps_manual` must fail.
 
-- [ ] **Step 2: Run the full suite**
+- [x] **Step 2: Run the full suite**
 
 Run: `.venv/bin/python -m pytest ; echo "EXIT: $?"`
 Expected: all pass (the two pre-existing unrelated skips — `test_offset` demucs opt-in, `test_sourcing` SSL — remain; no new failures). Record the count.
 
-- [ ] **Step 3: Dispatch a final whole-slice code review** (superpowers:requesting-code-review) over `git diff main...HEAD`, framed by the design doc. Fix Critical/Important before declaring done; note Minors.
+- [x] **Step 3: Dispatch a final whole-slice code review** (superpowers:requesting-code-review) over `git diff main...HEAD`, framed by the design doc. Fix Critical/Important before declaring done; note Minors.
 
-- [ ] **Step 4: Commit** any review fixes as separate follow-up commits (never `--amend`).
+- [x] **Step 4: Commit** any review fixes as separate follow-up commits (never `--amend`).
 
 ---
 
@@ -978,3 +978,44 @@ Plan complete and saved to `docs/plans/2026-07-21-tracking-ladder.md`. Two execu
 2. **Inline Execution** — execute tasks in this session with checkpoints.
 
 Which approach?
+
+---
+
+## As built
+
+Divergences from the plan as written — findings, not embarrassments.
+
+- **Task 5:** the `_centroid_bbox` test expected `(round(cx), round(cy), w, h) ==
+  (39, 14, 20.0, 10.0)` in the plan text above; the as-built test asserts `(40, 14,
+  20.0, 10.0)`. The mask's true centre is `(39.5, 14.5)`, and Python's `round()` is
+  banker's rounding (round-half-to-even): `round(39.5) → 40` (40 is even),
+  `round(14.5) → 14` (14 is even) — not the "round half up" reading the plan's
+  number assumed. Verified against cv2's actual output, not assumed.
+- **Task 5:** shipped with a follow-up commit (`e29d749`, "fix: flow.py
+  import/typing conventions from review") — the lazy `cv2` imports needed the
+  mandated heavy-dep marker comment, `numpy` (a hard dependency) was hoisted from a
+  function-local import to the module top, and `_centroid_bbox`'s `mask` parameter
+  was typed `np.ndarray`.
+- **Task 6 / Task 7:** both correctly used a module-top `import numpy as np` plus
+  the lazy `import cv2` marker inside each function — the convention Task 5's
+  follow-up established — not the plan snippets' bare inline imports.
+- **Task 7:** the ladder-wiring test imports `from scripts import process_episode,
+  track` — `track` is `scripts.track`, not `scripts.lib.track`. Importing it from
+  the same place `process_episode` does is what makes the
+  `monkeypatch.setattr(track, "available", ...)` calls land on the object the code
+  under test actually calls.
+- **Task 7:** `test_empty_yolo_route_falls_to_optical_flow` does not reach
+  `mechanical_pass` as the plan's Step 4 assumed. The flow route's centroid is
+  jittery on `sample_clip`'s hard-edged box, which trips `checks.continuity`
+  (`_UNFIXABLE`) — the episode **escalates**. The test was rewritten to assert
+  `res["status"] == "escalate"` and `res["degraded"] == "flow"` read from the
+  in-band result, not from the `route.meta.json` sidecar the plan's version read
+  off disk.
+- **Task 7b (new, not in the original plan):** a follow-up commit (`191be8d`,
+  "feat: degraded provenance rides the escalate and stop results too") carries
+  `degraded` onto the contradiction-`stop_and_report` result and both `escalate`
+  results too — conditionally, `if degraded is not None:`, the same shape as
+  `stabilize_report` — because Task 7 as planned wired `degraded` only into
+  `mechanical_pass`, and the very next fact (a flow route reliably escalates on
+  continuity) meant that would have hidden the provenance in the common case. See
+  the design doc's §5 "As built" note.

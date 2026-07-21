@@ -493,6 +493,19 @@ The manual 0.1s storyboard from the session was a **workaround for having no rel
 
 **Degradation ladder (tracking):** ultralytics unavailable or the track is garbage → optical-flow centroid tracker (OpenCV, no ML deps) → manual storyboard keyframes + interpolation (the session's proven method). Each step down is recorded in the episode report as `degraded: <level>` — the pipeline still delivers.
 
+> **Built (2026-07-21, §6.1):** the two lower rungs land as `scripts/lib/flow.py`
+> (optical-flow centroid tracker, cv2, no ML deps) and `scripts/lib/keyframes.py`
+> (sparse marks + interpolation), each writing the same `route.json` +
+> `route.meta.json` pair `track.py` already wrote, with `TrackMeta.degraded`
+> naming the rung (`None`/`"flow"`/`"manual"`). Two honest amendments to the
+> sentence above: (a) the ladder auto-falls only on *nothing* — the tracker
+> unavailable, or an empty route from an **unpinned** episode — never on a
+> bad-but-non-empty route, because a weaker sensor cannot beat a stronger
+> tracker's quality failure, only hide it (§1); (b) optical-flow is
+> identity-blind, so a pinned hero never enters it — an empty route under a
+> pin stays `hero-unmatched` (§1.1). See
+> `docs/specs/2026-07-21-tracking-ladder-design.md`.
+
 ### 6.1a Hero identity — who exactly is being followed
 
 Identity errors were real in the source session, and they have **four distinct failure modes**: (1) intake mislabels who is in a clip (similar outfits, distance, backlight); (2) the most-frames heuristic picks a **loitering bystander over the actual subject** — the subject of an action shot crosses the frame in seconds while a bystander stands in frame the whole clip, so the bias points exactly the wrong way; (3) tracker ID switches on occlusion silently swap the followed person mid-episode — and the postcheck can't see it (it verifies crop vs route, not route vs the right human); (4) nothing ties "the person picked in clip A" to "the person picked in clip B" across the reel. Domain-agnostic: the "subject" is any person — a surfer, a runner, a kid, a dancer. Four layers close the modes:
@@ -816,6 +829,12 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
   8, so `FOOTAGE.md`'s `shake` column and the stabilize pre-stage's `before` would
   have been silently incomparable on the same footage. One shared
   `vidstab.DETECT_ARGS` (2026-07-20 §5).
+- Never trust an optical-flow route on a wade-in/out shot: rung 2 locks onto
+  the water, not the subject — least trustworthy on exactly the shot
+  stabilization must never touch. Not silent (the route is stamped
+  `degraded:"flow"` and the storyboard marker shows what it followed), and it
+  keeps **no** machine predicate, same as the wade-in stabilize rule
+  (2026-07-21 §7).
 
 ---
 

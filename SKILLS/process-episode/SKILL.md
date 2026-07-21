@@ -82,6 +82,16 @@ Both hold → the episode is done. Either fails → `stop_and_report` with which
   water and reads as very shaky, which is exactly why the threshold is not wired
   to the flag. If the window is someone walking into or out of water, leave
   `stabilize` false however shaky the number looks.
+- **A degraded route needs an extra look at the marker.** An empty, unpinned
+  route no longer just stops — it falls to `scripts/lib/flow.py`'s optical-flow
+  centroid tracker, then to a `--keyframes` answer channel (sparse
+  `[{t,x,y,w,h}]` marks, interpolated) when even that finds no motion. The
+  report's `degraded` field (`null`/`"flow"`/`"manual"`) names which tracker
+  actually authored the route — and it rides the `escalate`/`stop_and_report`
+  results too, not only `mechanical_pass`, so the provenance is visible
+  wherever the episode lands. A flow or manual route is a weaker sensor than
+  YOLO: verify the storyboard hero marker with extra care before passing a
+  degraded episode.
 
 ## Red Flags
 

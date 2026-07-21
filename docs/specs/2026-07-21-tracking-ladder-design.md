@@ -201,9 +201,27 @@ before this slice reads as clean. This mirrors, on the **route** side, what `pan
 `stabilized` do on the **path** side (`PathMeta`): both are one-bit answers to "how was
 this artifact made," read by a downstream consumer that has no other way to know.
 
-`process_episode` copies it into the result: `report["degraded"] = track_meta.get("degraded")`.
-Because the three no-ladder cases (pin, supplied route, pan) never set it, they report
-`None` — honest, they used the clean tracker or none at all.
+`process_episode` reads it once, right after the tracking block resolves —
+`degraded = track_meta.get("degraded")` — and that value rides **every** post-tracking
+terminal result, not only `mechanical_pass`: unconditionally on `mechanical_pass` (so a
+clean YOLO route reports `degraded: None` rather than omitting the key), and
+conditionally — the same `if degraded is not None:` shape as `stabilize_report` — on the
+contradiction-`stop_and_report` result and both `escalate` results (the retry-loop one
+and the defensive max-attempts one). Because the three no-ladder cases (pin, supplied
+route, pan) never set it, `degraded` is `None` there too — present as `None` on
+`mechanical_pass`, simply absent (never a fabricated value) on the conditional results —
+honest either way, since they used the clean tracker or none at all.
+
+> **As built:** the first cut fed `degraded` only into `mechanical_pass`, on the
+> assumption that a fallback route either clears the checks or it doesn't. That
+> assumption does not hold: a flow route's centroid is jittery on hard edges, and the
+> jitter reliably trips `checks.continuity`, an `_UNFIXABLE` reason — so the common
+> outcome for a flow-rung episode is an **escalate**, not a `mechanical_pass`.
+> Restricting the stamp to `mechanical_pass` would have hidden the provenance in
+> exactly the case a human most needs it: reading why an episode escalated. A
+> follow-up (`191be8d`) carries `degraded` on the contradiction-stop and both escalate
+> results too, so the rung that authored the route is visible in-band wherever the
+> result is read, not only on the `route.meta.json` sidecar.
 
 Nothing downstream *branches* on `degraded` in v1. `check_episode` judges a flow or a
 manual route exactly as it judges a YOLO route — all three are real observations (this
@@ -273,6 +291,16 @@ followed subject.
   if static, adds a minimal moving-blob clip using the `testsrc2`-crop-offset trick from
   `test_stabilize.py`). A second case supplies `keyframes.json` and asserts
   `degraded="manual"` and a `mechanical_pass`.
+
+> **As built:** confirmed — `sample_clip`'s box moves, so no second fixture was needed.
+> Real YOLO detects no person in it (rung 1 → empty), and the flow route it produces
+> does track the box, but the centroid's frame-to-frame jitter on the box's hard edges
+> trips `checks.continuity` (`_UNFIXABLE`), so the episode **escalates** rather than
+> reaching `mechanical_pass`. The proof asserts `degraded == "flow"` in-band on that
+> `escalate` result, not on the `mechanical_pass` path the plan first assumed. The
+> manual rung tells the opposite story: the interpolated keyframe route is smooth by
+> construction, clears continuity, and reaches `mechanical_pass` with `degraded ==
+> "manual"`.
 
 ---
 

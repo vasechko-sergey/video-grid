@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-20._
+_Last updated: 2026-07-21._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -996,7 +996,8 @@ _Last updated: 2026-07-20._
   14-check plan was written. **Closes §7's `pan` row** — see
   `docs/pipeline-map.md`'s misc-engine bullet for what's left (`split`,
   ~~stabilization's apply half~~ (landed 2026-07-20, see the Done entry below),
-  the tracking-degradation ladder).
+  ~~the tracking-degradation ladder~~ (landed 2026-07-21, see the Done entry
+  below)).
   **Reel-level support was NOT part of the above — it landed after, as three
   more commits (Tasks 11-13, plan `docs/plans/2026-07-19-pan.md`), because a
   fifth consumer of `route.json` had been missed.** Task 10's audit (design §2)
@@ -1362,6 +1363,40 @@ _Last updated: 2026-07-20._
       `ReelEpisode.route` itself populated, since `check_reel`'s geometry
       section still reads it.
 
+- **tracking-degradation ladder (§6.1) DONE (2026-07-21)** — plan
+  `docs/plans/2026-07-21-tracking-ladder.md` + design
+  `docs/specs/2026-07-21-tracking-ladder-design.md` (commits `babad02`..HEAD).
+  **1601 passed / 2 skipped.** `process_episode`'s reserved `"degraded": None`
+  placeholder is now fed: an unpinned episode whose route comes back empty (or
+  whose primary tracker is unavailable) falls to `scripts/lib/flow.py`'s
+  optical-flow centroid tracker (cv2, no ML deps), then to
+  `scripts/lib/keyframes.py`'s sparse marks + interpolation (the new
+  `--keyframes` answer channel) — each rung stamped on `TrackMeta.degraded`
+  (`None`/`"flow"`/`"manual"`). The identity-blind guard
+  (`orchestration.flow_eligible`) keeps a pinned hero out of the flow rung
+  entirely: an empty route under a pin stays `hero-unmatched`, never a
+  motion-blob stand-in.
+  - **Built:** `TrackMeta.degraded` + `DEGRADED_LEVELS`; `track.available()`
+    (the rung-1 gate, symmetric with `flow.available()`);
+    `scripts/lib/keyframes.py` (`interpolate`/`write_route`);
+    `scripts/lib/flow.py` (`available`/`_centroid_bbox`/`build_route`, dense
+    Farneback optical flow over real cv2 — the first runtime *tracker* use of
+    OpenCV); the `process_episode` ladder wiring + `--keyframes` CLI flag.
+  - **As-built fact worth recording:** `degraded` rides ALL post-tracking
+    terminal results, not only `mechanical_pass` — a follow-up commit
+    (`191be8d`) carries it onto the contradiction-`stop_and_report` result and
+    both `escalate` results too, conditionally, the same shape as
+    `stabilize_report`. Reason: a flow route's centroid is jittery on hard
+    edges and reliably trips the `_UNFIXABLE` continuity gate, so the common
+    outcome for a flow-rung episode is an **escalate**, not a
+    `mechanical_pass` — restricting the stamp to `mechanical_pass` would have
+    hidden the provenance in exactly the case a human most needs it. The
+    integration proof asserts `degraded == "flow"` on an escalate result and
+    `degraded == "manual"` on a `mechanical_pass` (the interpolated keyframe
+    route is smooth by construction and clears continuity).
+  - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
+    repair) is unchanged by this slice and stays its own slice.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -1377,16 +1412,16 @@ _Last updated: 2026-07-20._
   needs two sources — unlike `fit-solid` (2026-07-18) and `pan` (2026-07-19),
   both of which turned out to need no new layout code at all; see the two
   Done entries above. **OR**
-- ~~**stabilization's apply half + tracking degradation**~~ — **the apply half
-  landed 2026-07-20** (see the Done entry above): `vidstabtransform` now runs as
-  a pre-stage in `process_episode`, feeding the same stabilized file to both the
-  tracker and `reframe`, wired through the manifest capability gate and the EDL
-  authoring path. Still open, and **not** touched by that slice: the
-  **tracking-degradation ladder** (ultralytics gone / track garbage →
-  optical-flow centroid → manual keyframes, each rung stamped `degraded:`) —
-  `process_episode`'s `"degraded": None` is a reserved placeholder, and it is
-  *not* the reframe-param retry ladder in `orchestration.py`, which is
-  built. **OR**
+- ~~**stabilization's apply half + tracking degradation**~~ — **both landed**:
+  the apply half **2026-07-20** (see the Done entry above) — `vidstabtransform`
+  now runs as a pre-stage in `process_episode`, feeding the same stabilized file
+  to both the tracker and `reframe`, wired through the manifest capability gate
+  and the EDL authoring path; and the **tracking-degradation ladder 2026-07-21**
+  (see the Done entry above) — an unpinned episode's empty route (or an
+  unavailable primary tracker) now falls to `scripts/lib/flow.py`'s
+  optical-flow centroid tracker, then to `scripts/lib/keyframes.py`'s manual
+  keyframes, each rung stamped on `TrackMeta.degraded`; *not* the reframe-param
+  retry ladder in `orchestration.py`, which was already built. **OR**
 - **the real-footage v1 gate** — run the whole `using-montage` conveyor
   end-to-end on Sergei's own footage. Every seam golden today is synthetic
   (`sample_clip` is a box, not a person, so the SP1/SP3 goldens honestly fake
