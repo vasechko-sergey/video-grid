@@ -17,7 +17,7 @@ from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
-from scripts.lib import vidstab
+from scripts.lib import flow, keyframes, vidstab
 from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, LayoutSpec, route_from_json, CropPath, PathMeta,
@@ -40,7 +40,8 @@ def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
 def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: str | None = None,
                     max_attempts: int = 3,
                     project: ProjectConfig | str | Path | None = None,
-                    color_correct: tuple | None = None) -> dict:
+                    color_correct: tuple | None = None,
+                    keyframes_path: str | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
@@ -183,20 +184,54 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         route, track_meta, rp = [], {"ambiguous": False}, None
         timings["track"] = 0.0
     elif route_path is None:
+        # The degradation ladder (design 2026-07-21 §2). Each rung, on success, leaves
+        # the SAME route.json + route.meta.json pair _load_route reads one line down.
         rp = str(Path(project_dir) / "route.json")
-        # resolve() cannot raise here: validate() above already ran hero_lib.resolve
-        # on this same (m.hero, cast) pair and returned no problems, so a second,
-        # identical call is guaranteed not to raise — the same contract
-        # layout_lib.resolve relies on just above ("validate() already proved it
-        # constructs").
-        tspec = TrackSpec(src=src, model=m.model,
-                          pin=hero_lib.resolve(m.hero, cast), intent=intent)
-        _timed("track", lambda: track.build_route(tspec, rp))
-        route, track_meta = _load_route(rp)
+        pinned = m.hero is not None
+        # rung 1: YOLO — gated so an absent ultralytics falls to the ladder instead of
+        # raising a traceback inside build_route on attempt 1. resolve() cannot raise:
+        # validate() above already ran hero_lib.resolve on this same (m.hero, cast) pair
+        # and returned no problems, so a second identical call is guaranteed not to.
+        if track.available():
+            tspec = TrackSpec(src=src, model=m.model,
+                              pin=hero_lib.resolve(m.hero, cast), intent=intent)
+            _timed("track", lambda: track.build_route(tspec, rp))
+            route, track_meta = _load_route(rp)
+        else:
+            route, track_meta = [], {}
+            timings["track"] = 0.0
+        # rung 2: optical-flow — only when a rung gave NOTHING and nobody was pinned
+        # (flow is identity-blind; an empty route under a pin is hero-unmatched, handled
+        # by detect_contradictions below).
+        if orch.flow_eligible(pinned, route_empty=not route):
+            if flow.available():
+                _timed("flow", lambda: flow.build_route(src, rp, _fps, (src_w, src_h)))
+                route, track_meta = _load_route(rp)
+            # rung 3: manual keyframes — flow unavailable or itself empty.
+            if not route:
+                if keyframes_path is not None:
+                    _timed("keyframes", lambda: keyframes.write_route(
+                        keyframes_path, rp, _fps, _dur))
+                    route, track_meta = _load_route(rp)
+                else:
+                    result = {"status": "stop_and_report", "attempt": 0, "timings": timings,
+                              "findings": [{"reason": "no-track",
+                                            "detail": "both automatic trackers produced no "
+                                                      "route — YOLO detected nobody and "
+                                                      "optical-flow found no motion (or cv2 is "
+                                                      "unavailable). Supply sparse marks via "
+                                                      "--keyframes ([{t,x,y,w,h}]), a full route "
+                                                      "via --route, or pin a hero and re-run."}]}
+                    if stabilize_report is not None:
+                        result["stabilize"] = stabilize_report
+                    return result
     else:
         route, track_meta = _load_route(route_path)
         rp = route_path
         timings["track"] = 0.0
+
+    # which rung authored the route (design 2026-07-21 §5): None for YOLO/pan/supplied.
+    degraded = track_meta.get("degraded")
 
     # 2. contradiction gate (§4.1: no improvising past the manifest). SKIPPED under
     # a pan: this gate compares a manifest CLAIM against a tracker OBSERVATION, and
@@ -246,7 +281,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                 meta=path_meta))
             result = {"status": "mechanical_pass", "clip": m.out_path,
                       "report": report.to_dict(), "storyboard": sheet, "attempt": attempt,
-                      "timings": timings, "degraded": None}
+                      "timings": timings, "degraded": degraded}
             if stabilize_report is not None:
                 result["stabilize"] = stabilize_report
             return result
@@ -291,10 +326,14 @@ if __name__ == "__main__":
     ap.add_argument("manifest", help="path to a JSON manifest file (§5.10)")
     ap.add_argument("--project-dir", required=True, help="scratch dir for route/path/report")
     ap.add_argument("--route", default=None, help="frozen route.json (skip tracking)")
+    ap.add_argument("--keyframes", default=None,
+                    help="sparse keyframes.json ([{t,x,y,w,h}]) — the manual rung when both "
+                         "automatic trackers give nothing (design 2026-07-21 §4)")
     ap.add_argument("--project", default=None,
                     help="path to project.json — the episode inherits its canvas/delivery")
     a = ap.parse_args()
     md = json.loads(Path(a.manifest).read_text())
-    result = process_episode(md, a.project_dir, route_path=a.route, project=a.project)
+    result = process_episode(md, a.project_dir, route_path=a.route, project=a.project,
+                             keyframes_path=a.keyframes)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)
