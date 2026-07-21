@@ -208,13 +208,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model (a manifest default).
-    `pan` crosses the boundary the same way `motion`/`hero`/`stabilize` do below:
-    `pan`/`motion`/`hero` copy through only when the episode sets one, so an
-    absent value leaves the key out of the dict rather than carrying an explicit
-    null; `stabilize` copies through only when true, so a false (its default)
-    leaves the key out too — either way Manifest.from_dict falls to its own
-    None/False default rather than the two sides disagreeing about what unset
-    means. EDL-only fields (source/start/dur/shot_type/processing_notes/
+    Four fields cross conditionally, on two different predicates: `pan`/`motion`/
+    `hero` copy through only when the episode SETS one (not-None), so an absent
+    value leaves the key out rather than carrying an explicit null; `stabilize`
+    copies through only when TRUE, so a false (its default) leaves the key out
+    too. Either way Manifest.from_dict falls to its own None/False default rather
+    than the two sides disagreeing about what unset means. EDL-only fields (source/start/dur/shot_type/processing_notes/
     beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
