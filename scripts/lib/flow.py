@@ -6,6 +6,7 @@ so process_episode runs it ONLY for an unpinned episode whose YOLO route came ba
 only ever probed with it. cv2 is undeclared in requirements.txt (transitive under
 ultralytics), so available() is a real gate, not decoration.
 """
+import numpy as np
 
 
 def available() -> bool:
@@ -13,17 +14,16 @@ def available() -> bool:
     transitive) may be gone too — this makes that a clean fall to rung 3, not a second
     traceback. Mirrors track.available()."""
     try:
-        import cv2  # noqa: F401
+        import cv2  # lazy import: heavy optional dep (cv2, undeclared/transitive under ultralytics)
         return True
     except ImportError:
         return False
 
 
-def _centroid_bbox(mask) -> tuple[float, float, float, float] | None:
+def _centroid_bbox(mask: np.ndarray) -> tuple[float, float, float, float] | None:
     """Largest connected component of a boolean motion mask → (cx, cy, w, h) in mask
     pixels, or None when nothing is set. cv2 label 0 is background."""
-    import cv2
-    import numpy as np
+    import cv2  # lazy import: heavy optional dep (cv2, undeclared/transitive under ultralytics)
     n, _labels, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8),
                                                                      connectivity=8)
     if n <= 1:                                     # only background → no motion blob
