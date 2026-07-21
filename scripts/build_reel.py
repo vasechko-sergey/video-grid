@@ -96,9 +96,19 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             if item.color_correct is not None:
                 cc[item.idx] = _compound(cc.get(item.idx, (1.0, 1.0, 1.0)), item.color_correct)
             epdir = str(Path(work_dir) / f"ep{item.idx}")
+            manifest = rm.episodes[item.idx].manifest
+            # A stabilized episode's frozen route was measured on loop-1's stabilized
+            # pixels and would be safe to reuse — but process_episode refuses
+            # stabilize + a supplied route (design 2026-07-20 §1) because nothing yet
+            # records a route's pixel provenance, so it cannot tell this safe route
+            # from a dangerous one. Re-track on the re-stabilized (deterministic)
+            # segment instead: one YOLO pass on the rare reprocess path, the honest
+            # price of not having the provenance bit. ReelEpisode.route stays
+            # populated regardless — check_reel reads it, and raises for a tracked
+            # (pan=false) episode whose route is None.
+            route = None if manifest.get("stabilize") else rm.episodes[item.idx].route
             res = process_episode.process_episode(
-                rm.episodes[item.idx].manifest, epdir,
-                route_path=rm.episodes[item.idx].route, color_correct=cc.get(item.idx))
+                manifest, epdir, route_path=route, color_correct=cc.get(item.idx))
             if res["status"] != "mechanical_pass":
                 return {"status": "stop_and_report",
                         "finding": {"reason": "reprocess-failed", "episode_idx": item.idx,

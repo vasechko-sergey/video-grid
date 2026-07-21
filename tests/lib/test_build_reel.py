@@ -93,6 +93,26 @@ def test_color_fail_then_pass_reprocesses_then_delivers(monkeypatch, tmp_path):
     assert seen["reprocess"][0]["route"] == "r1.json"     # frozen route reused
 
 
+def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(monkeypatch, tmp_path):
+    # Twin of test_color_fail_then_pass_reprocesses_then_delivers, but ep1 stabilizes.
+    # process_episode refuses stabilize + a supplied route (design 2026-07-20 §1), so
+    # build_reel must withhold the frozen route AT THE REPROCESS CALL — else the reel
+    # dead-ends as reprocess-failed the moment a stabilized episode is reprocessed. The
+    # sibling above pins the non-stabilized branch (route == "r1.json"); together they
+    # fix the branch both ways.
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json"),
+           ReelEpisode(manifest={"segment": "s1.mp4", "stabilize": True},
+                       clip="c1.mp4", route="r1.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=3)
+    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    seen = _wire(monkeypatch, reports)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"                   # reprocess did NOT dead-end
+    assert len(seen["reprocess"]) == 1
+    assert seen["reprocess"][0]["route"] is None          # route WITHHELD — the episode stabilizes
+    assert rm.episodes[1].route == "r1.json"              # model field untouched — check_reel reads it
+
+
 def test_color_correct_compounds_across_rounds(monkeypatch, tmp_path):
     # two failing rounds then pass: the 2nd reprocess factor is compounded onto
     # the 1st and clamped — the reversion bug (per-round-relative) would NOT compound
