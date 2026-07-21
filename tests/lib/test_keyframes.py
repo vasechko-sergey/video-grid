@@ -1,6 +1,9 @@
+import json
+from pathlib import Path
+
 import pytest
 from scripts.lib import keyframes
-from scripts.lib.models import RoutePoint
+from scripts.lib.models import RoutePoint, TrackMeta, route_from_json
 
 def test_two_marks_interpolate_linearly():
     marks = [RoutePoint(t=0.0, x=100, y=10, w=40, h=80),
@@ -28,3 +31,14 @@ def test_non_increasing_ts_raise():
              RoutePoint(t=0.5, x=2, y=2, w=2, h=2)]
     with pytest.raises(ValueError, match="strictly increase"):
         keyframes.interpolate(marks, fps=10.0, dur=1.0)
+
+def test_write_route_densifies_and_stamps_manual(tmp_path):
+    kf = tmp_path / "keyframes.json"
+    kf.write_text(json.dumps([{"t": 0.0, "x": 100, "y": 10, "w": 40, "h": 80},
+                              {"t": 1.0, "x": 200, "y": 10, "w": 40, "h": 80}]))
+    out = tmp_path / "route.json"
+    route = keyframes.write_route(str(kf), str(out), fps=10.0, dur=1.0)
+    assert len(route) == 11
+    assert route_from_json(out) == route                       # route.json written
+    meta = TrackMeta.from_dict(json.loads((tmp_path / "route.meta.json").read_text()))
+    assert meta.degraded == "manual"                           # sidecar stamped

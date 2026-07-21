@@ -5,9 +5,12 @@ RoutePoint marks, densified by linear interpolation into the same route.json eve
 downstream reader expects. The session's proven method — sparse keyframes plus
 interpolation — one level up from hand-authoring a full frame-by-frame route.
 """
+import json
+from pathlib import Path
+
 import numpy as np
 
-from scripts.lib.models import RoutePoint
+from scripts.lib.models import RoutePoint, TrackMeta, route_to_json
 
 
 def interpolate(sparse: list[RoutePoint], fps: float, dur: float) -> list[RoutePoint]:
@@ -37,3 +40,15 @@ def interpolate(sparse: list[RoutePoint], fps: float, dur: float) -> list[RouteP
     xs, ys, ws, hs = col("x"), col("y"), col("w"), col("h")
     return [RoutePoint(t=grid[i], x=float(xs[i]), y=float(ys[i]),
                        w=float(ws[i]), h=float(hs[i])) for i in range(len(grid))]
+
+
+def write_route(keyframes_path: str, out: str, fps: float, dur: float) -> list[RoutePoint]:
+    """Read a sparse keyframes.json, interpolate, and write the SAME pair track.py
+    writes: route.json + a route.meta.json stamped degraded="manual". RoutePoint.from_dict
+    guards a bare-scalar file — the hand-authoring human is exactly who benefits."""
+    raw = json.loads(Path(keyframes_path).read_text())
+    sparse = [RoutePoint.from_dict(d) for d in raw]
+    route = interpolate(sparse, fps, dur)
+    route_to_json(route, out)
+    Path(out).with_suffix(".meta.json").write_text(json.dumps(TrackMeta(degraded="manual").to_dict()))
+    return route
