@@ -246,6 +246,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                       "timings": timings, "route": rp}
             if stabilize_report is not None:
                 result["stabilize"] = stabilize_report
+            if degraded is not None:
+                result["degraded"] = degraded
             return result
 
     # 3. reframe → check retry loop
@@ -308,6 +310,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                       "attempt": attempt, "timings": timings}
             if stabilize_report is not None:
                 result["stabilize"] = stabilize_report
+            if degraded is not None:
+                result["degraded"] = degraded
             return result
         params = orch.adjust_reframe_params(params, report.fail_reasons)
 
@@ -318,6 +322,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
               "attempt": max_attempts, "timings": timings}
     if stabilize_report is not None:
         result["stabilize"] = stabilize_report
+    if degraded is not None:
+        result["degraded"] = degraded
     return result
 
 

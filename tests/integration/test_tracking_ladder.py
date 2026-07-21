@@ -29,22 +29,12 @@ def _manifest(clip, tmp_path, **over):
 
 def test_empty_yolo_route_falls_to_optical_flow(sample_clip, tmp_path):
     # real YOLO detects no person in the box → empty → unpinned → optical-flow rung.
-    #
-    # We assert on the ROUTE SIDECAR the rung stamped, not the terminal status. The flow
-    # tracker is coarse by design (§3): on this hard-edged synthetic box the dense-flow
-    # centroid oscillates ~150px frame-to-frame (measured worst |dx| ≈ 167px — the leading
-    # and trailing motion edges trade off as the largest blob), which trips check_episode's
-    # UNIVERSAL, UNFIXABLE continuity gate (cap 0.04*1920 ≈ 77px) and escalates. That gate is
-    # orthogonal to this test's thesis — that rung 2 RAN and stamped its provenance — and
-    # composition="break" makes only the COMPOSITION checks editorial, never continuity. So
-    # the proof that the flow rung authored the route is the degraded="flow" sidecar it wrote,
-    # not whether a coarse route happens to clear a per-frame-teleport gate on this fixture.
-    proj = tmp_path / "ep"
-    res = process_episode.process_episode(_manifest(sample_clip, tmp_path), proj)
-    # the flow rung leaves the route.json + route.meta.json pair _load_route reads
-    meta = json.loads((proj / "route.meta.json").read_text())
-    assert meta["degraded"] == "flow", res
-    assert json.loads((proj / "route.json").read_text()), "the flow rung must have written a route"
+    # The flow centroid is jittery on the box's hard edges, so the route trips the
+    # unfixable continuity gate and ESCALATES — but it is a real, stamped flow route,
+    # and the escalate result must carry that provenance in-band (not just on disk).
+    res = process_episode.process_episode(_manifest(sample_clip, tmp_path), tmp_path / "ep")
+    assert res["status"] == "escalate", res
+    assert res["degraded"] == "flow"        # rung 2 ran and stamped, visible in-band
 
 
 def test_manual_keyframes_rung_when_both_auto_rungs_are_down(sample_clip, tmp_path, monkeypatch):
