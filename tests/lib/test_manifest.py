@@ -2,6 +2,7 @@ import json
 
 import pytest
 from scripts.lib import manifest as mf
+from scripts.lib import vidstab
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
 
 
@@ -49,11 +50,6 @@ def test_validate_unsupported_layout_refused():
     # so the loose form would pass against the pre-rename spelling too and let a
     # revert of that message regress silently. This is the only test that reads it.
     assert any("pan" in p and "fill/fit/insert" in p for p in problems)
-
-
-def test_validate_stabilize_refused():
-    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(stabilize=True)))
-    assert any("stabilize" in p for p in problems)
 
 
 def test_validate_nonpositive_duration():
@@ -421,3 +417,37 @@ def test_validate_allows_a_pan_beside_a_static_motion():
     m = mf.Manifest.from_dict(_base(composition="center", pan={"from": 0.0, "to": 1.0},
                                     motion="static"))
     assert mf.validate(m) == []
+
+
+# --- stabilize-apply Task 6: the gate checks vidstab instead of refusing it ---
+#
+# _ok_dict() at the top of this file already builds a manifest that validates
+# clean (see test_validate_ok), so `_ok_dict(stabilize=True)` isolates exactly
+# the stabilize problem — no separate builder needed here.
+
+def test_stabilize_true_is_no_longer_refused(monkeypatch):
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict(stabilize=True))) == []
+
+
+def test_stabilize_true_on_a_build_without_the_filter_is_a_problem(monkeypatch):
+    """A missing filter is an environment fault, and every other manifest fault
+    reaches the caller as a problem string → needs_input. Letting ffbin's
+    ValueError escape validate() would make this the one that arrives as a
+    traceback."""
+    def _no(_=None):
+        raise ValueError("/opt/slim/ffmpeg has no vidstabtransform filter — run `bash setup.sh`")
+    monkeypatch.setattr(vidstab, "require", _no)
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(stabilize=True)))
+    assert len(problems) == 1
+    assert "vidstabtransform" in problems[0] and "setup.sh" in problems[0]
+
+
+def test_a_manifest_without_stabilize_never_probes_ffmpeg(monkeypatch):
+    """validate() runs in a great many tests and the probe is a real subprocess
+    (ffbin.has_filter is uncached by design). Gating on the flag keeps the cost
+    on the manifests that asked for it."""
+    monkeypatch.setattr(vidstab, "require",
+                        lambda: pytest.fail("validate() probed ffmpeg for a manifest "
+                                            "that never asked to stabilize"))
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict())) == []

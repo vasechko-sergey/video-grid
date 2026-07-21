@@ -175,11 +175,17 @@ def test_frozen_route_skips_tracking(monkeypatch, tmp_path):
 
 
 def test_invalid_manifest_returns_needs_input(monkeypatch, tmp_path):
+    # composition (not stabilize) is the trigger: stabilize=True stopped being an
+    # unconditional problem once the manifest gate started checking vidstab
+    # capability instead of refusing outright (stabilize-apply Task 6) — on a
+    # machine that actually has vidstab, it would silently validate clean and this
+    # test would assert nothing. An unknown composition is invalid regardless of
+    # the host's ffmpeg build.
     _stub_engine(monkeypatch, tmp_path)
-    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+    result = pe.process_episode(_manifest(tmp_path, composition="not-a-real-composition"),
                                 project_dir=str(tmp_path))
     assert result["status"] == "needs_input"
-    assert any("stabilize" in p for p in result["problems"])
+    assert any("composition" in p for p in result["problems"])
     assert result["attempt"] == 0
 
 

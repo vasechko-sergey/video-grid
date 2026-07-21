@@ -15,6 +15,7 @@ from scripts.lib import hero as hero_lib   # aliased: this module already has a 
                                            # `hero.resolve(...)` reads as a field access at a
                                            # glance next to `m.hero`. hero_lib keeps every call
                                            # site unambiguous.
+from scripts.lib import vidstab
 from scripts.lib.footage import Cast
 from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec, PanSpec
 
@@ -180,10 +181,19 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
         hero_lib.resolve(m.hero, cast)
     except ValueError as e:
         problems.append(str(e))
+    # Stabilization is implemented (design 2026-07-20) — what is left to check is
+    # whether THIS ffmpeg can do it. Same soft-manifest / hard-engine pairing the
+    # layout uses: a problem string here so the shell returns needs_input with a
+    # remedy, and vidstab.require() again in the engine as the hard backstop.
+    #
+    # Guarded on the flag because require() spawns a real `ffmpeg -filters`
+    # (ffbin.has_filter is uncached on purpose), and validate() runs in a great
+    # many tests that have nothing to do with vidstab.
     if m.stabilize:
-        problems.append("stabilize=true not supported yet — vidstab lands in the "
-                        "reframe-extensions plan (and needs a vidstab-enabled ffmpeg, "
-                        "see setup.sh)")
+        try:
+            vidstab.require()
+        except ValueError as e:
+            problems.append(str(e))
     if not (isinstance(m.canvas, tuple) and len(m.canvas) == 2
             and all(isinstance(v, (int, float)) and v > 0 for v in m.canvas)):
         problems.append(f"canvas must be [w, h] with positive numbers; got {m.canvas!r}")
