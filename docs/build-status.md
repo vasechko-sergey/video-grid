@@ -1396,6 +1396,19 @@ _Last updated: 2026-07-21._
     route is smooth by construction and clears continuity).
   - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
     repair) is unchanged by this slice and stays its own slice.
+  - **Follow-up (2026-07-21) — `--keyframes` answer-channel refusals.** The
+    whole-slice review found the manual channel silently dropped its marks under
+    two edge cases; a third of the same class turned up beside them. All three now
+    hard-refuse at the input gate (`needs_input`, remedy-bearing, *before* tracking
+    and the stabilization pre-stage), because `validate()` cannot see
+    `keyframes_path`: **hero pin + `--keyframes`** (two identity mechanisms — the
+    keyframes ARE the assertion, §1.1's mechanism-conflict, not flow's
+    identity-blindness), **`stabilize: true` + `--keyframes`** (source-coord marks
+    over stabilized pixels — the `stabilize + --route` coordinate-mismatch class,
+    milder but still refused symmetrically), and **supplied `--route` +
+    `--keyframes`** (competing route sources). One invariant: `--keyframes` drives
+    the raw, unpinned, unstabilized, un-pre-routed segment — nothing else. Design
+    §1.1/§2/§4/§7 amended; +3 integration tests. **1604 passed / 2 skipped.**
 
 ## Next action
 

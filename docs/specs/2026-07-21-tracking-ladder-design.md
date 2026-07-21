@@ -66,6 +66,18 @@ is already `hero-unmatched` today (`orchestration.detect_contradictions`, keyed 
 and the remedy is a human re-check, never a motion-blob stand-in. The ladder changes
 the **unpinned** empty case only — the case that is `no-track` today.
 
+> **As built (2026-07-21 follow-up):** identity-blindness is why optical-flow (rung 2)
+> is excluded for a pinned episode — but it is *not* a reason to exclude the **manual**
+> rung 3, because a human hand-authoring keyframes CAN honor the pin's identity (they
+> draw the box on the right person). So a pinned episode supplied with `--keyframes` is
+> neither silently dropped (the pre-follow-up bug — the marks sat under `flow_eligible`,
+> which is `False` for a pin) nor quietly run through rung 3: it is **refused** at the
+> input gate, because a pin and hand-authored keyframes are two mechanisms answering the
+> same "which subject" — the keyframes ARE the identity assertion, so the pin is moot the
+> moment they are drawn. The exclusion of rung 3 for a pin is therefore a *mechanism
+> conflict*, surfaced loudly, not the identity-blindness that excludes rung 2. See §2's
+> refusal note.
+
 ---
 
 ## 2. The ladder, precisely
@@ -92,6 +104,33 @@ Unpinned episode, no supplied --route:
 only (empty → `hero-unmatched`). A supplied route and a pan already bypass tracking
 entirely (a pan writes no route at all — 2026-07-19 §6.1). All three keep
 `degraded=None`.
+
+> **As built (2026-07-21 follow-up):** "a pin runs rung 1 only" is now *enforced*, not
+> assumed. `--keyframes` is rung 3's answer channel, and three inputs contradict it —
+> each refused at the input gate with a remedy-bearing `needs_input`, because
+> `validate()` structurally cannot see `keyframes_path` (not a manifest field), and the
+> refusal lands *before* tracking and the stabilization pre-stage so no ffmpeg pass is
+> spent on a contradicted input:
+>
+> - **hero pin + `--keyframes`** — two identity mechanisms (§1.1). Remedy: drop the pin
+>   (the keyframes name the subject directly) or drop the keyframes.
+> - **`stabilize: true` + `--keyframes`** — the marks are authored in the raw segment's
+>   coordinates, but reframe reads the stabilized copy, so the crop lands off by the
+>   displacement vidstab removed. The **same coordinate-mismatch class** as the
+>   `stabilize + --route` refusal (2026-07-20 §1), and refused symmetrically — milder
+>   only in that sparse linear marks are low-frequency and cannot re-inject the
+>   high-frequency shake, but there is no correct way to hand-author against the
+>   stabilized scratch (an internal artifact the human never sees). Remedy: stabilize
+>   off to mark in source coordinates, or drop the keyframes and let the tracker
+>   re-track on the stabilized segment.
+> - **supplied `--route` + `--keyframes`** — a complete frozen route and the sparse
+>   marks that would author one are competing route sources; `--route` used to win
+>   silently. Remedy: pick one channel.
+>
+> One invariant: **`--keyframes` drives the raw, unpinned, unstabilized, un-pre-routed
+> segment — nothing else.** The pin/route refusals close the same *silently-dropped
+> marks* gap the pin case first exposed; the stabilize refusal closes the coordinate
+> class the `--route` refusal already guards.
 
 ### 2.1 Where in `process_episode`
 
@@ -184,6 +223,11 @@ parameter and CLI flag (`--keyframes`), at the same answer-channel level as `--r
 It is **not** an EDL field: keyframes are a recovery response to a stop-and-report, not
 an editorial authoring choice, so `edl.py` / `build_reel` are untouched.
 
+Because it is a source-coordinate channel over the **raw** segment, `--keyframes` is
+**incompatible** with a hero pin, `stabilize: true`, and a supplied `--route`; each
+combination is refused at the input gate rather than silently dropped or applied to the
+wrong pixels (the invariant and its three remedies are the §2 As-built note).
+
 ---
 
 ## 5. `TrackMeta.degraded` — route-side provenance
@@ -267,6 +311,14 @@ followed subject.
 - **No flow auto-tuning.** The Farneback parameters and the magnitude threshold are
   fixed constants. Tuning them per-clip is a weaker tracker chasing a stronger one's
   job — out of scope by the same §1 logic.
+- **`stabilize: true` + manual keyframes cannot combine (2026-07-21 follow-up).** The
+  manual rung authors marks in source coordinates and reframe reads the stabilized copy,
+  so the two are refused together (§2). This is a deliberate capability loss: there is no
+  correct way to hand-author against the stabilized scratch (the human never sees it), so
+  a shaky clip whose *automatic* tracking fails must choose — stabilize (and rely on the
+  automatic rungs re-tracking the stabilized pixels) **or** hand-author marks with
+  stabilize off. The milder-than-`--route` low-frequency offset does not justify shipping
+  a subtly-wrong path; a hard refusal beats a documented "prefer not to."
 - **§6.1a layer 3** (descriptor continuity re-match) — a different mechanism against
   mid-episode ID switch, still its own slice.
 

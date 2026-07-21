@@ -904,3 +904,70 @@ def test_stabilize_with_a_frozen_route_is_refused(monkeypatch, tmp_path):
     # the remedy names both actionable fixes without assuming tracking (a pan never
     # tracks, so "drop --route so tracking runs on it" would misdescribe it)
     assert "drop --route" in joined and "stabilize off" in joined
+
+
+# --- --keyframes answer-channel conflicts (design 2026-07-21 §2): the manual rung
+# drives the RAW, unpinned, unstabilized, un-pre-routed segment in source coordinates.
+# Three inputs contradict that channel and validate() cannot see any of them
+# (keyframes_path is not a manifest field), so the shell refuses each loudly rather
+# than silently drop the marks — the anti-pattern these three tests pin. ---
+
+
+def test_a_hero_pin_with_keyframes_is_refused(monkeypatch, tmp_path):
+    # A hero pin and hand-authored keyframes both answer "which subject": the pin tells
+    # the automatic tracker whom to follow, the keyframes ARE the human answering it
+    # directly, so the pin is moot the moment they are drawn. Passing both used to
+    # silently drop the keyframes — they sit under flow_eligible, False for a pin — with
+    # no signal they were ignored. Optical-flow's identity-blindness (§1.1) excludes a
+    # pinned episode from rung 2; rung 3 is excluded here for a DIFFERENT, louder reason.
+    _stub_engine(monkeypatch, tmp_path)
+    kf = tmp_path / "keyframes.json"
+    kf.write_text(json.dumps([{"t": 0.0, "x": 300, "y": 540, "w": 200, "h": 400}]))
+    result = pe.process_episode(_manifest(tmp_path, hero=[50, 50, 20, 20]),
+                                project_dir=str(tmp_path), keyframes_path=str(kf))
+    assert result["status"] == "needs_input"
+    assert result["attempt"] == 0
+    joined = " ".join(result["problems"]).lower()
+    assert "hero pin" in joined and "--keyframes" in joined
+    # the remedy names both actionable fixes: drop the pin (keyframes ARE the identity)
+    # or drop the keyframes (let the pinned tracker run)
+    assert "drop the hero pin" in joined and "drop --keyframes" in joined
+
+
+def test_stabilize_with_keyframes_is_refused(monkeypatch, tmp_path):
+    # The same coordinate-mismatch class as the frozen-route refusal above, milder: the
+    # human authors marks in the RAW segment's coordinates, but stabilization feeds
+    # reframe a per-frame-shifted copy, so the crop lands off by the displacement vidstab
+    # removed. Sparse linear marks cannot re-inject the high-frequency shake the --route
+    # refusal exists for — but it is the same class, and there is no correct way to
+    # hand-author against the stabilized scratch. Refuse symmetrically, and — like the
+    # route refusal — BEFORE the pre-stage spends the ffmpeg passes.
+    _stub_engine(monkeypatch, tmp_path)
+    _stub_vidstab(monkeypatch, stabilize=lambda *a, **k: pytest.fail(
+        "the refusal must come before the pre-stage spends the passes"))
+    kf = tmp_path / "keyframes.json"
+    kf.write_text(json.dumps([{"t": 0.0, "x": 300, "y": 540, "w": 200, "h": 400}]))
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path), keyframes_path=str(kf))
+    assert result["status"] == "needs_input"
+    assert result["attempt"] == 0
+    joined = " ".join(result["problems"]).lower()
+    assert "stabilize" in joined and "--keyframes" in joined
+    assert "shake" in joined
+    assert "stabilize off" in joined and "drop --keyframes" in joined
+
+
+def test_a_frozen_route_with_keyframes_is_refused(monkeypatch, tmp_path):
+    # --route supplies a COMPLETE frozen route (tracking skipped entirely) and
+    # --keyframes supplies sparse marks that would AUTHOR one: two competing route
+    # sources. Today --route silently wins and the keyframes are dropped — the third
+    # same-class gap, closed for a complete invariant.
+    _stub_engine(monkeypatch, tmp_path)
+    kf = tmp_path / "keyframes.json"
+    kf.write_text(json.dumps([{"t": 0.0, "x": 300, "y": 540, "w": 200, "h": 400}]))
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
+                                route_path=_frozen_route(tmp_path), keyframes_path=str(kf))
+    assert result["status"] == "needs_input"
+    assert result["attempt"] == 0
+    joined = " ".join(result["problems"]).lower()
+    assert "--route" in joined and "--keyframes" in joined

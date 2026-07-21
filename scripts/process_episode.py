@@ -139,6 +139,56 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         except ValueError as e:
             return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
 
+    # --keyframes (rung 3, the manual channel) is authored by hand against the RAW
+    # segment in source coordinates, with the human — not a pin, not a tracker —
+    # naming the subject. Three inputs contradict that channel, and manifest.validate
+    # cannot catch any of them (keyframes_path is not a manifest field), so refuse here,
+    # loudly, rather than silently drop the marks or apply them to the wrong pixels.
+    # Together they are one invariant: --keyframes drives the raw, unpinned,
+    # unstabilized, un-pre-routed segment — nothing else (design 2026-07-21 §2).
+    if keyframes_path is not None:
+        if m.hero is not None:
+            # A hero pin and hand-authored keyframes both answer "which subject": the
+            # pin tells the automatic tracker whom to follow, the keyframes ARE the
+            # human answering it directly, so the pin is moot the moment they are drawn.
+            # Passing both silently drops the keyframes — they sit under flow_eligible,
+            # False for a pin — with no signal they were ignored. Optical-flow's
+            # identity-blindness (§1.1) keeps a pinned episode out of rung 2; the manual
+            # rung 3 is excluded here for this DIFFERENT, louder reason: a human CAN
+            # honor the pin, so the conflict is one of mechanism, not identity-blindness.
+            return {"status": "needs_input", "attempt": 0, "problems": [
+                "a hero pin cannot be combined with --keyframes: hand-authored keyframes "
+                "ARE the identity assertion — they name the subject directly and "
+                "supersede any pin. Drop the hero pin from the manifest and re-run with "
+                "--keyframes, or drop --keyframes and let the pinned tracker run."]}
+        if m.stabilize:
+            # Keyframes are drawn in the RAW segment's coordinates, but the stabilization
+            # pre-stage below hands reframe a per-frame-shifted copy; source-coord marks
+            # on those pixels land the crop off by the displacement vidstab removed.
+            # Sparse linear marks cannot re-inject the high-frequency shake the --route
+            # refusal below exists for (they are low-frequency by construction) — the
+            # milder low-frequency-offset case — but it is the SAME coordinate-mismatch
+            # class, and there is no correct way to hand-author against the stabilized
+            # scratch, which the human never sees. Refuse it symmetrically.
+            return {"status": "needs_input", "attempt": 0, "problems": [
+                "stabilize=true cannot be combined with --keyframes: keyframes are "
+                "authored in the raw segment's coordinates, but stabilization feeds "
+                "reframe a shifted copy, so the marks land the crop off by the shake "
+                "vidstab removed. Turn stabilize off to hand-author marks in source "
+                "coordinates, or drop --keyframes and let the tracker re-track on the "
+                "stabilized segment."]}
+        if route_path is not None:
+            # --route is already a COMPLETE frozen route (tracking is skipped entirely);
+            # --keyframes is the manual rung that would AUTHOR one. Two competing route
+            # sources, and today --route silently wins while the keyframes are dropped.
+            # Refuse: pick one channel.
+            return {"status": "needs_input", "attempt": 0, "problems": [
+                "--route cannot be combined with --keyframes: --route supplies a complete "
+                "frozen route and --keyframes supplies sparse marks to build one, so the "
+                "two are competing route sources. Drop whichever you did not mean — keep "
+                "--route for a full frozen path, or --keyframes to interpolate sparse "
+                "marks."]}
+
     # A supplied --route was measured against SOME pixels, and nothing here proves
     # they were the stabilized ones. Applying it to the stabilized copy would
     # re-inject exactly the shake vidstab removed (design 2026-07-20 §1) — the
