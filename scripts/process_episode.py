@@ -17,6 +17,7 @@ from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
+from scripts.lib import vidstab
 from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, LayoutSpec, route_from_json, CropPath, PathMeta,
@@ -137,6 +138,41 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         except ValueError as e:
             return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
 
+    # A supplied --route was measured against SOME pixels, and nothing here proves
+    # they were the stabilized ones. Applying it to the stabilized copy would
+    # re-inject exactly the shake vidstab removed (design 2026-07-20 §1) — the
+    # failure this whole ordering exists to prevent, arriving through the one door
+    # the pre-stage cannot close by construction. Refuse it rather than corrupt
+    # silently; manifest.validate cannot, because route_path is not a manifest field.
+    if m.stabilize and route_path is not None:
+        return {"status": "needs_input", "attempt": 0, "problems": [
+            "stabilize=true cannot be combined with a supplied --route: the frozen "
+            "route was measured against unknown pixels, and applying it to the "
+            "stabilized segment would re-inject the shake vidstab removed. Re-track "
+            "on the stabilized segment (drop --route so tracking runs on it), or "
+            "turn stabilize off for this episode."]}
+
+    # 0c. the stabilization pre-stage (design 2026-07-20 §1). NOT a filter in
+    # reframe's chain: the route is measured on unstabilized pixels, so a crop
+    # placed from it against transformed pixels leaves the subject offset by
+    # exactly the shake vidstab removed — a steady background with a jittering
+    # subject — and check_episode confirms the framing anyway, because path and
+    # route are both in source coordinates and agree with each other. Only the
+    # pixels disagree. Writing a file that BOTH the tracker and reframe read makes
+    # route and pixels one coordinate system by construction.
+    #
+    # After the preflights, so a manifest the layout cannot satisfy still fails in
+    # milliseconds rather than after two 4K ffmpeg passes; outside the retry loop,
+    # because it is the loop's input, not one of its parameters — the ladder only
+    # tunes max_speed, which stabilization does not depend on.
+    src = m.segment
+    stabilize_report = None
+    if m.stabilize:
+        src = str(Path(project_dir) / "stabilized.mp4")
+        before, after = _timed("stabilize", lambda: vidstab.stabilize(
+            m.segment, src, (src_w, src_h), _fps, _dur))
+        stabilize_report = {"before": before, "after": after}
+
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10),
     #    or NOTHING AT ALL when the path is generated.
     if pan is not None:
@@ -153,7 +189,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         # identical call is guaranteed not to raise — the same contract
         # layout_lib.resolve relies on just above ("validate() already proved it
         # constructs").
-        tspec = TrackSpec(src=m.segment, model=m.model,
+        tspec = TrackSpec(src=src, model=m.model,
                           pin=hero_lib.resolve(m.hero, cast), intent=intent)
         _timed("track", lambda: track.build_route(tspec, rp))
         route, track_meta = _load_route(rp)
@@ -171,8 +207,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         findings = orch.detect_contradictions(m.motion, route, track_meta,
                                               src_w, src_h, composition=m.composition)
         if findings:
-            return {"status": "stop_and_report", "findings": findings, "attempt": 0,
-                    "timings": timings, "route": rp}
+            result = {"status": "stop_and_report", "findings": findings, "attempt": 0,
+                      "timings": timings, "route": rp}
+            if stabilize_report is not None:
+                result["stabilize"] = stabilize_report
+            return result
 
     # 3. reframe → check retry loop
     params = dict(orch.DEFAULT_PARAMS)
@@ -183,7 +222,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                             color_means=m.color_means, delivery=delivery, layout=lspec,
                             max_speed=params["max_speed"], color_correct=color_correct,
                             pan=pan)
-        _timed("reframe", lambda: reframe.reframe(rspec, m.segment, rp, m.out_path, path_out))
+        _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
+                                                  stabilized=m.stabilize))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
                           attempt=attempt)
         report = _timed("check", lambda: check_episode.run(
@@ -204,9 +244,12 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             _timed("storyboard", lambda: storyboard.build(
                 m.out_path, sheet, sspec, route=route_pts, path=path_obj,
                 meta=path_meta))
-            return {"status": "mechanical_pass", "clip": m.out_path, "report": report.to_dict(),
-                    "storyboard": sheet, "attempt": attempt, "timings": timings,
-                    "degraded": None}
+            result = {"status": "mechanical_pass", "clip": m.out_path,
+                      "report": report.to_dict(), "storyboard": sheet, "attempt": attempt,
+                      "timings": timings, "degraded": None}
+            if stabilize_report is not None:
+                result["stabilize"] = stabilize_report
+            return result
         esc = orch.escalation(attempt, report.fail_reasons, max_attempts)
         if esc is None and pan is not None:
             # The retry ladder tunes ONE thing: max_speed, via
@@ -226,8 +269,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             esc = {"escalate_to": "edit-plan", "reason": "pan-not-retryable",
                    "fail_reasons": report.fail_reasons}
         if esc:
-            return {"status": "escalate", **esc, "report": report.to_dict(),
-                    "attempt": attempt, "timings": timings}
+            result = {"status": "escalate", **esc, "report": report.to_dict(),
+                      "attempt": attempt, "timings": timings}
+            if stabilize_report is not None:
+                result["stabilize"] = stabilize_report
+            return result
         params = orch.adjust_reframe_params(params, report.fail_reasons)
 
     # defensive: escalation() fires at max_attempts, so this is unreachable

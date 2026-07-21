@@ -71,6 +71,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
     def fake_build_route(spec, out):
         calls["track_intent"] = spec.intent
         calls["track_pin"] = spec.pin
+        calls["track_src"] = spec.src
         Path(out).write_text(json.dumps(route))
         Path(out).with_suffix(".meta.json").write_text(json.dumps({"ambiguous": False}))
         return [models.RoutePoint.from_dict(d) for d in route]
@@ -78,11 +79,13 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
 
     monkeypatch.setattr(pe.reframe, "_probe", lambda src: dims)
 
-    def fake_reframe(spec, src, route_path, out, path_out):
+    def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
         calls["reframe_delivery"] = spec.delivery
         calls["reframe_canvas"] = spec.canvas
         calls["reframe_color_correct"] = spec.color_correct
         calls["reframe_background"] = (spec.layout.background, spec.layout.background_color)
+        calls["reframe_src"] = src
+        calls["reframe_stabilized"] = stabilized
         Path(out).write_text("clip")
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
@@ -262,7 +265,7 @@ def test_retry_then_pass(monkeypatch, tmp_path):
         return r
     monkeypatch.setattr(pe.check_episode, "run", fake_run)
 
-    def fake_reframe(spec, src, route_path, out, path_out):
+    def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
         speeds.append(spec.max_speed)
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard; reframe also
@@ -423,7 +426,7 @@ def test_manifest_layout_fields_reach_the_reframe_spec(monkeypatch, tmp_path):
     # the JSON-array-to-tuple conversion the manifest performs.
     seen = {}
 
-    def fake_reframe(spec, src, route_path, out, path_out):
+    def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
         seen["layout"] = spec.layout
         raise RuntimeError("stop — this test only cares about the spec we were handed")
 
@@ -441,7 +444,7 @@ def test_manifest_layout_fields_reach_the_reframe_spec(monkeypatch, tmp_path):
 def test_a_fill_manifest_still_gets_the_default_layout(monkeypatch, tmp_path):
     seen = {}
 
-    def fake_reframe(spec, src, route_path, out, path_out):
+    def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
         seen["layout"] = spec.layout
         raise RuntimeError("stop")
 
@@ -674,9 +677,9 @@ def test_a_pan_hands_reframe_no_route_path(sample_clip, tmp_path, monkeypatch):
     seen = {}
     real = reframe.reframe
 
-    def spy(spec, src, route_path, out, path_out):
+    def spy(spec, src, route_path, out, path_out, stabilized=False):
         seen["route_path"] = route_path
-        return real(spec, src, route_path, out, path_out)
+        return real(spec, src, route_path, out, path_out, stabilized=stabilized)
     monkeypatch.setattr(reframe, "reframe", spy)
     md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
           "composition": "center", "grid": "thirds", "canvas": [9, 16],
@@ -729,3 +732,152 @@ def test_a_pan_with_no_freedom_comes_back_as_needs_input(sample_clip, tmp_path):
     res = pe.process_episode(md, str(tmp_path / "p"))
     assert res["status"] == "needs_input"
     assert any("crop_scale" in p for p in res["problems"])
+
+
+# --- Task 7: process_episode runs the stabilization pre-stage (design 2026-07-20 §1):
+# ONE vidstab pass into <project_dir>/stabilized.mp4, and BOTH the tracker and reframe
+# read that file — route and pixels one coordinate system by construction. ---
+
+
+def _stub_vidstab(monkeypatch, *, stabilize=lambda src, out, dims, fps, dur: (0.031, 0.004)):
+    """Neutralise the two vidstab entry points a stabilize=true run touches:
+    require() (validate() spawns a real `ffmpeg -filters` otherwise — pe.vidstab
+    IS manifest_lib.vidstab, one module object, so patching it here covers both)
+    and stabilize() (the pre-stage's two ffmpeg passes)."""
+    monkeypatch.setattr(pe.vidstab, "require", lambda: None)
+    monkeypatch.setattr(pe.vidstab, "stabilize", stabilize)
+
+
+def test_stabilize_feeds_the_same_file_to_tracker_and_reframe(monkeypatch, tmp_path):
+    # THE §1 INVARIANT. The tracker and reframe must read the SAME file. Feeding the
+    # tracker the raw segment while reframe reads the stabilized one is the exact
+    # failure this ordering exists to prevent: the route would live in the source
+    # coordinate system and the pixels would not, so the crop would re-inject the
+    # shake vidstab removed — and check_episode would confirm the framing regardless,
+    # because path and route are both in source coordinates and agree with each other.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    _stub_vidstab(monkeypatch)
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass", result
+    assert calls["track_src"] == calls["reframe_src"]
+    assert calls["track_src"].endswith("stabilized.mp4")
+    assert calls["reframe_stabilized"] is True
+
+
+def test_the_preflight_probe_stays_on_the_original_segment(monkeypatch, tmp_path):
+    # The preflight probe exists so a manifest the layout cannot satisfy fails in
+    # milliseconds. Moving it after stabilization would spend the two ffmpeg passes
+    # before the cheap refusal — so it must be handed the RAW segment, not the
+    # not-yet-written stabilized.mp4.
+    dims = (1920, 1080, 30.0, 3.0)
+    _stub_engine(monkeypatch, tmp_path, dims=dims)
+    _stub_vidstab(monkeypatch)
+    probed = {}
+
+    def spy_probe(src):
+        probed["src"] = src
+        return dims
+    monkeypatch.setattr(pe.reframe, "_probe", spy_probe)
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass", result
+    assert probed["src"].endswith("seg.mp4")
+    assert not probed["src"].endswith("stabilized.mp4")
+
+
+def test_the_before_and_after_reach_the_result(monkeypatch, tmp_path):
+    # the residual measurement is a stage-level fact, riding out on the result beside
+    # `timings` (design §6.3) — never inside Report, where a check_reel consumer
+    # would be tempted to gate on a number this slice ships no threshold for.
+    _stub_engine(monkeypatch, tmp_path)
+    _stub_vidstab(monkeypatch)
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass", result
+    assert result["stabilize"] == {"before": 0.031, "after": 0.004}
+
+
+def test_an_unstabilized_episode_never_runs_the_pre_stage(monkeypatch, tmp_path):
+    # the default manifest carries stabilize=False, so the pre-stage must not fire,
+    # no measurement must appear, and both consumers must read the raw segment.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    monkeypatch.setattr(pe.vidstab, "stabilize",
+                        lambda *a, **k: pytest.fail("stabilize=False must not run the pre-stage"))
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert "stabilize" not in result
+    assert calls["reframe_stabilized"] is False
+    assert calls["reframe_src"] == calls["track_src"]
+    assert calls["reframe_src"].endswith("seg.mp4")
+
+
+def test_the_pre_stage_runs_once_not_once_per_retry(monkeypatch, tmp_path):
+    # stabilization is the loop's INPUT, not one of its parameters — it runs once,
+    # and the three reframe/check retries all read the one stabilized file. The
+    # measurement also rides out on the escalate terminal, not just mechanical_pass.
+    _stub_engine(monkeypatch, tmp_path, report=_report(False, ["on_line"]))
+    n = {"count": 0}
+
+    def counting(src, out, dims, fps, dur):
+        n["count"] += 1
+        return (0.031, 0.004)
+    _stub_vidstab(monkeypatch, stabilize=counting)
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "escalate"          # on_line retries 3x, then max-retries
+    assert result["reason"] == "max-retries"
+    assert result["attempt"] == 3
+    assert n["count"] == 1
+    assert result["stabilize"] == {"before": 0.031, "after": 0.004}
+
+
+def test_a_pan_episode_can_also_be_stabilized(sample_clip, tmp_path, monkeypatch):
+    # design §2.1: pan and stabilize compose. A pan tracks nobody, so §1's coordinate
+    # argument does not apply to it — but a pan over shaky footage is still shaky. The
+    # pre-stage runs, reframe reads the stabilized file, and the tracker never runs.
+    import shutil
+    monkeypatch.setattr(track, "build_route",
+                        lambda *a, **k: pytest.fail("a pan must not run the tracker"))
+
+    def fake_stabilize(src, out, dims, fps, dur):
+        shutil.copy(src, out)     # real reframe reads `out`, so it must be a real clip
+        return (0.031, 0.004)
+    _stub_vidstab(monkeypatch, stabilize=fake_stabilize)
+
+    seen = {}
+    real = reframe.reframe
+
+    def spy(spec, src, route_path, out, path_out, stabilized=False):
+        seen["src"] = src
+        seen["stabilized"] = stabilized
+        return real(spec, src, route_path, out, path_out, stabilized=stabilized)
+    monkeypatch.setattr(reframe, "reframe", spy)
+
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": _dur(sample_clip), "layout": "fill", "crop_scale": 0.5,
+          "pan": {"from": 0.2, "to": 0.7}, "stabilize": True}
+    res = pe.process_episode(md, str(tmp_path / "proj"))
+    assert res["status"] == "mechanical_pass", res
+    assert res["stabilize"] == {"before": 0.031, "after": 0.004}
+    assert seen["src"].endswith("stabilized.mp4")
+    assert seen["stabilized"] is True
+
+
+def test_stabilize_with_a_frozen_route_is_refused(monkeypatch, tmp_path):
+    # A supplied --route was measured against unknown pixels; applying it to the
+    # stabilized copy re-injects the shake vidstab removed (design §1). validate()
+    # structurally cannot catch it — route_path is not a manifest field — so the
+    # shell refuses, and the refusal must land BEFORE the two ffmpeg passes.
+    _stub_engine(monkeypatch, tmp_path)
+    _stub_vidstab(monkeypatch, stabilize=lambda *a, **k: pytest.fail(
+        "the refusal must come before the pre-stage spends the passes"))
+    result = pe.process_episode(_manifest(tmp_path, stabilize=True),
+                                project_dir=str(tmp_path),
+                                route_path=_frozen_route(tmp_path))
+    assert result["status"] == "needs_input"
+    assert result["attempt"] == 0
+    joined = " ".join(result["problems"]).lower()
+    assert "route" in joined
+    assert "shake" in joined or "re-inject" in joined
