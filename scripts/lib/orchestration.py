@@ -21,6 +21,17 @@ def derive_intent(composition: str, motion: str | None) -> str:
     return "action"
 
 
+def flow_eligible(pinned: bool, route_empty: bool) -> bool:
+    """An empty route falls to the optical-flow rung ONLY when nobody was pinned.
+
+    Optical-flow follows the dominant motion blob and makes no identity claim, so it
+    cannot honor a §5.10 hero pin — an empty route under a pin is hero-unmatched (the
+    pinned person is simply not in this segment), and answering it with a motion blob
+    is the silent identity substitution the hero-pin slice deleted. A non-empty route
+    needs no fallback at all. See design 2026-07-21 §1.1."""
+    return route_empty and not pinned
+
+
 def detect_contradictions(motion: str | None, route: list[dict],
                           track_meta: dict, src_w: int, src_h: int,
                           composition: str | None = None) -> list[dict]:

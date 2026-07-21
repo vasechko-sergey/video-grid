@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.lib import orchestration as orch
 
 
@@ -204,3 +206,13 @@ def test_center_over_nonlateral_is_fine():
                                           track_meta={"ambiguous": False},
                                           src_w=1920, src_h=1080, composition="center")
     assert findings == []
+
+
+@pytest.mark.parametrize("pinned,empty,expected", [
+    (False, True,  True),    # unpinned + nobody detected → optical-flow may help
+    (True,  True,  False),   # pinned + empty → hero-unmatched, NOT a motion-blob stand-in
+    (False, False, False),   # a non-empty route needs no fallback
+    (True,  False, False),   # a pin that matched needs no fallback
+])
+def test_flow_eligible(pinned, empty, expected):
+    assert orch.flow_eligible(pinned, route_empty=empty) is expected
