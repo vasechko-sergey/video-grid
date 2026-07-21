@@ -41,3 +41,15 @@ def test_the_module_model_matches_the_manifest_default():
     # workers race a cold download of model B into one path — precisely the silent
     # corruption the warm-up exists to prevent, and nothing else asserts they agree.
     assert track.MODEL == DEFAULT_MODEL
+
+
+def test_available_true_when_ultralytics_imports():
+    # this repo's env ships ultralytics (requirements.txt), so the gate is open
+    assert track.available() is True
+
+
+def test_available_false_when_ultralytics_absent(monkeypatch):
+    # setting the module to None makes `import ultralytics` raise ImportError —
+    # the "ultralytics unavailable" rung-1 trigger, simulated without uninstalling
+    monkeypatch.setitem(sys.modules, "ultralytics", None)
+    assert track.available() is False

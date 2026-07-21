@@ -35,6 +35,18 @@ def ensure_model(model_path: str = MODEL) -> None:
     YOLO(model_path)
 
 
+def available() -> bool:
+    """True iff the primary tracker's heavy deps import. The rung-1 gate in
+    process_episode: an absent ultralytics/torch falls to the degradation ladder
+    (design 2026-07-21 §2.1) instead of raising a traceback inside build_route on
+    attempt 1. Mirrors flow.available()."""
+    try:
+        import ultralytics  # noqa: F401  — lazy: the whole point is to not require it
+        return True
+    except ImportError:
+        return False
+
+
 _Det = tuple[int, float, float, float, float]
 _Frame = tuple[int, list[_Det]]
 
