@@ -3,8 +3,13 @@ locked episode clips and loops assemble → check_reel → reprocess the culprit
 process_episode → until the reel passes and delivers, or stops with a precise
 machine-readable finding. Mirrors process_episode.py: the editorial judgment ran
 per-episode in loop-1; this shell owns only the mechanical reel loop.
-Deterministic — a reprocess reuses the episode's frozen route, so the only thing
-that changes between rounds is the compounded colour factor."""
+Deterministic for a non-stabilized episode — a reprocess reuses its frozen
+route, so the only thing that changes between rounds is the compounded colour
+factor. A stabilized episode re-tracks instead: its frozen route's pixel
+provenance cannot be proven (nothing yet records whether a route was measured
+on raw or stabilized pixels), so process_episode refuses the combination and
+this module withholds the route rather than risk replaying it against the
+wrong coordinate system (design 2026-07-20 §1)."""
 import argparse
 import dataclasses
 import json

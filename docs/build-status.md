@@ -995,7 +995,8 @@ _Last updated: 2026-07-20._
   `is-not-None`-vs-truthiness sites found by review after the original
   14-check plan was written. **Closes §7's `pan` row** — see
   `docs/pipeline-map.md`'s misc-engine bullet for what's left (`split`,
-  stabilization's apply half, the tracking-degradation ladder).
+  ~~stabilization's apply half~~ (landed 2026-07-20, see the Done entry below),
+  the tracking-degradation ladder).
   **Reel-level support was NOT part of the above — it landed after, as three
   more commits (Tasks 11-13, plan `docs/plans/2026-07-19-pan.md`), because a
   fifth consumer of `route.json` had been missed.** Task 10's audit (design §2)
@@ -1285,6 +1286,82 @@ _Last updated: 2026-07-20._
     only real test of the design's same-version argument**; if one moves, that is
     a real pixel difference to record, not to re-pin away.
 
+- **stabilize-apply (§5.2/§10 apply half) DONE (2026-07-20)** — plan
+  `docs/plans/2026-07-20-stabilize-apply.md` + design
+  `docs/specs/2026-07-20-stabilize-apply-design.md` (commits `9ffa33d`..HEAD).
+  **1579 passed / 2 skipped.** `stabilize: true` now does something: a
+  `vidstabdetect`/`vidstabtransform` pre-stage writes a stabilized copy of the
+  segment, and BOTH the tracker and `reframe` read that file — never a filter
+  inside `reframe`'s own chain, because the route is measured on unstabilized
+  pixels, and a crop placed from it against transformed pixels would re-inject
+  exactly the shake vidstab removed while `check_episode` kept confirming the
+  framing regardless, since path and route are both in source coordinates and
+  agree with each other; only the pixels would disagree (design §1).
+  - **Built:** `scripts/lib/vidstab.py` (extracted from `intake.py`, its first
+    consumer) — `require`/`detect`/`mean_shake`/`stabilize` + the `.trf`
+    primitives, one shared `DETECT_ARGS` so `FOOTAGE.md`'s `shake` column and
+    the pre-stage's `before` mean the same thing; `PathMeta.stabilized` fed by
+    a keyword-only `reframe(..., *, stabilized=)` parameter (declarative — a
+    fact about `src`, not an instruction `reframe` can act on);
+    `ReframeSpec.stabilize` deleted outright rather than left refused; the
+    manifest gate now calls `vidstab.require()` instead of hardcoding "not
+    supported yet"; `EDLEpisode.stabilize` + the `to_manifest_dict` bridge
+    (carries the key only when `True`); the `process_episode` pre-stage
+    (after the preflights, so a manifest the layout cannot satisfy still
+    fails in milliseconds; outside the retry loop, since stabilization is the
+    loop's input, not one of its parameters); a frozen-route refusal
+    (`stabilize=true` + a supplied `--route` → `needs_input`, since nothing
+    records whether that route was measured on raw or stabilized pixels); and
+    a `build_reel` fix so a reprocessed stabilized episode withholds its
+    frozen route and re-tracks on the re-stabilized segment instead of
+    dead-ending as `reprocess-failed`.
+  - **`crop=black` → `crop=keep`.** The recorded recipe's `crop=black` fills
+    the uncovered border with black, and under a `fill` layout the crop takes
+    the source's full height, so that band lands in the delivered frame
+    whole. `check_episode`'s black gate compares frame MEDIANS against a
+    floor, and a few percent of the frame does not move a median — nothing
+    would have caught it. `crop=keep` (also libvidstab's own default) removes
+    the failure class instead of adding a check for it.
+  - **What the proofs found, not just what they confirmed:**
+    - The intake shake golden (`test_intake_real_vidstab_shake`) did **not**
+      move when Task 1 unified the detect recipe at `shakiness=8`. Its only
+      assertion is `shake >= 0.0` — a structural check with no pinned
+      magnitude — and a check outside the suite confirmed why: on the
+      synthetic `sample_clip` fixture, vidstabdetect's per-frame local-motion
+      data comes back byte-identical across the entire `shakiness` range
+      (1–10); only the `.trf` header's recorded parameter differs. The
+      synthetic clip is too simple to expose what `shakiness` tunes — real
+      footage is expected to differ.
+    - `crop=keep` is proven on real pixels to leave no black edge, but the
+      first version of that control **passed even against `crop=black`** — it
+      controlled nothing. Two compounding reasons, both measured: (1) the
+      aggregation — `band.max() > 16` passes as long as one bright pixel
+      survives anywhere along an edge, and `crop=black` leaves a wedge, not a
+      solid line; (2) the geometry — `zoom=2` pulls the outermost ~8px from
+      real content, so the uncovered black band sits inset from the true
+      edge, where reading only the outermost row/column never sees it. Fixed
+      by reading a dark-pixel **fraction** over a 20px border **ring**, and by
+      slowing the synthetic fixture's shake frequency (1.7 → 0.3): a fast
+      oscillation is under-tracked, the correction is a few px, and `zoom=2`
+      covers it — both crop modes then come out identical, exactly why the
+      first version could not tell them apart. Calibrated over three
+      rebuilds: `crop=keep`'s worst-frame border dark-fraction is
+      0.0006–0.0069 against `crop=black`'s 0.3235, a threshold of 0.05 sitting
+      cleanly between them. `test_stabilization_actually_reduces_the_shake`'s
+      own margin on the same fixture: before ≈ 0.066, after ≈ 0.040, a ~40%
+      reduction.
+    - The frozen-route × stabilize collision (an open question the design had
+      parked to final review) surfaced as soon as Task 8 wired `stabilize`
+      into `to_manifest_dict`: `build_reel`'s reprocess loop was still passing
+      loop-1's frozen route into a now-`stabilize: true` manifest, and
+      `process_episode` correctly refuses that pair — so every reel
+      reprocessing a stabilized episode dead-ended as `reprocess-failed`.
+      Fixed by having `build_reel` withhold the route at the reprocess call
+      for a stabilized episode (it re-tracks on the re-stabilized segment
+      instead — one extra YOLO pass on the rare reprocess path) while leaving
+      `ReelEpisode.route` itself populated, since `check_reel`'s geometry
+      section still reads it.
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
@@ -1300,15 +1377,15 @@ _Last updated: 2026-07-20._
   needs two sources — unlike `fit-solid` (2026-07-18) and `pan` (2026-07-19),
   both of which turned out to need no new layout code at all; see the two
   Done entries above. **OR**
-- **stabilization's apply half + tracking degradation** — `vidstabdetect` already
-  ships as 5.2's shake score (the first runtime vidstab consumer);
-  `vidstabtransform` appears nowhere and is refused at three layers
-  (`manifest.validate` → `needs_input`, `ReframeSpec.stabilize`, `reframe`).
-  Applying it (never on wade-in/out shots, §12) removes those refusals. Separately
-  the **optical-flow degradation ladder** (ultralytics gone / track garbage →
-  optical-flow centroid → manual keyframes, each rung stamped `degraded:`) is
-  unbuilt — `process_episode`'s `"degraded": None` is a reserved placeholder, and
-  it is *not* the reframe-param retry ladder in `orchestration.py`, which is
+- ~~**stabilization's apply half + tracking degradation**~~ — **the apply half
+  landed 2026-07-20** (see the Done entry above): `vidstabtransform` now runs as
+  a pre-stage in `process_episode`, feeding the same stabilized file to both the
+  tracker and `reframe`, wired through the manifest capability gate and the EDL
+  authoring path. Still open, and **not** touched by that slice: the
+  **tracking-degradation ladder** (ultralytics gone / track garbage →
+  optical-flow centroid → manual keyframes, each rung stamped `degraded:`) —
+  `process_episode`'s `"degraded": None` is a reserved placeholder, and it is
+  *not* the reframe-param retry ladder in `orchestration.py`, which is
   built. **OR**
 - **the real-footage v1 gate** — run the whole `using-montage` conveyor
   end-to-end on Sergei's own footage. Every seam golden today is synthetic
@@ -1343,8 +1420,11 @@ resumability / Phase A.5 retry-state persistence.
   gone and vidstab is baseline since 2026-07-20** (see the ffmpeg-baseline entry
   above): `ffmpeg-full` carries `libvidstab`, so 5.2 intake's `vidstabdetect`
   shake score gets its filter from a plain `bash setup.sh`. It remains a **hard**
-  runtime gate (`_require_vidstab`, now an `ffbin.require_filter` wrapper); the
-  *apply* half (`vidstabtransform`) is what remains unbuilt.
+  runtime gate (`vidstab.require()`, extracted from intake's old
+  `_require_vidstab` when `process_episode` became a second consumer). ~~The
+  *apply* half (`vidstabtransform`) is what remains unbuilt.~~ **The apply half
+  landed 2026-07-20 too** (see the Done entry above): a pre-stage in
+  `process_episode`, never a filter in `reframe`'s chain.
 - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
   repair) is now **unblocked**: the cast wiring it needed landed with cast →
   hero-pin (2026-07-16, see Done above). A different mechanism (per-frame

@@ -85,7 +85,7 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 
 - All scripts run **only** via `.venv/bin/python`, never system python, and **as modules** — `.venv/bin/python -m scripts.<name>` (plain `python scripts/<name>.py` breaks `scripts.lib` imports). Python **3.13** (`PYTHON` env overrides).
 - `using-montage` step 0 = ensure-env: if `.venv` is missing → run `setup.sh`. Self-healing.
-- **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup.sh INSTALLS missing system deps itself via brew (python@3.13, ffmpeg) — skill setup must bring the machine up, not just print remedies; hard fail only when brew is absent. `vidstab` filters are a **warning**, not a blocker: current homebrew-core ffmpeg bottles ship **without** libvidstab, the core engine never invokes vidstab, and stabilization arrives with process-episode — remedy when needed: `brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libvidstab`. process-episode's own preflight re-checks vidstab as a hard requirement before any `stabilize: true` episode.
+- **One `requirements.txt` for the whole pipeline** (tests mock the heavy parts, but the conveyor needs everything installed): `numpy`, `scipy`, `Pillow`, `pytest`, `librosa` (beats/sections/energy, §5.5), `ultralytics` (YOLOv11 + ByteTrack), `scenedetect`, `imagehash`, `yt-dlp`, `requests`. ffmpeg/ffprobe are system (external); setup.sh INSTALLS missing system deps itself via brew (python@3.13, ffmpeg) — skill setup must bring the machine up, not just print remedies; hard fail only when brew is absent. `ffmpeg-full` (baseline since 2026-07-20) carries libvidstab, `stabilize: true` episodes are **built**, and process-episode's preflight (`manifest.validate` → `vidstab.require`) still hard-checks the filter before an encode.
 - **Lazy heavy imports:** `ultralytics`/`librosa` import inside functions, never at module top — test collection stays fast, the detector stays mockable.
 
 ---
@@ -671,7 +671,22 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 ## 10. Color / stabilization (from the session)
 
 - **Color:** normalize "softly to the middle". Target R105/G122/B137. `gain = 1 + 0.55×(target/measured − 1)`, clamped `[0.7, 1.5]`. Via `colorchannelmixer=rr=R:gg=G:bb=B`. **`lutrgb` is banned** (produced black frames). A final match-grade pass for consistency across episodes; optional mood LUT.
-- **Stabilization:** vidstab two-pass on the **source before crop**: `vidstabdetect=shakiness=8:accuracy=15:result=FILE.trf` → `vidstabtransform=input=FILE.trf:smoothing=40:optzoom=1:zoom=2:crop=black,unsharp=5:5:0.4`. **Do not stabilize the wade in/out shots** — it produces "rolling ground". `stabilize?` flag per episode.
+- **Stabilization:** vidstab two-pass on the **source before crop** — and "before
+  crop" means a **separate file**, not a place in the filter chain (see
+  `docs/specs/2026-07-20-stabilize-apply-design.md` §1: the route is measured on
+  unstabilized pixels, so stabilizing inside reframe's chain re-injects exactly
+  the shake it removed, and no gate catches it).
+  `vidstabdetect=shakiness=8:result=FILE.trf:fileformat=ascii` →
+  `vidstabtransform=input=FILE.trf:smoothing=40:zoom=2:crop=keep,unsharp=5:5:0.4`.
+  **Corrected 2026-07-20:** this bullet used to say `crop=black`, `optzoom=1` and
+  `accuracy=15`. `optzoom=1`/`accuracy=15` are the binaries' own defaults (and
+  `optzoom` is a `vidstabtransform` option, not a `vidstabdetect` one). `crop=black`
+  is actively wrong here — it puts a border band in the delivered frame that
+  check_episode's median-based black gate cannot see; `crop=keep` removes the
+  failure class instead of detecting it. **Do not stabilize the wade in/out
+  shots** — it produces "rolling ground", and no code can detect that shot, so the
+  flag is explicit and the rule is editorial. `stabilize?` flag per episode; built
+  2026-07-20.
 
 ---
 
@@ -704,7 +719,12 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
 - Black frames on cut — the **landmine is in the seek-argument order, NOT in 4K**. Fix: correct seek-arg order (`-ss` after `-i` / output seek, `-accurate_seek`, re-encode the window for frame accuracy), **not** a downscale to 1080. Cut and process 4K natively.
 - The **relative** black-frame gate (Bug #3: `worst < black_rel × ref`, so a dark-night clip passes) silently passes a **fully-black** clip — body median `ref → 0` collapses the compare to `0 < 0` (False). Keep the relative gate, but **OR in an absolute body-black floor** (`ref < black_floor`): a body median below the floor is never a legitimate delivery, only the seek/`lutrgb` corruption this check exists to catch. `check_episode._black_frames_check`.
 - OpenCV HSV auto-tracker catches foam/other surfers → YOLO person + ByteTrack.
-- Stabilizing the wade-in → "rolling ground". Don't stabilize.
+- Stabilizing the wade-in → "rolling ground". Don't stabilize. **No machine
+  predicate exists** — the flag is explicit by design, and auto-enabling on
+  measured shake would fire hardest on exactly this shot (a wade shot is
+  handheld in moving water, noisy by construction); the before/after residual
+  does not catch it either, because a flattened wade shot reports a LOW
+  residual (2026-07-20 §7).
 - ImageMagick `montage` reorders tiles → false "sawtooth" motion readings. Verify order.
 - Loading all frames into memory → OOM. Process frame by frame.
 - `vidstabdetect` warning "cannot read frame local motions… got 255" — cosmetic, stabilization still works.
@@ -779,6 +799,23 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
   idiom survives casual testing and reads as obviously correct. In any script with `pipefail`
   set: capture once and match in-shell (`OUT="$(cmd)"` then `case`), never `| grep -q`.
   `setup.sh`. See [the ffmpeg baseline design](2026-07-20-ffmpeg-baseline-design.md) §1/§6.
+- Stabilizing **after** tracking, in reframe's own filter chain, silently
+  re-injects the shake. The route is in source coordinates and the transformed
+  pixels are not, so the subject sits at the correction offset inside every crop —
+  a steady background with a jittering subject. `check_episode` confirms the
+  framing regardless, because path and route are both in source coordinates and
+  agree with each other; only the pixels disagree. Stabilization must be a
+  pre-stage whose output BOTH the tracker and reframe read (2026-07-20 §1).
+- `vidstabtransform`'s `crop=black` puts a border band in the frame that
+  `check_episode`'s black gate **cannot see** — that gate compares frame MEDIANS
+  against a floor, and a few percent of the frame does not move a median. Under a
+  `fill` layout the crop takes the source's full height, so the band is delivered
+  whole. Use `crop=keep` (which is also libvidstab's default).
+- Two `vidstabdetect` calls with different `shakiness` produce two different
+  numbers under one word. `intake` detected at the default 5 while the recipe used
+  8, so `FOOTAGE.md`'s `shake` column and the stabilize pre-stage's `before` would
+  have been silently incomparable on the same footage. One shared
+  `vidstab.DETECT_ARGS` (2026-07-20 §5).
 
 ---
 

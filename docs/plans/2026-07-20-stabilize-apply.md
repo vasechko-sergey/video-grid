@@ -67,7 +67,7 @@ Move the `.trf` primitives out of `intake.py` without changing behaviour. `intak
 - Modify: `scripts/intake.py` (delete `_LM_RE`, `_read_trf`, `_parse_trf`, `_require_vidstab`, `SHAKE_TIMEOUT_REALTIME_MULTIPLE`; import them)
 - Modify: `tests/lib/test_intake.py` (five tests + `_TRF` move out; two re-point)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_vidstab.py`:
 
@@ -154,12 +154,12 @@ def test_ascii_trf_decodes_unchanged(tmp_path):
     assert vidstab.read_trf(trf) == _TRF
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: collection error — `ImportError: cannot import name 'vidstab'`.
 
-- [ ] **Step 3: Create the module**
+- [x] **Step 3: Create the module**
 
 Create `scripts/lib/vidstab.py`:
 
@@ -257,12 +257,12 @@ def parse_trf(text: str) -> list[float]:
     return mags
 ```
 
-- [ ] **Step 4: Run the new tests**
+- [x] **Step 4: Run the new tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: `9 passed`.
 
-- [ ] **Step 5: Rewire `intake.py`**
+- [x] **Step 5: Rewire `intake.py`**
 
 In `scripts/intake.py`, add `vidstab` to the lib import:
 
@@ -314,7 +314,7 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
     return _windowed_shake(mags, windows, fps, res[0])
 ```
 
-- [ ] **Step 6: Migrate the tests out of `tests/lib/test_intake.py`**
+- [x] **Step 6: Migrate the tests out of `tests/lib/test_intake.py`**
 
 Delete from `tests/lib/test_intake.py`: `test_require_vidstab_raises_when_absent`,
 `test_require_vidstab_ok_when_present`, `_TRF`,
@@ -341,17 +341,17 @@ object, and patching an attribute on it patches it for every importer. Do not
 If `ffbin` becomes unused in `tests/lib/test_intake.py` after the deletions, drop
 it from the import; if `types` becomes unused, drop that too.
 
-- [ ] **Step 7: Run both test files**
+- [x] **Step 7: Run both test files**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py tests/lib/test_intake.py -q; echo "EXIT: $?"`
 Expected: all pass; `test_intake.py` has 8 fewer tests than before, `test_vidstab.py` has 9.
 
-- [ ] **Step 8: Run the whole suite**
+- [x] **Step 8: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: same pass count as the Baseline (tests moved, none added or lost — the migrated 8 became 9 because `test_parse_trf_empty_raises` is new).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/lib/vidstab.py scripts/intake.py tests/lib/test_vidstab.py tests/lib/test_intake.py
@@ -386,7 +386,7 @@ Design §5. `intake` detects at the binary's default `shakiness=5`; the recipe i
 - Modify: `scripts/intake.py`
 - Modify: `tests/lib/test_vidstab.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_vidstab.py`:
 
@@ -404,12 +404,12 @@ def test_the_detect_recipe_sets_shakiness_and_nothing_that_is_already_default():
     assert vidstab.DETECT_ARGS == "shakiness=8"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py::test_the_detect_recipe_sets_shakiness_and_nothing_that_is_already_default -q; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.vidstab' has no attribute 'DETECT_ARGS'`.
 
-- [ ] **Step 3: Add the constant**
+- [x] **Step 3: Add the constant**
 
 In `scripts/lib/vidstab.py`, below `SHAKE_TIMEOUT_REALTIME_MULTIPLE`:
 
@@ -434,7 +434,7 @@ command lists no `optzoom` — it is a `vidstabtransform` option. Review caught 
 against the real binary. The design spec's §4 table has been split by pass, which
 is where the conflation came from.
 
-- [ ] **Step 4: Use it in `intake.shake_by_window`**
+- [x] **Step 4: Use it in `intake.shake_by_window`**
 
 In `scripts/intake.py`, change the `-vf` value:
 
@@ -442,7 +442,7 @@ In `scripts/intake.py`, change the `-vf` value:
                   f"vidstabdetect={vidstab.DETECT_ARGS}:result={trf}:fileformat=ascii",
 ```
 
-- [ ] **Step 5: Note the consequence at `SHAKY_CLIP`**
+- [x] **Step 5: Note the consequence at `SHAKY_CLIP`**
 
 In `scripts/intake.py`, extend the `SHAKY_CLIP` comment:
 
@@ -454,7 +454,7 @@ SHAKY_CLIP = 0.02   # shake (fraction of frame width) above which a clip is shak
                     # through this pipeline, so any new value would be invented (design §5).
 ```
 
-- [ ] **Step 6: Run the suite and fix whatever the number move breaks**
+- [x] **Step 6: Run the suite and fix whatever the number move breaks**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 
@@ -465,7 +465,7 @@ still non-negative), and update the expected value with a comment naming this
 task as the cause. If it does **not** fail, note that in the commit — it means
 the assertion was loose enough not to see the change, which is worth knowing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/vidstab.py scripts/intake.py tests/
@@ -501,7 +501,7 @@ EOF
 - Modify: `scripts/intake.py`
 - Modify: `tests/lib/test_vidstab.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_vidstab.py`:
 
@@ -557,12 +557,12 @@ def test_mean_shake_of_nothing_is_zero_not_a_crash():
     assert vidstab.mean_shake([], 1000) == 0.0
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: 5 failures — `module 'scripts.lib.vidstab' has no attribute 'detect'` / `'mean_shake'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/vidstab.py`:
 
@@ -598,12 +598,12 @@ def mean_shake(mags: list[float], width: int) -> float:
     return (sum(mags) / len(mags)) / (width or 1)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: `15 passed`.
 
-- [ ] **Step 5: Collapse `intake.shake_by_window` onto `detect`**
+- [x] **Step 5: Collapse `intake.shake_by_window` onto `detect`**
 
 In `scripts/intake.py`, replace the body of `shake_by_window` with the delegating
 version, and update its docstring's final paragraph:
@@ -641,14 +641,14 @@ settled on: **delete a forward reference, do not hedge it** — "planned" and
 Remove `ffbin` from `scripts/intake.py`'s lib import **only if** no other line in
 the file still uses it (check with `grep -n 'ffbin' scripts/intake.py`).
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass. The two `shake_by_window` timeout tests in
 `tests/lib/test_intake.py` still pass — they assert on `proc.run`'s kwargs, and
 `detect` is what calls `proc.run` now, through the same shared module object.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/vidstab.py scripts/intake.py tests/lib/test_vidstab.py
@@ -675,7 +675,7 @@ EOF
 - Modify: `scripts/lib/vidstab.py`
 - Modify: `tests/lib/test_vidstab.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_vidstab.py` (add `from scripts.lib import assembly` to the
 imports at the top of the file):
@@ -784,12 +784,12 @@ def test_stabilize_tolerates_a_two_frame_duration_wobble(monkeypatch, tmp_path):
     vidstab.stabilize("seg.mp4", str(tmp_path / "o.mp4"), (1920, 1080), 30.0, 2.0)  # no raise
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: 6 failures — `module 'scripts.lib.vidstab' has no attribute 'stabilize'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/vidstab.py`, add `tempfile` to the imports and `assembly` to the
 lib import:
@@ -895,12 +895,12 @@ def _assert_geometry_held(out: str, dims: tuple[int, int], fps: float, dur: floa
             "gate both key on the original")
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q; echo "EXIT: $?"`
 Expected: `21 passed`.
 
-- [ ] **Step 5: Mutation check — the recipe is actually asserted**
+- [x] **Step 5: Mutation check — the recipe is actually asserted**
 
 ```bash
 find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null
@@ -914,7 +914,7 @@ sed -i '' 's/crop=black/crop=keep/' scripts/lib/vidstab.py
 and re-run to confirm green. If the mutation did **not** fail a test, the
 assertion is not covering the value — fix the test before continuing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/vidstab.py tests/lib/test_vidstab.py
@@ -957,7 +957,7 @@ it cannot derive the bit from its own spec. It arrives as a parameter describing
 - Modify: `tests/lib/test_models.py`
 - Modify: `tests/lib/test_reframe.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -1005,13 +1005,13 @@ def test_reframe_records_that_its_source_was_stabilized(monkeypatch, tmp_path):
     assert meta.stabilized is True
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/lib/test_reframe.py -q; echo "EXIT: $?"`
 Expected: FAIL — `PathMeta.__init__() got an unexpected keyword argument 'stabilized'` and
 `reframe() got an unexpected keyword argument 'stabilized'`.
 
-- [ ] **Step 3: Add the field**
+- [x] **Step 3: Add the field**
 
 In `scripts/lib/models.py`, in `PathMeta`, after the `pan` field:
 
@@ -1042,7 +1042,7 @@ In `from_dict`, after the `pan=d.get("pan", False)` line:
                        stabilized=d.get("stabilized", False))
 ```
 
-- [ ] **Step 4: Add the parameter**
+- [x] **Step 4: Add the parameter**
 
 In `scripts/reframe.py`, change the signature:
 
@@ -1069,19 +1069,19 @@ At the `PathMeta(...)` construction near the end:
              ).write(Path(path_out).with_suffix(".meta.json"))
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/lib/test_reframe.py -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass. Any test doing a whole-object assert on a `PathMeta` dict now
 needs the new key; add `"stabilized": False` to those expectations — they are
 asserting the default, which is correct.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/models.py scripts/reframe.py tests/
@@ -1119,7 +1119,7 @@ EOF
 - Modify: `tests/lib/test_models.py`
 - Modify: `scripts/reframe.py` (the docstring line that mentions the refusal)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_models.py`:
 
@@ -1136,18 +1136,18 @@ def test_reframe_spec_has_no_stabilize_field_at_all():
                            stabilize=True)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py::test_reframe_spec_has_no_stabilize_field_at_all -q; echo "EXIT: $?"`
 Expected: FAIL — the constructor accepts the kwarg and raises `ValueError`, not `TypeError`.
 
-- [ ] **Step 3: Delete the field and its refusal**
+- [x] **Step 3: Delete the field and its refusal**
 
 In `scripts/lib/models.py`, `ReframeSpec`: delete the line
 `stabilize: bool = False` and the three-line `if self.stabilize:` block in
 `__post_init__`.
 
-- [ ] **Step 4: Fix the stale docstring in `reframe.py`**
+- [x] **Step 4: Fix the stale docstring in `reframe.py`**
 
 In `scripts/reframe.py`'s `reframe` docstring, the sentence
 "stabilize is refused upstream (manifest gate + ReframeSpec.__post_init__) — this
@@ -1158,19 +1158,19 @@ function never sees it." is now false in both halves. Replace it with:
     vidstab.stabilize and hands the result in as `src` (design 2026-07-20 §1).
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q; echo "EXIT: $?"`
 Expected: pass. Delete any older test that asserted `ReframeSpec` **refuses**
 `stabilize=True` — it is superseded by the new one, and would now fail for the
 right reason with the wrong exception type.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/models.py scripts/reframe.py tests/lib/test_models.py
@@ -1199,7 +1199,7 @@ EOF
 - Modify: `scripts/lib/manifest.py` (`validate`, around lines 183-186)
 - Modify: `tests/lib/test_manifest.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_manifest.py` (add `from scripts.lib import vidstab` to the
 imports):
@@ -1240,13 +1240,13 @@ def test_a_manifest_without_stabilize_never_probes_ffmpeg(monkeypatch):
     assert manifest.validate(_m()) == []
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q; echo "EXIT: $?"`
 Expected: the first two fail — `validate` still returns the hardcoded
 "not supported yet" string.
 
-- [ ] **Step 3: Replace the refusal with the gate**
+- [x] **Step 3: Replace the refusal with the gate**
 
 In `scripts/lib/manifest.py`, add `vidstab` to the lib import:
 
@@ -1273,18 +1273,18 @@ Replace the `if m.stabilize:` block in `validate`:
             problems.append(str(e))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_manifest.py -q; echo "EXIT: $?"`
 Expected: all pass. Delete any older test asserting the "not supported yet"
 message — search with `grep -rn "not supported yet" tests/ scripts/`.
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/manifest.py tests/lib/test_manifest.py
@@ -1316,7 +1316,7 @@ one that stays are the substance of this task.
 - Modify: `scripts/process_episode.py` (lines ~96-190)
 - Modify: `tests/lib/test_process_episode.py`
 
-- [ ] **Step 1: Write the harness**
+- [x] **Step 1: Write the harness**
 
 Append to `tests/lib/test_process_episode.py`. Note the shape: every stub a test
 wants to inspect is passed **into** the helper, never installed beside it. A test
@@ -1393,7 +1393,7 @@ def _run_episode(monkeypatch, tmp_path, *, stabilize: bool, fail_checks: bool = 
     return process_episode.process_episode(md, str(proj))
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to the same file:
 
@@ -1489,12 +1489,12 @@ def test_a_pan_episode_can_also_be_stabilized(monkeypatch, tmp_path):
     assert result["stabilize"] == {"before": 0.031, "after": 0.004}
 ```
 
-- [ ] **Step 3: Run to verify they fail**
+- [x] **Step 3: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_process_episode.py -q; echo "EXIT: $?"`
 Expected: FAIL — `module 'scripts.process_episode' has no attribute 'vidstab'`.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 In `scripts/process_episode.py`, add `vidstab` to the lib import.
 
@@ -1560,12 +1560,12 @@ episode still reports what stabilization measured:
             return result
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_process_episode.py -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 6: Mutation check — the coordinate-frame invariant is guarded**
+- [x] **Step 6: Mutation check — the coordinate-frame invariant is guarded**
 
 This is §1's whole argument; if the suite tolerates the broken pairing, the
 argument is unguarded.
@@ -1581,12 +1581,12 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/lib/test_process_epis
 Expected: `test_stabilize_feeds_the_SAME_file_to_the_tracker_and_to_reframe` FAILS.
 Revert the edit and re-run to confirm green.
 
-- [ ] **Step 7: Run the whole suite**
+- [x] **Step 7: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/lib/test_process_episode.py
@@ -1622,7 +1622,7 @@ EOF
 - Modify: `scripts/lib/edl.py` (`EDLEpisode`, `to_dict`, `to_manifest_dict`)
 - Modify: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py`:
 
@@ -1650,12 +1650,12 @@ def test_the_bridge_carries_stabilize_when_it_is_true():
     assert edl.to_manifest_dict(_ep(stabilize=True), "s.mp4", "o.mp4")["stabilize"] is True
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q; echo "EXIT: $?"`
 Expected: FAIL — `EDLEpisode.__init__() got an unexpected keyword argument 'stabilize'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/edl.py`, add the field to `EDLEpisode` after `pan`:
 
@@ -1684,18 +1684,18 @@ canvas/delivery (the driver fills them from the project via resolve_manifest) an
 model/stabilize (manifest defaults)". Change `model/stabilize` to `model`, and add
 `stabilize` to the sentence listing the conditionally-copied fields.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q; echo "EXIT: $?"`
 Expected: all pass. Any existing whole-object assert on `EDLEpisode.to_dict()`
 needs `"stabilize": False` added.
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q; echo "EXIT: $?"`
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -1726,7 +1726,7 @@ Everything above runs against stubs. These are the assertions a stub cannot fake
 **Files:**
 - Create: `tests/integration/test_stabilize.py`
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 ```python
 """Stabilization apply (design 2026-07-20) — the proofs that need real pixels.
@@ -1811,7 +1811,7 @@ def test_a_stabilized_episode_reaches_mechanical_pass(shaky_clip, tmp_path, monk
     assert meta.stabilized is True
 ```
 
-- [ ] **Step 2: Run them**
+- [x] **Step 2: Run them**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_stabilize.py -q; echo "EXIT: $?"`
 Expected: `4 passed` (the fixture counts as none).
@@ -1825,7 +1825,7 @@ If `test_a_stabilized_episode_reaches_mechanical_pass` escalates instead of
 passing, print `result` and read `report.fail_reasons`. A `black` fail there would
 be real news and belongs in the design's §12 notes.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_stabilize.py
@@ -1857,7 +1857,7 @@ EOF
 - Modify: `docs/plans/2026-07-20-stabilize-apply.md` (tick the boxes)
 - Modify: `SKILLS/process-episode/SKILL.md` (the editorial wade rule)
 
-- [ ] **Step 1: Correct design spec §10**
+- [x] **Step 1: Correct design spec §10**
 
 Replace the stabilization bullet in §10 with:
 
@@ -1878,7 +1878,7 @@ Replace the stabilization bullet in §10 with:
   is editorial. `stabilize?` flag per episode; built 2026-07-20.
 ```
 
-- [ ] **Step 2: Add the three §12 entries**
+- [x] **Step 2: Add the three §12 entries**
 
 Append to the design spec's §12 registry:
 
@@ -1902,7 +1902,7 @@ Append to the design spec's §12 registry:
   `vidstab.DETECT_ARGS` (2026-07-20 §5).
 ```
 
-- [ ] **Step 3: Flip the status lines**
+- [x] **Step 3: Flip the status lines**
 
 In the design spec, §5.2's status note and any "stabilization arrives with
 process-episode" phrasing: mark the apply half **built 2026-07-20**. Search first:
@@ -1915,7 +1915,7 @@ Fix every hit that claims stabilization is unimplemented, unavailable, or
 flag-gated behind a `setup.sh` option — `--with-vidstab` was folded into the
 baseline on 2026-07-20 and no longer exists.
 
-- [ ] **Step 4: Add the registry row**
+- [x] **Step 4: Add the registry row**
 
 In `CLAUDE.md`'s Quick Reference table, after the ffmpeg-baseline rows:
 
@@ -1934,7 +1934,7 @@ it to:
   would fire hardest on exactly this shot (2026-07-20 §7).
 ```
 
-- [ ] **Step 5: State the rule where the judgment lives**
+- [x] **Step 5: State the rule where the judgment lives**
 
 In `SKILLS/process-episode/SKILL.md`, add to the editorial-gate section:
 
@@ -1949,19 +1949,19 @@ In `SKILLS/process-episode/SKILL.md`, add to the editorial-gate section:
   `stabilize` false however shaky the number looks.
 ```
 
-- [ ] **Step 6: Tick this plan's boxes**
+- [x] **Step 6: Tick this plan's boxes**
 
 Mark every `- [ ]` in `docs/plans/2026-07-20-stabilize-apply.md` as `- [x]`, and
 append an "As built" note under any task whose implementation diverged from what
 is written here — divergences are findings, not embarrassments.
 
-- [ ] **Step 7: Update build-status**
+- [x] **Step 7: Update build-status**
 
 In `docs/build-status.md`, move the stabilization apply half to built, dated
 2026-07-20, with the commit range. Record what the proof found, including
 whether the intake shake golden moved in Task 1 and by how much.
 
-- [ ] **Step 8: The whole-suite proof**
+- [x] **Step 8: The whole-suite proof**
 
 ```bash
 .venv/bin/python -m pytest -q; echo "EXIT: $?"
@@ -1977,7 +1977,7 @@ of them were doing that.
 State the number rather than an identity like "same as before" — the pass count
 is not stable across a slice that adds tests.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add docs/ CLAUDE.md SKILLS/
@@ -2025,3 +2025,67 @@ specifically about:
    stabilization does not change layout, and `PathMeta.stabilized` is provenance
    nothing gates on. Is that still true given `transitions` keys on
    `(mode, background)`?
+
+---
+
+## As built
+
+Divergences from the plan as written — findings, not embarrassments.
+
+- **Task 1:** the intake shake golden (`test_intake_real_vidstab_shake`) did
+  **not** move. Its only assertion is `shake >= 0.0`, a structural check with no
+  pinned magnitude, so a recipe change could not have shown up in it either way.
+  Verified independently outside the suite: on the synthetic `sample_clip`
+  fixture, vidstabdetect's per-frame local-motion data comes back
+  byte-identical across the entire `shakiness` range (1–10) — only the `.trf`
+  header's recorded parameter differs. The fixture (one high-contrast box
+  sliding on a flat field) is too simple to expose what `shakiness` tunes; real
+  footage is expected to differ.
+- **Task 2:** `mean_shake` was made to **raise** on `width <= 0` rather than
+  substitute `width or 1` — a silent substitution would not yield a wrong
+  magnitude, it would yield a different UNIT (raw pixels wearing the name
+  "fraction of frame width"), which then meets `SHAKY_CLIP` and culls footage
+  that was never shaky. `_windowed_shake` was collapsed onto it so there is one
+  normalisation, not two.
+- **Task 3:** the design §4 recipe table was **split by pass** — an earlier
+  draft's code comment cited `ffmpeg -h filter=vidstabdetect` as the source of
+  `optzoom`'s default, but that command lists no such option; `optzoom` belongs
+  to `vidstabtransform`. Caught by review, fixed in `6a1f28a`. The residual is
+  documented as comparable to `before` (identical recipe both sides) but
+  explicitly **not** to `FootageWindow.shake`'s `SHAKY_CLIP`, even though §5
+  gives it the same unit and name on purpose.
+- **Task 4:** `stabilized` is a **keyword-only** parameter on `reframe`
+  (`path_out: str, *, stabilized: bool = False`); the `from_dict` comment's
+  "third and last key on the same exemption" was corrected to "third key on the
+  same exemption" — the exemption list is open, and "last" is a claim about the
+  future this file cannot keep.
+- **Task 7:** a **frozen-route refusal** was added (`stabilize=true` + a
+  supplied `--route` → `needs_input`) — the plan had deferred this exact
+  question to the final review (see "1. §1's invariant" above), but it shipped
+  during Task 7's own implementation instead of waiting for that review. Two
+  plan defects surfaced along the way: the plan's Task 7 file list named
+  `tests/lib/test_process_episode.py`, which does not exist — the real file,
+  and the one the harness and refusal test actually live in, is
+  `tests/integration/test_process_episode.py`; and the tests use that file's
+  existing `_stub_engine` helper, not the `_run_episode` harness Step 1 of this
+  task specified from scratch.
+- **Task 8b (new, not in the original plan):** `build_reel`'s reprocess
+  withholds the frozen route for a stabilized episode so it re-tracks on the
+  re-stabilized segment, because Task 7's refusal would otherwise dead-end
+  every reprocessed stabilized reel the moment Task 8 wired `stabilize` into
+  `to_manifest_dict`. `ReelEpisode.route` stays populated (`check_reel` reads
+  it) — only the reprocess call's argument is withheld.
+- **Task 9:** the synthetic fixture was changed (slower shake, frequency 0.3
+  not ~1.7, amplitude 150px on a 1120x800 canvas cropped to 560x400) and the
+  `crop=keep` edge test was re-aggregated (dark-pixel fraction over a 20px
+  border ring, not `band.max()` on the outermost row/column), because the
+  first version's control **passed even against `crop=black`** — `zoom=2`
+  pulls the outermost ~8px from real content, insetting the black band past
+  where the old test looked, and `band.max() > 16` passes as long as one
+  bright pixel survives anywhere along an edge, which a wedge-shaped band
+  always leaves. Calibrated dark-fraction: `crop=keep` 0.0006–0.0069 vs
+  `crop=black` 0.3235, threshold 0.05. Test 1's margin on the same fixture:
+  before ≈ 0.066, after ≈ 0.040 — a ~40% reduction (not the ~1.44x once
+  floated mid-slice; that number belonged to an intermediate fixture tuning
+  and was superseded when the frequency changed in the same commit that
+  produced the final 0.066/0.040 pair).

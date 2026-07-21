@@ -60,7 +60,7 @@ Pass `--project <project.json>` (written by project-init) so an episode manifest
 
 ## Ask-before-start (§4.1)
 
-Ask the user (or the dispatching orchestrator) a clarifying question ONLY when the manifest is genuinely under-determined in a way `validate()` cannot catch — e.g. the EDL prose says "the kid in red" but no `hero` pin was resolved and two children are plausible. Machine-checkable problems (bad composition, unsupported layout, stabilize=true) come back as `needs_input` from the orchestrator with a precise message — relay that, do not re-derive it. Never ask mid-encode; never guess.
+Ask the user (or the dispatching orchestrator) a clarifying question ONLY when the manifest is genuinely under-determined in a way `validate()` cannot catch — e.g. the EDL prose says "the kid in red" but no `hero` pin was resolved and two children are plausible. Machine-checkable problems (bad composition, unsupported layout, an ffmpeg build missing `vidstabtransform` for a `stabilize=true` episode, `stabilize=true` combined with a supplied `--route`) come back as `needs_input` from the orchestrator with a precise message — relay that, do not re-derive it. Never ask mid-encode; never guess.
 
 ## Stop-and-report (§4.1: no improvising past the manifest)
 
@@ -74,6 +74,15 @@ On `mechanical_pass`, open the returned storyboard (`result["storyboard"]`) and 
 
 Both hold → the episode is done. Either fails → `stop_and_report` with which frames and why (the numeric gate is green, so the fix is a manifest/EDL call — hero pin, composition, or window).
 
+- **`stabilize` is yours to set, and the pipeline will never set it for you.**
+  A wade in/out-of-water shot must NOT be stabilized — it produces "rolling
+  ground" (design §12). Nothing in the code can recognize such a shot: `shot_type`
+  classifies by subject size, not content. The measured shake in `FOOTAGE.md` is a
+  signal about the camera, not permission — a wade shot is handheld in moving
+  water and reads as very shaky, which is exactly why the threshold is not wired
+  to the flag. If the window is someone walking into or out of water, leave
+  `stabilize` false however shaky the number looks.
+
 ## Red Flags
 
 | Thought | Reality |
@@ -81,7 +90,7 @@ Both hold → the episode is done. Either fails → `stop_and_report` with which
 | "The tracker picked someone; close enough" | Wrong person = wrong episode. Check the marker before passing. |
 | "Motion's a bit off but I'll nudge the crop" | Declared-vs-observed conflict is stop-and-report, not a silent nudge. |
 | "It failed 3× so I'll loosen the check" | Thresholds are not yours to loosen — escalate up the artifact chain. |
-| "stabilize=true — I'll just skip it quietly" | Refused loudly by the orchestrator; relay needs_input, don't drop the flag. |
+| "stabilize=true — I'll just skip it quietly" | It runs a real pre-stage now; an unsupported ffmpeg or a supplied `--route` come back `needs_input` — relay that, don't drop the flag or route around it. |
 | "I'll fix the framing in assemble later" | No fixing forward. The bad crop dies here or gets escalated. |
 
 ## Self-Review
