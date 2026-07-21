@@ -22,23 +22,33 @@ def shaky_clip(tmp_path, need_filter):
     """A synthetic clip that genuinely shakes: a static test pattern pushed around
     by a per-frame crop offset. sample_clip is too still to measure against.
 
-    The offset's oscillation frequency (n*1.7 / n*2.3) is fine as a shake signal —
-    measured — but a first attempt at 18px amplitude on a 640x480 canvas is NOT: the
-    SECOND vidstabdetect pass (measuring the stabilized output) has its own noise
-    floor from vidstabtransform's crop=keep border-fill seams (see vidstab.stabilize's
-    docstring, §7), and 18px of source shake lands right at that floor — `after` came
-    out at or above `before`, not because stabilization does not work but because
-    the signal was too small to clear the measurement's own noise. 150px on a
-    1120x800 canvas keeps the identical frequency and crops down to the same
-    560x400 output, but pushes `before` (~0.043) well clear of that floor, giving a
-    reproducible ~2.5x reduction instead of a coin flip.
+    Both the AMPLITUDE and the FREQUENCY were tuned by measurement, and each guards
+    a different test:
+
+    * Amplitude 150px on a 1120x800 canvas (cropped down to the 560x400 output) is
+      what test 1 needs. An earlier 18px-on-640x480 attempt measured real source
+      shake but landed at the noise floor the SECOND vidstabdetect pass picks up
+      from vidstabtransform's crop=keep border-fill seams (see vidstab.stabilize's
+      docstring, §7) — so `after` came out at or above `before`, a coin flip. 150px
+      pushes `before` (~0.066) well clear of that floor.
+
+    * Frequency 0.3 (slow), not the ~1.7 a first version used, is what test 2 needs.
+      vidstabdetect tracks a SLOW oscillation accurately and vidstabtransform then
+      applies a LARGE correction, uncovering a wide border the filler must fill. A
+      fast oscillation is under-tracked: the correction is only a few px, zoom=2
+      covers it, and crop=black vs crop=keep become indistinguishable at the edge —
+      the exact reason the first version of test 2 could not catch a crop=black
+      regression (measured: identical outputs). At freq 0.3 the two modes separate
+      cleanly (border dark-fraction ~0.32 vs ~0.005); test 2 depends on that.
+
+    Measured with this recipe: before~0.066, after~0.040 (a ~40% reduction).
     """
     need_filter("vidstabdetect")
     need_filter("vidstabtransform")
     out = str(tmp_path / "shaky.mp4")
     proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
               "-i", "testsrc2=size=1120x800:rate=30:duration=2",
-              "-vf", ("crop=560:400:280+150*sin(n*1.7):200+150*cos(n*2.3),"
+              "-vf", ("crop=560:400:280+150*sin(n*0.3):200+150*cos(n*0.405),"
                       "scale=560:400,format=yuv420p"),
               "-c:v", "libx264", "-crf", "12", "-preset", "veryfast", "-an", out])
     return out
@@ -52,21 +62,54 @@ def test_stabilization_actually_reduces_the_shake(shaky_clip, tmp_path):
     assert after < before
 
 
+# Border-defect detection (test 2). Calibrated against the shaky_clip fixture by
+# rendering it under BOTH crop=keep (the shipped recipe) and crop=black (the
+# rejected one, design §4.1) and measuring where they separate — the mutation
+# `crop=keep`->`crop=black` in scripts/lib/vidstab.py MUST fail this test, or it
+# controls nothing.
+#
+# Two facts drove every choice here, both measured, both counter-intuitive:
+#
+#  1. crop=black's border is NOT at the outermost row/column. zoom=2 pulls the
+#     outermost ~8px from real content, so the uncovered black band sits INSET from
+#     the true edge. Reading only f[0]/f[-1]/f[:,0]/f[:,-1] (the first version of
+#     this test) misses it entirely. So we read a border RING of thickness _RING_PX.
+#
+#  2. band.max() > 16 is the wrong aggregation: it passes as long as ONE bright
+#     pixel exists anywhere along the edge, and crop=black's band is a wedge/strip
+#     that leaves plenty. We measure the FRACTION of the ring that is black instead.
+#
+# Calibrated distributions (3 rebuilds each; worst frame per clip):
+#   crop=keep  ring dark-fraction: 0.0006 .. 0.0069   (testsrc2's own dark content)
+#   crop=black ring dark-fraction: 0.3235             (the border-fill band)
+# _MAX_DARK_FRAC = 0.05 sits ~7x above keep's worst and ~6.5x below black's — a 47x
+# separation. A frame median (check_episode's own black gate) cannot see either;
+# that blind spot is precisely why crop=black was rejected in prose and needs a
+# pixel-level control here.
+_RING_PX = 20
+_MAX_DARK_FRAC = 0.05
+
+
 def test_crop_keep_leaves_no_black_edge(shaky_clip, tmp_path):
-    """The positive control for design §4.1. crop=black would put a band at the
-    frame edge that check_episode's median-based black gate cannot see, so this
-    decision is otherwise pinned by prose alone. Reads the outermost rows/columns
-    of every frame — a frame median would miss exactly the defect this looks for."""
+    """The positive control for design §4.1: crop=keep must leave no border-fill
+    band. Renders the shipped recipe and asserts no frame has a black border ring —
+    the mutation to crop=black fails exactly here (see the calibration note above)."""
     out = str(tmp_path / "stabilized.mp4")
     vidstab.stabilize(shaky_clip, out, (560, 400), 30.0, 2.0)
     raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", out,
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
     frames = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 400, 560)
     assert len(frames) > 30, "too few frames decoded to be a real check"
+    ring = np.zeros((400, 560), dtype=bool)
+    ring[:_RING_PX, :] = True
+    ring[-_RING_PX:, :] = True
+    ring[:, :_RING_PX] = True
+    ring[:, -_RING_PX:] = True
     for i, f in enumerate(frames):
-        for name, band in (("top", f[0]), ("bottom", f[-1]),
-                           ("left", f[:, 0]), ("right", f[:, -1])):
-            assert band.max() > 16, f"frame {i} has a black {name} edge — crop=keep regressed"
+        dark_frac = float((f[ring] < 16).mean())
+        assert dark_frac < _MAX_DARK_FRAC, (
+            f"frame {i}: {dark_frac:.1%} of the {_RING_PX}px border ring is black — "
+            "crop=keep regressed to crop=black (design §4.1)")
 
 
 def test_a_stabilized_episode_reaches_mechanical_pass(shaky_clip, tmp_path, monkeypatch):
@@ -75,10 +118,12 @@ def test_a_stabilized_episode_reaches_mechanical_pass(shaky_clip, tmp_path, monk
     YOLO is faked — a test pattern is not a person, the same reason
     tests/integration/test_intake.py fakes it.
 
-    The route stub must write BOTH route.json and its route.meta.json sidecar —
-    process_episode's _load_route reads a route AND a .meta.json sidecar (a
-    TrackMeta), and a stub writing only the former fails on the missing sidecar,
-    not on the thing under test. Mirrors test_process_episode.py's fake_build_route.
+    The route stub writes BOTH route.json and its route.meta.json sidecar, mirroring
+    the real tracker's contract (and test_process_episode.py's fake_build_route). A
+    missing sidecar would not actually crash — _load_route (process_episode.py:31-32)
+    treats it as absent-means-unambiguous and defaults to {"ambiguous": False}, the
+    exact value written here — but writing it keeps the stub faithful to what
+    track.build_route really produces rather than leaning on that default.
 
     manifest.validate() calls vidstab.require() for a stabilize=true manifest,
     which is a real `ffmpeg -filters` spawn on this machine — slow but honest for
