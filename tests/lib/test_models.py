@@ -23,10 +23,10 @@ def test_route_json_roundtrip(tmp_path):
 
 
 def test_trackmeta_roundtrip():
-    # pin_matched rides along explicitly: to_dict() always emits it (None here,
-    # since this dict predates any pin), so the round-trip dict must include it too.
+    # pin_matched and degraded ride along explicitly: to_dict() always emits both (None here,
+    # since this dict predates any pin or degradation), so the round-trip dict must include them too.
     d = {"hero": 3, "ambiguous": True, "intent": "action", "features": {"3": {"n": 5}},
-         "pin_matched": None}
+         "pin_matched": None, "degraded": None}
     tm = m.TrackMeta.from_dict(d)
     assert tm.hero == 3 and tm.ambiguous is True and tm.intent == "action"
     assert tm.to_dict() == d
@@ -45,6 +45,21 @@ def test_track_meta_pin_matched_round_trips():
 
 def test_track_meta_pin_matched_defaults_to_none():
     assert m.TrackMeta().pin_matched is None
+
+
+def test_trackmeta_degraded_roundtrips_and_defaults_none():
+    from scripts.lib.models import TrackMeta, DEGRADED_LEVELS
+    assert DEGRADED_LEVELS == ("flow", "manual")
+    # default: a clean YOLO route carries no degraded level
+    assert TrackMeta().degraded is None
+    # a flow route round-trips through the sidecar
+    tm = TrackMeta(hero=None, degraded="flow")
+    assert tm.to_dict()["degraded"] == "flow"
+    assert TrackMeta.from_dict(tm.to_dict()) == tm
+    # a sidecar written before this slice has no key → reads as clean
+    old = {"hero": 3, "ambiguous": False, "intent": "action",
+           "features": {}, "pin_matched": None}
+    assert TrackMeta.from_dict(old).degraded is None
 
 
 def test_croppath_json_roundtrip(tmp_path):

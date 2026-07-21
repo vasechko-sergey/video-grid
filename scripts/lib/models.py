@@ -16,6 +16,8 @@ MOTIONS = ("lateral:right", "lateral:left", "head-on", "static")
 INTENTS = ("action", "static")
 HERO_RULES = ("largest", "leftmost")          # §5.10 rule pins — mechanical, no identity claim
 HERO_KINDS = ("bbox", "rule", "track", "cast")
+DEGRADED_LEVELS = ("flow", "manual")   # TrackMeta.degraded: which fallback rung authored the
+                                       # route (None = the clean YOLO tracker). Design 2026-07-21 §5.
 
 
 def is_bbox_coord(v: object) -> bool:
@@ -86,6 +88,8 @@ class TrackMeta:
     features: dict = field(default_factory=dict)
     pin_matched: bool | None = None    # None = no pin was given; False = a pin was given and
                                        # nothing matched it → orchestration raises hero-unmatched
+    degraded: str | None = None    # None = clean (YOLO) | "flow" | "manual" (design 2026-07-21 §5) —
+                                    # ROUTE-side provenance, the twin of PathMeta.pan/.stabilized
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":
@@ -98,12 +102,12 @@ class TrackMeta:
                              f"regenerate the meta sidecar")
         return cls(hero=d.get("hero"), ambiguous=bool(d.get("ambiguous", False)),
                    intent=d.get("intent", "action"), features=d.get("features", {}),
-                   pin_matched=d.get("pin_matched"))
+                   pin_matched=d.get("pin_matched"), degraded=d.get("degraded"))
 
     def to_dict(self) -> dict:
         return {"hero": self.hero, "ambiguous": self.ambiguous,
                 "intent": self.intent, "features": self.features,
-                "pin_matched": self.pin_matched}
+                "pin_matched": self.pin_matched, "degraded": self.degraded}
 
 
 @dataclass
