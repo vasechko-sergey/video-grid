@@ -46,6 +46,15 @@ class EDLEpisode:
                               # 2026-07-19). NOT validated here: like `hero` and the
                               # layout params, its one home is the manifest gate
                               # reached via preflight, which uses PanSpec as its oracle.
+    stabilize: bool = False   # run the vidstab pre-stage before tracking (design
+                              # 2026-07-20). EXPLICIT by design and never inferred:
+                              # a wade-in shot is handheld in moving water and so is
+                              # noisy BY CONSTRUCTION, which means any auto-enable
+                              # keyed on measured shake fires most confidently on
+                              # exactly the shot the landmine registry forbids
+                              # stabilizing. The signal is already in front of
+                              # whoever authors this row — FOOTAGE.md prints the
+                              # window's shake.
     hero: tuple | str | int | None = None   # seed bbox / rule / track id / cast name (§5.10);
                                             # NOT validated here — see the class docstring: the
                                             # manifest gate reached via preflight is its one home
@@ -73,6 +82,8 @@ class EDLEpisode:
                              "set the `pan` field instead")
         if self.motion is not None and self.motion not in MOTIONS:
             raise ValueError(f"EDLEpisode.motion {self.motion!r} unknown — expected one of {MOTIONS} or null")
+        if not isinstance(self.stabilize, bool):
+            raise ValueError(f"EDLEpisode.stabilize must be true or false, got {self.stabilize!r}")
         if self.beat_slot is not None and (isinstance(self.beat_slot, bool) or not isinstance(self.beat_slot, int)):
             raise ValueError(f"EDLEpisode.beat_slot must be an int index or null, got {self.beat_slot!r}")
         if not (isinstance(self.color_means, (tuple, list)) and len(self.color_means) == 3
@@ -97,6 +108,7 @@ class EDLEpisode:
                 "rect": _j(self.rect), "background": self.background,
                 "background_color": self.background_color, "border_px": self.border_px,
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
+                "stabilize": self.stabilize,
                 "hero": _j(self.hero),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
                 "beat_slot": self.beat_slot}
@@ -195,13 +207,15 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     """Map an EDL row + its extracted segment + output path onto a Manifest-shaped
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
-    them from the project via resolve_manifest) and model/stabilize (manifest
-    defaults). `pan` crosses the boundary the same way `motion`/`hero` do below:
-    copied through only when the episode sets one, so an absent pan leaves the
-    key out of the dict rather than carrying an explicit null — Manifest.from_dict
-    then falls to its own None default. EDL-only fields (source/start/dur/
-    shot_type/processing_notes/beat_slot) do NOT cross — this map is the
-    documented EDL↔manifest boundary.
+    them from the project via resolve_manifest) and model (a manifest default).
+    `pan` crosses the boundary the same way `motion`/`hero`/`stabilize` do below:
+    `pan`/`motion`/`hero` copy through only when the episode sets one, so an
+    absent value leaves the key out of the dict rather than carrying an explicit
+    null; `stabilize` copies through only when true, so a false (its default)
+    leaves the key out too — either way Manifest.from_dict falls to its own
+    None/False default rather than the two sides disagreeing about what unset
+    means. EDL-only fields (source/start/dur/shot_type/processing_notes/
+    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
     brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""
@@ -222,6 +236,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["motion"] = ep.motion
     if ep.pan is not None:
         md["pan"] = ep.pan
+    if ep.stabilize:
+        md["stabilize"] = True
     if ep.hero is not None:
         md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
     if cast is not None:

@@ -130,6 +130,46 @@ def test_to_manifest_dict_carries_an_empty_pan_across():
     assert to_manifest_dict(_ep(pan={}), "seg.mp4", "out.mp4")["pan"] == {}
 
 
+def test_edl_episode_defaults_to_no_stabilize():
+    assert _ep().stabilize is False
+
+
+def test_stabilize_defaults_to_false_and_rides_in_to_dict():
+    assert _ep().to_dict()["stabilize"] is False
+    assert _ep(stabilize=True).to_dict()["stabilize"] is True
+
+
+def test_edl_episode_round_trips_stabilize_through_json():
+    e = _ep(stabilize=True)
+    back = EDL.from_dict(EDL(episodes=(e,)).to_dict()).episodes[0]
+    assert back.stabilize is True
+
+
+def test_stabilize_must_be_a_real_bool_not_a_truthy_string():
+    """JSON is easy to fat-finger; "yes" or 1 must fail loud at construction,
+    not silently become a stabilize pass nobody asked for."""
+    with pytest.raises(ValueError, match="stabilize must be true or false"):
+        _ep(stabilize="yes")
+
+
+def test_stabilize_rejects_a_bare_int_despite_bool_subclassing_int():
+    # isinstance(True, int) is True in Python, so the check must ask for bool
+    # SPECIFICALLY — otherwise a JSON `"stabilize": 1` would sail through.
+    with pytest.raises(ValueError, match="stabilize must be true or false"):
+        _ep(stabilize=1)
+
+
+def test_the_bridge_omits_stabilize_when_it_is_false():
+    """Same shape pan/motion/hero use: an absent flag leaves the key out rather
+    than carrying an explicit false, so Manifest.from_dict falls to its own
+    default and the two never disagree about what "unset" means."""
+    assert "stabilize" not in to_manifest_dict(_ep(), "s.mp4", "o.mp4")
+
+
+def test_the_bridge_carries_stabilize_when_it_is_true():
+    assert to_manifest_dict(_ep(stabilize=True), "s.mp4", "o.mp4")["stabilize"] is True
+
+
 def _motion_cell(md: str, row_prefix: str) -> str:
     """The exact `motion` column of one rendered EDL.md row, located via the real
     header rather than a hardcoded column index — this pins the CELL a value
