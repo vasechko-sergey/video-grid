@@ -832,6 +832,26 @@ def test_the_pre_stage_runs_once_not_once_per_retry(monkeypatch, tmp_path):
     assert result["stabilize"] == {"before": 0.031, "after": 0.004}
 
 
+def test_stop_and_report_carries_the_stabilize_measurement(monkeypatch, tmp_path):
+    # The contradiction gate's stop_and_report is the third pre-stage terminal
+    # (beside mechanical_pass and escalate) that must ride the residual measurement
+    # out beside `timings` — a stabilized episode that then contradicts its manifest
+    # still reports what the pre-stage measured. Mirrors
+    # test_motion_mismatch_stops_and_reports with stabilize on; without the
+    # conditional at that return, a refactor could drop the measurement silently.
+    _stub_engine(monkeypatch, tmp_path)
+    _stub_vidstab(monkeypatch)
+
+    def boom(*a, **k):
+        raise AssertionError("reframe must not run when the manifest is contradicted")
+    monkeypatch.setattr(pe.reframe, "reframe", boom)
+    result = pe.process_episode(_manifest(tmp_path, motion="lateral:left", stabilize=True),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert any(f["reason"] == "motion-mismatch" for f in result["findings"])
+    assert result["stabilize"] == {"before": 0.031, "after": 0.004}
+
+
 def test_a_pan_episode_can_also_be_stabilized(sample_clip, tmp_path, monkeypatch):
     # design §2.1: pan and stabilize compose. A pan tracks nobody, so §1's coordinate
     # argument does not apply to it — but a pan over shaky footage is still shaky. The
@@ -881,3 +901,6 @@ def test_stabilize_with_a_frozen_route_is_refused(monkeypatch, tmp_path):
     joined = " ".join(result["problems"]).lower()
     assert "route" in joined
     assert "shake" in joined or "re-inject" in joined
+    # the remedy names both actionable fixes without assuming tracking (a pan never
+    # tracks, so "drop --route so tracking runs on it" would misdescribe it)
+    assert "drop --route" in joined and "stabilize off" in joined

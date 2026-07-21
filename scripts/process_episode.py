@@ -148,9 +148,9 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         return {"status": "needs_input", "attempt": 0, "problems": [
             "stabilize=true cannot be combined with a supplied --route: the frozen "
             "route was measured against unknown pixels, and applying it to the "
-            "stabilized segment would re-inject the shake vidstab removed. Re-track "
-            "on the stabilized segment (drop --route so tracking runs on it), or "
-            "turn stabilize off for this episode."]}
+            "stabilized segment would re-inject the shake vidstab removed. Drop "
+            "--route (a pan ignores it; a tracked episode re-tracks on the "
+            "stabilized segment), or turn stabilize off for this episode."]}
 
     # 0c. the stabilization pre-stage (design 2026-07-20 §1). NOT a filter in
     # reframe's chain: the route is measured on unstabilized pixels, so a crop
@@ -277,10 +277,13 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         params = orch.adjust_reframe_params(params, report.fail_reasons)
 
     # defensive: escalation() fires at max_attempts, so this is unreachable
-    return {"status": "escalate", "escalate_to": "edit-plan", "reason": "max-retries",
-            "fail_reasons": report.fail_reasons if report else [],
-            "report": report.to_dict() if report else None,
-            "attempt": max_attempts, "timings": timings}
+    result = {"status": "escalate", "escalate_to": "edit-plan", "reason": "max-retries",
+              "fail_reasons": report.fail_reasons if report else [],
+              "report": report.to_dict() if report else None,
+              "attempt": max_attempts, "timings": timings}
+    if stabilize_report is not None:
+        result["stabilize"] = stabilize_report
+    return result
 
 
 if __name__ == "__main__":
