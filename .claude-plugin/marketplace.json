@@ -1,0 +1,17 @@
+{
+  "name": "video-grid",
+  "description": "Self dev-marketplace for the video-grid montage plugin.",
+  "owner": {
+    "name": "Sergei Vasechko"
+  },
+  "plugins": [
+    {
+      "name": "video-grid",
+      "description": "AI-assisted video montage skill set (project-init -> footage-intake -> edit-plan -> reel).",
+      "source": "./",
+      "author": {
+        "name": "Sergei Vasechko"
+      }
+    }
+  ]
+}

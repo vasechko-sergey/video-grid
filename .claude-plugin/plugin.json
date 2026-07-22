@@ -1,0 +1,10 @@
+{
+  "name": "video-grid",
+  "version": "0.1.0",
+  "description": "AI-assisted video montage: a folder of raw footage plus a natural-language brief becomes a delivered reel, for any platform. Requires a one-time `bash setup.sh` runtime install.",
+  "author": {
+    "name": "Sergei Vasechko"
+  },
+  "homepage": "https://github.com/vasechko-sergey/video-grid",
+  "repository": "https://github.com/vasechko-sergey/video-grid"
+}
