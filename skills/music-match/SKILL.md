@@ -28,8 +28,17 @@ Announce on entry: **"Using music-match to shortlist the reel's track by mood."*
 
 1. **Recon.** Read `SPEC.json` (note `mood`, `length_s`) and confirm the candidate
    folder path with the user.
+
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/music-match/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
 2. **Rank** (you type the flags; the user never does):
-   `.venv/bin/python -m scripts.mood --folder <dir> --spec <run>/SPEC.json --out-dir <run>`
+   `"$VG" scripts.mood --folder <dir> --spec <run>/SPEC.json --out-dir <run>`
    (or `--mood "energetic"` when there is no SPEC). It writes
    `<run>/MUSIC_SHORTLIST.md` + `.json`.
    - An **unrecognized mood** is not an error — the tool logs it and ranks by drive
@@ -38,7 +47,7 @@ Announce on entry: **"Using music-match to shortlist the reel's track by mood."*
 3. **Present** the top few `MUSIC_SHORTLIST.md` rows (rank · track · fit · the three
    axes). The user picks one — or asks to hear them and picks by ear.
 4. **Lock the pick** into `MUSIC.json`:
-   `.venv/bin/python -m scripts.beats <picked-track> --auto-start --duration <length_s> --out <run>/MUSIC.json`
+   `"$VG" scripts.beats <picked-track> --auto-start --duration <length_s> --out <run>/MUSIC.json`
    — the start-offset intelligence starts the reel on the strongest fragment, in a
    vocal pause. Pass `<run>/MUSIC.json` on to edit-plan.
 

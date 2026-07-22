@@ -50,10 +50,18 @@ digraph process_episode {
 
 Announce on entry: **"Using process-episode to process `<ep>`."**
 
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/process-episode/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
 Run the orchestrator (never re-implement its loop in prose):
 
 ```bash
-.venv/bin/python -m scripts.process_episode <manifest.json> --project-dir <scratch> [--project <project.json>]
+"$VG" scripts.process_episode <manifest.json> --project-dir <scratch> [--project <project.json>]
 ```
 
 Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project.

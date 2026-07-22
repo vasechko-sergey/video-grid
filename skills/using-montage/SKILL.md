@@ -34,17 +34,27 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 `reel_brief build --project <run>/project.json --out-dir <run>`, `edit_plan build --out-dir <run>`,
 `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
 
-0. **Ensure env.** `bash setup.sh` — one install, no capability flags. It puts
-   keg-only `ffmpeg-full` (drawtext + vidstab) beside core ffmpeg and records
-   the path in `config/ffmpeg.env`, which is how every stage resolves its
-   binary.
+0. **Ensure env (one-time install).** `bash setup.sh` once per machine — one
+   install, no capability flags. It puts keg-only `ffmpeg-full` (drawtext +
+   vidstab) beside core ffmpeg and records the path in `config/ffmpeg.env`,
+   which is how every stage resolves its binary. Not a per-run command — a
+   missing venv on any later run surfaces as `bin/vg`'s own remedy message,
+   not a reason to re-run this step.
 
-1. **Locate the run.** `.venv/bin/python -m scripts.montage status --run-dir <run>` prints
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/using-montage/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
+1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from
    `next`** — a stage whose artifact already exists is done; do not redo it. Read
    the brief and parse intent into params (table below).
 
-2. **project-init** — if `next`. `.venv/bin/python -m scripts.project_init
+2. **project-init** — if `next`. `"$VG" scripts.project_init
    --purpose <p> --quality <q> --project-dir <run>` (custom aspect:
    `--purpose custom --canvas W:H`). **Checkpoint 1 — SPEC approval:** read back the
    resolved `{canvas, delivery}` and the intent you parsed; confirm before moving on.
@@ -65,7 +75,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 
 5. **music-and-mood (optional).** If the brief names a **track**:
    - a **local file path** -> analyse it directly, preferring the tool's own
-     in-point pick: `.venv/bin/python -m scripts.beats <track> --auto-start
+     in-point pick: `"$VG" scripts.beats <track> --auto-start
      --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
      strongest fragment, in a vocal pause (accurate with `bash setup.sh
      --with-demucs`; a librosa mix-silence proxy otherwise). Pass an explicit
@@ -87,8 +97,8 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    музыки", leave it unset — the reel is silent (a valid path).
 
 6. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
-   skill — it derives the beat-aligned energy spine (`.venv/bin/python -m
-   scripts.pacing --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir
+   skill — it derives the beat-aligned energy spine (`"$VG" scripts.pacing
+   --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir
    <run>`) and writes `PACING.json` + `PACING.md` into `<run>`. No `MUSIC.json`
    (a silent reel) -> skip it (named); edit-plan runs pacing-less (`beat_slot`
    stays unset). `montage status` never points `next` here (it is optional).
@@ -104,7 +114,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 
 8. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
    process-episode render, offer a rough draft: "Want to see a rough cut first?"
-   If yes, `.venv/bin/python -m scripts.draft build --edl <run>/EDL.json
+   If yes, `"$VG" scripts.draft build --edl <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
    --out <run>/draft.mp4 [--music <run>/MUSIC.json]`. `draft.mp4` concats the raw
    segments, scale-fit into the canvas, with `processing_notes` labels and a rough
@@ -124,7 +134,7 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
    the text.
 
-10. **edl_to_reel.** `.venv/bin/python -m scripts.edl_to_reel <run>/EDL.json
+10. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
     --project <run>/project.json --footage-root <footage_root>
     --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
     [--titles <run>/TITLES.json]`. This runs

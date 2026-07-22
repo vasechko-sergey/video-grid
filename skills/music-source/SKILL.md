@@ -39,8 +39,17 @@ Announce on entry: **"Using music-source to source and shortlist the reel's trac
 1. **Recon.** Read `SPEC.json` (note `mood`, `length_s`, `music_mode`). Confirm the lane
    with the user — and for `any`, confirm they accept the copyright/rights responsibility
    before sourcing.
+
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/music-source/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
 2. **Find** (you type the flags; the user never does):
-   `.venv/bin/python -m scripts.music_find --mode <free|any> --spec <run>/SPEC.json --out-dir <run>`
+   `"$VG" scripts.music_find --mode <free|any> --spec <run>/SPEC.json --out-dir <run>`
    (or `--mood "energetic"`; add `--catalog itunes` / `--n 12` / `--query "..."` to steer).
    It writes `<run>/MUSIC_SHORTLIST.md` + `.json`.
    - An **unrecognized mood** is not an error — it logs and ranks by drive (energy+pace);
@@ -49,15 +58,15 @@ Announce on entry: **"Using music-source to source and shortlist the reel's trac
 3. **Present** the top few `MUSIC_SHORTLIST.md` rows (rank · title · artist · source · fit ·
    axes · license). The user picks one — or asks to hear previews and picks by ear.
 4. **Fetch** the pick:
-   `.venv/bin/python -m scripts.music_fetch --mode <free|any> --from-shortlist <run>/MUSIC_SHORTLIST.json --pick <row> --cache-dir <run>/music/cache --date $(date +%F)`
+   `"$VG" scripts.music_fetch --mode <free|any> --from-shortlist <run>/MUSIC_SHORTLIST.json --pick <row> --cache-dir <run>/music/cache --date $(date +%F)`
    — prints the cached file path.
 5. **Lock** it into `MUSIC.json`:
-   `.venv/bin/python -m scripts.beats <cached-file> --auto-start --duration <length_s> --out <run>/MUSIC.json`
+   `"$VG" scripts.beats <cached-file> --auto-start --duration <length_s> --out <run>/MUSIC.json`
    — start-offset intelligence starts the reel on the strongest fragment, in a vocal
    pause. Pass `<run>/MUSIC.json` on to edit-plan.
 
 **Explicit track already chosen?** When `SPEC.music` is a track name (not `auto`), skip
-Find/Present — `.venv/bin/python -m scripts.music_fetch --mode <free|any> --track "<name>"
+Find/Present — `"$VG" scripts.music_fetch --mode <free|any> --track "<name>"
 --cache-dir <run>/music/cache --date $(date +%F)` resolves the top-1 match in the lane and
 fetches it directly; then Lock (step 5). A track that is already a local file path needs no
 fetch — Lock it directly.

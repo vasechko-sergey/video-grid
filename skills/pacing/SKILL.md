@@ -26,8 +26,16 @@ decides *which* footage fills each slot. Pacing owns the per-slot length + energ
 
 Announce on entry: **"Using pacing to derive the reel's energy spine from the music."**
 
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/pacing/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
 1. **Derive** (you type the flags; the user never does):
-   `.venv/bin/python -m scripts.pacing --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir <run>`
+   `"$VG" scripts.pacing --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir <run>`
    — writes `<run>/PACING.json` + `<run>/PACING.md`. A `SPEC.length_s` that disagrees
    with the fragment logs a re-pick remedy (the spine follows the fragment).
 2. **Sanity-check** the `PACING.md` slot table — the arc should open with a short
@@ -35,7 +43,7 @@ Announce on entry: **"Using pacing to derive the reel's energy spine from the mu
    slots when quiet. A wrong-looking arc means the fragment is off — re-pick with
    `beats --auto-start` (a different `start_offset`).
 3. **Bind** — pass `<run>/PACING.json` to edit-plan:
-   `.venv/bin/python -m scripts.edit_plan build --footage <run>/FOOTAGE.json --selection <run>/selection.json --project <run>/project.json --out-dir <run> --pacing <run>/PACING.json`
+   `"$VG" scripts.edit_plan build --footage <run>/FOOTAGE.json --selection <run>/selection.json --project <run>/project.json --out-dir <run> --pacing <run>/PACING.json`
    Each episode gets `beat_slot=i` and its window re-timed to slot `i`'s length; a
    count mismatch (more episodes than slots, or vice-versa) is logged, never silent.
 

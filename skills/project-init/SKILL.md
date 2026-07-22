@@ -17,9 +17,18 @@ Announce on entry: **"Using project-init to set this project's aspect + delivery
 
 1. Ask the **purpose** — "What's this video for?" — reel/shorts/tiktok (9:16), youtube/landscape (16:9), square/feed (1:1), cinema/wide (21:9), or **custom** (you give an explicit `W:H`).
 2. Ask the **quality/delivery** — "How should it be delivered?" — **native** (default, best — source resolution, no loss), **social** (1080 cap, smaller file), **4k**, or a custom delivery spec.
+
+**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
+never a bare venv `python` binary. Resolve it once: this skill lives at
+`<repo>/skills/project-init/`, so the launcher is two levels up. Set
+`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
+footage / run / output directory — `bin/vg` runs from the repo root, so a
+relative artifact path would land inside the checkout. If `bin/vg` reports no
+venv, the user has not run `bash setup.sh` yet.
+
 3. Run the deterministic writer (never hand-write project.json):
    ```bash
-   .venv/bin/python -m scripts.project_init --purpose <p> --quality <q> --project-dir <dir>
+   "$VG" scripts.project_init --purpose <p> --quality <q> --project-dir <dir>
    # custom aspect: --purpose custom --canvas 4:5 ; explicit: --delivery exact:1080x1920
    ```
 4. Read back the resolved `{canvas, delivery}` from the printed `project.json` and confirm with the user before any episodes are processed.
