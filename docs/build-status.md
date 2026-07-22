@@ -1459,6 +1459,48 @@ _Last updated: 2026-07-22._
     local-clone self dev-marketplace above; no LICENSE / `plugin.json`
     `license` field yet.
 
+- **plugin runtime-resolution fix DONE (2026-07-22)** — plan
+  `docs/plans/2026-07-22-plugin-runtime-resolution.md` + design
+  `docs/specs/2026-07-22-plugin-runtime-resolution-design.md` (branch
+  `fix/plugin-runtime-resolution`, commits `3ecd0db`..HEAD). **1615 passed / 2
+  skipped** (+4 over the 1611 baseline: 3 setup-lint + 1 skill-convention
+  test). Found by installing the plugin-packaging slice above for real: the
+  first actual `/plugin install` `cp -R`s the whole repo into a runtime-less
+  plugin cache — a Python venv does not survive a copy (`bin/python`'s
+  symlink and `pyvenv.cfg`'s absolute paths break), so a skill deriving ROOT
+  from its own (copied) base dir ran the cache's dead `.venv`, and `bin/vg`
+  failed loud from there: neither the CLI nor the desktop app could actually
+  run the pipeline as installed. The copy also carried 1.1 GB (the venv) on
+  every install / version bump.
+  - **Fix:** `setup.sh` now records the clone's absolute path to
+    `${XDG_CONFIG_HOME:-~/.config}/video-grid/root`; the 6 runner skills'
+    `**Launcher.**` preamble reads that file instead of deriving ROOT from
+    their own base dir, resolving `"$ROOT/bin/vg"` (a missing file fails loud
+    naming `bash setup.sh`). `setup.sh` also moves the venv external
+    (`${XDG_DATA_HOME:-~/.local/share}/video-grid/venv`) and points
+    `<clone>/.venv` at it with a symlink (migrating a pre-existing real
+    `.venv` first) — `cp -R` preserves a symlink (measured: the cached copy
+    is a 0-byte symlink that still resolves), so the plugin cache stays lean
+    instead of carrying the venv. **`bin/vg` and its 16 skill call-sites are
+    unchanged** — only how `VG` gets resolved moved.
+  - **Corrects the packaging design:** §2.2's "a skill resolves ROOT from its
+    own harness-given base directory" does not survive the copy-to-cache
+    `/plugin install` actually performs, and §4 had scoped the recorded-root
+    anchor to only a future GitHub-remote marketplace — the **local**
+    `directory` marketplace decouples skills from the runtime too. Both
+    sections now carry a **Correction (2026-07-22)** note pointing at this
+    design.
+  - **Testing:** the two new checks are lints, not runtime proofs —
+    `test_setup_runtime.py` greps `setup.sh` for the three emitted operations
+    (external XDG-path venv, `ln -sfn` symlink, recorded XDG-config root);
+    `test_skill_convention.py` gains a third assertion that all 6 runners
+    read `video-grid/root`. `bin/vg` and `tests/test_launcher.py` stay
+    untouched and green — a `.venv` symlink is transparent to both. **The
+    end-to-end proof — reinstall, then a foreign-directory montage brief
+    reaching `out/REEL_v1.mp4`, plus `du -sh` on the cache showing no venv —
+    needs the user's own `/plugin install`, same as the ffmpeg-baseline
+    proof; it is documented as a user-run proof, not asserted by the suite.**
+
 ## Next action
 
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**

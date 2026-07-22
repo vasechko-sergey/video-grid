@@ -99,6 +99,14 @@ checkout (§3). Decoupling them — a plugin discovered from a cache while the r
 lives in a separate clone — is the deferred GitHub-remote case (§4), and only that
 case needs a recorded-root anchor outside the tree.
 
+**Correction (2026-07-22):** wrong — the first real `/plugin install` showed the
+*local* `directory` marketplace decouples them too. `/plugin install` copies the
+skills into a runtime-less cache, so a base-dir derivation always resolves to that
+broken copy, never the clone; there is no install where §2.2 as written works. The
+recorded-root anchor this section deferred to §4's GitHub-remote case is used
+instead, unconditionally — see
+[2026-07-22-plugin-runtime-resolution-design.md](2026-07-22-plugin-runtime-resolution-design.md).
+
 ### 2.3 Plugin manifests
 
 - `.claude-plugin/plugin.json` — `name: video-grid`, `version`, `description`,
@@ -195,6 +203,12 @@ Two commands of runtime, two of plugin, then use from anywhere.
 - **The scripts are not split per-skill.** "Scripts ride with the skill" is
   satisfied by bundling one shared `scripts/` package beside `skills/` in the
   plugin; `scripts.lib.*` is imported across skills and must stay one package.
+
+**Correction (2026-07-22):** the "deferred" framing above was wrong — the first
+real `/plugin install` found the **local** `directory` marketplace hits the same
+runtime-less-cache problem this section assigned only to the GitHub-remote case.
+The recorded-root anchor is therefore not a future follow-up; it is built now. See
+[2026-07-22-plugin-runtime-resolution-design.md](2026-07-22-plugin-runtime-resolution-design.md).
 
 ## 5. Testing
 

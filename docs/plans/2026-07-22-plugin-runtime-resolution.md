@@ -1,6 +1,6 @@
 # Plugin runtime-resolution fix Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the installed plugin run the pipeline (skills resolve the clone via a `setup.sh`-recorded root, not their runtime-less cache copy), and stop the install from copying a 1.1 GB venv (external venv + a `.venv` symlink).
 
@@ -30,7 +30,7 @@
 - Modify: `setup.sh`, `.gitignore`
 - Test: `tests/test_setup_runtime.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_setup_runtime.py`:
 
@@ -63,14 +63,14 @@ def test_setup_records_the_runtime_root_outside_the_tree():
     assert "video-grid" in SETUP and "/root" in SETUP
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/python -m pytest tests/test_setup_runtime.py -q -p no:cacheprovider 2>&1 | tail -6 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: FAIL (`XDG_DATA_HOME`/`ln -sfn`/`XDG_CONFIG_HOME` not in setup.sh yet).
 
-- [ ] **Step 3: Point `VENV` at an external XDG path**
+- [x] **Step 3: Point `VENV` at an external XDG path**
 
 In `setup.sh`, change the `VENV` assignment near the top (currently `VENV="$SKILL_DIR/.venv"`) to:
 
@@ -81,7 +81,7 @@ In `setup.sh`, change the `VENV` assignment near the top (currently `VENV="$SKIL
 VENV="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid/venv"
 ```
 
-- [ ] **Step 4: Build the external venv, symlink `<repo>/.venv`, migrate a real one**
+- [x] **Step 4: Build the external venv, symlink `<repo>/.venv`, migrate a real one**
 
 Replace the `# --- venv + python deps ---` block (currently:
 ```bash
@@ -110,7 +110,7 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
 ```
 
-- [ ] **Step 5: Record the runtime root at the end**
+- [x] **Step 5: Record the runtime root at the end**
 
 At the end of `setup.sh`, after `mkdir -p "$SKILL_DIR/models"` and before/around the final `echo "venv ready…"`, add:
 
@@ -125,7 +125,7 @@ printf '%s\n' "$SKILL_DIR" > "$VG_CONFIG/root"
 echo "recorded runtime root -> $VG_CONFIG/root ($SKILL_DIR)"
 ```
 
-- [ ] **Step 6: `.gitignore` — ignore the symlink**
+- [x] **Step 6: `.gitignore` — ignore the symlink**
 
 In `.gitignore`, change `.venv/` to `.venv` (the trailing-slash form matches only a directory; after this fix `.venv` is a symlink, which git would otherwise want to track):
 
@@ -133,14 +133,14 @@ In `.gitignore`, change `.venv/` to `.venv` (the trailing-slash form matches onl
 .venv
 ```
 
-- [ ] **Step 7: Run to verify the lint passes**
+- [x] **Step 7: Run to verify the lint passes**
 
 ```bash
 .venv/bin/python -m pytest tests/test_setup_runtime.py -q -p no:cacheprovider 2>&1 | tail -6 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: PASS (3 tests). Do NOT run `setup.sh` itself (it installs system deps; behaviour is the user-run proof).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add setup.sh .gitignore tests/test_setup_runtime.py
@@ -164,7 +164,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Modify: `skills/{using-montage,music-source,music-match,pacing,process-episode,project-init}/SKILL.md`
 - Test: `tests/test_skill_convention.py`
 
-- [ ] **Step 1: Extend the lint test (write the new assertion first)**
+- [x] **Step 1: Extend the lint test (write the new assertion first)**
 
 In `tests/test_skill_convention.py`, add a third test (keep the two existing ones):
 
@@ -179,14 +179,14 @@ def test_the_runner_skills_read_the_recorded_root():
         assert "video-grid/root" in text, f"{name} does not read the recorded root"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/python -m pytest tests/test_skill_convention.py -q -p no:cacheprovider 2>&1 | tail -8 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: FAIL on `test_the_runner_skills_read_the_recorded_root` (preambles still derive from base dir).
 
-- [ ] **Step 3: Replace the launcher preamble in all 6 runner skills**
+- [x] **Step 3: Replace the launcher preamble in all 6 runner skills**
 
 Each runner skill currently has a `**Launcher.**` block that says "this skill lives at `<repo>/skills/<name>/`, so the launcher is two levels up. Set `VG=<repo>/bin/vg`…". Replace that whole block (in all 6) with this **identical** text (no per-skill name any more):
 
@@ -202,7 +202,7 @@ say so rather than guessing a path.
 
 The 16 `"$VG" scripts.X` call-sites do **not** change — only how `VG` is resolved. Leave everything else in each skill untouched.
 
-- [ ] **Step 4: Run to verify all skill-convention lints pass**
+- [x] **Step 4: Run to verify all skill-convention lints pass**
 
 ```bash
 .venv/bin/python -m pytest tests/test_skill_convention.py -q -p no:cacheprovider 2>&1 | tail -6 ; echo "EXIT: ${PIPESTATUS[0]}"
@@ -213,7 +213,7 @@ grep -rn "\.venv/bin/python" skills/*/SKILL.md ; echo "bare-venv EXIT: $?"   # e
 grep -rl "two levels up" skills/*/SKILL.md ; echo "stale-wording EXIT: $?"   # expect 1 (none)
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add skills tests/test_skill_convention.py
@@ -234,7 +234,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Fix the marketplace-add command and add a runtime note**
+- [x] **Step 1: Fix the marketplace-add command and add a runtime note**
 
 In `README.md`'s Use section, change the install block from:
 ```
@@ -255,7 +255,7 @@ The plugin distributes the skills; they run this checkout's `bin/vg` (its path i
 recorded by `setup.sh`), so keep the clone in place after installing.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -275,15 +275,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Modify: `docs/specs/2026-07-22-plugin-packaging-design.md`, `docs/build-status.md`, `CLAUDE.md`, `docs/development-workflow.md`
 
-- [ ] **Step 1: Correct the packaging design**
+- [x] **Step 1: Correct the packaging design**
 
 In `docs/specs/2026-07-22-plugin-packaging-design.md`, add a short **Correction (2026-07-22)** note under §2.2 and §4 stating that the real `/plugin install` copies skills into a runtime-less cache, so "derive ROOT from the skill's base dir" does not work; the recorded-root anchor (§4, previously deferred) is used instead — see the runtime-resolution design. Do not rewrite the doc; append the correction so the history stays readable.
 
-- [ ] **Step 2: Add a build-status entry**
+- [x] **Step 2: Add a build-status entry**
 
 Read `docs/build-status.md`'s most-recent entry (plugin packaging, 2026-07-22) and add a new entry after it (matching the file's ordering + style): the first real `/plugin install` found the cache-copy break (broken venv → skills fail loud) + 1.1 GB copy; the fix records the runtime root (`setup.sh` → `~/.config/video-grid/root`, skills read it → `<clone>/bin/vg`) and moves the venv external with a `.venv` symlink (cp -R preserves it → lean cache). `bin/vg` unchanged. Note the suite count from Step 4 and that the end-to-end install is a user-run proof.
 
-- [ ] **Step 2b: Add the CLAUDE.md registry rows**
+- [x] **Step 2b: Add the CLAUDE.md registry rows**
 
 In `CLAUDE.md`'s Quick Reference table, right after the two Plugin-packaging rows, add:
 
@@ -292,11 +292,11 @@ In `CLAUDE.md`'s Quick Reference table, right after the two Plugin-packaging row
 | Plugin runtime-resolution fix plan | [2026-07-22-plugin-runtime-resolution.md](docs/plans/2026-07-22-plugin-runtime-resolution.md) | Tasks 0–3: `setup.sh` external venv + symlink + recorded root (+ `.gitignore`), 6 skill preambles read the recorded root, README `.`→`./`, docs sync + packaging-design correction. |
 ```
 
-- [ ] **Step 3: Note it in `docs/development-workflow.md`**
+- [x] **Step 3: Note it in `docs/development-workflow.md`**
 
 Where the workflow mentions the plugin/`bin/vg` (added in the packaging slice), add one line: the venv is external (`~/.local/share/video-grid/venv`) with `<repo>/.venv` a symlink to it, and `setup.sh` records the checkout at `~/.config/video-grid/root`. Read the surrounding lines so it fits.
 
-- [ ] **Step 4: Full suite green — record the number**
+- [x] **Step 4: Full suite green — record the number**
 
 ```bash
 find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null
@@ -304,14 +304,14 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider 2>&1
 ```
 Expected: all green. The pre-fix count was 1611 passed / 2 skipped; this fix ADDS 3 setup-lint tests + 1 skill-convention test = expect ~1615 passed / 2 skipped. Record the actual number in Step 2.
 
-- [ ] **Step 4b: Check off this plan's step checkboxes**
+- [x] **Step 4b: Check off this plan's step checkboxes**
 
 ```bash
 perl -pi -e 's/- \[ \]/- [x]/g' docs/plans/2026-07-22-plugin-runtime-resolution.md
 ```
-Then revert the one frontmatter line that documents the checkbox syntax back to `- [ ]` (it is not a step), matching the sibling plans' convention.
+Then revert the one frontmatter line that documents the checkbox syntax back to `- [x]` (it is not a step), matching the sibling plans' convention.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs CLAUDE.md
@@ -325,7 +325,7 @@ the development workflow.
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: Final whole-slice review (orchestrator)**
+- [x] **Step 6: Final whole-slice review (orchestrator)**
 
 The orchestrator dispatches a fresh reviewer over `main..fix/plugin-runtime-resolution`: confirm setup.sh emits external venv + symlink (+ migration) + recorded-root and touches nothing it should not; the 6 preambles read the recorded root and the 16 call-sites are unchanged; `bin/vg` + `tests/test_launcher.py` are untouched; README/docs accurate. Blocking findings → separate follow-up commits.
 

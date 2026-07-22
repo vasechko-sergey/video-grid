@@ -12,7 +12,11 @@ _Last updated: 2026-07-20._
 - **Packaged as a Claude Code plugin** (`.claude-plugin/`) — skills run the
   pipeline through `bin/vg`, the cwd-independent launcher; `bin/vg scripts.X`
   (equivalently `.venv/bin/python -m scripts.X` from the repo root) is the
-  module entrypoint.
+  module entrypoint. The venv lives **outside** the repo
+  (`~/.local/share/video-grid/venv`) with `<repo>/.venv` a symlink to it (so
+  `/plugin install`'s copy stays lean), and `setup.sh` records this checkout at
+  `~/.config/video-grid/root` so the installed (copied-away) skills find and run
+  it.
 - **One ffmpeg carrying every library the pipeline needs.** `setup.sh` installs
   homebrew-core's `ffmpeg-full`, which is the same version and revision as core
   `ffmpeg` but ships `libfreetype` (drawtext — §5.9 draft labels, §5.16 titles)
