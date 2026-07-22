@@ -40,7 +40,7 @@ _Last updated: 2026-07-21._
   retry-ladder + escalation), `scripts/lib/proc.py`, `scripts/process_episode.py`
   (deterministic loop: track→reframe→storyboard→check, threads probed
   canvas/src_dims — **closes the contract note** — times stages, hero marks on
-  storyboard), `SKILLS/process-episode/SKILL.md` (subagent: ask-before-start,
+  storyboard), `skills/process-episode/SKILL.md` (subagent: ask-before-start,
   editorial gate, stop-and-report). Golden fixture runs the whole orchestrator
   through real ffmpeg. Review-driven fixes: manifest null/unknown-key/model/color/
   canvas hardening, hero truthiness, centered→on_line alias, project_dir mkdir,
@@ -91,7 +91,7 @@ _Last updated: 2026-07-21._
   episode value overrides, null=inherit, no mutation). `scripts/process_episode.py`
   gains `project=` (a `ProjectConfig` or a `project.json` path) applied before
   validation. `scripts/project_init.py` CLI writes `project.json`;
-  `SKILLS/project-init/SKILL.md` is the one-time "what's this video for" pass.
+  `skills/project-init/SKILL.md` is the one-time "what's this video for" pass.
   Review-driven: override integration test made load-bearing (21:9),
   `ProjectConfig.from_json` corrupt→ValueError-with-remedy, SKILL description fixed
   ('custom' quality is an explicit `--delivery`). **Reconciliation note:**
@@ -353,7 +353,7 @@ _Last updated: 2026-07-21._
   out-of-range window index. `write_edit_plan` + CLI
   (`python -m scripts.edit_plan build`) chains Footage→selection→`build_edl`
   →`preflight`→`EDL.json`+`EDL.md`, writing **nothing** on a preflight
-  `stop_and_report`. `SKILLS/edit-plan/SKILL.md` — the writing-plans-style
+  `stop_and_report`. `skills/edit-plan/SKILL.md` — the writing-plans-style
   **autonomous draft + single review gate** subagent (context recon → author
   `selection.json` → build → present `EDL.md`; edits round-trip through
   `selection.json`, the SKILL never hand-patches `EDL.json`).
@@ -374,7 +374,7 @@ _Last updated: 2026-07-21._
 - **using-montage router (5.1, entry-skill) DONE (2026-07-12)** — plan
   `docs/plans/2026-07-12-using-montage.md` + design
   `docs/specs/2026-07-12-using-montage-design.md` (branch `feat/using-montage`).
-  Ships the conveyor's front door: `SKILLS/using-montage/SKILL.md` conducts the
+  Ships the conveyor's front door: `skills/using-montage/SKILL.md` conducts the
   built stages (project-init → footage-intake → [music] → edit-plan → edl_to_reel)
   with the three §4.1 user checkpoints (SPEC · EDL+curation · final review),
   resuming a half-finished run for free and naming any deferred stage on skip.
@@ -393,7 +393,7 @@ _Last updated: 2026-07-21._
 - **reel-brief (5.3, editorial spine) DONE (2026-07-12)** — `scripts/lib/spec.py`
   (`Spec` config-spec: canvas-from-project + gate on mood/hook/length, JSON
   round-trip, `to_markdown`) + `scripts/reel_brief.py` (`build_spec`/`write_reel_brief`
-  + CLI) + `SKILLS/reel-brief` (one-question-at-a-time → `SPEC.md`+`SPEC.json`). Router
+  + CLI) + `skills/reel-brief` (one-question-at-a-time → `SPEC.md`+`SPEC.json`). Router
   flips reel-brief deferred → **optional** (SPEC.md enriches CP1; autonomous path
   intact). Text stage — no ffmpeg, no golden. See `docs/plans/2026-07-12-reel-brief.md`.
 
@@ -474,7 +474,7 @@ _Last updated: 2026-07-21._
   relative-gate discipline). `scripts/mood.py` — the driver: scan a folder →
   `mood_features` each → rank vs `mood_target(SPEC.mood)` (or `rank_by_drive` on a
   zero-match, logged never silent) → `MUSIC_SHORTLIST.{json,md}`; CLI
-  `--folder (--spec|--mood) --out-dir`. `SKILLS/music-match` runs it, presents the
+  `--folder (--spec|--mood) --out-dir`. `skills/music-match` runs it, presents the
   shortlist, the user picks, then the existing `beats --auto-start` writes
   `MUSIC.json`. Pure core exhaustively unit-tested (24); `mood_features` + the
   ranking golden are real-librosa integration tests (synthetic known-answer
@@ -521,7 +521,7 @@ _Last updated: 2026-07-21._
   its own `dur` + logs the shortfall, an episode/slot count mismatch logs an
   over/underflow report — `pacing=None` leaves the existing no-pacing path
   unchanged (the regression guard). `scripts/montage.py`'s `pacing` `Stage`
-  flips `deferred → optional`; `SKILLS/pacing/SKILL.md` runs the driver,
+  flips `deferred → optional`; `skills/pacing/SKILL.md` runs the driver,
   sanity-checks the `PACING.md` arc, then passes `PACING.json` to edit-plan;
   `using-montage` wires it in as an optional step between music-and-mood and
   edit-plan. Real-librosa integration golden
@@ -752,7 +752,7 @@ _Last updated: 2026-07-21._
   the reviewer's RAW findings (fail-loud on a malformed finding, nothing written) →
   typed `Review`, `write_review` → `REVIEW.json`+`REVIEW.md`, CLI `build`
   (`--findings` list-or-`{summary,findings}` → artifact) — the `selection.json →
-  EDL.json` idiom. `SKILLS/reel-review/` — the SKILL (build packet → dispatch
+  EDL.json` idiom. `skills/reel-review/` — the SKILL (build packet → dispatch
   reviewer → driver → human loop + routing) + `reel-reviewer.md` prompt template
   (the `requesting-code-review` calque); `montage.py` gains an **optional**
   `reel-review` Stage (`REVIEW.json`, checkpoint `final`, never `next`);
@@ -1146,7 +1146,7 @@ _Last updated: 2026-07-21._
   **Drive-bys:** `tests/integration/test_pan.py:41`'s comment stated the seek
   landmine backwards (introduced by the pan slice, 2026-07-19) and is corrected;
   the two live links that promised `landmines.md` was a list
-  (`references/ffmpeg-recipes.md`, `SKILLS/process-episode/SKILL.md`) now point
+  (`references/ffmpeg-recipes.md`, `skills/process-episode/SKILL.md`) now point
   at §12. **Deliberately out of scope** (design §7): the even-`scale=`,
   crop-expression-ceiling and dependency-pin family, all of which fail **loud** —
   worth guarding eventually, but adding them would dilute this lint's claim, that
@@ -1272,7 +1272,7 @@ _Last updated: 2026-07-21._
     left the suite green. The property needs both halves — the installer named
     **and** the dead flag absent — and both raises now carry it (three
     mutations, each killed by exactly one test).  Worse,
-    `SKILLS/footage-intake/SKILL.md` told the agent to check vidstab by running
+    `skills/footage-intake/SKILL.md` told the agent to check vidstab by running
     `ffmpeg -hide_banner -filters` itself, which on a keg-only install probes
     the *wrong build* — §5's trap written into the instructions. Five SKILL/spec
     sites in total plus two runtime strings; historical plans keep their

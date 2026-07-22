@@ -21,7 +21,7 @@ _Last updated: 2026-07-09._
 4. **Think first** — the black-frames bug was argument order, not 4K. Clear
    reasoning up front prevents the landmine.
 5. **Determinism in Python, judgment in the SKILL** — pure, unit-tested logic in
-   `scripts/lib/`; the interactive/ambiguous decisions in `SKILLS/*/SKILL.md`.
+   `scripts/lib/`; the interactive/ambiguous decisions in `skills/*/SKILL.md`.
 
 ## Fail-Loud Contract
 

@@ -2,7 +2,7 @@
 
 The thin mechanical half: read canvas from project.json, build+validate a Spec,
 write SPEC.json + SPEC.md. Judgment (the interrogation dialogue) lives in
-SKILLS/reel-brief/SKILL.md. Mirror of edit_plan.py — contract in lib, driver here.
+skills/reel-brief/SKILL.md. Mirror of edit_plan.py — contract in lib, driver here.
 """
 import argparse
 import json

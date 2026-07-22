@@ -1,6 +1,6 @@
 """Project config: purpose→aspect, quality→delivery, learned once at project
 start (design 2026-07-09). Determinism here; the interactive asking lives in
-SKILLS/project-init/SKILL.md. Episode manifests inherit canvas/delivery from the
+skills/project-init/SKILL.md. Episode manifests inherit canvas/delivery from the
 project unless they override."""
 import json
 from dataclasses import dataclass

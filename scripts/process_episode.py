@@ -1,7 +1,7 @@
 """process-episode orchestrator shell (§5.10, crown jewel).
 
 Deterministic loop over the shipped engine. All judgment (ask-before-start on
-genuine ambiguity, the editorial gate) lives in SKILLS/process-episode/SKILL.md;
+genuine ambiguity, the editorial gate) lives in skills/process-episode/SKILL.md;
 this shell owns everything mechanical: manifest validation, tracking, the
 reframe→check retry loop, the canvas/src_dims contract, stage timing, and the
 structured report. It never improvises past the manifest — a contradiction or a

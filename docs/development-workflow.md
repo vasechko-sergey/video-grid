@@ -101,7 +101,7 @@ Spec and plan are kept **in sync** — if they drift, fix both, not one.
 - Do exactly what is asked — nothing more, nothing less.
 - Prefer editing an existing file over creating a new one; flag obsolete files.
 - Keep the project modular: pure logic in `scripts/lib/`, orchestration in
-  `scripts/`, judgment in `SKILLS/`.
+  `scripts/`, judgment in `skills/`.
 
 ## Related
 
