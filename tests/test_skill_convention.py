@@ -24,3 +24,13 @@ def test_the_runner_skills_route_through_bin_vg():
     for name in sorted(RUNNERS):
         text = (SKILLS / name / "SKILL.md").read_text()
         assert "bin/vg" in text, f"{name} lost its bin/vg launcher"
+
+
+def test_the_runner_skills_read_the_recorded_root():
+    """The launcher path must come from setup.sh's recorded root, not from the
+    skill's own base directory — the install copies skills to a runtime-less cache,
+    so a base-dir-relative launcher (design §2.2, since corrected) would hit the
+    broken cache venv. (design 2026-07-22 runtime-resolution §2)"""
+    for name in sorted(RUNNERS):
+        text = (SKILLS / name / "SKILL.md").read_text()
+        assert "video-grid/root" in text, f"{name} does not read the recorded root"

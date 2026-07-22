@@ -18,13 +18,13 @@ Announce on entry: **"Using project-init to set this project's aspect + delivery
 1. Ask the **purpose** — "What's this video for?" — reel/shorts/tiktok (9:16), youtube/landscape (16:9), square/feed (1:1), cinema/wide (21:9), or **custom** (you give an explicit `W:H`).
 2. Ask the **quality/delivery** — "How should it be delivered?" — **native** (default, best — source resolution, no loss), **social** (1080 cap, smaller file), **4k**, or a custom delivery spec.
 
-**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
-never a bare venv `python` binary. Resolve it once: this skill lives at
-`<repo>/skills/project-init/`, so the launcher is two levels up. Set
-`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
-footage / run / output directory — `bin/vg` runs from the repo root, so a
-relative artifact path would land inside the checkout. If `bin/vg` reports no
-venv, the user has not run `bash setup.sh` yet.
+**Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
+bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
+at `${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so set
+`VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"` and run every
+step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / output
+directory. If that file is missing, the user has not run `bash setup.sh` — stop and
+say so rather than guessing a path.
 
 3. Run the deterministic writer (never hand-write project.json):
    ```bash

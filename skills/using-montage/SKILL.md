@@ -41,13 +41,13 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    missing venv on any later run surfaces as `bin/vg`'s own remedy message,
    not a reason to re-run this step.
 
-**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
-never a bare venv `python` binary. Resolve it once: this skill lives at
-`<repo>/skills/using-montage/`, so the launcher is two levels up. Set
-`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
-footage / run / output directory — `bin/vg` runs from the repo root, so a
-relative artifact path would land inside the checkout. If `bin/vg` reports no
-venv, the user has not run `bash setup.sh` yet.
+**Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
+bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
+at `${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so set
+`VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"` and run every
+step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / output
+directory. If that file is missing, the user has not run `bash setup.sh` — stop and
+say so rather than guessing a path.
 
 1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from

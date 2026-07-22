@@ -26,13 +26,13 @@ decides *which* footage fills each slot. Pacing owns the per-slot length + energ
 
 Announce on entry: **"Using pacing to derive the reel's energy spine from the music."**
 
-**Launcher.** Run every pipeline step through the repo-root launcher `bin/vg`,
-never a bare venv `python` binary. Resolve it once: this skill lives at
-`<repo>/skills/pacing/`, so the launcher is two levels up. Set
-`VG=<repo>/bin/vg` (an absolute path) and pass **absolute** paths for every
-footage / run / output directory — `bin/vg` runs from the repo root, so a
-relative artifact path would land inside the checkout. If `bin/vg` reports no
-venv, the user has not run `bash setup.sh` yet.
+**Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
+bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
+at `${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so set
+`VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"` and run every
+step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / output
+directory. If that file is missing, the user has not run `bash setup.sh` — stop and
+say so rather than guessing a path.
 
 1. **Derive** (you type the flags; the user never does):
    `"$VG" scripts.pacing --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir <run>`
