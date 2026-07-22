@@ -27,11 +27,13 @@ in-point) and `--with-sourcing` (fetch tracks from the internet).
 **2. Install the plugin** (from inside the clone):
 
 ```
-/plugin marketplace add .
+/plugin marketplace add ./
 /plugin install video-grid@video-grid
 ```
 
-Restart Claude Code so it picks up the skills.
+Restart Claude Code so it picks up the skills. The plugin distributes the skills;
+they run this checkout's `bin/vg` (its path is recorded by `setup.sh`), so keep the
+clone in place after installing.
 
 **3. Make a reel.** From *any* project directory, describe what you want:
 
