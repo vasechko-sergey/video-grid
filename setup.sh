@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$SKILL_DIR/.venv"
+# The venv lives OUTSIDE the repo so `/plugin install`'s cp -R does not copy 1.1 GB
+# into the plugin cache; <repo>/.venv becomes a symlink to it (below), which keeps
+# every `.venv/bin/python` path working. (design 2026-07-22 runtime-resolution §3)
+VENV="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid/venv"
 PYTHON="${PYTHON:-python3.13}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
 # freeze brew version drift: a bare `brew install X` normally runs `brew update` first and
@@ -174,10 +177,18 @@ for cask in font-montserrat font-inter font-bebas-neue font-oswald; do
 done
 fi
 
-# --- venv + python deps ---
+# --- venv (external; <repo>/.venv is a symlink to it) + python deps ---
+mkdir -p "$(dirname "$VENV")"
 if [ ! -d "$VENV" ]; then
   "$PYTHON" -m venv "$VENV"
 fi
+# Migrate a pre-existing in-repo real venv to the symlink layout, then link. `ln -sfn`
+# replaces an existing symlink atomically; a real dir must be removed first (its 1.1 GB
+# is exactly what we are moving out of the tree).
+if [ -e "$SKILL_DIR/.venv" ] && [ ! -L "$SKILL_DIR/.venv" ]; then
+  rm -rf "$SKILL_DIR/.venv"
+fi
+ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
 # demucs: vocal separation for start-offset intelligence (§5.5). Opt-in — pulls
@@ -218,3 +229,12 @@ fi
 # YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
+
+# Record where the runtime lives. Claude Code installs the montage skills by COPYING
+# them into a runtime-less plugin cache, so a skill cannot find this checkout from its
+# own (copied) location — it reads this file and runs <clone>/bin/vg. Outside the tree
+# on purpose. (design 2026-07-22 runtime-resolution §2)
+VG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/video-grid"
+mkdir -p "$VG_CONFIG"
+printf '%s\n' "$SKILL_DIR" > "$VG_CONFIG/root"
+echo "recorded runtime root -> $VG_CONFIG/root ($SKILL_DIR)"
