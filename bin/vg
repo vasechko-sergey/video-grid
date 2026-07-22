@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# The one place that knows HOW to run the video-grid pipeline (design 2026-07-22 §2.1).
+# Self-resolves the repo root from its OWN location so it is correct from any cwd,
+# guards the venv (the fail-loud remedy point), then cd's to root — mandatory, not
+# cosmetic: ultralytics downloads the YOLO weights by bare name into cwd (design
+# §1.1), so PYTHONPATH alone would re-download them into the wrong directory.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ ! -x "$ROOT/.venv/bin/python" ]; then
+  echo "video-grid: no venv at $ROOT/.venv — run: bash \"$ROOT/setup.sh\"" >&2
+  exit 1
+fi
+cd "$ROOT"
+exec "$ROOT/.venv/bin/python" -m "$@"
