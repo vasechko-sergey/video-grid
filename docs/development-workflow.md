@@ -9,6 +9,10 @@ _Last updated: 2026-07-20._
 
 - **Python 3.13** in a skill-local `.venv`. One `requirements.txt`, one pypi
   index. Bootstrap with `bash setup.sh` — **one install, no capability flags.**
+- **Packaged as a Claude Code plugin** (`.claude-plugin/`) — skills run the
+  pipeline through `bin/vg`, the cwd-independent launcher; `bin/vg scripts.X`
+  (equivalently `.venv/bin/python -m scripts.X` from the repo root) is the
+  module entrypoint.
 - **One ffmpeg carrying every library the pipeline needs.** `setup.sh` installs
   homebrew-core's `ffmpeg-full`, which is the same version and revision as core
   `ffmpeg` but ships `libfreetype` (drawtext — §5.9 draft labels, §5.16 titles)

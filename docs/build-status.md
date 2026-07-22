@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-21._
+_Last updated: 2026-07-22._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -1409,6 +1409,55 @@ _Last updated: 2026-07-21._
     `--keyframes`** (competing route sources). One invariant: `--keyframes` drives
     the raw, unpinned, unstabilized, un-pre-routed segment — nothing else. Design
     §1.1/§2/§4/§7 amended; +3 integration tests. **1604 passed / 2 skipped.**
+
+- **plugin packaging DONE (2026-07-22)** — plan
+  `docs/plans/2026-07-22-plugin-packaging.md` + design
+  `docs/specs/2026-07-22-plugin-packaging-design.md` (branch
+  `feat/plugin-packaging`, commits `f92450e`..HEAD). **1611 passed / 2
+  skipped** (+7 over the 1604 baseline: 2 launcher + 3 manifest + 2
+  skill-convention tests). video-grid now installs and runs like an ordinary
+  Claude Code plugin, and its skills work from **any** working directory —
+  not only from inside the checkout.
+  - **Built:** `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`
+    — a self dev-marketplace naming `video-grid`, listing it with
+    `source: "./"`. Install is two runtime commands plus two plugin commands:
+    `bash setup.sh` (the venv/`ffmpeg-full`/fonts/weights runtime) →
+    `/plugin marketplace add .` → `/plugin install video-grid@video-grid`.
+    `SKILLS/` → `skills/` (the lowercase dir the plugin loader scans), with
+    the 16 live `SKILLS/` references across `scripts/` docstrings and current
+    docs repointed — the dated `docs/plans/`/`docs/specs/` keep their
+    as-written historical spelling.
+  - **`bin/vg` is the one launch chokepoint, and its `cd $ROOT` is
+    load-bearing, not cosmetic.** It self-resolves `ROOT` from its own path
+    (`bin/vg` ⇒ `dirname/..`), so it is correct from any `cwd`; guards the
+    venv and fails loud naming `setup.sh` when it is absent, instead of a raw
+    `ENOENT`; then `cd`s to `ROOT` before `exec`ing `.venv/bin/python -m
+    "$@"`. The `cd` is the point of the design, not a style choice: almost
+    all of this codebase already resolves its own paths off `Path(__file__)`,
+    never `cwd`, so `PYTHONPATH=ROOT` alone would nearly have sufficed —
+    except ultralytics resolves YOLO weights by **bare name** and
+    auto-downloads a missing one **into `cwd`** (design §1.1, a §12-shaped
+    silent trap: run from the wrong directory and it quietly re-downloads the
+    weights into the wrong place, or races under cap-3 fan-out). The 16 skill
+    call-sites across the 6 runner skills (`using-montage`/`music-source`/
+    `music-match`/`pacing`/`process-episode`/`project-init`) now each resolve
+    an absolute `VG=<skill-base>/../../bin/vg` and run `"$VG" scripts.X` with
+    **absolute** footage/run/output paths — a relative one would now land
+    inside the checkout, since the launcher `cd`s there first.
+    `tests/test_skill_convention.py` lints the outcome (no skill may spell a
+    bare `.venv/bin/python`), so a reverted call-site fails the suite, not
+    just a manual read.
+  - README rewritten for two audiences (Use / Develop), leading with an
+    honest banner: the plugin ships the skills, `setup.sh` still provisions
+    the runtime — both are required, and a plugin install alone cannot make
+    a reel.
+  - **Honest limits (design §4), stated rather than hidden:** macOS/homebrew
+    only, inheriting `setup.sh`'s own limitation; no GitHub-remote
+    marketplace yet — `/plugin marketplace add <github-repo>` would clone
+    into the plugin cache and need the `.venv` rebuilt on every version bump,
+    wrong for a multi-GB runtime, so the supported path stays the
+    local-clone self dev-marketplace above; no LICENSE / `plugin.json`
+    `license` field yet.
 
 ## Next action
 

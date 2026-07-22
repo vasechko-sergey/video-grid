@@ -30,7 +30,7 @@ Each task ends green and is committed separately.
 - Move: `SKILLS/` → `skills/`
 - Modify: `scripts/reel_brief.py:5`, `scripts/process_episode.py:4`, `scripts/reel_review.py:5`, `scripts/lib/project.py:3`, `docs/coding-standards.md:24`, `docs/development-workflow.md:104`, `docs/build-status.md` (10 refs)
 
-- [ ] **Step 1: Move the directory (two-step — macOS is case-insensitive)**
+- [x] **Step 1: Move the directory (two-step — macOS is case-insensitive)**
 
 A one-shot `git mv SKILLS skills` can no-op on a case-insensitive filesystem. Go through a temp name:
 
@@ -39,7 +39,7 @@ git mv SKILLS _skills_tmp
 git mv _skills_tmp skills
 ```
 
-- [ ] **Step 2: Verify the move and that no skill self-references the old path**
+- [x] **Step 2: Verify the move and that no skill self-references the old path**
 
 ```bash
 ls skills/ | tr '\n' ' '; echo
@@ -47,7 +47,7 @@ grep -rn "SKILLS/" skills/ ; echo "self-refs EXIT: $?"   # expect no output
 ```
 Expected: the 11 skill dirs listed; no `SKILLS/` inside `skills/`.
 
-- [ ] **Step 3: Update the 16 live `SKILLS/` references to `skills/`**
+- [x] **Step 3: Update the 16 live `SKILLS/` references to `skills/`**
 
 These are docstrings and current docs (the dated `docs/plans/` and `docs/specs/` are historical record — leave them). The token is unique; replace in exactly these files:
 
@@ -59,7 +59,7 @@ for f in scripts/reel_brief.py scripts/process_episode.py scripts/reel_review.py
 done
 ```
 
-- [ ] **Step 4: Confirm no live `SKILLS/` reference remains outside history**
+- [x] **Step 4: Confirm no live `SKILLS/` reference remains outside history**
 
 ```bash
 grep -rn "SKILLS/" --include="*.py" --include="*.md" . | grep -vE "docs/plans/|docs/specs/"
@@ -67,14 +67,14 @@ echo "remaining EXIT: $?"
 ```
 Expected: no output (grep EXIT 1).
 
-- [ ] **Step 5: Run the full suite — the move must break nothing**
+- [x] **Step 5: Run the full suite — the move must break nothing**
 
 ```bash
 .venv/bin/python -m pytest -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: same green as before the move (no test references `SKILLS/`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -95,7 +95,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `bin/vg`
 - Test: `tests/test_launcher.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """bin/vg launcher (design 2026-07-22 §2.1) — the cwd-independence contract.
@@ -142,14 +142,14 @@ def test_launcher_fails_loud_without_a_venv(tmp_path):
     assert "setup.sh" in proc.stderr
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/python -m pytest tests/test_launcher.py -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: FAIL (bin/vg does not exist).
 
-- [ ] **Step 3: Write the launcher**
+- [x] **Step 3: Write the launcher**
 
 Create `bin/vg`:
 
@@ -170,20 +170,20 @@ cd "$ROOT"
 exec "$ROOT/.venv/bin/python" -m "$@"
 ```
 
-- [ ] **Step 4: Make it executable**
+- [x] **Step 4: Make it executable**
 
 ```bash
 chmod +x bin/vg
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 ```bash
 .venv/bin/python -m pytest tests/test_launcher.py -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: PASS (2 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bin/vg tests/test_launcher.py
@@ -205,7 +205,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 - Test: `tests/test_plugin_manifests.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """Plugin + marketplace manifests (design 2026-07-22 §2.3).
@@ -239,14 +239,14 @@ def test_claude_plugin_holds_only_manifests():
     assert {p.name for p in CP.iterdir()} == {"plugin.json", "marketplace.json"}
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/python -m pytest tests/test_plugin_manifests.py -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: FAIL (`.claude-plugin/` does not exist).
 
-- [ ] **Step 3: Write `.claude-plugin/plugin.json`**
+- [x] **Step 3: Write `.claude-plugin/plugin.json`**
 
 ```json
 {
@@ -261,7 +261,7 @@ Expected: FAIL (`.claude-plugin/` does not exist).
 }
 ```
 
-- [ ] **Step 4: Write `.claude-plugin/marketplace.json`**
+- [x] **Step 4: Write `.claude-plugin/marketplace.json`**
 
 ```json
 {
@@ -283,14 +283,14 @@ Expected: FAIL (`.claude-plugin/` does not exist).
 }
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 ```bash
 .venv/bin/python -m pytest tests/test_plugin_manifests.py -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: PASS (3 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .claude-plugin tests/test_plugin_manifests.py
@@ -311,7 +311,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Test: `tests/test_skill_convention.py`
 - Modify: `skills/{using-montage,music-source,music-match,pacing,process-episode,project-init}/SKILL.md`
 
-- [ ] **Step 1: Write the failing lint tests**
+- [x] **Step 1: Write the failing lint tests**
 
 ```python
 """Skill launch convention (design 2026-07-22 §2.5).
@@ -342,14 +342,14 @@ def test_the_runner_skills_route_through_bin_vg():
         assert "bin/vg" in text, f"{name} lost its bin/vg launcher"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/python -m pytest tests/test_skill_convention.py -q -p no:cacheprovider 2>&1 | tail -8 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: FAIL (`test_no_skill_invokes_a_bare_venv_python` lists 6 files; `bin/vg` absent).
 
-- [ ] **Step 3: Add the launcher preamble to each of the 6 runner skills**
+- [x] **Step 3: Add the launcher preamble to each of the 6 runner skills**
 
 Into each of the 6 skills, near its first pipeline invocation (for `using-montage`, at step 0/1 "Ensure env"; for the others, right before their first command), insert this block verbatim (adjust the skill name in the path):
 
@@ -363,13 +363,13 @@ relative artifact path would land inside the checkout. If `bin/vg` reports no
 venv, the user has not run `bash setup.sh` yet.
 ```
 
-- [ ] **Step 4: Replace all 16 invocations**
+- [x] **Step 4: Replace all 16 invocations**
 
 In the same 6 files, replace every `.venv/bin/python -m scripts.X` (16 total; some are line-wrapped, e.g. `using-montage` around the pacing call — the `-m` ends a line and `scripts.pacing` starts the next) with `"$VG" scripts.X`, preserving all arguments. The lint test in Step 6 confirms none were missed, wrapped or not.
 
 For `using-montage` step 0, keep the `bash setup.sh` mention but frame it as the one-time install step, not a per-run command (the launcher's own remedy message covers a missing venv).
 
-- [ ] **Step 5: Sanity-check the replacement count**
+- [x] **Step 5: Sanity-check the replacement count**
 
 ```bash
 grep -rc "\"\$VG\" scripts\." skills/*/SKILL.md | grep -v ':0' ; echo "---"
@@ -377,14 +377,14 @@ grep -rn "\.venv/bin/python" skills/*/SKILL.md ; echo "bare-venv EXIT: $?"
 ```
 Expected: the `"$VG" scripts.` counts sum to 16 across the 6 files; no bare `.venv/bin/python` remains (grep EXIT 1).
 
-- [ ] **Step 6: Run to verify the lint passes**
+- [x] **Step 6: Run to verify the lint passes**
 
 ```bash
 .venv/bin/python -m pytest tests/test_skill_convention.py -q -p no:cacheprovider 2>&1 | tail -5 ; echo "EXIT: ${PIPESTATUS[0]}"
 ```
 Expected: PASS (2 tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills tests/test_skill_convention.py
@@ -406,7 +406,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Rewrite: `README.md`
 
-- [ ] **Step 1: Rewrite `README.md`**
+- [x] **Step 1: Rewrite `README.md`**
 
 ```markdown
 # video-grid
@@ -479,7 +479,7 @@ keeps the design spec, the plan checkboxes, and `docs/build-status.md` in sync.
 ```
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -500,7 +500,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Modify: `CLAUDE.md`, `docs/build-status.md`, `docs/development-workflow.md`, `docs/pipeline-map.md`
 
-- [ ] **Step 1: Add two registry rows to `CLAUDE.md`**
+- [x] **Step 1: Add two registry rows to `CLAUDE.md`**
 
 In the Quick Reference table, after the tracking-ladder rows, add:
 
@@ -509,15 +509,15 @@ In the Quick Reference table, after the tracking-ladder rows, add:
 | Plugin packaging plan | [2026-07-22-plugin-packaging.md](docs/plans/2026-07-22-plugin-packaging.md) | Tasks 0–5: `SKILLS/`→`skills/` move + 16 ref sync, `bin/vg` launcher (cwd-independence + fail-loud), `.claude-plugin` manifests, 16 skill call-sites onto the launcher + lint guard, two-audience README, docs sync. |
 ```
 
-- [ ] **Step 2: Add a build-status entry**
+- [x] **Step 2: Add a build-status entry**
 
 At the top of `docs/build-status.md`'s recent-work section (matching the existing entry style), add a short entry summarizing the slice: the plugin manifests, the `SKILLS/`→`skills/` move, the `bin/vg` chokepoint and why `cd $ROOT` is load-bearing (ultralytics weights), the README, and the honest limits (plugin ≠ runtime, macOS-only, remote marketplace deferred). Note the suite count after Step 4.
 
-- [ ] **Step 3: Note the packaging in `docs/development-workflow.md`**
+- [x] **Step 3: Note the packaging in `docs/development-workflow.md`**
 
 Near the top env/setup section, add one line: the repo is packaged as a Claude Code plugin (`.claude-plugin/`); skills run the pipeline through `bin/vg` (the cwd-independent launcher), and `bin/vg scripts.X` is the module entrypoint. Confirm the `SKILLS/`→`skills/` reference from Task 0 reads correctly in context.
 
-- [ ] **Step 4: Full suite green**
+- [x] **Step 4: Full suite green**
 
 ```bash
 find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null
@@ -525,11 +525,11 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider 2>&1
 ```
 Expected: all green (prior count + the new launcher/manifest/convention tests). Record the number in Step 2's entry.
 
-- [ ] **Step 5: Final whole-slice review**
+- [x] **Step 5: Final whole-slice review**
 
 Dispatch a code-review subagent (superpowers:requesting-code-review) over `main..feat/plugin-packaging`. It must confirm: `bin/vg` is cwd-independent and fails loud; `.claude-plugin/` holds only manifests and names `video-grid`; no skill retains a bare `.venv/bin/python`; the `SKILLS/`→`skills/` move left no dangling live reference; README is accurate about the plugin/runtime split. Address blocking findings as separate follow-up commits (never `--amend`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CLAUDE.md docs/build-status.md docs/development-workflow.md docs/pipeline-map.md
