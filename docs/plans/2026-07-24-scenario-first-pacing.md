@@ -567,6 +567,14 @@ def test_room_after_refuses_a_start_past_the_clip():
                        shaky=False, scene_cuts=[], windows=[])
     with pytest.raises(ValueError, match="past the end"):
         clip.room_after(30.0)
+
+
+@pytest.mark.parametrize("bad", [-1.0, True, "4.0", None])
+def test_room_after_refuses_a_bad_start(bad):
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[], windows=[])
+    with pytest.raises(ValueError, match="start"):
+        clip.room_after(bad)
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -648,10 +656,29 @@ def test_best_offsets_on_a_track_shorter_than_the_window_gives_one_zero():
     assert offset.best_offsets([0.5] * 5, 1.0, [], duration=10.0, track_dur=5.0, k=3) == [0.0]
 
 
-def test_best_offsets_refuses_a_nonpositive_k():
+@pytest.mark.parametrize("bad", [0, -1, True, 1.5, None])
+def test_best_offsets_refuses_a_bad_k(bad):
     with pytest.raises(ValueError, match="k must"):
-        offset.best_offsets([0.5] * 30, 1.0, [(0.0, 0.5)], 10.0, 30.0, k=0)
+        offset.best_offsets([0.5] * 30, 1.0, [(0.0, 0.5)], 10.0, 30.0, k=bad)
+
+
+def test_best_offsets_breaks_a_tie_on_the_earlier_start_not_the_earlier_gap():
+    # Deliberately unsorted gaps with an exact win_mean tie. The pre-2026-07-24
+    # implementation returned 5.0 here (first maximum in list order) while claiming
+    # earliest-start; this pins the claim to the behaviour.
+    energy = [5, 5, 1, 1, 1, 5, 5, 1, 1, 1]
+    gaps = [(5.0, 5.5), (0.0, 0.5)]
+    assert offset.best_offsets(energy, 1.0, gaps, duration=5.0, track_dur=10.0, k=1) == [0.0]
 ```
+
+`tests/lib/test_offset.py` has no `pytest` import today (every existing test uses plain asserts) —
+add one.
+
+**Carry the original's three inline comments across.** The rewrite above drops them and each
+records a real bug: `# clamp: a 1e-9-slack gap start must not exceed latest`, `# floor: i / mix_hz
+<= latest for every i (round() could overshoot)`, and `# also weigh the exact-fit endpoint window`.
+Two land one indent deeper, which pushes them past 100 chars as trailing comments — move those onto
+their own line above the code they annotate rather than shortening them.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -673,7 +700,15 @@ def best_offsets(mix_energy: Sequence[float], mix_hz: float,
     the window moves every line with it, so the window is one of the two search axes
     (design 2026-07-24 §3) and the fitter needs alternatives to compare. Ranking is
     unchanged — mean energy over the window, candidates from vocal-gap starts, the
-    coarse per-sample slide when no gap is usable. Ties keep the earlier start."""
+    coarse per-sample slide when no gap is usable.
+
+    Ties resolve to the earliest START, not to the earliest CANDIDATE. Those differ:
+    the pre-2026-07-24 code used max(candidates, key=win_mean), which keeps the first
+    maximum in LIST order, while its docstring claimed earliest-start. The two agreed
+    only because vocal_gaps emits gaps in ascending time and no other caller exists —
+    a claim true by a caller's accident. The (-mean, start) key makes it true by
+    construction, so an unsorted `gaps` from a future caller cannot silently reorder
+    the pick."""
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"offset.best_offsets: k must be an int >= 1, got {k!r}")
     if track_dur <= duration:
