@@ -126,6 +126,24 @@ class FootageClip:
                 "shaky": self.shaky, "scene_cuts": self.scene_cuts,
                 "windows": [w.to_dict() for w in self.windows]}
 
+    def room_after(self, start: float) -> float:
+        """Seconds available after `start` inside the SAME uninterrupted shot.
+
+        Running an episode into this room is not stretching footage — no frame is slowed
+        or repeated, the shot simply runs longer. intake carves a continuous take into
+        WIN_TARGET-sized windows by LENGTH, not by content (its own docstring: "MVI_3739
+        = 1 ride -> 3 windows"), so a window boundary inside a shot marks nothing. A
+        scene cut does mark something, and running across one would splice two different
+        shots into one episode — so the room stops there."""
+        if isinstance(start, bool) or not isinstance(start, (int, float)) or start < 0:
+            raise ValueError(f"FootageClip.room_after: start must be >= 0 seconds, "
+                             f"got {start!r}")
+        if start >= self.dur:
+            raise ValueError(f"FootageClip.room_after: start {start} is past the end of "
+                             f"{self.source} ({self.dur}s)")
+        after = [c for c in self.scene_cuts if c > start]
+        return float((min(after) if after else self.dur) - start)
+
 
 @dataclass
 class Footage:

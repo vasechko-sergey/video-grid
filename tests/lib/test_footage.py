@@ -65,6 +65,40 @@ def test_clip_from_dict_rejects_unknown_top_key():
         FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30, bogus=1))
 
 
+def test_room_after_runs_to_the_next_scene_cut():
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[12.0, 25.0], windows=[])
+    assert clip.room_after(4.0) == pytest.approx(8.0)
+
+
+def test_room_after_runs_to_the_clip_end_when_no_cut_follows():
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[12.0], windows=[])
+    assert clip.room_after(20.0) == pytest.approx(10.0)
+
+
+def test_room_after_ignores_a_cut_at_the_start_itself():
+    # The in-point IS the cut: the shot that starts there runs to the NEXT one.
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[12.0, 25.0], windows=[])
+    assert clip.room_after(12.0) == pytest.approx(13.0)
+
+
+def test_room_after_refuses_a_start_past_the_clip():
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[], windows=[])
+    with pytest.raises(ValueError, match="past the end"):
+        clip.room_after(30.0)
+
+
+@pytest.mark.parametrize("bad", [-1.0, True, "4.0", None])
+def test_room_after_refuses_a_bad_start(bad):
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       shaky=False, scene_cuts=[], windows=[])
+    with pytest.raises(ValueError, match="start"):
+        clip.room_after(bad)
+
+
 def _footage():
     return Footage(clips=[FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30,
                                       scene_cuts=[3.0],
