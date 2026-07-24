@@ -140,7 +140,9 @@ def _back_edge_target(episodes: list, spine: Spine) -> float:
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
-    episode to its slot (beat_slot + re-timed dur, §5.6). Each selection episode references a
+    episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
+    at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
+    episode references a
     window by (source, integer index) into FOOTAGE and supplies editorial fields;
     window_to_episode projects the mechanical fields. Reel knobs (music/cap/
     target_dur) ride at the top level — except target_dur is instead DERIVED from the spine
