@@ -237,3 +237,27 @@ def test_best_fit_refuses_a_malformed_level_entry():
     with pytest.raises(ValueError, match="levels"):
         gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
                          levels=(("bar", 4, "extra"),))
+
+
+@pytest.mark.parametrize("bad_name", ["", 123, None])
+def test_best_fit_refuses_a_level_without_a_usable_name(bad_name):
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
+                         levels=((bad_name, 4),))
+
+
+def test_best_fit_refuses_a_level_table_that_does_not_ascend():
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
+                         levels=(("2-bar", 8), ("bar", 4)))
+
+
+def test_best_fit_keeps_the_first_phase_when_two_tie():
+    # A cut at 0.75 sits 0.25 from BOTH half-bar grids (phase 0 -> ...0.0/1.0...,
+    # phase 1 -> ...0.5/1.5...), so worst and total tie exactly. First phase wins,
+    # which is what makes the search deterministic rather than merely stable-looking.
+    beats = _metronome(40)
+    chosen, _ = gridfit.best_fit([0.75, 1.0], beats, [(0.0, 0.0)] * 2, _PINNED,
+                                 levels=(("half-bar", 2),))
+    assert chosen.phase == 0
+    assert chosen.fits is False

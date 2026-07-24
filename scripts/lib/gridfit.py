@@ -152,6 +152,7 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
     if not lvl:
         raise ValueError("gridfit.best_fit: levels must be a non-empty table of "
                          "(name, beats-per-line) — see GRID_LEVELS")
+    prev = None
     for i, entry in enumerate(lvl):
         try:
             name, n = entry
@@ -164,6 +165,15 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
         if isinstance(n, bool) or not isinstance(n, int) or n < 1:
             raise ValueError(f"gridfit.best_fit: levels[{i}] ({name!r}) beats-per-line must "
                              f"be an int >= 1, got {n!r}")
+        # `reversed()` below is the whole "coarsest first" rule, and it only means that if
+        # the table ascends. A well-typed but unordered table would silently pick a FINER
+        # level and still call it the coarsest that fits — the exact silence this stage
+        # exists to end.
+        if prev is not None and n <= prev[1]:
+            raise ValueError(f"gridfit.best_fit: levels must ascend strictly by "
+                             f"beats-per-line — levels[{i}] {(name, n)} does not follow "
+                             f"{prev}")
+        prev = (name, n)
     per_level = []
     for name, n in reversed(lvl):
         best = None
