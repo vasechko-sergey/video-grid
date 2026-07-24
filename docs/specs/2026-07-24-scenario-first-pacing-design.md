@@ -188,13 +188,19 @@ gate reports it — the honest degradation.
 | `scripts/lib/anchors.py` (new, pure) | `anchors_from_curve` — local maxima, min-gap dedup |
 | `scripts/lib/pacing.py` | `build_spine` becomes a fitter; ladder + patch knobs deleted |
 | `scripts/pacing.py` | reads `EDL.json` + `MUSIC.json`, writes the fit report |
-| `scripts/lib/offset.py` | `best_offset` returns top-K candidates |
+| `scripts/lib/offset.py` | `best_offsets` returns top-K; `best_offset` delegates at k=1 |
 | `scripts/edit_plan.py` | `_bind_pacing` stops re-timing; `_back_edge_target` normal path |
 | `scripts/montage.py` | `V1_STAGES` order: edit-plan before music/pacing |
 | `skills/using-montage`, `skills/pacing`, `skills/edit-plan` | the new order + the gate |
 
-`start_offset` and `_room_in_shot` (written mid-run, tests green) are adopted as-is:
-they are the mechanism §2 needs, and re-deriving them would be make-work.
+`start_offset` and `_room_in_shot` (written mid-run on `wip/montage-run-hardening`, tests
+green) are adopted rather than re-derived: they are the mechanism §2 needs. "Adopted" is
+not "copied verbatim", and the difference is worth naming — `_room_in_shot(ep, clip)` was
+a private helper inside `edit_plan` with no input validation, and it lands here as
+`FootageClip.room_after(start)`: a method on the type that owns the fact, so `pacing` and
+`edit_plan` share one implementation instead of two, with the bool/negative/past-the-end
+refusals the original never had. The arithmetic is unchanged, which is the part that was
+field-tested.
 
 ## 8. Testing
 
