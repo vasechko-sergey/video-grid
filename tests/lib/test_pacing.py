@@ -8,7 +8,8 @@ from scripts.lib.pacing import Slot, Spine
 def test_slot_round_trips():
     s = Slot(index=0, start=0.0, dur=1.5, energy=0.4, kind="hook")
     assert Slot.from_dict(s.to_dict()) == s
-    assert s.to_dict() == {"index": 0, "start": 0.0, "dur": 1.5, "energy": 0.4, "kind": "hook"}
+    assert s.to_dict() == {"index": 0, "start": 0.0, "dur": 1.5, "energy": 0.4, "kind": "hook",
+                           "line": None, "dev": 0.0}
 
 
 def test_slot_coerces_ints_to_float():
@@ -31,8 +32,12 @@ def test_slot_rejects_bad(kw, match):
 
 
 def test_slot_from_dict_missing_key_raises():
+    # Only "kind" is absent (line/dev supplied) so this still isolates a SINGLE missing
+    # key being named, same as it always did — not conflated with the new fit fields
+    # (that conflated case is test_slot_from_dict_names_the_missing_fit_fields below).
     with pytest.raises(ValueError, match="missing"):
-        Slot.from_dict({"index": 0, "start": 0.0, "dur": 1.0, "energy": 0.5})
+        Slot.from_dict({"index": 0, "start": 0.0, "dur": 1.0, "energy": 0.5,
+                        "line": None, "dev": 0.0})
 
 
 def _spine():
@@ -212,3 +217,48 @@ def test_spine_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "PACING.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run pacing"):
         Spine.from_json(p)
+
+
+def test_slot_carries_the_line_it_was_matched_to_and_its_deviation():
+    s = pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=0.0)
+    assert (s.line, s.dev) == (2.0, 0.0)
+    assert s.to_dict()["line"] == 2.0
+    assert s.to_dict()["dev"] == 0.0
+
+
+def test_slot_roundtrips_line_and_dev():
+    s = pacing.Slot(1, 2.0, 3.0, 0.4, "peak", line=5.0, dev=0.02)
+    assert pacing.Slot.from_dict(s.to_dict()) == s
+
+
+def test_slot_tail_has_no_line():
+    s = pacing.Slot(2, 5.0, 4.0, 0.2, "release", line=None, dev=0.0)
+    assert s.line is None
+    assert pacing.Slot.from_dict(s.to_dict()) == s
+
+
+def test_slot_refuses_a_negative_deviation():
+    with pytest.raises(ValueError, match="dev"):
+        pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=-0.1)
+
+
+@pytest.mark.parametrize("bad", ["2.0", True, [2.0]])
+def test_slot_refuses_a_nonnumeric_line(bad):
+    with pytest.raises(ValueError, match="line"):
+        pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=bad, dev=0.0)
+
+
+def test_slot_from_dict_names_the_missing_fit_fields():
+    d = {"index": 0, "start": 0.0, "dur": 2.0, "energy": 0.5, "kind": "hook"}
+    with pytest.raises(ValueError, match="line"):
+        pacing.Slot.from_dict(d)
+
+
+def test_markdown_shows_the_line_and_deviation():
+    spine = pacing.Spine((pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=0.004),
+                          pacing.Slot(1, 2.0, 2.0, 0.4, "peak", line=None, dev=0.0)),
+                         4.0, 120.0)
+    md = spine.to_markdown()
+    assert "| line | dev |" in md
+    assert "2.00 | 0.004" in md
+    assert "| – | – |" in md

@@ -19,19 +19,23 @@ _TOL = 1e-6
 
 @dataclass(frozen=True)
 class Slot:
-    """One beat-aligned span of the spine. `dur` becomes the bound episode's target
-    window length; `kind` is an energy-band label (not a temporal role — a quiet
-    intro and a quiet outro both read 'release'; 'hook' is the sole positional one)."""
+    """One fitted span of the spine. `dur` is the episode's own duration plus whatever
+    the snap was allowed to add; `line` is the beat time its out-point was matched to
+    (None on the tail — the reel's end is not a cut) and `dev` how far it still is from
+    that line. `kind` is an energy-band LABEL, not a temporal role and no longer a
+    length: a quiet intro and a quiet outro both read 'release'; 'hook' is positional."""
     index: int
     start: float
     dur: float
     energy: float
     kind: str
+    line: float | None = None
+    dev: float = 0.0
 
     def __post_init__(self) -> None:
         if isinstance(self.index, bool) or not isinstance(self.index, int) or self.index < 0:
             raise ValueError(f"Slot.index must be a non-negative int, got {self.index!r}")
-        for name in ("start", "dur", "energy"):
+        for name in ("start", "dur", "energy", "dev"):
             v = getattr(self, name)
             if isinstance(v, bool) or not isinstance(v, (int, float)):
                 raise ValueError(f"Slot.{name} must be a number, got {v!r}")
@@ -45,10 +49,17 @@ class Slot:
             raise ValueError(f"Slot.energy must be in [0, 1], got {self.energy}")
         if self.kind not in KINDS:
             raise ValueError(f"Slot.kind {self.kind!r} not in {KINDS}")
+        if self.line is not None:
+            if isinstance(self.line, bool) or not isinstance(self.line, (int, float)):
+                raise ValueError(f"Slot.line must be a beat time in seconds or None "
+                                 f"(the tail slot ends the reel, not a cut), got {self.line!r}")
+            object.__setattr__(self, "line", float(self.line))
+        if self.dev < 0:
+            raise ValueError(f"Slot.dev must be >= 0 (it is a distance), got {self.dev}")
 
     def to_dict(self) -> dict:
         return {"index": self.index, "start": self.start, "dur": self.dur,
-                "energy": self.energy, "kind": self.kind}
+                "energy": self.energy, "kind": self.kind, "line": self.line, "dev": self.dev}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Slot":
@@ -60,12 +71,13 @@ class Slot:
             raise ValueError(f"Slot.from_dict: expected a slot object with index/start/dur/energy/"
                              f"kind fields, got {type(d).__name__} — re-run pacing to regenerate "
                              f"PACING.json")
-        missing = [k for k in ("index", "start", "dur", "energy", "kind") if k not in d]
+        missing = [k for k in ("index", "start", "dur", "energy", "kind", "line", "dev") if k not in d]
         if missing:
-            raise ValueError(f"Slot.from_dict missing key(s) {missing} — a slot needs "
-                             f"index, start, dur, energy, kind")
+            raise ValueError(f"Slot.from_dict missing key(s) {missing} — a fitted slot needs "
+                             f"index, start, dur, energy, kind, line, dev. A PACING.json "
+                             f"written before 2026-07-24 has no fit; re-run pacing")
         return cls(index=d["index"], start=d["start"], dur=d["dur"],
-                   energy=d["energy"], kind=d["kind"])
+                   energy=d["energy"], kind=d["kind"], line=d["line"], dev=d["dev"])
 
 
 @dataclass(frozen=True)
@@ -131,13 +143,15 @@ class Spine:
         return cls.from_dict(json.loads(Path(path).read_text()))
 
     def to_markdown(self) -> str:
-        lines = [f"# Pacing — energy spine ({len(self.slots)} slots, "
+        lines = [f"# Pacing — fitted spine ({len(self.slots)} slots, "
                  f"{self.target_dur:.1f}s @ {self.tempo:.0f} BPM)", "",
-                 "| # | start–end | dur | energy | kind |",
-                 "|--:|-----------|----:|-------:|------|"]
+                 "| # | start–end | dur | energy | kind | line | dev |",
+                 "|--:|-----------|----:|-------:|------|-----:|----:|"]
         for s in self.slots:
+            line = f"{s.line:.2f}" if s.line is not None else "–"
+            dev = f"{s.dev:.3f}" if s.line is not None else "–"
             lines.append(f"| {s.index} | {s.start:.2f}–{s.start + s.dur:.2f} | "
-                         f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} |")
+                         f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} | {line} | {dev} |")
         return "\n".join(lines) + "\n"
 
 
