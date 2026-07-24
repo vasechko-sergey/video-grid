@@ -97,6 +97,23 @@ def test_allowance_is_half_a_beat():
 def test_allowance_refuses_a_nonpositive_tempo():
     with pytest.raises(ValueError, match="tempo"):
         gridfit.allowance(0)
+
+
+# bool subclasses int, so every numeric guard needs its own refusal test: strip the
+# bool clause and allowance(True) silently returns 30.0 while all the tests above pass.
+def test_allowance_refuses_a_bool_tempo():
+    with pytest.raises(ValueError, match="tempo"):
+        gridfit.allowance(True)
+
+
+def test_lines_at_refuses_a_bool_level():
+    with pytest.raises(ValueError, match="level_n"):
+        gridfit.lines_at([0.0, 0.5], True, 0)
+
+
+def test_lines_at_refuses_a_bool_phase():
+    with pytest.raises(ValueError, match="phase"):
+        gridfit.lines_at([0.0, 0.5], 2, True)
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -121,6 +138,7 @@ count as legal cut points. Beats are not equal — every 4th beat opens a bar, e
 a phrase — and a cut on a downbeat reads as intended where a cut on the third beat of a bar
 reads as accidental. The ladder this replaces fused the two questions into one constant
 (a slot IS 2/4/8 beats), which is why a 6-9s surf ride could not be expressed at all."""
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # (name, beats per line). Coarser = lines further apart = harder to hit, more musical
@@ -139,7 +157,7 @@ def allowance(tempo: float) -> float:
     return 30.0 / float(tempo)
 
 
-def lines_at(beats, level_n: int, phase: int) -> list[float]:
+def lines_at(beats: Sequence[float], level_n: int, phase: int) -> list[float]:
     """Every `level_n`-th DETECTED beat starting at index `phase`.
 
     Detected beats, not a synthesized metronome: librosa's grid is what check_reel's beat
@@ -160,7 +178,7 @@ def lines_at(beats, level_n: int, phase: int) -> list[float]:
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
-Expected: PASS (7 tests)
+Expected: PASS (10 tests — 7 behaviours + the three bool refusals)
 
 - [ ] **Step 5: Commit**
 
@@ -236,6 +254,21 @@ def test_fit_refuses_a_nonpositive_episode():
 def test_fit_refuses_an_episode_shortened_out_of_existence():
     with pytest.raises(ValueError, match="bounds"):
         gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-2.0, 0.5), (-0.5, 0.5)], 0.5)
+
+
+def test_fit_refuses_bounds_whose_low_exceeds_its_high():
+    with pytest.raises(ValueError, match="empty"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(0.5, -0.5), (-0.5, 0.5)], 0.5)
+
+
+def test_fit_refuses_an_empty_edit():
+    with pytest.raises(ValueError, match="durs"):
+        gridfit.fit_level([], [0.0, 2.0], [], 0.5)
+
+
+def test_fit_refuses_an_empty_line_set():
+    with pytest.raises(ValueError, match="lines"):
+        gridfit.fit_level([1.0, 1.0], [], [(-0.5, 0.5)] * 2, 0.5)
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -297,7 +330,10 @@ def fit_level(durs, lines, bounds, allow: float) -> Fit:
     for i, (lo, hi) in enumerate(b):
         if lo > hi:
             raise ValueError(f"gridfit.fit_level: bounds[{i}] is empty ({lo} > {hi})")
-        if d[i] + lo <= 0:
+        # The tail is exempt: the walk forces its shift to 0.0 and never reads its bound,
+        # so refusing a "too generous" one there would be a false refusal on a value that
+        # cannot be used. Every other episode must survive its own lower bound.
+        if i < len(d) - 1 and d[i] + lo <= 0:
             raise ValueError(f"gridfit.fit_level: bounds[{i}] lets episode {i} shrink to "
                              f"{d[i] + lo:.3f}s — an episode must stay positive")
     if not ln:
@@ -324,7 +360,7 @@ def fit_level(durs, lines, bounds, allow: float) -> Fit:
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
-Expected: PASS (15 tests)
+Expected: PASS (21 tests in the file — Task 0's 10 plus these 11)
 
 - [ ] **Step 5: Commit**
 
@@ -449,7 +485,7 @@ def best_fit(durs, beats, bounds, allow: float, levels=GRID_LEVELS):
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
-Expected: PASS (21 tests)
+Expected: PASS (27 tests in the file)
 
 - [ ] **Step 5: Commit**
 
