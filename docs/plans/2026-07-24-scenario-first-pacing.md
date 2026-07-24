@@ -269,6 +269,22 @@ def test_fit_refuses_an_empty_edit():
 def test_fit_refuses_an_empty_line_set():
     with pytest.raises(ValueError, match="lines"):
         gridfit.fit_level([1.0, 1.0], [], [(-0.5, 0.5)] * 2, 0.5)
+
+
+def test_fit_refuses_bounds_that_do_not_straddle_the_allowance():
+    with pytest.raises(ValueError, match="does not overlap"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(0.5, 1.0), (-0.5, 0.5)], 0.288)
+
+
+def test_fit_refuses_bounds_that_sit_entirely_below_the_allowance():
+    with pytest.raises(ValueError, match="does not overlap"):
+        gridfit.fit_level([10.0, 1.0], [0.0, 2.0], [(-1.0, -0.3), (-0.5, 0.5)], 0.288)
+
+
+@pytest.mark.parametrize("bad", [0, -0.5, True, "0.3", None])
+def test_fit_refuses_a_bad_allowance(bad):
+    with pytest.raises(ValueError, match="allow must"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, bad)
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -298,9 +314,9 @@ class Fit:
     level: str
     level_n: int
     phase: int
-    shifts: tuple
-    devs: tuple
-    needs: tuple
+    shifts: tuple[float, ...]
+    devs: tuple[float, ...]
+    needs: tuple[float, ...]
     worst: float
     total: float
     fits: bool
@@ -327,9 +343,23 @@ def fit_level(durs, lines, bounds, allow: float) -> Fit:
     if len(b) != len(d):
         raise ValueError(f"gridfit.fit_level: bounds must carry one (lo, hi) per episode — "
                          f"{len(b)} bounds against {len(d)} durs")
+    if isinstance(allow, bool) or not isinstance(allow, (int, float)) or allow <= 0:
+        raise ValueError(f"gridfit.fit_level: allow must be a positive number of seconds "
+                         f"(see gridfit.allowance), got {allow!r}")
     for i, (lo, hi) in enumerate(b):
         if lo > hi:
             raise ValueError(f"gridfit.fit_level: bounds[{i}] is empty ({lo} > {hi})")
+        # clamp(need, max(lo, -allow), min(hi, allow)) is only a clamp when those two ends
+        # are ordered. Disjoint intervals collapse it onto one endpoint and it then breaks
+        # whichever bound did not produce that endpoint — a shift past the allowance, or a
+        # shift past the shot's room, in silence. Bounds describe a shot's room AROUND its
+        # current length, so they straddle 0; a pair that does not is a caller bug.
+        if i < len(d) - 1 and (lo > allow or hi < -allow):
+            raise ValueError(
+                f"gridfit.fit_level: bounds[{i}] ({lo}, {hi}) does not overlap the "
+                f"±{allow} allowance — the clamp would have to violate one of the two "
+                f"to produce a shift. Bounds are a shot's room around its CURRENT "
+                f"length, so they straddle 0; a pair that does not is a caller bug")
         # The tail is exempt: the walk forces its shift to 0.0 and never reads its bound,
         # so refusing a "too generous" one there would be a false refusal on a value that
         # cannot be used. Every other episode must survive its own lower bound.
@@ -404,9 +434,15 @@ def test_best_fit_falls_to_a_finer_level_and_names_what_it_rejected():
     assert all(f.fits is False for f in rejected)
 
 
+# _PINNED is "no room to move at all" expressed legally: fit_level refuses allow <= 0
+# (it is a musical budget, and zero is not one), so a frozen edit is a pinned bound
+# with a negligible allowance rather than a zero one.
+_PINNED = 1e-6
+
+
 def test_best_fit_returns_the_least_bad_when_nothing_fits():
     beats = _metronome(40)
-    chosen, rejected = gridfit.best_fit([0.7, 0.7, 0.7], beats, [(0.0, 0.0)] * 3, 0.0)
+    chosen, rejected = gridfit.best_fit([0.7, 0.7, 0.7], beats, [(0.0, 0.0)] * 3, _PINNED)
     assert chosen.fits is False
     assert chosen.worst == min(f.worst for f in rejected + (chosen,))
 
@@ -414,7 +450,7 @@ def test_best_fit_returns_the_least_bad_when_nothing_fits():
 def test_best_fit_searches_every_phase_of_a_level():
     # Lines every 4th beat; the cut lands on beat index 1, so only phase 1 fits.
     beats = _metronome(40)
-    chosen, _ = gridfit.best_fit([0.5, 0.5], beats, [(0.0, 0.0)] * 2, 0.0,
+    chosen, _ = gridfit.best_fit([0.5, 0.5], beats, [(0.0, 0.0)] * 2, _PINNED,
                                  levels=(("bar", 4),))
     assert chosen.phase == 1
     assert chosen.fits is True
