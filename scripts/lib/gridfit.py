@@ -11,6 +11,7 @@ count as legal cut points. Beats are not equal — every 4th beat opens a bar, e
 a phrase — and a cut on a downbeat reads as intended where a cut on the third beat of a bar
 reads as accidental. The ladder this replaces fused the two questions into one constant
 (a slot IS 2/4/8 beats), which is why a 6-9s surf ride could not be expressed at all."""
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # (name, beats per line). Coarser = lines further apart = harder to hit, more musical
@@ -29,7 +30,7 @@ def allowance(tempo: float) -> float:
     return 30.0 / float(tempo)
 
 
-def lines_at(beats, level_n: int, phase: int) -> list[float]:
+def lines_at(beats: Sequence[float], level_n: int, phase: int) -> list[float]:
     """Every `level_n`-th DETECTED beat starting at index `phase`.
 
     Detected beats, not a synthesized metronome: librosa's grid is what check_reel's beat

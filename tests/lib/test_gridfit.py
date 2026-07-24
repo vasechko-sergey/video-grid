@@ -42,3 +42,19 @@ def test_allowance_is_half_a_beat():
 def test_allowance_refuses_a_nonpositive_tempo():
     with pytest.raises(ValueError, match="tempo"):
         gridfit.allowance(0)
+
+
+def test_allowance_refuses_a_bool_tempo():
+    # bool is a subclass of int: True == 1 would silently pass as tempo=1 without this guard.
+    with pytest.raises(ValueError, match="tempo"):
+        gridfit.allowance(True)
+
+
+def test_lines_at_refuses_a_bool_level():
+    with pytest.raises(ValueError, match="level_n"):
+        gridfit.lines_at([0.0, 0.5], True, 0)
+
+
+def test_lines_at_refuses_a_bool_phase():
+    with pytest.raises(ValueError, match="phase"):
+        gridfit.lines_at([0.0, 0.5], 2, True)
