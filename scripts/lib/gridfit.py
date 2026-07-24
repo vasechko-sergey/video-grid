@@ -133,3 +133,50 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
     worst = max(devs) if devs else 0.0
     return Fit(level="", level_n=0, phase=0, shifts=tuple(shifts), devs=tuple(devs),
                needs=tuple(needs), worst=worst, total=sum(devs), fits=worst <= FIT_EPS)
+
+
+def best_fit(durs: Sequence[float], beats: Sequence[float],
+             bounds: Sequence[tuple[float, float]], allow: float,
+             levels: Sequence[tuple[str, int]] = GRID_LEVELS) -> tuple[Fit, tuple[Fit, ...]]:
+    """The coarsest level whose lines the cuts can reach → (chosen Fit, rejected Fits).
+
+    Walks `levels` coarse → fine and returns the FIRST that fits, so the choice is a rule
+    rather than three hardcoded beat counts. Every coarser level it passed over comes back
+    in `rejected`, best-phase first, so the report can print the number that rejected it —
+    silence here is what let the last run miss a phrase grid by 0.076s per cut without
+    anyone knowing.
+
+    Nothing fits → the least-bad Fit is returned with `fits` False and every level in
+    `rejected`; the caller decides whether to accept an off-grid reel."""
+    lvl = list(levels)
+    if not lvl:
+        raise ValueError("gridfit.best_fit: levels must be a non-empty table of "
+                         "(name, beats-per-line) — see GRID_LEVELS")
+    for i, entry in enumerate(lvl):
+        try:
+            name, n = entry
+        except (TypeError, ValueError):
+            raise ValueError(f"gridfit.best_fit: levels[{i}] must be a (name, beats-per-line) "
+                             f"pair, got {entry!r}") from None
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"gridfit.best_fit: levels[{i}] name must be a non-empty str, "
+                             f"got {name!r}")
+        if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+            raise ValueError(f"gridfit.best_fit: levels[{i}] ({name!r}) beats-per-line must "
+                             f"be an int >= 1, got {n!r}")
+    per_level = []
+    for name, n in reversed(lvl):
+        best = None
+        for phase in range(n):
+            lines = lines_at(beats, n, phase)
+            f = fit_level(durs, lines, bounds, allow)
+            f = Fit(level=name, level_n=n, phase=phase, shifts=f.shifts, devs=f.devs,
+                    needs=f.needs, worst=f.worst, total=f.total, fits=f.fits)
+            if best is None or (f.worst, f.total) < (best.worst, best.total):
+                best = f
+        per_level.append(best)
+    for i, f in enumerate(per_level):
+        if f.fits:
+            return f, tuple(per_level[:i])
+    least = min(per_level, key=lambda f: (f.worst, f.total))
+    return least, tuple(per_level)

@@ -145,3 +145,95 @@ def test_fit_refuses_bounds_that_sit_entirely_below_the_allowance():
 def test_fit_refuses_a_bad_allowance(bad):
     with pytest.raises(ValueError, match="allow must"):
         gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, bad)
+
+
+def _metronome(n, step=0.5):
+    return [i * step for i in range(n)]
+
+
+# _PINNED is "no room to move at all" expressed legally: fit_level refuses allow <= 0
+# (it is a musical budget, and zero is not one), so a frozen edit is a pinned bound
+# with a negligible allowance rather than a zero one.
+_PINNED = 1e-6
+
+
+def test_best_fit_prefers_the_coarsest_level_that_fits():
+    # 2.0s episodes on a 0.5s beat: every level up to "bar" (4 beats = 2.0s) lands
+    # exactly, so the coarsest fitting one wins over the finest.
+    beats = _metronome(40)
+    chosen, rejected = gridfit.best_fit([2.0] * 4, beats, [(-0.2, 0.2)] * 4, 0.25)
+    assert chosen.level == "bar"
+    assert chosen.fits is True
+    assert [f.level for f in rejected] == ["phrase", "2-bar"]
+
+
+def test_best_fit_falls_to_a_finer_level_and_names_what_it_rejected():
+    beats = _metronome(40)
+    chosen, rejected = gridfit.best_fit([1.0] * 4, beats, [(-0.1, 0.1)] * 4, 0.1)
+    assert chosen.level == "half-bar"
+    assert [f.level for f in rejected] == ["phrase", "2-bar", "bar"]
+    assert all(f.fits is False for f in rejected)
+
+
+def test_best_fit_returns_the_least_bad_when_nothing_fits():
+    beats = _metronome(40)
+    chosen, rejected = gridfit.best_fit([0.7, 0.7, 0.7], beats, [(0.0, 0.0)] * 3, _PINNED)
+    assert chosen.fits is False
+    assert chosen.worst == min(f.worst for f in rejected + (chosen,))
+
+
+def test_best_fit_searches_every_phase_of_a_level():
+    # Lines every 4th beat; the cut lands on beat index 1, so only phase 1 fits.
+    beats = _metronome(40)
+    chosen, _ = gridfit.best_fit([0.5, 0.5], beats, [(0.0, 0.0)] * 2, _PINNED,
+                                 levels=(("bar", 4),))
+    assert chosen.phase == 1
+    assert chosen.fits is True
+
+
+def test_best_fit_the_runs_own_reel_reaches_beat_but_not_phrase():
+    """The 2026-07-24 run's real cut lengths (design §3): beat fits, coarser does not,
+    and the reason is a 0.076s-per-cut drift against the 9.216s phrase."""
+    tempo = 104.16666666666667
+    beat = 60.0 / tempo
+    beats = [i * beat for i in range(120)]
+    durs = [4.98, 9.14, 9.14, 9.16, 8.85, 8.73]
+    allow = gridfit.allowance(tempo)
+    chosen, rejected = gridfit.best_fit(durs, beats, [(-allow, allow)] * 6, allow)
+    assert chosen.level == "beat"
+    assert chosen.fits is True
+    phrase = next(f for f in rejected if f.level == "phrase")
+    assert phrase.fits is False
+    assert max(phrase.needs) > allow
+
+
+def test_best_fit_carries_the_level_and_phase_onto_the_returned_fit():
+    beats = _metronome(40)
+    chosen, _ = gridfit.best_fit([2.0] * 4, beats, [(-0.2, 0.2)] * 4, 0.25)
+    assert (chosen.level, chosen.level_n) == ("bar", 4)
+    assert 0 <= chosen.phase < chosen.level_n
+    assert len(chosen.shifts) == 4
+
+
+def test_best_fit_refuses_an_empty_level_table():
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1, levels=())
+
+
+def test_best_fit_refuses_a_level_with_a_beats_per_line_below_one():
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
+                         levels=(("bar", 0),))
+
+
+def test_best_fit_refuses_a_bool_beats_per_line():
+    # bool is a subclass of int: True == 1 would silently pass as beats-per-line=1.
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
+                         levels=(("bar", True),))
+
+
+def test_best_fit_refuses_a_malformed_level_entry():
+    with pytest.raises(ValueError, match="levels"):
+        gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1,
+                         levels=(("bar", 4, "extra"),))
