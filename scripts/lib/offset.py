@@ -59,8 +59,15 @@ def best_offsets(mix_energy: Sequence[float], mix_hz: float,
     Ranking is unchanged from the original best_offset (design §2): candidate starts =
     gap starts with start <= track_dur - duration (the window must fit the track); a
     gap starting later is dropped. No usable gap → argmax over a coarse per-sample
-    slide (honest degrade — may begin mid-phrase; the driver logs it). Ties resolve to
-    the earliest start."""
+    slide (honest degrade — may begin mid-phrase; the driver logs it).
+
+    Ties resolve to the earliest START, not to the earliest CANDIDATE. Those differ:
+    the pre-2026-07-24 code used max(candidates, key=win_mean), which keeps the first
+    maximum in LIST order, while its docstring claimed earliest-start. The two agreed
+    only because vocal_gaps emits gaps in ascending time and no other caller exists —
+    a claim true by a caller's accident. The (-mean, start) key makes it true by
+    construction, so an unsorted `gaps` from a future caller cannot silently reorder
+    the pick."""
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"offset.best_offsets: k must be an int >= 1, got {k!r}")
     if track_dur <= duration:

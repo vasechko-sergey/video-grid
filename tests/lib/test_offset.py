@@ -141,3 +141,12 @@ def test_best_offsets_on_a_track_shorter_than_the_window_gives_one_zero():
 def test_best_offsets_refuses_a_bad_k(bad):
     with pytest.raises(ValueError, match="k must"):
         offset.best_offsets([0.5] * 30, 1.0, [(0.0, 0.5)], 10.0, 30.0, k=bad)
+
+
+def test_best_offsets_breaks_a_tie_on_the_earlier_start_not_the_earlier_gap():
+    # Deliberately unsorted gaps with an exact win_mean tie. The pre-2026-07-24
+    # implementation returned 5.0 here (first maximum in list order) while claiming
+    # earliest-start; this pins the claim to the behaviour.
+    energy = [5, 5, 1, 1, 1, 5, 5, 1, 1, 1]
+    gaps = [(5.0, 5.5), (0.0, 0.5)]
+    assert offset.best_offsets(energy, 1.0, gaps, duration=5.0, track_dur=10.0, k=1) == [0.0]
