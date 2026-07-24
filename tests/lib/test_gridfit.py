@@ -124,3 +124,8 @@ def test_fit_refuses_an_empty_edit():
 def test_fit_refuses_an_empty_line_set():
     with pytest.raises(ValueError, match="lines"):
         gridfit.fit_level([1.0, 1.0], [], [(-0.5, 0.5)] * 2, 0.5)
+
+
+def test_fit_refuses_bounds_whose_low_exceeds_its_high():
+    with pytest.raises(ValueError, match="empty"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(0.5, -0.5), (-0.5, 0.5)], 0.5)
