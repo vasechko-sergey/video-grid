@@ -65,9 +65,9 @@ class Fit:
     level: str
     level_n: int
     phase: int
-    shifts: tuple
-    devs: tuple
-    needs: tuple
+    shifts: tuple[float, ...]
+    devs: tuple[float, ...]
+    needs: tuple[float, ...]
     worst: float
     total: float
     fits: bool
@@ -95,13 +95,22 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
     if len(b) != len(d):
         raise ValueError(f"gridfit.fit_level: bounds must carry one (lo, hi) per episode — "
                          f"{len(b)} bounds against {len(d)} durs")
+    if isinstance(allow, bool) or not isinstance(allow, (int, float)) or allow <= 0:
+        raise ValueError(f"gridfit.fit_level: allow must be a positive number of seconds "
+                         f"(see gridfit.allowance), got {allow!r}")
     for i, (lo, hi) in enumerate(b):
         if lo > hi:
             raise ValueError(f"gridfit.fit_level: bounds[{i}] is empty ({lo} > {hi})")
-        # The tail's own bound is never consulted below (its shift is forced to 0.0 — see
-        # the loop), so a tail bound that LOOKS like it shrinks the episode to nothing is
-        # not a real problem: skip that check for i == len(d) - 1, or a valid edit where
-        # only the tail happens to carry a tight/degenerate bound would refuse to fit.
+        # Both checks below are non-tail only: the walk forces the tail's shift to 0.0 and
+        # never reads its bound (see the loop), so a tail bound that looks too generous for
+        # the allowance, or that looks like it shrinks the episode away, is not a real
+        # problem — refusing it would be a false refusal on a value that cannot be used.
+        if i < len(d) - 1 and (lo > allow or hi < -allow):
+            raise ValueError(
+                f"gridfit.fit_level: bounds[{i}] ({lo}, {hi}) does not overlap the "
+                f"±{allow} allowance — the clamp would have to violate one of the two "
+                f"to produce a shift. Bounds are a shot's room around its CURRENT "
+                f"length, so they straddle 0; a pair that does not is a caller bug")
         if i < len(d) - 1 and d[i] + lo <= 0:
             raise ValueError(f"gridfit.fit_level: bounds[{i}] lets episode {i} shrink to "
                              f"{d[i] + lo:.3f}s — an episode must stay positive")

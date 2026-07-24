@@ -129,3 +129,19 @@ def test_fit_refuses_an_empty_line_set():
 def test_fit_refuses_bounds_whose_low_exceeds_its_high():
     with pytest.raises(ValueError, match="empty"):
         gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(0.5, -0.5), (-0.5, 0.5)], 0.5)
+
+
+def test_fit_refuses_bounds_that_do_not_straddle_the_allowance():
+    with pytest.raises(ValueError, match="does not overlap"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(0.5, 1.0), (-0.5, 0.5)], 0.288)
+
+
+def test_fit_refuses_bounds_that_sit_entirely_below_the_allowance():
+    with pytest.raises(ValueError, match="does not overlap"):
+        gridfit.fit_level([10.0, 1.0], [0.0, 2.0], [(-1.0, -0.3), (-0.5, 0.5)], 0.288)
+
+
+@pytest.mark.parametrize("bad", [0, -0.5, True, "0.3", None])
+def test_fit_refuses_a_bad_allowance(bad):
+    with pytest.raises(ValueError, match="allow must"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, bad)
