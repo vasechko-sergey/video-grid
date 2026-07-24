@@ -46,3 +46,81 @@ def lines_at(beats: Sequence[float], level_n: int, phase: int) -> list[float]:
         raise ValueError("gridfit.lines_at got no beats — MUSIC.json analyze() found none; "
                          "check the track/window (a grid needs a beat list)")
     return seq[phase::level_n]
+
+
+FIT_EPS = 0.01     # s. A residual below this counts as "on the line": it is five times
+                   # tighter than check_reel's 0.05s beat tolerance, so a fit this stage
+                   # calls good cannot fail that gate, and it is loose enough that float
+                   # accumulation over a dozen cuts never flips a verdict.
+
+
+@dataclass(frozen=True)
+class Fit:
+    """One (level, phase) evaluated against a fixed set of episode durations.
+
+    `shifts` is per EPISODE (seconds added to its duration, tail always 0.0); `devs` and
+    `needs` are per CUT (one fewer than the episodes). `needs` is what the cut asked for
+    before clamping, `devs` what is left after — the pair is what lets the report say
+    "phrase needed 0.42s, the allowance is 0.29" instead of only "it did not fit"."""
+    level: str
+    level_n: int
+    phase: int
+    shifts: tuple
+    devs: tuple
+    needs: tuple
+    worst: float
+    total: float
+    fits: bool
+
+
+def fit_level(durs: Sequence[float], lines: Sequence[float],
+              bounds: Sequence[tuple[float, float]], allow: float) -> Fit:
+    """Greedy left-to-right snap of the CUMULATIVE cut times onto `lines`.
+
+    Cut i sits at the sum of durations 0..i, so moving one out-point moves every later
+    cut with it — the walk therefore carries a running position instead of treating cuts
+    independently. Each shift is clamped twice: by `allow` (the musical budget) and by
+    that episode's own `bounds` (the room its shot has left, and how far it may shrink),
+    whichever binds first. What is left over is the deviation the report shows.
+
+    The LAST episode never moves: its out-point is the reel's end, not a cut, and nothing
+    follows it to be out of time with. `level`/`phase` are filled in by best_fit."""
+    d = [float(x) for x in durs]
+    b = [(float(lo), float(hi)) for lo, hi in bounds]
+    ln = [float(x) for x in lines]
+    if not d:
+        raise ValueError("gridfit.fit_level got no durs — a fit needs at least one episode")
+    if any(x <= 0 for x in d):
+        raise ValueError(f"gridfit.fit_level: durs must all be > 0 seconds, got {durs!r}")
+    if len(b) != len(d):
+        raise ValueError(f"gridfit.fit_level: bounds must carry one (lo, hi) per episode — "
+                         f"{len(b)} bounds against {len(d)} durs")
+    for i, (lo, hi) in enumerate(b):
+        if lo > hi:
+            raise ValueError(f"gridfit.fit_level: bounds[{i}] is empty ({lo} > {hi})")
+        # The tail's own bound is never consulted below (its shift is forced to 0.0 — see
+        # the loop), so a tail bound that LOOKS like it shrinks the episode to nothing is
+        # not a real problem: skip that check for i == len(d) - 1, or a valid edit where
+        # only the tail happens to carry a tight/degenerate bound would refuse to fit.
+        if i < len(d) - 1 and d[i] + lo <= 0:
+            raise ValueError(f"gridfit.fit_level: bounds[{i}] lets episode {i} shrink to "
+                             f"{d[i] + lo:.3f}s — an episode must stay positive")
+    if not ln:
+        raise ValueError("gridfit.fit_level got no lines — see lines_at")
+    pos, shifts, devs, needs = 0.0, [], [], []
+    for i, dur in enumerate(d):
+        if i == len(d) - 1:
+            shifts.append(0.0)
+            break
+        want = pos + dur
+        line = min(ln, key=lambda L: abs(L - want))
+        need = line - want
+        lo, hi = b[i]
+        shift = max(max(lo, -allow), min(min(hi, allow), need))
+        shifts.append(shift)
+        pos = want + shift
+        devs.append(abs(pos - line))
+        needs.append(abs(need))
+    worst = max(devs) if devs else 0.0
+    return Fit(level="", level_n=0, phase=0, shifts=tuple(shifts), devs=tuple(devs),
+               needs=tuple(needs), worst=worst, total=sum(devs), fits=worst <= FIT_EPS)

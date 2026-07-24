@@ -58,3 +58,69 @@ def test_lines_at_refuses_a_bool_level():
 def test_lines_at_refuses_a_bool_phase():
     with pytest.raises(ValueError, match="phase"):
         gridfit.lines_at([0.0, 0.5], 2, True)
+
+
+def test_fit_snaps_the_cumulative_cut_not_each_duration():
+    # Three 1.9s episodes against 2.0s lines. Cut 0 wants +0.1; if each duration were
+    # snapped independently cut 1 would want +0.1 too — but after cut 0 moved, cut 1
+    # already sits at 3.8+0.1=3.9 and needs only +0.1 to reach 4.0. The third episode
+    # is the tail: nothing follows it, so it never moves.
+    f = gridfit.fit_level([1.9, 1.9, 1.9], [0.0, 2.0, 4.0, 6.0],
+                          [(-0.5, 0.5)] * 3, 0.5)
+    assert f.shifts == pytest.approx((0.1, 0.1, 0.0), abs=1e-9)
+    assert f.worst == pytest.approx(0.0, abs=1e-9)
+    assert f.fits is True
+
+
+def test_fit_leaves_the_tail_episode_alone():
+    f = gridfit.fit_level([2.4], [0.0, 2.0, 4.0], [(-0.5, 0.5)], 0.5)
+    assert f.shifts == (0.0,)
+    assert f.devs == ()
+    assert f.fits is True
+
+
+def test_fit_clamps_to_the_allowance_and_reports_the_residual():
+    # Cut wants +0.8 but the allowance is 0.3 → it moves 0.3 and stays 0.5 short.
+    f = gridfit.fit_level([1.2, 1.0], [0.0, 2.0], [(-1.0, 1.0)] * 2, 0.3)
+    assert f.shifts == pytest.approx((0.3, 0.0), abs=1e-9)
+    assert f.devs == pytest.approx((0.5,), abs=1e-9)
+    assert f.needs == pytest.approx((0.8,), abs=1e-9)
+    assert f.fits is False
+
+
+def test_fit_clamps_to_the_shot_s_room_before_the_allowance():
+    # The allowance would permit +0.8, the shot only has +0.2 left.
+    f = gridfit.fit_level([1.2, 1.0], [0.0, 2.0], [(-1.0, 0.2), (-1.0, 1.0)], 1.0)
+    assert f.shifts == pytest.approx((0.2, 0.0), abs=1e-9)
+    assert f.devs == pytest.approx((0.6,), abs=1e-9)
+
+
+def test_fit_may_shorten_as_well_as_lengthen():
+    f = gridfit.fit_level([2.3, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, 0.5)
+    assert f.shifts == pytest.approx((-0.3, 0.0), abs=1e-9)
+    assert f.fits is True
+
+
+def test_fit_refuses_bounds_that_do_not_match_the_episodes():
+    with pytest.raises(ValueError, match="bounds"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)], 0.5)
+
+
+def test_fit_refuses_a_nonpositive_episode():
+    with pytest.raises(ValueError, match="durs"):
+        gridfit.fit_level([0.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, 0.5)
+
+
+def test_fit_refuses_an_episode_shortened_out_of_existence():
+    with pytest.raises(ValueError, match="bounds"):
+        gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-2.0, 0.5), (-0.5, 0.5)], 0.5)
+
+
+def test_fit_refuses_an_empty_edit():
+    with pytest.raises(ValueError, match="durs"):
+        gridfit.fit_level([], [0.0, 2.0], [], 0.5)
+
+
+def test_fit_refuses_an_empty_line_set():
+    with pytest.raises(ValueError, match="lines"):
+        gridfit.fit_level([1.0, 1.0], [], [(-0.5, 0.5)] * 2, 0.5)
