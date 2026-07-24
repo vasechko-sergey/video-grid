@@ -108,10 +108,19 @@ but only the top-K the offset picker offers) times an integer phase. A level the
 rejects cannot be rescued by the real search; a level it accepts still has to be
 re-checked against the detected beats.
 
-The interesting half is *why* phrase misses. The reel's cuts are spaced 9.14 / 9.14 /
-9.16 / 8.85 s against a 9.216 s phrase — **0.076 s short per cut**, accumulating. The
-reel was a rounding error away from breathing in whole phrases and nothing said so.
-The fit report says it (§6).
+The interesting half is *why* phrase misses, and it is not uniform. Measured through the
+real fitter (the Task 2 golden), each cut's distance to its nearest phrase line is
+**0.204 / 0.076 / 0.076 / 0.056 / 0.366 s**. Three of the five are within a tenth of a
+phrase — the two 9.14 s rides are 0.076 short of the 9.216 s phrase, the 9.16 s one 0.056
+— so the middle of this reel really is a rounding error away from breathing in whole
+phrases. The other two are not: the 4.98 s hook sits about half a phrase from any line,
+and the last ride misses by **0.366 s**, past the 0.288 s allowance. That one cut is what
+rejects the level.
+
+The distinction matters because it names two different fixes. A uniform small drift is
+absorbed by lengthening each ride slightly. A single large miss is not — it needs that
+episode re-picked, or the hook rebuilt to a phrase. Nothing in the last run said either.
+The fit report says both (§6).
 
 ## 4. The allowance, and the action anchor
 
@@ -191,8 +200,8 @@ they are the mechanism §2 needs, and re-deriving them would be make-work.
 
 - **Pure, deterministic:** `gridfit` and `anchors` are stdlib-only and pinned by
   goldens, like `pacing`/`offset`/`mood` before them. The §3 table becomes a test —
-  the run's real cut times and tempo, asserting beat fits and phrase does not, with
-  the 0.076 s/cut drift as the named reason.
+  the run's real cut times and tempo, asserting beat fits and phrase does not, and
+  pinning the per-cut distances so the *reason* is checked and not just the verdict.
 - **Mutation checks, as steps not suggestions:** an allowance that reads ½ *line*
   instead of ½ *beat* must fail a test (§4's landmine); a fitter that silently picks a
   finer level when the requested one misses must fail another.

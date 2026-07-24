@@ -1982,6 +1982,19 @@ it FAILS, then revert.
 | 7 | `measure_curve` puts `-ss` before `-i` | `proc.run`'s landmine guard raises (`tests/lib/test_landmine_scan.py` + the integration test) |
 | 8 | `anchors_from_curve` keeps the earlier of two close peaks | `test_two_spikes_closer_than_the_min_gap_collapse_to_the_stronger` |
 
+- [ ] **Step 1b: Correct the Task 2 golden's docstring**
+
+`tests/lib/test_gridfit.py::test_best_fit_the_runs_own_reel_reaches_beat_but_not_phrase`
+says "the reason is a 0.076s-per-cut drift". Measurement (Task 2's review) shows the real
+distances are `(0.204, 0.076, 0.076, 0.056, 0.366)` — three cuts near, one hook far, and
+the decisive miss is 0.366 on the last ride. Design §3 was corrected; correct the
+docstring to match, and add the measured tuple as an assertion so the *reason* is pinned,
+not only the verdict:
+
+```python
+    assert phrase.needs == pytest.approx((0.204, 0.076, 0.076, 0.056, 0.366), abs=1e-3)
+```
+
 - [ ] **Step 2: Sync the docs**
 
 `CLAUDE.md` — add two registry rows after the pacing rows:
