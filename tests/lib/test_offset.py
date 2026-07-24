@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from scripts.lib import offset
 
@@ -109,3 +110,34 @@ def test_best_offset_clamps_a_gap_start_within_epsilon_slack():
     off = offset.best_offset([9.0, 9.0, 9.0, 9.0, 1.0, 1.0, 1.0, 1.0], mix_hz=2.0,
                              gaps=((2.0 + 1e-10, 2.5),), duration=2.0, track_dur=4.0)
     assert off == 2.0                                     # clamped down from 2.0000000001
+
+
+def test_best_offsets_returns_k_candidates_best_first():
+    energy = [0.1] * 10 + [0.9] * 10 + [0.5] * 10
+    gaps = [(0.0, 0.5), (10.0, 10.5), (20.0, 20.5)]
+    got = offset.best_offsets(energy, 1.0, gaps, duration=10.0, track_dur=30.0, k=3)
+    assert got == [10.0, 20.0, 0.0]
+
+
+def test_best_offsets_k_of_one_is_the_old_single_pick():
+    energy = [0.1] * 10 + [0.9] * 10 + [0.5] * 10
+    gaps = [(0.0, 0.5), (10.0, 10.5), (20.0, 20.5)]
+    single = offset.best_offset(energy, 1.0, gaps, duration=10.0, track_dur=30.0)
+    assert offset.best_offsets(energy, 1.0, gaps, 10.0, 30.0, k=1) == [single]
+
+
+def test_best_offsets_never_returns_more_than_it_has():
+    energy = [0.5] * 30
+    got = offset.best_offsets(energy, 1.0, [(0.0, 0.5)], duration=10.0,
+                              track_dur=30.0, k=5)
+    assert len(got) == 1
+
+
+def test_best_offsets_on_a_track_shorter_than_the_window_gives_one_zero():
+    assert offset.best_offsets([0.5] * 5, 1.0, [], duration=10.0, track_dur=5.0, k=3) == [0.0]
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, 1.5, None])
+def test_best_offsets_refuses_a_bad_k(bad):
+    with pytest.raises(ValueError, match="k must"):
+        offset.best_offsets([0.5] * 30, 1.0, [(0.0, 0.5)], 10.0, 30.0, k=bad)
