@@ -2,7 +2,7 @@ import json
 
 import pytest
 from scripts import edit_plan
-from scripts.lib.edl import EDL
+from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 
@@ -211,6 +211,7 @@ def test_write_edit_plan_wrong_shaped_footage_raises_valueerror_not_attributeerr
     assert not (tmp_path / "out" / "EDL.json").exists()          # nothing written
 
 
+from scripts.lib import pacing
 from scripts.lib.pacing import Slot, Spine
 
 
@@ -222,14 +223,20 @@ def _sel3():
 
 
 def _spine2():
-    return Spine(slots=(Slot(0, 0.0, 1.0, 0.2, "hook"),
-                        Slot(1, 1.0, 1.5, 0.9, "peak")), target_dur=2.5, tempo=120.0)
+    # A FITTED spine's slot durations sit within the snap allowance of their own
+    # episodes' durations (_sel3: window durs 2.0s, 3.0s) — the fitter reads the same
+    # EDL, so it can only nudge an out-point by half a beat, never invent a length.
+    return Spine(slots=(Slot(0, 0.0, 2.1, 0.2, "hook"),
+                        Slot(1, 2.1, 3.05, 0.9, "peak")), target_dur=5.15, tempo=120.0)
 
 
-def test_build_edl_pacing_binds_slot_and_retimes_dur():
+def test_build_edl_pacing_binds_slot_and_applies_the_fit():
+    # pre-2026-07-24 this asserted RE-TIMING DOWN to a smaller slot (1.0s/1.5s) — the
+    # exact truncation the design forbids. _spine2's slots now sit within the snap
+    # allowance of their episodes' own durations, so binding applies them verbatim.
     edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2())
-    assert edl.episodes[0].beat_slot == 0 and edl.episodes[0].dur == 1.0   # re-timed to slot 0
-    assert edl.episodes[1].beat_slot == 1 and edl.episodes[1].dur == 1.5   # re-timed to slot 1
+    assert edl.episodes[0].beat_slot == 0 and edl.episodes[0].dur == pytest.approx(2.1)
+    assert edl.episodes[1].beat_slot == 1 and edl.episodes[1].dur == pytest.approx(3.05)
     assert edl.episodes[0].start == 0.5                                     # window start preserved
 
 
@@ -239,13 +246,15 @@ def test_build_edl_pacing_overflow_tail_unbound(capsys):
     assert "exceed the 2-slot spine" in capsys.readouterr().err
 
 
-def test_build_edl_pacing_shortfall_keeps_window(capsys):
-    # slot 0 wants 5s but window A/0 is only 2s → keep 2s + log shortfall
+def test_build_edl_pacing_refuses_a_slot_far_from_its_window():
+    # pre-2026-07-24 this asserted "keep 2s + log shortfall" for a slot wanting 5s
+    # against a 2s window — that whole rescue is gone. A slot this far from its own
+    # episode (2.7s, past the ~0.25s snap allowance) means the PACING.json was fitted
+    # to a DIFFERENT edit; binding must refuse, not keep/stretch/truncate.
     spine = Spine(slots=(Slot(0, 0.0, 5.0, 0.5, "hook"),), target_dur=5.0, tempo=120.0)
     sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
-    edl = edit_plan.build_edl(_footage(), sel, pacing=spine)
-    assert edl.episodes[0].dur == 2.0                                       # window kept, not stretched
-    assert "shorter than its slot" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="fitted to a different"):
+        edit_plan.build_edl(_footage(), sel, pacing=spine)
 
 
 def test_build_edl_no_pacing_leaves_beat_slot_none():
@@ -261,8 +270,11 @@ def test_cli_build_threads_pacing(tmp_path, monkeypatch, capsys):
     # the real preflight (ProjectConfig + resolve_manifest + preflight) accepts.
     sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
     fj, sj, pj = _write_inputs(tmp_path, sel)
+    # window A/0 is 2.0s; a 2.02s slot sits inside the snap allowance so binding applies it
+    # (this test is about the --pacing CLI wire, not the retime amount — pre-2026-07-24 it
+    # used a 1.0s slot, which the new guard now refuses as fitted to a different edit)
     (tmp_path / "PACING.json").write_text(json.dumps(
-        Spine((Slot(0, 0.0, 1.0, 0.5, "hook"),), 1.0, 120.0).to_dict()))
+        Spine((Slot(0, 0.0, 2.02, 0.5, "hook"),), 2.02, 120.0).to_dict()))
     monkeypatch.setattr(sys, "argv", ["edit_plan", "build",
                                       "--footage", fj,
                                       "--selection", sj,
@@ -273,14 +285,18 @@ def test_cli_build_threads_pacing(tmp_path, monkeypatch, capsys):
         edit_plan.main()
     assert e.value.code == 0
     edl = json.loads((tmp_path / "EDL.json").read_text())
-    assert edl["episodes"][0]["beat_slot"] == 0 and edl["episodes"][0]["dur"] == 1.0
+    assert edl["episodes"][0]["beat_slot"] == 0 and edl["episodes"][0]["dur"] == pytest.approx(2.02)
 
 
 def test_build_edl_back_edge_retimes_the_target_to_the_realized_footage(capsys):
-    # slot 0 wants 5s, window A/0 is only 2s → the reel is 2s, so say 2s (design §4)
-    spine = Spine(slots=(Slot(0, 0.0, 5.0, 0.5, "hook"),), target_dur=5.0, tempo=120.0)
-    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}],
-           "target_dur": 5.0}
+    # 1 episode (2.0s window, matching slot 0 exactly, so binding does not refuse) against
+    # a 2-slot, 5.0s spine — the extra slot has no episode to fill it, so the reel realizes
+    # only 2.0s and the target re-times DOWN to that, not the spine's optimistic 5.0 (§4).
+    # (pre-2026-07-24 this used a single 5s slot against a 2s window — that gap is now a
+    # bind-time refusal, not a back-edge retime; see test_build_edl_pacing_refuses_a_slot_far_from_its_window)
+    spine = Spine(slots=(Slot(0, 0.0, 2.0, 0.5, "hook"),
+                        Slot(1, 2.0, 3.0, 0.5, "peak")), target_dur=5.0, tempo=120.0)
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
     edl = edit_plan.build_edl(_footage(), sel, pacing=spine)
     assert edl.target_dur == 2.0                       # re-timed DOWN, not the optimistic 5.0
     assert "back-edge" in capsys.readouterr().err      # never silent
@@ -296,10 +312,11 @@ def test_build_edl_back_edge_silent_when_the_footage_fills_the_spine(capsys):
 
 
 def test_build_edl_back_edge_clamps_an_overflow_to_the_fragment(capsys):
-    # 3 episodes realize 5.0s against a 2.5s spine → the target stays at the fragment so the
-    # excess escalates at the reel gate; mix can't stretch music to cover it (design §2)
+    # 3 episodes realize 2.1+3.05+2.5=7.65s against a 5.15s (2-slot) spine → the target
+    # stays at the fragment so the excess escalates at the reel gate; mix can't stretch
+    # music to cover it (design §2)
     edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2())
-    assert edl.target_dur == 2.5
+    assert edl.target_dur == pytest.approx(5.15)
     err = capsys.readouterr().err
     assert "back-edge" in err and "escalates at the reel gate" in err
 
@@ -310,3 +327,77 @@ def test_build_edl_without_pacing_keeps_the_selections_target(capsys):
     edl = edit_plan.build_edl(_footage(), sel)
     assert edl.target_dur == 9.0
     assert "back-edge" not in capsys.readouterr().err
+
+
+@pytest.fixture
+def offset_clip():
+    return FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0, shaky=False,
+                       scene_cuts=[12.0],
+                       windows=[FootageWindow(start=2.0, dur=4.0, shot_type="wide",
+                                              people=1, motion=0.4, shake=0.001,
+                                              description="a ride", score=0.8, best=True)])
+
+
+def _ep(dur):
+    return EDLEpisode(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                      composition="center", grid="thirds")
+
+
+def test_start_offset_moves_the_in_point_but_not_the_duration(offset_clip):
+    w = offset_clip.windows[0]
+    ep = edit_plan.window_to_episode(offset_clip, w, start_offset=1.5,
+                                     composition="center", grid="thirds")
+    assert ep.start == pytest.approx(w.start + 1.5)
+    assert ep.dur == pytest.approx(w.dur)
+
+
+def test_start_offset_defaults_to_the_window_start(offset_clip):
+    w = offset_clip.windows[0]
+    ep = edit_plan.window_to_episode(offset_clip, w, composition="center", grid="thirds")
+    assert ep.start == pytest.approx(w.start)
+
+
+def test_start_offset_refuses_to_cross_a_scene_cut(offset_clip):
+    with pytest.raises(ValueError, match="scene cut"):
+        edit_plan.window_to_episode(offset_clip, offset_clip.windows[0],
+                                    start_offset=11.0,
+                                    composition="center", grid="thirds")
+
+
+def test_start_offset_past_the_clip_is_refused(offset_clip):
+    with pytest.raises(ValueError, match="past the end"):
+        edit_plan.window_to_episode(offset_clip, offset_clip.windows[0],
+                                    start_offset=999.0,
+                                    composition="center", grid="thirds")
+
+
+@pytest.mark.parametrize("bad", [-1.0, True, "1.5", None])
+def test_start_offset_must_be_a_nonnegative_number(offset_clip, bad):
+    with pytest.raises(ValueError, match="start_offset"):
+        edit_plan.window_to_episode(offset_clip, offset_clip.windows[0],
+                                    start_offset=bad,
+                                    composition="center", grid="thirds")
+
+
+def test_bind_applies_a_fitted_slot_verbatim():
+    """A fitted spine's slot IS the episode's duration plus its snap — binding copies it
+    across and sets beat_slot; it never invents a length."""
+    eps = [_ep(dur=2.0), _ep(dur=3.0)]
+    spine = pacing.Spine((pacing.Slot(0, 0.0, 2.1, 0.5, "hook", line=2.1, dev=0.0),
+                          pacing.Slot(1, 2.1, 3.0, 0.5, "peak", line=None, dev=0.0)),
+                         5.1, 120.0)
+    bound = edit_plan._bind_pacing(eps, spine)
+    assert [e.dur for e in bound] == pytest.approx([2.1, 3.0])
+    assert [e.beat_slot for e in bound] == [0, 1]
+
+
+def test_bind_refuses_a_spine_fitted_to_a_different_edit():
+    """The pre-2026-07-24 behaviour truncated a 7.3s ride into a 4.6s slot in silence.
+    A slot further from its episode than the allowance means the spine was fitted to
+    OTHER cuts — that is a wiring bug, not a re-time."""
+    eps = [_ep(dur=7.3), _ep(dur=3.0)]
+    spine = pacing.Spine((pacing.Slot(0, 0.0, 4.6, 0.5, "hook", line=4.6, dev=0.0),
+                          pacing.Slot(1, 4.6, 3.0, 0.5, "peak", line=None, dev=0.0)),
+                         7.6, 120.0)
+    with pytest.raises(ValueError, match="fitted to a different"):
+        edit_plan._bind_pacing(eps, spine)

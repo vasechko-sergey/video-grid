@@ -17,6 +17,7 @@ import json
 import sys
 from pathlib import Path
 
+from scripts.lib import gridfit
 from scripts.lib.edl import EDL, EDLEpisode, preflight
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 from scripts.lib.pacing import Spine
@@ -30,41 +31,80 @@ def _log(msg: str) -> None:
 _BACK_EDGE_TOL = 1e-6      # a realized total within this of the spine target "fills the spine"
 
 
-def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: object) -> EDLEpisode:
+def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: float = 0.0,
+                      **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
     layout/motion/hero/crop_*/rect/background*/border_*/color_means/beat_slot
     optional) are forwarded to EDLEpisode, whose __post_init__ is the single
     value-validation site. shot_type/processing_notes default to the window's
     shot_type/description but an editorial value overrides. An unknown or missing
-    editorial field raises ValueError naming it."""
+    editorial field raises ValueError naming it.
+
+    `start_offset` moves the in-point later inside the SAME shot. It exists because the
+    window grid is a SCORING artifact, not an editorial one: intake carves a continuous
+    take into WIN_TARGET-sized windows BY LENGTH (see _room_in_shot), so without an
+    offset the only reachable in-points are multiples of that arbitrary size — 2.41s on
+    one drone clip here, which was the difference between cutting on a cross-step and
+    cutting through it. It shifts the in-point ONLY; `dur` still comes from the window
+    (and then from the spine), so an offset can never silently lengthen an episode.
+    Crossing a scene cut is refused: the in-point would land in a different shot than
+    the one the window scored, so its shot_type/description would describe other footage.
+    """
+    if isinstance(start_offset, bool) or not isinstance(start_offset, (int, float)):
+        raise ValueError(f"window_to_episode: start_offset must be a number of seconds, "
+                         f"got {start_offset!r}")
+    if start_offset < 0:
+        raise ValueError(f"window_to_episode: start_offset must be >= 0 seconds, got "
+                         f"{start_offset!r} — to start EARLIER, reference an earlier window")
+    start = window.start + start_offset
+    if start >= clip.dur:
+        raise ValueError(
+            f"window_to_episode: start_offset {start_offset}s puts the in-point at {start:.2f}s, "
+            f"past the end of {clip.source} ({clip.dur:.2f}s)")
+    crossed = [c for c in clip.scene_cuts if window.start < c <= start]
+    if crossed:
+        raise ValueError(
+            f"window_to_episode: start_offset {start_offset}s crosses a scene cut at "
+            f"{crossed[0]:.2f}s in {clip.source} — the in-point would land in a DIFFERENT shot "
+            f"than the window scored. Reference the window that starts after the cut instead")
     defaults = {"shot_type": window.shot_type, "processing_notes": window.description}
     try:
-        return EDLEpisode(source=clip.source, start=window.start, dur=window.dur,
+        return EDLEpisode(source=clip.source, start=start, dur=window.dur,
                           **{**defaults, **editorial})
     except TypeError as ex:
         raise ValueError(f"window_to_episode: unknown or missing editorial field — {ex}") from ex
 
 
+_SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
+
+
 def _bind_pacing(episodes: list, spine: Spine) -> list:
-    """Bind selected episodes to spine slots by position (design §5): episode i → slot
-    i (beat_slot=i, dur re-timed to the slot, window start preserved). Zip-to-min; a
-    window shorter than its slot keeps its own dur (can't stretch footage) + logs; an
-    over/underflow is logged, never a silent drop (§4.1)."""
+    """Apply a FITTED spine: episode i takes slot i's duration and `beat_slot=i`.
+
+    The spine was fitted TO these episodes (scripts/pacing.py reads the same EDL), so a
+    slot may differ from its episode only by the snap the fit was allowed — half a beat.
+    A larger difference means this spine was fitted to a DIFFERENT edit, and copying its
+    length across would truncate a shot exactly the way the generator used to: a 7.3s
+    ride into a 4.6s slot, in silence. Refuse instead.
+
+    Zip-to-min; an over/underflow is logged, never a silent drop (§4.1)."""
+    allow = gridfit.allowance(spine.tempo) + _SNAP_TOL
     n = min(len(episodes), len(spine.slots))
     bound = []
     for i in range(n):
         slot, ep = spine.slots[i], episodes[i]
-        new_dur = min(ep.dur, slot.dur)
-        if ep.dur < slot.dur:
-            _log(f"pacing: episode {i} window {ep.dur:.2f}s is shorter than its slot "
-                 f"{slot.dur:.2f}s — keeping the window (can't stretch footage); the "
-                 f"length gate will see the shortfall")
-        bound.append(dataclasses.replace(ep, beat_slot=i, dur=new_dur))
+        if abs(slot.dur - ep.dur) > allow:
+            raise ValueError(
+                f"pacing: slot {i} is {slot.dur:.2f}s against a {ep.dur:.2f}s episode — "
+                f"further apart than the {allow:.2f}s snap allows, so this PACING.json "
+                f"was fitted to a different edit. Re-run pacing against the current "
+                f"EDL.json before binding")
+        bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
     if len(episodes) > len(spine.slots):
         _log(f"pacing: {len(episodes)} episodes exceed the {len(spine.slots)}-slot spine "
              f"— the {len(episodes) - len(spine.slots)} tail episode(s) keep beat_slot=None; "
-             f"extend the track fragment or drop episodes")
+             f"re-run pacing against the current EDL.json")
         bound.extend(episodes[n:])
     elif len(spine.slots) > len(episodes):
         _log(f"pacing: {len(spine.slots)} slots exceed the {len(episodes)} episodes — the "
@@ -73,8 +113,10 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
 
 
 def _back_edge_target(episodes: list, spine: Spine) -> float:
-    """The paced reel's target length (design §4): the realized footage, clamped to the
-    spine's fragment. An under-fill re-times the target DOWN to what the footage actually
+    """The reel's target length: the realized footage, clamped to the fitted spine. This
+    is now the ORDINARY way a target is computed (design 2026-07-24 §1) rather than a
+    rescue for an under-fill — the music is cut to the reel, not the reel to the music.
+    An under-fill re-times the target DOWN to what the footage actually
     delivers — the montage §4.1 pacing-gate back-edge — so the reel's length gate passes by
     construction instead of escalating a whole pipeline later. An over-flow keeps the
     fragment length, so the excess escalates at the reel gate rather than reaching mix,
@@ -119,6 +161,9 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         ed = dict(sel)
         source = ed.pop("source", None)
         window = ed.pop("window", None)
+        # popped like source/window, not forwarded as editorial: it is a MECHANICAL
+        # field (it moves the cut), and EDLEpisode would reject it as unknown.
+        start_offset = ed.pop("start_offset", 0.0)
         if not (isinstance(source, str) and source):
             raise ValueError(f"selection episode {k}: 'source' must be a clip path string")
         if isinstance(window, bool) or not isinstance(window, int):
@@ -130,7 +175,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         if not 0 <= window < len(clip.windows):
             raise ValueError(f"selection episode {k}: window {window} out of range for {source} "
                              f"(has {len(clip.windows)})")
-        episodes.append(window_to_episode(clip, clip.windows[window], **ed))
+        episodes.append(window_to_episode(clip, clip.windows[window],
+                                          start_offset=start_offset, **ed))
     target = selection.get("target_dur")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
