@@ -285,3 +285,79 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     assert res.cast[0].source == "a.mp4" and res.cast[0].tid == 1
     assert len(res.cast[0].descriptor) == DESCRIPTOR_LEN
     assert res.cast[0].crop_rgb is red                       # worker-form array
+
+
+import threading
+
+
+def _two_clip_root(tmp_path):
+    root = tmp_path / "footage"; root.mkdir()
+    (root / "a.mp4").write_bytes(b"x")
+    (root / "b.mp4").write_bytes(b"y")
+    return root
+
+
+def _stub_cache(monkeypatch):
+    # isolate the pool tests from the real filesystem cache
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.intake_cache, "load", lambda *a, **k: None)
+    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, **k: r)
+
+
+def _fake_result(name):
+    from scripts.lib.footage import FootageClip
+    return intake.ClipResult(clip=FootageClip(source=name, dur=1.0, res=(2, 2), fps=1.0,
+                                              windows=[]), phashes=[], cast=[])
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "3", 3.0])
+def test_jobs_validation_rejects(tmp_path, bad):
+    root = _two_clip_root(tmp_path)
+    with pytest.raises(ValueError, match="jobs"):
+        intake.intake(str(root), str(tmp_path / "out"), jobs=bad)
+
+
+def test_ensure_model_runs_before_any_worker(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path)
+    monkeypatch.setattr(intake.intake_cache, "load", lambda *a, **k: None)
+    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, **k: r)
+    seen = []
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: seen.append("ensure"))
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS:
+                        (seen.append("pe"), _fake_result(intake.Path(path).name))[1])
+    intake.intake(str(root), str(tmp_path / "out"), jobs=2)
+    assert seen[0] == "ensure" and seen.count("ensure") == 1 and "pe" in seen
+
+
+def test_pool_reaches_the_cap_and_never_exceeds_it(monkeypatch, tmp_path):
+    root = tmp_path / "footage"; root.mkdir()
+    for i in range(4):
+        (root / f"c{i}.mp4").write_bytes(b"x")
+    _stub_cache(monkeypatch)
+    jobs = 2
+    live = {"n": 0, "peak": 0}
+    lock = threading.Lock()
+    barrier = threading.Barrier(jobs, timeout=10)
+
+    def fake_pe(path, sf=intake.SAMPLE_FPS):
+        with lock:
+            live["n"] += 1; live["peak"] = max(live["peak"], live["n"])
+        barrier.wait()                       # forces `jobs` workers to co-exist; times out if serial
+        with lock:
+            live["n"] -= 1
+        return _fake_result(intake.Path(path).name)
+
+    monkeypatch.setattr(intake, "_process_clip", fake_pe)
+    intake.intake(str(root), str(tmp_path / "out"), jobs=jobs)
+    assert live["peak"] == jobs              # reached (barrier) and never exceeded
+
+
+def test_output_is_byte_identical_across_jobs(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path)
+    _stub_cache(monkeypatch)
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS: _fake_result(intake.Path(path).name))
+    intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
+    intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
+    assert (tmp_path / "o1" / "FOOTAGE.json").read_text() == (tmp_path / "o3" / "FOOTAGE.json").read_text()

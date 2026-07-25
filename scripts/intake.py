@@ -37,6 +37,8 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
+DEFAULT_JOBS = 3          # cap-3's measured knee (design 2026-07-18 §2); see design §7 —
+                          # not re-measured for full-clip passes; --jobs tunes on tight memory
 
 
 def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, int]) -> str:
@@ -313,13 +315,22 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
     return ClipResult(clip=clip, phashes=phashes, cast=cast)
 
 
-def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> footage.Footage:
+def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
+           jobs: int = DEFAULT_JOBS) -> footage.Footage:
+    if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
+        raise ValueError(f"intake: jobs must be an integer >= 1, got {jobs!r} — "
+                         f"default {DEFAULT_JOBS} is a reasonable knee; lower it on a "
+                         f"memory-constrained box, raise it only with a GPU")
     root = Path(footage_root)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
-    ensure_model(MODEL)                                # weights-race landmine (§4), before any worker
-    results = {p: _process_clip(str(p), sample_fps) for p in paths}
+    ensure_model(MODEL)                                # weights-race landmine (§4), before the pool
+    results: dict = {}
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in paths}
+    for p in paths:
+        results[p] = futs[p].result()
     ok = [results[p] for p in paths if p in results]
     result = footage.Footage(clips=[r.clip for r in ok])
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
@@ -336,8 +347,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("footage_root")
     ap.add_argument("out_dir")
     ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS)
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                    help="parallel clip workers (default %(default)s)")
     a = ap.parse_args(argv)
-    f = intake(a.footage_root, a.out_dir, a.sample_fps)
+    f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs)
     print(f"{len(f.clips)} clips, {sum(len(c.windows) for c in f.clips)} windows → {a.out_dir}")
 
 
