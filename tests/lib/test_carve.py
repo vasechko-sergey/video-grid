@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.lib import carve
 
 
@@ -18,10 +20,22 @@ def test_camera_curve_samples_frame_magnitudes_at_times():
     assert carve.camera_curve([], fps=1.0, times=[0.0, 1.0]) == [0.0, 0.0]
 
 
+def test_camera_curve_clamps_past_the_last_frame():
+    # a sample time beyond the last vidstab frame reads the last magnitude, never IndexErrors
+    assert carve.camera_curve([0.0, 9.0], fps=1.0, times=[0.0, 1.0, 5.0]) == [0.0, 9.0, 9.0]
+
+
+def test_camera_curve_rejects_nonpositive_fps():
+    # fps <= 0 would map every sample onto frame 0 — a silent flat curve; refuse it
+    with pytest.raises(ValueError):
+        carve.camera_curve([1.0, 2.0], fps=0.0, times=[0.0])
+
+
 def test_local_extrema_are_interior_only():
     curve = [0.0, 2.0, 0.0, 5.0, 1.0]
     assert carve._local_maxima(curve) == [1, 3]
     assert carve._local_minima(curve) == [2]
+    assert carve._local_maxima([0.0, 5.0, 5.0, 0.0]) == []   # a flat plateau is not a peak
 
 
 def test_find_peaks_returns_raw_local_maxima_far_apart():
@@ -40,3 +54,11 @@ def test_find_peaks_rejects_a_weaker_maximum_within_win_min():
     peaks = carve.find_peaks(curve, times, win_min=1.2)
     # idx1(t=0.4,9) kept; idx3(t=1.2,6) is 0.8s away (< 1.2) → dropped; idx6(t=2.4,7) far → kept
     assert [times[i] for i in peaks] == [0.4, 2.4]
+
+
+def test_find_peaks_keeps_the_stronger_of_two_close_peaks():
+    # the stronger peak is the LATER one → a plain index-order greedy would keep the
+    # earlier weaker one; strongest-first keeps t=1.2, and the final sort orders it
+    curve = [0.0, 4.0, 0.0, 9.0, 0.0]
+    times = [0.0, 0.4, 0.8, 1.2, 1.6]
+    assert [times[i] for i in carve.find_peaks(curve, times, win_min=1.2)] == [1.2]

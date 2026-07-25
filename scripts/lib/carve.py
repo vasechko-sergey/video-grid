@@ -12,7 +12,9 @@ from math import hypot
 def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
     """Per-sample 2-D displacement of the primary bbox centre, aligned to samples.
     `centers[i]` is (cx, cy) or None (no person that sample). Index 0 has no prior,
-    and any sample bordering a gap, are 0.0."""
+    and any sample bordering a gap, are 0.0. Returns RAW pixel displacement — peak
+    detection is scale-invariant, so no width normalisation is applied here (and the
+    subject/camera curves are never compared on one axis, §3)."""
     if not centers:
         return []
     out = [0.0]
@@ -24,7 +26,13 @@ def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
 
 def camera_curve(mags: list[float], fps: float, times: list[float]) -> list[float]:
     """Resample per-frame vidstab magnitudes to the sample `times` (a people-less
-    span's only within-shot signal, §3). Empty mags → a flat zero curve."""
+    span's only within-shot signal, §3). Empty mags → a flat zero curve. A
+    non-positive fps is refused, not defended around: it maps a time to a frame
+    index, so fps <= 0 would collapse every sample onto frame 0 — a silent flat
+    curve that then yields wrong peaks (a §12-class silent corruption)."""
+    if fps <= 0:
+        raise ValueError(f"carve.camera_curve: fps must be positive, got {fps!r} — "
+                         "a non-positive fps collapses every sample onto frame 0")
     if not mags:
         return [0.0 for _ in times]
     n = len(mags)
