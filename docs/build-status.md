@@ -23,6 +23,29 @@ _Last updated: 2026-07-25._
   to `intake_report.json` + a `## Failed clips` section (exit 0); a re-run retries
   exactly the failed clips. #3 window band deferred to its own slice.
 
+- **Intake activity-units carving (feedback #3, slice 3a) DONE (2026-07-25)** —
+  plan `docs/plans/2026-07-25-intake-activity-units.md` + design
+  `docs/specs/2026-07-25-intake-activity-units-design.md`, Tasks 0–6. Replaces
+  intake's equal-interval `_split_span` tiling with activity-anchored units: new
+  pure `scripts/lib/carve.py` (`subject_curve`/`camera_curve`/`find_peaks`/
+  `units_for_span` — local-maxima peaks relative to the clip, no absolute
+  threshold invented; each peak yields a tight + a lead-in candidate, band-clamped
+  with the peak kept inside; a flat span yields one max-mean window, never a
+  tiling). `intake.carve_windows` builds the per-span activity curve — 2-D bbox
+  displacement where people are present, resampled vidstab magnitudes otherwise —
+  and delegates to `carve.units_for_span`; the vidstab detect pass moves ahead of
+  carving inside `_process_clip` so a people-less span has its curve at carve
+  time, and the same magnitudes feed `_windowed_shake` (`shake_by_window`
+  deleted, along with `_split_span`). `FootageWindow` gains `track_ids` (who is
+  in the unit — `_build_window` unions the per-sample ids; names resolve
+  downstream via `cast.json`); `_motion` is now 2-D bbox displacement (a
+  vertical slide or cross-step registers, not only horizontal motion).
+  `CACHE_VERSION` 1 → 2 invalidates every clip cached under the old carve.
+  `FootageClip.room_after`/`edit_plan.window_to_episode`'s docstrings de-cite
+  the retired equal-interval tiling (text only, no behaviour change). **1788
+  passed / 2 skipped.** **Deferred:** 3b — `edit_plan` merging adjacent
+  activity-unit spans `[i..j]` into one episode — its own slice.
+
 - **Core engine — plan `docs/plans/2026-07-05-video-grid-core.md`, Tasks 0–11 ALL
   COMPLETE**, final review verdict READY (2026-07-07). 49 tests green (incl.
   golden fixture: real MVI_3739 footage @59.94fps through the full engine).

@@ -44,6 +44,12 @@ are later stages.
    manifest (`id, source, conf, crop, descriptor`). Skim `FOOTAGE.md`: confirm
    every clip is logged and the starred windows look like real moments.
 
+   Windows are **activity units**, not equal-length tiles: each is an activity
+   peak plus its lead-in (windows may overlap a neighbor, never a fixed-size
+   tiling), and carries `track_ids` — who is in it, resolved to names via
+   `cast.json` once written. A flat, uneventful span yields one representative
+   window, not a forced split.
+
    Two flags tune that same command: `--jobs N` controls how many clips are
    scanned in parallel (default 3 — lower it on a memory-constrained box,
    raise only with a GPU), and `--fresh` ignores the per-clip `.intake_cache`

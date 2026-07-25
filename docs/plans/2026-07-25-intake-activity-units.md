@@ -28,7 +28,7 @@
 - Create: `scripts/lib/carve.py`
 - Test: `tests/lib/test_carve.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_carve.py`:
 
@@ -98,12 +98,12 @@ def test_find_peaks_keeps_the_stronger_of_two_close_peaks():
     assert [times[i] for i in carve.find_peaks(curve, times, win_min=1.2)] == [1.2]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_carve.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.carve'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/lib/carve.py`:
 
@@ -173,12 +173,12 @@ def find_peaks(curve: list[float], times: list[float], win_min: float) -> list[i
     return sorted(kept)
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_carve.py -q`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/carve.py tests/lib/test_carve.py
@@ -202,7 +202,7 @@ EOF
 - Modify: `scripts/lib/carve.py` (append)
 - Test: `tests/lib/test_carve.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_carve.py`:
 
@@ -289,12 +289,12 @@ def test_flat_span_tie_breaks_to_the_earliest_window():
     assert carve.units_for_span(0.0, 10.0, times, curve, 1.2, 4.0) == [(0.0, 4.0)]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_carve.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.carve' has no attribute 'units_for_span'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append to `scripts/lib/carve.py`:
 
@@ -386,12 +386,12 @@ def units_for_span(a: float, b: float, times: list[float], curve: list[float],
     return out
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_carve.py -q`
 Expected: PASS (all Task 0 + Task 1 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/carve.py tests/lib/test_carve.py
@@ -414,7 +414,7 @@ EOF
 - Modify: `scripts/lib/footage.py` (`FootageWindow`: field, `__post_init__`, `to_dict`)
 - Test: `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_footage.py`:
 
@@ -440,12 +440,12 @@ def test_footage_window_track_ids_rejects_bad_values():
                           motion=0.0, shake=0.0, track_ids=bad)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -q -k track_ids`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'track_ids'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `scripts/lib/footage.py`, add the field to `FootageWindow` (after `best`):
 
@@ -471,12 +471,12 @@ Add to `FootageWindow.to_dict`'s returned dict (after `"best"`):
 
 (`field` is already imported in footage.py; `FootageClip.from_dict` reconstructs windows via `FootageWindow(**w)`, so the round-trip needs no other change — an old dict without `track_ids` picks up the default.)
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -q`
 Expected: PASS (existing + 2 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/footage.py tests/lib/test_footage.py
@@ -498,7 +498,7 @@ EOF
 - Modify: `scripts/intake.py` (`_people_timeline`, `_motion`, `_build_window`, add `hypot` import)
 - Test: `tests/lib/test_intake.py` (`test_people_timeline_samples_and_counts`, add `_motion`/`_build_window` tests)
 
-- [ ] **Step 1: Update the timeline test and add the new ones**
+- [x] **Step 1: Update the timeline test and add the new ones**
 
 In `tests/lib/test_intake.py`, replace `test_people_timeline_samples_and_counts` with:
 
@@ -528,12 +528,12 @@ def test_build_window_unions_track_ids():
     assert w.track_ids == [2, 5]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q -k "track_ids or motion_is_2d"`
 Expected: FAIL — the timeline rows are 3-tuples (`not enough values to unpack`) / `_build_window` returns no `track_ids`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `scripts/intake.py`, add to the imports block (line 9 area):
 
@@ -584,12 +584,12 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
                                  track_ids=track_ids)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q -k "track_ids or motion_is_2d or people_timeline"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py tests/lib/test_intake.py
@@ -615,7 +615,7 @@ EOF
 - Test: `tests/lib/test_intake.py` (rewrite carve tests; retarget `_process_clip`/`intake` monkeypatches from `shake_by_window` to `vidstab.detect`; drop the `shake_by_window` handoff test)
 - Test: `tests/lib/test_intake_cache.py` (version-bump invalidation)
 
-- [ ] **Step 1: Rewrite the carve tests and retarget the seams**
+- [x] **Step 1: Rewrite the carve tests and retarget the seams**
 
 In `tests/lib/test_intake.py`:
 
@@ -706,12 +706,12 @@ In `test_intake_builds_footage_and_writes` and `test_process_clip_returns_clip_p
 
 (In `test_process_clip_returns_clip_phashes_and_cast` keep its `{1: (0.9, red, ...)}` crops dict rather than `{}`.)
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q -k "carve or process_clip or builds_footage"`
 Expected: FAIL — `carve_windows()` takes 3 positional args but 5 were given / `_split_span` still tiles.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `scripts/intake.py`, add `carve` to the lib import (line 20):
 
@@ -791,7 +791,7 @@ In `scripts/lib/intake_cache.py`, bump the version and update its comment:
 CACHE_VERSION = 2
 ```
 
-- [ ] **Step 4: Add the cache-invalidation test**
+- [x] **Step 4: Add the cache-invalidation test**
 
 Append to `tests/lib/test_intake_cache.py`:
 
@@ -813,12 +813,12 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
 
 (`_M` and `json` are already defined/imported in this test module.)
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py tests/lib/test_intake_cache.py -q`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/intake.py scripts/lib/intake_cache.py tests/lib/test_intake.py tests/lib/test_intake_cache.py
@@ -851,7 +851,7 @@ and the byte-identical-on-resume proof). So there is no golden to re-pin; the on
 breakage is that two of its three tests monkeypatch `intake.shake_by_window`, which
 Task 4 deleted. Retarget those two stubs to the vidstab seam.
 
-- [ ] **Step 1: Update the two docstrings (no behaviour change)**
+- [x] **Step 1: Update the two docstrings (no behaviour change)**
 
 In `scripts/lib/footage.py`, `room_after`, replace the sentence citing tiling:
 
@@ -892,12 +892,12 @@ New:
     ONLY; `dur` still comes from the window
 ```
 
-- [ ] **Step 2: Run the affected unit suites (docstrings are inert, so these stay green)**
+- [x] **Step 2: Run the affected unit suites (docstrings are inert, so these stay green)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py tests/lib/test_edit_plan.py -q`
 Expected: PASS (no behaviour changed).
 
-- [ ] **Step 3: Retarget the two `shake_by_window` stubs to the vidstab seam**
+- [x] **Step 3: Retarget the two `shake_by_window` stubs to the vidstab seam**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -q`
 Expected: FAIL — `test_intake_wiring_on_real_bytes` and `test_intake_resumes_from_cache_byte_identical` monkeypatch `intake.shake_by_window`, which Task 4 deleted (`AttributeError`). (`test_intake_real_vidstab_shake` runs real vidstab and is unaffected.)
@@ -918,12 +918,12 @@ with the vidstab seam the reorder introduced:
 
 Why `[]` reproduces the old stub's effect: both tests feed people-full fake frames, so carving takes the SUBJECT curve — the (empty) magnitudes never touch the curve. And `_windowed_shake([], spans, ...)` calls `vidstab.mean_shake([], w)`, which returns `0.0` for empty input, so every window's shake is `0.0` exactly as the old stub gave. Stubbing `require` keeps the test off real libvidstab. Do NOT add numeric window pins — the assertions are structural by design; leave them as-is.
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS (the suite ran ~1764 tests green before this slice; expect that count plus the new carve/track_ids tests). The docstrings are inert and the carve change is intake-local, so nothing outside intake should move; if a test elsewhere fails, STOP and investigate — nothing outside intake should change behaviour.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/footage.py scripts/edit_plan.py tests/integration/test_intake.py
@@ -948,7 +948,7 @@ EOF
 - Modify: `CLAUDE.md` (registry rows), `docs/build-status.md`, `docs/pipeline-map.md`, `skills/footage-intake/SKILL.md`
 - Modify: `docs/plans/2026-07-25-intake-activity-units.md` (tick the boxes)
 
-- [ ] **Step 1: Add the registry rows to `CLAUDE.md`**
+- [x] **Step 1: Add the registry rows to `CLAUDE.md`**
 
 In the Quick Reference table, add two rows (design + plan) after the intake parallel+checkpoint rows:
 
@@ -957,24 +957,24 @@ In the Quick Reference table, add two rows (design + plan) after the intake para
 | Intake activity-units plan | [2026-07-25-intake-activity-units.md](docs/plans/2026-07-25-intake-activity-units.md) | Tasks 0–6: `carve.py` primitives + `units_for_span`, `FootageWindow.track_ids`, timeline track ids + 2-D `_motion` + `_build_window`, `carve_windows` rewrite + detect reorder + `CACHE_VERSION` bump, docstring de-cite + golden re-pin, docs sync. |
 ```
 
-- [ ] **Step 2: Update `docs/build-status.md`**
+- [x] **Step 2: Update `docs/build-status.md`**
 
 Add a "Done" entry dated 2026-07-25 for slice 3a (activity-unit carving; `lib/carve.py`; `track_ids`; detect reorder; `CACHE_VERSION` 2; 3b deferred), mirroring the format of the existing entries. If a "current date" line exists, leave it at 2026-07-25.
 
-- [ ] **Step 3: Update `docs/pipeline-map.md`**
+- [x] **Step 3: Update `docs/pipeline-map.md`**
 
 In the stage 5.2 (footage-intake) row/notes, record that carving is now activity-anchored units (peak + lead-in) with `track_ids`, and that #3 slice 3a landed 2026-07-25 (3b deferred). Bump any "last updated" date to 2026-07-25.
 
-- [ ] **Step 4: Update `skills/footage-intake/SKILL.md`**
+- [x] **Step 4: Update `skills/footage-intake/SKILL.md`**
 
 Where it describes windows/carving, replace the equal-interval description with: windows are activity units (an activity peak plus its lead-in, may overlap) and carry `track_ids` (who is in the unit; names resolve via cast.json). Note a flat span yields one representative window, not a tiling. Keep the `--jobs`/`--fresh`/`intake_report.json` text.
 
-- [ ] **Step 5: Run the docs-affecting checks and the whole suite once more**
+- [x] **Step 5: Run the docs-affecting checks and the whole suite once more**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS. (Some repos test skill/doc references; if a doc-reference test exists it must stay green.)
 
-- [ ] **Step 6: Tick every `- [ ]` in this plan to `- [x]`, then commit**
+- [x] **Step 6: Tick every `- [ ]` in this plan to `- [x]`, then commit**
 
 ```bash
 git add CLAUDE.md docs/build-status.md docs/pipeline-map.md skills/footage-intake/SKILL.md docs/plans/2026-07-25-intake-activity-units.md
