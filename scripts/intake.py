@@ -316,7 +316,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
 
 
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
-           jobs: int = DEFAULT_JOBS) -> footage.Footage:
+           jobs: int = DEFAULT_JOBS, fresh: bool = False) -> footage.Footage:
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"intake: jobs must be an integer >= 1, got {jobs!r} — "
                          f"default {DEFAULT_JOBS} is a reasonable knee; lower it on a "
@@ -327,10 +327,18 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
     ensure_model(MODEL)                                # weights-race landmine (§4), before the pool
     results: dict = {}
-    with ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in paths}
+    misses: list = []
     for p in paths:
-        results[p] = futs[p].result()
+        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL)
+        if hit is not None:
+            results[p] = hit
+        else:
+            misses.append(p)
+    print(f"intake: {len(results)} cached, {len(misses)} to scan", file=sys.stderr)
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in misses}
+    for p in misses:
+        results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
     ok = [results[p] for p in paths if p in results]
     result = footage.Footage(clips=[r.clip for r in ok])
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
@@ -349,8 +357,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS)
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                     help="parallel clip workers (default %(default)s)")
+    ap.add_argument("--fresh", action="store_true",
+                    help="ignore the .intake_cache and rescan every clip")
     a = ap.parse_args(argv)
-    f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs)
+    f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs, fresh=a.fresh)
     print(f"{len(f.clips)} clips, {sum(len(c.windows) for c in f.clips)} windows → {a.out_dir}")
 
 

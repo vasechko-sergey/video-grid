@@ -301,7 +301,7 @@ def _stub_cache(monkeypatch):
     # isolate the pool tests from the real filesystem cache
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake.intake_cache, "load", lambda *a, **k: None)
-    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, **k: r)
+    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
 
 
 def _fake_result(name):
@@ -320,7 +320,7 @@ def test_jobs_validation_rejects(tmp_path, bad):
 def test_ensure_model_runs_before_any_worker(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path)
     monkeypatch.setattr(intake.intake_cache, "load", lambda *a, **k: None)
-    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, **k: r)
+    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
     seen = []
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: seen.append("ensure"))
     monkeypatch.setattr(intake, "_process_clip",
@@ -361,3 +361,50 @@ def test_output_is_byte_identical_across_jobs(monkeypatch, tmp_path):
     intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
     intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
     assert (tmp_path / "o1" / "FOOTAGE.json").read_text() == (tmp_path / "o3" / "FOOTAGE.json").read_text()
+
+
+def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path); out = tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    submitted = []
+    real_pe = intake._process_clip
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS:
+                        (submitted.append(intake.Path(path).name),
+                         _fake_result(intake.Path(path).name))[1])
+    intake.intake(str(root), str(out))                 # first run: both are misses
+    assert sorted(submitted) == ["a.mp4", "b.mp4"]
+    submitted.clear()
+    intake.intake(str(root), str(out))                 # second run: both cached
+    assert submitted == []                             # nothing re-submitted
+    submitted.clear()
+    import shutil as _sh
+    _sh.rmtree(out / ".intake_cache" / "b.mp4")        # invalidate just b
+    intake.intake(str(root), str(out))
+    assert submitted == ["b.mp4"]                       # only the miss reruns
+
+
+def test_fresh_bypasses_the_cache(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path); out = tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    submitted = []
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS:
+                        (submitted.append(intake.Path(path).name),
+                         _fake_result(intake.Path(path).name))[1])
+    intake.intake(str(root), str(out))
+    submitted.clear()
+    intake.intake(str(root), str(out), fresh=True)     # ignore the populated cache
+    assert sorted(submitted) == ["a.mp4", "b.mp4"]
+
+
+def test_output_is_byte_identical_fresh_vs_cached(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path); out = tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS: _fake_result(intake.Path(path).name))
+    intake.intake(str(root), str(out))
+    a = (out / "FOOTAGE.json").read_text()
+    intake.intake(str(root), str(out))                 # all cache hits
+    b = (out / "FOOTAGE.json").read_text()
+    assert a == b
