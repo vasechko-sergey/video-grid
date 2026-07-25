@@ -24,8 +24,9 @@ from scripts.lib.footage import FootageClip
 # Bump when Phase-1 logic changes shape (carve/score/descriptor/phash-point): it
 # invalidates every cached clip in one move, so a re-run recomputes rather than
 # trusting a result the new code would not produce. The #3 window-band slice bumps
-# this. An all-or-nothing version beats a per-field logic hash nobody can audit.
-CACHE_VERSION = 1
+# this (v1 → v2: activity-unit carving + FootageWindow.track_ids). An
+# all-or-nothing version beats a per-field logic hash nobody can audit.
+CACHE_VERSION = 2
 
 
 @dataclass

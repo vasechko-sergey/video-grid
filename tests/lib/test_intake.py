@@ -21,36 +21,47 @@ def test_shot_type_buckets():
     assert intake.shot_type(None, res) == "wide"
 
 
-def _line(n_from_to):   # helper: build a timeline [(t, people, bbox)] at 1s steps
-    return [(float(t), n, (500, 500, 200, 300) if n else None) for t, n in n_from_to]
+def _line(n_from_to):   # helper: timeline [(t, people, bbox, track_ids)] at 1s steps
+    return [(float(t), n, (500, 500, 200, 300) if n else None, [1] if n else [])
+            for t, n in n_from_to]
 
 
-def test_carve_long_take_splits_by_length():
-    # one 8s take, person present throughout, NO scene cuts → several windows in the band
-    tl = _line([(t, 1) for t in range(9)])
-    spans = intake.carve_windows([], tl, 8.0)
-    assert len(spans) >= 2
+def test_carve_long_take_is_activity_units_not_equal_tiling():
+    # one 8s take, person present throughout, subject accelerates then stops (a peak)
+    tl = [(float(t), 1, (500 + (0 if t < 3 else (t - 3) * 120 if t < 5 else 240), 500, 200, 300), [1])
+          for t in range(9)]
+    spans = intake.carve_windows([], tl, [], 1.0, 8.0)
+    assert spans                                                     # carved something
     assert all(intake.WIN_MIN <= d <= intake.WIN_MAX + 1e-6 for _, d in spans)
-    assert abs(sum(d for _, d in spans) - 8.0) < 1e-6      # cover the take, no gaps
+    starts = sorted(s for s, _ in spans)
+    assert starts != [0.0, 4.0] and starts != [0.0, 2.0, 4.0, 6.0]  # NOT equal-interval
 
 
 def test_carve_splits_on_presence_transition():
     # empty 0–3, person 3–6 → boundary at 3
     tl = _line([(0, 0), (1, 0), (2, 0), (3, 1), (4, 1), (5, 1)])
-    spans = intake.carve_windows([], tl, 6.0)
+    spans = intake.carve_windows([], tl, [], 1.0, 6.0)
     assert any(abs(s - 3.0) < 1e-6 for s, _ in spans)
 
 
 def test_carve_short_clip_yields_one_window():
-    spans = intake.carve_windows([], _line([(0, 1)]), 0.8)   # < WIN_MIN
+    spans = intake.carve_windows([], _line([(0, 1)]), [], 1.0, 0.8)   # < WIN_MIN
     assert spans == [(0.0, 0.8)]
 
 
 def test_carve_all_short_spans_yields_no_windows():
-    # a clip shredded by scene cuts into sub-WIN_MIN shots → no usable moments (empty),
-    # NOT one giant over-WIN_MAX window
-    spans = intake.carve_windows([1.0, 2.0, 3.0, 4.0, 5.0], _line([(t, 1) for t in range(7)]), 6.0)
+    spans = intake.carve_windows([1.0, 2.0, 3.0, 4.0, 5.0], _line([(t, 1) for t in range(7)]),
+                                 [], 1.0, 6.0)
     assert spans == []
+
+
+def test_carve_peopleless_span_uses_camera_motion(monkeypatch):
+    # no people the whole 8s take → the curve comes from vidstab mags; a mid-clip
+    # camera surge (frame 4 at fps 1 → t=4) should anchor a unit that contains t=4
+    tl = [(float(t), 0, None, []) for t in range(9)]
+    mags = [0, 0, 0, 1, 9, 1, 0, 0, 0]
+    spans = intake.carve_windows([], tl, mags, 1.0, 8.0)
+    assert any(s <= 4.0 <= s + d for s, d in spans)
 
 
 def test_score_rises_with_presence():
@@ -80,22 +91,26 @@ def test_describe():
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
 
 
-def test_shake_by_window_hands_detect_the_clip_and_the_clip_s_own_length(monkeypatch):
-    """The collapse onto vidstab.detect left intake only its windowing, so the
-    handoff is what can still break: the clip itself, and the clip's OWN length
-    (not a window's) — that length is what scales detect's timeout. The timeout
-    arithmetic is vidstab's, pinned in tests/lib/test_vidstab.py."""
-    monkeypatch.setattr(vidstab, "require", lambda: None)
-    seen: list = []
+def test_process_clip_detects_shake_once_before_carving(monkeypatch):
+    monkeypatch.setattr(intake.assembly, "probe_stream",
+                        lambda s: types.SimpleNamespace(w=1000, h=1080, fps=1.0))
+    monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
+    monkeypatch.setattr(intake, "_people_timeline",
+                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
+    seen = []
 
     def fake_detect(src, trf, dur):
         seen.append((src, dur))
-        return [0.0, 10.0, 0.0, 0.0]
+        return [0.0] * 8
 
-    monkeypatch.setattr(vidstab, "detect", fake_detect)
-    out = intake.shake_by_window("clip.mp4", [(1.0, 2.0)], fps=1.0, res=(1000, 1080), dur=500.0)
-    assert seen == [("clip.mp4", 500.0)]     # once, with the clip's own duration
-    assert out == [5.0 / 1000]               # windowing + width normalisation stay intake's
+    monkeypatch.setattr(intake.vidstab, "detect", fake_detect)
+    monkeypatch.setattr(intake, "_phash_at",
+                        lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
+    intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
+    assert seen == [("/foot/a.mp4", 8.0)]     # detect once, with the clip's OWN length
 
 
 def test_windowed_shake_averages_and_normalises():
@@ -276,11 +291,11 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
                         lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
-    tl = [(float(i), 1, (500, 500, 300, 300)) for i in range(9)]
+    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
-    monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
     import imagehash
     from PIL import Image as I
     monkeypatch.setattr(intake, "_phash_at",
@@ -301,12 +316,12 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
                         lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
-    tl = [(float(i), 1, (500, 500, 300, 300)) for i in range(9)]
+    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
                         (tl, {1: (0.9, red, np.ones((8, 8), "uint8"))}))
-    monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
     monkeypatch.setattr(intake, "_phash_at",
                         lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
     res = intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)

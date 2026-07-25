@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from PIL import Image
 
@@ -112,3 +114,18 @@ def test_crop_png_round_trips_red(tmp_path):
     loaded = intake_cache.load(str(out), str(src), 3.0, _M)
     px = np.asarray(Image.open(loaded.cast[0].crop))
     assert px[0, 0, 0] == 255 and px[0, 0, 1] == 0
+
+
+def test_a_version_1_entry_is_a_miss(tmp_path):
+    # a cache written under the old CACHE_VERSION must not be trusted by v2 code
+    from scripts.lib import intake_cache
+    src = tmp_path / "a.mp4"; src.write_bytes(b"x")
+    out = tmp_path / "out"; out.mkdir()
+    d = out / ".intake_cache" / "a.mp4"; d.mkdir(parents=True)
+    key = intake_cache.clip_key(str(src), 3.0, _M)
+    stale = {**key, "version": 1}
+    (d / "clip.json").write_text(json.dumps(
+        {"key": stale, "clip": {"source": "a.mp4", "dur": 1.0, "res": [2, 2], "fps": 1.0,
+                                "shaky": False, "scene_cuts": [], "windows": []},
+         "phashes": [], "cast": []}))
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None

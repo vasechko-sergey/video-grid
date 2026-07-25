@@ -18,7 +18,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, footage, intake_cache, vidstab
+from scripts.lib import assembly, carve, footage, intake_cache, vidstab
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
@@ -57,20 +57,20 @@ def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, in
 
 
 def carve_windows(scene_cuts: list[float],
-                  timeline: list[tuple[float, int, tuple[float, float, float, float] | None]],
-                  dur: float) -> list[tuple[float, float]]:
-    """scene_cuts ∪ presence-transitions, length-capped into [WIN_MIN, WIN_MAX].
-    timeline: sorted [(t, people, primary_bbox)]. Scenes alone do NOT split a long
-    single take (MVI_3739 = 1 ride → 3 windows), so carve within a scene by
-    people-presence + length. A single shot shorter than WIN_MIN yields ONE
-    window (the whole clip); a clip shredded into MANY too-short spans yields
-    NO windows (empty is valid — the clip is still logged)."""
+                  timeline: list[tuple[float, int, tuple[float, float, float, float] | None, list[int]]],
+                  mags: list[float], fps: float, dur: float) -> list[tuple[float, float]]:
+    """scene_cuts ∪ presence-transitions bound the raw spans; each span is carved on
+    its activity curve by carve.units_for_span (design 2026-07-25-intake-activity-units
+    §4). A span with people uses 2-D bbox displacement; a people-less span uses the
+    resampled vidstab magnitudes. A single sub-WIN_MIN shot stays one whole window;
+    a clip shredded into many too-short spans yields NO windows (empty is valid)."""
     bounds = {0.0, float(dur)}
     for t in scene_cuts:
         if 0.0 < t < dur:
             bounds.add(float(t))
     prev = None
-    for t, n, _ in timeline:
+    for row in timeline:
+        t, n = row[0], row[1]
         present = n > 0
         if prev is not None and present != prev and 0.0 < t < dur:
             bounds.add(float(t))
@@ -79,22 +79,18 @@ def carve_windows(scene_cuts: list[float],
     raw = list(zip(edges, edges[1:]))
     spans: list[tuple[float, float]] = []
     for a, b in raw:
-        spans.extend(_split_span(a, b))
+        samples = [row for row in timeline if a <= row[0] < b]
+        times = [row[0] for row in samples] or [a]
+        if any(row[1] > 0 for row in samples):
+            centers = [(row[2][0], row[2][1]) if row[2] is not None else None for row in samples]
+            curve = carve.subject_curve(centers)
+        else:
+            curve = carve.camera_curve(mags, fps, times)
+        spans.extend(carve.units_for_span(a, b, times, curve, WIN_MIN, WIN_MAX))
     if not spans and len(raw) == 1:          # a single short shot (dur < WIN_MIN) — keep the whole clip
         a, b = raw[0]
-        spans = [(a, b - a)]
-    return spans                             # many all-too-short spans → [] (clip logged, no usable moments)
-
-
-def _split_span(a: float, b: float) -> list[tuple[float, float]]:
-    length = b - a
-    if length < WIN_MIN:
-        return []
-    if length <= WIN_MAX:
-        return [(a, length)]
-    n = max(1, round(length / WIN_TARGET))
-    chunk = length / n
-    return [(a + i * chunk, chunk) for i in range(n)]
+        spans = [(round(a, 3), round(b - a, 3))]
+    return spans
 
 
 def _motion_fit(m: float) -> float:
@@ -133,24 +129,6 @@ def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: 
         f0, f1 = int(a * fps), int((a + d) * fps)
         out.append(vidstab.mean_shake(mags[f0:f1], w))   # fraction of frame width
     return out
-
-
-def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float,
-                    res: tuple[int, int], dur: float) -> list[float]:
-    """vidstabdetect once per clip → per-frame magnitudes → averaged per window,
-    normalized by frame width. No per-window cutting → no -ss seek landmine.
-
-    `dur` (the clip's own length, already probed by the caller) scales the timeout
-    `vidstab.detect` derives: this pass runs over the WHOLE raw clip, unlike
-    everything else in this repo, so a flat default is not generous enough for a
-    long take. The detect recipe, the timeout derivation and the .trf parsing all
-    live in scripts/lib/vidstab.py, so every consumer of that module reports the
-    same measurement (design 2026-07-20 §5).
-    """
-    vidstab.require()
-    with tempfile.TemporaryDirectory() as d:
-        mags = vidstab.detect(clip, str(Path(d) / "t.trf"), dur)
-    return _windowed_shake(mags, windows, fps, res[0])
 
 
 def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]:
@@ -306,8 +284,11 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
     res = (info.w, info.h)
     cuts = scene_bounds(path)
     timeline, crops = _people_timeline(path, info.fps, res, sample_fps)
-    spans = carve_windows(cuts, timeline, dur)
-    shakes = shake_by_window(path, spans, info.fps, res, dur)
+    vidstab.require()
+    with tempfile.TemporaryDirectory() as d:
+        mags = vidstab.detect(path, str(Path(d) / "t.trf"), dur)
+    spans = carve_windows(cuts, timeline, mags, info.fps, dur)
+    shakes = _windowed_shake(mags, spans, info.fps, res[0])
     windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
     med = statistics.median([w.shake for w in windows]) if windows else 0.0
     name = Path(path).name
