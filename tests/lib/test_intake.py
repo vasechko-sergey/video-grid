@@ -1,3 +1,4 @@
+import threading
 import types
 import numpy as np
 import pytest
@@ -207,6 +208,22 @@ def test_save_cast_candidates_saves_and_manifests(tmp_path):
     assert (tmp_path / "cast_crops" / "candidate_0.png").exists()
     assert manifest[0]["source"] in {"a.mp4", "b.mp4"} and "descriptor" in manifest[0]
 
+def test_save_cast_candidates_copies_a_cached_form_crop(tmp_path):
+    # the RESUME path: a cache-loaded CastEntry carries its crop as an on-disk PNG
+    # path (crop_rgb=None); save_cast_candidates must COPY it into the candidate slot
+    from scripts.lib.intake_cache import CastEntry
+    red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
+    src = tmp_path / "cached_crop.png"
+    _Img.fromarray(red).save(src)
+    e = CastEntry("a.mp4", 1, 0.9,
+                  appearance.build_descriptor(red, np.ones((8, 8), "uint8")),
+                  crop=str(src))
+    out = tmp_path / "out"
+    manifest = intake.save_cast_candidates([e], str(out))
+    dest = out / "cast_crops" / "candidate_0.png"
+    assert dest.exists() and manifest[0]["crop"] == str(dest)
+    assert np.asarray(_Img.open(dest))[0, 0, 0] == 255      # copied, still red
+
 def test_write_cast_writes_json(tmp_path):
     cast = intake.write_cast([("Lena", "green", _desc(0.1, 0.9), ["cast_crops/candidate_0.png"])],
                              str(tmp_path))
@@ -287,9 +304,6 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     assert res.cast[0].crop_rgb is red                       # worker-form array
 
 
-import threading
-
-
 def _two_clip_root(tmp_path):
     root = tmp_path / "footage"; root.mkdir()
     (root / "a.mp4").write_bytes(b"x")
@@ -367,7 +381,6 @@ def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     submitted = []
-    real_pe = intake._process_clip
     monkeypatch.setattr(intake, "_process_clip",
                         lambda path, sf=intake.SAMPLE_FPS:
                         (submitted.append(intake.Path(path).name),
@@ -398,7 +411,7 @@ def test_fresh_bypasses_the_cache(monkeypatch, tmp_path):
     assert sorted(submitted) == ["a.mp4", "b.mp4"]
 
 
-def test_output_is_byte_identical_fresh_vs_cached(monkeypatch, tmp_path):
+def test_output_is_byte_identical_scanned_vs_cached(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "_process_clip",

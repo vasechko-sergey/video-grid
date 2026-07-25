@@ -208,7 +208,7 @@ def cull(clips: list, phash_of: object) -> None:
             kept.append(h)
 
 
-def surface_crops(entries: list, top_n: int = 8) -> list:
+def surface_crops(entries: list[CastEntry], top_n: int = 8) -> list[CastEntry]:
     """Cluster CastEntry list by descriptor similarity → top_n distinct identities
     (highest confidence first). Descriptors are precomputed by the worker (§6), so
     this no longer builds them. Returns the picked CastEntry subset."""
@@ -222,7 +222,7 @@ def surface_crops(entries: list, top_n: int = 8) -> list:
     return picked
 
 
-def save_cast_candidates(entries: list, out_dir: str, top_n: int = 8) -> list[dict]:
+def save_cast_candidates(entries: list[CastEntry], out_dir: str, top_n: int = 8) -> list[dict]:
     """Surface the top-N distinct identities across ALL footage, persist their crop
     PNGs under out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json
     — the footage-intake SKILL shows these to the human to name (§4/§5). A cached
@@ -326,8 +326,8 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     out.mkdir(parents=True, exist_ok=True)
     paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
     ensure_model(MODEL)                                # weights-race landmine (§4), before the pool
-    results: dict = {}
-    misses: list = []
+    results: dict[Path, ClipResult] = {}
+    misses: list[Path] = []
     for p in paths:
         hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL)
         if hit is not None:
