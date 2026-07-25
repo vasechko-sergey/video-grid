@@ -838,12 +838,18 @@ EOF
 
 ---
 
-## Task 5: de-cite the tiling in docstrings; re-pin the real-ffmpeg golden; full suite
+## Task 5: de-cite the tiling in docstrings; retarget the integration stubs; full suite
 
 **Files:**
 - Modify: `scripts/lib/footage.py` (`room_after` docstring), `scripts/edit_plan.py` (`window_to_episode` docstring)
-- Modify: `tests/integration/test_intake.py` (re-pin windows to the activity-unit output)
+- Modify: `tests/integration/test_intake.py` (retarget the deleted `shake_by_window` stub to `vidstab.detect`/`require`)
 - Test (run only): whole suite
+
+**Note:** the intake integration test is entirely STRUCTURAL — it pins no numeric
+window values (only `len(windows) >= 1`, `shot_type` membership, markdown header,
+and the byte-identical-on-resume proof). So there is no golden to re-pin; the only
+breakage is that two of its three tests monkeypatch `intake.shake_by_window`, which
+Task 4 deleted. Retarget those two stubs to the vidstab seam.
 
 - [ ] **Step 1: Update the two docstrings (no behaviour change)**
 
@@ -891,31 +897,44 @@ New:
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py tests/lib/test_edit_plan.py -q`
 Expected: PASS (no behaviour changed).
 
-- [ ] **Step 3: Re-pin the integration golden**
-
-Run the intake integration test to see the new activity-unit output, then update its window assertions to match:
+- [ ] **Step 3: Retarget the two `shake_by_window` stubs to the vidstab seam**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -q`
-Expected: initially FAIL on the window count / window fields that the old equal-interval carve produced.
+Expected: FAIL — `test_intake_wiring_on_real_bytes` and `test_intake_resumes_from_cache_byte_identical` monkeypatch `intake.shake_by_window`, which Task 4 deleted (`AttributeError`). (`test_intake_real_vidstab_shake` runs real vidstab and is unaffected.)
 
-Read `tests/integration/test_intake.py`. For each assertion that pins the number of windows or a specific window's `start`/`dur`/`score`/`motion`, replace the literal with the value the current run produces (the run is deterministic — real ffprobe/PySceneDetect/vidstab/phash on the fixture clip). Keep every *structural* assertion (band membership `WIN_MIN <= dur <= WIN_MAX`, `best` set on a survivor, `track_ids` is a list, FOOTAGE.json/.md written, the byte-identical-on-resume proof) — only the numeric pins move. Do not weaken an assertion to make it pass; if a window now carries `track_ids`, add an assertion that pins them.
+In BOTH failing tests, replace the two-line `shake_by_window` monkeypatch:
+
+```python
+    monkeypatch.setattr(intake, "shake_by_window",
+                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+```
+
+with the vidstab seam the reorder introduced:
+
+```python
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [])
+```
+
+Why `[]` reproduces the old stub's effect: both tests feed people-full fake frames, so carving takes the SUBJECT curve — the (empty) magnitudes never touch the curve. And `_windowed_shake([], spans, ...)` calls `vidstab.mean_shake([], w)`, which returns `0.0` for empty input, so every window's shake is `0.0` exactly as the old stub gave. Stubbing `require` keeps the test off real libvidstab. Do NOT add numeric window pins — the assertions are structural by design; leave them as-is.
 
 - [ ] **Step 4: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
-Expected: PASS (the suite ran ~1764 tests green before this slice; expect that count plus the new tests, minus the deleted `shake_by_window` test). No golden other than intake's should move; if one does, STOP and investigate — nothing outside intake should change behaviour.
+Expected: PASS (the suite ran ~1764 tests green before this slice; expect that count plus the new carve/track_ids tests). The docstrings are inert and the carve change is intake-local, so nothing outside intake should move; if a test elsewhere fails, STOP and investigate — nothing outside intake should change behaviour.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/footage.py scripts/edit_plan.py tests/integration/test_intake.py
 git commit -F - <<'EOF'
-test: re-pin the intake golden to activity units; de-cite tiling in docstrings
+test: retarget intake integration stubs to the vidstab seam; de-cite tiling docstrings
 
 room_after and window_to_episode no longer justify themselves by intake's
-equal-interval tiling — windows are activity units now. The intake integration
-golden re-pins to the new deterministic window set; structural assertions
-(band membership, best, track_ids) are unchanged.
+equal-interval tiling — windows are activity units now (docstring text only, no
+behaviour change). The integration test's two shake_by_window monkeypatches move
+to vidstab.detect/require (Task 4 deleted shake_by_window); its assertions are
+structural and unchanged.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
