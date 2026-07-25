@@ -10,6 +10,12 @@ has something typed to select from instead of raw footage.
 **Consumed by:** 5.7 edit-plan (window selection → `EDL`), 5.3 reel-brief
 (`SPEC.cast` ← `cast.json`), and later hero-pin resolution (§6.1a).
 
+> **Driver superseded in part (2026-07-25):** `intake()` now runs clips in a
+> bounded thread pool with a resumable per-clip checkpoint and quarantines a bad
+> clip — see [2026-07-25-intake-parallel-checkpoint-design.md](2026-07-25-intake-parallel-checkpoint-design.md).
+> The CV units (probe/scene/YOLO/vidstab/carve/score/cull/cast) are unchanged; the
+> window band (`_split_span`, #3) is a separate deferred slice.
+
 ---
 
 ## Scope decisions (locked)

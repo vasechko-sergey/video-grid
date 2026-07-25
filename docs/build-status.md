@@ -4,13 +4,24 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-24._
+_Last updated: 2026-07-25._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Intake parallel scan + resumable checkpoint DONE (2026-07-25)** — plan
+  `docs/plans/2026-07-25-intake-parallel-checkpoint.md`, Tasks 0–6 (slice B, #4/#5).
+  `intake()` split into a parallel checkpointed Phase 1 (`_process_clip` worker in a
+  `ThreadPoolExecutor`, `--jobs` default 3, `ensure_model` before the pool) and a
+  cheap deterministic Phase 2 (cull + cast in `sorted(paths)` order). New
+  `scripts/lib/intake_cache.py`: atomic per-clip store/load keyed on
+  size/mtime/sample_fps/model/`CACHE_VERSION`; `--fresh` bypasses it. Output is
+  byte-identical at any `jobs` and any cache hit/miss mix. A bad clip is quarantined
+  to `intake_report.json` + a `## Failed clips` section (exit 0); a re-run retries
+  exactly the failed clips. #3 window band deferred to its own slice.
 
 - **Core engine — plan `docs/plans/2026-07-05-video-grid-core.md`, Tasks 0–11 ALL
   COMPLETE**, final review verdict READY (2026-07-07). 49 tests green (incl.
