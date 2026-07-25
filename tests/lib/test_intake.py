@@ -182,20 +182,27 @@ def test_build_descriptor_normalised_and_masked():
     assert d[appearance.HIST_BINS - 1] > 0            # red maxed → top R bin populated
 
 def test_surface_crops_dedups_identities():
-    red = (np.zeros((8, 8, 3), "uint8"), np.ones((8, 8), "uint8")); red[0][:, :, 0] = 255
-    red2 = (red[0].copy(), red[1].copy())
-    blue = (np.zeros((8, 8, 3), "uint8"), np.ones((8, 8), "uint8")); blue[0][:, :, 2] = 255
-    crops = {1: (0.9, *red), 2: (0.8, *red2), 3: (0.7, *blue)}
-    picked = intake.surface_crops(crops, top_n=8)
+    from scripts.lib.intake_cache import CastEntry
+    red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
+    blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
+    dr = appearance.build_descriptor(red, np.ones((8, 8), "uint8"))
+    db = appearance.build_descriptor(blue, np.ones((8, 8), "uint8"))
+    entries = [CastEntry("a.mp4", 1, 0.9, dr, crop_rgb=red),
+               CastEntry("a.mp4", 2, 0.8, list(dr), crop_rgb=red.copy()),
+               CastEntry("b.mp4", 3, 0.7, db, crop_rgb=blue)]
+    picked = intake.surface_crops(entries, top_n=8)
     assert len(picked) == 2                            # the two reds collapse to one identity
 
 def test_save_cast_candidates_saves_and_manifests(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
     blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
-    crops = {("a.mp4", 1): (0.9, red, np.ones((8, 8), "uint8")),
-             ("b.mp4", 1): (0.8, blue, np.ones((8, 8), "uint8"))}
-    manifest = intake.save_cast_candidates(crops, str(tmp_path))
-    assert len(manifest) == 2                                   # two distinct identities
+    dr = appearance.build_descriptor(red, np.ones((8, 8), "uint8"))
+    db = appearance.build_descriptor(blue, np.ones((8, 8), "uint8"))
+    entries = [CastEntry("a.mp4", 1, 0.9, dr, crop_rgb=red),
+               CastEntry("b.mp4", 1, 0.8, db, crop_rgb=blue)]
+    manifest = intake.save_cast_candidates(entries, str(tmp_path))
+    assert len(manifest) == 2
     assert (tmp_path / "cast_candidates.json").exists()
     assert (tmp_path / "cast_crops" / "candidate_0.png").exists()
     assert manifest[0]["source"] in {"a.mp4", "b.mp4"} and "descriptor" in manifest[0]
@@ -230,6 +237,7 @@ def test_write_cast_rejects_two_crops_named_the_same(tmp_path):
 
 
 def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     root = tmp_path / "footage"; root.mkdir()
     (root / "a.mp4").write_bytes(b"x")
     monkeypatch.setattr(intake.assembly, "probe_stream",
@@ -252,3 +260,28 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     assert result.clips[0].windows                       # carved ≥1 window
     assert any(w.best for w in result.clips[0].windows)  # cull marked best
     assert (out / "cast_candidates.json").exists()       # empty crops → empty manifest, still written
+
+
+def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
+    from scripts.lib.footage import DESCRIPTOR_LEN
+    red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
+    monkeypatch.setattr(intake.assembly, "probe_stream",
+                        lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
+    monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
+    tl = [(float(i), 1, (500, 500, 300, 300)) for i in range(9)]
+    monkeypatch.setattr(intake, "_people_timeline",
+                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
+                        (tl, {1: (0.9, red, np.ones((8, 8), "uint8"))}))
+    monkeypatch.setattr(intake, "shake_by_window",
+                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake, "_phash_at",
+                        lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
+    res = intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
+    assert res.clip.source == "a.mp4" and res.clip.windows
+    assert len(res.phashes) == len(res.clip.windows)
+    assert all(isinstance(h, str) for h in res.phashes)     # hex, cache-serializable
+    assert len(res.cast) == 1
+    assert res.cast[0].source == "a.mp4" and res.cast[0].tid == 1
+    assert len(res.cast[0].descriptor) == DESCRIPTOR_LEN
+    assert res.cast[0].crop_rgb is red                       # worker-form array

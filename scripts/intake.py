@@ -7,16 +7,20 @@ footage-intake SKILL — Python cannot ask a human — this module only surfaces
 crops and builds descriptors.
 """
 import argparse, json, statistics, tempfile
+import shutil
+import sys
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
-from scripts.lib import assembly, footage, vidstab
+from scripts.lib import assembly, footage, intake_cache, vidstab
 from scripts.lib.appearance import build_descriptor, crop_and_mask, descriptor_dist
-from scripts.track import MODEL                    # reuse the tracker's model choice
+from scripts.lib.intake_cache import CastEntry, ClipResult
+from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 
 SAMPLE_FPS = 3.0
 WIN_MIN, WIN_MAX, WIN_TARGET = 1.2, 4.0, 2.5      # seconds — the episode length band
@@ -202,40 +206,39 @@ def cull(clips: list, phash_of: object) -> None:
             kept.append(h)
 
 
-def surface_crops(crops_by_track: dict, top_n: int = 8) -> list:
-    """Cluster retained per-track crops by descriptor similarity → top_n distinct
-    identities (highest confidence first). Returns [(tid, conf, crop_rgb, mask, descriptor)]."""
-    items = []
-    for tid, (conf, crop_rgb, mask) in crops_by_track.items():
-        if crop_rgb is None:
-            continue
-        items.append((tid, conf, crop_rgb, mask, build_descriptor(crop_rgb, mask)))
-    items.sort(key=lambda it: it[1], reverse=True)
+def surface_crops(entries: list, top_n: int = 8) -> list:
+    """Cluster CastEntry list by descriptor similarity → top_n distinct identities
+    (highest confidence first). Descriptors are precomputed by the worker (§6), so
+    this no longer builds them. Returns the picked CastEntry subset."""
+    items = sorted(entries, key=lambda e: e.conf, reverse=True)
     picked: list = []
-    for it in items:
-        if all(descriptor_dist(it[4], p[4]) > CAST_DEDUP for p in picked):
-            picked.append(it)
+    for e in items:
+        if all(descriptor_dist(e.descriptor, p.descriptor) > CAST_DEDUP for p in picked):
+            picked.append(e)
         if len(picked) >= top_n:
             break
     return picked
 
 
-def save_cast_candidates(crops_by_track: dict, out_dir: str, top_n: int = 8) -> list[dict]:
-    """Surface the top-N distinct identities across ALL footage, save their crop PNGs
-    under out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json
-    (id, source, conf, crop, descriptor) — the footage-intake SKILL shows these to the
-    human to name (§4/§5). Reuses the single seg pass; empty footage → empty manifest."""
-    picked = surface_crops(crops_by_track, top_n)
+def save_cast_candidates(entries: list, out_dir: str, top_n: int = 8) -> list[dict]:
+    """Surface the top-N distinct identities across ALL footage, persist their crop
+    PNGs under out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json
+    — the footage-intake SKILL shows these to the human to name (§4/§5). A cached
+    entry carries its crop as an on-disk PNG (copied); a fresh one carries the live
+    array (written). Empty footage → empty manifest, still written."""
+    picked = surface_crops(entries, top_n)
     crop_dir = Path(out_dir) / "cast_crops"
     if picked:
         crop_dir.mkdir(parents=True, exist_ok=True)
     manifest: list[dict] = []
-    for i, (key, conf, crop_rgb, _mask, desc) in enumerate(picked):
-        path = str(crop_dir / f"candidate_{i}.png")
-        Image.fromarray(crop_rgb.astype("uint8")).save(path)
-        source = key[0] if isinstance(key, tuple) else key
-        manifest.append({"id": i, "source": source, "conf": round(float(conf), 3),
-                         "crop": path, "descriptor": desc})
+    for i, e in enumerate(picked):
+        dest = str(crop_dir / f"candidate_{i}.png")
+        if e.crop is not None:
+            shutil.copy(e.crop, dest)
+        else:
+            Image.fromarray(e.crop_rgb.astype("uint8")).save(dest)
+        manifest.append({"id": i, "source": e.source, "conf": round(float(e.conf), 3),
+                         "crop": dest, "descriptor": e.descriptor})
     (Path(out_dir) / "cast_candidates.json").write_text(json.dumps(manifest, indent=2))
     return manifest
 
@@ -284,33 +287,47 @@ def _motion(samples: list, res: tuple[int, int]) -> float:
     return float(min(1.0, (sum(disps) / len(disps)) * MOTION_GAIN))
 
 
+def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
+    """One clip's CV (Phase 1, design §2): probe → scene → YOLO seg → vidstab →
+    carve → score, plus the two facts Phase 2 needs pre-computed so it stays pure —
+    each window's midpoint phash (hex, cache-serializable) and each track's
+    descriptor (built here, where the mask is in hand). Raises on a bad clip; the
+    driver quarantines it. Calls its CV collaborators by module name so tests that
+    monkeypatch them still intercept."""
+    info = assembly.probe_stream(path)
+    dur = assembly.probe_duration(path)
+    res = (info.w, info.h)
+    cuts = scene_bounds(path)
+    timeline, crops = _people_timeline(path, info.fps, res, sample_fps)
+    spans = carve_windows(cuts, timeline, dur)
+    shakes = shake_by_window(path, spans, info.fps, res, dur)
+    windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
+    med = statistics.median([w.shake for w in windows]) if windows else 0.0
+    name = Path(path).name
+    clip = footage.FootageClip(source=name, dur=dur, res=res, fps=info.fps,
+                               shaky=med > SHAKY_CLIP, scene_cuts=cuts, windows=windows)
+    phashes = [str(_phash_at(path, w.start + w.dur / 2)) for w in windows]
+    cast = [CastEntry(source=name, tid=tid, conf=conf,
+                      descriptor=build_descriptor(crop_rgb, mask), crop_rgb=crop_rgb)
+            for tid, (conf, crop_rgb, mask) in crops.items() if crop_rgb is not None]
+    return ClipResult(clip=clip, phashes=phashes, cast=cast)
+
+
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> footage.Footage:
     root = Path(footage_root)
-    paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
-    clips = []
-    all_crops: dict = {}
-    for p in paths:
-        src = str(p)
-        info = assembly.probe_stream(src)
-        dur = assembly.probe_duration(src)
-        res = (info.w, info.h)
-        cuts = scene_bounds(src)
-        timeline, crops = _people_timeline(src, info.fps, res, sample_fps)
-        for tid, entry in crops.items():
-            all_crops[(p.name, tid)] = entry          # composite key — ids restart per clip
-        spans = carve_windows(cuts, timeline, dur)
-        shakes = shake_by_window(src, spans, info.fps, res, dur)
-        windows = [_build_window(sp, timeline, sh, res) for sp, sh in zip(spans, shakes)]
-        med = statistics.median([w.shake for w in windows]) if windows else 0.0
-        clips.append(footage.FootageClip(source=p.name, dur=dur, res=res, fps=info.fps,
-                                         shaky=med > SHAKY_CLIP, scene_cuts=cuts, windows=windows))
-    result = footage.Footage(clips=clips)
-    cull(result.clips, phash_of=lambda c, w: _phash_at(str(root / c.source), w.start + w.dur / 2))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
+    ensure_model(MODEL)                                # weights-race landmine (§4), before any worker
+    results = {p: _process_clip(str(p), sample_fps) for p in paths}
+    ok = [results[p] for p in paths if p in results]
+    result = footage.Footage(clips=[r.clip for r in ok])
+    phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
+                for r in ok for w, h in zip(r.clip.windows, r.phashes)}
+    cull(result.clips, phash_of=lambda c, w: phash_by[(c.source, w.start, w.dur)])
     (out / "FOOTAGE.json").write_text(json.dumps(result.to_dict(), indent=2))
     (out / "FOOTAGE.md").write_text(result.to_markdown())
-    save_cast_candidates(all_crops, str(out))
+    save_cast_candidates([e for r in ok for e in r.cast], str(out))
     return result
 
 
