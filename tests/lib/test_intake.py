@@ -27,14 +27,16 @@ def _line(n_from_to):   # helper: timeline [(t, people, bbox, track_ids)] at 1s 
 
 
 def test_carve_long_take_is_activity_units_not_equal_tiling():
-    # one 8s take, person present throughout, subject accelerates then stops (a peak)
-    tl = [(float(t), 1, (500 + (0 if t < 3 else (t - 3) * 120 if t < 5 else 240), 500, 200, 300), [1])
-          for t in range(9)]
-    spans = intake.carve_windows([], tl, [], 1.0, 8.0)
+    # a 12s take with two isolated, ASYMMETRIC activity peaks (t=3, t=8): a big jump
+    # then a slow settle, so the subject curve has strict maxima (not an equal-value
+    # plateau). Equal-interval tiling would emit N windows of ONE duration; activity
+    # units vary — restoring _split_span would collapse the duration set to a single value.
+    pos = [500, 500, 500, 800, 810, 815, 815, 815, 1115, 1125, 1130, 1130, 1130]
+    tl = [(float(t), 1, (pos[t], 500, 200, 300), [1]) for t in range(13)]
+    spans = intake.carve_windows([], tl, [], 1.0, 12.0)
     assert spans                                                     # carved something
     assert all(intake.WIN_MIN <= d <= intake.WIN_MAX + 1e-6 for _, d in spans)
-    starts = sorted(s for s, _ in spans)
-    assert starts != [0.0, 4.0] and starts != [0.0, 2.0, 4.0, 6.0]  # NOT equal-interval
+    assert len({round(d, 3) for _, d in spans}) > 1                 # NOT one uniform tile size
 
 
 def test_carve_splits_on_presence_transition():
@@ -61,7 +63,9 @@ def test_carve_peopleless_span_uses_camera_motion(monkeypatch):
     tl = [(float(t), 0, None, []) for t in range(9)]
     mags = [0, 0, 0, 1, 9, 1, 0, 0, 0]
     spans = intake.carve_windows([], tl, mags, 1.0, 8.0)
-    assert any(s <= 4.0 <= s + d for s, d in spans)
+    # strict right bound: a subject-only regression → all-zero curve → flat (0.0, 4.0),
+    # which touches 4.0 only at its edge; the camera-driven tight window straddles it.
+    assert any(s <= 4.0 < s + d for s, d in spans)
 
 
 def test_score_rises_with_presence():
