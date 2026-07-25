@@ -11,6 +11,7 @@ import shutil
 import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from math import hypot
 from pathlib import Path
 
 import imagehash
@@ -182,7 +183,8 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
             continue
         bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]
         primary = max(bbs, key=lambda bb: bb[2] * bb[3]) if bbs else None
-        timeline.append((i / fps, len(bbs), primary))
+        tids = sorted({int(b.id[0]) for b in boxes if getattr(b, "id", None) is not None})
+        timeline.append((i / fps, len(bbs), primary, tids))
     return timeline, crops
 
 
@@ -267,25 +269,28 @@ def scene_bounds(src: str) -> list[float]:
 def _build_window(span: tuple[float, float], timeline: list, shake: float, res: tuple[int, int]) -> footage.FootageWindow:
     a, d = span
     b = a + d
-    samples = [(t, n, bb) for (t, n, bb) in timeline if a <= t < b]
-    people = max((n for _, n, _ in samples), default=0)
-    present = (sum(1 for _, n, _ in samples if n > 0) / len(samples)) if samples else 0.0
-    boxes = [bb for _, _, bb in samples if bb is not None]
+    samples = [row for row in timeline if a <= row[0] < b]
+    people = max((row[1] for row in samples), default=0)
+    present = (sum(1 for row in samples if row[1] > 0) / len(samples)) if samples else 0.0
+    boxes = [row[2] for row in samples if row[2] is not None]
     primary = max(boxes, key=lambda bb: bb[2] * bb[3]) if boxes else None
     motion = _motion(samples, res)
     shot = shot_type(primary, res)
     score = score_window(present, motion, shake, d)
+    track_ids = sorted({tid for row in samples for tid in row[3]})
     return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
                                  people=people, motion=round(motion, 3), shake=round(shake, 4),
-                                 description=_describe(people, shot, motion), score=round(score, 3))
+                                 description=_describe(people, shot, motion), score=round(score, 3),
+                                 track_ids=track_ids)
 
 
 def _motion(samples: list, res: tuple[int, int]) -> float:
-    centers = [(t, bb[0]) for (t, n, bb) in samples if bb is not None]
+    centers = [bb for (t, n, bb, tids) in samples if bb is not None]
     if len(centers) < 2:
         return 0.0
     w = res[0] or 1
-    disps = [abs(centers[i][1] - centers[i - 1][1]) / w for i in range(1, len(centers))]
+    disps = [hypot(centers[i][0] - centers[i - 1][0], centers[i][1] - centers[i - 1][1]) / w
+             for i in range(1, len(centers))]
     return float(min(1.0, (sum(disps) / len(disps)) * MOTION_GAIN))
 
 

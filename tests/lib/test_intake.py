@@ -113,15 +113,28 @@ class _FakeRes:
     def __init__(self, boxes):
         self.boxes = boxes
 
-def test_people_timeline_samples_and_counts(monkeypatch):
+def test_people_timeline_samples_counts_and_track_ids(monkeypatch):
     # 6 frames @ fps 6, SAMPLE_FPS 3 → step 2 → sample frames 0,2,4. subject slides right.
     frames = [_FakeRes([_FakeBox([300 + i * 40, 500, 200, 300], 1)]) for i in range(6)]
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(frames)))
     tl, crops = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
-    assert [n for _, n, _ in tl] == [1, 1, 1]          # one person each sampled frame
+    assert [n for _, n, _, _ in tl] == [1, 1, 1]        # one person each sampled frame
     assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
-    assert tl[0][2][2] == 200                          # primary bbox width threaded through
-    # crops stay empty here: the fakes carry no orig_img, so there is nothing to retain.
+    assert tl[0][2][2] == 200                           # primary bbox width threaded through
+    assert tl[0][3] == [1]                              # track id present at the sample
+
+
+def test_motion_is_2d():
+    # a purely vertical slide registers now (x-only would have read 0)
+    res = (1000, 1000)
+    samples = [(0.0, 1, (500, 100, 10, 10), [1]), (1.0, 1, (500, 300, 10, 10), [1])]
+    assert intake._motion(samples, res) > 0.0
+
+
+def test_build_window_unions_track_ids():
+    tl = [(0.0, 1, (500, 500, 10, 10), [2]), (1.0, 2, (500, 500, 10, 10), [2, 5])]
+    w = intake._build_window((0.0, 2.0), tl, shake=0.0, res=(1000, 1000))
+    assert w.track_ids == [2, 5]
 
 
 def test_crop_and_mask_rgb_and_aligned_mask():
