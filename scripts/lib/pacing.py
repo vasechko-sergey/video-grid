@@ -1,17 +1,22 @@
-"""Pacing / energy spine (design docs/specs/2026-07-14-pacing-design.md, §5.6, Phase B4).
+"""Pacing / fitted spine (design docs/specs/2026-07-24-scenario-first-pacing-design.md §3).
 
-The pure core: fold MUSIC.json's beat grid + RMS energy curve into a beat-aligned
-energy spine — an ordered list of Slots whose length is inverse to local energy
-(cut density rises with the music), hook first. Consumed by edit_plan (beat_slot +
-per-episode target length) and rendered as PACING.{json,md} by scripts/pacing.py.
-stdlib only (statistics.fmean) — NO numpy, NO librosa — so build_spine is bit-exact
-and its goldens pin exact slots. Owns the spine value-space, exactly as offset.py
-owns the envelope space and mood.py the vector space; imports nothing from the repo."""
+The pure core: given the cut durations the SCENARIO fixed and MUSIC.json's beat grid +
+RMS energy curve, snap each out-point onto the coarsest musical grid level it can reach
+and emit the fitted spine. Consumed by edit_plan (beat_slot + the snapped dur) and
+rendered as PACING.{json,md} by scripts/pacing.py. stdlib only (statistics.fmean) — NO
+numpy, NO librosa — so fit_spine is bit-exact and its goldens pin exact slots.
+
+Until 2026-07-24 this module GENERATED lengths from energy (2/4/8 beats per slot), which
+capped a slot at 4.6s at 104 BPM and silently truncated any shot that WAS the content —
+a surf ride, a trick. Length ownership moved to the footage; what is left here is the
+fit."""
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
+
+from scripts.lib import gridfit
 
 KINDS = ("hook", "build", "peak", "release")
 _TOL = 1e-6
@@ -69,8 +74,8 @@ class Slot:
         # ValueError-with-remedy per coding-standards.
         if not isinstance(d, dict):
             raise ValueError(f"Slot.from_dict: expected a slot object with index/start/dur/energy/"
-                             f"kind fields, got {type(d).__name__} — re-run pacing to regenerate "
-                             f"PACING.json")
+                             f"kind/line/dev fields, got {type(d).__name__} — re-run pacing to "
+                             f"regenerate PACING.json")
         missing = [k for k in ("index", "start", "dur", "energy", "kind", "line", "dev") if k not in d]
         if missing:
             raise ValueError(f"Slot.from_dict missing key(s) {missing} — a fitted slot needs "
@@ -91,7 +96,7 @@ class Spine:
 
     def __post_init__(self) -> None:
         if not isinstance(self.slots, tuple) or not self.slots:
-            raise ValueError("Spine.slots must be a non-empty tuple of Slot — build_spine "
+            raise ValueError("Spine.slots must be a non-empty tuple of Slot — fit_spine "
                              "found no beats; check the track/window")
         for want, s in enumerate(self.slots):
             if not isinstance(s, Slot):
@@ -156,19 +161,12 @@ class Spine:
 
 
 LOW_BAND, HIGH_BAND = 0.33, 0.66          # normalized-energy band thresholds
-SLOW_BEATS, MID_BEATS, FAST_BEATS = 8, 4, 2   # beats per slot by band (cut density ∝ energy)
-HOOK_BEATS = 2                            # the first slot: short, attention-grab
 _FLAT_EPS = 1e-9                          # energy range below this → treat as uniform
 
 
 def _kind(n: float) -> str:
     """Normalized energy → band label (peak/build/release; hook is set positionally)."""
     return "peak" if n >= HIGH_BAND else "build" if n >= LOW_BAND else "release"
-
-
-def _beats_per_slot(n: float) -> int:
-    """Normalized energy → slot span in beats — fewer when loud (fast cuts)."""
-    return FAST_BEATS if n >= HIGH_BAND else MID_BEATS if n >= LOW_BAND else SLOW_BEATS
 
 
 def _beat_energy(beats: Sequence[float], energy: Sequence[float], energy_hz: float,
@@ -188,29 +186,39 @@ def _beat_energy(beats: Sequence[float], energy: Sequence[float], energy_hz: flo
     return [0.5 if (hi - lo) < _FLAT_EPS else (r - lo) / (hi - lo) for r in raw]
 
 
-def build_spine(beats: Sequence[float], energy: Sequence[float], energy_hz: float,
-                duration: float, tempo: float) -> Spine:
-    """Fold the beat grid + energy curve into a beat-aligned energy spine (§5.6).
-    Greedy left-to-right: the first slot is a HOOK_BEATS hook; thereafter each slot
-    spans _beats_per_slot(local energy) beats — fewer when loud (fast cuts), more when
-    quiet. Slot boundaries snap to beat times; slot 0 starts at 0.0 and the last slot
-    ends at `duration`, so the spine covers [0, duration] exactly. Deterministic
-    (stdlib only) — the goldens pin exact slots."""
-    if not beats:
-        raise ValueError("build_spine got no beats — MUSIC.json analyze() found none; "
-                         "check the track/window (a spine needs a beat grid)")
-    n = _beat_energy(beats, energy, energy_hz, duration)
-    slots: list[Slot] = []
-    i = 0
-    while i < len(beats):
-        first = not slots
-        start = 0.0 if first else beats[i]
-        if not first and start >= duration - _TOL:   # a beat on the end → no zero-width tail slot
-            break
-        span = HOOK_BEATS if first else _beats_per_slot(n[i])
-        j = min(i + span, len(beats))
-        end = duration if j >= len(beats) else beats[j]
-        e = fmean(n[i:j])
-        slots.append(Slot(len(slots), start, end - start, e, "hook" if first else _kind(e)))
-        i = j
-    return Spine(tuple(slots), float(duration), float(tempo))
+def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
+              levels=gridfit.GRID_LEVELS):
+    """Fit the cuts the scenario already fixed onto the coarsest reachable grid level.
+
+    Returns (Spine, chosen Fit, rejected Fits). `durs` are the episodes' own durations,
+    `bounds` the per-episode (lo, hi) the snap may move each out-point by — the caller
+    derives hi from the shot's remaining room (FootageClip.room_after). The allowance is
+    half a beat, from `tempo`, and is NOT a function of the level (design §4).
+
+    Slot 0 is the hook positionally; every other kind is an energy label. The spine
+    covers [0, sum(fitted durations)] exactly, so Spine's own contiguity and total
+    invariants hold by construction."""
+    if not list(beats):
+        raise ValueError("fit_spine got no beats — MUSIC.json analyze() found none; "
+                         "check the track/window (a fit needs a beat grid)")
+    allow = gridfit.allowance(tempo)
+    fit, rejected = gridfit.best_fit(durs, beats, bounds, allow, levels=levels)
+    fitted = [float(d) + s for d, s in zip(durs, fit.shifts)]
+    total = sum(fitted)
+    n = _beat_energy(beats, energy, energy_hz, total)
+    slots, pos = [], 0.0
+    for i, dur in enumerate(fitted):
+        span = [n[k] for k, b in enumerate(beats) if pos <= b < pos + dur] or [0.5]
+        e = fmean(span)
+        tail = i == len(fitted) - 1
+        dev = 0.0 if tail else fit.devs[i]
+        # The tail's out-point is the reel's end, not a cut: it has no line to be near.
+        line = None
+        if not tail:
+            want = pos + dur
+            line = min(gridfit.lines_at(beats, fit.level_n, fit.phase),
+                       key=lambda L: abs(L - want))
+        slots.append(Slot(i, pos, dur, e, "hook" if i == 0 else _kind(e),
+                          line=line, dev=dev))
+        pos += dur
+    return Spine(tuple(slots), total, float(tempo)), fit, rejected
