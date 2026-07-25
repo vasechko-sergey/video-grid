@@ -33,6 +33,7 @@
 Create `tests/lib/test_carve.py`:
 
 ```python
+import pytest
 from scripts.lib import carve
 
 
@@ -53,10 +54,22 @@ def test_camera_curve_samples_frame_magnitudes_at_times():
     assert carve.camera_curve([], fps=1.0, times=[0.0, 1.0]) == [0.0, 0.0]
 
 
+def test_camera_curve_clamps_past_the_last_frame():
+    # a sample time beyond the last vidstab frame reads the last magnitude, never IndexErrors
+    assert carve.camera_curve([0.0, 9.0], fps=1.0, times=[0.0, 1.0, 5.0]) == [0.0, 9.0, 9.0]
+
+
+def test_camera_curve_rejects_nonpositive_fps():
+    # fps <= 0 would map every sample onto frame 0 — a silent flat curve; refuse it
+    with pytest.raises(ValueError):
+        carve.camera_curve([1.0, 2.0], fps=0.0, times=[0.0])
+
+
 def test_local_extrema_are_interior_only():
     curve = [0.0, 2.0, 0.0, 5.0, 1.0]
     assert carve._local_maxima(curve) == [1, 3]
     assert carve._local_minima(curve) == [2]
+    assert carve._local_maxima([0.0, 5.0, 5.0, 0.0]) == []   # a flat plateau is not a peak
 
 
 def test_find_peaks_returns_raw_local_maxima_far_apart():
@@ -75,6 +88,14 @@ def test_find_peaks_rejects_a_weaker_maximum_within_win_min():
     peaks = carve.find_peaks(curve, times, win_min=1.2)
     # idx1(t=0.4,9) kept; idx3(t=1.2,6) is 0.8s away (< 1.2) → dropped; idx6(t=2.4,7) far → kept
     assert [times[i] for i in peaks] == [0.4, 2.4]
+
+
+def test_find_peaks_keeps_the_stronger_of_two_close_peaks():
+    # the stronger peak is the LATER one → a plain index-order greedy would keep the
+    # earlier weaker one; strongest-first keeps t=1.2, and the final sort orders it
+    curve = [0.0, 4.0, 0.0, 9.0, 0.0]
+    times = [0.0, 0.4, 0.8, 1.2, 1.6]
+    assert [times[i] for i in carve.find_peaks(curve, times, win_min=1.2)] == [1.2]
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -101,7 +122,9 @@ from math import hypot
 def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
     """Per-sample 2-D displacement of the primary bbox centre, aligned to samples.
     `centers[i]` is (cx, cy) or None (no person that sample). Index 0 has no prior,
-    and any sample bordering a gap, are 0.0."""
+    and any sample bordering a gap, are 0.0. Returns RAW pixel displacement — peak
+    detection is scale-invariant, so no width normalisation is applied here (and the
+    subject/camera curves are never compared on one axis, §3)."""
     if not centers:
         return []
     out = [0.0]
@@ -113,7 +136,13 @@ def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
 
 def camera_curve(mags: list[float], fps: float, times: list[float]) -> list[float]:
     """Resample per-frame vidstab magnitudes to the sample `times` (a people-less
-    span's only within-shot signal, §3). Empty mags → a flat zero curve."""
+    span's only within-shot signal, §3). Empty mags → a flat zero curve. A
+    non-positive fps is refused, not defended around: it maps a time to a frame
+    index, so fps <= 0 would collapse every sample onto frame 0 — a silent flat
+    curve that then yields wrong peaks (a §12-class silent corruption)."""
+    if fps <= 0:
+        raise ValueError(f"carve.camera_curve: fps must be positive, got {fps!r} — "
+                         "a non-positive fps collapses every sample onto frame 0")
     if not mags:
         return [0.0 for _ in times]
     n = len(mags)
@@ -147,7 +176,7 @@ def find_peaks(curve: list[float], times: list[float], win_min: float) -> list[i
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_carve.py -q`
-Expected: PASS (6 tests).
+Expected: PASS (9 tests).
 
 - [ ] **Step 5: Commit**
 
