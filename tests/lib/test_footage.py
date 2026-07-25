@@ -65,6 +65,51 @@ def test_clip_from_dict_rejects_unknown_top_key():
         FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30, bogus=1))
 
 
+@pytest.mark.parametrize("bad", [None, "abc", True, -1.0])
+def test_clip_rejects_a_bad_scene_cut(bad):
+    # scene_cuts were coerced with float() and never validated first: None raised a bare
+    # TypeError, "abc" raised float()'s raw ValueError (naming neither class nor remedy),
+    # and True/-1.0 were silently accepted (True->1.0, -1.0 a negative timestamp). Each
+    # must now raise a ValueError naming the field, like every other numeric clip field.
+    with pytest.raises(ValueError, match="scene_cuts"):
+        FootageClip(source="a.mp4", dur=10.0, res=(10, 10), fps=30, scene_cuts=[5.0, bad])
+
+
+def test_clip_bad_scene_cut_names_the_field_value_and_remedy():
+    # coding-standards: wrong-value construction raises ValueError with the remedy in the
+    # message. All three halves are asserted, matching the FootageWindow/from_dict style.
+    with pytest.raises(ValueError) as ei:
+        FootageClip(source="a.mp4", dur=10.0, res=(10, 10), fps=30, scene_cuts=[5.0, None])
+    msg = str(ei.value)
+    assert "scene_cuts[1]" in msg                 # the field, by index
+    assert "None" in msg                          # the offending value
+    assert "footage-intake" in msg                # the remedy, not just the diagnosis
+
+
+def test_clip_rejects_a_non_list_scene_cuts():
+    # a non-iterable container used to raise a bare TypeError out of the comprehension
+    with pytest.raises(ValueError, match="scene_cuts"):
+        FootageClip(source="a.mp4", dur=10.0, res=(10, 10), fps=30, scene_cuts=5.0)
+
+
+def test_clip_rejects_a_non_list_windows():
+    # windows validates each entry (isinstance) but the container itself was unchecked,
+    # so a non-iterable raised a bare TypeError out of enumerate — the same shape of fail
+    # as an unvalidated scene_cut. Guarded alongside scene_cuts for symmetry.
+    with pytest.raises(ValueError, match="windows"):
+        FootageClip(source="a.mp4", dur=10.0, res=(10, 10), fps=30, windows=42)
+
+
+def test_clip_from_dict_surfaces_a_bad_scene_cut_not_as_a_missing_field():
+    # float()'s TypeError used to be caught by from_dict's `except TypeError` and
+    # re-labelled "missing or unknown field" — a wrong diagnosis. __post_init__ now
+    # raises ValueError (uncaught there), so the real cause and its remedy survive.
+    with pytest.raises(ValueError, match="scene_cuts") as ei:
+        FootageClip.from_dict(dict(source="a.mp4", dur=1.0, res=[10, 10], fps=30,
+                                   scene_cuts=[5.0, None]))
+    assert "missing or unknown field" not in str(ei.value)
+
+
 def test_room_after_runs_to_the_next_scene_cut():
     clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
                        shaky=False, scene_cuts=[12.0, 25.0], windows=[])

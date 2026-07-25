@@ -89,7 +89,17 @@ class FootageClip:
             raise ValueError(f"FootageClip.fps must be a positive number, got {self.fps!r}")
         if not isinstance(self.shaky, bool):
             raise ValueError("FootageClip.shaky must be a bool")
+        if not isinstance(self.scene_cuts, list):
+            raise ValueError(f"FootageClip.scene_cuts must be a list of numbers (seconds), "
+                             f"got {self.scene_cuts!r} — re-run footage-intake to regenerate FOOTAGE.json")
+        for k, t in enumerate(self.scene_cuts):
+            if not (_num(t) and t >= 0):
+                raise ValueError(f"FootageClip.scene_cuts[{k}] must be a number >= 0 (seconds), "
+                                 f"got {t!r} — re-run footage-intake to regenerate FOOTAGE.json")
         self.scene_cuts = [float(t) for t in self.scene_cuts]
+        if not isinstance(self.windows, list):
+            raise ValueError(f"FootageClip.windows must be a list of FootageWindow, "
+                             f"got {self.windows!r} — re-run footage-intake to regenerate FOOTAGE.json")
         for k, w in enumerate(self.windows):
             if not isinstance(w, FootageWindow):
                 raise ValueError(f"FootageClip.windows[{k}] must be a FootageWindow")
