@@ -111,20 +111,24 @@ Per span `[a, b]`, length `L = b - a`, curve `c` over its samples. This replaces
 - **`WIN_MIN ≤ L ≤ WIN_MAX`** → one unit `(a, L)` — the whole span already fits
   the band; a peak inside a short span needs no split (unchanged intent).
 - **`L > WIN_MAX`** (where equal-tiling used to fire):
-  1. Smooth `c` with a small fixed kernel (denoise, not tune — §9).
-  2. Local maxima of the smoothed curve; greedily keep the strongest first,
-     rejecting any within `WIN_MIN` of an already-kept peak → peaks `P` (by time).
-  3. **`P` empty (a flat span)** → **do not tile.** Emit **one** `WIN_MAX` unit at
+  1. Local maxima of `c`; greedily keep the strongest first, rejecting any within
+     `WIN_MIN` of an already-kept peak → peaks `P` (by time). The `WIN_MIN` greedy
+     spacing is the **only** peak regulator: close or noisy maxima are thinned by
+     keeping the stronger, so no smoothing constant is invented (§9). The curve is
+     **not** smoothed — on a ~3fps curve a fixed denoise kernel is both
+     unvalidatable (no footage) and redundant with this spacing, since a kernel
+     wide enough to merge adjacent maxima already spans more than `WIN_MIN`.
+  2. **`P` empty (a flat span)** → **do not tile.** Emit **one** `WIN_MAX` unit at
      the position of maximum mean activity (slide a `WIN_MAX` window over the span,
      pick the start with the highest mean `c`). Density ∝ activity: a flat span
      yields one low-scoring candidate, not `n` filler tiles.
-  4. **For each peak `p` in `P`**, emit two candidates, each clamped into
+  3. **For each peak `p` in `P`**, emit two candidates, each clamped into
      `[WIN_MIN, WIN_MAX]` with the peak kept inside:
      - **`lead-in`**: start at the nearest local **minimum before** `p` (the lull;
        `a` if none), end at the nearest local minimum **after** `p` (the settle;
        `b` if none), then clamp to the band.
      - **`tight`**: a `WIN_MIN` window centred on `p`, clamped to the span.
-  5. Drop exact-duplicate `(start, dur)` pairs before returning (a sharp isolated
+  4. Drop exact-duplicate `(start, dur)` pairs before returning (a sharp isolated
      peak makes `tight` == `lead-in`; dropping the dup here saves a phash call —
      `cull` would also remove it later, by image).
 
@@ -207,13 +211,16 @@ later shows pain, the peak spacing is the knob (raise `WIN_MIN` → `WIN_TARGET`
   in-point within a unit. Its docstring and `room_after`'s are updated to stop
   citing "tiling by length" as the reason windows are meaningless — they are not,
   after 3a.
-- **Two soft knobs, named.** The smoothing kernel (§4.1) and the settle
-  end-point (§4.4). Both are **relative** — a denoise window and a curve-extremum
-  choice — not activity thresholds; neither is tuned against footage. They are the
-  only non-band constants the carve introduces, and they are called out so a
-  reviewer looks straight at them.
+- **No new tuned constant.** The carve introduces **zero** numeric knobs that
+  would need footage to set. Peaks are relative local maxima; the lull/settle that
+  bound a lead-in are relative curve extrema; unit count is regulated only by the
+  band `[WIN_MIN, WIN_MAX]` and the `WIN_MIN` peak spacing, all of which predate
+  3a. The smoothing kernel that an earlier draft carried was dropped (§4.1): it
+  was unvalidatable and redundant with the greedy spacing. The one *choice* left is
+  which extremum bounds a lead-in (the nearest local minimum) — a relative rule,
+  not a threshold.
 - **Flat-span coverage is deliberately thin.** A long flat B-roll span surfaces
-  as **one** candidate (§4.3), not a tiling. If the editor needs more of it, that
+  as **one** candidate (§4.2), not a tiling. If the editor needs more of it, that
   is `start_offset` (now) or a 3b span (later). "Density ∝ activity" means a dull
   take yields few windows on purpose.
 - **No real footage.** Every threshold that would need footage to set is absent
@@ -221,11 +228,12 @@ later shows pain, the peak spacing is the knob (raise `WIN_MIN` → `WIN_TARGET`
 
 ## 10. Testing
 
-- **Pure `carve.py` on synthetic curves.** The whole peak→unit pipeline (curve
-  smoothing, local-maxima + greedy spacing, lead-in/tight construction, band
-  clamps with the peak kept inside, the flat-span max-mean fallback, the exact-dup
-  drop) is pure over a hand-built list of floats. Deterministic, no ffmpeg, no
-  footage. This is where the algorithm is pinned, including the mutation-style
+- **Pure `carve.py` on synthetic curves.** The whole peak→unit pipeline
+  (local-maxima + greedy `WIN_MIN` spacing incl. the close-maxima rejection,
+  lead-in/tight construction, band clamps with the peak kept inside, the flat-span
+  max-mean fallback, the exact-dup drop) is pure over a hand-built list of floats.
+  Deterministic, no ffmpeg, no footage. This is where the algorithm is pinned,
+  including the mutation-style
   cases (a peak at a span edge, a plateau, two peaks `WIN_MIN`-apart, a curve that
   is monotone).
 - **Real-ffmpeg integration golden.** The existing intake golden clip re-runs end

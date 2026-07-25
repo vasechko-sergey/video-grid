@@ -22,7 +22,7 @@
 
 ---
 
-## Task 0: `lib/carve.py` primitives — curves, smoothing, extrema, peaks
+## Task 0: `lib/carve.py` primitives — curves, extrema, peaks
 
 **Files:**
 - Create: `scripts/lib/carve.py`
@@ -53,24 +53,28 @@ def test_camera_curve_samples_frame_magnitudes_at_times():
     assert carve.camera_curve([], fps=1.0, times=[0.0, 1.0]) == [0.0, 0.0]
 
 
-def test_smooth_is_a_centred_moving_average():
-    assert carve.smooth([0.0, 9.0, 0.0], kernel=3) == [4.5, 3.0, 4.5]
-    assert carve.smooth([1.0, 2.0], kernel=3) == [1.0, 2.0]   # too short → unchanged
-
-
 def test_local_extrema_are_interior_only():
     curve = [0.0, 2.0, 0.0, 5.0, 1.0]
     assert carve._local_maxima(curve) == [1, 3]
     assert carve._local_minima(curve) == [2]
 
 
-def test_find_peaks_keeps_strongest_first_with_min_spacing():
-    # times 0..5s at 1s; two maxima at t=1 (val 3) and t=2 (val 9), win_min 1.2 apart-fail
-    curve = [0.0, 3.0, 9.0, 0.0, 4.0, 0.0]
+def test_find_peaks_returns_raw_local_maxima_far_apart():
+    # two clear maxima 2.0s apart (> win_min) → both kept, in time order
+    curve = [0.0, 3.0, 9.0, 0.0, 4.0, 0.0]        # maxima at idx 2 (9) and idx 4 (4)
     times = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
     peaks = carve.find_peaks(curve, times, win_min=1.2)
-    # t=1 and t=2 are 1.0s apart (< 1.2) → only the stronger (t=2) survives; t=4 is far → kept
     assert [times[i] for i in peaks] == [2.0, 4.0]
+
+
+def test_find_peaks_rejects_a_weaker_maximum_within_win_min():
+    # finer sampling (0.4s) so two maxima can sit < win_min apart; the greedy
+    # strongest-first keeps the stronger and drops the neighbour, far one survives
+    curve = [0.0, 9.0, 0.0, 6.0, 0.0, 0.0, 7.0, 0.0]   # maxima idx1(9), idx3(6), idx6(7)
+    times = [0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8]
+    peaks = carve.find_peaks(curve, times, win_min=1.2)
+    # idx1(t=0.4,9) kept; idx3(t=1.2,6) is 0.8s away (< 1.2) → dropped; idx6(t=2.4,7) far → kept
+    assert [times[i] for i in peaks] == [0.4, 2.4]
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -92,11 +96,6 @@ to the clip, so no absolute activity threshold is invented (§2) — there is no
 footage to tune one on.
 """
 from math import hypot
-
-# A light denoise of the ~3fps activity curve before peak-finding — NOT a tuned
-# threshold (§9): it is a fixed 3-sample centred average, the smallest kernel that
-# removes single-sample detection jitter.
-SMOOTH_KERNEL = 3
 
 
 def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
@@ -121,17 +120,6 @@ def camera_curve(mags: list[float], fps: float, times: list[float]) -> list[floa
     return [mags[min(int(t * fps), n - 1)] for t in times]
 
 
-def smooth(curve: list[float], kernel: int = SMOOTH_KERNEL) -> list[float]:
-    """Centred moving average, edge-clamped. A curve of <= 2 samples is returned
-    unchanged (nothing to denoise)."""
-    if kernel <= 1 or len(curve) <= 2:
-        return list(curve)
-    half = kernel // 2
-    return [sum(curve[max(0, i - half):min(len(curve), i + half + 1)])
-            / len(curve[max(0, i - half):min(len(curve), i + half + 1)])
-            for i in range(len(curve))]
-
-
 def _local_maxima(curve: list[float]) -> list[int]:
     return [i for i in range(1, len(curve) - 1)
             if curve[i] > curve[i - 1] and curve[i] > curve[i + 1]]
@@ -143,11 +131,12 @@ def _local_minima(curve: list[float]) -> list[int]:
 
 
 def find_peaks(curve: list[float], times: list[float], win_min: float) -> list[int]:
-    """Indices of activity peaks: local maxima of the smoothed curve, kept strongest
-    first with a time spacing of at least `win_min` (the band's floor doubles as the
-    peak spacing — there is no separate density knob, §4). Returned in time order."""
-    sm = smooth(curve)
-    maxima = sorted(_local_maxima(sm), key=lambda i: sm[i], reverse=True)
+    """Indices of activity peaks: local maxima of the curve, kept strongest first
+    with a time spacing of at least `win_min` (the band's floor doubles as the peak
+    spacing — the ONLY peak regulator, §4). Returned in time order. The curve is not
+    smoothed: on a ~3fps curve a fixed denoise kernel is unvalidatable and redundant
+    with this spacing (design §4.1)."""
+    maxima = sorted(_local_maxima(curve), key=lambda i: curve[i], reverse=True)
     kept: list[int] = []
     for i in maxima:
         if all(abs(times[i] - times[j]) >= win_min for j in kept):
@@ -168,9 +157,9 @@ git commit -F - <<'EOF'
 feat: carve.py activity-curve + peak primitives (intake #3 slice 3a)
 
 Pure building blocks for activity-anchored carving: subject_curve (2-D bbox
-displacement), camera_curve (resampled vidstab magnitudes), smooth, local
-extrema, and find_peaks (strongest-first, win_min spacing). Relative maxima,
-no absolute activity threshold.
+displacement), camera_curve (resampled vidstab magnitudes), local extrema, and
+find_peaks (strongest-first, win_min spacing). Relative maxima on the raw curve,
+no absolute activity threshold and no smoothing constant.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
@@ -318,7 +307,7 @@ def units_for_span(a: float, b: float, times: list[float], curve: list[float],
     peaks = find_peaks(curve, times, win_min)
     if not peaks:
         return [_flat_unit(a, b, times, curve, win_max)]
-    minima = _local_minima(smooth(curve))
+    minima = _local_minima(curve)
     seen: set = set()
     out: list[tuple[float, float]] = []
     for pk in peaks:
@@ -908,13 +897,13 @@ EOF
 
 - [ ] **Step 7: Final whole-slice review**
 
-Dispatch a fresh whole-slice code review (base = this branch's fork point from `main`, head = HEAD) per `superpowers:requesting-code-review`. Focus the reviewer on: the two soft knobs (`SMOOTH_KERNEL`, the settle/lead-in extremum choice) are the only non-band constants; the band clamp keeps the peak inside in every branch; `carve.py` imports nothing from `scripts.intake`; the detect reorder feeds the SAME magnitudes to the curve and `_windowed_shake` (no per-window shake number changed for a given window range); `CACHE_VERSION` bumped. Address Critical/Important findings as separate follow-up commits (never `--amend`).
+Dispatch a fresh whole-slice code review (base = this branch's fork point from `main`, head = HEAD) per `superpowers:requesting-code-review`. Focus the reviewer on: the carve introduces NO new tuned constant (peaks and lull/settle are raw relative extrema; the only choice is which extremum bounds a lead-in); the band clamp keeps the peak inside in every branch; `carve.py` imports nothing from `scripts.intake`; the detect reorder feeds the SAME magnitudes to the curve and `_windowed_shake` (no per-window shake number changed for a given window range); `CACHE_VERSION` bumped. Address Critical/Important findings as separate follow-up commits (never `--amend`).
 
 ---
 
 ## Self-Review
 
-**1. Spec coverage.** §2 model (peak + lead-in) → Task 1 `units_for_span`. §3 curve (2-D subject / camera) → Task 0 `subject_curve`/`camera_curve` + Task 4 `carve_windows` source selection. §4 algorithm (smoothing, greedy peaks, tight+lead-in, flat max-mean, exact-dup drop) → Tasks 0–1. §5 hero annotation (timeline track ids, `track_ids`, downstream name resolution) → Tasks 2–3. §6 detect reorder → Task 4. §7 cull unchanged / cost bounded → Task 4 (cull untouched; 2 candidates/peak + `win_min` spacing). §8 schema + cache → Tasks 2, 4. §9 honest half: `score_window` blend untouched but `_motion` 2-D → Task 3; `start_offset` stays, docstrings de-cited → Task 5; flat-span thinness → Task 1 `_flat_unit`. §10 testing (synthetic curves + golden re-pin) → Tasks 0/1 + Task 5. §11 file map → all tasks. §12 landmines (shake number invariant, tiling deletion visible via the not-equal-tiling guard, `CACHE_VERSION` mandatory) → Task 3 (`test_build_window`), Task 1/4 (guard), Task 4 (bump + invalidation test). No gaps.
+**1. Spec coverage.** §2 model (peak + lead-in) → Task 1 `units_for_span`. §3 curve (2-D subject / camera) → Task 0 `subject_curve`/`camera_curve` + Task 4 `carve_windows` source selection. §4 algorithm (greedy peaks + close-maxima rejection, tight+lead-in, flat max-mean, exact-dup drop) → Tasks 0–1. §5 hero annotation (timeline track ids, `track_ids`, downstream name resolution) → Tasks 2–3. §6 detect reorder → Task 4. §7 cull unchanged / cost bounded → Task 4 (cull untouched; 2 candidates/peak + `win_min` spacing). §8 schema + cache → Tasks 2, 4. §9 honest half: `score_window` blend untouched but `_motion` 2-D → Task 3; `start_offset` stays, docstrings de-cited → Task 5; flat-span thinness → Task 1 `_flat_unit`. §10 testing (synthetic curves + golden re-pin) → Tasks 0/1 + Task 5. §11 file map → all tasks. §12 landmines (shake number invariant, tiling deletion visible via the not-equal-tiling guard, `CACHE_VERSION` mandatory) → Task 3 (`test_build_window`), Task 1/4 (guard), Task 4 (bump + invalidation test). No gaps.
 
 **2. Placeholder scan.** No TBD/TODO; every code step shows complete code; the golden re-pin (Task 5 Step 3) names the exact procedure (run → replace numeric pins, keep structural assertions) rather than pre-inventing fixture-dependent numbers, which is correct — those values are only knowable from the deterministic run.
 
