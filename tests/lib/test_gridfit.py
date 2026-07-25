@@ -61,15 +61,14 @@ def test_lines_at_refuses_a_bool_phase():
 
 
 def test_fit_snaps_the_cumulative_cut_not_each_duration():
-    # Three 1.9s episodes against 2.0s lines. Cut 0 wants +0.1; if each duration were
-    # snapped independently cut 1 would want +0.1 too — but after cut 0 moved, cut 1
-    # already sits at 3.8+0.1=3.9 and needs only +0.1 to reach 4.0. The third episode
-    # is the tail: nothing follows it, so it never moves.
-    f = gridfit.fit_level([1.9, 1.9, 1.9], [0.0, 2.0, 4.0, 6.0],
-                          [(-0.5, 0.5)] * 3, 0.5)
-    assert f.shifts == pytest.approx((0.1, 0.1, 0.0), abs=1e-9)
-    assert f.worst == pytest.approx(0.0, abs=1e-9)
-    assert f.fits is True
+    # Non-degenerate on purpose: cut 0 is clamped (+0.3, still short of 2.0), leaving a
+    # residual. Measured CUMULATIVELY cut 1 sits at 1.5+1.9=3.4 and needs +0.6 (clamped to
+    # +0.3); measured INDEPENDENTLY (pos reset to 0 each step) cut 1 sits at 1.9 and needs
+    # only +0.1. The shifts differ — (0.3, 0.3, 0.0) cumulative vs (0.3, 0.1, 0.0)
+    # independent — so this data distinguishes the two (the old equal-1.9s data did not).
+    f = gridfit.fit_level([1.2, 1.9, 1.0], [0.0, 2.0, 4.0, 6.0], [(-1.0, 1.0)] * 3, 0.3)
+    assert f.shifts == pytest.approx((0.3, 0.3, 0.0), abs=1e-9)
+    assert f.devs == pytest.approx((0.5, 0.3), abs=1e-9)
 
 
 def test_fit_leaves_the_tail_episode_alone():
@@ -192,8 +191,10 @@ def test_best_fit_searches_every_phase_of_a_level():
 
 
 def test_best_fit_the_runs_own_reel_reaches_beat_but_not_phrase():
-    """The 2026-07-24 run's real cut lengths (design §3): beat fits, coarser does not,
-    and the reason is a 0.076s-per-cut drift against the 9.216s phrase."""
+    """The 2026-07-24 run's real cut lengths (design §3): beat fits, coarser does not.
+    The per-cut distances to the nearest phrase line are (0.204, 0.076, 0.076, 0.056,
+    0.366) — three cuts near, the hook ~half a phrase off, and the last ride 0.366s past
+    the 0.288s allowance is what rejects the level."""
     tempo = 104.16666666666667
     beat = 60.0 / tempo
     beats = [i * beat for i in range(120)]
@@ -205,6 +206,7 @@ def test_best_fit_the_runs_own_reel_reaches_beat_but_not_phrase():
     phrase = next(f for f in rejected if f.level == "phrase")
     assert phrase.fits is False
     assert max(phrase.needs) > allow
+    assert phrase.needs == pytest.approx((0.204, 0.076, 0.076, 0.056, 0.366), abs=1e-3)
 
 
 def test_best_fit_carries_the_level_and_phase_onto_the_returned_fit():
