@@ -6,6 +6,11 @@ are internal shapes (worker → cache → driver), NOT on-disk contracts a forei
 tool reads, so they are plain dataclasses without a from_dict gate — the on-disk
 clip.json embeds FootageClip.to_dict(), which already round-trips. numpy is not
 imported: the crop arrives as an ndarray whose .astype method is all `store` needs.
+
+The `model` that produced a result is the DRIVER's fact, so it is passed in, not
+imported: a lib module must not depend on a driver (scripts.track), and the
+"yolo11n-seg.pt" literal already lives once in track.MODEL — a copy here would be
+a third (cap-3 design §5's registered drift landmine).
 """
 import json
 import os
@@ -15,7 +20,6 @@ from pathlib import Path
 from PIL import Image
 
 from scripts.lib.footage import FootageClip
-from scripts.track import MODEL
 
 # Bump when Phase-1 logic changes shape (carve/score/descriptor/phash-point): it
 # invalidates every cached clip in one move, so a re-run recomputes rather than
@@ -32,7 +36,7 @@ class CastEntry:
     source: str
     tid: int
     conf: float
-    descriptor: list
+    descriptor: list[float]
     crop: str | None = None
     crop_rgb: object | None = None
 
@@ -40,12 +44,13 @@ class CastEntry:
 @dataclass
 class ClipResult:
     clip: FootageClip
-    phashes: list = field(default_factory=list)   # hex strings, parallel to clip.windows
-    cast: list = field(default_factory=list)       # list[CastEntry]
+    phashes: list[str] = field(default_factory=list)   # hex, parallel to clip.windows
+    cast: list[CastEntry] = field(default_factory=list)
 
 
-def clip_key(path: str, sample_fps: float, model: str = MODEL) -> dict:
-    """Everything that changes a ClipResult. A mismatch on load → recompute."""
+def clip_key(path: str, sample_fps: float, model: str) -> dict:
+    """Everything that changes a ClipResult. A mismatch on load → recompute. `model`
+    is supplied by the driver (the fact is its), never imported from track."""
     st = os.stat(path)
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
             "sample_fps": float(sample_fps), "model": model, "version": CACHE_VERSION}
@@ -57,17 +62,21 @@ def _dir(out_dir: str, path: str) -> Path:
 
 
 def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
-          model: str = MODEL) -> ClipResult:
+          model: str) -> ClipResult:
     """Write the crop PNGs, then commit clip.json atomically (os.replace), and
     return the result in cached form (crop_rgb arrays replaced by their PNG paths)
-    so a just-scanned clip and a loaded one present one shape to Phase 2 (§2/§3)."""
+    so a just-scanned clip and a loaded one present one shape to Phase 2 (§2/§3).
+    Every write lands via a .tmp sibling + os.replace, so no half-written file is
+    ever visible — a crash leaves the previous complete file, never a torn one."""
     d = _dir(out_dir, path)
     crops = d / "crops"
     crops.mkdir(parents=True, exist_ok=True)
     cached = []
     for e in result.cast:
         png = crops / f"t{e.tid}.png"
-        Image.fromarray(e.crop_rgb.astype("uint8")).save(png)
+        tmp_png = crops / f"t{e.tid}.png.tmp"
+        Image.fromarray(e.crop_rgb.astype("uint8")).save(tmp_png, format="PNG")
+        os.replace(tmp_png, png)                   # atomic; a torn crop never outlives the write
         cached.append(replace(e, crop=str(png), crop_rgb=None))
     payload = {"key": clip_key(path, sample_fps, model),
                "clip": result.clip.to_dict(),
@@ -80,18 +89,22 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
     return ClipResult(clip=result.clip, phashes=list(result.phashes), cast=cached)
 
 
-def load(out_dir: str, path: str, sample_fps: float,
-         model: str = MODEL) -> ClipResult | None:
-    """Return the cached-form ClipResult on a key match, else None. Absent, stale,
-    truncated, or corrupt all read as a miss — never a crash."""
+def load(out_dir: str, path: str, sample_fps: float, model: str) -> ClipResult | None:
+    """Return the cached-form ClipResult on a key match, else None. Any problem —
+    absent, stale, truncated, wrong-shape, or a source file that has since moved —
+    reads as a miss, never a crash: the cache is regenerable, and a corrupt entry
+    must route the clip back through the worker (where quarantine covers it), not
+    abort the scan."""
     f = _dir(out_dir, path) / "clip.json"
     try:
         payload = json.loads(f.read_text())
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("key") != clip_key(path, sample_fps, model):
+            return None
+        clip = FootageClip.from_dict(payload["clip"])
+        cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
+                          descriptor=c["descriptor"], crop=c["crop"]) for c in payload["cast"]]
+        return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)
+    except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
-    if payload.get("key") != clip_key(path, sample_fps, model):
-        return None
-    clip = FootageClip.from_dict(payload["clip"])
-    cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
-                      descriptor=c["descriptor"], crop=c["crop"]) for c in payload["cast"]]
-    return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)

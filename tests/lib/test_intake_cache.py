@@ -1,12 +1,11 @@
-import json
 import numpy as np
 from PIL import Image
-
-import pytest
 
 from scripts.lib import intake_cache
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.lib.footage import DESCRIPTOR_LEN, FootageClip, FootageWindow
+
+_M = "yolo11n-seg.pt"          # a stand-in for track.MODEL; the driver supplies the real one
 
 
 def _desc(*head):
@@ -34,67 +33,82 @@ def _src(tmp_path, name="a.mp4", data=b"x"):
 
 def test_store_then_load_round_trips(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    stored = intake_cache.store(str(out), str(src), 3.0, _result())
-    loaded = intake_cache.load(str(out), str(src), 3.0)
+    stored = intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M)
     assert loaded is not None
     assert loaded.clip.to_dict() == _clip().to_dict()
     assert loaded.phashes == ["8f3c2a1b0d4e5f60"]
     assert loaded.cast[0].source == "a.mp4" and loaded.cast[0].tid == 1
     assert loaded.cast[0].descriptor == _desc(0.5, 0.5)
-    # cached-form carries the crop as a PNG path, not an array
     assert stored.cast[0].crop == loaded.cast[0].crop and loaded.cast[0].crop_rgb is None
     assert Image.open(loaded.cast[0].crop).size == (8, 8)
 
 
 def test_load_is_none_when_absent(tmp_path):
-    assert intake_cache.load(str(tmp_path / "out"), str(_src(tmp_path)), 3.0) is None
+    assert intake_cache.load(str(tmp_path / "out"), str(_src(tmp_path)), 3.0, _M) is None
 
 
 def test_load_is_none_on_changed_mtime(tmp_path):
-    import os, time
+    import os
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
-    os.utime(src, ns=(0, 0))                       # different mtime_ns
-    assert intake_cache.load(str(out), str(src), 3.0) is None
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    os.utime(src, ns=(0, 0))
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
 
 
 def test_load_is_none_on_changed_sample_fps(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
-    assert intake_cache.load(str(out), str(src), 4.0) is None
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    assert intake_cache.load(str(out), str(src), 4.0, _M) is None
 
 
 def test_load_is_none_on_changed_model(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), model="m1")
-    assert intake_cache.load(str(out), str(src), 3.0, model="m2") is None
+    intake_cache.store(str(out), str(src), 3.0, _result(), "m1")
+    assert intake_cache.load(str(out), str(src), 3.0, "m2") is None
 
 
 def test_load_is_none_on_bumped_version(tmp_path, monkeypatch):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
     monkeypatch.setattr(intake_cache, "CACHE_VERSION", intake_cache.CACHE_VERSION + 1)
-    assert intake_cache.load(str(out), str(src), 3.0) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
 
 
 def test_crops_without_clip_json_is_a_miss(tmp_path):
-    # the commit marker is clip.json; a crash mid-write leaves crops but no json
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
     (out / ".intake_cache" / "a.mp4" / "clip.json").unlink()
-    assert intake_cache.load(str(out), str(src), 3.0) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
 
 
 def test_corrupt_clip_json_is_a_miss_not_a_crash(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
     (out / ".intake_cache" / "a.mp4" / "clip.json").write_text("{ not json")
-    assert intake_cache.load(str(out), str(src), 3.0) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
+
+
+def test_nondict_clip_json_is_a_miss_not_a_crash(tmp_path):
+    # valid JSON, wrong shape: payload.get would AttributeError without the guard
+    out, src = tmp_path / "out", _src(tmp_path)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    (out / ".intake_cache" / "a.mp4" / "clip.json").write_text("null")
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
+
+
+def test_load_is_none_when_source_file_removed(tmp_path):
+    # a raw clip moved/deleted between runs → clip_key's os.stat must not crash the
+    # scan; a miss routes it back through the worker, where quarantine covers it
+    out, src = tmp_path / "out", _src(tmp_path)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    src.unlink()
+    assert intake_cache.load(str(out), str(src), 3.0, _M) is None
 
 
 def test_crop_png_round_trips_red(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result())
-    loaded = intake_cache.load(str(out), str(src), 3.0)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M)
     px = np.asarray(Image.open(loaded.cast[0].crop))
-    assert px[0, 0, 0] == 255 and px[0, 0, 1] == 0     # still red
+    assert px[0, 0, 0] == 255 and px[0, 0, 1] == 0
