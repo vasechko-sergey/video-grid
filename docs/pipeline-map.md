@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-07-21._
+_Last updated: 2026-07-24._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -19,7 +19,7 @@ _Last updated: 2026-07-21._
 | 5.3  | reel-brief | `SPEC.md` | ✅ | `reel_brief` SKILL → CLI + typed `Spec` (`scripts/lib/spec.py`) writes `SPEC.md`+`SPEC.json` atop project-init's machine subset (5.3) | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ✅ | beats-core (tempo/beat-grid/RMS energy) ✅ + start_offset intelligence (auto in-point: peak-energy window, vocal-pause start via opt-in demucs / librosa proxy) ✅ + mood-match (local: rank a folder vs SPEC.mood → MUSIC_SHORTLIST) ✅ + sourcing (free/any, network) ✅ | **Phase B — music spine** |
-| 5.6  | pacing | `PACING.md` | ✅ | energy spine from MUSIC.json's RMS curve — Slot/Spine core + `pacing` driver + edit-plan `beat_slot`/dur binding | **Phase B — music spine** |
+| 5.6  | pacing | `PACING.md` | ✅ | pacing runs **after** edit-plan and FITS the existing cuts onto the coarsest grid level (beat/half-bar/bar/2-bar/phrase) within a ±half-beat allowance — the 2/4/8 ladder is gone (scenario-first pacing, 2026-07-24) | **Phase B — music spine** |
 | 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3) | Front-half authoring |
 | 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
 | 5.9  | assemble-draft | `draft.mp4` | ✅ | draft CLI + typed helpers (scripts/draft.py, scripts/lib/draft.py) — concat of raw segments, canvas-fit, processing_notes labels + music bed (SP1b, 5.9) | Front-half authoring |
@@ -84,6 +84,13 @@ check the conveyor runs is built, and §5.13's editorial half is now built too
         └─► 5.3 brief ─────────┘  │  (soft, quality)
     5.5 music ─► 5.6 pacing ──────┘
 ```
+
+> **Run order vs. dependency (scenario-first pacing, 2026-07-24):** the arrows above are
+> the *quality* dependency (pacing informs the final cut), not the run order. The conveyor
+> now runs **edit-plan (5.7) BEFORE music (5.5) / pacing (5.6)** — a two-pass edit-plan:
+> build the cuts at their material length, let pacing FIT a grid to them, then
+> `edit_plan build --pacing` applies the fit. An episode's length comes from its own shot,
+> never from a slot invented ahead of the footage.
 
 **The entry-skill closes the autonomous v1 chain:** footage→EDL→reel now runs from
 one `using-montage` invocation — it conducts project-init → footage-intake →

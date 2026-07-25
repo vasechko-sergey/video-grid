@@ -1,5 +1,11 @@
 # Pacing (energy spine) — Design Spec (§5.6, Phase B4)
 
+> **Superseded in part (2026-07-24).** The generator half of this design — a slot's
+> length derived from local energy via a 2/4/8 beat ladder — is replaced by
+> [scenario-first pacing](2026-07-24-scenario-first-pacing-design.md): the footage owns
+> the cut and this stage fits a grid to it. The energy curve, the `Slot`/`Spine`
+> contracts and the beat-alignment goal all survive.
+
 Closes the montage §5.6 stage **`pacing → PACING.md`** — the last real feature-❌
 of the conveyor (5.4 trend-scan is YAGNI). Given the reel's `MUSIC.json` (beat
 grid + RMS energy curve + duration), derive an **energy spine**: an ordered list

@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-22._
+_Last updated: 2026-07-24._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -1500,6 +1500,54 @@ _Last updated: 2026-07-22._
     reaching `out/REEL_v1.mp4`, plus `du -sh` on the cache showing no venv —
     needs the user's own `/plugin install`, same as the ffmpeg-baseline
     proof; it is documented as a user-run proof, not asserted by the suite.**
+
+- **scenario-first pacing (§5.6 re-cut) DONE (2026-07-24)** — plan
+  `docs/plans/2026-07-24-scenario-first-pacing.md` + design
+  `docs/specs/2026-07-24-scenario-first-pacing-design.md` (branch
+  `feat/scenario-first-pacing`, commits `c149f06`..HEAD). **1722 passed / 2
+  skipped.** The §5.6 stage stops GENERATING slot lengths and starts FITTING a
+  grid to the cuts the footage already fixed. The 2/4/8 beat ladder — which
+  capped a slot at 4.6s and could not express a 6–9s surf ride — and its
+  `build_spine` are **DELETED**, replaced by `fit_spine` over the new pure
+  `scripts/lib/gridfit.py`: five grid **levels** (beat/half-bar/bar/2-bar/phrase),
+  and `best_fit` picks the COARSEST whose lines the existing cuts reach inside a
+  fixed **±half-beat** `allowance` (never ½ a LINE — that would be a different
+  episode), via a CUMULATIVE left-to-right snap clamped twice (allowance ∧ the
+  shot's room). Nothing fits → the least-bad fit is returned with every rejected
+  level named, so the report can print the number that rejected each.
+  - **The conveyor is inverted:** `montage.V1_STAGES` now runs **edit-plan (5.7)
+    BEFORE music (5.5) / pacing (5.6)** — two-pass: build the cuts at their
+    material length → pacing FITS a grid to them (`PACING.{json,md}`) →
+    `edit_plan build --pacing` applies the fit. An episode's length comes from its
+    own shot, and `_bind_pacing` REFUSES a slot further than a snap from its
+    episode (the anti-truncation guard — the old code silently truncated a 7.3s
+    ride into a 4.6s slot).
+  - **Supporting pieces:** `FootageClip.room_after` (a shot's remaining room, one
+    owner); `offset.best_offsets` (top-K in-point candidates for the fitter);
+    `Slot.line`/`Slot.dev` (the line a slot was fitted to + its deviation);
+    `edit_plan` `start_offset` (move an in-point later inside the SAME shot — dur
+    still comes from the window, so it never lengthens an episode); and a new
+    `scripts/lib/anchors.py` — a pure `anchors_from_curve` picker (advisory action
+    anchors, thinned to the STRONGER of two close peaks) + an ffmpeg
+    `measure_curve` (one frame-difference pass, `-ss` AFTER `-i`).
+  - **Adopted from the parked `wip/montage-run-hardening` branch:** two hunks —
+    `start_offset` and the shot-room helper (`room_after`) — landed here as their
+    own reviewed slices rather than left stranded on the WIP branch.
+  - **Review-driven amendments:** `FootageClip` validates scene_cuts/windows
+    before coercing (fail-loud, not a silent bad type); `window_to_episode`
+    refuses an out-point that leaves the shot; the off-grid pacing report lists
+    each level once (de-dup) and is tested; `best_fit` skips a level's empty
+    phases so a short beat grid can't crash the coarse sweep.
+  - **Testing:** real-ffmpeg proof that a ride survives the fit at its own length;
+    `gridfit` goldens pin exact fit numbers (stdlib-only, bit-exact). Task 14's
+    8-check mutation battery ran — 6 bit their named test directly; two
+    battery-SPEC errors (not coverage holes) were corrected: #4's named
+    `test_fit_snaps_the_cumulative_cut_not_each_duration` used degenerate
+    equal-1.9s data that could not distinguish cumulative from independent
+    snapping (replaced with clamped, unequal data that now bites), and #7's
+    `-ss`/`-i` reorder is caught by the runtime `proc.run` `_seek_order` guard via
+    `tests/integration/test_anchors.py`, NOT by the AST literal scan (which cannot
+    see an argv reordering — landmine-lint design §5).
 
 ## Next action
 

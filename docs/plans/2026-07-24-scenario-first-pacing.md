@@ -1417,9 +1417,13 @@ def test_measure_curve_is_flat_on_a_still_clip(tmp_path):
 
 def test_measure_curve_spikes_where_the_picture_jumps(tmp_path):
     # A box that teleports at t=2s: one large frame-to-frame difference, there and
-    # nowhere else.
+    # nowhere else. The jump is expressed by enable-gating two drawboxes on the
+    # timestamp, NOT by an `x` expression in `t` — in drawbox the variable `t` is
+    # the box THICKNESS, not time (only the `enable` timeline sees the timestamp),
+    # so an `if(lt(t,2),...)` in `x` never moves.
     src = tmp_path / "jump.mp4"
-    _clip(src, "drawbox=x='if(lt(t,2),10,260)':y=10:w=40:h=40:color=white:t=fill")
+    _clip(src, "drawbox=x=10:y=10:w=40:h=40:color=white:t=fill:enable='lt(t,2)',"
+               "drawbox=x=260:y=10:w=40:h=40:color=white:t=fill:enable='gte(t,2)'")
     curve = anchors.measure_curve(str(src), 0.0, 4.0)
     got = anchors.anchors_from_curve(curve)
     assert got, "the teleport must produce an anchor"
@@ -1626,7 +1630,7 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
              f"- **Verdict:** {'fits' if fit.fits else 'OFF-GRID — see below'}", "",
              "| level | step | worst | needed | verdict |",
              "|-------|-----:|------:|-------:|---------|"]
-    for f in list(rejected) + [fit]:
+    for f in list(rejected) + ([fit] if fit.fits else []):
         need = max(f.needs) if f.needs else 0.0
         lines.append(f"| {f.level} | {f.level_n} beats | {f.worst:.3f} | {need:.3f} | "
                      f"{'fits' if f.fits else 'misses'} |")
@@ -2014,7 +2018,7 @@ it FAILS, then revert.
 | 4 | `fit_level` snaps each `dur` independently (`pos = 0` each iteration) | `test_fit_snaps_the_cumulative_cut_not_each_duration` |
 | 5 | `fit_level` clamps by `allow` only (drops the `bounds` clamp) | `test_fit_clamps_to_the_shot_s_room_before_the_allowance` |
 | 6 | `_bind_pacing` drops the allowance guard and copies `slot.dur` | `test_bind_refuses_a_spine_fitted_to_a_different_edit` |
-| 7 | `measure_curve` puts `-ss` before `-i` | `proc.run`'s landmine guard raises (`tests/lib/test_landmine_scan.py` + the integration test) |
+| 7 | `measure_curve` puts `-ss` before `-i` | `tests/integration/test_anchors.py` — `proc.run`'s runtime `_seek_order` guard raises the §12 black-frames landmine. NOT `test_landmine_scan.py`: that AST scan matches banned filter/binary *literals*, so it cannot see a `-ss`/`-i` *reordering* (landmine-lint design §5 — the AST layer does not cover seek order; the runtime guard does). |
 | 8 | `anchors_from_curve` keeps the earlier of two close peaks | `test_two_spikes_closer_than_the_min_gap_collapse_to_the_stronger` |
 
 - [ ] **Step 1b: Correct the Task 2 golden's docstring**
