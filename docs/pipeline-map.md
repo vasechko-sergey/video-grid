@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-07-24._
+_Last updated: 2026-07-25._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 

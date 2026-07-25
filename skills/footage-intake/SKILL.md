@@ -44,6 +44,15 @@ are later stages.
    manifest (`id, source, conf, crop, descriptor`). Skim `FOOTAGE.md`: confirm
    every clip is logged and the starred windows look like real moments.
 
+   Two flags tune that same command: `--jobs N` controls how many clips are
+   scanned in parallel (default 3 — lower it on a memory-constrained box,
+   raise only with a GPU), and `--fresh` ignores the per-clip `.intake_cache`
+   and rescans every clip (a plain re-run instead resumes: cached clips are
+   skipped, only new/changed/failed ones re-scan). A bad/corrupt clip is
+   quarantined rather than killing the scan — it is named in
+   `<out_dir>/intake_report.json` and a `## Failed clips` section of
+   `FOOTAGE.md`, and a re-run retries exactly the failed clips.
+
 3. **Cast pass — only when people matter to the reel.** Read
    `cast_candidates.json` and look at each `candidate_*.png`. **Ask the human who
    each hero is** — any domain (family, athletes, friends, a vlogger). If the
