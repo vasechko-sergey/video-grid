@@ -337,16 +337,31 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     print(f"intake: {len(results)} cached, {len(misses)} to scan", file=sys.stderr)
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in misses}
+    failed: list = []
     for p in misses:
-        results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
+        try:
+            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
+        except Exception as e:                         # quarantine (§5): name it, keep going
+            failed.append({"source": p.name, "error": str(e)})
+            print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
     ok = [results[p] for p in paths if p in results]
     result = footage.Footage(clips=[r.clip for r in ok])
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
                 for r in ok for w, h in zip(r.clip.windows, r.phashes)}
     cull(result.clips, phash_of=lambda c, w: phash_by[(c.source, w.start, w.dur)])
     (out / "FOOTAGE.json").write_text(json.dumps(result.to_dict(), indent=2))
-    (out / "FOOTAGE.md").write_text(result.to_markdown())
+    md = result.to_markdown()
+    if failed:
+        md += f"\n## Failed clips ({len(failed)})\n\n"
+        md += "\n".join(f"- {f['source']}: {f['error']}" for f in failed) + "\n"
+    (out / "FOOTAGE.md").write_text(md)
     save_cast_candidates([e for r in ok for e in r.cast], str(out))
+    (out / "intake_report.json").write_text(json.dumps(
+        {"scanned": len(misses) - len(failed), "cached": len(results) - (len(misses) - len(failed)),
+         "failed": failed}, indent=2))
+    if failed:
+        print(f"intake: ⚠ {len(failed)} clip(s) failed — see {out / 'intake_report.json'}",
+              file=sys.stderr)
     return result
 
 

@@ -1,3 +1,4 @@
+import json
 import threading
 import types
 import numpy as np
@@ -421,3 +422,22 @@ def test_output_is_byte_identical_scanned_vs_cached(monkeypatch, tmp_path):
     intake.intake(str(root), str(out))                 # all cache hits
     b = (out / "FOOTAGE.json").read_text()
     assert a == b
+
+
+def test_a_bad_clip_is_quarantined_not_fatal(monkeypatch, tmp_path):
+    root = _two_clip_root(tmp_path); out = tmp_path / "out"
+    _stub_cache(monkeypatch)
+
+    def flaky(path, sf=intake.SAMPLE_FPS):
+        name = intake.Path(path).name
+        if name == "b.mp4":
+            raise RuntimeError("corrupt moov atom")
+        return _fake_result(name)
+
+    monkeypatch.setattr(intake, "_process_clip", flaky)
+    result = intake.intake(str(root), str(out))        # does NOT raise
+    assert [c.source for c in result.clips] == ["a.mp4"]        # good clip survives
+    report = json.loads((out / "intake_report.json").read_text())
+    assert report["failed"] == [{"source": "b.mp4", "error": "corrupt moov atom"}]
+    assert "## Failed clips" in (out / "FOOTAGE.md").read_text()
+    assert (out / "FOOTAGE.json").exists()             # a valid artifact was produced
