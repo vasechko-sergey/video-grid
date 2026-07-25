@@ -139,10 +139,12 @@ def units_for_span(a: float, b: float, times: list[float], curve: list[float],
     seen: set = set()
     out: list[tuple[float, float]] = []
     for pk in peaks:
+        # candidates are pre-rounded to 3dp by _clamp_to_band, so this exact-equality
+        # dedup is reliable — the round() there is load-bearing, not cosmetic (§4.5).
         for unit in (_lead_in_unit(pk, minima, a, b, times, win_min, win_max),
                      _tight_unit(pk, a, b, times, win_min)):
-            if unit not in seen:                   # exact-dup drop (§4.5): a sharp peak makes them equal
+            if unit not in seen:                   # exact-dup drop: a sharp peak makes tight == lead-in
                 seen.add(unit)
                 out.append(unit)
-    out.sort(key=lambda u: (u[0], u[1]))
+    out.sort(key=lambda u: (u[0], u[1]))            # deterministic (start, dur) order
     return out
