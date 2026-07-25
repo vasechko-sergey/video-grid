@@ -41,3 +41,21 @@ def test_anchors_refuse_a_nonpositive_hz():
 def test_anchors_refuse_a_threshold_outside_zero_one():
     with pytest.raises(ValueError, match="rel"):
         anchors.anchors_from_curve([0.1, 0.9], hz=3.0, rel=1.5)
+
+
+@pytest.mark.parametrize("bad", [-1.0, True, "0", None])
+def test_measure_curve_refuses_a_bad_start(bad):
+    with pytest.raises(ValueError, match="start"):
+        anchors.measure_curve("x.mp4", bad, 4.0)
+
+
+@pytest.mark.parametrize("bad", [0, -1.0, True, "4", None])
+def test_measure_curve_refuses_a_bad_dur(bad):
+    with pytest.raises(ValueError, match="dur"):
+        anchors.measure_curve("x.mp4", 0.0, bad)
+
+
+@pytest.mark.parametrize("bad", [0, -1.0, True, "3", None])
+def test_measure_curve_refuses_a_bad_hz(bad):
+    with pytest.raises(ValueError, match="hz"):
+        anchors.measure_curve("x.mp4", 0.0, 4.0, hz=bad)

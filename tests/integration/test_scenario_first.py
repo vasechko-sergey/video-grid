@@ -74,3 +74,40 @@ def test_a_spine_from_another_edit_is_refused_not_applied(tmp_path):
     with pytest.raises(ValueError, match="fitted to a different"):
         edit_plan.build_edl(Footage.from_json(str(tmp_path / "FOOTAGE.json")),
                             selection, pacing=foreign)
+
+
+def test_with_anchors_names_the_measured_anchor_in_the_report(tmp_path):
+    # design §8 (anchor honesty): a measured anchor is NAMED in PACING.md, not hidden.
+    # A box that teleports at t=1.0s yields one motion spike -> one anchor. (drawbox's `t`
+    # is thickness, not time; the timeline hook is `enable`, so gate two boxes on it.)
+    src = tmp_path / "clip.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
+              "color=c=black:s=320x180:d=4:r=30", "-vf",
+              "drawbox=x=10:y=10:w=40:h=40:color=white:t=fill:enable='lt(t,1)',"
+              "drawbox=x=260:y=10:w=40:h=40:color=white:t=fill:enable='gte(t,1)'",
+              "-pix_fmt", "yuv420p", str(src)])
+    beats = [i * 0.5 for i in range(40)]
+    (tmp_path / "MUSIC.json").write_text(json.dumps(
+        {"track": "t.mp3", "start_offset": 0.0, "duration": 20.0, "tempo": 120.0,
+         "beats": beats, "energy": [0.5] * 20, "energy_hz": 1.0}))
+    (tmp_path / "FOOTAGE.json").write_text(json.dumps(
+        {"clips": [{"source": "clip.mp4", "dur": 4.0, "res": [320, 180], "fps": 30.0,
+                    "shaky": False, "scene_cuts": [],
+                    "windows": [{"start": 0.0, "dur": 4.0, "shot_type": "wide",
+                                 "people": 1, "motion": 0.4, "shake": 0.0,
+                                 "description": "d", "score": 0.9, "best": True}]}]}))
+    (tmp_path / "EDL.json").write_text(json.dumps(
+        {"episodes": [{"source": "clip.mp4", "start": 0.0, "dur": 4.0,
+                       "shot_type": "wide", "composition": "center", "grid": "thirds"}],
+         "cap": 3}))
+    res = pacing_driver.build_pacing(str(tmp_path / "EDL.json"),
+                                     str(tmp_path / "FOOTAGE.json"),
+                                     [str(tmp_path / "MUSIC.json")], str(tmp_path),
+                                     footage_root=str(tmp_path), with_anchors=True)
+    md = (tmp_path / "PACING.md").read_text()
+    assert "Action anchors (advisory)" in md
+    # scope the row assertion to the anchors section (slot table also has a "| 0 |" row)
+    section = md.split("Action anchors (advisory)")[1]
+    assert "| 0 |" in section            # episode 0 has an anchors row
+    import re
+    assert re.search(r"\|\s*0\s*\|\s*\d", section), "episode 0's row must name a timestamp"

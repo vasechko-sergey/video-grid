@@ -65,8 +65,12 @@ def measure_curve(src: str, start: float, dur: float, hz: float = ANCHOR_HZ) -> 
     `tblend=all_mode=difference` emits |frame[i] - frame[i-1]| from the second frame on,
     so curve[i] describes the interval between samples i and i+1; the caller's anchor time
     lands at the START of that interval, which is where the action begins."""
-    if dur <= 0:
+    if isinstance(start, bool) or not isinstance(start, (int, float)) or start < 0:
+        raise ValueError(f"anchors.measure_curve: start must be >= 0 seconds, got {start!r}")
+    if isinstance(dur, bool) or not isinstance(dur, (int, float)) or dur <= 0:
         raise ValueError(f"anchors.measure_curve: dur must be > 0 seconds, got {dur!r}")
+    if isinstance(hz, bool) or not isinstance(hz, (int, float)) or hz <= 0:
+        raise ValueError(f"anchors.measure_curve: hz must be a positive sample rate, got {hz!r}")
     r = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src, "-ss", f"{start}",
                   "-t", f"{dur}", "-vf",
                   f"fps={hz},scale={ANCHOR_W}:{ANCHOR_H},format=gray,"
