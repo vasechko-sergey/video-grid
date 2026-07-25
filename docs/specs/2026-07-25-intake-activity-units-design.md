@@ -82,8 +82,12 @@ presence-transition boundaries in `carve_windows`), sampled at `SAMPLE_FPS`:
 - **People in the span** → 2-D displacement of the primary bbox centre between
   consecutive samples. Today `_motion` uses the **x** component only; a turn or a
   cross-step has a vertical component too, so the curve uses the Euclidean
-  displacement `hypot(dx, dy)`, normalised by frame width as `_motion` already
-  does.
+  displacement `hypot(dx, dy)`. The curve carries **raw** pixel displacement — it
+  is consumed only by relative operations (local-maxima peak-finding and the
+  flat-span mean-argmax), all invariant under a constant per-clip scale, so no
+  width normalisation is applied (and the subject/camera curves are never compared
+  on one axis). `_motion` still normalises its own per-window scalar by width for
+  the score, unchanged but for gaining the second dimension.
 - **No people in the span** → camera motion from the vidstab per-frame
   magnitudes, resampled to `SAMPLE_FPS`. This is the *only* within-shot signal a
   drone/scenery span has — and it is exactly the "drone clip" the

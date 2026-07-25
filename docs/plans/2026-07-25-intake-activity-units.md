@@ -985,7 +985,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a fresh whole-slice code review (base = this branch's fork point from `main`, head = HEAD) per `superpowers:requesting-code-review`. Focus the reviewer on: the carve introduces NO new tuned constant (peaks and lull/settle are raw relative extrema; the only choice is which extremum bounds a lead-in); the band clamp keeps the peak inside in every branch; `carve.py` imports nothing from `scripts.intake`; the detect reorder feeds the SAME magnitudes to the curve and `_windowed_shake` (no per-window shake number changed for a given window range); `CACHE_VERSION` bumped. Address Critical/Important findings as separate follow-up commits (never `--amend`).
 
