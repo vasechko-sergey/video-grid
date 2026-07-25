@@ -193,9 +193,15 @@ later shows pain, the peak spacing is the knob (raise `WIN_MIN` → `WIN_TARGET`
   **units never cross a scene cut** (they are carved strictly inside a span, and
   a scene cut is a span boundary). `room_after` already stops a span at the next
   scene cut, so 3b's merge validation is already written.
-- **`score_window` is untouched.** Peak-anchored units carry higher motion by
-  construction, so the existing blend still ranks them sensibly; re-weighting it
-  (e.g. a dedicated "peak prominence" factor) is a possible future tune, not 3a.
+- **The `score_window` blend is untouched.** Peak-anchored units carry higher
+  motion by construction, so the existing weights still rank them sensibly;
+  re-weighting the blend (e.g. a dedicated "peak prominence" factor) is a possible
+  future tune, not 3a. One input does change: `_motion` (the per-window motion the
+  blend consumes) goes from x-only to 2-D `hypot(dx, dy)` — the same dimension the
+  curve gains (§3), because leaving the score 1-D while the carve is 2-D is exactly
+  the split-brain the vidstab one-recipe note warns against. The blend, its
+  weights, and `_dur_fit`/`_motion_fit` are unchanged; only the motion measurement
+  gains a dimension, so the golden window scores re-pin (§10).
 - **`start_offset` stays.** Its rationale softens (in-points are peak-anchored
   now, not arbitrary multiples), but it remains the fine-tune for shifting an
   in-point within a unit. Its docstring and `room_after`'s are updated to stop
