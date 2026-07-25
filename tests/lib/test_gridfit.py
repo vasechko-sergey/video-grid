@@ -261,3 +261,18 @@ def test_best_fit_keeps_the_first_phase_when_two_tie():
                                  levels=(("half-bar", 2),))
     assert chosen.phase == 0
     assert chosen.fits is False
+
+
+def test_best_fit_survives_a_grid_shorter_than_the_coarsest_stride():
+    # 12 beats is fewer than the phrase level's 16-beat stride, so phases 12..15 yield
+    # empty line slices. best_fit must SKIP those phases, not raise "got no lines" — a
+    # short reel still fits at a finer level rather than crashing during the coarse sweep.
+    # Three episodes (two cuts, at 1.0s and 2.0s): with <16 beats every phrase phase is a
+    # lone beat, and no single line can satisfy two spread cuts — so phrase genuinely
+    # fails here rather than fitting trivially the way one cut on the dense grid would.
+    beats = [i * 0.5 for i in range(12)]      # 0.0 .. 5.5
+    chosen, rejected = gridfit.best_fit([1.0, 1.0, 1.0], beats, [(-0.25, 0.25)] * 3, 0.25)
+    assert chosen.fits is True
+    assert chosen.level in ("beat", "half-bar", "bar")
+    # phrase was still evaluated on its non-empty phases (0..11), just didn't win
+    assert any(f.level == "phrase" for f in rejected)

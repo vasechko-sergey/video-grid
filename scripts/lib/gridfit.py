@@ -179,6 +179,9 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
         best = None
         for phase in range(n):
             lines = lines_at(beats, n, phase)
+            if not lines:
+                continue      # this phase's grid lands past all beats (a short track):
+                              # nothing to fit against here; phase 0 always has a line.
             f = fit_level(durs, lines, bounds, allow)
             f = Fit(level=name, level_n=n, phase=phase, shifts=f.shifts, devs=f.devs,
                     needs=f.needs, worst=f.worst, total=f.total, fits=f.fits)
