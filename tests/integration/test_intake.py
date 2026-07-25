@@ -50,6 +50,7 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     root = tmp_path / "footage"; root.mkdir()
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "shake_by_window",
                         lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
 
@@ -72,8 +73,28 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     root = tmp_path / "footage"; root.mkdir()
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
 
     result = intake.intake(str(root), str(tmp_path / "out"))
     clip = result.clips[0]
     assert len(clip.windows) >= 1
     assert all(w.shake >= 0.0 for w in clip.windows)         # vidstabdetect measured + parsed
+
+
+def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_clip):
+    # real ffprobe + PySceneDetect + phash on run 1; run 2 must touch NO clip CV
+    root = tmp_path / "footage"; root.mkdir()
+    shutil.copy(sample_clip, root / "clip.mp4")
+    monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
+    monkeypatch.setattr(intake, "shake_by_window",
+                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    out = tmp_path / "out"
+    intake.intake(str(root), str(out))
+    first = (out / "FOOTAGE.json").read_text()
+    assert (out / ".intake_cache" / "clip.mp4" / "clip.json").exists()
+
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda *a, **k: pytest.fail("resume recomputed a cached clip"))
+    intake.intake(str(root), str(out))                 # must be all cache hits → no CV
+    assert (out / "FOOTAGE.json").read_text() == first
