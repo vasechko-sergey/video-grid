@@ -522,7 +522,8 @@ def test_motion_is_2d():
 
 
 def test_build_window_unions_track_ids():
-    tl = [(0.0, 1, (500, 500, 10, 10), [2]), (1.0, 2, (500, 500, 10, 10), [2, 5])]
+    # disjoint ids per sample → a last-sample-only bug would drop id 2; the union keeps both
+    tl = [(0.0, 1, (500, 500, 10, 10), [2]), (1.0, 1, (500, 500, 10, 10), [5])]
     w = intake._build_window((0.0, 2.0), tl, shake=0.0, res=(1000, 1000))
     assert w.track_ids == [2, 5]
 ```
@@ -540,7 +541,7 @@ In `scripts/intake.py`, add to the imports block (line 9 area):
 from math import hypot
 ```
 
-In `_people_timeline`, replace the sampling append (the `timeline.append((i / fps, len(bbs), primary))` line and the two lines above it) with:
+In `_people_timeline`, update the docstring's timeline shape line — `timeline: [(t, people, primary_bbox)] sampled at ~SAMPLE_FPS (primary = largest bbox).` → `timeline: [(t, people, primary_bbox, track_ids)] sampled at ~SAMPLE_FPS (primary = largest bbox).` — so it stops describing the old 3-tuple. Then replace the sampling append (the `timeline.append((i / fps, len(bbs), primary))` line and the two lines above it) with:
 
 ```python
         bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]
