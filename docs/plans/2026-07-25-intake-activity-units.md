@@ -270,6 +270,23 @@ def test_units_for_span_refuses_misaligned_or_bad_band():
         carve.units_for_span(0.0, 8.0, [0.0, 1.0], [0.0], 1.2, 4.0)
     with pytest.raises(ValueError):                 # win_min > win_max
         carve.units_for_span(0.0, 8.0, [0.0], [0.0], 5.0, 4.0)
+
+
+def test_units_for_span_dedups_and_sorts_deterministically():
+    # two peaks (t=1.2, t=2.4); the first peak's tight == its lead-in (minima flank it
+    # at ±win_min/2), so the exact-dup drop must collapse them; output is (start,dur)-sorted.
+    # Drop the dedup → a duplicate (0.6,1.2) survives; drop the sort → order changes.
+    times = [0.0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2, 4.8]
+    curve = [5.0, 0.0, 9.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0]
+    assert carve.units_for_span(0.0, 4.8, times, curve, 1.2, 4.0) == [(0.6, 1.2), (1.8, 1.2), (1.8, 3.0)]
+
+
+def test_flat_span_tie_breaks_to_the_earliest_window():
+    # two equal-mean WIN_MAX windows in a flat span → the earliest wins (strict >);
+    # a >= tie-break would pick the later one
+    times = _steps(range(11))
+    curve = [9.0, 9.0, 9.0, 9.0, 0.0, 0.0, 9.0, 9.0, 9.0, 9.0, 0.0]
+    assert carve.units_for_span(0.0, 10.0, times, curve, 1.2, 4.0) == [(0.0, 4.0)]
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -358,12 +375,14 @@ def units_for_span(a: float, b: float, times: list[float], curve: list[float],
     seen: set = set()
     out: list[tuple[float, float]] = []
     for pk in peaks:
+        # candidates are pre-rounded to 3dp by _clamp_to_band, so this exact-equality
+        # dedup is reliable — the round() there is load-bearing, not cosmetic (§4.5).
         for unit in (_lead_in_unit(pk, minima, a, b, times, win_min, win_max),
                      _tight_unit(pk, a, b, times, win_min)):
-            if unit not in seen:                   # exact-dup drop (§4.5): a sharp peak makes them equal
+            if unit not in seen:                   # exact-dup drop: a sharp peak makes tight == lead-in
                 seen.add(unit)
                 out.append(unit)
-    out.sort(key=lambda u: (u[0], u[1]))
+    out.sort(key=lambda u: (u[0], u[1]))            # deterministic (start, dur) order
     return out
 ```
 
