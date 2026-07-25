@@ -30,6 +30,11 @@ from `FOOTAGE.json`.
   present. Without `PACING.md`, leave `beat_slot` unset. Point `music` at a
   `MUSIC.json` when one exists.
 
+`start_offset` (optional, per selection episode) moves the in-point later inside the SAME
+shot — the window grid is a scoring artifact, not an editorial one. It never crosses a
+scene cut and never changes `dur`. Use it to start on the first manoeuvre when the pacing
+report says that lands a better ending.
+
 ## Procedure
 
 1. **Recon.** Read `FOOTAGE.md`, `project.json`, `references/editing-canon.md`, and

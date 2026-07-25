@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> [music] -> [pacing] -> edit-plan -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> edit-plan -> [music] -> [pacing] -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -73,7 +73,24 @@ say so rather than guessing a path.
    approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
    bare autonomous run, skip it and say so; `project.json` still anchors CP1.
 
-5. **music-and-mood (optional).** If the brief names a **track**:
+5. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
+   `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). edit-plan runs
+   **before** music and pacing (steps 6-7): this first `edit_plan build` carries **no
+   `--pacing`**, so each cut keeps the length its footage gives it. **Checkpoint 2 —
+   EDL approval + curation:** show the user `EDL.md`. To swap or re-order an episode,
+   edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
+   **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
+   assemble-draft step below), it is what the user approves at Checkpoint 2; on a
+   run without it, `EDL.md` still anchors CP2.
+
+   The scenario comes first and the music is fitted to it (design 2026-07-24). Run
+   `edit_plan build` with NO `--pacing` to get the cuts at their material lengths, then
+   `pacing`, then `edit_plan build --pacing` to apply the fit. Never re-time a shot to make
+   a slot: a shot that IS the content — a ride, a trick — is not a slot's length.
+
+6. **music-and-mood (optional).** The cuts already exist (step 5), so the reel's
+   length is the sum of `EDL.json`'s episode durations — analyse the track against
+   **that** length, not a SPEC target. If the brief names a **track**:
    - a **local file path** -> analyse it directly, preferring the tool's own
      in-point pick: `"$VG" scripts.beats <track> --auto-start
      --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
@@ -93,24 +110,19 @@ say so rather than guessing a path.
      internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — confirm
      with the user first) into the same shortlist shape, the user picks, and it
      downloads then runs `beats --auto-start`.
-   Either way, pass `<run>/MUSIC.json` to edit-plan. On "no music" / "без
-   музыки", leave it unset — the reel is silent (a valid path).
+   Either way, `MUSIC.json` feeds **pacing** next (step 7), and the EDL references it
+   (`selection.json`'s `music` field) for the audio mux. On "no music" / "без
+   музыки", leave it unset — the reel is silent, pacing is skipped (a valid path).
 
-6. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
-   skill — it derives the beat-aligned energy spine (`"$VG" scripts.pacing
-   --music <run>/MUSIC.json --spec <run>/SPEC.json --out-dir
-   <run>`) and writes `PACING.json` + `PACING.md` into `<run>`. No `MUSIC.json`
-   (a silent reel) -> skip it (named); edit-plan runs pacing-less (`beat_slot`
-   stays unset). `montage status` never points `next` here (it is optional).
-   Pass `<run>/PACING.json` to edit-plan next (`--pacing <run>/PACING.json`).
-
-7. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
-   `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). **Checkpoint
-   2 — EDL approval + curation:** show the user `EDL.md`. To swap or re-order an
-   episode, edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
-   **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
-   assemble-draft step below), it is what the user approves at Checkpoint 2; on a
-   run without it, `EDL.md` still anchors CP2.
+7. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
+   skill — it **fits** the cuts `EDL.json` already holds onto the music's beat grid
+   (`"$VG" scripts.pacing --edl <run>/EDL.json --footage <run>/FOOTAGE.json
+   --music <run>/MUSIC.json --out-dir <run>`) and writes `PACING.json` + `PACING.md`
+   into `<run>`. Then **apply the fit** by re-running edit-plan with the report:
+   `edit_plan build ... --pacing <run>/PACING.json` — this second pass writes the
+   snapped durations and `beat_slot` into `EDL.json`. No `MUSIC.json` (a silent reel)
+   -> skip it (named); the EDL stays pacing-less (`beat_slot` unset). `montage status`
+   never points `next` here (it is optional).
 
 8. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
    process-episode render, offer a rough draft: "Want to see a rough cut first?"

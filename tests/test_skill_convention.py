@@ -34,3 +34,16 @@ def test_the_runner_skills_read_the_recorded_root():
     for name in sorted(RUNNERS):
         text = (SKILLS / name / "SKILL.md").read_text()
         assert "video-grid/root" in text, f"{name} does not read the recorded root"
+
+
+def test_the_pacing_skill_documents_the_two_pass_flow():
+    text = (SKILLS / "pacing" / "SKILL.md").read_text()
+    assert "--edl" in text and "--footage" in text
+    assert "edit_plan build --pacing" in text, (
+        "the fit is APPLIED by re-running edit-plan; a skill that stops at PACING.json "
+        "leaves the EDL un-snapped")
+
+
+def test_using_montage_orders_edit_plan_before_music():
+    text = (SKILLS / "using-montage" / "SKILL.md").read_text()
+    assert text.index("edit_plan build") < text.index("scripts.beats")
