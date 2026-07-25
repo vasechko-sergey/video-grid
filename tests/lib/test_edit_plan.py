@@ -401,3 +401,41 @@ def test_bind_refuses_a_spine_fitted_to_a_different_edit():
                          7.6, 120.0)
     with pytest.raises(ValueError, match="fitted to a different"):
         edit_plan._bind_pacing(eps, spine)
+
+
+def test_start_offset_out_point_may_not_cross_a_mid_body_scene_cut():
+    # window [6,10] sits inside shot A (cut at 12); shifting the in-point to 9 pushes the
+    # OUT-point to 13, past the cut — the episode would splice shot A and shot B.
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0, shaky=False,
+                       scene_cuts=[12.0],
+                       windows=[FootageWindow(start=6.0, dur=4.0, shot_type="wide",
+                                              people=1, motion=0.4, shake=0.001,
+                                              description="d", score=0.8, best=True)])
+    with pytest.raises(ValueError, match="room"):
+        edit_plan.window_to_episode(clip, clip.windows[0], start_offset=3.0,
+                                    composition="center", grid="thirds")
+
+
+def test_start_offset_out_point_may_not_run_past_the_clip_end():
+    # No cut, but start+dur exceeds clip.dur.
+    clip = FootageClip(source="a.mp4", dur=10.0, res=(1920, 1080), fps=30.0, shaky=False,
+                       scene_cuts=[],
+                       windows=[FootageWindow(start=4.0, dur=5.0, shot_type="wide",
+                                              people=1, motion=0.4, shake=0.001,
+                                              description="d", score=0.8, best=True)])
+    with pytest.raises(ValueError, match="room"):
+        edit_plan.window_to_episode(clip, clip.windows[0], start_offset=2.0,
+                                    composition="center", grid="thirds")
+
+
+def test_start_offset_zero_with_a_window_flush_to_a_cut_is_accepted():
+    # Default path: an episode ending EXACTLY at the cut is fine (out-point on the cut,
+    # not past it). This guards against a false-refusal on the offset=0 path.
+    clip = FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0, shaky=False,
+                       scene_cuts=[10.0],
+                       windows=[FootageWindow(start=6.0, dur=4.0, shot_type="wide",
+                                              people=1, motion=0.4, shake=0.001,
+                                              description="d", score=0.8, best=True)])
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
+                                     grid="thirds")
+    assert ep.dur == pytest.approx(4.0)

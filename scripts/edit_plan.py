@@ -43,7 +43,7 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
 
     `start_offset` moves the in-point later inside the SAME shot. It exists because the
     window grid is a SCORING artifact, not an editorial one: intake carves a continuous
-    take into WIN_TARGET-sized windows BY LENGTH (see _room_in_shot), so without an
+    take into WIN_TARGET-sized windows BY LENGTH (see FootageClip.room_after), so without an
     offset the only reachable in-points are multiples of that arbitrary size — 2.41s on
     one drone clip here, which was the difference between cutting on a cross-step and
     cutting through it. It shifts the in-point ONLY; `dur` still comes from the window
@@ -68,6 +68,14 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
             f"window_to_episode: start_offset {start_offset}s crosses a scene cut at "
             f"{crossed[0]:.2f}s in {clip.source} — the in-point would land in a DIFFERENT shot "
             f"than the window scored. Reference the window that starts after the cut instead")
+    room = clip.room_after(start)
+    if window.dur > room:
+        raise ValueError(
+            f"window_to_episode: start_offset {start_offset}s puts the out-point at "
+            f"{start + window.dur:.2f}s, past the {room:.2f}s of room the shot has after "
+            f"{start:.2f}s in {clip.source} — the episode would cross a scene cut or run "
+            f"past the clip. Pick an earlier in-point (a smaller start_offset) or a "
+            f"shorter window")
     defaults = {"shot_type": window.shot_type, "processing_notes": window.description}
     try:
         return EDLEpisode(source=clip.source, start=start, dur=window.dur,
