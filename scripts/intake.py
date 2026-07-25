@@ -337,7 +337,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     print(f"intake: {len(results)} cached, {len(misses)} to scan", file=sys.stderr)
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in misses}
-    failed: list = []
+    failed: list[dict[str, str]] = []
     for p in misses:
         try:
             results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
@@ -356,9 +356,9 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
         md += "\n".join(f"- {f['source']}: {f['error']}" for f in failed) + "\n"
     (out / "FOOTAGE.md").write_text(md)
     save_cast_candidates([e for r in ok for e in r.cast], str(out))
+    scanned = len(misses) - len(failed)                # successful misses; the rest of results are cache hits
     (out / "intake_report.json").write_text(json.dumps(
-        {"scanned": len(misses) - len(failed), "cached": len(results) - (len(misses) - len(failed)),
-         "failed": failed}, indent=2))
+        {"scanned": scanned, "cached": len(results) - scanned, "failed": failed}, indent=2))
     if failed:
         print(f"intake: ⚠ {len(failed)} clip(s) failed — see {out / 'intake_report.json'}",
               file=sys.stderr)

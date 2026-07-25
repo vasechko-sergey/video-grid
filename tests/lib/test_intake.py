@@ -441,3 +441,30 @@ def test_a_bad_clip_is_quarantined_not_fatal(monkeypatch, tmp_path):
     assert report["failed"] == [{"source": "b.mp4", "error": "corrupt moov atom"}]
     assert "## Failed clips" in (out / "FOOTAGE.md").read_text()
     assert (out / "FOOTAGE.json").exists()             # a valid artifact was produced
+
+
+def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
+    # 4 clips: a,b are cache HITS; c,d are misses; d fails.
+    # → scanned=1 (c), cached=2 (a,b), failed=1 (d); survivors a,b,c in sorted order.
+    root = tmp_path / "footage"; root.mkdir()
+    for n in ("a.mp4", "b.mp4", "c.mp4", "d.mp4"):
+        (root / n).write_bytes(b"x")
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    hits = {"a.mp4", "b.mp4"}
+    monkeypatch.setattr(intake.intake_cache, "load",
+                        lambda o, p, s, m: _fake_result(intake.Path(p).name)
+                        if intake.Path(p).name in hits else None)
+    monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
+
+    def flaky(path, sf=intake.SAMPLE_FPS):
+        name = intake.Path(path).name
+        if name == "d.mp4":
+            raise RuntimeError("boom")
+        return _fake_result(name)
+
+    monkeypatch.setattr(intake, "_process_clip", flaky)
+    result = intake.intake(str(root), str(tmp_path / "out"))
+    report = json.loads((tmp_path / "out" / "intake_report.json").read_text())
+    assert report == {"scanned": 1, "cached": 2,
+                      "failed": [{"source": "d.mp4", "error": "boom"}]}
+    assert [c.source for c in result.clips] == ["a.mp4", "b.mp4", "c.mp4"]   # sorted, d dropped
