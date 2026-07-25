@@ -262,6 +262,14 @@ def test_lead_in_longer_than_the_band_is_clamped_with_the_peak_inside():
     lead = max(units, key=lambda u: u[1])          # the widest unit
     s, d = lead
     assert d <= 4.0 + 1e-6 and s <= 7.0 <= s + d   # band-clamped, peak still inside
+
+
+def test_units_for_span_refuses_misaligned_or_bad_band():
+    import pytest
+    with pytest.raises(ValueError):                 # times/curve length mismatch
+        carve.units_for_span(0.0, 8.0, [0.0, 1.0], [0.0], 1.2, 4.0)
+    with pytest.raises(ValueError):                 # win_min > win_max
+        carve.units_for_span(0.0, 8.0, [0.0], [0.0], 5.0, 4.0)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -327,7 +335,17 @@ def units_for_span(a: float, b: float, times: list[float], curve: list[float],
                    win_min: float, win_max: float) -> list[tuple[float, float]]:
     """Carve one span [a, b] into activity units (§4). A short span (< win_min) is
     dropped; a span within the band is one whole unit; a longer span is carved on
-    its activity peaks (two candidates each) or, if flat, one max-mean window."""
+    its activity peaks (two candidates each) or, if flat, one max-mean window.
+
+    This is the module's public entry (intake.carve_windows calls it), so it
+    validates here and the helpers below trust it — the same fail-loud boundary
+    gridfit.py draws."""
+    if len(times) != len(curve):
+        raise ValueError(f"carve.units_for_span: times and curve must align, got "
+                         f"{len(times)} times vs {len(curve)} curve samples")
+    if not (0 < win_min <= win_max):
+        raise ValueError(f"carve.units_for_span: need 0 < win_min <= win_max, got "
+                         f"win_min={win_min!r}, win_max={win_max!r}")
     L = b - a
     if L < win_min:
         return []
