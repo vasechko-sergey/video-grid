@@ -43,7 +43,7 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
              f"- **Verdict:** {'fits' if fit.fits else 'OFF-GRID — see below'}", "",
              "| level | step | worst | needed | verdict |",
              "|-------|-----:|------:|-------:|---------|"]
-    for f in list(rejected) + [fit]:
+    for f in list(rejected) + ([fit] if fit.fits else []):
         need = max(f.needs) if f.needs else 0.0
         lines.append(f"| {f.level} | {f.level_n} beats | {f.worst:.3f} | {need:.3f} | "
                      f"{'fits' if f.fits else 'misses'} |")

@@ -206,6 +206,9 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
     fitted = [float(d) + s for d, s in zip(durs, fit.shifts)]
     total = sum(fitted)
     n = _beat_energy(beats, energy, energy_hz, total)
+    # The grid lines are a function of the chosen level/phase only, not the slot — compute
+    # them once, not once per cut.
+    grid_lines = gridfit.lines_at(beats, fit.level_n, fit.phase)
     slots, pos = [], 0.0
     for i, dur in enumerate(fitted):
         span = [n[k] for k, b in enumerate(beats) if pos <= b < pos + dur] or [0.5]
@@ -216,8 +219,7 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
         line = None
         if not tail:
             want = pos + dur
-            line = min(gridfit.lines_at(beats, fit.level_n, fit.phase),
-                       key=lambda L: abs(L - want))
+            line = min(grid_lines, key=lambda L: abs(L - want))
         slots.append(Slot(i, pos, dur, e, "hook" if i == 0 else _kind(e),
                           line=line, dev=dev))
         pos += dur

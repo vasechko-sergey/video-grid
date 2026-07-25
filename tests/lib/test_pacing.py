@@ -204,6 +204,12 @@ def test_fit_spine_keeps_every_episode_s_own_length_when_it_already_lands():
     assert [s.dur for s in spine.slots] == pytest.approx([2.0, 2.0, 2.0])
     assert fit.level == "bar"
     assert spine.target_dur == pytest.approx(6.0)
+    # fit_spine re-derives each cut's nearest grid line; the cuts land on 2.0 and 4.0 and
+    # the tail (the reel's end, not a cut) has none. Locks the re-derivation's current
+    # behaviour — Fit does not yet carry the per-cut line (that refactor is deferred).
+    assert spine.slots[0].line == pytest.approx(2.0)
+    assert spine.slots[1].line == pytest.approx(4.0)
+    assert spine.slots[2].line is None
 
 
 def test_fit_spine_moves_an_out_point_within_the_allowance():

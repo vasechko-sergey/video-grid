@@ -76,3 +76,37 @@ def test_an_edl_source_missing_from_footage_fails_loud(run_dir):
     with pytest.raises(ValueError, match="ghost.mp4"):
         driver.build_pacing(str(run_dir / "EDL.json"), str(run_dir / "FOOTAGE.json"),
                             [str(run_dir / "MUSIC.json")], str(run_dir))
+
+
+def test_off_grid_report_logs_a_remedy_and_lists_each_level_once(tmp_path, capsys):
+    # A beat grid with a GAP (no beats between 2.0 and 8.0). The only cut lands at 5.0s,
+    # 3.0s from the nearest line — far beyond the half-beat allowance at every level — so
+    # nothing fits. This is the degradation the slice exists to make honest.
+    # The grid carries 16 beats on purpose: best_fit sweeps every phase of the coarsest
+    # level (phrase = 16 beats/line), so a shorter grid leaves that sweep with empty lines.
+    beats = ([0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75]      # dense cluster before the gap
+             + [8.0, 8.25, 8.5, 8.75, 9.0, 9.25, 9.5, 9.75])   # dense cluster after it
+    _write(tmp_path / "MUSIC.json",
+           {"track": "t.mp3", "start_offset": 0.0, "duration": 10.0, "tempo": 120.0,
+            "beats": beats, "energy": [0.5] * 10, "energy_hz": 1.0})
+    _write(tmp_path / "FOOTAGE.json",
+           {"clips": [{"source": "a.mp4", "dur": 30.0, "res": [1920, 1080], "fps": 30.0,
+                       "shaky": False, "scene_cuts": [],
+                       "windows": [{"start": 0.0, "dur": 5.0, "shot_type": "wide",
+                                    "people": 1, "motion": 0.4, "shake": 0.001,
+                                    "description": "d", "score": 0.8, "best": True}]}]})
+    _write(tmp_path / "EDL.json",
+           {"episodes": [{"source": "a.mp4", "start": 0.0, "dur": 5.0, "shot_type": "wide",
+                          "composition": "center", "grid": "thirds"},
+                         {"source": "a.mp4", "start": 10.0, "dur": 5.0, "shot_type": "wide",
+                          "composition": "center", "grid": "thirds"}],
+            "cap": 3})
+    res = driver.build_pacing(str(tmp_path / "EDL.json"), str(tmp_path / "FOOTAGE.json"),
+                              [str(tmp_path / "MUSIC.json")], str(tmp_path))
+    assert res["fit"].fits is False
+    err = capsys.readouterr().err
+    assert "no level fits" in err                          # the actionable remedy fired
+    md = (tmp_path / "PACING.md").read_text()
+    # Each of the 5 GRID_LEVELS appears exactly once in the fit table (rows carry "beats |").
+    rows = [ln for ln in md.splitlines() if ln.startswith("| ") and "beats |" in ln]
+    assert len(rows) == 5
