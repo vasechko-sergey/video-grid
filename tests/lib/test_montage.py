@@ -33,7 +33,7 @@ def test_stage_accepts_good():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "reel-brief", "trend-scan",
-        "music-and-mood", "pacing", "edit-plan", "assemble-draft", "titles",
+        "edit-plan", "music-and-mood", "pacing", "assemble-draft", "titles",
         "deliver", "reel-review"]
 
 
@@ -237,3 +237,22 @@ def test_status_cli_out_dir_override(tmp_path, monkeypatch, capsys):
         montage.main()
     assert e.value.code == 0
     assert json.loads(capsys.readouterr().out)["delivered"] is True
+
+
+# ---- scenario-first order: edit-plan before music/pacing ----
+
+def test_edit_plan_comes_before_music_and_pacing():
+    keys = [s.key for s in montage.V1_STAGES]
+    assert keys.index("edit-plan") < keys.index("music-and-mood")
+    assert keys.index("edit-plan") < keys.index("pacing")
+
+
+def test_pacing_still_follows_the_music_it_fits_against():
+    keys = [s.key for s in montage.V1_STAGES]
+    assert keys.index("music-and-mood") < keys.index("pacing")
+
+
+def test_a_run_with_footage_but_no_edl_asks_for_edit_plan_not_music(tmp_path):
+    (tmp_path / "project.json").write_text("{}")
+    (tmp_path / "FOOTAGE.json").write_text("{}")
+    assert montage.next_action(str(tmp_path))["next"] == "edit-plan"
