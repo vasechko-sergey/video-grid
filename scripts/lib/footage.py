@@ -38,6 +38,7 @@ class FootageWindow:
     description: str = ""
     score: float = 0.0
     best: bool = False
+    track_ids: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not (_num(self.start) and self.start >= 0):
@@ -58,11 +59,16 @@ class FootageWindow:
             raise ValueError(f"FootageWindow.score must be a number in [0, 1], got {self.score!r}")
         if not isinstance(self.best, bool):
             raise ValueError("FootageWindow.best must be a bool")
+        if not isinstance(self.track_ids, list) or any(
+                isinstance(t, bool) or not isinstance(t, int) or t < 0 for t in self.track_ids):
+            raise ValueError(f"FootageWindow.track_ids must be a list of ints >= 0 "
+                             f"(the track ids present in the window), got {self.track_ids!r}")
 
     def to_dict(self) -> dict:
         return {"start": self.start, "dur": self.dur, "shot_type": self.shot_type,
                 "people": self.people, "motion": self.motion, "shake": self.shake,
-                "description": self.description, "score": self.score, "best": self.best}
+                "description": self.description, "score": self.score,
+                "best": self.best, "track_ids": list(self.track_ids)}
 
 
 @dataclass

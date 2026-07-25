@@ -343,3 +343,24 @@ def test_clip_from_dict_names_what_was_expected_what_arrived_and_the_remedy(d, n
     assert "'windows' list" in msg
     assert f"got {name}" in msg
     assert "re-run footage-intake" in msg
+
+
+def test_footage_window_track_ids_default_and_roundtrip():
+    from scripts.lib.footage import FootageWindow
+    w = FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=2,
+                      motion=0.3, shake=0.0, track_ids=[3, 7])
+    assert w.track_ids == [3, 7]
+    assert w.to_dict()["track_ids"] == [3, 7]
+    assert FootageWindow(**w.to_dict()).track_ids == [3, 7]
+    # default is an empty list (a window with nobody in it)
+    assert FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=0,
+                         motion=0.0, shake=0.0).track_ids == []
+
+
+def test_footage_window_track_ids_rejects_bad_values():
+    import pytest
+    from scripts.lib.footage import FootageWindow
+    for bad in [[-1], [True], ["1"], 5]:
+        with pytest.raises(ValueError):
+            FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=1,
+                          motion=0.0, shake=0.0, track_ids=bad)
