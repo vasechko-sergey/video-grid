@@ -166,7 +166,7 @@ def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]
 def _people_timeline(src: str, fps: float, res: tuple[int, int],
                      sample_fps: float = SAMPLE_FPS) -> tuple[list, dict]:
     """One seg pass → (timeline, crops_by_track).
-    timeline: [(t, people, primary_bbox)] sampled at ~SAMPLE_FPS (primary = largest bbox).
+    timeline: [(t, people, primary_bbox, track_ids)] sampled at ~SAMPLE_FPS (primary = largest bbox).
     crops_by_track: {tid: (conf, crop_rgb, mask)} best crop per track id, for the cast pass."""
     step = max(1, round(fps / sample_fps))
     timeline, crops = [], {}
