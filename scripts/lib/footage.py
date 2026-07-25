@@ -146,11 +146,11 @@ class FootageClip:
         """Seconds available after `start` inside the SAME uninterrupted shot.
 
         Running an episode into this room is not stretching footage — no frame is slowed
-        or repeated, the shot simply runs longer. intake carves a continuous take into
-        WIN_TARGET-sized windows by LENGTH, not by content (its own docstring: "MVI_3739
-        = 1 ride → 3 windows"), so a window boundary inside a shot marks nothing. A
-        scene cut does mark something, and running across one would splice two different
-        shots into one episode — so the room stops there."""
+        or repeated, the shot simply runs longer. intake carves a take into activity
+        units that may overlap and need not tile it (2026-07-25 activity-units §2), so a
+        window boundary is not a partition line — the room after a start is what the shot
+        itself offers. A scene cut does mark something, and running across one would
+        splice two different shots into one episode — so the room stops there."""
         if not (_num(start) and start >= 0):
             raise ValueError(f"FootageClip.room_after: start must be >= 0 seconds, "
                              f"got {start!r}")

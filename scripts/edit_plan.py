@@ -41,12 +41,11 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
     shot_type/description but an editorial value overrides. An unknown or missing
     editorial field raises ValueError naming it.
 
-    `start_offset` moves the in-point later inside the SAME shot. It exists because the
-    window grid is a SCORING artifact, not an editorial one: intake carves a continuous
-    take into WIN_TARGET-sized windows BY LENGTH (see FootageClip.room_after), so without an
-    offset the only reachable in-points are multiples of that arbitrary size — 2.41s on
-    one drone clip here, which was the difference between cutting on a cross-step and
-    cutting through it. It shifts the in-point ONLY; `dur` still comes from the window
+    `start_offset` moves the in-point later inside the SAME shot — the fine-tune atop
+    intake's activity units (2026-07-25 activity-units): a unit is anchored on an
+    activity peak with its lead-in, but the exact frame to cut on can still sit a beat
+    inside it, and an offset reaches it without re-carving. It shifts the in-point
+    ONLY; `dur` still comes from the window
     (and then from the spine), so an offset can never silently lengthen an episode.
     Crossing a scene cut is refused: the in-point would land in a different shot than
     the one the window scored, so its shot_type/description would describe other footage.

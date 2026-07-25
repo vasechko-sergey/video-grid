@@ -51,8 +51,8 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
-    monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [])
 
     out = tmp_path / "out"
     result = intake.intake(str(root), str(out))
@@ -86,8 +86,8 @@ def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_
     root = tmp_path / "footage"; root.mkdir()
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
-    monkeypatch.setattr(intake, "shake_by_window",
-                        lambda clip, spans, fps, res, dur: [0.0 for _ in spans])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [])
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     out = tmp_path / "out"
     intake.intake(str(root), str(out))
