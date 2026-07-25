@@ -9,15 +9,24 @@ The measure is a PROXY, and the design says so: it is global frame-to-frame diff
 so it fires on any large motion change including a camera whip, not only on a manoeuvre.
 Anchors are therefore advisory — the pacing report names each one with its timestamp so
 a wrong one is visible rather than silently moving a cut."""
+from collections.abc import Sequence
+
+from scripts.lib import ffbin, proc
+
 ANCHOR_HZ = 3.0        # samples/s — intake's SAMPLE_FPS, so the two agree about "a moment"
 ANCHOR_MIN_GAP = 1.0   # s between anchors: closer than this and they describe one event
 ANCHOR_REL = 0.6       # fraction of the curve's own peak a local max must reach. Relative,
                        # not absolute: a telephoto shot and an aerial differ by an order of
                        # magnitude in frame-to-frame difference, and an absolute floor would
                        # find every moment in one and none in the other.
+ANCHOR_W, ANCHOR_H = 160, 90   # the analysis frame. Fixed, not aspect-preserving: this is
+                               # a motion PROXY and a squeezed frame differences the same;
+                               # a fixed size keeps the raw-frame arithmetic below exact.
+_FRAME_BYTES = ANCHOR_W * ANCHOR_H
 
 
-def anchors_from_curve(curve, hz: float = ANCHOR_HZ, min_gap: float = ANCHOR_MIN_GAP,
+def anchors_from_curve(curve: Sequence[float], hz: float = ANCHOR_HZ,
+                       min_gap: float = ANCHOR_MIN_GAP,
                        rel: float = ANCHOR_REL) -> list[float]:
     """Local maxima of `curve` above `rel` x its peak, thinned to one per `min_gap`.
 
@@ -44,3 +53,26 @@ def anchors_from_curve(curve, hz: float = ANCHOR_HZ, min_gap: float = ANCHOR_MIN
         if all(abs(i - j) / hz >= min_gap for j in kept):
             kept.append(i)
     return [i / hz for i in sorted(kept)]
+
+
+def measure_curve(src: str, start: float, dur: float, hz: float = ANCHOR_HZ) -> list[float]:
+    """Mean frame-to-frame difference of `src[start : start+dur]`, sampled at `hz`.
+
+    `-ss` goes AFTER `-i` — design §12's first landmine: before the input it is a fast
+    keyframe seek and the frames returned are not the frames asked for, which would move
+    every anchor by up to a GOP.
+
+    `tblend=all_mode=difference` emits |frame[i] - frame[i-1]| from the second frame on,
+    so curve[i] describes the interval between samples i and i+1; the caller's anchor time
+    lands at the START of that interval, which is where the action begins."""
+    if dur <= 0:
+        raise ValueError(f"anchors.measure_curve: dur must be > 0 seconds, got {dur!r}")
+    r = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src, "-ss", f"{start}",
+                  "-t", f"{dur}", "-vf",
+                  f"fps={hz},scale={ANCHOR_W}:{ANCHOR_H},format=gray,"
+                  f"tblend=all_mode=difference",
+                  "-f", "rawvideo", "-pix_fmt", "gray", "-"])
+    raw = r.stdout or b""
+    n = len(raw) // _FRAME_BYTES
+    return [sum(raw[i * _FRAME_BYTES:(i + 1) * _FRAME_BYTES]) / _FRAME_BYTES
+            for i in range(n)]
