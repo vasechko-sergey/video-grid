@@ -269,6 +269,17 @@ git add scripts/lib/intake_cache.py tests/lib/test_intake_cache.py
 git commit -m "feat: intake_cache — atomic per-clip checkpoint store/load"
 ```
 
+> **As-built (post-review, follow-up commit):** code review hardened the module beyond
+> the block above — the committed code is the source of truth. Changes: `model` is a
+> **required** parameter of `clip_key`/`store`/`load` (the `from scripts.track import
+> MODEL` default was dropped — a lib must not import a driver; the driver supplies
+> `track.MODEL`); `load` catches `KeyError`/`TypeError`/`ValueError` and guards
+> `isinstance(payload, dict)` so a wrong-shape payload or a since-removed source file
+> reads as a miss, never a crash; crop PNGs are written via `.tmp` + `os.replace`
+> (`format="PNG"`) like `clip.json`; `descriptor`/`phashes`/`cast` are precisely typed;
+> two tests added (non-dict JSON → miss, source-file-removed → miss). Tasks 3–4 below
+> already pass `MODEL` to `store`/`load`.
+
 ---
 
 ## Task 1: `_process_clip` worker + Phase-2 assembly + cast refactor
@@ -744,7 +755,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     results: dict = {}
     misses: list = []
     for p in paths:
-        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps)
+        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL)
         if hit is not None:
             results[p] = hit
         else:
@@ -753,7 +764,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in misses}
     for p in misses:
-        results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result())
+        results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
 ```
 
 (The `ok = [...]` assembly block and everything after it stay unchanged.)
@@ -835,7 +846,7 @@ Task 3) with the quarantining form:
     failed: list = []
     for p in misses:
         try:
-            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result())
+            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
         except Exception as e:                         # quarantine (§5): name it, keep going
             failed.append({"source": p.name, "error": str(e)})
             print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)

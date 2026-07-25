@@ -147,14 +147,18 @@ half-written entry can never be mistaken for a good one.
 
 ### The two functions
 
-- `store(out_dir, path, sample_fps, result) -> ClipResult` — writes the crop
+- `store(out_dir, path, sample_fps, result, model) -> ClipResult` — writes the crop
   PNGs, then atomically commits `clip.json`, and **returns the result in its
   cached form**: the `CastEntry.crop_rgb` arrays replaced by their on-disk PNG
   paths. The driver uses this return value, so a just-scanned clip and a
   cache-loaded clip present the identical shape to Phase 2 (§2).
-- `load(out_dir, path, sample_fps) -> ClipResult | None` — returns the cached-form
-  `ClipResult` on a key match, `None` on a miss (absent, stale, or unreadable — a
-  corrupt or truncated cache file is a miss, never a crash).
+- `load(out_dir, path, sample_fps, model) -> ClipResult | None` — returns the
+  cached-form `ClipResult` on a key match, `None` on a miss (absent, stale,
+  wrong-shape, unreadable, or a since-removed source file — never a crash).
+
+`model` is a required parameter, not imported: `intake_cache` is a lib and must not
+depend on the `scripts.track` driver, and the `yolo11n-seg.pt` literal lives once in
+`track.MODEL` — the driver (which legitimately imports it) passes it in.
 
 `--fresh` makes the driver skip `load` entirely (every clip a miss), forcing a
 full recompute without deleting the directory.
@@ -170,7 +174,7 @@ def intake(footage_root, out_dir, sample_fps=SAMPLE_FPS, *,
     track.ensure_model(track.MODEL)             # §7 weights-race landmine, BEFORE the pool
     results, misses = {}, []
     for p in paths:
-        hit = None if fresh else cache.load(out_dir, p, sample_fps)
+        hit = None if fresh else cache.load(out_dir, p, sample_fps, MODEL)
         if hit is not None: results[p] = hit     # cheap JSON+PNG read, main thread
         else:               misses.append(p)
     log(f"{len(results)} cached, {len(misses)} to scan")
@@ -180,7 +184,7 @@ def intake(footage_root, out_dir, sample_fps=SAMPLE_FPS, *,
     for p in misses:                             # join order irrelevant; read in sorted order below
         try:
             res = futs[p].result()
-            results[p] = cache.store(out_dir, p, sample_fps, res)   # store returns cached-form (§3)
+            results[p] = cache.store(out_dir, p, sample_fps, res, MODEL)   # store returns cached-form (§3)
         except Exception as e:
             failed.append({"source": p.name, "error": str(e)})      # §5 quarantine
     # ---- Phase 2 proper: everything in sorted(paths) order ----
