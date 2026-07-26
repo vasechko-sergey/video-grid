@@ -7,6 +7,14 @@ from pathlib import Path
 from scripts.lib import ffbin, proc
 
 
+DELIVERY_RANGE = "tv"
+"""The one colour range the reel is assembled and delivered in (limited, 16-235).
+
+Not a style choice — h264/mp4's own default, what every player expands on the way
+out, and what a downstream re-encode (a platform's own transcode) assumes when a
+file says nothing. `pc` files are the ones that get misread, not the reverse."""
+
+
 @dataclass(frozen=True)
 class StreamInfo:
     w: int
@@ -14,6 +22,10 @@ class StreamInfo:
     fps: float
     pix_fmt: str
     vcodec: str                     # ffprobe codec_name, e.g. "h264" for libx264 output
+    # ffprobe color_range, or "unknown" when the stream carries no tag. Defaults to
+    # the delivery range so a hand-built StreamInfo describes a conforming stream;
+    # probe_stream always passes what it actually read, and never guesses "tv".
+    color_range: str = DELIVERY_RANGE
 
 
 def probe_stream(path: str) -> StreamInfo:
@@ -22,7 +34,7 @@ def probe_stream(path: str) -> StreamInfo:
         raise RuntimeError(f"{p} is missing — assemble needs every locked episode on disk; "
                            "check the EDL paths or re-run process-episode for it")
     cmd = [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
-           "-show_entries", "stream=width,height,r_frame_rate,pix_fmt,codec_name",
+           "-show_entries", "stream=width,height,r_frame_rate,pix_fmt,codec_name,color_range",
            "-of", "json", str(p)]
     out = proc.run(cmd).stdout.decode("utf-8", errors="replace")
     streams = json.loads(out).get("streams", [])
@@ -33,7 +45,7 @@ def probe_stream(path: str) -> StreamInfo:
     if float(den) == 0:
         raise RuntimeError(f"{p} reports r_frame_rate {s['r_frame_rate']!r} — unusable, re-render it")
     return StreamInfo(int(s["width"]), int(s["height"]), float(num) / float(den),
-                      s["pix_fmt"], s["codec_name"])
+                      s["pix_fmt"], s["codec_name"], s.get("color_range") or "unknown")
 
 
 def probe_duration(path: str) -> float:
@@ -48,16 +60,36 @@ def probe_duration(path: str) -> float:
 
 
 def matches(info: StreamInfo, dims: tuple[int, int], fps: float,
-            pix_fmt: str = "yuv420p", vcodec: str = "h264") -> bool:
+            pix_fmt: str = "yuv420p", vcodec: str = "h264",
+            color_range: str = DELIVERY_RANGE) -> bool:
+    """Is this episode already concat-compatible with the reel?
+
+    color_range is in here because concat below is a `-c copy` — it splices
+    BITSTREAMS and takes the stream tags from the first entry. Two episodes cut
+    from differently-ranged cameras (a DJI ships yuv420p/tv, a Canon yuvj420p/pc)
+    both "match" on dims/fps/codec, then the pc tag of whichever landed first is
+    stamped on the tv one's 16-235 data. Nothing errors: that episode alone
+    delivers with its blacks lifted ~15 and its whites capped ~13 low, a 12%
+    contrast loss that reads as milky, blown foam, and a white point that visibly
+    jumps at the cut into the next episode. An "unknown" range never matches —
+    an untagged stream is exactly the one whose data we must not assume about."""
     return (info.w == dims[0] and info.h == dims[1] and abs(info.fps - fps) < 0.01
-            and info.pix_fmt == pix_fmt and info.vcodec == vcodec)
+            and info.pix_fmt == pix_fmt and info.vcodec == vcodec
+            and info.color_range == color_range)
 
 
-def _normalize(src: str, dims: tuple[int, int], fps: float, out: str) -> str:
+def _normalize(src: str, dims: tuple[int, int], fps: float, out: str,
+               color_range: str = DELIVERY_RANGE) -> str:
     # the landmine (§12): concat of non-uniform streams desyncs. Normalize the
     # outlier ONLY — matched episodes are copied untouched.
-    vf = f"scale={dims[0]}:{dims[1]},fps={fps},format=yuv420p"
-    proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", vf,
+    # in_range=auto reads the source's own tag (and ffmpeg's yuvj⇒full default when
+    # it has none), so this CONVERTS the samples rather than relabelling them;
+    # -color_range then writes the matching tag. Both halves are needed: convert
+    # without tagging and the player re-expands an already-expanded image; tag
+    # without converting and you get the very bug this function exists to stop.
+    vf = (f"scale={dims[0]}:{dims[1]}:in_range=auto:out_range={color_range},"
+          f"fps={fps},format=yuv420p")
+    proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", vf, "-color_range", color_range,
               "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out])
     return out
 

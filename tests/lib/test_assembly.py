@@ -19,6 +19,17 @@ def test_matches_is_true_only_when_all_fields_agree():
     assert not assembly.matches(StreamInfo(606, 1080, 30.0, "yuv420p", "hevc"), **ref)   # vcodec differs
 
 
+def test_matches_treats_a_differing_range_as_an_outlier():
+    from scripts.lib.assembly import StreamInfo, matches, DELIVERY_RANGE
+    assert DELIVERY_RANGE == "tv"
+    tv = StreamInfo(1080, 1920, 30.0, "yuv420p", "h264", "tv")
+    pc = StreamInfo(1080, 1920, 30.0, "yuv420p", "h264", "pc")
+    assert matches(tv, (1080, 1920), 30.0) is True
+    assert matches(pc, (1080, 1920), 30.0) is False           # pc != DELIVERY_RANGE
+    unknown = StreamInfo(1080, 1920, 30.0, "yuv420p", "h264", "unknown")
+    assert matches(unknown, (1080, 1920), 30.0) is False      # never assume an untagged stream
+
+
 def test_probe_stream_missing_file_fails_loud(tmp_path):
     with pytest.raises(RuntimeError, match="missing"):
         assembly.probe_stream(str(tmp_path / "nope.mp4"))
