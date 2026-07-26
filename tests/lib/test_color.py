@@ -113,3 +113,23 @@ def test_grade_chain_orders_every_op():
     assert out.index("colorchannelmixer=rr=1.000") < out.index("curves=r=")   # gain before shadow_red
     assert out.index("curves=r=") < out.index("curves=b=") < out.index("eq=saturation")
     assert out.index("eq=saturation") < out.index("curves=all='0/0 0.55") < out.index("fade=t=in")
+
+
+def test_white_balance_off_is_identity():
+    assert color.white_balance_gains((80, 100, 120), 0.0) == (1.0, 1.0, 1.0)
+    assert color.white_balance_arg((80, 100, 120), 0.0) == ""
+
+
+def test_white_balance_full_neutralizes_toward_the_average():
+    means = (80.0, 100.0, 120.0)          # avg 100
+    gr, gg, gb = color.white_balance_gains(means, 1.0)
+    assert gr > 1.0 and gg == pytest.approx(1.0) and gb < 1.0   # lift low channel, drop high
+    assert color.white_balance_arg(means, 1.0).endswith(",")    # leading position → trailing comma
+    assert color.white_balance_arg(means, 1.0).startswith("colorchannelmixer=")
+
+
+def test_white_balance_clamps_and_rejects_bool():
+    gains = color.white_balance_gains((10.0, 100.0, 100.0), 1.0)
+    assert all(color.LO <= g <= color.HI for g in gains)
+    with pytest.raises(ValueError):
+        color.white_balance_arg((80, 100, 120), True)

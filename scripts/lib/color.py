@@ -336,6 +336,31 @@ def dip_arg(dip: float, dur: float) -> str:
             f",fade=t=out:st={dur - dip:.3f}:d={dip:.3f}:color={DIP_COLOR}")
 
 
+def white_balance_gains(means: tuple[float, ...], strength: float,
+                        lo: float = LO, hi: float = HI) -> tuple[float, ...]:
+    """Grey-world neutral gains: pull each channel mean toward the common average
+    (true neutral) at `strength`, clamped to [lo, hi]. neutral = mean(means);
+    g = clamp(1 + strength*(neutral/m - 1), lo, hi). strength 0 → (1, 1, 1).
+    Unlike gains_for_means (which targets the fixed cool middle 105/122/137), this
+    equalizes the channels — the "bring it to neutral first" white balance."""
+    if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not 0 <= strength <= 1:
+        raise ValueError(f"white_balance strength must be a number in [0, 1], got {strength!r}")
+    if any(m <= 0 for m in means):
+        raise ValueError(f"white_balance means must be positive, got {means!r} — all-black frames?")
+    neutral = sum(means) / len(means)
+    return tuple(max(lo, min(hi, 1 + strength * (neutral / m - 1))) for m in means)
+
+
+def white_balance_arg(means: tuple[float, ...], strength: float) -> str:
+    """A LEADING colorchannelmixer that neutralizes the source cast, or "" at strength 0.
+    "" (not an identity mixer) so the fill fast path stays byte-identical when WB is off."""
+    if isinstance(strength, bool) or not isinstance(strength, (int, float)):
+        raise ValueError(f"white_balance strength must be a number in [0, 1], got {strength!r}")
+    if strength == 0:
+        return ""
+    return mixer_arg(*white_balance_gains(means, strength)) + ","
+
+
 def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
                 black_point: float = 0.0, shadow_red: float = 0.0,
                 mid_blue: float = 1.0, saturation: float = 1.0,
