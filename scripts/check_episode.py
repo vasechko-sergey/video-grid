@@ -3,7 +3,7 @@ import argparse
 import tempfile
 from pathlib import Path
 from PIL import Image, ImageStat
-from scripts.lib import checks as checks_mod, ffbin, geometry, proc
+from scripts.lib import checks as checks_mod, color_fidelity, ffbin, geometry, proc
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath
 from scripts.lib.motion import classify
 
@@ -63,7 +63,48 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
             "body_median": round(ref, 1)}
 
 
-def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str) -> Report:
+def _region_mean_rgb(clip: str, t: float, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
+    """Mean (R,G,B) of a pixel box in one grabbed frame at time t. box = (x0,y0,x1,y1)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        f = f"{tmp}/f.png"
+        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-ss", f"{t:.3f}",
+                  "-frames:v", "1", f])          # -ss AFTER -i (§12 seek order)
+        im = Image.open(f).convert("RGB")
+        x0, y0, x1, y1 = box
+        x0, y0 = max(0, x0), max(0, y0)
+        x1, y1 = min(im.width, max(x1, x0 + 1)), min(im.height, max(y1, y0 + 1))
+        return tuple(ImageStat.Stat(im.crop((x0, y0, x1, y1))).mean[:3])
+
+
+def _colour_fidelity(clip, source, route_pts, path_obj, meta, spec) -> CheckResult:
+    """Advisory subject hue-drift, source vs graded (design 2026-07-26 §7).
+
+    Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at
+    the route bbox in source px) and in the graded `clip` (at the subject's
+    projected location, via geometry.extent_at_times) at K times, and delegate
+    to the pure color_fidelity.evaluate for the hue-angle verdict. `passed` is
+    always None — hue drift never fails an episode, it is reported."""
+    if source is None or not route_pts:
+        return CheckResult("color_fidelity", None,
+                           {"status": "not-checked",
+                            "reason": "no source clip or no tracked subject"})
+    ts = [p.t for p in route_pts]
+    times = [ts[0] + (ts[-1] - ts[0]) * f for f in (0.25, 0.5, 0.75)]
+    extents = geometry.extent_at_times(route_pts, path_obj, meta, times)   # output fractions
+    out_w, out_h = meta.out_dims
+    pairs = []
+    for t, (fx0, fy0, fx1, fy1) in zip(times, extents):
+        p = min(route_pts, key=lambda q: abs(q.t - t))          # nearest source bbox
+        sbox = (round(p.x - p.w / 2), round(p.y - p.h / 2),
+                round(p.x + p.w / 2), round(p.y + p.h / 2))
+        gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
+        pairs.append((_region_mean_rgb(source, t, sbox), _region_mean_rgb(clip, t, gbox)))
+    return CheckResult("color_fidelity", None,
+                       color_fidelity.evaluate(pairs, spec.hue_drift_max))
+
+
+def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str,
+        source: str | None = None) -> Report:
     """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
     rest of this function branches on, before anything asks for a route at all.
 
@@ -71,8 +112,13 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     Re-deriving crop_w from the canvas is right only while every layout is
     `fill`. Under fit it returns the canvas-aspect width, and on_line then
     divides by a width that was never cut.
+
+    `source` (the pre-grade segment) feeds the advisory color_fidelity check
+    only — None (the default) reports that check `not-checked` and changes
+    nothing else; process_episode passes it (a later task).
     """
     path = CropPath.from_json(path_path).xs
+    path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
     meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
     crop_w = meta.crop_w
     src_w, src_h = meta.src_dims
@@ -105,6 +151,10 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
         # a lead composition over non-lateral motion is already a soft mismatch, and
         # the manifest gate refuses it before this runs)
         direction = direction or "right"
+    # Independent of the branch above: a pan has no observation to sample the
+    # subject from (route_pts stays None) regardless of whether a route_path
+    # was also handed over — same "ignored, not refused" stance as `route` above.
+    route_pts = None if (meta.pan or route_path is None) else route_from_json(route_path)
     checks = {}
 
     if meta.pan:
@@ -151,6 +201,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
     bf = _black_frames_check(clip, black_floor=spec.black_floor, black_rel=spec.black_rel)
     checks["black_frames"] = CheckResult("black_frames", bf["pass"], {k: v for k, v in bf.items() if k != "pass"})
+    checks["color_fidelity"] = _colour_fidelity(clip, source, route_pts, path_obj, meta, spec)
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
     checks["horizon"] = CheckResult("horizon", None, {"status": "not-implemented"})
     checks["head_power_point"] = CheckResult("head_power_point", None, {"status": "not-implemented"})

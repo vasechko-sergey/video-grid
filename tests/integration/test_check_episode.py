@@ -86,6 +86,20 @@ def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
 
 
 @pytest.mark.integration
+def test_color_fidelity_not_checked_without_source(tmp_path, sample_clip):
+    """No source= at all (the process_episode wiring is a later task) → the
+    advisory check reports honestly instead of silently skipping, and — being
+    advisory — never moves `overall`, which stays driven by the real gates."""
+    rp, pp = _fill(tmp_path)
+    spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+    report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
+    cf = report.checks["color_fidelity"]
+    assert cf.passed is None
+    assert cf.detail["status"] == "not-checked"
+    assert report.overall is True
+
+
+@pytest.mark.integration
 def test_crop_w_comes_from_the_sidecar_not_the_canvas(tmp_path, sample_clip):
     """The bug this task fixes: re-deriving crop_w from the canvas yields a
     verdict about a crop nobody cut.
