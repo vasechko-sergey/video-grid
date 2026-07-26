@@ -281,8 +281,46 @@ def _background_args(rl: ResolvedLayout, fps: float, dur: float) -> tuple[str, s
             "[b]", "")
 
 
-def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
-                 gains: tuple[float, ...], fps: float, dur: float) -> list[str]:
+RAMP_PROBE_W = 256          # a 256-step ramp: one sample per output code
+
+
+def verify_tone(frag: str) -> None:
+    """Render a ramp through a tone fragment and refuse a non-monotone transfer.
+
+    ffmpeg's `curves` fits a spline, and a spline through arbitrary anchors can dip
+    below itself between control points even when the map it was given rises
+    everywhere. A dip means a brighter input leaving darker than its neighbour: not
+    visible as brightness, but it is a contour waiting to appear in any smooth
+    gradient — a sky, a wall of water. Fuzzing random anchor triples put roughly a
+    third of them 1-3 codes negative, so this is a real case and not a theoretical
+    one; the six profiles this reel actually uses all come back clean.
+
+    Cheap enough to run per episode (a 256x4 frame), and it turns a silent banding
+    risk into a loud error naming the fix.
+    """
+    ramp = bytes(bytearray(
+        [v for _ in range(4) for v in
+         (b for x in range(RAMP_PROBE_W) for b in (x, x, x))]))
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                    "-s", f"{RAMP_PROBE_W}x4", "-i", "-", "-vf", frag.rstrip(","),
+                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                   input=ramp).stdout
+    if len(out) < RAMP_PROBE_W * 3:
+        raise RuntimeError(f"tone curve produced no frame — ffmpeg rejected {frag!r}; "
+                           "two control points probably collapsed together")
+    lut = [out[i * 3] for i in range(RAMP_PROBE_W)]
+    dips = [(i, lut[i], lut[i + 1]) for i in range(RAMP_PROBE_W - 1) if lut[i + 1] < lut[i]]
+    if dips:
+        i, a, b = dips[0]
+        raise RuntimeError(
+            f"tone curve is not monotone: input {i} -> {a} but {i+1} -> {b} "
+            f"({len(dips)} such steps). The fitted spline overshot between anchors — "
+            "move the p5/p50/p95 targets closer to the measured source anchors, or "
+            "widen the gap between two anchors that nearly coincide")
+
+
+def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int, grade: str,
+                 fps: float, dur: float) -> list[str]:
     """The ffmpeg filter arguments for one layout.
 
     fill takes the fast path: one -vf chain, byte-identical to what this script
@@ -292,9 +330,15 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int,
     Otherwise the composite delegates its background to `_background_args` — the
     one place the two fillers differ — and composes the identical [bg]/[fg]/
     overlay/tail shape around whatever it returns.
+
+    `grade` is the FINISHED colour fragment from color.grade_chain — reframe builds
+    it (and, for a tone curve, verifies it with verify_tone) before calling here, so
+    this function stays a pure string-composer with no colour knowledge of its own.
+    It is "" at every knob's default, which is exactly what keeps the fast path
+    byte-identical to before colour-as-a-stage. reframe owns the trailing
+    fps/format tail, appended after `grade` either way.
     """
-    mixer = color.mixer_arg(*gains)
-    tail = f"{mixer},fps={fps:.6g},format=yuv420p"
+    tail = f"{grade},fps={fps:.6g},format=yuv420p"
     if rl.fast_path:
         return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
                         f"scale={rl.out_w}:{rl.out_h},{tail}")]
@@ -374,6 +418,15 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     gains = color.gains_for_means(spec.color_means)
     if spec.color_correct is not None:  # reel retry loop; see docstring
         gains = color.corrected(gains, spec.color_correct)
+    wb = color.white_balance_arg(spec.color_means, spec.white_balance)
+    tone = ""
+    if spec.tone_src is not None:
+        tone = color.tone_arg(tuple(spec.tone_src), tuple(spec.tone_dst))
+        verify_tone(tone)      # a banding spline fails HERE, not in the delivered reel
+    grade = color.grade_chain(gains, wb=wb, tone=tone, black_point=spec.black_point,
+                              shadow_red=spec.shadow_red, mid_blue=spec.mid_blue,
+                              saturation=spec.saturation, highlight=spec.highlight,
+                              dip=spec.dip, dur=dur)
     xexpr = _xexpr(path, times)
     # `-t` pins the render to the source's length, and is the ONLY thing that does
     # (design §4). `color=:d=` alone leaves the overlay's output timebase mismatched
@@ -387,7 +440,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     # can forget it. That decision is pinned by a test — see
     # test_reframe_bounds_every_layout_to_the_source_length.
     cmd = [ffbin.ffmpeg(), "-y", "-i", src,
-           *_filter_args(rl, xexpr, cy, gains, fps, dur),
+           *_filter_args(rl, xexpr, cy, grade, fps, dur),
            "-t", f"{dur:.6f}",
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)

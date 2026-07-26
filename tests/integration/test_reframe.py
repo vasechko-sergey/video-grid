@@ -2,7 +2,7 @@ import dataclasses
 import json, subprocess
 import pytest
 from scripts import reframe
-from scripts.lib import ffbin, models
+from scripts.lib import color, ffbin, models
 from scripts.lib import layout as layout_lib
 from scripts.lib.models import BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec, PathMeta
 
@@ -268,7 +268,8 @@ def test_solid_and_blur_are_duration_symmetric_with_the_source(sample_clip, tmp_
 
 def test_filter_args_fill_is_pinned_to_todays_chain():
     rl = layout_lib.resolve(LayoutSpec(mode="fill"), (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="577.0", cy=0, gains=(1.0, 1.1, 1.2),
+    grade = color.grade_chain((1.0, 1.1, 1.2), dur=1.584917)
+    args = reframe._filter_args(rl, xexpr="577.0", cy=0, grade=grade,
                                 fps=59.94, dur=1.584917)
     assert args == [
         "-vf",
@@ -280,7 +281,8 @@ def test_filter_args_fill_is_pinned_to_todays_chain():
 def test_filter_args_fit_composites_over_a_blurred_cover():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=1.584917)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=59.94, dur=1.584917)
     assert args == [
         "-filter_complex",
@@ -303,7 +305,8 @@ def test_filter_args_solid_synthesizes_its_background():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
                                        background="solid"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=1.584917)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=59.94, dur=1.584917)
     assert args == [
         "-filter_complex",
@@ -321,7 +324,8 @@ def test_filter_args_solid_uses_the_requested_colour():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source",
                                        background="solid", background_color="#101820"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=1.584917)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=59.94, dur=1.584917)
     assert args == [
         "-filter_complex",
@@ -339,7 +343,8 @@ def test_filter_args_solid_insert_keeps_its_border():
                                        rect=(0.05, 0.25, 0.90), background="solid",
                                        border_px=8, border_color="white"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
@@ -393,7 +398,8 @@ def test_every_known_background_has_an_arm():
 def test_filter_args_insert_is_pinned_to_the_rect():
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
@@ -410,7 +416,8 @@ def test_filter_args_borderless_insert_is_byte_identical():
     # b == 0 must emit exactly the pre-border string: pad vanishes, overlay is rx:ry
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90)),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert "pad=" not in args[1]
     assert "overlay=40:356" in args[1]
@@ -420,7 +427,8 @@ def test_filter_args_bordered_insert_pads_the_card():
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
                                        border_px=8, border_color="white"),
                             (9, 16), (1280, 720), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert args == [
         "-filter_complex",
@@ -444,7 +452,8 @@ def test_filter_args_never_emit_the_banned_lutrgb():
                  LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.05, 0.25, 0.90),
                             background="solid")):
         rl = layout_lib.resolve(spec, (9, 16), (1280, 720), _NATIVE)
-        args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+        grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+        args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                     fps=30.0, dur=2.5)
         assert "lutrgb" not in args[1]
         assert "colorchannelmixer" in args[1]
@@ -454,7 +463,8 @@ def test_blur_radius_scales_with_canvas_width():
     # a constant radius is nearly sharp on 4K; tie it to the canvas
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect="source"),
                             (9, 16), (3840, 2160), _NATIVE)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert "boxblur=64:2" in args[1]        # 3840 // 60
 
@@ -464,7 +474,8 @@ def test_blur_radius_is_capped_by_the_short_side():
     # cover's unclamped 3840//60=64 is refused, so the ceiling caps it at (200-1)//4=49
     rl = layout_lib.resolve(LayoutSpec(mode="insert", crop_aspect=(1, 1), rect=(0.4, 0.02, 0.03)),
                             (21, 9), (3840, 2160), Delivery("exact", (3840, 200)))
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert "boxblur=49:2" in args[1]
 
@@ -479,7 +490,8 @@ def test_the_radius_floor_never_beats_the_chroma_ceiling():
     rl = layout_lib.resolve(LayoutSpec(mode="fit", crop_aspect=(256, 1)),
                             (256, 1), (1280, 720), _NATIVE)
     assert (rl.out_w, rl.out_h) == (1280, 4)
-    args = reframe._filter_args(rl, xexpr="0.0", cy=0, gains=(1.0, 1.0, 1.0),
+    grade = color.grade_chain((1.0, 1.0, 1.0), dur=2.5)
+    args = reframe._filter_args(rl, xexpr="0.0", cy=0, grade=grade,
                                 fps=30.0, dur=2.5)
     assert "boxblur=0:2" in args[1]
 
@@ -561,6 +573,36 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
                               layout=models.LayoutSpec(mode="fill"))
     reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
     assert "colorchannelmixer=rr=1.000:gg=1.000:bb=1.000" in " ".join(cmd["v"])
+
+
+# --- colour-as-a-stage Task 6 (Approach A): _filter_args takes a FINISHED grade
+# string from color.grade_chain; reframe() builds wb/tone/grade and verifies the
+# tone curve before it ever reaches ffmpeg for real ---
+
+def test_filter_args_fast_path_byte_identical_at_defaults():
+    # a fill layout + default grade must emit exactly the pre-slice tail (mixer,fps,format)
+    rl = layout_lib.resolve(LayoutSpec(mode="fill"), (1080, 1920), (1920, 1080), _NATIVE)
+    gains = (1.1, 1.0, 0.9)
+    grade = color.grade_chain(gains, dur=3.0)                 # all knobs default
+    got = reframe._filter_args(rl, "0", 0, grade, 30.0, 3.0)
+    assert got[0] == "-vf"
+    assert got[1].endswith(f"{color.mixer_arg(*gains)},fps=30,format=yuv420p")
+
+
+@pytest.mark.integration
+def test_verify_tone_rejects_a_banding_curve():
+    # (35,84,118)->(30,100,148) is tone_arg's own docstring example, but it no
+    # longer dips — TONE_SAMPLES=13 dense sampling is the fix that case motivated.
+    # (50,60,245)->(10,200,245) still does: a ~3.3x expansion crammed into the
+    # 50-60 input band forces the fitted spline into 24 real monotonicity
+    # violations (measured — see the exploration this test's triple came from).
+    with pytest.raises(RuntimeError):
+        reframe.verify_tone(color.tone_arg((50, 60, 245), (10, 200, 245)))
+
+
+@pytest.mark.integration
+def test_verify_tone_accepts_a_gentle_monotone_curve():
+    reframe.verify_tone(color.tone_arg((30, 100, 148), (35, 110, 150)))   # no raise
 
 
 # --- reframe.generate_pan_path (design 2026-07-19 §4): the pure generator ---
