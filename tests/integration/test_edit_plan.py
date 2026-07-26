@@ -88,3 +88,47 @@ def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     codecs = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v", "-show_entries",
                        "stream=codec_type", "-of", "csv=p=0", str(out)]).stdout.decode()
     assert "video" in codecs
+
+
+def _span_footage_json(tmp_path, source):
+    # three windows in one 3s shot (no scene cut) → a [0,1] span merges the first two,
+    # window 2 stays single; the two episodes sit at different x so phash variety holds
+    f = Footage(clips=[FootageClip(source=source, dur=3.0, res=(1920, 1080), fps=30.0, windows=[
+        FootageWindow(start=0.2, dur=0.7, shot_type="wide", people=1, motion=0.3, shake=0.0),
+        FootageWindow(start=1.1, dur=0.7, shot_type="wide", people=1, motion=0.3, shake=0.0),
+        FootageWindow(start=2.1, dur=0.7, shot_type="wide", people=1, motion=0.3, shake=0.0)])])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def _span_selection_json(tmp_path, source):
+    sel = {"episodes": [
+        {"source": source, "window": [0, 1], "composition": "lead", "grid": "thirds", "crop_scale": 0.8},
+        {"source": source, "window": 2, "composition": "lead", "grid": "thirds", "crop_scale": 0.8}]}
+    p = tmp_path / "selection.json"
+    p.write_text(json.dumps(sel))
+    return str(p)
+
+
+def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
+    fj = _span_footage_json(tmp_path, sample_clip.name)
+    sj = _span_selection_json(tmp_path, sample_clip.name)
+    pj = _project_json(tmp_path)
+    plan_out = tmp_path / "plan"
+
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out))
+    assert res["status"] == "written", res
+    edl_path = plan_out / "EDL.json"
+    edl = json.loads(edl_path.read_text())
+    assert len(edl["episodes"]) == 2
+    # episode 0 is the merged span: from window 0's start (0.2) to window 1's end (1.8)
+    assert edl["episodes"][0]["start"] == 0.2 and edl["episodes"][0]["dur"] == pytest.approx(1.6)
+
+    _fake_track_pe(monkeypatch)
+    reel = edl_to_reel.edl_to_reel(
+        str(edl_path), pj, footage_root=str(sample_clip.parent),
+        work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "out"))
+    assert reel["status"] == "delivered", reel
+    out = Path(reel["output"])
+    assert out.exists() and out.name == "REEL_v1.mp4"
