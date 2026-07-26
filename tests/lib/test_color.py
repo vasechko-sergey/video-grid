@@ -92,3 +92,24 @@ def test_tone_validates_anchors_and_emits_a_curve():
 def test_shadow_red_toe_only_pins_the_top():
     frag = color.shadow_red_arg(0.1)
     assert frag.startswith(",curves=r='") and "0.50/0.50" in frag and "1/1" in frag
+
+
+def test_grade_chain_default_is_just_the_mixer():
+    gains = (1.1, 1.0, 0.9)
+    assert color.grade_chain(gains, dur=3.0) == color.mixer_arg(*gains)
+
+
+def test_grade_chain_orders_every_op():
+    gains = (1.0, 1.0, 1.0)
+    out = color.grade_chain(gains, wb="colorchannelmixer=rr=1.010:gg=1.000:bb=0.990,",
+                            tone="curves=all='0/0 1/1',", black_point=0.1, shadow_red=0.1,
+                            mid_blue=0.9, saturation=1.2, highlight=0.9, dip=0.2, dur=3.0)
+    # wb → tone → black_point → gain(mixer) → shadow_red → mid_blue → saturation → highlight → dip
+    assert out.index("rr=1.010") < out.index("curves=all") < out.index("colorlevels")
+    # bb=1.000, not gg=1.000: the wb fixture above already contains the literal text
+    # "gg=1.000", so index() on that substring would match wb's copy (before black_point),
+    # not the mixer's — bb=1.000 only ever comes from the mixer (wb's is bb=0.990).
+    assert out.index("colorlevels") < out.index("bb=1.000")          # black_point before the gain
+    assert out.index("colorchannelmixer=rr=1.000") < out.index("curves=r=")   # gain before shadow_red
+    assert out.index("curves=r=") < out.index("curves=b=") < out.index("eq=saturation")
+    assert out.index("eq=saturation") < out.index("curves=all='0/0 0.55") < out.index("fade=t=in")

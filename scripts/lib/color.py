@@ -334,3 +334,21 @@ def dip_arg(dip: float, dur: float) -> str:
                          "and the fade out would overlap and the shot would never be fully visible")
     return (f",fade=t=in:st=0:d={dip:.3f}:color={DIP_COLOR}"
             f",fade=t=out:st={dur - dip:.3f}:d={dip:.3f}:color={DIP_COLOR}")
+
+
+def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
+                black_point: float = 0.0, shadow_red: float = 0.0,
+                mid_blue: float = 1.0, saturation: float = 1.0,
+                highlight: float = 1.0, dip: float = 0.0, dur: float) -> str:
+    """The colour portion of reframe's -vf tail, in the ONE correct order:
+    white-balance → tone (source profile) → black_point (toe) → gain (the mixer) →
+    shadow_red → mid_blue → saturation → highlight (shoulder) → dip (timeline, last).
+    `wb`/`tone` are pre-built fragments (the caller builds AND verifies them — a tone
+    curve is ramp-checked in reframe.verify_tone before it reaches here). Returns the
+    fragment WITHOUT the trailing fps/format, which reframe owns. Every builder is ""
+    at its identity value, so at defaults this returns exactly mixer_arg(*gains) and
+    the fill fast path stays byte-identical to before colour-as-a-stage."""
+    return (wb + tone + black_point_arg(black_point) + mixer_arg(*gains)
+            + shadow_red_arg(shadow_red) + mid_blue_arg(mid_blue)
+            + saturation_arg(saturation) + highlight_arg(highlight)
+            + dip_arg(dip, dur))
