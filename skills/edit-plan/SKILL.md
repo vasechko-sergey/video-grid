@@ -35,6 +35,16 @@ shot — the window grid is a scoring artifact, not an editorial one. It never c
 scene cut and never changes `dur`. Use it to start on the first manoeuvre when the pacing
 report says that lands a better ending.
 
+A **span** merges adjacent windows into one episode: set `window` to a two-element
+list `[i, j]` instead of a single index, and the episode runs from the start of
+window `i` to the end of window `j`, carrying the footage between them. Use it when
+consecutive windows are one arc — an approach into an action, or
+"turn → drive → turn" — so the reel plays them as one continuous beat and the music
+falls on the true length, instead of hard-cutting between windows that are one
+motion. A span stays within **one clip**, its indices must be **adjacent**, and it
+**cannot cross a scene cut** — the build refuses that, naming the cut (split into two
+episodes there). `start_offset` still applies, moving the merged in-point later.
+
 ## Procedure
 
 1. **Recon.** Read `FOOTAGE.md`, `project.json`, `references/editing-canon.md`, and
@@ -72,12 +82,13 @@ report says that lands a better ending.
      the canonical pan is `motion: static` with a moving frame, both at once.
    - `processing_notes` — a short note for the draft labels (optional)
 
-   The shape (integer window indices + editorial only — no timestamps):
+   The shape (integer window indices — or a `[i, j]` span — + editorial only, no timestamps):
 
        {
          "episodes": [
            {"source": "MVI_3739.mp4", "window": 2, "composition": "lead",
             "grid": "thirds", "layout": "fill", "motion": "lateral:right", "hero": "largest"},
+           {"source": "MVI_3739.mp4", "window": [4, 6], "composition": "center", "grid": "thirds"},
            {"source": "MVI_3998.mp4", "window": 1, "composition": "center", "grid": "phi"}
          ],
          "music": null, "cap": 3, "target_dur": null
