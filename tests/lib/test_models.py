@@ -1327,12 +1327,17 @@ def test_reframespec_colour_defaults_are_identity():
     assert s.tone_src is None and s.tone_dst is None
 
 
-@pytest.mark.parametrize("field,bad", [
-    ("white_balance", 1.5), ("black_point", 0.5), ("highlight", 0.4),
-    ("saturation", 2.0), ("shadow_red", 0.5), ("mid_blue", 1.5), ("dip", 0.9)])
-def test_reframespec_colour_ranges(field, bad):
+@pytest.mark.parametrize("field,bad,msg", [
+    ("white_balance", 1.5, r"\[0, 1\]"), ("white_balance", True, r"\[0, 1\]"),
+    ("black_point", 0.5, "0.35"), ("black_point", False, "0.35"),
+    ("highlight", 0.4, "0.6"), ("highlight", True, "0.6"),
+    ("saturation", 2.0, "1.5"), ("saturation", True, "1.5"),
+    ("shadow_red", 0.5, "0.20"), ("shadow_red", False, "0.20"),
+    ("mid_blue", 1.5, "1.20"), ("mid_blue", True, "1.20"),
+    ("dip", 0.9, "0.5"), ("dip", False, "0.5")])
+def test_reframespec_colour_ranges(field, bad, msg):
     from scripts.lib.models import ReframeSpec, Delivery
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=msg):
         ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
                     color_means=(100, 100, 100), delivery=Delivery("native"), **{field: bad})
 
@@ -1341,8 +1346,8 @@ def test_reframespec_tone_is_an_xor_pair_validated_by_color():
     from scripts.lib.models import ReframeSpec, Delivery
     base = dict(composition="center", grid="thirds", canvas=(1080, 1920),
                 color_means=(100, 100, 100), delivery=Delivery("native"))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="come as a pair"):
         ReframeSpec(**base, tone_src=(30, 100, 148))          # dst missing
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="increase by at least"):
         ReframeSpec(**base, tone_src=(30, 33, 148), tone_dst=(35, 110, 150))  # gap < 6 → color.tone_arg
     ReframeSpec(**base, tone_src=(30, 100, 148), tone_dst=(35, 110, 150))     # valid, no raise
