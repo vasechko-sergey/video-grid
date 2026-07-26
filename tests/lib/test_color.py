@@ -1,5 +1,7 @@
 import math
+import pytest
 from scripts.lib import color as c
+from scripts.lib import color
 
 def test_gain_no_change_when_on_target():
     assert math.isclose(c.gain(measured=105, target=105), 1.0, abs_tol=1e-6)
@@ -44,3 +46,49 @@ def test_corrected_clamps_high():
 def test_corrected_clamps_low():
     # 0.8 * 0.8 = 0.64 → clamped to the grade floor LO=0.7
     assert c.corrected((0.8, 1.0, 1.0), (0.8, 1.0, 1.0)) == (0.7, 1.0, 1.0)
+
+
+def test_black_point_identity_and_value():
+    assert color.black_point_arg(0) == ""
+    assert color.black_point_arg(0.1) == "colorlevels=rimin=0.1000:gimin=0.1000:bimin=0.1000,"
+
+
+def test_black_point_rejects_bool_and_range():
+    with pytest.raises(ValueError):
+        color.black_point_arg(True)
+    with pytest.raises(ValueError):
+        color.black_point_arg(0.5)
+
+
+def test_highlight_saturation_shadow_mid_dip_identities():
+    assert color.highlight_arg(1.0) == ""
+    assert color.saturation_arg(1.0) == ""
+    assert color.shadow_red_arg(0) == ""
+    assert color.mid_blue_arg(1.0) == ""
+    assert color.dip_arg(0, 3.0) == ""
+
+
+def test_saturation_value_and_range():
+    assert color.saturation_arg(1.2) == ",eq=saturation=1.2000"
+    with pytest.raises(ValueError):
+        color.saturation_arg(2.0)
+
+
+def test_dip_fits_the_episode():
+    frag = color.dip_arg(0.2, 3.0)
+    assert "fade=t=in:st=0:d=0.200:color=0x141414" in frag
+    assert "fade=t=out" in frag
+    with pytest.raises(ValueError):
+        color.dip_arg(0.5, 0.8)
+
+
+def test_tone_validates_anchors_and_emits_a_curve():
+    frag = color.tone_arg((30, 100, 148), (35, 110, 150))
+    assert frag.startswith("curves=all='") and frag.endswith("',")
+    with pytest.raises(ValueError):
+        color.tone_arg((30, 33, 148), (35, 110, 150))
+
+
+def test_shadow_red_toe_only_pins_the_top():
+    frag = color.shadow_red_arg(0.1)
+    assert frag.startswith(",curves=r='") and "0.50/0.50" in frag and "1/1" in frag
