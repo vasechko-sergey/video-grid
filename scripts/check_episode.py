@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from PIL import Image, ImageStat
 from scripts.lib import checks as checks_mod, color_fidelity, ffbin, geometry, proc
-from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath
+from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify
 
 
@@ -76,7 +76,8 @@ def _region_mean_rgb(clip: str, t: float, box: tuple[int, int, int, int]) -> tup
         return tuple(ImageStat.Stat(im.crop((x0, y0, x1, y1))).mean[:3])
 
 
-def _colour_fidelity(clip, source, route_pts, path_obj, meta, spec) -> CheckResult:
+def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
+                     path_obj: CropPath, meta: PathMeta, spec: CheckSpec) -> CheckResult:
     """Advisory subject hue-drift, source vs graded (design 2026-07-26 §7).
 
     Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at
