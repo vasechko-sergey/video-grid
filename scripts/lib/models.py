@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.lib import color
 from scripts.lib.geometry import even
 
 
@@ -610,6 +611,32 @@ class ReframeSpec:
     layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
     color_correct: tuple | None = None
+    white_balance: float = 0.0  # grey-world neutralize toward the common channel average,
+                                # FIRST in the chain; 0 = off (identity), so an episode
+                                # authored before this renders byte-identically — see
+                                # color.white_balance_arg.
+    black_point: float = 0.0   # subtracted from the toe BEFORE the gain — see color.black_point_arg.
+                               # 0.0 emits no filter at all, so every episode authored before this
+                               # field existed renders the same command it always did.
+    highlight: float = 1.0     # white pulled down to this AFTER the gain — see
+                               # color.highlight_arg. 1.0 emits no curve at all.
+    saturation: float = 1.0    # chroma scale AFTER the gain — see color.saturation_arg.
+                               # 1.0 emits nothing. The one hue-preserving way to pull an
+                               # over-vivid source (aerial sky/water) toward a tamer one.
+    shadow_red: float = 0.0    # red toe lifted by this at black, back to identity by a
+                               # quarter scale — see color.shadow_red_arg. The one knob that
+                               # neutralizes a green/cyan black without touching skin or a
+                               # red board. 0.0 emits no filter.
+    mid_blue: float = 1.0      # blue scaled by this in the MIDTONES only — see
+                               # color.mid_blue_arg. Neutralizes sky bounce on skin without
+                               # touching shadows or foam. 1.0 emits no filter.
+    dip: float = 0.0           # fade in from / out to a dark grey for this many seconds —
+                               # see color.dip_arg. A transition that costs no duration.
+    # (p5, p50, p95) of this episode's own crop, and the common profile the reel carries
+    # them onto. Runs FIRST, before the gain — profile, then level, which is the order
+    # the two stages actually depend on. None on both leaves the chain exactly as it was.
+    tone_src: "tuple[float, float, float] | None" = None
+    tone_dst: "tuple[float, float, float] | None" = None
     pan: "PanSpec | None" = None
 
     def __post_init__(self) -> None:
@@ -629,6 +656,40 @@ class ReframeSpec:
                              "build it from the manifest's layout fields")
         if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
             raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
+        if (isinstance(self.white_balance, bool) or not isinstance(self.white_balance, (int, float))
+                or not 0 <= self.white_balance <= 1):
+            raise ValueError(f"ReframeSpec.white_balance must be a fraction in [0, 1], "
+                             f"got {self.white_balance!r}")
+        if (isinstance(self.black_point, bool)
+                or not isinstance(self.black_point, (int, float))
+                or not 0 <= self.black_point <= 0.35):
+            raise ValueError(f"ReframeSpec.black_point must be a fraction in [0, 0.35], "
+                             f"got {self.black_point!r}")
+        if (isinstance(self.dip, bool) or not isinstance(self.dip, (int, float))
+                or not 0 <= self.dip <= 0.5):
+            raise ValueError(f"ReframeSpec.dip must be seconds in [0, 0.5], got {self.dip!r}")
+        if (isinstance(self.mid_blue, bool) or not isinstance(self.mid_blue, (int, float))
+                or not 0.80 <= self.mid_blue <= 1.20):
+            raise ValueError(f"ReframeSpec.mid_blue must be a fraction in [0.80, 1.20], "
+                             f"got {self.mid_blue!r}")
+        if (isinstance(self.shadow_red, bool) or not isinstance(self.shadow_red, (int, float))
+                or not 0 <= self.shadow_red <= 0.20):
+            raise ValueError(f"ReframeSpec.shadow_red must be a fraction in [0, 0.20], "
+                             f"got {self.shadow_red!r}")
+        if (isinstance(self.saturation, bool) or not isinstance(self.saturation, (int, float))
+                or not 0.5 <= self.saturation <= 1.5):
+            raise ValueError(f"ReframeSpec.saturation must be a fraction in [0.5, 1.5], "
+                             f"got {self.saturation!r}")
+        if (isinstance(self.highlight, bool) or not isinstance(self.highlight, (int, float))
+                or not 0.6 <= self.highlight <= 1.0):
+            raise ValueError(f"ReframeSpec.highlight must be a fraction in [0.6, 1.0], "
+                             f"got {self.highlight!r}")
+        if (self.tone_src is None) != (self.tone_dst is None):
+            raise ValueError("ReframeSpec.tone_src and tone_dst come as a pair — a source "
+                             "profile with no target (or a target with no source) names no "
+                             "transfer; set both or neither")
+        if self.tone_src is not None:
+            color.tone_arg(tuple(self.tone_src), tuple(self.tone_dst))   # validates both
         if self.color_correct is not None and not _positive_seq(self.color_correct, 3):
             raise ValueError(f"ReframeSpec.color_correct must be 3 positive per-channel "
                              f"factors or None, got {self.color_correct!r}")

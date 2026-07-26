@@ -1314,3 +1314,35 @@ def test_reframe_spec_has_no_stabilize_field_at_all():
         m.ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
                       color_means=(105, 122, 137), delivery=m.Delivery(),
                       stabilize=True)
+
+
+# --- ReframeSpec colour fields (colour-as-a-stage): nine identity-default grade knobs ---
+
+def test_reframespec_colour_defaults_are_identity():
+    from scripts.lib.models import ReframeSpec, Delivery
+    s = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                    color_means=(100, 100, 100), delivery=Delivery("native"))
+    assert (s.white_balance, s.black_point, s.highlight, s.saturation, s.shadow_red,
+            s.mid_blue, s.dip) == (0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0)
+    assert s.tone_src is None and s.tone_dst is None
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("white_balance", 1.5), ("black_point", 0.5), ("highlight", 0.4),
+    ("saturation", 2.0), ("shadow_red", 0.5), ("mid_blue", 1.5), ("dip", 0.9)])
+def test_reframespec_colour_ranges(field, bad):
+    from scripts.lib.models import ReframeSpec, Delivery
+    with pytest.raises(ValueError):
+        ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                    color_means=(100, 100, 100), delivery=Delivery("native"), **{field: bad})
+
+
+def test_reframespec_tone_is_an_xor_pair_validated_by_color():
+    from scripts.lib.models import ReframeSpec, Delivery
+    base = dict(composition="center", grid="thirds", canvas=(1080, 1920),
+                color_means=(100, 100, 100), delivery=Delivery("native"))
+    with pytest.raises(ValueError):
+        ReframeSpec(**base, tone_src=(30, 100, 148))          # dst missing
+    with pytest.raises(ValueError):
+        ReframeSpec(**base, tone_src=(30, 33, 148), tone_dst=(35, 110, 150))  # gap < 6 → color.tone_arg
+    ReframeSpec(**base, tone_src=(30, 100, 148), tone_dst=(35, 110, 150))     # valid, no raise
