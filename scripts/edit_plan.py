@@ -126,6 +126,29 @@ def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
                                dur=min(end - start, room), track_ids=tids)
 
 
+def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> FootageWindow:
+    """Resolve a selection episode's `window` ref to one FootageWindow. An int is a single
+    window (the 5.7 behaviour); a two-element [i, j] list is a span merged into one episode
+    (§3b). Fail-loud on a bad shape, a bad type, or an out-of-range index — naming episode k."""
+    if isinstance(window, list):
+        if len(window) != 2 or any(isinstance(v, bool) or not isinstance(v, int) for v in window):
+            raise ValueError(f"selection episode {k}: a span 'window' must be [i, j] — two "
+                             f"integer indices, got {window!r}")
+        i, j = window
+        if not 0 <= i < j < len(clip.windows):
+            raise ValueError(f"selection episode {k}: span window {window} out of range for "
+                             f"{source} (need 0 <= i < j < {len(clip.windows)}; for a single "
+                             f'window use "window": i)')
+        return _merge_windows(clip, i, j)
+    if isinstance(window, bool) or not isinstance(window, int):
+        raise ValueError(f"selection episode {k}: 'window' must be an integer index or a "
+                         f"[i, j] span into FOOTAGE")
+    if not 0 <= window < len(clip.windows):
+        raise ValueError(f"selection episode {k}: window {window} out of range for {source} "
+                         f"(has {len(clip.windows)})")
+    return clip.windows[window]
+
+
 _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
 
 
@@ -193,7 +216,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
     episode references a
-    window by (source, integer index) into FOOTAGE and supplies editorial fields;
+    window by (source, integer index) — or a two-element `[i, j]` span merged into one
+    episode (§3b) — into FOOTAGE and supplies editorial fields;
     window_to_episode projects the mechanical fields. Reel knobs (music/cap/
     target_dur) ride at the top level — except target_dur is instead DERIVED from the spine
     (the pacing-gate back-edge, §4) when pacing is supplied, since pacing owns a paced reel's
@@ -218,17 +242,12 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         start_offset = ed.pop("start_offset", 0.0)
         if not (isinstance(source, str) and source):
             raise ValueError(f"selection episode {k}: 'source' must be a clip path string")
-        if isinstance(window, bool) or not isinstance(window, int):
-            raise ValueError(f"selection episode {k}: 'window' must be an integer index into FOOTAGE")
         clip = by_source.get(source)
         if clip is None:
             raise ValueError(f"selection episode {k}: source {source!r} not in FOOTAGE — "
                              f"have {sorted(by_source)}")
-        if not 0 <= window < len(clip.windows):
-            raise ValueError(f"selection episode {k}: window {window} out of range for {source} "
-                             f"(has {len(clip.windows)})")
-        episodes.append(window_to_episode(clip, clip.windows[window],
-                                          start_offset=start_offset, **ed))
+        fw = _resolve_window(clip, window, source, k)
+        episodes.append(window_to_episode(clip, fw, start_offset=start_offset, **ed))
     target = selection.get("target_dur")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)

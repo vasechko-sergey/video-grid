@@ -510,3 +510,82 @@ def test_merge_windows_refuses_an_envelope_well_past_the_clip_end():
                                               motion=0.4, shake=0.0)])
     with pytest.raises(ValueError, match=r"past the end of M\.mp4"):
         edit_plan._merge_windows(clip, 0, 1)
+
+
+def test_build_edl_span_window_merges_into_one_episode():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 1],
+                         "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(footage, sel)
+    assert len(edl.episodes) == 1
+    assert edl.episodes[0].start == 2.0 and edl.episodes[0].dur == 6.0   # merged envelope, not one window
+    assert edl.episodes[0].shot_type == "wide"                          # window i's shot_type default
+
+
+def test_build_edl_span_forwards_editorial_and_overrides():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 2], "composition": "center",
+                         "grid": "phi", "motion": "static", "shot_type": "medium",
+                         "processing_notes": "turn-drive-turn"}]}
+    ep = edit_plan.build_edl(footage, sel).episodes[0]
+    assert ep.dur == 9.0 and ep.motion == "static"
+    assert ep.shot_type == "medium"                    # editorial override beats window i's default
+    assert ep.processing_notes == "turn-drive-turn"
+
+
+def test_build_edl_span_round_trips_through_to_dict():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 1],
+                         "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(footage, sel)
+    assert EDL.from_dict(edl.to_dict()).episodes[0].dur == 6.0    # a merged episode is an ordinary EDLEpisode
+
+
+def test_build_edl_span_reversed_range_raises():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [1, 0], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"span window \[1, 0\] out of range"):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_degenerate_i_equals_j_raises():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [1, 1], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r'for a single window use "window": i'):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_out_of_range_j_raises():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 9], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"span window \[0, 9\] out of range"):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_wrong_length_raises():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 1, 2], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"a span 'window' must be \[i, j\]"):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_non_int_element_raises():
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, "x"], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"a span 'window' must be \[i, j\]"):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_bool_element_raises():
+    # True is an int in Python — the guard must reject a bool element, not treat it as index 1
+    footage = Footage(clips=[_merge_clip()])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, True], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"a span 'window' must be \[i, j\]"):
+        edit_plan.build_edl(footage, sel)
+
+
+def test_build_edl_span_crossing_a_scene_cut_raises():
+    footage = Footage(clips=[_merge_clip(scene_cuts=[5.5])])
+    sel = {"episodes": [{"source": "M.mp4", "window": [0, 1], "composition": "lead", "grid": "thirds"}]}
+    with pytest.raises(ValueError, match=r"scene cut at 5\.50s.*cannot cross"):
+        edit_plan.build_edl(footage, sel)
