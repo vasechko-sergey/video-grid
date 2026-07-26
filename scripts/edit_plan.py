@@ -83,6 +83,33 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
         raise ValueError(f"window_to_episode: unknown or missing editorial field — {ex}") from ex
 
 
+def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
+    """Merge adjacent footage windows i..j (inclusive) into one FootageWindow covering
+    [min start .. max end] — an episode spanning several activity units plus the connective
+    footage between them (design 2026-07-26-edit-plan-span-merge §3, "turn -> drive -> turn").
+
+    The merged window inherits window i's shot_type/description as the projection seed (an
+    editorial override still wins in window_to_episode) and unions the track_ids across the
+    range. It refuses a range whose envelope straddles a scene cut — that would splice two
+    shots into one episode; `room_after` is the single geometric authority (the same rule
+    window_to_episode applies), named here for a span-specific remedy. Crossing a presence
+    transition inside one shot is allowed (scene_cuts holds only real cuts, and room_after
+    stops only at cuts). Assumes a valid 0 <= i < j < len(clip.windows); build_edl bounds-checks."""
+    wins = clip.windows[i:j + 1]
+    start = min(w.start for w in wins)
+    end = max(w.start + w.dur for w in wins)
+    tids = sorted({t for w in wins for t in w.track_ids})
+    room = clip.room_after(start)
+    if end - start > room:
+        cut = min(c for c in clip.scene_cuts if start < c < end)
+        raise ValueError(
+            f"_merge_windows: span [{i}, {j}] runs {end - start:.2f}s from {start:.2f}s in "
+            f"{clip.source}, but a scene cut at {cut:.2f}s lies inside it — a span cannot cross "
+            f"a scene cut (it would splice two shots into one episode). Split it into two "
+            f"episodes, one on each side of the cut")
+    return dataclasses.replace(clip.windows[i], start=start, dur=end - start, track_ids=tids)
+
+
 _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
 
 

@@ -14,6 +14,19 @@ def _clip(**kw):
     return FootageClip(**d)
 
 
+def _merge_clip(**kw):
+    d = dict(source="M.mp4", dur=30.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
+             windows=[
+                 FootageWindow(start=2.0, dur=3.0, shot_type="wide", people=1, motion=0.4,
+                               shake=0.01, description="approach", track_ids=[1]),
+                 FootageWindow(start=6.0, dur=2.0, shot_type="close", people=1, motion=0.6,
+                               shake=0.02, description="cross-step", track_ids=[1, 2]),
+                 FootageWindow(start=9.0, dur=2.0, shot_type="wide", people=1, motion=0.5,
+                               shake=0.01, description="exit turn", track_ids=[2])])
+    d.update(kw)
+    return FootageClip(**d)
+
+
 def test_window_to_episode_copies_mechanical_fields_by_reference():
     clip = _clip()
     ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="lead", grid="thirds")
@@ -439,3 +452,35 @@ def test_start_offset_zero_with_a_window_flush_to_a_cut_is_accepted():
     ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
                                      grid="thirds")
     assert ep.dur == pytest.approx(4.0)
+
+
+def test_merge_windows_envelope_spans_the_range_and_unions_track_ids():
+    clip = _merge_clip()
+    fw = edit_plan._merge_windows(clip, 0, 1)
+    assert fw.start == 2.0
+    assert fw.dur == 6.0                        # 8.0 (w1 end) - 2.0 (w0 start): covers the 5.0-6.0 drive between
+    assert fw.track_ids == [1, 2]              # sorted union across the range
+    assert fw.shot_type == "wide"             # inherited from window i (the arc's opening)
+    assert fw.description == "approach"       # inherited from window i
+
+
+def test_merge_windows_covers_the_whole_range_not_just_endpoints():
+    clip = _merge_clip()
+    fw = edit_plan._merge_windows(clip, 0, 2)
+    assert fw.start == 2.0 and fw.dur == 9.0   # 11.0 (w2 end) - 2.0 (w0 start)
+    assert fw.track_ids == [1, 2]              # unions w0, w1, w2
+
+
+def test_merge_windows_allows_a_scene_cut_outside_the_span():
+    # a cut AFTER the [0,1] envelope's end (8.0) does not block the merge — only a cut
+    # INSIDE [start, end] splices two shots; a presence transition (no cut) is fine
+    clip = _merge_clip(scene_cuts=[8.5])
+    fw = edit_plan._merge_windows(clip, 0, 1)
+    assert fw.dur == 6.0
+
+
+def test_merge_windows_refuses_to_cross_a_scene_cut():
+    # a cut between w0 (ends 5.0) and w1 (starts 6.0) sits inside the [2.0, 8.0] envelope
+    clip = _merge_clip(scene_cuts=[5.5])
+    with pytest.raises(ValueError, match=r"scene cut at 5\.50s.*cannot cross"):
+        edit_plan._merge_windows(clip, 0, 1)
