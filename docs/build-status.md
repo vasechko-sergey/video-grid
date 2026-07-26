@@ -4,13 +4,28 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-25._
+_Last updated: 2026-07-26._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Edit-plan span merge (feedback #3, slice 3b) DONE (2026-07-26)** — plan
+  `docs/plans/2026-07-26-edit-plan-span-merge.md` + design
+  `docs/specs/2026-07-26-edit-plan-span-merge-design.md`, Tasks 0–4. An EDL episode
+  may reference a range of adjacent footage windows — `"window": [i, j]` in
+  `selection.json` — and `edit_plan` projects the range onto one continuous episode
+  spanning `[min start … max end]`, carrying the connective footage between the
+  windows ("turn → drive → turn"). New pure `edit_plan._merge_windows` synthesizes
+  one `FootageWindow` (union `track_ids`, inherit window i's shot_type/description)
+  fed to the unchanged `window_to_episode`, so `FootageClip.room_after` refuses a
+  range that straddles a scene cut for free (a presence transition inside one shot
+  is allowed; a ~1ms FOOTAGE-rounding overshoot is clamped to the boundary, not
+  refused); `_resolve_window` branches the `window` ref (int → single, `[i, j]`
+  → merge) with fail-loud validation. No contract, intake, or pacing change; the
+  single-window path is byte-for-byte unchanged.
 
 - **Intake parallel scan + resumable checkpoint DONE (2026-07-25)** — plan
   `docs/plans/2026-07-25-intake-parallel-checkpoint.md`, Tasks 0–6 (slice B, #4/#5).
@@ -43,8 +58,8 @@ _Last updated: 2026-07-25._
   `CACHE_VERSION` 1 → 2 invalidates every clip cached under the old carve.
   `FootageClip.room_after`/`edit_plan.window_to_episode`'s docstrings de-cite
   the retired equal-interval tiling (text only, no behaviour change). **1788
-  passed / 2 skipped.** **Deferred:** 3b — `edit_plan` merging adjacent
-  activity-unit spans `[i..j]` into one episode — its own slice.
+  passed / 2 skipped.** 3b (`edit_plan` span merge) landed 2026-07-26 — see the
+  entry above.
 
 - **Core engine — plan `docs/plans/2026-07-05-video-grid-core.md`, Tasks 0–11 ALL
   COMPLETE**, final review verdict READY (2026-07-07). 49 tests green (incl.
