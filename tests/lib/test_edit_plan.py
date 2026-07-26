@@ -484,3 +484,29 @@ def test_merge_windows_refuses_to_cross_a_scene_cut():
     clip = _merge_clip(scene_cuts=[5.5])
     with pytest.raises(ValueError, match=r"scene cut at 5\.50s.*cannot cross"):
         edit_plan._merge_windows(clip, 0, 1)
+
+
+def test_merge_windows_clamps_a_sub_ms_clip_end_overshoot_instead_of_crashing():
+    # intake stores round(start,3)+round(dur,3) independently, so the last window's start+dur
+    # can land ~1ms past clip.dur (6.667+3.334 = 10.001 > 10.0); that is a legit clip-end span,
+    # not a straddle — the merge clamps the envelope to the clip end, no crash, no false refusal
+    clip = FootageClip(source="M.mp4", dur=10.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
+                       windows=[FootageWindow(start=2.0, dur=3.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0),
+                                FootageWindow(start=6.667, dur=3.334, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0)])
+    fw = edit_plan._merge_windows(clip, 0, 1)
+    assert fw.start == 2.0
+    assert fw.dur == pytest.approx(8.0)          # clamped to the clip end (10.0 - 2.0), not 8.001
+
+
+def test_merge_windows_refuses_an_envelope_well_past_the_clip_end():
+    # a window genuinely beyond the clip (8+5=13 >> 10, not rounding) → loud fail with a remedy,
+    # not a crash and not a spurious "scene cut" message
+    clip = FootageClip(source="M.mp4", dur=10.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
+                       windows=[FootageWindow(start=2.0, dur=3.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0),
+                                FootageWindow(start=8.0, dur=5.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0)])
+    with pytest.raises(ValueError, match=r"past the end of M\.mp4"):
+        edit_plan._merge_windows(clip, 0, 1)

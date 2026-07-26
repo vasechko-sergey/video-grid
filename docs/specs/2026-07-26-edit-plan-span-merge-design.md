@@ -118,24 +118,36 @@ A new pure helper in `scripts/edit_plan.py`, beside `window_to_episode` (all
 len(clip.windows)` (validated by the caller, §4) and builds the envelope:
 
 ```python
+_MERGE_TOL = 1e-3   # s: FOOTAGE rounds start and dur independently, so a merged envelope end can
+                    # sit up to ~1ms past its true cut/clip-end boundary; tolerate + clamp that slop.
+
+
 def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
     wins = clip.windows[i:j + 1]
     start = min(w.start for w in wins)
     end = max(w.start + w.dur for w in wins)
     tids = sorted({t for w in wins for t in w.track_ids})
     room = clip.room_after(start)
-    if end - start > room:
-        cut = min(c for c in clip.scene_cuts if start < c < end)
+    if end - start > room + _MERGE_TOL:
+        inside = [c for c in clip.scene_cuts if start < c < end]
+        if inside:
+            raise ValueError(
+                f"_merge_windows: span [{i}, {j}] runs {end - start:.2f}s from {start:.2f}s in "
+                f"{clip.source}, but a scene cut at {min(inside):.2f}s lies inside it — a span cannot "
+                f"cross a scene cut (it would splice two shots into one episode). Split it into two "
+                f"episodes, one on each side of the cut")
         raise ValueError(
-            f"_merge_windows: span [{i}, {j}] runs {end - start:.2f}s from {start:.2f}s in "
-            f"{clip.source}, but a scene cut at {cut:.2f}s lies inside it — a span cannot cross "
-            f"a scene cut (it would splice two shots into one episode). Split it into two "
-            f"episodes, one on each side of the cut")
-    return dataclasses.replace(clip.windows[i], start=start, dur=end - start, track_ids=tids)
+            f"_merge_windows: span [{i}, {j}] envelope ends at {end:.2f}s, past the end of "
+            f"{clip.source} ({clip.dur:.2f}s) — the last window extends beyond the clip; re-run "
+            f"footage-intake to regenerate FOOTAGE.json")
+    return dataclasses.replace(clip.windows[i], start=start,
+                               dur=min(end - start, room), track_ids=tids)
 ```
 
 - **`start`/`dur`** — `min` start, `max` end over the range; `dur = end - start`
-  is guaranteed positive (`j > i`, every window has `dur > 0`).
+  is guaranteed positive (`j > i`, every window has `dur > 0`). `dur` is clamped to
+  `room` (`min(end - start, room)`) so a sub-`_MERGE_TOL` rounding overshoot lands
+  exactly on the boundary rather than ~1ms past it.
 - **`track_ids`** — the union across the range (§5 of 3a: who is in the unit),
   so the merged episode annotates everyone who appears across the whole arc.
 - **`shot_type` / `description`** — inherited from window `i` (via
@@ -157,6 +169,18 @@ span+offset case, not a second authority. Crossing a **presence transition**
 inside one shot is *allowed*: `scene_cuts` holds only real cuts, so
 `room_after` stops only at cuts — which is exactly the "turn → drive → turn"
 case (the drive is people-less, a presence transition, not a cut).
+
+**Rounding tolerance (why `_MERGE_TOL`).** `FOOTAGE.json` stores `round(start, 3)`
+and `round(dur, 3)` **independently**, so a window's reconstructed `start + dur`
+can land up to ~1ms past its true boundary — the clip end, or a scene cut a span
+ends on. That is intake's own output, not corruption, and a span whose arc ends on
+a cut or the clip end is exactly the natural case. So the refusal fires only when
+the envelope overshoots `room` by **more than** `_MERGE_TOL`; a within-slop
+overshoot is clamped to `room` (above) and accepted. Beyond the tolerance with **no
+cut inside** the envelope, the last window genuinely lies past the clip — a corrupt
+`FOOTAGE.json` — and the merge fails loud with the re-run remedy (never an empty
+`min()` crash). This keeps `_merge_windows` fail-loud like `window_to_episode`
+rather than crashing, while not falsely refusing a legitimate clip-end span.
 
 ## 4. `build_edl` wiring
 

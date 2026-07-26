@@ -119,9 +119,16 @@ Expected: FAIL with `AttributeError: module 'scripts.edit_plan' has no attribute
 
 In `scripts/edit_plan.py`, add this function immediately after `window_to_episode`
 (before `_SNAP_TOL`). `dataclasses`, `FootageClip`, `FootageWindow` are already
-imported.
+imported. **Note the `_MERGE_TOL` guard**: `FOOTAGE.json` rounds `start` and `dur`
+independently, so a merged envelope end can land ~1ms past a cut/clip-end boundary —
+tolerate + clamp that slop rather than crash on an empty `min()` or falsely refuse a
+legitimate clip-end span (found in code review of the naive `if end - start > room`).
 
 ```python
+_MERGE_TOL = 1e-3   # s: FOOTAGE rounds start and dur independently, so a merged envelope end can
+                    # sit up to ~1ms past its true cut/clip-end boundary; tolerate + clamp that slop.
+
+
 def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
     """Merge adjacent footage windows i..j (inclusive) into one FootageWindow covering
     [min start .. max end] — an episode spanning several activity units plus the connective
@@ -131,22 +138,56 @@ def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
     editorial override still wins in window_to_episode) and unions the track_ids across the
     range. It refuses a range whose envelope straddles a scene cut — that would splice two
     shots into one episode; `room_after` is the single geometric authority (the same rule
-    window_to_episode applies), named here for a span-specific remedy. Crossing a presence
-    transition inside one shot is allowed (scene_cuts holds only real cuts, and room_after
-    stops only at cuts). Assumes a valid 0 <= i < j < len(clip.windows); build_edl bounds-checks."""
+    window_to_episode applies), naming the offending cut for a span-specific remedy. Crossing
+    a presence transition inside one shot is allowed (scene_cuts holds only real cuts, and
+    room_after stops only at cuts). An envelope end within _MERGE_TOL of a cut/clip-end
+    boundary is a rounding artefact (FOOTAGE rounds start and dur independently), so it is
+    clamped to the boundary rather than refused; beyond the tolerance with no cut inside, the
+    last window lies past the clip and the merge fails loud. Assumes a valid
+    0 <= i < j < len(clip.windows); build_edl bounds-checks."""
     wins = clip.windows[i:j + 1]
     start = min(w.start for w in wins)
     end = max(w.start + w.dur for w in wins)
     tids = sorted({t for w in wins for t in w.track_ids})
     room = clip.room_after(start)
-    if end - start > room:
-        cut = min(c for c in clip.scene_cuts if start < c < end)
+    if end - start > room + _MERGE_TOL:
+        inside = [c for c in clip.scene_cuts if start < c < end]
+        if inside:
+            raise ValueError(
+                f"_merge_windows: span [{i}, {j}] runs {end - start:.2f}s from {start:.2f}s in "
+                f"{clip.source}, but a scene cut at {min(inside):.2f}s lies inside it — a span cannot "
+                f"cross a scene cut (it would splice two shots into one episode). Split it into two "
+                f"episodes, one on each side of the cut")
         raise ValueError(
-            f"_merge_windows: span [{i}, {j}] runs {end - start:.2f}s from {start:.2f}s in "
-            f"{clip.source}, but a scene cut at {cut:.2f}s lies inside it — a span cannot cross "
-            f"a scene cut (it would splice two shots into one episode). Split it into two "
-            f"episodes, one on each side of the cut")
-    return dataclasses.replace(clip.windows[i], start=start, dur=end - start, track_ids=tids)
+            f"_merge_windows: span [{i}, {j}] envelope ends at {end:.2f}s, past the end of "
+            f"{clip.source} ({clip.dur:.2f}s) — the last window extends beyond the clip; re-run "
+            f"footage-intake to regenerate FOOTAGE.json")
+    return dataclasses.replace(clip.windows[i], start=start,
+                               dur=min(end - start, room), track_ids=tids)
+```
+
+Two more `_merge_windows` tests cover the rounding guard (append them to the Step 2
+block above):
+
+```python
+def test_merge_windows_clamps_a_sub_ms_clip_end_overshoot_instead_of_crashing():
+    clip = FootageClip(source="M.mp4", dur=10.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
+                       windows=[FootageWindow(start=2.0, dur=3.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0),
+                                FootageWindow(start=6.667, dur=3.334, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0)])   # 6.667+3.334 = 10.001 > 10.0
+    fw = edit_plan._merge_windows(clip, 0, 1)
+    assert fw.start == 2.0 and fw.dur == pytest.approx(8.0)   # clamped to clip end, not 8.001
+
+
+def test_merge_windows_refuses_an_envelope_well_past_the_clip_end():
+    clip = FootageClip(source="M.mp4", dur=10.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
+                       windows=[FootageWindow(start=2.0, dur=3.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0),
+                                FootageWindow(start=8.0, dur=5.0, shot_type="wide", people=1,
+                                              motion=0.4, shake=0.0)])   # 8+5=13 >> 10
+    with pytest.raises(ValueError, match=r"past the end of M\.mp4"):
+        edit_plan._merge_windows(clip, 0, 1)
 ```
 
 - [ ] **Step 5: Run the tests to verify they pass**
