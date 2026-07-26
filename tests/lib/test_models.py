@@ -235,6 +235,15 @@ def test_check_spec_no_longer_carries_canvas_or_src_dims():
     assert not hasattr(spec, "src_dims")
 
 
+def test_checkspec_hue_drift_max():
+    from scripts.lib.models import CheckSpec
+    assert CheckSpec(composition="center", grid="thirds", target_dur=3.0).hue_drift_max == 25.0
+    with pytest.raises(ValueError, match="positive number of degrees"):
+        CheckSpec(composition="center", grid="thirds", target_dur=3.0, hue_drift_max=-1)
+    with pytest.raises(ValueError, match="positive number of degrees"):
+        CheckSpec(composition="center", grid="thirds", target_dur=3.0, hue_drift_max=True)  # bool-reject
+
+
 def test_storyboardspec_validation():
     assert m.StoryboardSpec().n == 6
     with pytest.raises(ValueError, match="n"):
@@ -537,6 +546,15 @@ def test_export_profile_audio_args_when_voiced():
 def test_export_profile_rejects_bad_construction(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.ExportProfile(**kw)
+
+
+def test_export_profile_color_range():
+    from scripts.lib.models import ExportProfile
+    args = ExportProfile().args()
+    assert "-color_range" in args and "tv" in args
+    assert "pc" in ExportProfile(color_range="pc").args()
+    with pytest.raises(ValueError, match="tv"):
+        ExportProfile(color_range="full")
 
 
 def test_reel_check_spec_defaults():

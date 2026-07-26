@@ -708,6 +708,7 @@ class CheckSpec:
     attempt: int = 1
     black_floor: float = 6.0
     black_rel: float = 0.35
+    hue_drift_max: float = 25.0   # deg: advisory subject hue-drift ceiling (color_fidelity, §7)
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
@@ -716,6 +717,10 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
             raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
+        if (isinstance(self.hue_drift_max, bool) or not isinstance(self.hue_drift_max, (int, float))
+                or self.hue_drift_max <= 0):
+            raise ValueError(f"CheckSpec.hue_drift_max must be a positive number of degrees, "
+                             f"got {self.hue_drift_max!r}")
 
 
 @dataclass
@@ -742,6 +747,11 @@ class ExportProfile:
     crf: int = 18
     preset: str = "medium"
     pix_fmt: str = "yuv420p"
+    # Tag the delivered range explicitly. yuv420p means limited by convention, but a
+    # convention is not a tag: an untagged file is read as limited by some players and
+    # full by others, and a platform's re-encode guesses too. assembly.DELIVERY_RANGE
+    # is what the master is assembled in — deliver must not quietly ship something else.
+    color_range: str = "tv"
     container: str = "mp4"
     faststart: bool = True
     fps: float | None = None
@@ -756,6 +766,9 @@ class ExportProfile:
             raise ValueError(f"ExportProfile.crf must be an int in 0..51, got {self.crf!r}")
         if not (isinstance(self.pix_fmt, str) and self.pix_fmt):
             raise ValueError("ExportProfile.pix_fmt must be a non-empty pixel format")
+        if self.color_range not in ("tv", "pc"):
+            raise ValueError(f"ExportProfile.color_range must be 'tv' (limited) or 'pc' "
+                             f"(full), got {self.color_range!r}")
         if not (isinstance(self.container, str) and self.container):
             raise ValueError("ExportProfile.container must be a non-empty container name")
         if self.fps is not None and not (isinstance(self.fps, (int, float))
@@ -780,7 +793,7 @@ class ExportProfile:
         landmines live — yuv420p, faststart; deliver adds no scale (even dims come
         in from the master by construction)."""
         a = ["-c:v", self.vcodec, "-crf", str(self.crf), "-preset", self.preset,
-             "-pix_fmt", self.pix_fmt]
+             "-pix_fmt", self.pix_fmt, "-color_range", self.color_range]
         if self.maxrate_kbps is not None:
             a += ["-maxrate", f"{self.maxrate_kbps}k", "-bufsize", f"{2 * self.maxrate_kbps}k"]
         if self.fps is not None:
