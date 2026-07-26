@@ -451,3 +451,17 @@ def test_a_manifest_without_stabilize_never_probes_ffmpeg(monkeypatch):
                         lambda: pytest.fail("validate() probed ffmpeg for a manifest "
                                             "that never asked to stabilize"))
     assert mf.validate(mf.Manifest.from_dict(_ok_dict())) == []
+
+
+# --- colour-as-a-stage Task 9: Manifest carries the nine colour fields ---
+
+def test_manifest_from_dict_reads_colour():
+    m = mf.Manifest.from_dict(_ok_dict(white_balance=0.5, dip=0.2,
+                                       tone_src=[30, 100, 148], tone_dst=[35, 110, 150]))
+    assert m.white_balance == 0.5 and m.dip == 0.2 and m.tone_src == (30, 100, 148)
+
+
+def test_manifest_colour_defaults_identity():
+    m = mf.Manifest.from_dict(_ok_dict())
+    assert (m.white_balance, m.black_point, m.saturation, m.dip) == (0.0, 0.0, 1.0, 0.0)
+    assert m.tone_src is None

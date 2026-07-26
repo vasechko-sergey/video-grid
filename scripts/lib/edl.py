@@ -58,6 +58,28 @@ class EDLEpisode:
     hero: tuple | str | int | None = None   # seed bbox / rule / track id / cast name (§5.10);
                                             # NOT validated here — see the class docstring: the
                                             # manifest gate reached via preflight is its one home
+    white_balance: float = 0.0  # grey-world neutralize toward the common average, FIRST in
+                                # the chain; 0 = off — see color.white_balance_arg.
+    black_point: float = 0.0    # fraction subtracted from the toe before the grade's gain.
+                                # A camera that records a LIFTED black floor (DJI's flat profile
+                                # put this footage's darkest 1% at 65.7/255 against 23.1 on the
+                                # telephoto beside it) cannot be matched by gain, which scales a
+                                # floor rather than moving it. See color.black_point_arg.
+    highlight: float = 1.0      # white pulled down to this after the gain; the twin of
+                                # black_point at the other end. See color.highlight_arg.
+    saturation: float = 1.0     # chroma scale after the gain; the hue-preserving way to
+                                # tame an over-vivid source. See color.saturation_arg.
+    dip: float = 0.0            # fade in/out to dark grey, seconds. A transition that costs
+                                # no duration. See color.dip_arg.
+    mid_blue: float = 1.0       # blue scaled in the midtones only; neutralizes sky bounce
+                                # on skin. See color.mid_blue_arg.
+    shadow_red: float = 0.0     # red toe lift; neutralizes a green/cyan black without
+                                # touching skin or a red board. See color.shadow_red_arg.
+    tone_src: tuple[float, float, float] | None = None   # this episode's measured
+    tone_dst: tuple[float, float, float] | None = None   # (p5, p50, p95) -> the reel's
+                                # common profile. Normalizes the SOURCE before any of the
+                                # above touches it; see color.tone_arg for why neither
+                                # black_point nor highlight can do this job.
     color_means: tuple = DEFAULT_COLOR
     processing_notes: str = ""       # authoring metadata → SP1b draft labels; not acted on here
     beat_slot: int | None = None     # authoring metadata → B4 pacing; not acted on here
@@ -110,6 +132,12 @@ class EDLEpisode:
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
                 "stabilize": self.stabilize,
                 "hero": _j(self.hero),
+                "white_balance": self.white_balance,
+                "black_point": self.black_point, "highlight": self.highlight,
+                "saturation": self.saturation, "shadow_red": self.shadow_red,
+                "mid_blue": self.mid_blue, "dip": self.dip,
+                **({"tone_src": list(self.tone_src), "tone_dst": list(self.tone_dst)}
+                   if self.tone_src is not None else {}),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
                 "beat_slot": self.beat_slot}
 
@@ -225,7 +253,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         "crop_scale": ep.crop_scale, "background": ep.background,
         "background_color": ep.background_color,
         "border_px": ep.border_px, "border_color": ep.border_color,
-        "color_means": list(ep.color_means),
+        "color_means": list(ep.color_means), "white_balance": ep.white_balance,
+        "black_point": ep.black_point,
+        "highlight": ep.highlight, "saturation": ep.saturation, "shadow_red": ep.shadow_red,
+        "mid_blue": ep.mid_blue, "dip": ep.dip,
+        **({"tone_src": list(ep.tone_src), "tone_dst": list(ep.tone_dst)}
+           if ep.tone_src is not None else {}),
     }
     if ep.crop_aspect is not None:      # None → let Manifest pick canvas/source by layout
         md["crop_aspect"] = list(ep.crop_aspect) if isinstance(ep.crop_aspect, tuple) else ep.crop_aspect

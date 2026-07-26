@@ -492,3 +492,19 @@ def test_edl_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "EDL.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run edit-plan"):
         EDL.from_json(p)
+
+
+# --- colour-as-a-stage Task 9: EDLEpisode carries the nine colour fields ---
+
+def test_edlepisode_colour_round_trips():
+    e = _ep(white_balance=0.5, black_point=0.1, saturation=1.2,
+            tone_src=(30, 100, 148), tone_dst=(35, 110, 150))
+    d = e.to_dict()
+    assert d["white_balance"] == 0.5 and d["tone_src"] == [30, 100, 148]
+    md = to_manifest_dict(e, "seg.mp4", "out.mp4")
+    assert md["white_balance"] == 0.5 and md["saturation"] == 1.2 and md["tone_dst"] == [35, 110, 150]
+
+
+def test_edlepisode_colour_defaults_omit_tone():
+    d = _ep().to_dict()
+    assert d["white_balance"] == 0.0 and d["saturation"] == 1.0 and "tone_src" not in d

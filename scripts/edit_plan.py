@@ -35,7 +35,8 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
                       **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
-    layout/motion/hero/crop_*/rect/background*/border_*/color_means/beat_slot
+    layout/motion/hero/crop_*/rect/background*/border_*/color_means/beat_slot/
+    white_balance/black_point/highlight/saturation/shadow_red/mid_blue/dip/tone_*
     optional) are forwarded to EDLEpisode, whose __post_init__ is the single
     value-validation site. shot_type/processing_notes default to the window's
     shot_type/description but an editorial value overrides. An unknown or missing

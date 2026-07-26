@@ -20,7 +20,10 @@ from scripts.lib.footage import Cast
 from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec, PanSpec
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "pan", "hero", "cast", "color_means", "stabilize", "model",
+OPTIONAL = ("layout", "motion", "pan", "hero", "cast", "color_means", "white_balance",
+            "black_point", "highlight", "tone_src", "tone_dst", "saturation", "shadow_red",
+            "mid_blue", "dip",
+            "stabilize", "model",
             "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split → its own plan; pan is not a layout
@@ -46,6 +49,15 @@ class Manifest:
     cast: str = ""                       # cast.json path — a cast-name hero needs the registry,
                                          # and the manifest is a self-contained brief (§14.4)
     color_means: tuple = DEFAULT_COLOR
+    white_balance: float = 0.0
+    black_point: float = 0.0
+    highlight: float = 1.0
+    saturation: float = 1.0
+    shadow_red: float = 0.0
+    mid_blue: float = 1.0
+    dip: float = 0.0
+    tone_src: tuple[float, float, float] | None = None
+    tone_dst: tuple[float, float, float] | None = None
     stabilize: bool = False
     model: str = DEFAULT_MODEL
     delivery: str = "native"
@@ -104,6 +116,15 @@ class Manifest:
             pan=d.get("pan"),
             hero=hero, cast=d.get("cast") or "",
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
+            white_balance=float(d.get("white_balance") or 0.0),
+            black_point=float(d.get("black_point") or 0.0),
+            highlight=float(d["highlight"]) if d.get("highlight") is not None else 1.0,
+            saturation=float(d["saturation"]) if d.get("saturation") is not None else 1.0,
+            shadow_red=float(d["shadow_red"]) if d.get("shadow_red") is not None else 0.0,
+            mid_blue=float(d["mid_blue"]) if d.get("mid_blue") is not None else 1.0,
+            dip=float(d["dip"]) if d.get("dip") is not None else 0.0,
+            tone_src=tuple(d["tone_src"]) if d.get("tone_src") is not None else None,
+            tone_dst=tuple(d["tone_dst"]) if d.get("tone_dst") is not None else None,
             stabilize=bool(d.get("stabilize", False)),
             model=model if model is not None else DEFAULT_MODEL,
             delivery=delivery if delivery is not None else "native",
