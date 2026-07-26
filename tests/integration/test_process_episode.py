@@ -86,6 +86,7 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
         calls["reframe_background"] = (spec.layout.background, spec.layout.background_color)
         calls["reframe_src"] = src
         calls["reframe_stabilized"] = stabilized
+        calls["reframe_spec"] = spec   # whole spec, so a caller can assert any field
         Path(out).write_text("clip")
         # path length must match the route (real reframe invariant) — the shell
         # reads it back to compute hero marks for the storyboard
@@ -107,9 +108,10 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
 
     default_report = _report(True, [])
 
-    def fake_run(clip, route_path, path_path, spec, out):
+    def fake_run(clip, route_path, path_path, spec, out, source=None):
         calls["check"] = dict(attempt=spec.attempt, composition=spec.composition,
                               grid=spec.grid, target_dur=spec.target_dur)
+        calls["check_source"] = source
         src_report = report if report is not None else default_report
         r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
         r.write(out)
@@ -259,7 +261,7 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     seq = [_report(False, ["on_line"]), _report(True, [])]
     speeds = []
 
-    def fake_run(clip, route_path, path_path, spec, out):
+    def fake_run(clip, route_path, path_path, spec, out, source=None):
         r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
         r.write(out)
         return r
@@ -552,6 +554,56 @@ def test_color_correct_defaults_to_none(monkeypatch, tmp_path):
     calls = _stub_engine(monkeypatch, tmp_path)
     pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert calls["reframe_color_correct"] is None
+
+
+def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
+    # colour-as-a-stage Task 10: the manifest's nine colour fields must reach
+    # ReframeSpec, and the pre-grade segment (`src`, reframe's own input) must
+    # reach check_episode.run as source= — the advisory color_fidelity check's
+    # only ingredient. validate() structurally cannot catch a drop here (same
+    # shape as test_the_manifests_filler_reaches_the_reframe_spec above): it
+    # never builds a ReframeSpec of its own to compare against, so a regression
+    # would pass the gate clean and every authored grade would silently render
+    # as identity. Silent corruption, not a raise — needs its own pin.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(
+        _manifest(tmp_path, white_balance=0.5, black_point=0.1, highlight=0.9,
+                  saturation=1.1, shadow_red=0.05, mid_blue=0.95, dip=0.2,
+                  tone_src=[30, 100, 148], tone_dst=[35, 110, 150]),
+        project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    spec = calls["reframe_spec"]
+    assert spec.white_balance == 0.5
+    assert spec.black_point == 0.1
+    assert spec.highlight == 0.9
+    assert spec.saturation == 1.1
+    assert spec.shadow_red == 0.05
+    assert spec.mid_blue == 0.95
+    assert spec.dip == 0.2
+    assert spec.tone_src == (30, 100, 148)
+    assert spec.tone_dst == (35, 110, 150)
+    # the check must see the SAME pre-grade segment reframe rendered from —
+    # not the manifest's raw segment (they differ once stabilize=True), and
+    # not silently None (the default that turns the check not-checked).
+    assert calls["check_source"] == calls["reframe_src"]
+
+
+def test_process_episode_colour_fields_default_identity(monkeypatch, tmp_path):
+    # the complement of the test above: a manifest that names none of the nine
+    # fields must still reach ReframeSpec at its identity defaults — an episode
+    # authored before this slice renders byte-identically (design's whole point).
+    calls = _stub_engine(monkeypatch, tmp_path)
+    pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    spec = calls["reframe_spec"]
+    assert spec.white_balance == 0.0
+    assert spec.black_point == 0.0
+    assert spec.highlight == 1.0
+    assert spec.saturation == 1.0
+    assert spec.shadow_red == 0.0
+    assert spec.mid_blue == 1.0
+    assert spec.dip == 0.0
+    assert spec.tone_src is None
+    assert spec.tone_dst is None
 
 
 # --- Task 7: process_episode skips tracking and the contradiction gate for a

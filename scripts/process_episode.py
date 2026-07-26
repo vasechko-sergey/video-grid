@@ -308,13 +308,17 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,
                             max_speed=params["max_speed"], color_correct=color_correct,
-                            pan=pan)
+                            white_balance=m.white_balance, black_point=m.black_point,
+                            highlight=m.highlight, saturation=m.saturation,
+                            shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
+                            tone_src=m.tone_src, tone_dst=m.tone_dst, pan=pan)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
                                                   stabilized=m.stabilize))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
                           attempt=attempt)
         report = _timed("check", lambda: check_episode.run(
-            m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json")))
+            m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
+            source=src))
         if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every
