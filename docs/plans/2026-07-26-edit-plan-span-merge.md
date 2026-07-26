@@ -52,7 +52,7 @@ scripts run as modules), real-ffmpeg integration golden. Design:
 - Modify: `scripts/edit_plan.py` (add `_merge_windows` after `window_to_episode`)
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Add the `_merge_clip` fixture**
+- [x] **Step 1: Add the `_merge_clip` fixture**
 
 Add near the top of `tests/lib/test_edit_plan.py`, after the existing `_clip`
 helper (a clip with three windows in one uninterrupted shot; `w0=[2.0,5.0)`,
@@ -73,7 +73,7 @@ def _merge_clip(**kw):
     return FootageClip(**d)
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `tests/lib/test_edit_plan.py`:
 
@@ -110,12 +110,12 @@ def test_merge_windows_refuses_to_cross_a_scene_cut():
         edit_plan._merge_windows(clip, 0, 1)
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k merge_windows -v`
 Expected: FAIL with `AttributeError: module 'scripts.edit_plan' has no attribute '_merge_windows'`.
 
-- [ ] **Step 4: Implement `_merge_windows`**
+- [x] **Step 4: Implement `_merge_windows`**
 
 In `scripts/edit_plan.py`, add this function immediately after `window_to_episode`
 (before `_SNAP_TOL`). `dataclasses`, `FootageClip`, `FootageWindow` are already
@@ -190,12 +190,12 @@ def test_merge_windows_refuses_an_envelope_well_past_the_clip_end():
         edit_plan._merge_windows(clip, 0, 1)
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k merge_windows -v`
 Expected: 4 PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -210,7 +210,7 @@ git commit -m "feat: _merge_windows — envelope over a window range, scene-cut 
 - Modify: `scripts/edit_plan.py` (add `_resolve_window`; `build_edl` calls it)
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edit_plan.py` (they use the `_merge_clip` fixture from
 Task 0):
@@ -295,14 +295,14 @@ def test_build_edl_span_crossing_a_scene_cut_raises():
         edit_plan.build_edl(footage, sel)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k "build_edl_span" -v`
 Expected: FAIL — the span selections currently hit the single-window guard
 (`'window' must be an integer index into FOOTAGE`), so the merge/validation
 assertions do not hold.
 
-- [ ] **Step 3: Add `_resolve_window`**
+- [x] **Step 3: Add `_resolve_window`**
 
 In `scripts/edit_plan.py`, add this function immediately after `_merge_windows`
 (before `_SNAP_TOL`):
@@ -331,7 +331,7 @@ def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> F
     return clip.windows[window]
 ```
 
-- [ ] **Step 4: Rewire `build_edl`'s loop to call it**
+- [x] **Step 4: Rewire `build_edl`'s loop to call it**
 
 In `build_edl`, replace the per-episode resolution block. The current loop body
 (from `if not (isinstance(source, str) and source):` through the
@@ -373,7 +373,7 @@ fields" to "Each selection episode references a window by (source, integer index
 or a two-element `[i, j]` span merged into one episode (§3b) — into FOOTAGE and
 supplies editorial fields".
 
-- [ ] **Step 5: Run the new tests AND the full `test_edit_plan.py` (regression)**
+- [x] **Step 5: Run the new tests AND the full `test_edit_plan.py` (regression)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -v`
 Expected: all PASS — the new span tests pass, and every pre-existing test
@@ -382,7 +382,7 @@ type `'window' must be an integer`, bool rejection, pacing, back-edge) stays gre
 The single-window error strings are unchanged and the moved clip-resolution does
 not reorder any tested failure.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -396,7 +396,7 @@ git commit -m "feat: build_edl accepts a [i, j] span window that merges into one
 **Files:**
 - Modify: `tests/integration/test_edit_plan.py`
 
-- [ ] **Step 1: Add the span fixtures + the test**
+- [x] **Step 1: Add the span fixtures + the test**
 
 Append to `tests/integration/test_edit_plan.py` (reuses the module's existing
 `_project_json` and `_fake_track_pe`):
@@ -446,7 +446,7 @@ def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypa
     assert out.exists() and out.name == "REEL_v1.mp4"
 ```
 
-- [ ] **Step 2: Run the integration test**
+- [x] **Step 2: Run the integration test**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_edit_plan.py -v`
 Expected: both the pre-existing `test_selection_becomes_edl_becomes_reel` and the
@@ -454,7 +454,7 @@ new `test_span_selection_becomes_edl_becomes_reel` PASS (real ffmpeg; needs the
 provisioned env). If the run reports the integration marker is deselected, add
 `-m integration`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_edit_plan.py
@@ -468,7 +468,7 @@ git commit -m "test: a [i, j] span episode survives the real SP3->SP1 seam"
 **Files:**
 - Modify: `skills/edit-plan/SKILL.md`
 
-- [ ] **Step 1: Add the span paragraph after the `start_offset` note**
+- [x] **Step 1: Add the span paragraph after the `start_offset` note**
 
 In `skills/edit-plan/SKILL.md`, the paragraph that begins "`start_offset`
 (optional, per selection episode) moves the in-point later…" ends with "…lands a
@@ -486,7 +486,7 @@ motion. A span stays within **one clip**, its indices must be **adjacent**, and 
 episodes there). `start_offset` still applies, moving the merged in-point later.
 ```
 
-- [ ] **Step 2: Show a span in the shape example**
+- [x] **Step 2: Show a span in the shape example**
 
 In the same file, in step 2, the `episodes` example currently has two entries.
 Add a span entry between them so the shape is:
@@ -507,14 +507,14 @@ And in the line introducing that example, change the parenthetical "The shape
 (integer window indices + editorial only — no timestamps):" to "The shape (integer
 window indices — or a `[i, j]` span — + editorial only, no timestamps):".
 
-- [ ] **Step 3: Verify the SKILL reads cleanly**
+- [x] **Step 3: Verify the SKILL reads cleanly**
 
 Run: `.venv/bin/python -m pytest tests/ -k skill -q` (if any SKILL-lint test
 exists) — otherwise re-read the file top-to-bottom to confirm the new paragraph
 and example are well-formed Markdown and the constraints match the design
 (one clip, adjacent, no scene cut).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add skills/edit-plan/SKILL.md
@@ -528,7 +528,7 @@ git commit -m "docs: edit-plan SKILL teaches the [i, j] span merge"
 **Files:**
 - Modify: `CLAUDE.md`, `docs/build-status.md`, `docs/pipeline-map.md`
 
-- [ ] **Step 1: CLAUDE.md registry rows**
+- [x] **Step 1: CLAUDE.md registry rows**
 
 In `CLAUDE.md`'s Quick Reference table, after the "Intake activity-units plan"
 row, add two rows:
@@ -542,7 +542,7 @@ Then in the existing "Intake activity-units design" row, change the trailing
 sentence "**3b (`edit_plan` span [i..j] merge) deferred.**" to "3b (`edit_plan`
 span merge) landed 2026-07-26 — its own slice."
 
-- [ ] **Step 2: docs/build-status.md**
+- [x] **Step 2: docs/build-status.md**
 
 Change the `_Last updated:` line to `_Last updated: 2026-07-26._`. Add a new bullet
 at the top of the `## Done` list (newest first):
@@ -567,7 +567,7 @@ Then, in the 3a bullet, change its trailing "**Deferred:** 3b — `edit_plan`
 merging adjacent activity-unit spans `[i..j]` into one episode — its own slice."
 to "3b (`edit_plan` span merge) landed 2026-07-26 — see the entry above."
 
-- [ ] **Step 3: docs/pipeline-map.md**
+- [x] **Step 3: docs/pipeline-map.md**
 
 In the 5.2 row (line with `footage-intake`), change "#3 slice 3a landed 2026-07-25
 (3b `edit_plan` span-merge deferred)" to "#3 slice 3a landed 2026-07-25, 3b
@@ -578,13 +578,13 @@ the closing `|`): "; a `selection.json` episode may reference a window range
 `"window": [i, j]` to merge adjacent activity units into one episode (3b,
 2026-07-26)".
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all pass, 2 pre-existing skips (demucs + network, environmental). No
 golden fixture moved (3b adds no numeric pins to existing goldens).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md docs/build-status.md docs/pipeline-map.md
