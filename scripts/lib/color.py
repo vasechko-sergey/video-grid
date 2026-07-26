@@ -377,3 +377,25 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
             + shadow_red_arg(shadow_red) + mid_blue_arg(mid_blue)
             + saturation_arg(saturation) + highlight_arg(highlight)
             + dip_arg(dip, dur))
+
+
+def percentiles(hist256: list[int]) -> tuple[float, float, float]:
+    """(p5, p50, p95) of an 8-bit luma histogram (256 bin counts), by cumulative count.
+    Pure integer math — no numpy — so color.py stays dependency-free. The driver
+    (color_measure.measure_profile) produces the histogram from a decoded still."""
+    if len(hist256) != 256:
+        raise ValueError(f"percentiles needs a 256-bin histogram, got {len(hist256)} bins")
+    total = sum(hist256)
+    if total <= 0:
+        raise ValueError("percentiles: empty histogram — the clip decoded no pixels?")
+
+    def _pct(p: float) -> float:
+        target = p * total
+        run = 0
+        for code, c in enumerate(hist256):
+            run += c
+            if run >= target:
+                return float(code)
+        return 255.0
+
+    return (_pct(0.05), _pct(0.50), _pct(0.95))

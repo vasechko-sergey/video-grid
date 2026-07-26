@@ -133,3 +133,21 @@ def test_white_balance_clamps_and_rejects_bool():
     assert all(color.LO <= g <= color.HI for g in gains)
     with pytest.raises(ValueError):
         color.white_balance_arg((80, 100, 120), True)
+
+
+def test_percentiles_of_a_known_histogram():
+    # a flat 0..255 histogram (one count per code) → p5≈12.75, p50≈127.5, p95≈242.25
+    hist = [1] * 256
+    p5, p50, p95 = color.percentiles(hist)
+    assert 10 <= p5 <= 16 and 125 <= p50 <= 130 and 240 <= p95 <= 246
+
+
+def test_percentiles_of_a_spike():
+    hist = [0] * 256
+    hist[100] = 1000                    # all mass at code 100
+    assert color.percentiles(hist) == (100.0, 100.0, 100.0)
+
+
+def test_percentiles_rejects_wrong_length():
+    with pytest.raises(ValueError):
+        color.percentiles([1, 2, 3])
