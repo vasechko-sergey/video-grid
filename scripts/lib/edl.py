@@ -120,6 +120,10 @@ class EDLEpisode:
             self.crop_aspect = tuple(self.crop_aspect)
         if isinstance(self.rect, list):
             self.rect = tuple(self.rect)
+        if isinstance(self.tone_src, list):
+            self.tone_src = tuple(self.tone_src)
+        if isinstance(self.tone_dst, list):
+            self.tone_dst = tuple(self.tone_dst)
 
     def to_dict(self) -> dict:
         def _j(v: object) -> object:

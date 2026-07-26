@@ -508,3 +508,13 @@ def test_edlepisode_colour_round_trips():
 def test_edlepisode_colour_defaults_omit_tone():
     d = _ep().to_dict()
     assert d["white_balance"] == 0.0 and d["saturation"] == 1.0 and "tone_src" not in d
+
+
+def test_tone_pair_coerces_to_tuples_from_json_arrays():
+    # an EDL loaded from JSON carries tone_src/tone_dst as LISTS; __post_init__ must
+    # coerce them to tuples so an EDLEpisode round-trips (like hero/crop_aspect/rect
+    # at test_json_arrays_coerce_to_tuples above).
+    ep = _ep(tone_src=[30, 100, 148], tone_dst=[35, 110, 150])
+    assert ep.tone_src == (30, 100, 148) and isinstance(ep.tone_src, tuple)
+    assert ep.tone_dst == (35, 110, 150) and isinstance(ep.tone_dst, tuple)
+    assert EDLEpisode(**ep.to_dict()) == ep   # full round-trip equality
