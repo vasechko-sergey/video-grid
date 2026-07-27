@@ -21,11 +21,19 @@ DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                 work_dir: str, out_dir: str, *, music: str | None = None,
-                titles: str | None = None, jobs: int = DEFAULT_JOBS) -> dict:
+                titles: str | None = None, jobs: int = DEFAULT_JOBS,
+                color_delta_max: float | None = None) -> dict:
     """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
     for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
-    raise ValueError instead (a hard setup error, not an editorial finding to route)."""
+    raise ValueError instead (a hard setup error, not an editorial finding to route).
+
+    `color_delta_max` overrides the across-cut mean-RGB ceiling (ReelCheckSpec's own
+    default stands when None). The default guards GRADE consistency within one scene;
+    a reel that deliberately cuts between scenes of different exposure — open water to
+    a bright beach — carries a real jump the grade cannot and should not flatten. Raise
+    it only for such a reel, with the measured delta in hand, never to silence a grade
+    that is genuinely wrong."""
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"edl_to_reel: jobs must be an integer >= 1, got {jobs!r} "
                          f"(default {DEFAULT_JOBS} is the measured knee; lower it on a "
@@ -89,8 +97,10 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)
+    extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}
     rm = ReelManifest(episodes=episodes, target_dur=target, cap=edl.cap,
-                      changelog=str(Path(out_dir) / "VERSIONS.md"), music=music or edl.music)
+                      changelog=str(Path(out_dir) / "VERSIONS.md"), music=music or edl.music,
+                      **extra)
     return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
 
 
@@ -106,9 +116,14 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                     help=f"episodes to process concurrently (default {DEFAULT_JOBS} — the "
                          f"measured knee; lower on a memory-constrained box)")
+    ap.add_argument("--color-delta-max", type=float,
+                    help="across-cut mean-RGB ceiling (default 12.0). Raise ONLY for a reel "
+                         "that deliberately cuts between scenes of different exposure "
+                         "(open water -> bright beach), with the measured delta in hand")
     a = ap.parse_args()
     result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
-                         music=a.music, titles=a.titles, jobs=a.jobs)
+                         music=a.music, titles=a.titles, jobs=a.jobs,
+                         color_delta_max=a.color_delta_max)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "delivered" else 1)
 

@@ -106,6 +106,24 @@ def test_edl_music_and_target_override_reach_the_reel_manifest(monkeypatch, tmp_
     assert rm.target_dur == 9.0 and rm.cap == 2
 
 
+def test_color_delta_max_override_reaches_the_reel_manifest(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"), color_delta_max=20.0)
+    rm = seen["rm"]
+    assert rm.color_delta_max == 20.0
+    assert rm.check_spec.color_delta_max == 20.0    # the value actually enforced by check_reel
+
+
+def test_color_delta_max_omitted_keeps_the_reel_check_spec_default(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    rm = seen["rm"]
+    assert rm.color_delta_max == 12.0               # ReelCheckSpec's own default, untouched
+    assert rm.check_spec.color_delta_max == 12.0
+
+
 def test_titles_forwarded_to_build_reel(monkeypatch, tmp_path):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
@@ -354,6 +372,44 @@ def test_cli_jobs_defaults_to_the_knee(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         edl_to_reel.main()
     assert seen_jobs["jobs"] == edl_to_reel.DEFAULT_JOBS
+
+
+def test_cli_threads_color_delta_max(monkeypatch, tmp_path):
+    import sys
+    seen_kw = {}
+
+    def fake_driver(*a, **kw):
+        seen_kw["color_delta_max"] = kw.get("color_delta_max")
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--color-delta-max", "20.0"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen_kw["color_delta_max"] == 20.0        # float, not the string "20.0"
+
+
+def test_cli_color_delta_max_defaults_to_none(monkeypatch, tmp_path):
+    import sys
+    seen_kw = {}
+
+    def fake_driver(*a, **kw):
+        seen_kw["color_delta_max"] = kw.get("color_delta_max")
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit):
+        edl_to_reel.main()
+    assert seen_kw["color_delta_max"] is None        # unset CLI flag -> ReelCheckSpec's own default
 
 
 def test_a_routable_finding_at_a_lower_index_beats_a_raise_above_it(monkeypatch, tmp_path):
