@@ -71,11 +71,17 @@ def matches(info: StreamInfo, dims: tuple[int, int], fps: float,
     stamped on the tv one's 16-235 data. Nothing errors: that episode alone
     delivers with its blacks lifted ~15 and its whites capped ~13 low, a 12%
     contrast loss that reads as milky, blown foam, and a white point that visibly
-    jumps at the cut into the next episode. An "unknown" range never matches —
-    an untagged stream is exactly the one whose data we must not assume about."""
+    jumps at the cut into the next episode.
+
+    An "unknown" range IS treated as a match: assemble() only ever consumes this
+    pipeline's own locked episodes (reframe's encoder never passes -color_range),
+    so an untagged stream here is always our own yuv420p output — limited-range by
+    mp4/h264 convention, the same convention DELIVERY_RANGE names. The hazard this
+    guards is a DIFFERENT explicit tag (a foreign "pc" among "tv", or vice versa) —
+    that is the real -c copy tag-stamping landmine, and still gets normalized."""
     return (info.w == dims[0] and info.h == dims[1] and abs(info.fps - fps) < 0.01
             and info.pix_fmt == pix_fmt and info.vcodec == vcodec
-            and info.color_range == color_range)
+            and info.color_range in (color_range, "unknown"))
 
 
 def _normalize(src: str, dims: tuple[int, int], fps: float, out: str,
