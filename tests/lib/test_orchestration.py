@@ -239,7 +239,17 @@ def test_line_lag_narrows_the_window_but_never_below_the_default():
     assert back["smooth_window_s"] >= orch.DEFAULT_PARAMS["smooth_window_s"]
 
 
+def test_line_lag_floor_binds_from_the_default():
+    # one on_line nudge from the default: x/2 == 0.125 unfloored, which the floor
+    # must lift back to the default — deleting max(DEFAULT, ...) drops it to 0.125
+    p = orch.adjust_reframe_params(dict(orch.DEFAULT_PARAMS), ["on_line"])
+    assert p["smooth_window_s"] == orch.DEFAULT_PARAMS["smooth_window_s"]
+
+
 def test_adjust_fills_a_partial_params_dict():
-    # a caller that only knows about max_speed still gets both knobs back
-    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["jitter"])
+    # a caller that only knows about max_speed still gets both knobs back...
+    p = orch.adjust_reframe_params({"max_speed": 300.0}, ["jitter"])
     assert set(p) == set(orch.DEFAULT_PARAMS)
+    # ...and its OWN value survives the fill (proves {**DEFAULT, **params} order,
+    # not the reversed spread that would clobber it back to 750.0)
+    assert p["max_speed"] == 300.0 * 0.6
