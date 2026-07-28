@@ -476,19 +476,34 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     # sidecar meta: the orchestrator reads `ambiguous` to fire the §4.1
     # stop-and-report (margin rule) with both candidates' crops, and reads
     # `pin_matched` to fire hero-unmatched when a pin matched nobody
+    # the hero's id, plus any id that is the hero re-acquired after an ID switch.
+    # Called BEFORE the meta so the sidecar can carry the stitch provenance.
+    hero_ids = stitch_ids(per_frame, hero_id, fps, src_w, feats)
+    stitched = sorted(hero_ids - {hero_id})
     meta = TrackMeta(hero=hero_id, ambiguous=ambiguous, intent=spec.intent,
                      features={str(k): {kk: f[kk] for kk in
                                         ("n", "disp", "area", "speed", "border")}
                                for k, f in feats.items()},
-                     pin_matched=pin_matched)
+                     pin_matched=pin_matched, stitched=stitched)
     Path(out).with_suffix(".meta.json").write_text(json.dumps(meta.to_dict()))
 
     route = []
     for idx, dets in per_frame:
         # hero only — NO largest-in-frame fallback: it would splice strangers'
         # coordinates into the route (false teleports for the continuity check);
-        # a frame gap is fine, smoothing bridges it
-        pick = next((d for d in dets if d[0] == hero_id), None)
+        # a frame gap is fine, smoothing bridges it. `hero_ids` is not that
+        # fallback: every extra id in it passed stitch_ids' continuity test against
+        # the hero's own trajectory, the opposite of picking whoever is biggest.
+        #
+        # A handover OVERLAPS (see STITCH_MAX_OVERLAP_S), so for a few frames BOTH the
+        # outgoing and incoming id report the same person from slightly different boxes.
+        # Taking whichever comes first in detection order would flip between them and
+        # write a small teleport into the route at the exact moment the crop is meant to
+        # be continuous — so follow the nearer one to where the route already is.
+        matches = [d for d in dets if d[0] in hero_ids]
+        if len(matches) > 1 and route:
+            matches.sort(key=lambda d: abs(d[1] - route[-1].x))
+        pick = matches[0] if matches else None
         if pick:
             _, x, y, w, h = pick
             route.append(RoutePoint(t=idx / fps, x=x, y=y, w=w, h=h))

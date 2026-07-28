@@ -633,3 +633,58 @@ def test_cli_single_pin_flag_still_builds_the_pin(monkeypatch, tmp_path):
     track.main()
     assert seen["pin"] == models.HeroPin(kind="rule", rule="largest")
     assert seen["out"] == str(tmp_path / "route.json")
+
+
+# --- build_route wires stitch_ids in: sidecar provenance + the route loop's pick ----
+
+
+def _switch_frames():
+    """tid 1 slides right for frames 0..20, then the SAME subject is re-acquired as
+    tid 66 with a 3-frame overlap (18..20), 8px off tid 1's path — one rider, two ids.
+    41 frames total."""
+    frames = []
+    for i in range(41):
+        dets = []
+        if i <= 20:
+            dets.append(_FakeBox([900.0 + i * 5, 500.0, 120.0, 300.0], 1))
+        if i >= 18:
+            dets.append(_FakeBox([900.0 + i * 5 + 8, 500.0, 122.0, 302.0], 66))
+        frames.append(dets)
+    return frames
+
+
+def test_build_route_stitches_an_id_switch_and_records_provenance(monkeypatch, tmp_path):
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(_switch_frames()))
+    monkeypatch.setattr(track, "_probe_meta", lambda src: (60.0, 1920, 1080))  # fps=None → probe
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4",
+                            pin=models.HeroPin(kind="track", track_id=1))
+    route = track.build_route(spec, out=str(out))
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.stitched == [66]                 # provenance names the merged id
+    assert len(route) == 41                       # every frame contributed — no freeze at tid 1's end
+    assert route[-1].t > 20 / 60.0                # the route continues PAST where tid 1 stopped
+
+
+def test_build_route_clean_single_id_records_no_stitch(monkeypatch, tmp_path):
+    frames = [[_FakeBox([900.0 + i * 5, 500.0, 120.0, 300.0], 1)] for i in range(20)]
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(frames))
+    monkeypatch.setattr(track, "_probe_meta", lambda src: (60.0, 1920, 1080))
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4", pin=models.HeroPin(kind="track", track_id=1))
+    track.build_route(spec, out=str(out))
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.stitched == []
+
+
+def test_build_route_with_fps_supplied_does_not_stitch(monkeypatch, tmp_path):
+    # fps in the spec → build_route skips the probe → src_w is None → stitch_ids returns
+    # {hero} and the route-loop change is byte-identical to the old hero-only pick.
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(_switch_frames()))
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4", fps=60,
+                            pin=models.HeroPin(kind="track", track_id=1))
+    route = track.build_route(spec, out=str(out))
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.stitched == []                    # no width → no stitch
+    assert len(route) == 21                        # only tid 1's frames (0..20), not tid 66's
