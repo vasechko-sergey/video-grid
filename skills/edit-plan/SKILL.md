@@ -81,6 +81,17 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      be set — it describes the *subject*, the pan describes the *camera*, and
      the canonical pan is `motion: static` with a moving frame, both at once.
    - `processing_notes` — a short note for the draft labels (optional)
+   - **colour** (all optional, per episode; every episode carries an identity-default
+     grade, so omit these unless a clip needs correcting): `white_balance` ∈ `[0, 1]`
+     neutralizes a cast first (grey-world; `0` = off); `black_point` ∈ `[0, 0.35]`
+     lifts a washed toe; `highlight` ∈ `[0.6, 1.0]` tames blown whites; `saturation`
+     ∈ `[0.5, 1.5]` scales chroma; `shadow_red` ∈ `[0, 0.20]` neutralizes a green/cyan
+     black; `mid_blue` ∈ `[0.80, 1.20]` fixes sky-bounce on skin; `dip` ∈ `[0, 0.5]`s
+     fades the episode in/out to dark grey. `tone` matches a clip's tonal profile to
+     the reel: set `tone_src` to that clip's measured `[p5, p50, p95]` luma and
+     `tone_dst` to the reel's common target — measure both with
+     `python -m scripts.color_measure <clip>`. A banding `tone` curve fails loud at
+     render (`verify_tone`), so trust the error and widen the anchors.
 
    The shape (integer window indices — or a `[i, j]` span — + editorial only, no timestamps):
 
@@ -88,7 +99,8 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
          "episodes": [
            {"source": "MVI_3739.mp4", "window": 2, "composition": "lead",
             "grid": "thirds", "layout": "fill", "motion": "lateral:right", "hero": "largest"},
-           {"source": "MVI_3739.mp4", "window": [4, 6], "composition": "center", "grid": "thirds"},
+           {"source": "MVI_3739.mp4", "window": [4, 6], "composition": "center",
+            "grid": "thirds", "white_balance": 0.5, "saturation": 1.1},
            {"source": "MVI_3998.mp4", "window": 1, "composition": "center", "grid": "phi"}
          ],
          "music": null, "cap": 3, "target_dur": null
