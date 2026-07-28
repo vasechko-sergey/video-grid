@@ -25,8 +25,12 @@ anything here — this file exists to fill the GAP, not to repeat these):
 None of the above renders a NON-DEFAULT grade through a real reframe.reframe()
 call and measures the delivered pixels, or drives a valid tone pair through the
 full pipeline (only the bare fragment is exercised elsewhere). That is the gap
-this file closes: three proofs — the grade moves pixels (headline),
-white_balance neutralizes a cast, and a tone curve renders end-to-end.
+this file closes: four proofs — the grade moves pixels (headline),
+white_balance neutralizes a cast, a tone curve renders end-to-end, and a tone
+curve measurably moves the delivered pixels (the last closes a coverage gap a
+code review found: the third proof only asserted the tone render SURVIVES, so
+a future drop of the `tone=tone` kwarg from reframe's color.grade_chain(...)
+call would have passed it silently).
 
 PITFALL (measured on this ffmpeg build): libx264 does not write the VUI range
 tag for the default "tv" -color_range, so a probed file reads color_range ==
@@ -42,7 +46,7 @@ import pytest
 from PIL import Image, ImageStat
 
 from scripts import reframe
-from scripts.lib import ffbin, proc
+from scripts.lib import color, ffbin, proc
 from scripts.lib.models import Delivery, ReframeSpec
 
 pytestmark = pytest.mark.integration
@@ -198,3 +202,71 @@ def test_tone_renders_a_full_length_clip_end_to_end(sample_clip, tmp_path):
     reframe.reframe(spec, str(sample_clip), str(rp), str(out), str(tmp_path / "path.json"))
     assert out.exists()
     assert _duration(out) == pytest.approx(src_dur, abs=0.1)
+
+
+# --- Proof 4: a tone curve moves the delivered pixels (coverage-gap close) -----
+
+TONE_W, TONE_H, TONE_DUR, TONE_FPS = 640, 360, 2.0, 30
+TONE_COLOR = "0x646464"    # flat grey, (100, 100, 100) — sits EXACTLY on the p50
+                           # input anchor of TONE_SRC below, so curves=all maps
+                           # every pixel to TONE_DST's p50 (120) with no spline-fit
+                           # slop: the measured delta is the exact knot jump, not
+                           # an artifact of where the fitted curve happens to sit
+                           # between anchors.
+TONE_SRC = (30, 100, 148)
+TONE_DST = (60, 120, 185)  # a BIGGER monotone remap than the gentle
+                           # (30,100,148)->(35,110,150) pair test_reframe.py's own
+                           # verify_tone accept-boundary test uses. Empirically
+                           # measured on this fixture (see task notes): the gentle
+                           # pair moves the mean by only ~9 units, too thin a
+                           # margin for a regression proof; this pair — still
+                           # confirmed monotone by verify_tone below — measures a
+                           # clean 20.
+
+
+@pytest.fixture(scope="module")
+def tone_clip(tmp_path_factory):
+    p = tmp_path_factory.mktemp("colour_stage") / "tone.mp4"
+    _flat_clip(p, TONE_COLOR, TONE_W, TONE_H, TONE_DUR, TONE_FPS)
+    return str(p)
+
+
+def test_tone_moves_the_delivered_pixels(tone_clip, tmp_path):
+    """A tone_src/tone_dst pair must render MEASURABLY different pixels than no
+    tone at all — the grade-moves-pixels regression class (see
+    test_the_grade_moves_the_delivered_pixels above), applied to the tone knob.
+
+    test_tone_renders_a_full_length_clip_end_to_end (above) only proves the
+    pipeline SURVIVES a tone pair end-to-end; it does not prove the curve
+    reaches the delivered frame. Dropping the `tone=tone` kwarg from reframe's
+    `color.grade_chain(...)` call — tone_src/tone_dst would still be validated
+    and verify_tone would still run, then the render would silently skip the
+    curve — would pass that test unchanged. This proof would catch it: with
+    the kwarg dropped, `on_rgb` collapses to the same value as `off_rgb` and
+    the delta assertion below fails.
+
+    Same confound-isolation trick as Proof 1/2: color_means=TARGET makes the
+    base gains_for_means mixer an identity (1, 1, 1), so ONLY the tone curve
+    (applied earlier in grade_chain's fixed order — see its docstring) can
+    move the flat clip's pixels between the two renders.
+    """
+    reframe.verify_tone(color.tone_arg(TONE_SRC, TONE_DST))   # confirm monotone FIRST
+    rp = _static_route(tmp_path, "route.json", TONE_W, TONE_H, TONE_DUR, TONE_FPS)
+
+    def _render(name, **colour_kwargs):
+        out = tmp_path / f"{name}.mp4"
+        spec = ReframeSpec(composition="center", grid="thirds", canvas=(16, 9),
+                           color_means=TARGET, delivery=Delivery("native"), **colour_kwargs)
+        reframe.reframe(spec, tone_clip, rp, str(out), str(tmp_path / f"{name}_path.json"))
+        return str(out)
+
+    off_rgb = _frame_mean_rgb(_render("tone_off"), 1.0)
+    on_rgb = _frame_mean_rgb(_render("tone_on", tone_src=TONE_SRC, tone_dst=TONE_DST), 1.0)
+
+    delta = max(abs(a - b) for a, b in zip(off_rgb, on_rgb))
+    assert delta > 12.0, (
+        f"off={off_rgb} on={on_rgb}: a tone_src/tone_dst pair must move the "
+        "delivered pixels measurably, not render identically to no tone at all — "
+        "this is exactly the regression a dropped `tone=tone` kwarg in "
+        "color.grade_chain's call would cause (measured on this fixture: "
+        "off=(100,100,100) on=(120,120,120), delta=20.0)")
