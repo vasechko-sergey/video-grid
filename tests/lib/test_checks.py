@@ -121,3 +121,17 @@ def test_jitter_does_not_invent_a_reversal_when_the_crop_lags_a_forward_subject(
     res = ck.jitter(path, "right", max_reversal=10, route=route)
     assert res["pass"] is True
     assert res["worst_reversal"] == 0
+
+
+def test_jitter_falls_back_to_vacuum_when_route_is_shorter_than_path():
+    # a truncated/desynced route (len < path) must fall back to vacuum-judging,
+    # not IndexError: the guard len(route) >= len(path) is the fail-closed gate
+    path = [100, 110, 90, 130, 100]
+    short = _route([100, 110])
+    assert (ck.jitter(path, "right", 10, route=short)
+            == ck.jitter(path, "right", 10))   # identical to the no-route vacuum result
+
+
+def test_jitter_empty_route_is_the_historical_vacuum_behaviour():
+    path = [100, 110, 90, 130, 100]
+    assert ck.jitter(path, "right", 10, route=[]) == ck.jitter(path, "right", 10)
