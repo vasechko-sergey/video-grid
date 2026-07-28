@@ -23,10 +23,11 @@ def test_route_json_roundtrip(tmp_path):
 
 
 def test_trackmeta_roundtrip():
-    # pin_matched and degraded ride along explicitly: to_dict() always emits both (None here,
-    # since this dict predates any pin or degradation), so the round-trip dict must include them too.
+    # pin_matched, degraded, and stitched ride along explicitly: to_dict() always emits all three
+    # (None/None/[] here, since this dict predates any pin, degradation, or stitch), so the
+    # round-trip dict must include them too.
     d = {"hero": 3, "ambiguous": True, "intent": "action", "features": {"3": {"n": 5}},
-         "pin_matched": None, "degraded": None}
+         "pin_matched": None, "degraded": None, "stitched": []}
     tm = m.TrackMeta.from_dict(d)
     assert tm.hero == 3 and tm.ambiguous is True and tm.intent == "action"
     assert tm.to_dict() == d
@@ -60,6 +61,22 @@ def test_trackmeta_degraded_roundtrips_and_defaults_none():
     old = {"hero": 3, "ambiguous": False, "intent": "action",
            "features": {}, "pin_matched": None}
     assert TrackMeta.from_dict(old).degraded is None
+
+
+def test_trackmeta_stitched_defaults_empty_and_round_trips():
+    # default: a clean single-id route records no stitched ids
+    assert m.TrackMeta().stitched == []
+    # explicit value survives to_dict → from_dict
+    tm = m.TrackMeta(hero=1, stitched=[66, 91])
+    assert tm.to_dict()["stitched"] == [66, 91]
+    assert m.TrackMeta.from_dict(tm.to_dict()).stitched == [66, 91]
+
+
+def test_trackmeta_from_dict_without_stitched_is_backward_compatible():
+    # a sidecar written before this slice has no "stitched" key → []
+    legacy = {"hero": 1, "ambiguous": False, "intent": "action",
+              "features": {}, "pin_matched": None, "degraded": None}
+    assert m.TrackMeta.from_dict(legacy).stitched == []
 
 
 def test_croppath_json_roundtrip(tmp_path):

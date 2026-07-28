@@ -91,6 +91,8 @@ class TrackMeta:
                                        # nothing matched it → orchestration raises hero-unmatched
     degraded: str | None = None    # None = clean (YOLO) | "flow" | "manual" (design 2026-07-21 §5) —
                                     # ROUTE-side provenance, the twin of PathMeta.pan/.stabilized
+    stitched: list[int] = field(default_factory=list)   # ids merged onto the route BEYOND the hero
+                                    # by an ID-switch stitch (design 2026-07-28 §6). [] = clean single id.
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":
@@ -103,12 +105,14 @@ class TrackMeta:
                              f"regenerate the meta sidecar")
         return cls(hero=d.get("hero"), ambiguous=bool(d.get("ambiguous", False)),
                    intent=d.get("intent", "action"), features=d.get("features", {}),
-                   pin_matched=d.get("pin_matched"), degraded=d.get("degraded"))
+                   pin_matched=d.get("pin_matched"), degraded=d.get("degraded"),
+                   stitched=list(d.get("stitched", [])))
 
     def to_dict(self) -> dict:
         return {"hero": self.hero, "ambiguous": self.ambiguous,
                 "intent": self.intent, "features": self.features,
-                "pin_matched": self.pin_matched, "degraded": self.degraded}
+                "pin_matched": self.pin_matched, "degraded": self.degraded,
+                "stitched": self.stitched}
 
 
 @dataclass
