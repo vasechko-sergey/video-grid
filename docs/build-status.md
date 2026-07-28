@@ -4,13 +4,57 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-26._
+_Last updated: 2026-07-27._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Colour-as-a-stage (slice F) DONE (2026-07-27)** — plan
+  `docs/plans/2026-07-26-colour-stage.md` + design
+  `docs/specs/2026-07-26-colour-stage-design.md`, Tasks 0–16. Promotes colour from
+  the single normalize-to-middle gain to a per-episode **actuator**, landing the
+  parked `wip/montage-run-hardening` colour code (commit `4841dd3`, written live on
+  the first 99-clip run, never TDD-reviewed) through the design→plan→TDD cycle it
+  skipped, plus four additions. `scripts/lib/color.py` becomes the single colour
+  authority: the seven parked grade primitives (`black_point`/`highlight`/
+  `saturation`/`shadow_red`/`mid_blue`/`dip` + the non-linear `tone` profile
+  transfer) + a new `grade_chain` composer that owns the one fixed op order (moved
+  out of `reframe`) + an **additive, identity-off auto white-balance**
+  (`white_balance_gains`/`_arg`, grey-world toward the common channel average,
+  emitted first, `""` at strength 0 so every pre-slice render stays byte-identical)
+  + a pure `percentiles`. `reframe` builds the `wb`/`tone` fragments, runs the
+  render-time `verify_tone` banding guard, and splices the finished grade into its
+  one `-vf` tail (**one encode preserved**). `ReframeSpec`/`EDLEpisode`/`Manifest`
+  carry the nine identity-default colour fields (`+white_balance`); `process_episode`
+  threads them into `ReframeSpec` and passes the pre-grade segment as `source=` to
+  the check. New pure `scripts/lib/color_fidelity.py` (`hue`/`hue_drift`/`evaluate`,
+  exposure/saturation-invariant hue-angle) + `check_episode`'s advisory
+  `color_fidelity` check — subject-region hue drift source-vs-graded, `passed=None`,
+  **out of `overall`** (never fails the episode). New `scripts/color_measure.py`
+  (`measure_profile` → `(p5,p50,p95)` luma) makes `tone` hand-authorable. Colour-
+  range (tv/pc) correctness in `assembly`/`ExportProfile`. `edl_to_reel
+  --color-delta-max` overrides the across-cut ceiling. **1869 passed / 2 skipped**
+  (real ffmpeg colour proofs: the grade — incl. `white_balance` and `tone` — moves
+  the delivered pixels; the fast path is byte-identical at defaults; `verify_tone`
+  refuses a banding curve; the fidelity check flags a hue-broken grade). **Approach:
+  faithful port + tighten the colour boundary** (`color.py` owns the op order via
+  `grade_chain`). **Review-driven fixes (separate follow-up commits):** the parked
+  `assembly.matches` required an exact `tv` tag, which silently re-encoded every
+  self-produced (untagged) episode — a lossless-assemble regression — fixed by
+  treating `"unknown"` as delivery-compatible + an anti-regression test
+  (`a78a53e`); `EDLEpisode` now coerces `tone_src`/`tone_dst` list→tuple for
+  round-trip symmetry (`16df305`); `_colour_fidelity`'s params typed (`f4f5069`);
+  `ReframeSpec` colour-range tests assert the remedy text + bool-reject
+  (`7164576`); the tone integration proof asserts the curve moves the delivered
+  pixels (`f5f75f8`). **Deferred (NOT built):** the design-§10 match-grade
+  **conductor** (measure every episode → one common target → auto-author `tone`
+  pairs — slice F is its foundation, reusing `measure_profile`), the §10 mood LUT,
+  the §9 in-episode "mean-RGB ±8" gate (the richer grade supersedes it),
+  `smooth_window_s` (pathsmooth), and `edl_to_reel`'s `platform` param (safe-zones
+  follow-up — the current signature still has none).
 
 - **Edit-plan span merge (feedback #3, slice 3b) DONE (2026-07-26)** — plan
   `docs/plans/2026-07-26-edit-plan-span-merge.md` + design

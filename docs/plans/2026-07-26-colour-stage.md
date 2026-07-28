@@ -80,7 +80,7 @@ Constants: `BLACK_POINT_MAX=0.35`, `HIGHLIGHT_KNEE=0.55`, `HIGHLIGHT_MIN=0.6`,
 `MID_BLUE_MAX=1.20`, `MID_BLUE_BAND=(0.45,0.65)`, `MID_BLUE_PINS=(0.25,0.85)`,
 `DIP_MAX=0.5`, `DIP_COLOR="0x141414"`.
 
-- [ ] **Step 1: Write the failing tests** (representative — cover every primitive's identity, a value, out-of-range, and `bool`)
+- [x] **Step 1: Write the failing tests** (representative — cover every primitive's identity, a value, out-of-range, and `bool`)
 
 ```python
 # tests/lib/test_color.py — add
@@ -134,10 +134,10 @@ def test_shadow_red_toe_only_pins_the_top():
     assert frag.startswith(",curves=r='") and "0.50/0.50" in frag and "1/1" in frag
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `.venv/bin/python -m pytest tests/lib/test_color.py -q` → FAIL (`AttributeError: module 'scripts.lib.color' has no attribute 'black_point_arg'`).
-- [ ] **Step 3: Port the primitives** — copy the constants + eight functions verbatim from `git show 4841dd3:scripts/lib/color.py` into `scripts/lib/color.py`.
-- [ ] **Step 4: Run to verify they pass** — `.venv/bin/python -m pytest tests/lib/test_color.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run to verify they fail** — `.venv/bin/python -m pytest tests/lib/test_color.py -q` → FAIL (`AttributeError: module 'scripts.lib.color' has no attribute 'black_point_arg'`).
+- [x] **Step 3: Port the primitives** — copy the constants + eight functions verbatim from `git show 4841dd3:scripts/lib/color.py` into `scripts/lib/color.py`.
+- [x] **Step 4: Run to verify they pass** — `.venv/bin/python -m pytest tests/lib/test_color.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -155,7 +155,7 @@ git commit -m "feat: color.py — seven per-episode grade primitives (port from 
 The single authority for the colour-op order (moves the composition out of
 `reframe._filter_args`). `wb`/`tone` are pre-built fragments the caller supplies.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_grade_chain_default_is_just_the_mixer():
@@ -176,8 +176,8 @@ def test_grade_chain_orders_every_op():
     assert out.index("eq=saturation") < out.index("curves=all='0/0 0.55") < out.index("fade=t=in")
 ```
 
-- [ ] **Step 2: Run to verify it fails** — `pytest tests/lib/test_color.py::test_grade_chain_default_is_just_the_mixer -q` → FAIL.
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify it fails** — `pytest tests/lib/test_color.py::test_grade_chain_default_is_just_the_mixer -q` → FAIL.
+- [x] **Step 3: Implement**
 
 ```python
 def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
@@ -198,8 +198,8 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
             + dip_arg(dip, dur))
 ```
 
-- [ ] **Step 4: Run to verify it passes** — `pytest tests/lib/test_color.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — `pytest tests/lib/test_color.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -216,7 +216,7 @@ git commit -m "feat: color.grade_chain — the one fixed colour-op order"
 
 Grey-world neutralize toward the common channel average; OFF (`""`) at strength 0.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_white_balance_off_is_identity():
@@ -240,8 +240,8 @@ def test_white_balance_clamps_and_rejects_bool():
         color.white_balance_arg((80, 100, 120), True)
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (no `white_balance_gains`).
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify it fails** — FAIL (no `white_balance_gains`).
+- [x] **Step 3: Implement**
 
 ```python
 def white_balance_gains(means: tuple[float, ...], strength: float,
@@ -269,8 +269,8 @@ def white_balance_arg(means: tuple[float, ...], strength: float) -> str:
     return mixer_arg(*white_balance_gains(means, strength)) + ","
 ```
 
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -285,7 +285,7 @@ git commit -m "feat: color.white_balance — additive grey-world neutralize, ide
 - Modify: `scripts/lib/color.py`
 - Test: `tests/lib/test_color.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_percentiles_of_a_known_histogram():
@@ -306,8 +306,8 @@ def test_percentiles_rejects_wrong_length():
         color.percentiles([1, 2, 3])
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL.
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify it fails** — FAIL.
+- [x] **Step 3: Implement**
 
 ```python
 def percentiles(hist256: list[int]) -> tuple[float, float, float]:
@@ -332,8 +332,8 @@ def percentiles(hist256: list[int]) -> tuple[float, float, float]:
     return (_pct(0.05), _pct(0.50), _pct(0.95))
 ```
 
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -354,7 +354,7 @@ Port the parked `ReframeSpec` colour fields (`git diff 4841dd3^ 4841dd3 -- scrip
 `dip`, `tone_src`, `tone_dst` — all identity-default. `models` importing `color` is
 safe (color imports nothing from models). tone validation delegates to `color.tone_arg`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_models.py — add
@@ -388,8 +388,8 @@ def test_reframespec_tone_is_an_xor_pair_validated_by_color():
     ReframeSpec(**base, tone_src=(30, 100, 148), tone_dst=(35, 110, 150))     # valid, no raise
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL.
-- [ ] **Step 3: Implement** — add `from scripts.lib import color` near the geometry import; add the nine fields (identity defaults) to `ReframeSpec` after `color_correct`; add validation in `__post_init__`. `white_balance` block:
+- [x] **Step 2: Run to verify it fails** — FAIL.
+- [x] **Step 3: Implement** — add `from scripts.lib import color` near the geometry import; add the nine fields (identity defaults) to `ReframeSpec` after `color_correct`; add validation in `__post_init__`. `white_balance` block:
 
 ```python
         if (isinstance(self.white_balance, bool) or not isinstance(self.white_balance, (int, float))
@@ -402,8 +402,8 @@ For `black_point`/`dip`/`mid_blue`/`shadow_red`/`saturation`/`highlight` and the
 XOR + `color.tone_arg(...)` delegation, copy the parked `__post_init__` blocks verbatim
 (from the models diff) — but **do not** copy the `smooth_window_s` block.
 
-- [ ] **Step 4: Run to verify it passes** — `pytest tests/lib/test_models.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — `pytest tests/lib/test_models.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -422,7 +422,7 @@ Port `ExportProfile.color_range` (field + validation + `args()` append) verbatim
 parked models diff. Add `CheckSpec.hue_drift_max: float = 25.0` (degrees; the advisory
 subject-hue-drift threshold) + validation.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_export_profile_color_range():
@@ -440,8 +440,8 @@ def test_checkspec_hue_drift_max():
         CheckSpec(composition="center", grid="thirds", target_dur=3.0, hue_drift_max=-1)
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL.
-- [ ] **Step 3: Implement** — port `color_range` (field default `"tv"`, `__post_init__` `in ("tv","pc")` check, `args()` appends `"-color_range", self.color_range`). Add to `CheckSpec`:
+- [x] **Step 2: Run to verify it fails** — FAIL.
+- [x] **Step 3: Implement** — port `color_range` (field default `"tv"`, `__post_init__` `in ("tv","pc")` check, `args()` appends `"-color_range", self.color_range`). Add to `CheckSpec`:
 
 ```python
     hue_drift_max: float = 25.0   # deg: advisory subject hue-drift ceiling (color_fidelity)
@@ -454,8 +454,8 @@ and in `CheckSpec.__post_init__`:
                              f"got {self.hue_drift_max!r}")
 ```
 
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -475,7 +475,7 @@ Port `verify_tone` + `RAMP_PROBE_W` verbatim from the parked reframe diff. Then,
 8-param version); `reframe` builds `wb`/`tone`/`grade` via `color`. **Do not** port the
 parked `compute_path` lead-direction fix or the `smooth_window` plumbing.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_reframe.py — add
@@ -512,8 +512,8 @@ def test_verify_tone_accepts_a_gentle_monotone_curve():
 (`test_verify_tone_*` need a working ffmpeg — mark with `@pytest.mark.integration` if the
 module separates them, else they run in the unit suite as the repo's ffmpeg is baseline.)
 
-- [ ] **Step 2: Run to verify they fail** — FAIL (`_filter_args` takes `gains`, not `grade`; no `verify_tone`).
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify they fail** — FAIL (`_filter_args` takes `gains`, not `grade`; no `verify_tone`).
+- [x] **Step 3: Implement**
   - Add `verify_tone` + `RAMP_PROBE_W` (copy from parked reframe diff).
   - Change `_filter_args` signature to `(rl, xexpr, cy, grade, fps, dur)` and body:
     ```python
@@ -548,8 +548,8 @@ module separates them, else they run in the unit suite as the repo's ffmpeg is b
     ```
     and change the command splice to `*_filter_args(rl, xexpr, cy, grade, fps, dur),`.
 
-- [ ] **Step 4: Run to verify they pass, and the whole reframe suite stays green** — `pytest tests/lib/test_reframe.py tests/integration -k reframe -q` → PASS (the fast-path pin is the byte-identical guard).
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify they pass, and the whole reframe suite stays green** — `pytest tests/lib/test_reframe.py tests/integration -k reframe -q` → PASS (the fast-path pin is the byte-identical guard).
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reframe.py tests/lib/test_reframe.py
@@ -564,7 +564,7 @@ git commit -m "feat: reframe builds grade via color.grade_chain + verify_tone (A
 - Create: `scripts/lib/color_fidelity.py`
 - Test: `tests/lib/test_color_fidelity.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_color_fidelity.py — new
@@ -598,8 +598,8 @@ def test_evaluate_worst_and_threshold():
     assert grey["status"] == "not-checked"
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (module missing).
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify it fails** — FAIL (module missing).
+- [x] **Step 3: Implement**
 
 ```python
 """Advisory colour-fidelity metric (design 2026-07-26 §7): subject hue drift,
@@ -641,8 +641,8 @@ def evaluate(pairs: list[tuple], threshold: float) -> dict:
             "exceeded": worst > threshold, "samples": len(drifts)}
 ```
 
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color_fidelity.py tests/lib/test_color_fidelity.py
@@ -662,7 +662,7 @@ Sample the subject region in the source (route bbox, source px) and in the grade
 report `CheckResult("color_fidelity", None, …)` — advisory, `passed=None`, excluded from
 `overall`. `source=None`, a pan, or an empty route → `not-checked`.
 
-- [ ] **Step 1: Write the failing tests** (a pure-logic unit for the `not-checked` arms + an integration proof)
+- [x] **Step 1: Write the failing tests** (a pure-logic unit for the `not-checked` arms + an integration proof)
 
 ```python
 # tests/lib/test_check_episode.py — add
@@ -686,8 +686,8 @@ pytestmark = pytest.mark.integration
 #   - color_fidelity never sets report.overall to False (advisory)
 ```
 
-- [ ] **Step 2: Run to verify they fail** — FAIL (`run` has no `source`).
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify they fail** — FAIL (`run` has no `source`).
+- [x] **Step 3: Implement**
   - `run(clip, route_path, path_path, spec, out, source: str | None = None)`.
   - Keep the CropPath object (not only `.xs`) and the `RoutePoint` list for the projection:
     ```python
@@ -705,7 +705,7 @@ pytestmark = pytest.mark.integration
         """Mean (R,G,B) of a pixel box in one grabbed frame at time t. box = (x0,y0,x1,y1)."""
         with tempfile.TemporaryDirectory() as tmp:
             f = f"{tmp}/f.png"
-            proc.run([ffbin.ffmpeg(), "-y", "-ss", f"{t:.3f}", "-i", clip,
+            proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-ss", f"{t:.3f}",
                       "-frames:v", "1", f])          # -ss AFTER -i (§12 seek order)
             im = Image.open(f).convert("RGB")
             x0, y0, x1, y1 = box
@@ -736,8 +736,8 @@ pytestmark = pytest.mark.integration
   - Imports: `from scripts.lib import color_fidelity` and ensure `geometry`, `route_from_json`, `CropPath` are imported (geometry + route_from_json + CropPath already are).
   - **Advisory:** `passed=None` keeps it out of `report.overall` (same convention as the zero-freedom `framing` check). Confirm `Report.overall`/`fail_reasons` ignore `passed is None`.
 
-- [ ] **Step 4: Run to verify they pass** — `pytest tests/lib/test_check_episode.py tests/integration/test_color_fidelity.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify they pass** — `pytest tests/lib/test_check_episode.py tests/integration/test_color_fidelity.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_episode.py tests/lib/test_check_episode.py tests/integration/test_color_fidelity.py
@@ -759,7 +759,7 @@ each (parked had 8; we carry 9). The editorial passthrough in `build_edl`/`windo
 is already generic (`**ed` → `EDLEpisode(**editorial)`), so **no `edit_plan` logic change** —
 only extend `window_to_episode`'s docstring field list to mention the colour knobs.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_edl.py — add
@@ -793,14 +793,14 @@ def test_manifest_colour_defaults_identity():
     assert m.tone_src is None
 ```
 
-- [ ] **Step 2: Run to verify they fail** — FAIL.
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify they fail** — FAIL.
+- [x] **Step 3: Implement**
   - `EDLEpisode`: add the 9 fields (copy the parked 8 + add `white_balance: float = 0.0`); extend `to_dict` and `to_manifest_dict` to emit all 7 scalars always and the tone pair only when set (copy the parked `**({"tone_src": …} if … else {})` idioms, adding `white_balance`).
   - `Manifest`: add the 9 fields; add their names to `OPTIONAL` (copy parked, add `"white_balance"`); add the `from_dict` parses (copy parked, add `white_balance=float(d.get("white_balance") or 0.0)`).
   - `window_to_episode` docstring: add `white_balance/black_point/highlight/saturation/shadow_red/mid_blue/dip/tone_src/tone_dst` to the "optional editorial fields" list.
 
-- [ ] **Step 4: Run to verify they pass** — `pytest tests/lib/test_edl.py tests/lib/test_manifest.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify they pass** — `pytest tests/lib/test_edl.py tests/lib/test_manifest.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py scripts/lib/manifest.py scripts/edit_plan.py tests/lib/test_edl.py tests/lib/test_manifest.py
@@ -819,7 +819,7 @@ Thread the nine colour fields from the `Manifest` into `ReframeSpec`, and pass t
 pre-grade segment `src` to the check as `source=`. **Exclude `smooth_window_s`** from the
 parked block.
 
-- [ ] **Step 1: Write the failing test** (a spy that `ReframeSpec` receives the colour fields — monkeypatch `reframe.reframe` and `check_episode.run` so no ffmpeg runs)
+- [x] **Step 1: Write the failing test** (a spy that `ReframeSpec` receives the colour fields — monkeypatch `reframe.reframe` and `check_episode.run` so no ffmpeg runs)
 
 ```python
 # tests/lib/test_process_episode.py — add (or the module that already fakes reframe)
@@ -831,8 +831,8 @@ def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
     ...
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (`ReframeSpec` built without colour fields; check has no `source=`).
-- [ ] **Step 3: Implement** — in the `ReframeSpec(...)` build, add (do NOT add `smooth_window_s`):
+- [x] **Step 2: Run to verify it fails** — FAIL (`ReframeSpec` built without colour fields; check has no `source=`).
+- [x] **Step 3: Implement** — in the `ReframeSpec(...)` build, add (do NOT add `smooth_window_s`):
 
 ```python
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
@@ -851,8 +851,8 @@ and pass the pre-grade segment to the check:
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"), source=src))
 ```
 
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/process_episode.py tests/lib/test_process_episode.py
@@ -871,7 +871,7 @@ Port verbatim from the parked assembly diff: `DELIVERY_RANGE`, `StreamInfo.color
 the `probe_stream` `color_range` select + read, `matches(color_range=)`, and
 `_normalize`'s `in_range=auto:out_range=` convert + `-color_range` tag.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_assembly.py — add
@@ -886,10 +886,10 @@ def test_matches_treats_a_differing_range_as_an_outlier():
     assert DELIVERY_RANGE == "tv"
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (`StreamInfo` has no `color_range`).
-- [ ] **Step 3: Implement** — copy the parked assembly changes.
-- [ ] **Step 4: Run to verify it passes, plus the assemble goldens stay green** — `pytest tests/lib/test_assembly.py tests/integration -k assemble -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run to verify it fails** — FAIL (`StreamInfo` has no `color_range`).
+- [x] **Step 3: Implement** — copy the parked assembly changes.
+- [x] **Step 4: Run to verify it passes, plus the assemble goldens stay green** — `pytest tests/lib/test_assembly.py tests/integration -k assemble -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py tests/lib/test_assembly.py
@@ -909,7 +909,7 @@ Add `color_delta_max: float | None = None` to `edl_to_reel(...)` (keyword-only, 
 (`**({} if None else {"color_delta_max": …})`). **Do not** add `platform` (safe-zones
 follow-up — the current signature has none, and colour is this slice's scope).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_color_delta_max_overrides_the_reel_ceiling(monkeypatch, tmp_path):
@@ -919,10 +919,10 @@ def test_color_delta_max_overrides_the_reel_ceiling(monkeypatch, tmp_path):
     ...
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (`edl_to_reel` has no `color_delta_max`).
-- [ ] **Step 3: Implement** — copy the parked edl_to_reel `color_delta_max` pieces only (the `extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}`, `ReelManifest(..., **extra)`, the CLI flag + its docstring), leaving `platform` out.
-- [ ] **Step 4: Run to verify it passes** — PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run to verify it fails** — FAIL (`edl_to_reel` has no `color_delta_max`).
+- [x] **Step 3: Implement** — copy the parked edl_to_reel `color_delta_max` pieces only (the `extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}`, `ReelManifest(..., **extra)`, the CLI flag + its docstring), leaving `platform` out.
+- [x] **Step 4: Run to verify it passes** — PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edl_to_reel.py tests/lib/test_edl_to_reel.py
@@ -940,7 +940,7 @@ git commit -m "feat: edl_to_reel --color-delta-max overrides the across-cut ceil
 A per-clip `(p5,p50,p95)` luma reader so `tone` is hand-authorable. Decodes a downscaled
 grayscale still (numpy in the driver only) → 256-bin histogram → `color.percentiles`.
 
-- [ ] **Step 1: Write the failing test** (real ffmpeg — a synthesized mid-grey clip has all three percentiles near its known level)
+- [x] **Step 1: Write the failing test** (real ffmpeg — a synthesized mid-grey clip has all three percentiles near its known level)
 
 ```python
 # tests/integration/test_color_measure.py — new
@@ -951,8 +951,8 @@ pytestmark = pytest.mark.integration
 # (dark half / bright half) → p5 low, p95 high, p50 between.
 ```
 
-- [ ] **Step 2: Run to verify it fails** — FAIL (module missing).
-- [ ] **Step 3: Implement**
+- [x] **Step 2: Run to verify it fails** — FAIL (module missing).
+- [x] **Step 3: Implement**
 
 ```python
 """Measure a clip's (p5, p50, p95) luma — the authoring aid for ReframeSpec.tone
@@ -969,7 +969,7 @@ def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, f
     Decodes ONE 160-wide grayscale still to rawvideo, histograms it, and delegates the
     percentiles to color.percentiles (numpy stays in this driver, out of lib/color)."""
     t = 1.0 if at is None else at
-    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-ss", f"{t:.3f}", "-i", clip,
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip, "-ss", f"{t:.3f}",
                     "-frames:v", "1", "-vf", "scale=160:-2,format=gray",
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout      # -ss AFTER -i (§12)
     if not out:
@@ -995,8 +995,8 @@ if __name__ == "__main__":
 (The `import subprocess` line is only if the file needs it; if `proc.run` covers all calls,
 omit it — the landmine-lint requires the `subprocess` import allowlist to match actual use.)
 
-- [ ] **Step 4: Run to verify it passes** — `pytest tests/integration/test_color_measure.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify it passes** — `pytest tests/integration/test_color_measure.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/color_measure.py tests/integration/test_color_measure.py
@@ -1011,7 +1011,7 @@ git commit -m "feat: color_measure — per-clip (p5,p50,p95) luma for tone autho
 - Modify: `skills/edit-plan/SKILL.md`
 - Test: none (docs); a manual read-through
 
-- [ ] **Step 1: Add a colour paragraph** after the layout/background bullets in the "Author `selection.json`" section:
+- [x] **Step 1: Add a colour paragraph** after the layout/background bullets in the "Author `selection.json`" section:
 
 > **Colour (optional, per episode).** Every episode carries an identity-default grade, so
 > omit these unless a clip needs correcting. `white_balance` (0–1) neutralizes a cast
@@ -1023,8 +1023,8 @@ git commit -m "feat: color_measure — per-clip (p5,p50,p95) luma for tone autho
 > common target — measure both with `bin/vg color_measure <clip>`. A banding tone curve
 > fails loud at render (verify_tone), so trust the error's advice to widen the anchors.
 
-- [ ] **Step 2: Add the field to the shape example** — one episode with e.g. `"white_balance": 0.5, "saturation": 1.1`.
-- [ ] **Step 3: Commit**
+- [x] **Step 2: Add the field to the shape example** — one episode with e.g. `"white_balance": 0.5, "saturation": 1.1`.
+- [x] **Step 3: Commit**
 
 ```bash
 git add skills/edit-plan/SKILL.md
@@ -1042,7 +1042,7 @@ git commit -m "docs: edit-plan SKILL — colour grade / white-balance / tone aut
 Prove the load-bearing behaviours on real bytes (some overlap Tasks 6/8/13 — consolidate
 the cross-cutting proofs here).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/integration/test_colour_stage.py — new
@@ -1058,11 +1058,11 @@ pytestmark = pytest.mark.integration
 # 5. verify_tone: a banding triple raises at reframe time (episode never delivers).
 ```
 
-- [ ] **Step 2: Run to verify they fail** — FAIL.
-- [ ] **Step 3: Implement the fixtures/assertions** (reuse `sample_clip` and the existing
+- [x] **Step 2: Run to verify they fail** — FAIL.
+- [x] **Step 3: Implement the fixtures/assertions** (reuse `sample_clip` and the existing
   integration helpers; measure means via `ffprobe`/PIL as the other integration tests do).
-- [ ] **Step 4: Run to verify they pass** — `pytest tests/integration/test_colour_stage.py -q` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify they pass** — `pytest tests/integration/test_colour_stage.py -q` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_colour_stage.py
@@ -1076,18 +1076,18 @@ git commit -m "test: real-ffmpeg colour-stage proofs (byte-identical, grade move
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, this plan (tick checkboxes)
 
-- [ ] **Step 1: Run the whole suite** — `.venv/bin/python -m pytest -q`. Record the exact pass/skip counts.
-- [ ] **Step 2: build-status** — add a "colour-as-a-stage (slice F) DONE" entry (the parked port + WB + measurer + fidelity check + range correctness; what is deferred: the conductor, mood LUT, `smooth_window_s`, `edl_to_reel` `platform`). Bump `_Last updated_`.
-- [ ] **Step 3: pipeline-map** — note colour is now a per-episode actuator at §5.10 (the grade rides reframe) + the advisory fidelity check at episode postcheck; the design §10 match-grade conductor stays deferred.
-- [ ] **Step 4: CLAUDE.md** — add two registry rows (the colour-stage design + this plan) in the Quick Reference table.
-- [ ] **Step 5: Tick this plan's checkboxes** (`- [ ]` → `- [x]`), then commit.
+- [x] **Step 1: Run the whole suite** — `.venv/bin/python -m pytest -q`. Record the exact pass/skip counts.
+- [x] **Step 2: build-status** — add a "colour-as-a-stage (slice F) DONE" entry (the parked port + WB + measurer + fidelity check + range correctness; what is deferred: the conductor, mood LUT, `smooth_window_s`, `edl_to_reel` `platform`). Bump `_Last updated_`.
+- [x] **Step 3: pipeline-map** — note colour is now a per-episode actuator at §5.10 (the grade rides reframe) + the advisory fidelity check at episode postcheck; the design §10 match-grade conductor stays deferred.
+- [x] **Step 4: CLAUDE.md** — add two registry rows (the colour-stage design + this plan) in the Quick Reference table.
+- [x] **Step 5: Tick this plan's checkboxes** (`- [ ]` → `- [x]`), then commit.
 
 ```bash
 git add docs/ CLAUDE.md
 git commit -m "docs: register colour-as-a-stage (slice F) — build-status, pipeline-map, registry"
 ```
 
-- [ ] **Step 6: Final whole-slice review** — dispatch a fresh reviewer (opus) over the branch diff vs `main`: assert the fast path is byte-identical at defaults (the regression pin), `grade_chain` is the single order authority, `white_balance` is identity-off, the fidelity check is advisory (never sets `overall` False), no `lutrgb` reaches an argv (landmine-lint green), and `smooth_window_s`/`platform` were correctly excluded.
+- [x] **Step 6: Final whole-slice review** — dispatch a fresh reviewer (opus) over the branch diff vs `main`: assert the fast path is byte-identical at defaults (the regression pin), `grade_chain` is the single order authority, `white_balance` is identity-off, the fidelity check is advisory (never sets `overall` False), no `lutrgb` reaches an argv (landmine-lint green), and `smooth_window_s`/`platform` were correctly excluded.
 
 ---
 

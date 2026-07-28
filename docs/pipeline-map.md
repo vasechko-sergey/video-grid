@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-07-25._
+_Last updated: 2026-07-27._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -23,8 +23,8 @@ _Last updated: 2026-07-25._
 | 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3); a `selection.json` episode may reference a window range `"window": [i, j]` to merge adjacent activity units into one episode (3b, 2026-07-26) | Front-half authoring |
 | 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
 | 5.9  | assemble-draft | `draft.mp4` | ✅ | draft CLI + typed helpers (scripts/draft.py, scripts/lib/draft.py) — concat of raw segments, canvas-fit, processing_notes labels + music bed (SP1b, 5.9) | Front-half authoring |
-| 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1) | — |
-| 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` | — |
+| 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1); reframe now applies a per-episode colour **actuator** — 7 grade knobs + an additive auto white-balance + the non-linear `tone` profile-transfer, composed by `color.grade_chain` and riding reframe's **one** encode (colour-as-a-stage, 2026-07-27; the design-§10 match-grade **conductor** — auto-authoring `tone` pairs across episodes — deferred) | — |
+| 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` — mechanical gates + an **advisory** colour-fidelity check (subject hue drift source-vs-graded, `passed=None`, out of `overall`; 2026-07-27) | — |
 | 5.12 | audio-mix | `out/audio` | ✅ | music-only mix ✅ + ambient ducking ✅ + SFX whoosh ✅ (synth whoosh on major transitions, `ReelManifest.sfx`); §5.12 complete | **Phase B — music spine** |
 | 5.13 | reel-final-check (gate) | review | ✅ | **Mechanical half ✅ (complete)** — `check_reel`: black/length/colour/variety + loudness (hard), beat + `safe_zones` + `key_action` + `pad_bars` + `transitions` (all advisory — route-geometry/PathMeta checks; the last three landed 2026-07-17). Editorial half ✅ (2026-07-18) — reel-review SKILL dispatches a fresh reviewer subagent → typed REVIEW.json (Finding/Review), human-gated at CP3. | Phase B (audio) + Editorial |
 | 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate | — |

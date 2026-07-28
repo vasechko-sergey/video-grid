@@ -249,9 +249,9 @@ ad hoc):
 
 ```python
 def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, float]:
-    """(p5, p50, p95) luma of `clip` at sample time `at` (default: the midpoint).
-    Decodes a downscaled grayscale still via ffmpeg, bins to a 256-entry
-    histogram (numpy in the driver only), and calls color.percentiles."""
+    """(p5, p50, p95) luma of `clip` at sample time `at` (default: 1s in — a
+    settled frame). Decodes a downscaled grayscale still via ffmpeg, bins to a
+    256-entry histogram (numpy in the driver only), and calls color.percentiles."""
 ```
 
 Pure-core (`color.percentiles`) + tool-driver (`measure_profile`), the
@@ -333,10 +333,19 @@ milky, blown foam.
   `"tv"`|`"pc"`); `args()` appends `-color_range {color_range}` to the deliver
   encode.
 - **`assembly.py`** gains `DELIVERY_RANGE="tv"`; `StreamInfo.color_range`
-  (probed from ffprobe, `or "unknown"`); `matches(…, color_range)` requires it
-  (a differently-ranged episode is an outlier → normalized alone); `_normalize`
-  **converts** rather than relabels: `scale=…:in_range=auto:out_range={range}` +
-  `-color_range {range}`.
+  (probed from ffprobe, `or "unknown"`); `matches(…, color_range)` treats a
+  stream tagged the target range **or untagged (`"unknown"`) as compatible** — the
+  pipeline's own reframe output is untagged `yuv420p`, which *is* limited-range by
+  mp4 convention, so it must still take the lossless `-c copy` path; only a
+  **different explicit** tag (a foreign `pc` among `tv`) is the real
+  wrong-tag-stamping hazard and is normalized alone. (The parked port required
+  `== color_range`, which silently re-encoded **every** self-produced episode —
+  a review-caught regression, fixed with the `"unknown"`-compatible rule + an
+  anti-regression test.) `_normalize` **converts** rather than relabels:
+  `scale=…:in_range=auto:out_range={range}` + `-color_range {range}` — the sample
+  conversion is the load-bearing half; note libx264 does **not** physically write
+  the VUI range tag for the default `tv`, so files stay untagged-limited, the
+  consistent convention (§9).
 - **`edl_to_reel`** gains `color_delta_max: float | None = None` + a
   `--color-delta-max` CLI flag that overrides the **existing** across-cut ceiling
   (`ReelCheckSpec.color_delta_max`, default 12.0) via `ReelManifest`. It only
@@ -362,6 +371,13 @@ milky, blown foam.
   without it the render silently produces zero frames.
 - **White-balance residual.** The normalize-gain after WB re-casts slightly toward
   the cool target (§6) — documented, bounded (soft `0.55`), not silent.
+- **Untagged range must stay delivery-compatible.** `assemble()` sees only
+  reframe's own untagged (`"unknown"`) output; the parked `matches` required an
+  exact `tv` tag, which silently re-encoded **every** self-produced episode (a
+  second lossy pass, defeating the "one encode, at deliver" invariant) with zero
+  test signal. `matches` treats `"unknown"` as compatible with the delivery range;
+  only a foreign **explicit** `pc` normalizes. Pinned by an anti-regression test
+  (an untagged uniform reel takes `-c copy`, never a re-encode).
 - **The fidelity metric must be hue-only.** A drift check on overall colour would
   fight the intentional grade (which changes exposure/saturation on purpose); hue
   angle is the exposure/saturation-invariant metric that flags only a broken hue.

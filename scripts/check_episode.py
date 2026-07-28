@@ -116,7 +116,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
 
     `source` (the pre-grade segment) feeds the advisory color_fidelity check
     only — None (the default) reports that check `not-checked` and changes
-    nothing else; process_episode passes it (a later task).
+    nothing else; process_episode passes the reframe input segment here.
     """
     path = CropPath.from_json(path_path).xs
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
