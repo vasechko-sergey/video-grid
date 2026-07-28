@@ -92,7 +92,7 @@ class TrackMeta:
     degraded: str | None = None    # None = clean (YOLO) | "flow" | "manual" (design 2026-07-21 §5) —
                                     # ROUTE-side provenance, the twin of PathMeta.pan/.stabilized
     stitched: list[int] = field(default_factory=list)   # ids merged onto the route BEYOND the hero
-                                    # by an ID-switch stitch (design 2026-07-28 §6). [] = clean single id.
+                                                        # by an ID-switch stitch (design 2026-07-28 §6). [] = clean single id.
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":

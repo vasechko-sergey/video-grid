@@ -149,6 +149,7 @@ def _segments(per_frame: list[_Frame]) -> dict[int, dict]:
 
 
 def _median(xs: list[float]) -> float:
+    """Plain median — no numpy in this pure stitch core (design 2026-07-28 §3)."""
     s = sorted(xs)
     n = len(s)
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
@@ -493,7 +494,7 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
         # coordinates into the route (false teleports for the continuity check);
         # a frame gap is fine, smoothing bridges it. `hero_ids` is not that
         # fallback: every extra id in it passed stitch_ids' continuity test against
-        # the hero's own trajectory, the opposite of picking whoever is biggest.
+        # the segment it attaches to, the opposite of picking whoever is biggest.
         #
         # A handover OVERLAPS (see STITCH_MAX_OVERLAP_S), so for a few frames BOTH the
         # outgoing and incoming id report the same person from slightly different boxes.

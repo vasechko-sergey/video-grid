@@ -57,7 +57,7 @@ def test_available_false_when_ultralytics_absent(monkeypatch):
 
 # --- ID-switch stitching (§6.1a) ------------------------------------------------
 
-def _frames(spans, fps=60.0):
+def _frames(spans):
     """spans: {tid: (first, last, x0, dx, w, h)} → the per_frame shape build_route builds."""
     n = 1 + max(s[1] for s in spans.values())
     out = []
@@ -72,11 +72,11 @@ def _frames(spans, fps=60.0):
 
 def test_segments_records_ends_count_and_per_frame_x():
     pf = _frames({1: (0, 4, 100.0, 10.0, 120, 300)})
-    segs = track._segments(pf)
-    assert segs[1]["first"] == 0 and segs[1]["last"] == 4 and segs[1]["n"] == 5
-    assert segs[1]["head"] == (100.0, 500.0, 120, 300)
-    assert segs[1]["tail"] == (140.0, 500.0, 120, 300)
-    assert segs[1]["at"] == {0: 100.0, 1: 110.0, 2: 120.0, 3: 130.0, 4: 140.0}
+    assert track._segments(pf) == {1: {"first": 0, "last": 4, "n": 5,
+                                       "head": (100.0, 500.0, 120, 300),
+                                       "tail": (140.0, 500.0, 120, 300),
+                                       "at": {0: 100.0, 1: 110.0, 2: 120.0,
+                                              3: 130.0, 4: 140.0}}}
 
 
 def test_median_handles_odd_and_even_lengths():
@@ -97,7 +97,7 @@ def test_joinable_overlap_uses_shared_frames_and_skips_the_area_gate():
 def test_joinable_gap_joins_within_reach_and_same_size_class():
     a = {"at": {0: 100.0}, "tail": (100.0, 500.0, 120, 300), "head": (100.0, 500.0, 120, 300)}
     b = {"at": {10: 130.0}, "head": (130.0, 500.0, 120, 300), "tail": (130.0, 500.0, 120, 300)}
-    # 30px jump, reach floor = 0.02*1920 = 38.4 → within reach; same size → joins
+    # 30px jump vs reach = max(0.02*1920=38.4, 3.0*9*3.0=81.0) = 81.0; same size → joins
     assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is True
 
 
