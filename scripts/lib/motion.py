@@ -22,3 +22,22 @@ def classify(route: list[dict[str, float]], src_w: int, src_h: int,
     # ambiguous zone (large dx AND large growth, e.g. diagonal approach):
     # fall through to static on purpose — centered crop is the safe framing
     return ("static", None)
+
+
+def travel_direction(route: list[dict[str, float]]) -> str:
+    """Which way the subject NET travels, whatever `classify` called the shot.
+
+    `classify` answers "what kind of shot is this", and returns no direction for
+    head-on/static — including the ambiguous zone above, which a subject can enter
+    only when |dx| is LARGE. So the shot type can be undecided while the direction
+    is not, and a composition the author explicitly asked for still needs one.
+
+    One spelling, two readers: reframe.compute_path lays the crop out against it and
+    check_episode scores the result against it. If they derived it separately they
+    could disagree on a left-moving subject — the crop leading one way and the check
+    grading the other line — and the report would be wrong about a correct render.
+    An empty/1-point route has no travel; "right" matches classify's own default.
+    """
+    if len(route) < 2:
+        return "right"
+    return "right" if route[-1]["x"] - route[0]["x"] >= 0 else "left"

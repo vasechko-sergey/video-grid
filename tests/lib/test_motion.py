@@ -24,3 +24,18 @@ def test_static():
     r = _route([(0, 950, 500, 140, 320), (1, 952, 501, 141, 319),
                 (2, 949, 500, 140, 320)])
     assert m.classify(r, src_w=1920, src_h=1080) == ("static", None)
+
+def test_travel_direction_reads_net_dx():
+    from scripts.lib.motion import travel_direction
+    right = [dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320) for i in range(10)]
+    left = [dict(t=i / 30, x=1500 - i * 90, y=500, w=140, h=320) for i in range(10)]
+    assert travel_direction(right) == "right"
+    assert travel_direction(left) == "left"
+
+
+def test_travel_direction_defaults_to_right_without_travel():
+    from scripts.lib.motion import travel_direction
+    assert travel_direction([]) == "right"
+    assert travel_direction([dict(t=0.0, x=5.0, y=0.0, w=1.0, h=1.0)]) == "right"
+    flat = [dict(t=i / 30, x=500.0, y=0.0, w=1.0, h=1.0) for i in range(5)]
+    assert travel_direction(flat) == "right"
