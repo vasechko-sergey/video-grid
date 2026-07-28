@@ -104,6 +104,30 @@ def _seed_track(per_frame: list[_Frame], seed: tuple[float, ...], first_n: int =
     return best
 
 
+def _segments(per_frame: list[_Frame]) -> dict[int, dict]:
+    """Per track id: first/last frame index, the bbox at each end, and every frame's
+    x — `at` is what lets two OVERLAPPING segments be compared where they coexist."""
+    segs: dict[int, dict] = {}
+    for idx, dets in per_frame:
+        for tid, x, y, w, h in dets:
+            s = segs.get(tid)
+            if s is None:
+                segs[tid] = {"first": idx, "last": idx, "n": 1,
+                             "head": (x, y, w, h), "tail": (x, y, w, h), "at": {idx: x}}
+            else:
+                s["last"] = idx
+                s["n"] += 1
+                s["tail"] = (x, y, w, h)
+                s["at"][idx] = x
+    return segs
+
+
+def _median(xs: list[float]) -> float:
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
 def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
     """Track id chosen by a mechanical §5.10 rule pin. Ties break on the lowest
     track id so a re-run is deterministic.

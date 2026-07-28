@@ -53,3 +53,32 @@ def test_available_false_when_ultralytics_absent(monkeypatch):
     # the "ultralytics unavailable" rung-1 trigger, simulated without uninstalling
     monkeypatch.setitem(sys.modules, "ultralytics", None)
     assert track.available() is False
+
+
+# --- ID-switch stitching (§6.1a) ------------------------------------------------
+
+def _frames(spans, fps=60.0):
+    """spans: {tid: (first, last, x0, dx, w, h)} → the per_frame shape build_route builds."""
+    n = 1 + max(s[1] for s in spans.values())
+    out = []
+    for idx in range(n):
+        dets = []
+        for tid, (a, b, x0, dx, w, h) in spans.items():
+            if a <= idx <= b:
+                dets.append((tid, x0 + dx * (idx - a), 500.0, w, h))
+        out.append((idx, dets))
+    return out
+
+
+def test_segments_records_ends_count_and_per_frame_x():
+    pf = _frames({1: (0, 4, 100.0, 10.0, 120, 300)})
+    segs = track._segments(pf)
+    assert segs[1]["first"] == 0 and segs[1]["last"] == 4 and segs[1]["n"] == 5
+    assert segs[1]["head"] == (100.0, 500.0, 120, 300)
+    assert segs[1]["tail"] == (140.0, 500.0, 120, 300)
+    assert segs[1]["at"] == {0: 100.0, 1: 110.0, 2: 120.0, 3: 130.0, 4: 140.0}
+
+
+def test_median_handles_odd_and_even_lengths():
+    assert track._median([3.0, 1.0, 2.0]) == 2.0
+    assert track._median([1.0, 2.0, 3.0, 4.0]) == 2.5
