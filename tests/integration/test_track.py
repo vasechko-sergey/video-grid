@@ -688,3 +688,30 @@ def test_build_route_with_fps_supplied_does_not_stitch(monkeypatch, tmp_path):
     meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
     assert meta.stitched == []                    # no width → no stitch
     assert len(route) == 21                        # only tid 1's frames (0..20), not tid 66's
+
+
+def _order_vs_nearest_frames():
+    # hero id 1: frames 0..8 (+10px/frame). Same subject re-acquired as id 66 on
+    # frames 6..14, +30px offset. On the overlap id 66 is listed FIRST but sits
+    # FARTHER from the route — nearest-pick and detection order DISAGREE.
+    frames = []
+    for i in range(15):
+        dets = []
+        if 6 <= i <= 14:
+            dets.append(_FakeBox([100.0 + 10*i + 30, 500.0, 120.0, 300.0], 66))  # incoming FIRST
+        if i <= 8:
+            dets.append(_FakeBox([100.0 + 10*i, 500.0, 120.0, 300.0], 1))        # hero SECOND
+        frames.append(dets)
+    return frames
+
+
+def test_build_route_overlap_pick_follows_route_not_detection_order(monkeypatch, tmp_path):
+    monkeypatch.setattr(track, "_iter_detections", _fake_iter(_order_vs_nearest_frames()))
+    monkeypatch.setattr(track, "_probe_meta", lambda src: (60.0, 1920, 1080))
+    out = tmp_path / "route.json"
+    spec = models.TrackSpec(src="ignored.mp4", pin=models.HeroPin(kind="track", track_id=1))
+    route = track.build_route(spec, out=str(out))
+    meta = models.TrackMeta.from_dict(json.loads(out.with_suffix(".meta.json").read_text()))
+    assert meta.stitched == [66]
+    f6 = next(p for p in route if abs(p.t - 6/60.0) < 1e-9)
+    assert f6.x == 160.0     # nearest holds id 1; 190.0 == detection order / sort removed
