@@ -56,3 +56,15 @@ def test_window_frames_rejects_degenerate_input(seconds, fps):
     from scripts.lib import pathsmooth as ps
     with pytest.raises(ValueError):
         ps.window_frames(seconds, fps)
+
+
+def test_window_frames_floor_binds_below_five_frames():
+    # 0.05s @ 24fps → round(1.2)=1 (odd), which max(5, n) must lift to the savgol floor
+    from scripts.lib import pathsmooth as ps
+    assert ps.window_frames(0.05, 24.0) == 5
+
+
+def test_smooth_default_window_is_the_named_constant():
+    from scripts.lib import pathsmooth as ps
+    raw = [float(i) for i in range(20)]
+    assert ps.smooth(raw, max_step=10) == ps.smooth(raw, max_step=10, window=ps.DEFAULT_WINDOW)

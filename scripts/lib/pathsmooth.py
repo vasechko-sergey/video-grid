@@ -28,8 +28,8 @@ def window_frames(seconds: float, fps: float) -> int:
         raise ValueError(f"window_frames needs a positive span, got {seconds!r}s — "
                          "pass window=1 to smooth() to skip savgol entirely")
     n = round(seconds * fps)
-    if n % 2 == 0:                 # round DOWN to odd: 0.25s at 30fps is 7.5 -> 7,
-        n -= 1                     # the historical default, not 9
+    if n % 2 == 0:                 # round(0.25*30fps)==8 (ties-to-even); the -1 lands
+        n -= 1                     # the even result on 7 — the historical default, not 9
     return max(5, n)               # savgol needs window > polyorder (2)
 
 
