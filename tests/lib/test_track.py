@@ -111,3 +111,113 @@ def test_joinable_gap_refuses_a_very_different_size():
     a = {"at": {0: 100.0}, "tail": (100.0, 500.0, 120, 300), "head": (100.0, 500.0, 120, 300)}
     b = {"at": {10: 110.0}, "head": (110.0, 500.0, 20, 40), "tail": (110.0, 500.0, 20, 40)}
     assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is False
+
+
+_SPEED = {1: {"speed": 3.0}}
+
+
+def test_stitch_joins_a_track_that_resumes_where_the_hero_stopped():
+    # the measured case: hero ends at frame 182, a new id picks the SAME subject up at 183
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  142: (183, 550, 1450.0, 3.0, 130, 310)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 142}
+
+
+def test_stitch_refuses_a_stranger_across_the_frame():
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  9: (183, 550, 200.0, 3.0, 120, 300)})     # 1250px away in one frame
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_refuses_a_resumption_after_a_long_gap():
+    # 0.4s at 60fps = 24 frames; 40 is past it — not a blink, a different moment
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  7: (223, 550, 1450.0, 3.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_refuses_a_track_of_a_very_different_size():
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  8: (183, 550, 1450.0, 3.0, 20, 40)})      # a distant bystander
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_ignores_noise_fragments():
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  5: (183, 185, 1450.0, 3.0, 120, 300)})    # 3 frames < STITCH_MIN_FRAMES
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_chains_through_two_switches():
+    pf = _frames({1: (0, 100, 900.0, 3.0, 120, 300),
+                  2: (101, 200, 1210.0, 3.0, 120, 300),
+                  3: (201, 300, 1520.0, 3.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 2, 3}
+
+
+def test_stitch_reaches_backwards_for_the_head_of_a_shot():
+    # `largest` picks the LONGER late fragment; the take-off is the earlier one
+    pf = _frames({4: (0, 100, 600.0, 3.0, 120, 300),
+                  1: (101, 500, 910.0, 3.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 4}
+
+
+def test_stitch_with_no_hero_stitches_nothing():
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300)})
+    assert track.stitch_ids(pf, None, 60.0, 1920, _SPEED) == set()
+
+
+def test_stitch_without_a_frame_width_declines_to_guess():
+    # build_route skips the probe when the caller supplies fps — no scale, no stitch
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  142: (183, 550, 1450.0, 3.0, 130, 310)})
+    assert track.stitch_ids(pf, 1, 60.0, None, _SPEED) == {1}
+
+
+def test_stitch_joins_an_overlapping_handover():
+    # the measured shape: ByteTrack confirms the new id 2 frames BEFORE it drops the old.
+    # Positions and boxes are the real ones — tid 1 ends at (845, 151x360) and tid 66
+    # opens at (868, 142x352): 23px apart, the same rider.
+    pf = _frames({1: (0, 182, 1027.0, -1.0, 151, 360),      # tail x = 1027 - 182 = 845
+                  66: (180, 547, 868.0, 1.0, 142, 352)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 66}
+
+
+def test_stitch_refuses_a_bystander_who_brackets_the_hero():
+    # a track that spans the whole shot offers a small negative gap at BOTH ends, so the
+    # overlap tolerance alone would absorb it — the extension test is what refuses it
+    pf = _frames({1: (100, 300, 900.0, 3.0, 120, 300),
+                  5: (0, 500, 880.0, 0.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_refuses_an_overlap_longer_than_a_handover():
+    # 0.5s at 60fps = 30 frames; a 61-frame overlap is two people, not one handover
+    pf = _frames({1: (0, 182, 900.0, 3.0, 120, 300),
+                  6: (122, 547, 1450.0, 3.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_uses_where_two_overlapping_tracks_actually_sit():
+    # the same rider handed over across a 29-frame overlap, with the outgoing track's
+    # box COLLAPSING through spray (104x207 -> 70x116). The area gate would reject that
+    # pair on endpoints alone; on the frames they share they are 3px apart.
+    pf = _frames({1: (0, 157, 1079.0, -1.13, 104, 207),
+                  7: (129, 177, 1079.0 - 1.13 * 129 + 3, -1.13, 70, 116)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 7}
+
+
+def test_stitch_refuses_two_people_who_merely_coexist():
+    # same overlap, same sizes — but 400px apart on every frame they share
+    pf = _frames({1: (0, 157, 1079.0, -1.13, 104, 207),
+                  7: (129, 177, 1079.0 - 1.13 * 129 + 400, -1.13, 104, 207)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_chains_a_shot_fragmented_into_four():
+    # the measured day-1 ride: overlap, overlap, then a 2-frame gap
+    pf = _frames({1:  (0,   157, 1079.0, -1.13, 104, 207),
+                  7:  (129, 177,  934.0, -0.4,   76, 112),
+                  10: (168, 221,  905.0,  1.0,   70, 116),
+                  14: (223, 547,  958.0,  0.23,  81, 175)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 7, 10, 14}

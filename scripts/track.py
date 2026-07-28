@@ -187,6 +187,62 @@ def _joinable(a: dict, b: dict, gap: int, speed: float, src_w: int) -> bool:
     return 1 / STITCH_AREA_RATIO <= ratio <= STITCH_AREA_RATIO
 
 
+def stitch_ids(per_frame: list[_Frame], hero_id: int | None, fps: float,
+               src_w: int | None, feats: dict[int, dict] | None = None) -> set[int]:
+    """The hero id plus every id that is the SAME SUBJECT re-acquired after an
+    ID switch — see the STITCH_* block for why this exists and why it is strict.
+
+    Chains forward and backward from the hero, one hop at a time, so a subject
+    dropped twice is followed twice; each candidate is judged against the segment
+    it would attach to, never against the original hero, because a real subject
+    drifts across a shot. A None hero (nobody picked) stitches nothing: there is
+    no anchor, and guessing one here would resurrect exactly the largest-in-frame
+    fallback build_route refuses below.
+    """
+    if hero_id is None:
+        return set()
+    if src_w is None:
+        # build_route skips the probe when the caller supplies fps, and the reach
+        # test is stated as a fraction of frame width. Without the width there is no
+        # scale to judge a jump against, so DON'T stitch — an unstitched route is a
+        # frozen crop the report shows, a mis-stitched one is a stranger nobody sees.
+        return {hero_id}
+    segs = _segments(per_frame)
+    if hero_id not in segs:
+        return {hero_id}
+    speed = (feats or {}).get(hero_id, {}).get("speed") or 0.0
+    max_gap = max(1, round(STITCH_MAX_GAP_S * fps))
+    max_overlap = max(1, round(STITCH_MAX_OVERLAP_S * fps))
+    chosen = {hero_id}
+    for forward in (True, False):
+        cur = segs[hero_id]
+        while True:
+            cands = []
+            for tid, s in segs.items():
+                if tid in chosen or s["n"] < STITCH_MIN_FRAMES:
+                    continue
+                gap = (s["first"] - cur["last"]) if forward else (cur["first"] - s["last"])
+                if not -max_overlap <= gap <= max_gap:
+                    continue
+                # A candidate must EXTEND the coverage, not sit inside it. Without this
+                # the overlap tolerance would happily absorb a bystander who stands in
+                # frame for the whole shot — their track brackets the hero's on both
+                # sides, so every gap it offers is a small negative one.
+                if (s["last"] <= cur["last"]) if forward else (s["first"] >= cur["first"]):
+                    continue
+                a, b = (cur, s) if forward else (s, cur)
+                # `a` always precedes `b` in TIME, so the reach test reads the same
+                # way in both directions: tail-of-earlier vs head-of-later.
+                if _joinable(a, b, gap, speed, src_w):
+                    cands.append((abs(gap), tid, s))
+            if not cands:
+                break
+            _d, tid, seg = min(cands)        # nearest in time; ties on the lower id
+            chosen.add(tid)
+            cur = seg
+    return chosen
+
+
 def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
     """Track id chosen by a mechanical §5.10 rule pin. Ties break on the lowest
     track id so a re-run is deterministic.
