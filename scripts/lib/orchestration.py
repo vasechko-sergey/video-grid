@@ -6,6 +6,7 @@ params on a mechanical fail (retry-in-place), and when to stop retrying and
 escalate up the artifact chain. The imperative shell (process_episode.py)
 only wires these to the engine scripts.
 """
+from scripts.lib import motion as motion_mod
 from scripts.lib.motion import classify
 
 
@@ -98,11 +99,23 @@ def detect_contradictions(motion: str | None, route: list[dict],
         findings.append({"reason": "hero-ambiguous", "detail": detail})
     if composition == "lead":
         obs_type, _ = classify(route, src_w, src_h)
-        if obs_type != "lateral":
+        # `lead` needs somewhere to lead TO, which is net travel — not the shot label.
+        # classify answers "what kind of shot", and its ambiguous zone (a subject that
+        # crosses the frame AND grows toward the camera — a surfer on a beach-side
+        # telephoto) reports "static" while |dx| is LARGE. reframe.compute_path honours
+        # an authored lead there, taking the direction from that same travel, so
+        # refusing here would block a composition the renderer can now actually deliver.
+        # A subject that genuinely does not travel still has no direction to lead into,
+        # and is still refused — measured by the one threshold classify itself uses.
+        travels = (len(route) >= 2
+                   and abs(route[-1]["x"] - route[0]["x"]) >= motion_mod.LATERAL_FRAC * src_w)
+        if obs_type != "lateral" and not travels:
             findings.append({"reason": "composition-motion-mismatch",
-                             "detail": f"composition 'lead' needs lateral motion, but the "
-                                       f"tracker sees {obs_type} — set composition to "
-                                       f"'center', or fix the window/segment"})
+                             "detail": f"composition 'lead' needs somewhere to lead to, but the "
+                                       f"subject's net travel is under "
+                                       f"{motion_mod.LATERAL_FRAC:.0%} of frame width and the "
+                                       f"tracker sees {obs_type} — set composition to 'center' "
+                                       f"or 'break', or fix the window/segment"})
     if motion:
         obs_type, obs_dir = classify(route, src_w, src_h)
         observed = obs_type + (f":{obs_dir}" if obs_dir else "")

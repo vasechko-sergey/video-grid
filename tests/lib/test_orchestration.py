@@ -200,6 +200,38 @@ def test_lead_over_lateral_is_fine():
     assert all(f["reason"] != "composition-motion-mismatch" for f in findings)
 
 
+def _diagonal():
+    """Crosses the frame AND grows toward the camera — classify's ambiguous zone,
+    which answers "static" even though |dx| is 30% of frame width."""
+    return [dict(t=i / 60, x=855 + 579 * i / 59, y=300,
+                 w=116 + 21 * i / 59, h=149 + 240 * i / 59) for i in range(60)]
+
+
+def test_lead_is_allowed_when_the_subject_travels_even_if_classify_says_static():
+    from scripts.lib.motion import classify
+    route = _diagonal()
+    assert classify(route, 1920, 1080)[0] == "static"          # the premise
+    findings = orch.detect_contradictions(motion=None, route=route,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert not any(f["reason"] == "composition-motion-mismatch" for f in findings)
+
+
+def test_lead_is_still_refused_when_the_subject_does_not_travel():
+    parked = [dict(t=i / 60, x=900 + i * 0.2, y=300, w=120, h=300) for i in range(60)]
+    findings = orch.detect_contradictions(motion=None, route=parked,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert any(f["reason"] == "composition-motion-mismatch" for f in findings)
+
+
+def test_lead_over_a_plain_lateral_shot_is_unchanged():
+    findings = orch.detect_contradictions(motion=None, route=_route_right(),
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert not any(f["reason"] == "composition-motion-mismatch" for f in findings)
+
+
 def test_center_over_nonlateral_is_fine():
     static_route = [dict(t=i / 30, x=500, y=500, w=140, h=320) for i in range(10)]
     findings = orch.detect_contradictions(motion=None, route=static_route,
