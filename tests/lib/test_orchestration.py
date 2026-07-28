@@ -217,6 +217,20 @@ def test_lead_is_allowed_when_the_subject_travels_even_if_classify_says_static()
     assert not any(f["reason"] == "composition-motion-mismatch" for f in findings)
 
 
+def test_lead_is_allowed_when_the_subject_travels_left():
+    # the mirror of the rightward case: classify still says "static" (ambiguous zone),
+    # but the subject travels — leftward. Guards the abs() in `travels`: without it,
+    # dx=-579 fails `>= 288` and the lead is wrongly refused.
+    from scripts.lib.motion import classify
+    route = [dict(t=i / 60, x=1434 - 579 * i / 59, y=300,
+                  w=116 + 21 * i / 59, h=149 + 240 * i / 59) for i in range(60)]
+    assert classify(route, 1920, 1080)[0] == "static"          # still the ambiguous zone
+    findings = orch.detect_contradictions(motion=None, route=route,
+                                          track_meta={"ambiguous": False},
+                                          src_w=1920, src_h=1080, composition="lead")
+    assert not any(f["reason"] == "composition-motion-mismatch" for f in findings)
+
+
 def test_lead_is_still_refused_when_the_subject_does_not_travel():
     parked = [dict(t=i / 60, x=900 + i * 0.2, y=300, w=120, h=300) for i in range(60)]
     findings = orch.detect_contradictions(motion=None, route=parked,
