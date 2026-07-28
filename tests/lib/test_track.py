@@ -184,10 +184,22 @@ def test_stitch_joins_an_overlapping_handover():
 
 
 def test_stitch_refuses_a_bystander_who_brackets_the_hero():
-    # a track that spans the whole shot offers a small negative gap at BOTH ends, so the
-    # overlap tolerance alone would absorb it — the extension test is what refuses it
+    # a track spanning the whole shot (0..500) gives a LARGE negative gap at both ends
+    # (fwd -300, bwd -400) — the gap-range window refuses it before the extend guard is
+    # ever reached. The shadowed-inside case below is what exercises the extend guard.
     pf = _frames({1: (100, 300, 900.0, 3.0, 120, 300),
                   5: (0, 500, 880.0, 0.0, 120, 300)})
+    assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
+
+
+def test_stitch_refuses_a_shadowed_bystander_inside_the_hero():
+    # tid 5's whole track sits INSIDE the hero's, near its tail. Forward the gap is
+    # 20-40 = -20 (inside the window) and 5 does NOT extend coverage (last 35 <= the
+    # hero's 40), so ONLY the extend guard refuses it — were it removed, the overlap
+    # regime (frames 20..35, 20px apart) would wrongly join it. Backward it falls to
+    # the gap check (0-35 = -35, past the -30 overlap floor), so it is never added.
+    pf = _frames({1: (0, 40, 900.0, 0.0, 120, 300),
+                  5: (20, 35, 880.0, 0.0, 120, 300)})
     assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1}
 
 

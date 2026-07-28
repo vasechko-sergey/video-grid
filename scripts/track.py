@@ -225,9 +225,11 @@ def stitch_ids(per_frame: list[_Frame], hero_id: int | None, fps: float,
                 if not -max_overlap <= gap <= max_gap:
                     continue
                 # A candidate must EXTEND the coverage, not sit inside it. Without this
-                # the overlap tolerance would happily absorb a bystander who stands in
-                # frame for the whole shot — their track brackets the hero's on both
-                # sides, so every gap it offers is a small negative one.
+                # the overlap tolerance would absorb a SHORT track shadowed near cur's
+                # tail (forward) or head (backward): its gap is a small negative one
+                # inside the overlap window, and on the frames it shares with cur it can
+                # be close enough to pass _joinable — but it adds no new coverage, so
+                # stitching it would splice a bystander into the middle of the route.
                 if (s["last"] <= cur["last"]) if forward else (s["first"] >= cur["first"]):
                     continue
                 a, b = (cur, s) if forward else (s, cur)
