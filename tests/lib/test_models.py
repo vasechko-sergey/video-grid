@@ -1386,3 +1386,21 @@ def test_reframespec_tone_is_an_xor_pair_validated_by_color():
     with pytest.raises(ValueError, match="increase by at least"):
         ReframeSpec(**base, tone_src=(30, 33, 148), tone_dst=(35, 110, 150))  # gap < 6 → color.tone_arg
     ReframeSpec(**base, tone_src=(30, 100, 148), tone_dst=(35, 110, 150))     # valid, no raise
+
+
+# --- ReframeSpec.smooth_window_s (path-quality): savgol span in seconds, filter cutoff ---
+
+def test_reframespec_smooth_window_s_defaults_to_quarter_second():
+    from scripts.lib.models import ReframeSpec, Delivery
+    s = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), delivery=Delivery())
+    assert s.smooth_window_s == 0.25
+
+
+@pytest.mark.parametrize("bad", [0, -0.1, 2.5, True])
+def test_reframespec_rejects_bad_smooth_window_s(bad):
+    from scripts.lib.models import ReframeSpec, Delivery
+    with pytest.raises(ValueError, match="smooth_window_s"):
+        ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), delivery=Delivery(),
+                    smooth_window_s=bad)

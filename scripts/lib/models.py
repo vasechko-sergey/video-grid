@@ -614,6 +614,14 @@ class ReframeSpec:
     delivery: Delivery
     layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
+    smooth_window_s: float = 0.25  # savgol span over the tracked path, IN SECONDS. max_speed
+                              # caps how FAR the crop may move per frame; this sets over how
+                              # long a wobble is averaged away. They are not interchangeable: a
+                              # low-amplitude, high-frequency hitch (the jitter check's whole
+                              # subject) already sits under any max_speed the ladder reaches,
+                              # so damping speed cannot touch it. Seconds and not frames
+                              # because it is a filter cutoff — see pathsmooth.window_frames,
+                              # resolved against the clip's own fps at render time.
     color_correct: tuple | None = None
     white_balance: float = 0.0  # grey-world neutralize toward the common channel average,
                                 # FIRST in the chain; 0 = off (identity), so an episode
@@ -660,6 +668,13 @@ class ReframeSpec:
                              "build it from the manifest's layout fields")
         if not isinstance(self.max_speed, (int, float)) or self.max_speed <= 0:
             raise ValueError(f"ReframeSpec.max_speed must be a positive number, got {self.max_speed!r}")
+        if (isinstance(self.smooth_window_s, bool)
+                or not isinstance(self.smooth_window_s, (int, float))
+                or not 0 < self.smooth_window_s <= 2.0):
+            raise ValueError(
+                f"ReframeSpec.smooth_window_s must be a span in seconds in (0, 2.0], got "
+                f"{self.smooth_window_s!r} — it is a filter cutoff, and a window longer than "
+                "a couple of seconds stops following the subject rather than smoothing it")
         if (isinstance(self.white_balance, bool) or not isinstance(self.white_balance, (int, float))
                 or not 0 <= self.white_balance <= 1):
             raise ValueError(f"ReframeSpec.white_balance must be a fraction in [0, 1], "
