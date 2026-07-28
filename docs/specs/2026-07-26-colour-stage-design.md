@@ -369,14 +369,21 @@ milky, blown foam.
 - **Two colour knobs can pass the soft gate but raise at render.** `dip` (valid
   per `ReframeSpec` ∈ `[0, 0.5]`) raises in `dip_arg` when `dur ≤ 2·dip` — a `dur`
   the manifest gate cannot see; a banding `tone` pair (anchors valid but the spline
-  dips) raises in `verify_tone`. Both are **caught by `edl_to_reel`'s worker loop**
-  (`fut.result()` → `except Exception` → `stop_and_report`), so in a reel they
-  surface as a routable finding, not a crash; a bare single-episode
-  `process_episode` run surfaces the descriptive raise directly. This is the
-  intended fail-loud (soft-manifest / hard-engine), not a silent trap — and the
-  reason `verify_tone`/`dip_arg` carry remedy-bearing messages. (A future parity
-  nicety: a post-probe `dip`-vs-`dur` preflight → `needs_input`, mirroring the
-  layouts rect preflight; the tone ramp cannot be preflighted without rendering.)
+  dips) raises in `verify_tone`. `process_episode` does **not** wrap the reframe
+  call, so the raise propagates out of it as an exception. In a reel,
+  `edl_to_reel`'s worker loop does **not** convert this to a routable finding — it
+  **re-raises** with an episode attribution (`fut.result()` → `except Exception` →
+  `e.add_note("…episode i…")` → `raise`), aborting the build; the neighbouring
+  `stop_and_report` branch fires only for a *returned* non-pass status, never for a
+  raise. So a dip-too-long or a banding tone fails loud as an **attributed
+  exception** that aborts an undeliverable reel (not a silently-delivered reel, and
+  not a routable `stop_and_report` either); a bare single-episode `process_episode`
+  run surfaces the descriptive raise directly. This is the hard-engine half of
+  soft-manifest / hard-engine working as intended — the reason `verify_tone`/
+  `dip_arg` carry remedy-bearing messages. (A future parity nicety, if a routable
+  finding is wanted: a post-probe `dip`-vs-`dur` preflight → `needs_input`,
+  mirroring the layouts rect preflight; the tone ramp cannot be preflighted without
+  rendering.)
 - **Near-coincident tone anchors → ffmpeg emits no frame.** `TONE_MIN_GAP` drops
   grid nodes within 6 codes of an anchor and requires anchors to increase by ≥6;
   without it the render silently produces zero frames.
