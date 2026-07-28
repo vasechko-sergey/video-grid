@@ -82,3 +82,32 @@ def test_segments_records_ends_count_and_per_frame_x():
 def test_median_handles_odd_and_even_lengths():
     assert track._median([3.0, 1.0, 2.0]) == 2.0
     assert track._median([1.0, 2.0, 3.0, 4.0]) == 2.5
+
+
+def test_joinable_overlap_uses_shared_frames_and_skips_the_area_gate():
+    # two segments that share frames 2..4, ~3px apart, one box COLLAPSING (area would
+    # reject on endpoints) — the overlap regime joins them anyway.
+    a = {"at": {0: 100.0, 1: 101.0, 2: 102.0, 3: 103.0, 4: 104.0},
+         "tail": (104.0, 500.0, 40, 80), "head": (100.0, 500.0, 104, 207)}
+    b = {"at": {2: 105.0, 3: 106.0, 4: 107.0, 5: 108.0},
+         "head": (105.0, 500.0, 70, 116), "tail": (108.0, 500.0, 70, 116)}
+    assert track._joinable(a, b, gap=-2, speed=3.0, src_w=1920) is True
+
+
+def test_joinable_gap_joins_within_reach_and_same_size_class():
+    a = {"at": {0: 100.0}, "tail": (100.0, 500.0, 120, 300), "head": (100.0, 500.0, 120, 300)}
+    b = {"at": {10: 130.0}, "head": (130.0, 500.0, 120, 300), "tail": (130.0, 500.0, 120, 300)}
+    # 30px jump, reach floor = 0.02*1920 = 38.4 → within reach; same size → joins
+    assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is True
+
+
+def test_joinable_gap_refuses_a_jump_beyond_reach():
+    a = {"at": {0: 100.0}, "tail": (100.0, 500.0, 120, 300), "head": (100.0, 500.0, 120, 300)}
+    b = {"at": {10: 900.0}, "head": (900.0, 500.0, 120, 300), "tail": (900.0, 500.0, 120, 300)}
+    assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is False
+
+
+def test_joinable_gap_refuses_a_very_different_size():
+    a = {"at": {0: 100.0}, "tail": (100.0, 500.0, 120, 300), "head": (100.0, 500.0, 120, 300)}
+    b = {"at": {10: 110.0}, "head": (110.0, 500.0, 20, 40), "tail": (110.0, 500.0, 20, 40)}
+    assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is False

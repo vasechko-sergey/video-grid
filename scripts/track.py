@@ -18,6 +18,32 @@ MODEL = "yolo11n-seg.pt"
 AMBIG_MARGIN = 0.8      # §6.1a margin rule: top-2 within ~20% ⇒ ambiguous ⇒ stop-and-report.
                         # One spelling, two readers (_pick_hero, _descriptor_track).
 
+# --- ID-switch stitching (§6.1a) -------------------------------------------------
+# ByteTrack drops a subject through an occlusion — spray, a passing lip, a frame the
+# detector misses — and re-acquires it under a NEW id. The route is built from ONE id,
+# so a switch truncates it, and reframe then holds the last crop position for the whole
+# remainder: measured on a 9.14s drone ride, the hero track ended at 3.04s and the crop
+# sat frozen for the other 6.10s while the rider carried on to the frame edge. That is
+# not the frame gap the smoother bridges — it is 67% of the shot left uncomposed.
+#
+# The thresholds below are deliberately tight, because stitching too eagerly fails far
+# worse than not stitching: splicing a STRANGER onto the hero's route teleports the crop
+# mid-shot and reads as a cut. A candidate must resume within a blink, from about where
+# the hero left off, at about the size the hero had.
+STITCH_MAX_GAP_S = 0.40      # a re-acquisition later than this is not a blink
+STITCH_MAX_OVERLAP_S = 0.50  # ...and a handover may also OVERLAP: ByteTrack routinely
+                             # confirms the new id BEFORE it drops the old one, so the
+                             # same rider reads as tid 1 over frames 0..182 and tid 66
+                             # over 180..547 — a gap of -2. Measured overlaps run from 2
+                             # to 29 frames on the same shot, so this is generous rather
+                             # than tight: an overlapping pair is judged on where the two
+                             # tracks sit ON THE FRAMES THEY SHARE (see _joinable), which
+                             # is far stronger evidence than the length of the overlap.
+STITCH_MIN_FRAMES = 5        # below this a "track" is detector noise, not a subject
+STITCH_SPEED_SLACK = 3.0     # travel allowed = the hero's own mean speed x gap x this
+STITCH_MIN_JUMP_FRAC = 0.02  # ...but never less than 2% of frame width (a slow hero)
+STITCH_AREA_RATIO = 2.5      # apparent size may not change by more than this factor
+
 
 def ensure_model(model_path: str = MODEL) -> None:
     """Materialize the weights ONCE, before any concurrent tracking starts.
@@ -126,6 +152,39 @@ def _median(xs: list[float]) -> float:
     s = sorted(xs)
     n = len(s)
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _joinable(a: dict, b: dict, gap: int, speed: float, src_w: int) -> bool:
+    """Is segment `b` the same subject as `a`, resuming `gap` frames later (or, for a
+    negative gap, `-gap` frames before `a` ends)?
+
+    Two regimes, because they have different evidence available:
+
+    OVERLAP — the tracks coexist on real frames, so ask the question directly: how far
+    apart are they WHERE THEY BOTH EXIST? The same rider handed between two ids sits a
+    few px apart on every shared frame; two different surfers stay apart on all of them.
+    That is strictly better evidence than any endpoint comparison, so it is used alone —
+    in particular the box-area gate is skipped, because a dying track's last boxes are
+    degrading (that degradation is usually WHY it died) and comparing them against a
+    fresh track's first boxes reads a healthy handover as a size change. Measured: a
+    detector box collapsing 104x207 -> 70x116 through spray, 3px away, is one rider.
+
+    GAP — nothing coexists, so fall back to the endpoints: the jump must fit the hero's
+    own speed, and the box must be in the same size class (the distant-bystander guard).
+    """
+    shared = sorted(set(a["at"]) & set(b["at"]))
+    reach = max(STITCH_MIN_JUMP_FRAC * src_w, speed * max(1, abs(gap)) * STITCH_SPEED_SLACK)
+    if shared:
+        return _median([abs(a["at"][i] - b["at"][i]) for i in shared]) <= reach
+    ax, _ay, aw, ah = a["tail"]
+    bx, _by, bw, bh = b["head"]
+    if abs(bx - ax) > reach:
+        return False
+    area_a, area_b = aw * ah, bw * bh
+    if area_a <= 0 or area_b <= 0:
+        return False
+    ratio = area_b / area_a
+    return 1 / STITCH_AREA_RATIO <= ratio <= STITCH_AREA_RATIO
 
 
 def _rule_track(feats: dict[int, dict], rule: str) -> int | None:
