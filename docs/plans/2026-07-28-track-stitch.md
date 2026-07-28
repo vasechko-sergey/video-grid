@@ -31,7 +31,7 @@
 - Modify: `scripts/lib/models.py` (the `TrackMeta` dataclass, ~lines 85–112)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing round-trip test**
+- [x] **Step 1: Write the failing round-trip test**
 
 Add to `tests/lib/test_models.py` (import `models` the same way the file already does — it uses `from scripts.lib import models`):
 
@@ -52,12 +52,12 @@ def test_trackmeta_from_dict_without_stitched_is_backward_compatible():
     assert models.TrackMeta.from_dict(legacy).stitched == []
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k stitched -v`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'stitched'` (and/or `KeyError`/attribute error).
 
-- [ ] **Step 3: Add the field + wire to_dict/from_dict**
+- [x] **Step 3: Add the field + wire to_dict/from_dict**
 
 In `scripts/lib/models.py`, add the field to `TrackMeta` right after `degraded`:
 
@@ -89,12 +89,12 @@ In `to_dict`, add the key:
 
 (`field` is already imported in `models.py` — it is used by `TrackMeta.features`.)
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k stitched -v`
 Expected: PASS (both tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -109,7 +109,7 @@ git commit -m "feat: TrackMeta.stitched provenance field (track-stitch §6)"
 - Modify: `scripts/track.py` (add both functions after `_seed_track`, before `_rule_track`)
 - Test: `tests/lib/test_track.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_track.py` (the file already has `from scripts import track` at the top):
 
@@ -143,12 +143,12 @@ def test_median_handles_odd_and_even_lengths():
     assert track._median([1.0, 2.0, 3.0, 4.0]) == 2.5
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k "segments or median" -v`
 Expected: FAIL — `AttributeError: module 'scripts.track' has no attribute '_segments'`.
 
-- [ ] **Step 3: Add `_segments` and `_median`**
+- [x] **Step 3: Add `_segments` and `_median`**
 
 In `scripts/track.py`, insert after `_seed_track` (ends ~line 104) and before `_rule_track`:
 
@@ -177,12 +177,12 @@ def _median(xs: list[float]) -> float:
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k "segments or median" -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/lib/test_track.py
@@ -197,7 +197,7 @@ git commit -m "feat: track _segments/_median stitch primitives + _frames test he
 - Modify: `scripts/track.py` (constants near `AMBIG_MARGIN` ~line 18; `_joinable` after `_median`)
 - Test: `tests/lib/test_track.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_track.py` (below the Task 1 tests):
 
@@ -231,12 +231,12 @@ def test_joinable_gap_refuses_a_very_different_size():
     assert track._joinable(a, b, gap=9, speed=3.0, src_w=1920) is False
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k joinable -v`
 Expected: FAIL — `AttributeError: module 'scripts.track' has no attribute '_joinable'`.
 
-- [ ] **Step 3: Add the constants + `_joinable`**
+- [x] **Step 3: Add the constants + `_joinable`**
 
 In `scripts/track.py`, after the `AMBIG_MARGIN` block (~line 18–19), add the constant block:
 
@@ -304,12 +304,12 @@ def _joinable(a: dict, b: dict, gap: int, speed: float, src_w: int) -> bool:
     return 1 / STITCH_AREA_RATIO <= ratio <= STITCH_AREA_RATIO
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k joinable -v`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/lib/test_track.py
@@ -324,7 +324,7 @@ git commit -m "feat: track STITCH_* thresholds + _joinable (overlap/gap regimes)
 - Modify: `scripts/track.py` (add `stitch_ids` after `_joinable`)
 - Test: `tests/lib/test_track.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append the parked `stitch_ids` battery to `tests/lib/test_track.py` (the `_frames` helper from Task 1 is already present; add `_SPEED` once):
 
@@ -439,12 +439,12 @@ def test_stitch_chains_a_shot_fragmented_into_four():
     assert track.stitch_ids(pf, 1, 60.0, 1920, _SPEED) == {1, 7, 10, 14}
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k stitch -v`
 Expected: FAIL — `AttributeError: module 'scripts.track' has no attribute 'stitch_ids'`.
 
-- [ ] **Step 3: Add `stitch_ids`**
+- [x] **Step 3: Add `stitch_ids`**
 
 In `scripts/track.py`, after `_joinable`, add:
 
@@ -505,12 +505,12 @@ def stitch_ids(per_frame: list[_Frame], hero_id: int | None, fps: float,
     return chosen
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py -k stitch -v`
 Expected: PASS (15 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py tests/lib/test_track.py
@@ -525,7 +525,7 @@ git commit -m "feat: track.stitch_ids — forward/backward ID-switch chaining (�
 - Modify: `scripts/track.py` (`build_route`, the meta-write + route loop, ~lines 335–355)
 - Test: `tests/integration/test_track.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/integration/test_track.py` (it already defines `_FakeBox`, `_FakeRes`, `_fake_iter` at the top and imports `track`, `models`):
 
@@ -582,12 +582,12 @@ def test_build_route_with_fps_supplied_does_not_stitch(monkeypatch, tmp_path):
     assert len(route) == 21                        # only tid 1's frames (0..20), not tid 66's
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -k "stitch or single_id or fps_supplied" -v`
 Expected: FAIL — `AssertionError` on `meta.stitched == [66]` (the field is `[]` because `build_route` does not call `stitch_ids` yet), and/or `len(route) == 41` fails (route stops at 21).
 
-- [ ] **Step 3: Wire `stitch_ids` into `build_route`**
+- [x] **Step 3: Wire `stitch_ids` into `build_route`**
 
 In `scripts/track.py`, replace the meta-write + route-loop block (currently the `meta = TrackMeta(...)` construction through `return route`, ~lines 338–355) with:
 
@@ -627,17 +627,17 @@ In `scripts/track.py`, replace the meta-write + route-loop block (currently the 
     return route
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_track.py -k "stitch or single_id or fps_supplied" -v`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Run the whole track suite to prove no regression**
+- [x] **Step 5: Run the whole track suite to prove no regression**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_track.py tests/integration/test_track.py -v`
 Expected: PASS — all existing route tests still green (they supply `fps`, so `src_w` is None and the route loop reduces to the old hero-only pick).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/track.py tests/integration/test_track.py
@@ -651,20 +651,20 @@ git commit -m "feat: build_route stitches ID switches + records TrackMeta.stitch
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/plans/2026-07-28-track-stitch.md` (this file — tick the boxes), `docs/specs/2026-07-28-track-stitch-design.md` (status line)
 
-- [ ] **Step 1: Run the full suite (baseline for the docs claim)**
+- [x] **Step 1: Run the full suite (baseline for the docs claim)**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all green (record the exact `N passed / M skipped` count for the build-status entry). No golden fixtures move — this slice adds no new render path.
 
-- [ ] **Step 2: build-status.md**
+- [x] **Step 2: build-status.md**
 
 Add a DONE entry under the current front matter, dated 2026-07-28, describing the track-stitch slice: "`track.stitch_ids` bridges a hero ID switch (§6.1a) — `TrackMeta.stitched` provenance, route-nearer overlap pick; port of the parked `4841dd3` hunk. Full suite `<N> passed / <M> skipped`." Follow the format of the existing most-recent entry (the colour-stage entry).
 
-- [ ] **Step 3: pipeline-map.md**
+- [x] **Step 3: pipeline-map.md**
 
 In the §6.1 / tracking row (the same row that mentions `TrackMeta.degraded` and the tracking ladder), add a note that `build_route` now stitches post-occlusion ID switches into one route, recording the merged ids in `TrackMeta.stitched`.
 
-- [ ] **Step 4: CLAUDE.md registry**
+- [x] **Step 4: CLAUDE.md registry**
 
 Add two rows to the Quick Reference table (matching the existing row style), pointing at the design and plan:
 
@@ -673,11 +673,11 @@ Add two rows to the Quick Reference table (matching the existing row style), poi
 | Track-stitch plan | [2026-07-28-track-stitch.md](docs/plans/2026-07-28-track-stitch.md) | Tasks 0–5: `TrackMeta.stitched`, `_segments`/`_median`/`_joinable`/`stitch_ids`, `build_route` stitch-before-meta + route-nearer pick, faked-detector integration proof, docs. |
 ```
 
-- [ ] **Step 5: Tick this plan's checkboxes + the spec status**
+- [x] **Step 5: Tick this plan's checkboxes + the spec status**
 
 Mark every `- [ ]` in this plan `- [x]`. In the design spec, update the **Status** line to note the slice landed (2026-07-28).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/ CLAUDE.md

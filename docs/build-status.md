@@ -4,13 +4,51 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-27._
+_Last updated: 2026-07-28._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Track-stitch (§6.1a ID-switch bridging) DONE (2026-07-28)** — plan
+  `docs/plans/2026-07-28-track-stitch.md` + design
+  `docs/specs/2026-07-28-track-stitch-design.md`, Tasks 0–5. `build_route` built
+  the crop's route from a single tracked id, so when ByteTrack drops the hero
+  through an occlusion and re-acquires the same person under a fresh id, the
+  route ended at the switch and `reframe` froze the crop for the remainder —
+  measured on the run that surfaced it: a 9.14s drone ride whose hero track
+  ended at 3.04s left the final 6.10s (67%) of the shot delivered as a frozen
+  crop. New pure `scripts/track.py` core — `_segments`/`_median`/`_joinable`/
+  `stitch_ids` + the measured `STITCH_*` threshold block — chains
+  forward/backward from the hero id, judging each candidate against the segment
+  it would attach to (not the original hero, since a subject drifts across a
+  shot). `_joinable` has two evidence regimes: an OVERLAP (ByteTrack often
+  confirms the new id before dropping the old — measured 2–29 shared frames) is
+  judged by median offset on the shared frames alone, skipping the box-area
+  gate (a dying track's last boxes are already degrading); a GAP falls back to
+  an endpoint jump bounded by the hero's own speed plus a same-size-class guard
+  against a distant bystander. Thresholds are deliberately **tight** and
+  field-measured, not tuned against synthetic footage — stitching too eagerly
+  teleports a stranger's coordinates into the route, which reads far worse than
+  the frozen crop it replaces. `build_route` now calls `stitch_ids` **before**
+  writing the `TrackMeta` sidecar (the one deviation from the parked patch) so
+  the merged ids ride as `TrackMeta.stitched: list[int]` provenance (`[]` =
+  clean, back-compatible `from_dict`); the route loop picks the overlap
+  candidate nearer the route's own last point, not detection order, so a
+  handover never writes a small teleport into an otherwise-continuous crop.
+  Port of the parked `wip/montage-run-hardening` commit `4841dd3`'s "track.py
+  stitch" bucket — the same park that colour-as-a-stage and
+  scenario-first-pacing already landed hunks from — through the
+  design→plan→TDD cycle it skipped. **No consumer gate**: `stitched` is
+  observability only, matching `PathMeta.pan`/`.stabilized`; stitching is
+  rung-1 (YOLO) only, since `flow`/`manual` degraded routes carry no ids to
+  stitch, and a `None` hero stitches nothing by construction. Tested over
+  synthetic `per_frame` lists (a real ByteTrack switch is expensive to stage
+  deterministically) plus the established faked-detector `build_route`
+  integration harness — no new render path, no golden moved. Full suite **1897
+  passed / 2 skipped**.
 
 - **Colour-as-a-stage (slice F) DONE (2026-07-27)** — plan
   `docs/plans/2026-07-26-colour-stage.md` + design

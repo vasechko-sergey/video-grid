@@ -8,7 +8,8 @@ id.
 **Status:** landing the parked hot-patch from the first real montage run
 (`wip/montage-run-hardening`, commit `4841dd3`) through the design → plan →
 TDD-review cycle it skipped. The code ran green on that 99-clip run but never went
-through review. This is the "track.py stitch → its own slice" bucket of the park.
+through review. This is the "track.py stitch → its own slice" bucket of the park —
+landed 2026-07-28 (feat/track-stitch).
 
 ---
 
