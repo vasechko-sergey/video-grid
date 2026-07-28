@@ -216,3 +216,30 @@ def test_center_over_nonlateral_is_fine():
 ])
 def test_flow_eligible(pinned, empty, expected):
     assert orch.flow_eligible(pinned, route_empty=empty) is expected
+
+
+def test_jitter_fail_also_widens_the_smoothing_window():
+    # the knob that actually reaches this failure: the jitter check fires on
+    # low-amplitude reversals that sit under any max_speed the ladder reaches
+    p = orch.adjust_reframe_params(dict(orch.DEFAULT_PARAMS), ["jitter"])
+    assert p["smooth_window_s"] > orch.DEFAULT_PARAMS["smooth_window_s"]
+
+
+def test_smoothing_window_ladder_is_bounded():
+    p = dict(orch.DEFAULT_PARAMS)
+    for _ in range(20):
+        p = orch.adjust_reframe_params(p, ["jitter"])
+    assert p["smooth_window_s"] == orch.SMOOTH_WINDOW_S_MAX
+
+
+def test_line_lag_narrows_the_window_but_never_below_the_default():
+    wide = orch.adjust_reframe_params(dict(orch.DEFAULT_PARAMS), ["jitter"])
+    back = orch.adjust_reframe_params(wide, ["on_line"])
+    assert back["smooth_window_s"] < wide["smooth_window_s"]
+    assert back["smooth_window_s"] >= orch.DEFAULT_PARAMS["smooth_window_s"]
+
+
+def test_adjust_fills_a_partial_params_dict():
+    # a caller that only knows about max_speed still gets both knobs back
+    p = orch.adjust_reframe_params({"max_speed": 750.0}, ["jitter"])
+    assert set(p) == set(orch.DEFAULT_PARAMS)

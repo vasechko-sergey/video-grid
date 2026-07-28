@@ -121,7 +121,11 @@ def _motion_conflicts(declared: str, observed: str) -> bool:
     return False
 
 
-DEFAULT_PARAMS = {"max_speed": 750.0}          # px/s (§6.1: 25 px/frame @30fps)
+DEFAULT_PARAMS = {"max_speed": 750.0,             # px/s (§6.1: 25 px/frame @30fps)
+                  "smooth_window_s": 0.25}        # savgol span, seconds (pathsmooth.DEFAULT_WINDOW_S)
+
+SMOOTH_WINDOW_S_MAX = 0.7   # past this the crop stops following the subject at all and
+                            # lags visibly through a real direction change
 
 # reframe can't fix these by re-cropping — the fault is upstream (window/segment)
 _UNFIXABLE = ("length", "continuity", "black_frames")
@@ -134,12 +138,26 @@ def _lags_line(fail_reasons: list[str]) -> bool:
 
 
 def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str]) -> dict[str, float]:
-    """One documented nudge per mechanical fail (§4.1 retry-in-place)."""
-    p = dict(params)
+    """One documented nudge per mechanical fail (§4.1 retry-in-place).
+
+    A partial `params` is filled from DEFAULT_PARAMS first, so a caller that knows
+    about one knob still gets a complete, nudgeable set back rather than a KeyError
+    on the knob it had never heard of."""
+    p = {**DEFAULT_PARAMS, **params}
     if _lags_line(fail_reasons):
         p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
+        # a wide window is exactly what makes the crop lag, so give it back the
+        # responsiveness the same way it was taken — never below the default
+        p["smooth_window_s"] = max(DEFAULT_PARAMS["smooth_window_s"],
+                                   p["smooth_window_s"] / 2)
     if "jitter" in fail_reasons:
         p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
+        # …and widen the averaging window, which is the knob that actually reaches
+        # this failure. max_speed caps the SIZE of a step; the jitter check fires on
+        # low-amplitude reversals that are already far under any speed cap the ladder
+        # reaches, so speed alone never converges — measured on a 60fps drone ride:
+        # 3 attempts of 750→450→270 px/s left worst_reversal unchanged at 4.0px.
+        p["smooth_window_s"] = min(SMOOTH_WINDOW_S_MAX, p["smooth_window_s"] * 2)
     return p
 
 
