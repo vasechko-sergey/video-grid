@@ -110,3 +110,14 @@ def test_jitter_reports_reversal_count():
     path = [100, 110, 105, 115, 110]               # two reversals
     res = ck.jitter(path, "right", max_reversal=10)
     assert res["reversals"] == 2
+
+
+def test_jitter_does_not_invent_a_reversal_when_the_crop_lags_a_forward_subject():
+    # crop moves forward every frame but slower than the subject. The min(0.0, subj)
+    # clamp forgives only BACKTRACK; without it, the large positive subject step is
+    # subtracted in full and fabricates a reversal on a crop that never reversed.
+    path = [100, 105, 110, 115]           # +5/frame, monotonic forward
+    route = _route([100, 140, 180, 220])  # +40/frame, forward, much faster
+    res = ck.jitter(path, "right", max_reversal=10, route=route)
+    assert res["pass"] is True
+    assert res["worst_reversal"] == 0
