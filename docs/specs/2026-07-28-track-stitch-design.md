@@ -185,17 +185,22 @@ hero (`sorted(hero_ids − {hero_id})`), `[]` when the route is a clean single i
   `TrackMeta.stitched` records the merged ids and round-trips through
   `to_dict`/`from_dict`; a clean single-id `per_frame` → `stitched == []`.
 
-**Integration (real ffmpeg / YOLO, `tests/integration/test_track.py`):**
-`build_route` over a real fixture clip proves the wiring — the route builds,
-`meta.stitched` is present, no crash. (On a clip with no ID switch this asserts
-`stitched == []`, which is the honest expected value.)
+**Integration (faked-detector harness, `tests/integration/test_track.py`):**
+`build_route` is driven with the established `_FakeBox` / `_fake_iter` fake
+detector (plus a monkeypatched `_probe_meta` for the probe path) — no real ffmpeg
+/ YOLO, the convention every track test follows. A staged overlap switch proves
+the wiring: the route builds, `meta.stitched` records the merged id, the route
+follows past the outgoing id's end (no freeze), the overlap pick follows the
+route-nearest box (not detection order), a clean single-id stream yields
+`stitched == []`, and an fps-supplied spec (`src_w` None) does NOT stitch — the
+anti-regression guard.
 
 **Honest limitation (not tested end-to-end):** deterministically staging a REAL
 ByteTrack ID switch is expensive and flaky — it needs real occlusion behaviour on
 real pixels. The unit tests cover the stitch logic over synthetic `per_frame`
-lists (where a switch is trivially constructed); the integration test proves the
-wiring on real pixels. "A real switch, bridged, delivered" is not a test this
-slice adds.
+lists (where a switch is trivially constructed) and the integration tests prove
+the `build_route` wiring over a faked detector; "a real switch, bridged,
+delivered" over real YOLO is not a test this slice adds.
 
 ## 8. Non-goals / deferred
 
@@ -216,7 +221,7 @@ slice adds.
 | `scripts/track.py` | +`STITCH_*` constants, `_segments`, `_median`, `_joinable`, `stitch_ids`; `build_route` calls `stitch_ids` before `TrackMeta`, records `stitched`, route loop picks the route-nearer overlap match |
 | `scripts/lib/models.py` | `TrackMeta.stitched: list[int]` + `to_dict` / `from_dict` |
 | `tests/lib/test_track.py` | the parked unit battery + provenance/round-trip + route-loop tests |
-| `tests/integration/test_track.py` | real-ffmpeg wiring proof |
+| `tests/integration/test_track.py` | faked-detector `build_route` integration — stitch + provenance + route-nearest pick + `src_w` guard |
 | docs | this spec, the plan, build-status, pipeline-map, CLAUDE registry |
 
 ## 10. Landmine
