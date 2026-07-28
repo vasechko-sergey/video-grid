@@ -50,3 +50,63 @@ def test_on_line_rejects_length_mismatch():
 def test_jitter_rejects_invalid_direction():
     with pytest.raises(ValueError, match="direction"):
         ck.jitter([100, 110], direction=None, max_reversal=10)
+
+
+def _route(xs):
+    return [{"x": float(x), "y": 0.0} for x in xs]
+
+
+def test_jitter_forgives_the_subject_s_own_backtrack():
+    # a surfer carving back up the wave: the crop reverses because the SUBJECT did.
+    path = [100, 110, 120, 90, 130]
+    route = _route([100, 110, 120, 90, 130])       # subject moved exactly the same way
+    assert ck.jitter(path, "right", max_reversal=10)["pass"] is False        # no route: fails
+    assert ck.jitter(path, "right", max_reversal=10, route=route)["pass"] is True
+
+
+def test_jitter_still_fails_chatter_over_a_smooth_subject():
+    path = [100, 110, 120, 90, 130]
+    route = _route([100, 110, 120, 130, 140])      # subject never went backwards
+    assert ck.jitter(path, "right", max_reversal=10, route=route)["pass"] is False
+
+
+def test_jitter_fails_the_excess_beyond_the_subject_s_backtrack():
+    path = [100, 110, 120, 90, 130]
+    route = _route([100, 110, 120, 115, 130])      # subject reversed 5, crop reversed 30
+    res = ck.jitter(path, "right", max_reversal=10, route=route)
+    assert res["pass"] is False
+    assert res["worst_reversal"] == 25
+
+
+def test_jitter_route_window_filters_detector_noise_not_subject_motion():
+    subj = [100 + 2 * i for i in range(40)]
+    noise = [(6 if i % 2 else -6) for i in range(40)]
+    route = _route([s + n for s, n in zip(subj, noise)])
+    path = [s + n for s, n in zip(subj, noise)]          # crop copies the noise verbatim
+    assert ck.jitter(path, "right", 3.0, route=route)["pass"] is True     # blind
+    assert ck.jitter(path, "right", 3.0, route=route, route_window=5)["pass"] is False
+
+
+def test_jitter_route_window_lets_a_smooth_crop_pass_over_a_noisy_route():
+    subj = [100 + 2 * i for i in range(40)]
+    route = _route([s + (6 if i % 2 else -6) for i, s in enumerate(subj)])
+    assert ck.jitter(subj, "right", 3.0, route=route, route_window=5)["pass"] is True
+
+
+def test_jitter_route_window_of_one_is_the_historical_behaviour():
+    path = [100, 110, 120, 90, 130]
+    route = _route([100, 110, 120, 90, 130])
+    assert (ck.jitter(path, "right", 10, route=route)
+            == ck.jitter(path, "right", 10, route=route, route_window=1))
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True, None])
+def test_jitter_rejects_a_bad_route_window(bad):
+    with pytest.raises(ValueError, match="route_window"):
+        ck.jitter([100, 110], "right", 10, route=_route([100, 110]), route_window=bad)
+
+
+def test_jitter_reports_reversal_count():
+    path = [100, 110, 105, 115, 110]               # two reversals
+    res = ck.jitter(path, "right", max_reversal=10)
+    assert res["reversals"] == 2
