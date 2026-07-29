@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageStat
 from scripts.lib import checks as checks_mod, color_fidelity, ffbin, geometry, proc
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
-from scripts.lib.motion import classify
+from scripts.lib.motion import classify, travel_direction
 
 
 def _duration(clip: str) -> float:
@@ -104,6 +104,24 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
                        color_fidelity.evaluate(pairs, spec.hue_drift_max))
 
 
+ROUTE_SMOOTH_S = 0.08     # the span over which a crop reversal becomes visible (~5 frames @60fps)
+
+
+def _route_window(route: list[dict]) -> int:
+    """Frames spanning ROUTE_SMOOTH_S at the route's OWN cadence — see checks.jitter
+    on why the route is filtered before it is differenced. Derived from the route's
+    timestamps rather than an ffprobe fps: the route is what is being filtered, and a
+    gappy or resampled one has a cadence of its own that the container never states.
+    Degenerate input (too few points, or no elapsed time) → 1, the historical
+    frame-to-frame behaviour, which is exactly right when there is nothing to filter."""
+    if len(route) < 2:
+        return 1
+    span = route[-1]["t"] - route[0]["t"]
+    if span <= 0:
+        return 1
+    return max(1, round((len(route) - 1) / span * ROUTE_SMOOTH_S))
+
+
 def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str,
         source: str | None = None) -> Report:
     """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
@@ -147,11 +165,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
                 "reframe used, or re-render with a pan")
         route = [p.to_dict() for p in route_from_json(route_path)]
         _, direction = classify(route, src_w, src_h)
-        # static/head-on routes have no direction; "right" is an arbitrary but
-        # deterministic default for the lead-line pick (the spec has no answer here —
-        # a lead composition over non-lateral motion is already a soft mismatch, and
-        # the manifest gate refuses it before this runs)
-        direction = direction or "right"
+        # static/head-on routes carry no direction of their own. reframe does NOT
+        # centre in that case when the author asked for `lead` — it lays the crop out
+        # against the route's net travel (see compute_path) — so scoring against a
+        # fixed "right" would grade the wrong line for a left-moving subject and
+        # report a correct render as broken. Same helper, same answer, both sides.
+        direction = direction or travel_direction(route)
     # Independent of the branch above: a pan has no observation to sample the
     # subject from (route_pts stays None) regardless of whether a route_path
     # was also handed over — same "ignored, not refused" stance as `route` above.
@@ -186,7 +205,11 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     else:
         raise ValueError(f"unknown composition: {spec.composition!r}")
 
-    dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005))
+    # route is [] under a pan (there is no observation), so a generated path keeps
+    # the historical vacuum-judged behaviour; a tracked one gets the subject's own
+    # counter-motion discounted (see checks.jitter).
+    dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005),
+                           route=route or None, route_window=_route_window(route))
     checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
     if meta.pan:
         # checks.continuity([]) returns pass=True — its zip never iterates — so the

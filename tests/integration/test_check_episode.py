@@ -48,6 +48,28 @@ def _insert(tmp_path):
                   out_dims=(1200, 2132), rect_px=(60, 533, 1080, 1080))
 
 
+def _left_lead_diagonal(tmp_path):
+    """A route classify() calls static via its AMBIGUOUS zone (large dx AND large
+    growth — a diagonal approach), but which nets LEFT overall (dx = -500, well
+    past the 288px lateral threshold). reframe's compute_path leads a route like
+    this on the RIGHT third line (motion.travel_direction, not a hard-coded
+    "right"); the path here is built for that same right-third line, so this
+    fixture can tell "direction from travel" apart from a fixed default — the two
+    agree on every OTHER fixture in this file, which all net rightward."""
+    crop_w, freedom = CROP_W_FILL, 1920 - CROP_W_FILL
+    n = 30
+    route = [dict(t=i / 30, x=1200.0 - (i / (n - 1)) * 500.0, y=540.0,
+                  w=60.0 + (i / (n - 1)) * 30.0, h=160.0 + (i / (n - 1)) * 40.0)
+             for i in range(n)]
+    path = [int(max(0, min(freedom, round(p["x"] - crop_w * 2 / 3)))) for p in route]
+    (tmp_path / "route.json").write_text(json.dumps(route))
+    (tmp_path / "path.json").write_text(json.dumps(path))
+    PathMeta(mode="fill", crop_w=crop_w, crop_h=1080, crop_y=0, src_dims=SRC,
+             canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+             freedom=freedom).write(tmp_path / "path.meta.json")
+    return str(tmp_path / "route.json"), str(tmp_path / "path.json")
+
+
 @pytest.mark.integration
 def test_run_fails_loud_when_the_sidecar_is_missing(tmp_path, sample_clip):
     route = [dict(t=i / 30, x=400.0, y=540.0, w=60.0, h=160.0) for i in range(30)]
@@ -120,3 +142,37 @@ def test_crop_w_comes_from_the_sidecar_not_the_canvas(tmp_path, sample_clip):
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
     assert report.checks["on_line"].passed is True
     assert report.checks["on_line"].detail == {"ratio": 1.0}
+
+
+@pytest.mark.integration
+def test_lead_direction_falls_back_to_net_travel_when_classify_is_ambiguous(tmp_path, sample_clip):
+    """classify() has no direction for this route (its ambiguous zone: large dx
+    AND large growth), but the subject still nets LEFT — so reframe leads it on
+    the RIGHT third (compute_path uses motion.travel_direction for exactly this
+    case). check_episode must grade the SAME line: a caller still defaulting to
+    "right" would grade the left-third line instead and read a correctly-rendered
+    left-lead as broken (ratio 0.0 — see the mutation check in Task 7's plan)."""
+    rp, pp = _left_lead_diagonal(tmp_path)
+    spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+    report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
+    assert report.checks["on_line"].passed is True
+    assert report.checks["on_line"].detail == {"ratio": 1.0}
+
+
+def test_route_window_derives_from_the_route_s_own_cadence():
+    import scripts.check_episode as ce
+    # 60fps route → ROUTE_SMOOTH_S (0.08s) spans ~5 frames
+    route = [{"t": i / 60, "x": 100.0, "y": 0.0} for i in range(30)]
+    assert ce._route_window(route) == round(29 / (29 / 60) * 0.08)   # == 5
+    # 30fps → ~2 frames
+    slow = [{"t": i / 30, "x": 100.0, "y": 0.0} for i in range(30)]
+    assert ce._route_window(slow) == max(1, round(29 / (29 / 30) * 0.08))
+
+
+def test_route_window_is_one_for_degenerate_routes():
+    import scripts.check_episode as ce
+    assert ce._route_window([]) == 1
+    assert ce._route_window([{"t": 0.0, "x": 1.0, "y": 0.0}]) == 1
+    # zero elapsed time → 1
+    assert ce._route_window([{"t": 0.0, "x": 1.0, "y": 0.0},
+                             {"t": 0.0, "x": 2.0, "y": 0.0}]) == 1
