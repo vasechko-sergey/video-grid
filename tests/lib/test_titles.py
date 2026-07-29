@@ -248,3 +248,49 @@ def test_title_animation_roundtrip_carries_non_default_values():
 ])
 def test_title_boundary_values_are_accepted(kw):
     Title(**kw)      # inclusive bounds — must NOT raise
+
+
+def _stub_measure(font, text):
+    # width proportional to length; a flat ink-box top (baseline shift = 0)
+    return (float(len(text)) * 10.0, 0.0)
+
+
+def test_layers_none_is_one_centered_layer():
+    from scripts.lib.titles import _layers
+    t = Title("whole line", 0.0, 2.0)
+    assert _layers(t, "/f.ttf", _stub_measure) == [("whole line", 0.0, "(w-tw)/2", "")]
+
+
+def test_layers_word_places_each_word_at_its_final_x():
+    from scripts.lib.titles import _layers
+    t = Title("a bb", 0.0, 2.0, reveal="word", reveal_step=0.5)
+    layers = _layers(t, "/f.ttf", _stub_measure)
+    assert [ly[0] for ly in layers] == ["a", "bb"]          # one layer per word
+    assert [ly[1] for ly in layers] == [0.0, 0.5]           # appears at start + j*step
+    # x is the FULL line centred + this word's measured prefix — never (w-tw)/2.
+    # total="a bb"→40px, k=1/(18*100); prefix word0=0, word1="a "→20px.
+    assert layers[0][2] == "(w-0.022222*h)/2+0.000000*h"
+    assert layers[1][2] == "(w-0.022222*h)/2+0.011111*h"
+    assert all("*h" in ly[2] for ly in layers)              # resolution-independent (inv 5)
+
+
+def test_layers_stair_drops_a_line_per_step():
+    from scripts.lib.titles import _layers
+    t = Title("salt,\nsun\n& you", 0.0, 3.0, reveal="stair", reveal_step=0.5)
+    layers = _layers(t, "/f.ttf", _stub_measure)
+    assert [ly[0] for ly in layers] == ["salt,", "sun", "& you"]   # newline split
+    # per-step drop = j * line_spacing(1.15) * scale(1.0) / 18 = 0.063889 * j
+    assert [ly[3] for ly in layers] == ["+0.000000*h", "+0.063889*h", "+0.127778*h"]
+
+
+def test_layers_baseline_shift_uses_ink_box_top():
+    from scripts.lib.titles import _layers
+
+    def _measure_with_tops(font, text):
+        tops = {"a bb": 0.0, "a": 5.0, "bb": 0.0, "a ": 20.0}
+        return (float(len(text)) * 10.0, tops.get(text, 0.0))
+    t = Title("a bb", 0.0, 2.0, reveal="word", reveal_step=0.5)
+    layers = _layers(t, "/f.ttf", _measure_with_tops)
+    # word "a" sits 5px above the line's top → shifted DOWN by (5-0)*k = +0.002778*h
+    assert layers[0][3] == "+0.002778*h"
+    assert layers[1][3] == "+0.000000*h"

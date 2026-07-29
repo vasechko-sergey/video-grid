@@ -215,6 +215,47 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font) -> st
     return ",".join(parts)
 
 
+def _measure(font_path: str, text: str) -> tuple[float, float]:
+    """(advance width, ink-box top) for `text` at _MEASURE_AT px, in px. Its own
+    function so a test can inject a stub instead of a real font on disk.
+
+    The TOP is not decoration: drawtext places the INK BOX at `y`, so a word of pure
+    x-height letters and one with ascenders/a comma do not share a baseline when each
+    is a layer at one `y`. Shifting each layer by its own box top relative to the full
+    line's box top puts every word back on the line's baseline."""
+    from PIL import ImageFont      # local: only a word reveal needs metrics
+    f = ImageFont.truetype(font_path, _MEASURE_AT)
+    return float(f.getlength(text)), float(f.getbbox(text)[1])
+
+
+def _layers(t: Title, font: str, measure) -> list[tuple[str, float, str, str]]:
+    """(text, appears_at, x_expression, y_drop_expression) per drawtext this title needs.
+
+    reveal="none" is one layer, centred by ffmpeg's own `tw` — unchanged. A reveal is
+    one layer per step, each landing where it will sit in the FINISHED line: centring
+    each by (w-tw)/2 would shuffle the line sideways on every entrance. Widths are
+    measured here and baked into x as fractions of `h` (fontsize is h/FONTSIZE_DIV, so a
+    width at _MEASURE_AT px becomes width * (h/FONTSIZE_DIV)/_MEASURE_AT) —
+    resolution-independent, which is what lets titles.py know nothing about the canvas.
+    stair keeps the same x and drops a line per step."""
+    if t.reveal == "none":
+        return [(t.text, t.start, "(w-tw)/2", "")]
+    k = t.scale / (FONTSIZE_DIV * _MEASURE_AT)   # measured px -> multiples of h
+    steps = _steps(t)
+    joined = " ".join(steps)
+    total, top_full = measure(font, joined)
+    layers = []
+    for j, step in enumerate(steps):
+        prefix = measure(font, " ".join(steps[:j]) + " ")[0] * k if j else 0.0
+        drop = (measure(font, step)[1] - top_full) * k
+        if t.reveal == "stair":
+            drop += j * t.line_spacing * t.scale / FONTSIZE_DIV
+        layers.append((step, t.start + j * t.reveal_step,
+                       f"(w-{total * k:.6f}*h)/2+{prefix:.6f}*h",
+                       f"+{drop:.6f}*h" if drop >= 0 else f"-{-drop:.6f}*h"))
+    return layers
+
+
 def _steps(t: Title) -> list[str]:
     """The chunks a reveal arrives in. "word" splits on whitespace (one word per
     entrance, one line); "stair" splits on NEWLINES, so the author groups the words
