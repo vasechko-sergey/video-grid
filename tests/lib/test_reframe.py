@@ -57,3 +57,17 @@ def test_smooth_window_reaches_the_smoother():
     wide = compute_path(route, "center", "thirds", (9, 16), (1920, 1080),
                         ("static", None), max_step=99, crop_w=497, smooth_window=21)
     assert tight != wide
+
+
+def test_authored_lead_on_a_degenerate_route_falls_back_to_centre():
+    # a 1-point route has no travel direction → an authored lead must take the SAFE
+    # centre clamp, not crop_x with classify_direction's arbitrary "right" default.
+    # Guards the `len(route) >= 2` conjunct: dropping it makes the rescue fire on a
+    # directionless route.
+    from scripts.reframe import compute_path
+    one = [dict(t=0.0, x=900.0, y=300.0, w=140.0, h=320.0)]
+    lead = compute_path(one, "lead", "thirds", (9, 16), (1920, 1080),
+                        ("static", None), max_step=12.5, crop_w=497)
+    centred = compute_path(one, "center", "thirds", (9, 16), (1920, 1080),
+                           ("static", None), max_step=12.5, crop_w=497)
+    assert lead == centred
