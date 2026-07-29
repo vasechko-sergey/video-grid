@@ -4,6 +4,7 @@ encode of the back half; a hard gate refuses a failed reel."""
 import argparse
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -47,7 +48,8 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
-            report: ReelReport, *, audio: str | None = None, titles: str | None = None) -> str:
+            report: ReelReport, *, audio: str | None = None, titles: str | None = None,
+            platform: str = "") -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -55,8 +57,10 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     derives mix's dur from the probed master); -shortest only absorbs sub-second
     jitter — a grossly short stem would truncate the picture, so callers must keep
     them aligned.
-    With `titles` (a TITLES.json path), burn the drawtext chain into this one
-    encode (design §5.16) — no second pass."""
+    With `titles` (a TITLES.json path), burn the drawtext chain into this one encode
+    (design §5.16) — no second pass. `platform` is the same safe-zone table key
+    check_reel judges the PICTURE against; it must reach here too, or a bottom title
+    is laid out against generic margins and lands under the app's chrome."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
@@ -67,7 +71,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     # nothing clobbers it (last -vf wins in ffmpeg — the §12 silent-drop flavor).
     vf: list[str] = []
     if titles is not None:
-        chain = build_filterchain(Titles.from_json(titles), out_dir)
+        chain = build_filterchain(Titles.from_json(titles), out_dir, platform=platform)
         if chain:
             vf = ["-vf", chain]
     n = _next_version(out_dir, profile.container)
@@ -90,9 +94,12 @@ def main() -> None:
     ap.add_argument("--report", required=True, help="ReelReport JSON from check_reel")
     ap.add_argument("--changelog", default="")
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the encode (§5.16)")
+    ap.add_argument("--platform", default="", help="safe-zone table key (reel/tiktok/shorts/…) — "
+                                                   "where the app's chrome sits; titles lay out inside it")
     a = ap.parse_args()
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
-    out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report, titles=a.titles)
+    out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report,
+                  titles=a.titles, platform=a.platform)
     print(out)
 
 

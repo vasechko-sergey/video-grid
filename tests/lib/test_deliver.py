@@ -113,3 +113,34 @@ def test_deliver_mux_forces_copy_over_profile_acodec(tmp_path, monkeypatch):
     cmd = calls[0]
     assert cmd.count("-c:a") == 1 and cmd[cmd.index("-c:a") + 1] == "copy"   # profile acodec overridden
     assert "-b:a" not in cmd                                                 # profile audio bitrate dropped
+
+
+def test_deliver_threads_platform_into_the_filterchain(tmp_path, monkeypatch):
+    # spy on build_filterchain so the test needs no real font on disk; the chain's
+    # own platform behaviour is covered in test_titles.py.
+    from scripts.lib.titles import Title, Titles
+    seen = {}
+
+    def _spy(titles, work_dir, resolve=None, platform="", measure=None):
+        seen["platform"] = platform
+        return ""                                   # empty chain → no -vf, encode still runs
+    monkeypatch.setattr(deliver, "build_filterchain", _spy)
+    monkeypatch.setattr(deliver.proc, "run", lambda cmd, **k: SimpleNamespace(stdout=b""))
+    tj = tmp_path / "TITLES.json"
+    Titles(items=(Title("hi", 0.0, 2.0),)).write(tj)
+    deliver.deliver(str(tmp_path / "m.mp4"), REEL_H264, str(tmp_path / "out"), "v1",
+                    _green(), titles=str(tj), platform="reel")
+    assert seen["platform"] == "reel"
+
+
+def test_deliver_cli_passes_platform(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    rep = tmp_path / "r.json"
+    rep.write_text('{"checks": {}, "episode_count": 0, "fail_reasons": []}')
+    monkeypatch.setattr(deliver.sys, "argv",
+                        ["deliver", "m.mp4", "--out-dir", str(tmp_path),
+                         "--report", str(rep), "--platform", "tiktok"])
+    deliver.main()
+    assert seen.get("platform") == "tiktok"

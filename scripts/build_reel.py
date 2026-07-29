@@ -85,7 +85,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
-                                  audio=audio, titles=titles)
+                                  audio=audio, titles=titles, platform=rm.platform)
             return {"status": "delivered", "output": out, "report": report.to_dict()}
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,

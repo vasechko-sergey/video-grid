@@ -5,10 +5,11 @@ from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailu
                                 CheckResult, MusicSpec)
 
 
-def _rm(cap=3, n=2):
+def _rm(cap=3, n=2, platform=""):
     eps = [ReelEpisode(manifest={"segment": f"s{i}.mp4"}, clip=f"c{i}.mp4", route=f"r{i}.json")
            for i in range(n)]
-    return ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=cap)
+    return ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=cap,
+                        platform=platform)
 
 
 def _pass():
@@ -34,7 +35,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the
     color_correct passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
-            "targets": []}
+            "targets": [], "deliver_platform": ""}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -52,9 +53,10 @@ def _wire(monkeypatch, reports, pe_results=None):
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
-    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None):
+    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform=""):
         seen["deliver"].append(od)
         seen["titles"].append(titles)
+        seen["deliver_platform"] = platform
         return f"{od}/REEL_v1.mp4"
     monkeypatch.setattr(build_reel.deliver, "deliver", fake_deliver)
     results = iter(pe_results or [])
@@ -211,6 +213,14 @@ def test_build_reel_builds_geometry_and_platform_when_sidecars_present(monkeypat
     build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
     assert seen["geometry"] == [("r0.json", "p0.json", "pm0.json")]
     assert seen["platform"] == "tiktok"
+
+
+def test_build_reel_forwards_platform_to_deliver(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_pass()])
+    res = build_reel.build_reel(_rm(platform="reel"), str(tmp_path / "out"),
+                                str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["deliver_platform"] == "reel"       # rm.platform → deliver(platform=)
 
 
 def test_within_band_shortfall_retimes_the_target_and_delivers(monkeypatch, tmp_path):
