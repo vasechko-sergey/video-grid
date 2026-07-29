@@ -373,3 +373,20 @@ def test_build_filterchain_scale_and_colour(tmp_path):
     ts = Titles(items=(Title("hi", 0.0, 2.0, scale=2.0, color="0xffcc00"),))
     vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
     assert "fontsize=h*0.111111" in vf and "fontcolor=0xffcc00" in vf
+
+
+def test_build_filterchain_fade_on_a_word_reveal_uses_each_layers_own_appears(tmp_path):
+    # a late-revealed word fades in on ITS OWN entrance (appears); all layers fade OUT
+    # together at the shared end. Pins the per-layer appears → alpha in-ramp wiring.
+    ts = Titles(items=(Title("a bb", 0.0, 3.0, fade=0.5, reveal="word", reveal_step=0.5),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve, measure=_stub_measure)
+    assert vf.count("drawtext=") == 2
+    assert "min((t-0.0)/0.5,(3.0-t)/0.5)" in vf      # word0 in-ramp from its appears=0.0
+    assert "min((t-0.5)/0.5,(3.0-t)/0.5)" in vf      # word1 in-ramp from its appears=0.5
+
+
+def test_build_filterchain_plain_style_emits_no_empty_fragment(tmp_path):
+    # style="plain" contributes no fragment, so the chain must not contain a doubled colon
+    ts = Titles(items=(Title("hi", 0.0, 2.0, style="plain"),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert "::" not in vf

@@ -183,6 +183,8 @@ _STYLE_FRAGMENTS: dict[str, str] = {
     "outline": "borderw=4:bordercolor=black",
     "plain": "",
 }
+
+
 def y_exprs(platform: str = "") -> dict[str, str]:
     """Per-position y expressions, keyed off the PLATFORM's safe zone (§5.13/§5.16).
 
