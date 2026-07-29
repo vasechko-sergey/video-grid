@@ -1404,3 +1404,10 @@ def test_reframespec_rejects_bad_smooth_window_s(bad):
         ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                     color_means=(105, 122, 137), delivery=Delivery(),
                     smooth_window_s=bad)
+
+
+def test_reframespec_accepts_the_inclusive_smooth_window_s_upper_bound():
+    from scripts.lib.models import ReframeSpec, Delivery
+    s = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                    color_means=(105, 122, 137), delivery=Delivery(), smooth_window_s=2.0)
+    assert s.smooth_window_s == 2.0

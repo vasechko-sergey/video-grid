@@ -39,3 +39,11 @@ def test_travel_direction_defaults_to_right_without_travel():
     assert travel_direction([dict(t=0.0, x=5.0, y=0.0, w=1.0, h=1.0)]) == "right"
     flat = [dict(t=i / 30, x=500.0, y=0.0, w=1.0, h=1.0) for i in range(5)]
     assert travel_direction(flat) == "right"
+
+
+def test_travel_direction_is_net_endpoints_not_cumulative():
+    from scripts.lib.motion import travel_direction
+    # dips left mid-route but ends net-RIGHT of its start → "right" (endpoints, not path sum)
+    dip = [dict(t=i / 30, x=x, y=0.0, w=1.0, h=1.0)
+           for i, x in enumerate([500, 400, 300, 350, 560])]
+    assert travel_direction(dip) == "right"

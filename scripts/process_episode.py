@@ -308,7 +308,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,
                             max_speed=params["max_speed"],
-                            smooth_window_s=float(params["smooth_window_s"]),
+                            smooth_window_s=params["smooth_window_s"],
                             color_correct=color_correct,
                             white_balance=m.white_balance, black_point=m.black_point,
                             highlight=m.highlight, saturation=m.saturation,

@@ -615,13 +615,13 @@ class ReframeSpec:
     layout: LayoutSpec = field(default_factory=lambda: LayoutSpec(mode="fill"))
     max_speed: float = 750.0
     smooth_window_s: float = 0.25  # savgol span over the tracked path, IN SECONDS. max_speed
-                              # caps how FAR the crop may move per frame; this sets over how
-                              # long a wobble is averaged away. They are not interchangeable: a
-                              # low-amplitude, high-frequency hitch (the jitter check's whole
-                              # subject) already sits under any max_speed the ladder reaches,
-                              # so damping speed cannot touch it. Seconds and not frames
-                              # because it is a filter cutoff — see pathsmooth.window_frames,
-                              # resolved against the clip's own fps at render time.
+                                   # caps how FAR the crop may move per frame; this sets over how
+                                   # long a wobble is averaged away. They are not interchangeable: a
+                                   # low-amplitude, high-frequency hitch (the jitter check's whole
+                                   # subject) already sits under any max_speed the ladder reaches,
+                                   # so damping speed cannot touch it. Seconds and not frames
+                                   # because it is a filter cutoff — see pathsmooth.window_frames,
+                                   # resolved against the clip's own fps at render time.
     color_correct: tuple | None = None
     white_balance: float = 0.0  # grey-world neutralize toward the common channel average,
                                 # FIRST in the chain; 0 = off (identity), so an episode

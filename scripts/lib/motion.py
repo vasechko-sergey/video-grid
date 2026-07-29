@@ -36,7 +36,8 @@ def travel_direction(route: list[dict[str, float]]) -> str:
     check_episode scores the result against it. If they derived it separately they
     could disagree on a left-moving subject — the crop leading one way and the check
     grading the other line — and the report would be wrong about a correct render.
-    An empty/1-point route has no travel; "right" matches classify's own default.
+    An empty/1-point route has no travel; "right" is the default every caller already
+    applies when classify returns no direction (reframe.compute_path, check_episode).
     """
     if len(route) < 2:
         return "right"

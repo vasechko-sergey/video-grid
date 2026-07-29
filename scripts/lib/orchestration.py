@@ -109,6 +109,9 @@ def detect_contradictions(motion: str | None, route: list[dict],
         # and is still refused — measured by the one threshold classify itself uses.
         travels = (len(route) >= 2
                    and abs(route[-1]["x"] - route[0]["x"]) >= motion_mod.LATERAL_FRAC * src_w)
+        # obs_type != "lateral" is currently subsumed by not travels — a classify-"lateral"
+        # shot always travels — but is kept so a classify-lateral shot is never refused
+        # should the two thresholds ever diverge.
         if obs_type != "lateral" and not travels:
             findings.append({"reason": "composition-motion-mismatch",
                              "detail": f"composition 'lead' needs somewhere to lead to, but the "

@@ -32,6 +32,8 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
         # the direction from the route's own net travel — the one thing the ambiguous
         # zone never made ambiguous (it enters that zone only when |dx| is LARGE).
         kind, direction = "lateral", classify_direction(route)
+    # break/center are re-caught here — they never enter the lead-rescue above, which is
+    # what makes that rescue lead-only by construction.
     if composition in ("center", "break") or kind != "lateral":
         # center / head-on / static: aim crop centre at subject, no lead.
         # break (spec §6.2): tracked but relaxed — v1 center-tracks; extreme
