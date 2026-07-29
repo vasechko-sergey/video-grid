@@ -14,6 +14,14 @@ from scripts.lib import safezones
 
 POSITIONS: tuple[str, ...] = ("top", "center", "bottom")
 STYLES: tuple[str, ...] = ("bold-box", "outline", "plain")
+REVEALS: tuple[str, ...] = ("none", "word", "stair")
+
+FONTSIZE_DIV = 18      # drawtext fontsize is h/FONTSIZE_DIV — one spelling, two readers
+                       # (build_filterchain's own fontsize=, and the width arithmetic a
+                       # word reveal needs, resolution-independent because every width
+                       # scales with the same h)
+_MEASURE_AT = 100      # px font size the metrics are taken at, then scaled by h
+LINE_SPACING = 1.15    # multiples of the font size between staircase lines
 
 
 @dataclass(frozen=True)
@@ -24,6 +32,15 @@ class Title:
     font: str = "system"      # "system" -> resolve_font default; else a name/path (fonts.py)
     pos: str = "bottom"       # one of POSITIONS (safe-margin preset)
     style: str = "bold-box"   # one of STYLES
+    fade: float = 0.0         # seconds to ramp alpha in AND out; 0.0 = hard cut (historical
+                              # default; an existing TITLES.json renders pixel-identically)
+    reveal: str = "none"      # "none" | "word" (one word at a time at its FINAL x) |
+                              # "stair" (same, each step also drops a line). word splits on
+                              # spaces, stair on NEWLINES — see _steps
+    reveal_step: float = 0.35 # seconds between word entrances (ignored when reveal="none")
+    color: str = "white"      # drawtext fontcolor: a name, 0xRRGGBB, or either with @alpha
+    scale: float = 1.0        # multiplies the h/FONTSIZE_DIV default size
+    line_spacing: float = LINE_SPACING  # multiples of the font size between staircase lines
 
     def __post_init__(self) -> None:
         if not (isinstance(self.text, str) and self.text.strip()):
@@ -44,10 +61,55 @@ class Title:
             raise ValueError(f"Title.pos {self.pos!r} not in {POSITIONS}")
         if self.style not in STYLES:
             raise ValueError(f"Title.style {self.style!r} not in {STYLES}")
+        if isinstance(self.fade, bool) or not isinstance(self.fade, (int, float)):
+            raise ValueError(f"Title.fade must be a number (seconds), got {self.fade!r}")
+        if not math.isfinite(self.fade) or self.fade < 0:
+            raise ValueError(f"Title.fade must be a finite number >= 0 seconds, got {self.fade!r}")
+        # Two ramps inside ONE window: past dur/2 the in-ramp still climbs while the
+        # out-ramp already falls, so the title never reaches full opacity and the author's
+        # colour is never on screen. Refused, not clamped (invisible-creative-change class).
+        if 2 * self.fade > self.dur:
+            raise ValueError(
+                f"Title.fade {self.fade}s twice over exceeds the {self.dur}s window — the "
+                f"title would never reach full opacity. Use fade <= {self.dur / 2:g}s, or "
+                "lengthen dur")
+        if not (isinstance(self.color, str) and self.color.strip()):
+            raise ValueError(f"Title.color must be a non-empty drawtext colour "
+                             f"(a name, 0xRRGGBB, or either with @alpha), got {self.color!r}")
+        if (isinstance(self.scale, bool) or not isinstance(self.scale, (int, float))
+                or not math.isfinite(self.scale) or not 0 < self.scale <= 5):
+            raise ValueError(f"Title.scale must be a multiplier in (0, 5], got {self.scale!r}")
+        if (isinstance(self.line_spacing, bool)
+                or not isinstance(self.line_spacing, (int, float))
+                or not math.isfinite(self.line_spacing) or not 0.5 <= self.line_spacing <= 3):
+            raise ValueError(f"Title.line_spacing must be a multiplier in [0.5, 3], "
+                             f"got {self.line_spacing!r}")
+        if self.reveal not in REVEALS:
+            raise ValueError(f"Title.reveal {self.reveal!r} not in {REVEALS}")
+        if (isinstance(self.reveal_step, bool)
+                or not isinstance(self.reveal_step, (int, float))
+                or not math.isfinite(self.reveal_step) or self.reveal_step <= 0):
+            raise ValueError(f"Title.reveal_step must be a positive number of seconds, "
+                             f"got {self.reveal_step!r}")
+        if self.reveal in ("word", "stair"):
+            # The LAST word must arrive, hold, and still leave inside the window; if it
+            # cannot, the line is never once whole on screen — the one thing a word reveal
+            # builds up to. Refused, not silently compressed.
+            n = len(_steps(self))
+            need = (n - 1) * self.reveal_step + 2 * self.fade
+            if need > self.dur:
+                raise ValueError(
+                    f"Title.reveal={self.reveal!r} needs {need:g}s for {n} steps at "
+                    f"reveal_step {self.reveal_step}s (+2x fade {self.fade}s) but the window is "
+                    f"{self.dur}s — the last word would still be arriving as the title leaves. "
+                    "Shorten reveal_step, shorten fade, or lengthen dur")
 
     def to_dict(self) -> dict:
         return {"text": self.text, "start": self.start, "dur": self.dur,
-                "font": self.font, "pos": self.pos, "style": self.style}
+                "font": self.font, "pos": self.pos, "style": self.style,
+                "fade": self.fade, "reveal": self.reveal,
+                "reveal_step": self.reveal_step, "color": self.color,
+                "scale": self.scale, "line_spacing": self.line_spacing}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Title":
@@ -151,3 +213,13 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font) -> st
                  f"enable='between(t,{t.start},{t.start + t.dur})'")
         parts.append(piece)
     return ",".join(parts)
+
+
+def _steps(t: Title) -> list[str]:
+    """The chunks a reveal arrives in. "word" splits on whitespace (one word per
+    entrance, one line); "stair" splits on NEWLINES, so the author groups the words
+    themselves ("salt,\\nsun\\n& you" is three steps). Splitting a staircase on spaces
+    would force one word per line and make a four-word title a quarter-frame tall."""
+    if t.reveal == "stair":
+        return [ln.strip() for ln in t.text.splitlines() if ln.strip()]
+    return t.text.split()

@@ -181,3 +181,47 @@ def test_titles_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "TITLES.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run titles"):
         Titles.from_json(p)
+
+
+def test_title_animation_defaults_and_roundtrip():
+    t = Title(text="Hi", start=0.0, dur=2.0)
+    assert (t.fade, t.reveal, t.reveal_step) == (0.0, "none", 0.35)
+    assert (t.color, t.scale, t.line_spacing) == ("white", 1.0, 1.15)
+    assert Title.from_dict(t.to_dict()) == t          # 12-key round-trip
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(text="x", start=0.0, dur=1.0, fade=0.6), "never reach full opacity"),
+    (dict(text="x", start=0.0, dur=1.0, fade=-0.1), "fade"),
+    (dict(text="x", start=0.0, dur=1.0, fade=True), "fade"),
+    (dict(text="x", start=0.0, dur=1.0, color=" "), "color"),
+    (dict(text="x", start=0.0, dur=1.0, scale=0.0), "scale"),
+    (dict(text="x", start=0.0, dur=1.0, scale=6.0), "scale"),
+    (dict(text="x", start=0.0, dur=1.0, scale=True), "scale"),
+    (dict(text="x", start=0.0, dur=1.0, line_spacing=0.4), "line_spacing"),
+    (dict(text="x", start=0.0, dur=1.0, line_spacing=3.1), "line_spacing"),
+    (dict(text="x", start=0.0, dur=1.0, reveal="fly"), "reveal"),
+    (dict(text="x", start=0.0, dur=1.0, reveal_step=0.0), "reveal_step"),
+    (dict(text="x", start=0.0, dur=1.0, reveal_step=True), "reveal_step"),
+    (dict(text="a b c d", start=0.0, dur=1.0, reveal="word", reveal_step=0.5),
+     "would still be arriving"),
+])
+def test_title_animation_validation_fails_loud(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        Title(**kw)
+
+
+def test_title_reveal_that_fits_is_accepted():
+    # 3 words, step 0.4 → need (3-1)*0.4 = 0.8s <= dur 2.0s
+    Title(text="a b c", start=0.0, dur=2.0, reveal="word", reveal_step=0.4)
+
+
+def test_steps_word_splits_on_whitespace():
+    from scripts.lib.titles import _steps
+    assert _steps(Title("salt sun you", 0.0, 2.0, reveal="word")) == ["salt", "sun", "you"]
+
+
+def test_steps_stair_splits_on_newlines_and_strips():
+    from scripts.lib.titles import _steps
+    t = Title("salt,\nsun\n& you", 0.0, 3.0, reveal="stair", reveal_step=0.5)
+    assert _steps(t) == ["salt,", "sun", "& you"]
