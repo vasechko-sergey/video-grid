@@ -69,6 +69,74 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    report at the final-review checkpoint. On changes, edit `TITLES.json` (or
    re-run step 3 for a clean restart), then re-review.
 
+## Motion & colour
+
+Six more `Title` fields — `fade`, `reveal`, `reveal_step`, `color`, `scale`,
+`line_spacing` — go beyond the static on/off window `build_titles` drafts.
+Every one defaults to that historical behaviour (a hard cut on, then a hard
+cut off, white text at the default size), so an existing `TITLES.json` — or
+one `build_titles` just wrote — renders unchanged. Sizing them is your
+judgment, same as `pos`/`style`/`font`: there's no flag for it, you set them
+by editing `TITLES.json` directly (Procedure step 3).
+
+- **`fade`** — seconds to ramp opacity in AND out (default `0.0`, a hard
+  cut). Both ramps sit inside the one `[start, start+dur]` window, so
+  `2 * fade` must not exceed `dur` — past that the in-ramp is still
+  climbing while the out-ramp already falls, and the title never once
+  reaches full opacity. A `Title` that crosses this line is REFUSED at
+  load, naming the largest `fade` that still fits `dur`.
+- **`reveal`** — `"none"` (default: one static layer), `"word"` (one word
+  at a time, each landing at its FINAL position so later arrivals never
+  shove earlier ones sideways), or `"stair"` (the same, plus every step
+  also drops a line, staircase-style). `"word"` splits `text` on
+  **spaces**; `"stair"` splits on **newlines** — you group the words into
+  lines yourself, e.g. `"salt,\nsun\n& you"` is three stair steps, not
+  three words.
+- **`reveal_step`** — seconds between one step's entrance and the next
+  (default `0.35`; ignored when `reveal="none"`). Must be a positive
+  number.
+- **the reveal fit rule.** With `reveal` set, the last step must still
+  fully arrive, hold, and leave inside the window — otherwise the one
+  thing a reveal builds up to (the whole line, complete, at least once)
+  never happens:
+
+      (#steps - 1) * reveal_step + 2 * fade <= dur
+
+  `#steps` is the word count for `"word"`, the line count for `"stair"`.
+  Fail this and the `Title` is REFUSED at load (naming the seconds it
+  needed against the window it got) — never silently compressed. Fix it
+  by shortening `reveal_step`, shortening `fade`, lengthening `dur`, or
+  trimming the text to fewer steps.
+- **`color`** — any drawtext colour: a name (`"white"`, `"gold"`),
+  `0xRRGGBB`, or either with `@alpha` (`"yellow@0.9"`, `"0xFFD700@0.9"`).
+  Must be non-empty; ffmpeg is the one that actually parses it, so a typo'd
+  colour surfaces at `deliver`, not here.
+- **`scale`** — multiplies the default fontsize (`h/18`); a number in
+  `(0, 5]`.
+- **`line_spacing`** — multiples of the font size between staircase
+  lines, a number in `[0.5, 3]` (default `1.15`). Tighten it for a script
+  face, whose own letterforms already read tall.
+
+A faded, word-revealed hook — copy this `Title` into `TITLES.json`'s
+`items` list and adjust `text`/timing to fit your reel:
+
+    {
+      "text": "One more summer with you",
+      "start": 0.0,
+      "dur": 3.5,
+      "pos": "top",
+      "fade": 0.25,
+      "reveal": "word",
+      "reveal_step": 0.3,
+      "color": "0xFFD700@0.9"
+    }
+
+Check the math before saving it: 5 words means 4 gaps between entrances —
+`4 * 0.3 + 2 * 0.25 = 1.7s`, inside the `3.5s` `dur` (the reveal fits), and
+`2 * 0.25 = 0.5s` is inside `3.5s` too (the fade fits). `font`/`style`/
+`scale`/`line_spacing` are left at their defaults (`"system"`/
+`"bold-box"`/`1.0`/`1.15`).
+
 ## Gate
 
 `TITLES.json` + `TITLES.md` written, every item's words sourced from `SPEC`'s
@@ -110,5 +178,9 @@ exactly as it does without this stage.
   author from. Run reel-brief first, or skip titles entirely.
 - **No per-episode titles** — they render once, over the whole assembled reel,
   at `deliver`; they are not part of `process-episode`.
-- **No animation, no karaoke, no per-word timing** — `drawtext` static windows
-  only: a title is on, unchanged, for `[start, start+dur]`, then off.
+- **No continuous motion, no karaoke fill, no per-character reveal.** `fade`
+  (opacity) and `reveal` (`word`/`stair`, Motion & colour above) are the two
+  animations on offer, each still built from `drawtext`'s static layers —
+  nothing slides across the frame, no letter lights up mid-word, and a
+  Title's `color` is fixed for its whole window; every layer is on,
+  unchanged, for its own `[appears, end]`.
