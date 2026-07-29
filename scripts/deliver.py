@@ -4,7 +4,6 @@ encode of the back half; a hard gate refuses a failed reel."""
 import argparse
 import json
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 

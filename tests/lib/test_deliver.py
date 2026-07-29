@@ -1,3 +1,4 @@
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -139,7 +140,7 @@ def test_deliver_cli_passes_platform(monkeypatch, tmp_path):
                         lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
     rep = tmp_path / "r.json"
     rep.write_text('{"checks": {}, "episode_count": 0, "fail_reasons": []}')
-    monkeypatch.setattr(deliver.sys, "argv",
+    monkeypatch.setattr(sys, "argv",
                         ["deliver", "m.mp4", "--out-dir", str(tmp_path),
                          "--report", str(rep), "--platform", "tiktok"])
     deliver.main()
