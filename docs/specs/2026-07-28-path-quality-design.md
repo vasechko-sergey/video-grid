@@ -272,7 +272,7 @@ path-quality edits and grafts them onto the post-slice-F files.
    equals `classify`'s default; `adjust_reframe_params({"max_speed": 750.0}, …)`
    returns without `KeyError`. Any episode authored before this slice renders the
    same argv on 30 fps footage (verified against the existing golden fixtures — no
-   golden may move; the 59.94 fps fixtures are immune, see §7).
+   golden file moves; the 59.94 fps fixtures aren't exact-pixel-pinned, see §7).
 2. **Two-readers-one-spelling.** `reframe.compute_path` and `check_episode` both
    route direction through `travel_direction`. Test: a left-moving diagonal shot
    that `classify` calls `static` renders a `lead` crop *and* passes its own
@@ -350,12 +350,21 @@ are the regression net for the byte-identical claim.
 | `tests/lib/test_orchestration.py` | ladder + lead-gate cases | A, C |
 | `tests/lib/test_reframe.py` | new — lead-from-travel over a diagonal shot | C |
 
-No golden fixtures move — the render path changes only the smoothing window, and
-`window_frames` resolves it to the historical 7 frames at the fixtures' 30 fps.
-The exact-pixel fixtures that run at 59.94 fps are immune for one of two reasons:
-the `process_episode` orchestrator golden uses a **frozen route** (a constant raw
-path smooths to itself under any window), and the 60 fps `reframe._simplify` /
-`_filter_args` cases call those helpers **directly** on a pre-built path, never
-routing through `window_frames`. The implementer confirms this by running the full
-real-ffmpeg battery and asserting no golden diff — the byte-identical claim is a
-test result, not a promise.
+No committed golden **file** moves — and that is a test result, not a promise (the
+full real-ffmpeg battery runs green with a clean tree). Two distinct reasons, and
+the second is subtler than a first pass suggests:
+
+- **30 fps fixtures render byte-identical.** `window_frames(0.25, 30) == 7`, the
+  historical default, so the smoothed path is unchanged bit-for-bit.
+- **59.94 fps fixtures are not exact-pixel-pinned, so nothing they render *can*
+  move.** The 60 fps `reframe._simplify` / `_filter_args` cases call those helpers
+  **directly** on a pre-built path, never routing through `window_frames`. The one
+  end-to-end orchestrator golden (`test_golden_ride_through_orchestrator`) is NOT a
+  frozen/constant path — its supplied route classifies **lateral** and travels
+  ~260 px, so at 59.94 fps its window resolves 7 → 15 and the rendered crop path
+  genuinely *does* shift, by up to ~3 px. It stays green because that test asserts
+  the **behavioural** gate (`on_line` / `continuity` / dims within tolerance), which
+  the smoother path still passes — not an exact-pixel or path hash. A maintainer who
+  later pins a pixel/path hash to that fixture must re-pin it under this slice, not
+  assume immunity; the "no golden moved" gate here means no *file* is byte-pinned at
+  a rate where the window changes, not that every 59.94 fps render is unchanged.
