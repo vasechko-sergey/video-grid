@@ -424,7 +424,9 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
         motion = classify(route_dicts, src_w, src_h)
         path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
                             (src_w, src_h), motion, max_step=spec.max_speed / fps,
-                            crop_w=rl.crop_w)
+                            crop_w=rl.crop_w,
+                            smooth_window=pathsmooth.window_frames(
+                                spec.smooth_window_s, fps))
         times = [p.t for p in route]
         mean_y = sum(p.y for p in route) / len(route)
         cy = g.crop_y(mean_y, rl.crop_h, src_h)

@@ -307,7 +307,9 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     for attempt in range(1, max_attempts + 1):
         rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
                             color_means=m.color_means, delivery=delivery, layout=lspec,
-                            max_speed=params["max_speed"], color_correct=color_correct,
+                            max_speed=params["max_speed"],
+                            smooth_window_s=float(params["smooth_window_s"]),
+                            color_correct=color_correct,
                             white_balance=m.white_balance, black_point=m.black_point,
                             highlight=m.highlight, saturation=m.saturation,
                             shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
@@ -343,11 +345,13 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             return result
         esc = orch.escalation(attempt, report.fail_reasons, max_attempts)
         if esc is None and pan is not None:
-            # The retry ladder tunes ONE thing: max_speed, via
-            # adjust_reframe_params. For a tracked path that is the smoothing
-            # damper. For a generated one it is only the speed CEILING, so a
-            # retry re-renders byte-identical pixels — three identical ffmpeg
-            # passes ending in "max-retries", a reason that describes nothing.
+            # The retry ladder tunes max_speed and smooth_window_s, via
+            # adjust_reframe_params. For a tracked path those are the damper and
+            # the averaging span. For a generated one smooth_window_s is not read
+            # at all (generate_pan_path never smooths) and max_speed is only the
+            # speed CEILING, so a retry re-renders byte-identical pixels — three
+            # identical ffmpeg passes ending in "max-retries", a reason that
+            # describes nothing.
             #
             # Worse, the ladder would actively break the pan: a jitter fail
             # multiplies max_speed by 0.6, so a pan that cleared the ceiling at

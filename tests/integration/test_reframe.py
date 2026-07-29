@@ -901,3 +901,29 @@ def test_reframe_records_that_its_source_was_stabilized(monkeypatch, tmp_path):
                     stabilized=True)
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
     assert meta.stabilized is True
+
+
+@pytest.mark.integration
+def test_reframe_passes_the_fps_resolved_window_to_compute_path(tmp_path, monkeypatch):
+    # A 30fps fixture can't prove this: window_frames(0.25, 30) == 7, the SAME
+    # value compute_path's own default falls back to, so a still-hardcoded
+    # default would pass unnoticed. 60fps resolves to 15 — the only fps that
+    # tells "resolved from spec.smooth_window_s" apart from "old default".
+    captured = {}
+    real = reframe.compute_path
+    def spy(*a, **k):
+        captured["smooth_window"] = k.get("smooth_window")
+        return real(*a, **k)
+    monkeypatch.setattr(reframe, "compute_path", spy)
+    src = tmp_path / "s60.mp4"
+    subprocess.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+                    "-i", "color=c=gray:s=1920x1080:d=1:r=60", "-pix_fmt", "yuv420p",
+                    str(src)], check=True)
+    route = [dict(t=i / 60, x=960.0, y=540.0, w=140.0, h=320.0) for i in range(60)]
+    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105, 122, 137),
+                              delivery=Delivery.from_spec("exact:1080x1920"),
+                              smooth_window_s=0.25)
+    reframe.reframe(spec, str(src), str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
+    assert captured["smooth_window"] == reframe.pathsmooth.window_frames(0.25, 60.0) == 15
