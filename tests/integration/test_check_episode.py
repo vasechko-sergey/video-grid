@@ -159,6 +159,47 @@ def test_lead_direction_falls_back_to_net_travel_when_classify_is_ambiguous(tmp_
     assert report.checks["on_line"].detail == {"ratio": 1.0}
 
 
+def _center_left_diagonal(tmp_path):
+    """The SAME ambiguous net-left diagonal route as _left_lead_diagonal (classify
+    -> static, travel_direction -> left) — but CENTER-tracked: path follows the
+    subject's centre exactly (path[i] = x[i] - crop_w/2), never led off a third
+    line. A crop that copies the subject's own motion frame-for-frame is
+    definitionally jitter-free, but only if jitter's "forward" sign matches the
+    way the subject actually travels: scored as "left" this is worst_reversal
+    0.0/pass; scored as a hard-coded "right" it reads worst_reversal ~9.4px/fail
+    (verified empirically — box-filtering the route before differencing, per
+    checks.jitter, keeps the two directions from cancelling identically)."""
+    crop_w, freedom = CROP_W_FILL, 1920 - CROP_W_FILL
+    n = 30
+    route = [dict(t=i / 30, x=1200.0 - (i / (n - 1)) * 500.0, y=540.0,
+                  w=60.0 + (i / (n - 1)) * 30.0, h=160.0 + (i / (n - 1)) * 40.0)
+             for i in range(n)]
+    path = [int(max(0, min(freedom, round(p["x"] - crop_w / 2)))) for p in route]
+    (tmp_path / "route.json").write_text(json.dumps(route))
+    (tmp_path / "path.json").write_text(json.dumps(path))
+    PathMeta(mode="fill", crop_w=crop_w, crop_h=1080, crop_y=0, src_dims=SRC,
+             canvas=(9, 16), out_dims=(606, 1080), rect_px=(0, 0, 606, 1080),
+             freedom=freedom).write(tmp_path / "path.meta.json")
+    return str(tmp_path / "route.json"), str(tmp_path / "path.json")
+
+
+@pytest.mark.integration
+def test_net_left_center_grades_jitter_along_actual_travel(tmp_path, sample_clip):
+    """center composition over the ambiguous net-left route: reframe centre-tracks
+    (compute_path's non-lateral branch), so the crop travels LEFT in lock-step
+    with the subject — genuinely jitter-free. jitter must read that leftward
+    motion as "forward" (motion.travel_direction), not a fixed "right", or a
+    clean center-tracked render reads as broken. This is the center/break half of
+    the lead test above — the two compositions share the same direction fallback
+    line in check_episode.run, and a narrower mutant that special-cased "lead"
+    only would pass the lead test while failing this one."""
+    rp, pp = _center_left_diagonal(tmp_path)
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=3.0)
+    report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
+    assert report.checks["jitter"].passed is True
+    assert report.checks["jitter"].detail == {"worst_reversal": 0.0, "reversals": 0}
+
+
 def test_route_window_derives_from_the_route_s_own_cadence():
     import scripts.check_episode as ce
     # 60fps route → ROUTE_SMOOTH_S (0.08s) spans ~5 frames
@@ -176,3 +217,11 @@ def test_route_window_is_one_for_degenerate_routes():
     # zero elapsed time → 1
     assert ce._route_window([{"t": 0.0, "x": 1.0, "y": 0.0},
                              {"t": 0.0, "x": 2.0, "y": 0.0}]) == 1
+
+
+def test_route_window_floors_at_one_for_a_sparse_route():
+    import scripts.check_episode as ce
+    # ~4.75fps avg cadence → round(cadence * 0.08) == 0; the floor rescues it to 1,
+    # because checks.jitter rejects route_window < 1 and would otherwise crash.
+    sparse = [{"t": i * 4 / 19, "x": 100.0, "y": 0.0} for i in range(20)]
+    assert ce._route_window(sparse) == 1
