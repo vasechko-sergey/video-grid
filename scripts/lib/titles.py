@@ -183,37 +183,66 @@ _STYLE_FRAGMENTS: dict[str, str] = {
     "outline": "borderw=4:bordercolor=black",
     "plain": "",
 }
-_Z = safezones.default_zone()
-_Y_EXPR: dict[str, str] = {          # safe-margin presets from the shared SafeZone table (§5.13/§5.16)
-    "top": f"h*{_Z.top}",
-    "center": "(h-th)/2",
-    "bottom": f"h-th-h*{_Z.bottom}",
-}
+def y_exprs(platform: str = "") -> dict[str, str]:
+    """Per-position y expressions, keyed off the PLATFORM's safe zone (§5.13/§5.16).
+
+    Not a module constant: the margin is not a constant. The generic zone keeps 12%
+    clear at the bottom, Reels 16%, TikTok 18% — a bottom title laid against the
+    generic table renders UNDER the app's caption/button chrome on exactly the
+    platforms this repo delivers to. check_reel already judges the subject against
+    safe_zone_for(platform); this is the same spelling, so the two halves can no
+    longer disagree. Empty/unknown platform → the generic zone, unchanged."""
+    z = safezones.safe_zone_for(platform)
+    return {"top": f"h*{z.top}",
+            "center": "(h-th)/2",
+            "bottom": f"h-th-h*{z.bottom}"}
 
 
-def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font) -> str:
-    """The drawtext chain deliver injects into its encode -vf: one drawtext per Title,
-    shown only in [start, start+dur] via enable=. Positions use ffmpeg's own w/h/tw/th
-    expressions (resolution-agnostic — no python dims). Each title's free text goes to
-    a per-title textfile (textfile= dodges filtergraph escaping of ':'/apostrophes —
-    draft's trick, generalized to N titles, hence work_dir). Empty Titles -> "" (deliver
-    then encodes with no -vf). font/textfile are single-quoted; a resolved system/cask
-    font and a skill-controlled work-dir path carry no apostrophe (draft's assumption)."""
+def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
+                      platform: str = "", measure=None) -> str:
+    """The drawtext chain deliver injects into its encode -vf. One drawtext per Title
+    (or per reveal step), shown only in [start, start+dur] via enable=. Positions use
+    ffmpeg's own w/h/tw/th expressions (resolution-agnostic — no python dims). Each
+    layer's free text goes to a per-layer textfile (textfile= dodges filtergraph
+    escaping of ':'/apostrophes). Empty Titles -> "" (deliver then encodes with no -vf).
+    font/textfile are single-quoted; a resolved font path and a skill-controlled
+    work-dir carry no apostrophe.
+
+    `platform` selects the safe-zone margins the y positions lay out against (see
+    y_exprs); unset keeps the generic table, what every caller got before the argument.
+    `measure` overrides the font-metrics function a reveal="word"/"stair" title needs
+    (see _layers); it is never called for reveal="none"."""
     if not titles.items:
         return ""
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
+    y_expr = y_exprs(platform)
+    measure = measure or _measure
     parts: list[str] = []
     for i, t in enumerate(titles.items):
-        tf = work / f"title_{i}.txt"
-        tf.write_text(t.text)
         font = resolve(t.font)
         style = _STYLE_FRAGMENTS[t.style]
-        piece = (f"drawtext=fontfile='{font}':textfile='{tf}':fontsize=h/18:"
-                 f"fontcolor=white:x=(w-tw)/2:y={_Y_EXPR[t.pos]}:"
-                 f"{style + ':' if style else ''}"
-                 f"enable='between(t,{t.start},{t.start + t.dur})'")
-        parts.append(piece)
+        end = t.start + t.dur
+        for j, (text, appears, x_expr, y_drop) in enumerate(_layers(t, font, measure)):
+            tf = work / (f"title_{i}.txt" if t.reveal == "none" else f"title_{i}_{j}.txt")
+            tf.write_text(text)
+            # A zero fade emits NO alpha= at all, so a title authored before this field
+            # existed produces the same drawtext it always did (only the fontsize spelling
+            # h/18 -> h*0.055556 differs — same rendered size; see design §7).
+            alpha = ""
+            if t.fade > 0:
+                # ramp up over `fade`, hold at 1, ramp down over `fade`. min() of the two
+                # ramps IS the trapezoid; max(0, ...) only guards the instants `enable`
+                # already excludes, where the leading ramp is still negative.
+                alpha = (f"alpha='max(0,min(1,min((t-{appears})/{t.fade},"
+                         f"({end}-t)/{t.fade})))':")
+            parts.append(
+                f"drawtext=fontfile='{font}':textfile='{tf}':"
+                f"fontsize=h*{t.scale / FONTSIZE_DIV:.6f}:"
+                f"fontcolor={t.color}:x={x_expr}:y={y_expr[t.pos]}{y_drop}:"
+                f"{alpha}"
+                f"{style + ':' if style else ''}"
+                f"enable='between(t,{appears},{end})'")
     return ",".join(parts)
 
 

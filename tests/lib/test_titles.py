@@ -108,7 +108,7 @@ def test_build_filterchain_positions_and_styles(tmp_path):
     assert "y=h-th-h*0.12" in vf                # bottom
     assert "box=1:boxcolor=black@0.5:boxborderw=16" in vf   # bold-box
     assert "borderw=4:bordercolor=black" in vf              # outline
-    assert "x=(w-tw)/2" in vf and "fontsize=h/18" in vf
+    assert "x=(w-tw)/2" in vf and "fontsize=h*0.055556" in vf   # h/18, respelled
 
 
 def _spec(**kw):
@@ -154,13 +154,20 @@ def test_write_titles_emits_pair(tmp_path):
     assert Titles.from_json(tmp_path / "TITLES.json").items[-1].text == "Follow"
 
 
-def test_titles_margins_are_sourced_from_the_safe_zone_table():
-    # genuine fail-first: titles._Z does not exist until the rewire, so this raises
-    # AttributeError before Step 3 — value-based checks would coincide (generic == 0.08/0.12).
+def test_y_exprs_generic_matches_the_default_zone():
     from scripts.lib import titles, safezones
-    assert titles._Z is safezones.default_zone()
-    assert titles._Y_EXPR["top"] == f"h*{safezones.default_zone().top}"
-    assert titles._Y_EXPR["bottom"] == f"h-th-h*{safezones.default_zone().bottom}"
+    z = safezones.default_zone()
+    assert titles.y_exprs("") == {"top": f"h*{z.top}", "center": "(h-th)/2",
+                                  "bottom": f"h-th-h*{z.bottom}"}
+    assert not hasattr(titles, "_Y_EXPR")      # the frozen constant is gone
+
+
+def test_y_exprs_platform_zone_pushes_the_bottom_title_up():
+    from scripts.lib import titles
+    # reels reserves 0.16 of the bottom vs the generic 0.12 → the bottom y moves up
+    assert titles.y_exprs("reel")["bottom"] == "h-th-h*0.16"
+    assert titles.y_exprs("reel")["bottom"] != titles.y_exprs("")["bottom"]
+    assert titles.y_exprs("reel")["top"] == titles.y_exprs("")["top"]   # top zone equal
 
 
 @pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
@@ -329,3 +336,40 @@ def test_layers_word_emits_a_negative_drop_when_a_word_rises_above_the_line():
     # top_full("a bb")=8; word "bb" top=0 → drop=(0-8)*k=-0.004444 → negative branch
     assert layers[0][3] == "+0.000000*h"
     assert layers[1][3] == "-0.004444*h"
+
+
+def test_build_filterchain_fade_zero_emits_no_alpha(tmp_path):
+    ts = Titles(items=(Title("Hook", 0.0, 2.0),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert "alpha=" not in vf                        # the historical fast path
+
+
+def test_build_filterchain_fade_emits_a_trapezoid_alpha(tmp_path):
+    ts = Titles(items=(Title("Hook", 0.0, 2.0, fade=0.5),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert "alpha='max(0,min(1,min((t-0.0)/0.5,(2.0-t)/0.5)))'" in vf
+
+
+def test_build_filterchain_platform_shifts_the_bottom_title(tmp_path):
+    ts = Titles(items=(Title("hi", 0.0, 2.0, pos="bottom"),))
+    generic = build_filterchain(ts, str(tmp_path / "g"), resolve=_fake_resolve)
+    reel = build_filterchain(ts, str(tmp_path / "r"), resolve=_fake_resolve, platform="reel")
+    assert "y=h-th-h*0.12" in generic
+    assert "y=h-th-h*0.16" in reel
+
+
+def test_build_filterchain_word_reveal_lays_each_word_at_final_x(tmp_path):
+    ts = Titles(items=(Title("a bb", 0.0, 2.0, reveal="word", reveal_step=0.5),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve, measure=_stub_measure)
+    assert vf.count("drawtext=") == 2
+    assert "enable='between(t,0.0,2.0)'" in vf and "enable='between(t,0.5,2.0)'" in vf
+    assert "x=(w-tw)/2" not in vf                    # never naively centred per word
+    assert "+0.000000*h" in vf and "+0.011111*h" in vf   # word0 / word1 baked prefixes
+    assert (tmp_path / "title_0_0.txt").read_text() == "a"
+    assert (tmp_path / "title_0_1.txt").read_text() == "bb"
+
+
+def test_build_filterchain_scale_and_colour(tmp_path):
+    ts = Titles(items=(Title("hi", 0.0, 2.0, scale=2.0, color="0xffcc00"),))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
+    assert "fontsize=h*0.111111" in vf and "fontcolor=0xffcc00" in vf
