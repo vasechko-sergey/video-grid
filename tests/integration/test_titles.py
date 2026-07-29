@@ -1,15 +1,20 @@
 """Real-ffmpeg proof for the titles stage (design docs/specs/2026-07-13-titles-design.md,
 §5.16): a TITLES.json burned by deliver changes pixels in the title's time window, and
 (with audio) rides the mux branch's single encode. Uses the shared sample_clip fixture;
-skips where this machine's ffmpeg lacks drawtext (same guard as the draft golden)."""
+skips where this machine's ffmpeg lacks drawtext (same guard as the draft golden).
+
+A third golden (design docs/specs/2026-07-29-titles-animations-design.md §5) proves the
+fade + reveal="word" chain directly: build_filterchain with a REAL resolve_font/_measure
+(no stub) builds, and real ffmpeg accepts and renders the resulting drawtext -vf."""
 from pathlib import Path
 
 import pytest
 
 from scripts import deliver as deliver_mod
 from scripts.lib import assembly, ffbin, proc
+from scripts.lib.fonts import resolve_font
 from scripts.lib.models import REEL_H264, CheckResult, ReelReport
-from scripts.lib.titles import Title, Titles
+from scripts.lib.titles import Title, Titles, build_filterchain
 
 
 @pytest.fixture(autouse=True)
@@ -71,3 +76,21 @@ def test_title_burns_into_the_mux_encode_with_audio(sample_clip, tmp_path):
     assert abs(assembly.probe_duration(titled) - assembly.probe_duration(plain)) < 0.2
     # ...and the title still burned into the picture (frame differs from the titleless encode)
     assert _frame_bytes(titled, tmp_path, "a.png") != _frame_bytes(plain, tmp_path, "b.png")
+
+
+@pytest.mark.integration
+def test_word_reveal_with_fade_burns_into_a_real_encode(tmp_path):
+    # a 2-word hook, fade in/out, revealed word-by-word — the chain must build with a
+    # REAL font (exercises _measure/PIL, not the unit suite's stub) and real ffmpeg
+    # must accept and render it (fade alpha + per-word x-offsets).
+    ts = Titles(items=(Title("hello world", 0.0, 2.0, fade=0.4,
+                             reveal="word", reveal_step=0.5, pos="bottom"),))
+    chain = build_filterchain(ts, str(tmp_path), resolve=resolve_font, platform="reel")
+    assert chain.count("drawtext=") == 2                 # one per word
+    assert "alpha='max(0,min(1," in chain                # fade present
+    assert "y=h-th-h*0.16" in chain                      # reel zone
+    # render a bounded colour source through the chain — real ffmpeg must exit 0
+    out = tmp_path / "titled.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "color=c=gray:s=160x284:d=3",
+              "-vf", chain, "-frames:v", "1", str(out)])
+    assert out.exists() and out.stat().st_size > 0
