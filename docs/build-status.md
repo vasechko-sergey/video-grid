@@ -12,6 +12,49 @@ _Last updated: 2026-07-29._
 
 ## Done
 
+- **Titles animations (§5.16 fade/reveal/colour + the platform safe-zone fix)
+  DONE (2026-07-29)** — plan `docs/plans/2026-07-29-titles-animations.md` +
+  design `docs/specs/2026-07-29-titles-animations-design.md`, Tasks 0–6. Port
+  of the parked `4841dd3` `lib/titles.py` hunk ("word reveal / stair / fade"),
+  written live on the same 99-clip montage run and never designed, through the
+  design→plan→TDD-review cycle it skipped. `Title` gains six animation fields
+  — `fade` (alpha ramp in+out), `reveal` (`"none"`/`"word"`/`"stair"`),
+  `reveal_step`, `color`, `scale`, `line_spacing` — each defaulting to the
+  historical behaviour, with validate-and-raise refusals: `2*fade > dur` (the
+  title would never reach full opacity) and a reveal whose last step can't
+  arrive, hold, and still leave inside the window both **refuse, never
+  clamp** (the invisible-creative-change class). A new `_measure`/`_layers`
+  pair (PIL font metrics, stub-injected for the unit suite) bakes each reveal
+  step's x at its FINAL position — the measured prefix width as a fraction of
+  `h` — so a word never re-centres on its own entrance the way a naive
+  per-word `(w-tw)/2` would; `stair` reuses that same x and additionally drops
+  a line per step via the ink-box-top-corrected baseline math.
+  `build_filterchain` gained the per-layer loop plus a `fade=0` no-alpha fast
+  path — the anti-regression pin that keeps a pre-existing TITLES.json
+  rendering unchanged. Coupled bug fix landed in the same hot `y=` line:
+  `y_exprs(platform)` replaces the frozen `_Y_EXPR` module constant, so a
+  bottom title now lays out against the exact `safe_zone_for(platform)` table
+  `check_reel` already judges the subject against (Reels 16%, TikTok 18%, vs
+  the generic table's 12%) — before this fix a bottom title on those
+  platforms rendered under the app's own caption/button chrome, invisibly.
+  `deliver` threads `platform` (+ a `--platform` CLI flag) into
+  `build_filterchain`; `build_reel` wires `platform=rm.platform` — one line.
+  **Pixel-identical defaults**: an unauthored `Title` (`fade=0`,
+  `reveal="none"`, `color="white"`, `scale=1.0`, `line_spacing=1.15`) at an
+  empty platform renders the same pixels as before this slice — only two
+  filterchain *spellings* change (`fontsize=h/18` → `h*0.055556`, and the
+  `_Y_EXPR` constant → the `y_exprs()` function), both re-pinned by unit
+  assertions; no integration golden moved. 8-guard mutation battery (the
+  `fade=0` fast path, a reveal word's final-x placement, both refuse-not-clamp
+  boundaries, the platform-vs-generic safe-zone read, the `*h`
+  resolution-independence bake, and the `deliver`/`build_reel` platform
+  threading) — each neutralized line flipped its named test red, confirmed
+  clean restored. Full suite **1994 passed / 2 skipped**, no golden moved.
+  **3rd and final parked montage-run bucket landed** (after track-stitch
+  2026-07-28, path-quality 2026-07-29) — closes the
+  `wip/montage-run-hardening` port; colour-as-a-stage's design-§10
+  match-grade conductor stays separately deferred.
+
 - **Reframe path-quality cluster (smoothing window · jitter check ·
   lead-from-travel) DONE (2026-07-29)** — plan
   `docs/plans/2026-07-28-path-quality.md` + design
@@ -39,8 +82,8 @@ _Last updated: 2026-07-29._
   cycle it skipped — the code ran green on that 99-clip run (1697 passed) but
   never went through review. Full suite **1951 passed / 2 skipped**, no golden
   moved. 2nd parked montage-run bucket landed (after track-stitch, 2026-07-28);
-  the branch's last unlanded bucket is `titles.py`'s word-reveal/stair/fade
-  animations (titles slice), and colour-as-a-stage's design-§10 match-grade
+  titles-animations landed next (2026-07-29, own entry above) as the 3rd and
+  final parked bucket, and colour-as-a-stage's design-§10 match-grade
   conductor stays separately deferred.
 
 - **Track-stitch (§6.1a ID-switch bridging) DONE (2026-07-28)** — plan

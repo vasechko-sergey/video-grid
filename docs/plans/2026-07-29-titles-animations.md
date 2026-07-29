@@ -535,12 +535,19 @@ def test_deliver_cli_passes_platform(monkeypatch, tmp_path):
                         lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
     rep = tmp_path / "r.json"
     rep.write_text('{"checks": {}, "episode_count": 0, "fail_reasons": []}')
-    monkeypatch.setattr(deliver.sys, "argv",
-                        ["deliver", "--master", "m.mp4", "--out-dir", str(tmp_path),
+    monkeypatch.setattr(sys, "argv",
+                        ["deliver", "m.mp4", "--out-dir", str(tmp_path),
                          "--report", str(rep), "--platform", "tiktok"])
     deliver.main()
     assert seen.get("platform") == "tiktok"
 ```
+
+> Corrected post-hoc (Task 6 docs sync): `deliver.main()`'s `master` is a
+> **positional** arg (`ap.add_argument("master")`), not `--master`, and
+> `deliver.py` never imports `sys` (argparse reads the real `sys.argv`
+> directly) — so the patch target is the test module's own `import sys`, not
+> `deliver.sys`. The shipped test (`tests/lib/test_deliver.py`) has always
+> used this correct form; only this plan snippet had drifted.
 
 Append to `tests/lib/test_build_reel.py`:
 

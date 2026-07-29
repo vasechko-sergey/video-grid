@@ -1,6 +1,6 @@
 # Titles animations — design
 
-**Status:** designed 2026-07-29 (slice 3 of the parked-run campaign, after
+**Status:** landed 2026-07-29 (slice 3 of the parked-run campaign, after
 track-stitch and path-quality). Port of the parked `4841dd3` `lib/titles.py` hunk
 (“word reveal / stair / fade”), written live during the first real montage run
 (2026-07-22..24, 99 clips) and never designed. Faithful port — the constants were

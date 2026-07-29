@@ -29,7 +29,7 @@ _Last updated: 2026-07-29._
 | 5.13 | reel-final-check (gate) | review | ✅ | **Mechanical half ✅ (complete)** — `check_reel`: black/length/colour/variety + loudness (hard), beat + `safe_zones` + `key_action` + `pad_bars` + `transitions` (all advisory — route-geometry/PathMeta checks; the last three landed 2026-07-17). Editorial half ✅ (2026-07-18) — reel-review SKILL dispatches a fresh reviewer subagent → typed REVIEW.json (Finding/Review), human-gated at CP3. | Phase B (audio) + Editorial |
 | 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate | — |
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
-| 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate | — |
+| 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate; titles now render **motion** — `fade` alpha ramps, `reveal="word"`/`"stair"` (one drawtext per step, each baked at its FINAL x from measured PIL font metrics — never a naive per-word re-centre) — and **colour** (`color`/`scale`/`line_spacing`), and lay out against the **platform's own safe zone** (`y_exprs(platform)` reads `safe_zone_for`, the same table `check_reel` judges the subject against, replacing a frozen generic-zone constant that disagreed with it); `deliver`/`build_reel` thread `platform` through (titles-animations, 2026-07-29) | — |
 
 ## Automation loops (design §4.1 ladder)
 
