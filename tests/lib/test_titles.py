@@ -294,3 +294,38 @@ def test_layers_baseline_shift_uses_ink_box_top():
     # word "a" sits 5px above the line's top → shifted DOWN by (5-0)*k = +0.002778*h
     assert layers[0][3] == "+0.002778*h"
     assert layers[1][3] == "+0.000000*h"
+
+
+def test_layers_none_carries_a_nonzero_start():
+    # reveal="none" must carry t.start, not a hardcoded 0.0
+    from scripts.lib.titles import _layers
+    t = Title("whole", 5.0, 2.0)
+    assert _layers(t, "/f.ttf", _stub_measure) == [("whole", 5.0, "(w-tw)/2", "")]
+
+
+def test_layers_stair_adds_the_per_line_drop_to_the_baseline_correction():
+    # stair drop = baseline-correction + per-line drop; a stub with a non-flat top on
+    # one step proves the per-line term ADDS to (does not overwrite) the correction.
+    from scripts.lib.titles import _layers
+
+    def _tops(font, text):
+        return (float(len(text)) * 10.0, 5.0 if text == "bb" else 0.0)
+    t = Title("AA\nbb", 0.0, 3.0, reveal="stair", reveal_step=0.5)
+    layers = _layers(t, "/f.ttf", _tops)
+    assert layers[0][3] == "+0.000000*h"
+    # baseline (5-0)*k where k=1/(18*100)=0.005556e-1 → 0.002778, PLUS per-line
+    # 1*1.15*1.0/18 = 0.063889 → 0.066667
+    assert layers[1][3] == "+0.066667*h"
+
+
+def test_layers_word_emits_a_negative_drop_when_a_word_rises_above_the_line():
+    # a word whose ink-top sits ABOVE the joined line's top → negative drop → "-...*h"
+    from scripts.lib.titles import _layers
+
+    def _tops(font, text):
+        return (float(len(text)) * 10.0, 0.0 if text == "bb" else 8.0)
+    t = Title("a bb", 0.0, 2.0, reveal="word", reveal_step=0.5)
+    layers = _layers(t, "/f.ttf", _tops)
+    # top_full("a bb")=8; word "bb" top=0 → drop=(0-8)*k=-0.004444 → negative branch
+    assert layers[0][3] == "+0.000000*h"
+    assert layers[1][3] == "-0.004444*h"

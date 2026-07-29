@@ -9,6 +9,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import ImageFont
+
 from scripts.lib.fonts import resolve_font
 from scripts.lib import safezones
 
@@ -223,7 +225,6 @@ def _measure(font_path: str, text: str) -> tuple[float, float]:
     x-height letters and one with ascenders/a comma do not share a baseline when each
     is a layer at one `y`. Shifting each layer by its own box top relative to the full
     line's box top puts every word back on the line's baseline."""
-    from PIL import ImageFont      # local: only a word reveal needs metrics
     f = ImageFont.truetype(font_path, _MEASURE_AT)
     return float(f.getlength(text)), float(f.getbbox(text)[1])
 
@@ -237,7 +238,9 @@ def _layers(t: Title, font: str, measure) -> list[tuple[str, float, str, str]]:
     measured here and baked into x as fractions of `h` (fontsize is h/FONTSIZE_DIV, so a
     width at _MEASURE_AT px becomes width * (h/FONTSIZE_DIV)/_MEASURE_AT) —
     resolution-independent, which is what lets titles.py know nothing about the canvas.
-    stair keeps the same x and drops a line per step."""
+    stair reuses that same cumulative left-to-right x as a single line — each step still
+    pushed right by the widths of the steps before it — and additionally drops a line per
+    step, so the steps land in a diagonal staircase, not a stacked column."""
     if t.reveal == "none":
         return [(t.text, t.start, "(w-tw)/2", "")]
     k = t.scale / (FONTSIZE_DIV * _MEASURE_AT)   # measured px -> multiples of h
