@@ -5,7 +5,7 @@ from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, ffbin, proc
 from scripts.lib import layout as layout_lib
 from scripts.lib.layout import ResolvedLayout
-from scripts.lib.motion import classify
+from scripts.lib.motion import classify, travel_direction as classify_direction
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
                                 PathMeta, LayoutSpec, BACKGROUNDS, PanSpec)
 
@@ -13,11 +13,26 @@ from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
                  canvas: tuple[int, int], src: tuple[int, int],
                  motion: tuple[str, str | None], max_step: float,
-                 crop_w: int) -> list[int]:
+                 crop_w: int, smooth_window: int = pathsmooth.DEFAULT_WINDOW) -> list[int]:
     # crop_w comes from the resolved layout — the caller already cut it; deriving
     # it from `canvas` here would be right only while every layout is `fill`.
-    _, direction = motion if motion[0] == "lateral" else (motion[0], "right")
-    if composition in ("center", "break") or motion[0] != "lateral":
+    kind, direction = motion if motion[0] == "lateral" else (motion[0], "right")
+    if composition == "lead" and kind != "lateral" and len(route) >= 2:
+        # motion.classify refuses to call a shot lateral when the subject ALSO grows
+        # toward the camera — its "ambiguous zone", which falls through to static
+        # deliberately because a centred crop is the SAFE framing when nobody said
+        # otherwise. A surfer riding across the frame and toward a beach-side telephoto
+        # is exactly that shape: measured on one, dx was 30% of frame width (lateral
+        # needs 15%) and the box grew 3.1x (head-on needs 1.6x), so the shot was called
+        # static and the authored `lead` silently rendered as `center`.
+        #
+        # Picking a safe default for an unstated intent is not the same as VETOING a
+        # stated one, and quietly substituting a different composition is the class of
+        # silent swap this repo refuses everywhere else. So honour the request and take
+        # the direction from the route's own net travel — the one thing the ambiguous
+        # zone never made ambiguous (it enters that zone only when |dx| is LARGE).
+        kind, direction = "lateral", classify_direction(route)
+    if composition in ("center", "break") or kind != "lateral":
         # center / head-on / static: aim crop centre at subject, no lead.
         # break (spec §6.2): tracked but relaxed — v1 center-tracks; extreme
         # framing is editorial territory, checks are editorial-only.
@@ -26,7 +41,7 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
     else:
         raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
                for pt in route]
-    smoothed = pathsmooth.smooth(raw, max_step=max_step)
+    smoothed = pathsmooth.smooth(raw, max_step=max_step, window=smooth_window)
     # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame.
     # At zero freedom (crop_w == src_w) this clamps to a constant 0 — a
     # whole-frame layout has nowhere to travel, and needs no special case.
