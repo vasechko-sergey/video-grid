@@ -480,6 +480,16 @@ Change `step -= min(0.0, subj)` to `step -= subj`; run
 `test_jitter_fails_the_excess_beyond_the_subject_s_backtrack` — it must FAIL
 (forgiving the subject's *forward* motion would wrongly pass). Restore.
 
+**Correction (2026-07-29, Task 9 final sweep):** this pairing is INEFFECTIVE —
+the named fixture's reversing frame coincides with the subject's own
+backtrack, so `min(0.0, subj)` and the mutated `subj` agree there and
+`worst_reversal` stays 25 either way; the test does not flip red. The
+guard's effective test is
+`test_jitter_does_not_invent_a_reversal_when_the_crop_lags_a_forward_subject`
+(added in a follow-up commit), which uses a monotonically-forward crop
+lagging a faster forward subject — the case only the `min(0.0, ...)` clamp
+protects.
+
 - [ ] **Step 6: Commit**
 
 ```bash

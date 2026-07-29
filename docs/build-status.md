@@ -4,13 +4,44 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-28._
+_Last updated: 2026-07-29._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Reframe path-quality cluster (smoothing window · jitter check ·
+  lead-from-travel) DONE (2026-07-29)** — plan
+  `docs/plans/2026-07-28-path-quality.md` + design
+  `docs/specs/2026-07-28-path-quality-design.md`, Tasks 0–9. Three coupled
+  fixes the first real montage run wrote live, landed through the
+  design→plan→TDD cycle they skipped. **(A)** the crop's savgol smoothing
+  window is now specified in **seconds**, not frames
+  (`pathsmooth.window_frames`), resolved against each clip's own fps at render
+  time — 30fps still resolves to the historical 7 frames, 60fps resolves to 15
+  (the same literal window was filtering half as much motion on the
+  drone/telephoto footage this repo actually gets). **(B)** `checks.jitter` is
+  now **route-aware** — it subtracts only the subject's own backtrack (never
+  its forward motion) before scoring the crop's reversals, box-filtering the
+  route first via `_route_window` (spanning the route's own cadence, ~0.08s)
+  so per-frame detector noise isn't mistaken for the subject's own signal.
+  **(C)** an authored `lead` composition is honoured — not silently swapped to
+  `center` — when `motion.classify` lands in its ambiguous zone (a subject
+  that crosses the frame AND grows toward the camera, e.g. a surfer on a
+  beach-side telephoto): the new `motion.travel_direction` (net-dx sign) is
+  the one spelling both `reframe.compute_path` (lays the crop out) and
+  `check_episode` (grades it) read, so the two can never disagree about which
+  line is correct. Port of the parked `wip/montage-run-hardening` commit
+  `4841dd3`'s "pathsmooth smooth_window_s" bucket (the colour half of the same
+  park already landed via colour-as-a-stage) through the design→plan→TDD-review
+  cycle it skipped — the code ran green on that 99-clip run (1697 passed) but
+  never went through review. Full suite **1951 passed / 2 skipped**, no golden
+  moved. 2nd parked montage-run bucket landed (after track-stitch, 2026-07-28);
+  the branch's last unlanded bucket is `titles.py`'s word-reveal/stair/fade
+  animations (titles slice), and colour-as-a-stage's design-§10 match-grade
+  conductor stays separately deferred.
 
 - **Track-stitch (§6.1a ID-switch bridging) DONE (2026-07-28)** — plan
   `docs/plans/2026-07-28-track-stitch.md` + design

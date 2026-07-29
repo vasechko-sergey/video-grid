@@ -14,7 +14,7 @@ slice" bucket of the park. The code ran green on that 99-clip run (1697 passed)
 but never went through review; track-stitch — the sibling bucket of the same
 park — proved that live-written code hides coverage holes that only mutation
 testing surfaces, so this slice treats the port as *unverified* until the guards
-have teeth.
+have teeth — landed 2026-07-29 (feat/path-quality).
 
 **Scope decision:** the parked bucket is three concerns that arrived together —
 A (`smooth_window_s`), B (route-aware jitter), C (lead-from-travel). They land as
