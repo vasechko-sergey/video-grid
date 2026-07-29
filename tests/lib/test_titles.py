@@ -203,6 +203,7 @@ def test_title_animation_defaults_and_roundtrip():
     (dict(text="x", start=0.0, dur=1.0, reveal="fly"), "reveal"),
     (dict(text="x", start=0.0, dur=1.0, reveal_step=0.0), "reveal_step"),
     (dict(text="x", start=0.0, dur=1.0, reveal_step=True), "reveal_step"),
+    (dict(text="x", start=0.0, dur=1.0, line_spacing=True), "line_spacing"),
     (dict(text="a b c d", start=0.0, dur=1.0, reveal="word", reveal_step=0.5),
      "would still be arriving"),
 ])
@@ -225,3 +226,25 @@ def test_steps_stair_splits_on_newlines_and_strips():
     from scripts.lib.titles import _steps
     t = Title("salt,\nsun\n& you", 0.0, 3.0, reveal="stair", reveal_step=0.5)
     assert _steps(t) == ["salt,", "sun", "& you"]
+
+
+def test_title_animation_roundtrip_carries_non_default_values():
+    # every new key must survive to_dict/from_dict at a NON-default value — a
+    # hardcoded default in to_dict (e.g. "fade": 0.0) would slip past a defaults-only test.
+    t = Title(text="a b c", start=0.0, dur=4.0, fade=0.5, reveal="word",
+              reveal_step=0.6, color="0xff0000", scale=2.0, line_spacing=1.5)
+    d = t.to_dict()
+    assert d["fade"] == 0.5 and d["reveal"] == "word" and d["reveal_step"] == 0.6
+    assert d["color"] == "0xff0000" and d["scale"] == 2.0 and d["line_spacing"] == 1.5
+    assert Title.from_dict(d) == t
+
+
+@pytest.mark.parametrize("kw", [
+    dict(text="hi", start=0.0, dur=1.0, fade=0.5),                          # 2*fade == dur (inclusive)
+    dict(text="a b c", start=0.0, dur=1.0, reveal="word", reveal_step=0.5), # need == dur (inclusive)
+    dict(text="hi", start=0.0, dur=1.0, scale=5.0),                         # scale upper bound (inclusive)
+    dict(text="hi", start=0.0, dur=1.0, line_spacing=0.5),                  # line_spacing lower bound
+    dict(text="hi", start=0.0, dur=1.0, line_spacing=3.0),                  # line_spacing upper bound
+])
+def test_title_boundary_values_are_accepted(kw):
+    Title(**kw)      # inclusive bounds — must NOT raise
