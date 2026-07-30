@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from scripts import match_grade
+from scripts.lib import matchgrade
 from scripts.lib.edl import EDLEpisode, EDL
 
 
@@ -66,14 +67,27 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
     monkeypatch.setattr(match_grade, "measure_profile",
                         lambda clip, at=None: (10.0, 90.0, 150.0) if "d.mp4" in clip
                         else (40.0, 130.0, 240.0))
-    edl_path = _write_edl(tmp_path / "EDL.json", _ep("d.mp4"), _ep("b.mp4"))
+    ep0, ep1 = _ep("d.mp4"), _ep("b.mp4")
+    edl_path = _write_edl(tmp_path / "EDL.json", ep0, ep1)
     status = match_grade.write_match(edl_path, "/foot")
-    assert status["status"] == "written" and status["authored"] == 2
-    back = EDL.from_json(edl_path)                    # the EDL was rewritten in place
-    assert back.episodes[0].tone_src == (10.0, 90.0, 150.0)
-    assert back.episodes[0].tone_dst == tuple(status["target"])
+    target = (25.0, 110.0, 195.0)                      # median of the two measured profiles
+    assert status == {"status": "written", "edl": edl_path, "md": str(tmp_path / "MATCH.md"),
+                      "target": list(target), "eps": matchgrade.MATCH_EPS,
+                      "authored": 2, "skipped": {}}
+    back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
+    assert back == EDL(episodes=(
+        replace(ep0, tone_src=(10.0, 90.0, 150.0), tone_dst=target),
+        replace(ep1, tone_src=(40.0, 130.0, 240.0), tone_dst=target),
+    ))
     md = (tmp_path / "MATCH.md").read_text()
-    assert md.startswith("# Match-grade") and "d.mp4" in md and "author" in md
+    assert md == (
+        "# Match-grade — target 25/110/195 (p5/p50/p95), eps 4\n\n"
+        "2/2 episodes authored a tone pair.\n\n"
+        "| # | source | measured (p5/p50/p95) | max Δ | action · reason |\n"
+        "|---|--------|-----------------------|:-----:|-----------------|\n"
+        "| 0 | d.mp4 | 10/90/150 | 45 | author · authored |\n"
+        "| 1 | b.mp4 | 40/130/240 | 45 | author · authored |\n"
+    )
 
 
 def test_write_match_reports_skips(tmp_path, monkeypatch):
@@ -82,6 +96,22 @@ def test_write_match_reports_skips(tmp_path, monkeypatch):
     edl_path = _write_edl(tmp_path / "EDL.json", _ep("d.mp4"), _ep("flat.mp4"))
     status = match_grade.write_match(edl_path, "/foot")
     assert status["skipped"].get("flat-source") == 1
+
+
+def test_report_md_renders_every_reason_with_correct_max_delta():
+    target = (20.0, 110.0, 210.0)
+    decisions = [
+        matchgrade.ToneDecision(0, "author", "authored", measured=(10.0, 100.0, 150.0),
+                                tone_src=(10.0, 100.0, 150.0), tone_dst=target),
+        matchgrade.ToneDecision(1, "skip", "within-eps", measured=(21.0, 111.0, 211.0)),
+        matchgrade.ToneDecision(2, "skip", "flat-source", measured=(126.0, 128.0, 130.0)),
+        matchgrade.ToneDecision(3, "skip", "hand-authored", measured=(5.0, 80.0, 140.0)),
+    ]
+    md = match_grade._report_md(["a.mp4", "b.mp4", "c.mp4", "d.mp4"], target, decisions, eps=4.0)
+    assert "| 0 | a.mp4 | 10/100/150 | 60 | author · authored |" in md
+    assert "| 1 | b.mp4 | 21/111/211 | 1 | skip · within-eps |" in md
+    assert "| 2 | c.mp4 | 126/128/130 | 106 | skip · flat-source |" in md
+    assert "| 3 | d.mp4 | 5/80/140 | 70 | skip · hand-authored |" in md
 
 
 def test_cli_build_threads_eps_and_force(tmp_path, monkeypatch):
