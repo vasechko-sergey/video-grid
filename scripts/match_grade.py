@@ -4,6 +4,9 @@ the episodes that deviate — so the reel reads as one grade. Reads EDL.json, wr
 enriched + a MATCH.md report. Opt-in: it CHANGES the look, so it is never on the autonomous
 path. matchgrade owns the decisions; this driver owns the ffmpeg measuring (measure_profile)
 and the EDL IO. Mirror of pacing.py: pure core in lib, driver here."""
+import argparse
+import json
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -33,3 +36,60 @@ def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
         else replace(e, tone_src=d.tone_src, tone_dst=d.tone_dst)  # set, or clear (None) a stale one
         for e, d in zip(edl.episodes, decisions))
     return replace(edl, episodes=new_episodes), target, decisions
+
+
+def _report_md(sources: list[str], target: matchgrade.Profile,
+               decisions: list[matchgrade.ToneDecision], eps: float) -> str:
+    """The human-readable half a reviewer reads at CP-time: the target, and one row per
+    episode with its measured profile (carried on the decision — no second measure), its
+    distance to the target, and what was decided."""
+    def _triple(t):
+        return "/".join(f"{v:.0f}" for v in t)
+    n_auth = sum(1 for d in decisions if d.action == "author")
+    lines = [f"# Match-grade — target {_triple(target)} (p5/p50/p95), eps {eps:g}", "",
+             f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
+             "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
+             "|---|--------|-----------------------|:-----:|-----------------|"]
+    for src, d in zip(sources, decisions):
+        delta = max(abs(a - b) for a, b in zip(d.measured, target))
+        lines.append(f"| {d.index} | {src} | {_triple(d.measured)} | {delta:.0f} | {d.action} · {d.reason} |")
+    return "\n".join(lines) + "\n"
+
+
+def write_match(edl_path: str, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
+                force: bool = False) -> dict:
+    """Read EDL.json → conduct → write the enriched EDL BACK IN PLACE (the stage enriches the
+    EDL a human then reviews) + a sibling MATCH.md. One measure pass (inside conduct); the
+    decisions carry the measured profiles the report needs. Returns a status dict."""
+    edl = EDL.from_json(edl_path)
+    out, target, decisions = conduct(edl, footage_root, eps=eps, force=force)
+    Path(edl_path).write_text(json.dumps(out.to_dict(), indent=2))
+    md_path = Path(edl_path).parent / "MATCH.md"
+    md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps))
+    skipped = Counter(d.reason for d in decisions if d.action == "skip")
+    return {"status": "written", "edl": str(edl_path), "md": str(md_path),
+            "target": list(target), "eps": eps,
+            "authored": sum(1 for d in decisions if d.action == "author"),
+            "skipped": dict(skipped)}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="match-grade conductor — author tone_src/tone_dst across an EDL (§10)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("build", help="measure every episode → common target → author tone pairs")
+    b.add_argument("--edl", required=True, help="EDL.json — enriched IN PLACE with tone pairs")
+    b.add_argument("--footage-root", required=True, help="dir the EDL 'source' paths resolve against")
+    b.add_argument("--eps", type=float, default=matchgrade.MATCH_EPS,
+                   help=f"skip an episode within this many luma units of the target "
+                        f"(default {matchgrade.MATCH_EPS})")
+    b.add_argument("--force", action="store_true",
+                   help="re-author even hand-authored/previously-conducted episodes")
+    a = ap.parse_args()
+    result = write_match(a.edl, a.footage_root, eps=a.eps, force=a.force)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0)
+
+
+if __name__ == "__main__":
+    main()

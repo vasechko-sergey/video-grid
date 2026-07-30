@@ -1,4 +1,8 @@
+import json
+import sys
 from dataclasses import replace
+
+import pytest
 
 from scripts import match_grade
 from scripts.lib.edl import EDLEpisode, EDL
@@ -51,3 +55,44 @@ def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)), _ep("b.mp4"))
     out, _, _ = match_grade.conduct(edl, "/foot", force=True)
     assert out.episodes[0].tone_src is None and out.episodes[0].tone_dst is None
+
+
+def _write_edl(path, *eps):
+    path.write_text(json.dumps(_edl(*eps).to_dict(), indent=2))
+    return str(path)
+
+
+def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
+    monkeypatch.setattr(match_grade, "measure_profile",
+                        lambda clip, at=None: (10.0, 90.0, 150.0) if "d.mp4" in clip
+                        else (40.0, 130.0, 240.0))
+    edl_path = _write_edl(tmp_path / "EDL.json", _ep("d.mp4"), _ep("b.mp4"))
+    status = match_grade.write_match(edl_path, "/foot")
+    assert status["status"] == "written" and status["authored"] == 2
+    back = EDL.from_json(edl_path)                    # the EDL was rewritten in place
+    assert back.episodes[0].tone_src == (10.0, 90.0, 150.0)
+    assert back.episodes[0].tone_dst == tuple(status["target"])
+    md = (tmp_path / "MATCH.md").read_text()
+    assert md.startswith("# Match-grade") and "d.mp4" in md and "author" in md
+
+
+def test_write_match_reports_skips(tmp_path, monkeypatch):
+    monkeypatch.setattr(match_grade, "measure_profile", lambda clip, at=None: (126.0, 128.0, 130.0)
+                        if "flat.mp4" in clip else (10.0, 90.0, 150.0))
+    edl_path = _write_edl(tmp_path / "EDL.json", _ep("d.mp4"), _ep("flat.mp4"))
+    status = match_grade.write_match(edl_path, "/foot")
+    assert status["skipped"].get("flat-source") == 1
+
+
+def test_cli_build_threads_eps_and_force(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(match_grade, "write_match",
+                        lambda edl, footage_root, **k: seen.update(edl=edl, footage_root=footage_root, **k)
+                        or {"status": "written", "target": [0, 0, 0], "authored": 0, "skipped": {}})
+    monkeypatch.setattr(sys, "argv",
+                        ["match_grade", "build", "--edl", "E.json", "--footage-root", "F",
+                         "--eps", "6", "--force"])
+    with pytest.raises(SystemExit) as e:
+        match_grade.main()
+    assert e.value.code == 0
+    assert seen == {"edl": "E.json", "footage_root": "F", "eps": 6.0, "force": True}
