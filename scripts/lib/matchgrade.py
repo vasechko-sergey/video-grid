@@ -82,6 +82,9 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
     a hand-authored pair is respected first (unless `force`), then a flat source is skipped
     (cannot be a valid src), then a within-eps episode is left untouched, else author (its
     own profile -> the common target). Every decision carries its measured profile."""
+    if len(profiles) != len(has_tone):
+        raise ValueError(f"plan: {len(profiles)} profiles but {len(has_tone)} has_tone flags "
+                         "— they must be per-episode parallel lists")
     out = []
     for i, (p, ht) in enumerate(zip(profiles, has_tone)):
         if ht and not force:

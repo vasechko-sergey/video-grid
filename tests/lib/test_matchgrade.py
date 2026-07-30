@@ -94,6 +94,7 @@ def test_plan_respects_a_hand_authored_pair_by_default():
     p = (10.0, 100.0, 150.0)                      # would otherwise author
     [d] = matchgrade.plan([p], [True], TARGET)
     assert d.action == "skip" and d.reason == "hand-authored"
+    assert d.measured == p
     assert d.tone_src is None and d.tone_dst is None
 
 
@@ -114,3 +115,25 @@ def test_plan_preserves_index_order():
     ps = [(10.0, 100.0, 150.0), (21.0, 111.0, 211.0)]
     ds = matchgrade.plan(ps, [False, False], TARGET)
     assert [d.index for d in ds] == [0, 1]
+
+
+def test_plan_force_still_skips_a_flat_hand_authored_source():
+    # force bypasses ONLY the hand-authored guard; a flat clip still cannot be a src,
+    # so it is skipped flat-source with a None pair (driver then CLEARS the stale hand pair).
+    p = (126.0, 128.0, 130.0)                      # gaps < 6 → invalid src
+    [d] = matchgrade.plan([p], [True], TARGET, force=True)
+    assert d.action == "skip" and d.reason == "flat-source"
+    assert d.measured == p and d.tone_src is None and d.tone_dst is None
+
+
+def test_plan_mixed_has_tone_pairs_per_index():
+    ps = [(10.0, 100.0, 150.0), (12.0, 102.0, 152.0)]   # both deviate & are contrasty
+    ds = matchgrade.plan(ps, [True, False], TARGET)
+    assert (ds[0].action, ds[0].reason) == ("skip", "hand-authored")
+    assert (ds[1].action, ds[1].reason) == ("author", "authored")
+    assert ds[1].tone_src == ps[1] and ds[1].tone_dst == TARGET
+
+
+def test_plan_refuses_mismatched_parallel_lists():
+    with pytest.raises(ValueError, match="parallel lists"):
+        matchgrade.plan([(10.0, 100.0, 150.0)], [False, True], TARGET)
