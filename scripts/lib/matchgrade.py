@@ -45,3 +45,16 @@ def _repair_gaps(t: Profile, gap: float = color.TONE_MIN_GAP) -> Profile:
             f"(cannot spread to {gap}-unit gaps inside 0-255) — match-grade has nothing to "
             "normalize; check the footage is not all flat or black")
     return (p5, p50, p95)
+
+
+def valid_src(profile: Profile, gap: float = color.TONE_MIN_GAP) -> bool:
+    """Can this measured profile be a tone_src? color.tone_arg needs strictly increasing
+    anchors >= `gap` apart. A low-contrast clip cannot, and its contrast cannot be invented
+    — so the conductor SKIPS it (flat-source) rather than fabricate a source."""
+    return all(b - a >= gap for a, b in zip(profile, profile[1:]))
+
+
+def needs_tone(profile: Profile, target: Profile, eps: float = MATCH_EPS) -> bool:
+    """True iff the max per-anchor distance to `target` exceeds `eps` — far enough to be
+    worth a curve. Within eps: leave the episode byte-identical."""
+    return max(abs(a - b) for a, b in zip(profile, target)) > eps

@@ -36,3 +36,31 @@ def test_common_target_refuses_a_reel_pinned_at_the_bright_edge():
 def test_common_target_empty_is_refused():
     with pytest.raises(ValueError, match="no profiles"):
         matchgrade.common_target([])
+
+
+def test_valid_src_true_for_a_contrasty_profile():
+    assert matchgrade.valid_src((10.0, 100.0, 200.0)) is True
+
+
+def test_valid_src_false_for_a_flat_profile():
+    # gaps below TONE_MIN_GAP (6): color.tone_arg would reject it as a source
+    assert matchgrade.valid_src((126.0, 128.0, 130.0)) is False
+
+
+def test_valid_src_boundary_exactly_the_gap_is_valid():
+    assert matchgrade.valid_src((100.0, 106.0, 112.0)) is True
+
+
+def test_needs_tone_false_within_eps():
+    # every anchor within MATCH_EPS (4) of the target
+    assert matchgrade.needs_tone((102.0, 128.0, 200.0), (100.0, 128.0, 203.0)) is False
+
+
+def test_needs_tone_true_when_one_anchor_exceeds_eps():
+    assert matchgrade.needs_tone((100.0, 128.0, 210.0), (100.0, 128.0, 200.0)) is True
+
+
+def test_needs_tone_boundary_exactly_eps_is_not_enough():
+    # distance == eps is NOT "beyond" — strict >
+    assert matchgrade.needs_tone((104.0, 128.0, 200.0), (100.0, 128.0, 200.0),
+                                 eps=4.0) is False
