@@ -4,6 +4,7 @@ per-anchor median) and decide, per episode, whether a tone pair is worth authori
 No ffmpeg, no numpy — the driver (match_grade.py) measures; this only decides. Mirrors
 color.percentiles / pacing / offset: pure decision here, IO in the driver."""
 import statistics
+from dataclasses import dataclass
 
 from scripts.lib import color
 
@@ -58,3 +59,37 @@ def needs_tone(profile: Profile, target: Profile, eps: float = MATCH_EPS) -> boo
     """True iff the max per-anchor distance to `target` exceeds `eps` — far enough to be
     worth a curve. Within eps: leave the episode byte-identical."""
     return max(abs(a - b) for a, b in zip(profile, target)) > eps
+
+
+@dataclass(frozen=True)
+class ToneDecision:
+    """Per-episode planning outcome — the measured profile (always, for MATCH.md), what to
+    author, and (when not) why. author -> tone_src/tone_dst carry the pair; within-eps/flat
+    -> None (the driver CLEARS a stale pair on a --force re-conduct); hand-authored -> the
+    driver leaves the episode as-is. `measured` is carried so the report and the driver need
+    no second measure pass."""
+    index: int
+    action: str                    # "author" | "skip"
+    reason: str                    # "authored" | "within-eps" | "flat-source" | "hand-authored"
+    measured: Profile
+    tone_src: Profile | None = None
+    tone_dst: Profile | None = None
+
+
+def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
+         *, eps: float = MATCH_EPS, force: bool = False) -> list[ToneDecision]:
+    """Decide each episode's tone pair against `target`. Guard ORDER is the contract:
+    a hand-authored pair is respected first (unless `force`), then a flat source is skipped
+    (cannot be a valid src), then a within-eps episode is left untouched, else author (its
+    own profile -> the common target). Every decision carries its measured profile."""
+    out = []
+    for i, (p, ht) in enumerate(zip(profiles, has_tone)):
+        if ht and not force:
+            out.append(ToneDecision(i, "skip", "hand-authored", measured=p))
+        elif not valid_src(p):
+            out.append(ToneDecision(i, "skip", "flat-source", measured=p))
+        elif not needs_tone(p, target, eps):
+            out.append(ToneDecision(i, "skip", "within-eps", measured=p))
+        else:
+            out.append(ToneDecision(i, "author", "authored", measured=p, tone_src=p, tone_dst=target))
+    return out

@@ -64,3 +64,53 @@ def test_needs_tone_boundary_exactly_eps_is_not_enough():
     # distance == eps is NOT "beyond" — strict >
     assert matchgrade.needs_tone((104.0, 128.0, 200.0), (100.0, 128.0, 200.0),
                                  eps=4.0) is False
+
+
+TARGET = (20.0, 110.0, 210.0)
+
+
+def test_plan_authors_a_deviating_valid_episode():
+    p = (10.0, 100.0, 150.0)                      # far from TARGET, contrasty
+    [d] = matchgrade.plan([p], [False], TARGET)
+    assert d.action == "author" and d.reason == "authored"
+    assert d.measured == p and d.tone_src == p and d.tone_dst == TARGET
+
+
+def test_plan_skips_within_eps_with_no_pair_but_keeps_measured():
+    p = (21.0, 111.0, 211.0)                      # within eps of TARGET
+    [d] = matchgrade.plan([p], [False], TARGET)
+    assert d.action == "skip" and d.reason == "within-eps"
+    assert d.measured == p                         # measured is carried even on a skip
+    assert d.tone_src is None and d.tone_dst is None
+
+
+def test_plan_skips_a_flat_source():
+    p = (126.0, 128.0, 130.0)                     # gaps < 6 → cannot be a src
+    [d] = matchgrade.plan([p], [False], TARGET)
+    assert d.action == "skip" and d.reason == "flat-source"
+
+
+def test_plan_respects_a_hand_authored_pair_by_default():
+    p = (10.0, 100.0, 150.0)                      # would otherwise author
+    [d] = matchgrade.plan([p], [True], TARGET)
+    assert d.action == "skip" and d.reason == "hand-authored"
+    assert d.tone_src is None and d.tone_dst is None
+
+
+def test_plan_force_overrides_hand_authored_and_re_authors():
+    p = (10.0, 100.0, 150.0)
+    [d] = matchgrade.plan([p], [True], TARGET, force=True)
+    assert d.action == "author" and d.tone_src == p and d.tone_dst == TARGET
+
+
+def test_plan_force_still_skips_a_within_eps_episode():
+    # force only bypasses the hand-authored guard, never authors an imperceptible curve
+    p = (21.0, 111.0, 211.0)
+    [d] = matchgrade.plan([p], [True], TARGET, force=True)
+    assert d.action == "skip" and d.reason == "within-eps"
+
+
+def test_plan_preserves_index_order():
+    ps = [(10.0, 100.0, 150.0), (21.0, 111.0, 211.0)]
+    ds = matchgrade.plan(ps, [False, False], TARGET)
+    assert [d.index for d in ds] == [0, 1]
