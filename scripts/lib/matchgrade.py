@@ -29,14 +29,17 @@ def common_target(profiles: list[Profile]) -> Profile:
 
 
 def _repair_gaps(t: Profile, gap: float = color.TONE_MIN_GAP) -> Profile:
-    """Push a target's anchors to >= `gap` around the middle anchor, clamped to 0-255. The
-    target is SYNTHETIC — no episode must match it — so widening a too-narrow gap is honest,
-    unlike doing so to a measured source. A reel whose median carries no usable range
-    (anchors collapsed at an edge) cannot be spread inside 0-255 and is REFUSED, not
-    silently flattened: there is nothing to match-grade."""
+    """Push a target's anchors to >= `gap` around the middle anchor, then REFUSE (fail-loud,
+    not clamp) if that widening lands outside 0-255. The target is SYNTHETIC — no episode
+    must match it — so widening a too-narrow gap is honest, unlike doing so to a measured
+    source. A reel whose median carries no usable range (anchors collapsed at an edge)
+    cannot be spread inside 0-255 and is REFUSED, not silently flattened: there is nothing
+    to match-grade."""
     p5, p50, p95 = t
     p5, p95 = min(p5, p50 - gap), max(p95, p50 + gap)
-    if not (0 <= p5 and p95 <= 255 and p50 - p5 >= gap and p95 - p50 >= gap):
+    # p50-p5 >= gap and p95-p50 >= gap hold by construction of the min/max above — the only
+    # way this can still fail is the widened anchor falling outside 0-255.
+    if not (0 <= p5 and p95 <= 255):
         raise ValueError(
             f"common_target: the reel's median profile {t} carries no usable tonal range "
             f"(cannot spread to {gap}-unit gaps inside 0-255) — match-grade has nothing to "
