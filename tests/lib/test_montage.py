@@ -33,7 +33,7 @@ def test_stage_accepts_good():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "reel-brief", "trend-scan",
-        "edit-plan", "music-and-mood", "pacing", "assemble-draft", "titles",
+        "edit-plan", "music-and-mood", "pacing", "match-grade", "assemble-draft", "titles",
         "deliver", "reel-review"]
 
 
@@ -63,6 +63,10 @@ def test_v1_stages_kinds_and_flags():
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
     assert by["deliver"].checkpoint == "final"
+    assert by["match-grade"].kind == "optional"
+    assert by["match-grade"].artifact == "MATCH.md"
+    assert by["match-grade"].checkpoint is None
+    assert by["match-grade"].in_out is False
 
 
 # ---- next_action inspector ----
@@ -118,6 +122,15 @@ def test_pacing_optional_absent_then_present(tmp_path):
     res2 = next_action(str(tmp_path))
     assert _state(res2, "pacing") == "done"
     assert res2["next"] == "edit-plan"
+
+
+def test_match_grade_optional_absent_then_present(tmp_path):
+    (tmp_path / "EDL.json").write_text("{}")
+    res = next_action(str(tmp_path))
+    assert _state(res, "match-grade") == "optional"      # absent optional never blocks
+    (tmp_path / "MATCH.md").write_text("x")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "match-grade") == "done"
 
 
 def test_reel_brief_optional_absent_then_present(tmp_path):

@@ -48,6 +48,9 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("pacing", "PACING.md", "optional",
           "pacing SKILL -> pacing CLI (fits the EDL's cuts; edit-plan re-runs with "
           "--pacing to apply)", None),
+    Stage("match-grade", "MATCH.md", "optional",
+          "match-grade SKILL -> match_grade build CLI (opt-in; run AFTER pacing settles "
+          "the cut, before deliver)", None),
     Stage("assemble-draft", "draft.mp4", "optional",
           "draft CLI (optional QA preview)", "edl"),
     Stage("titles", "TITLES.json", "optional",
