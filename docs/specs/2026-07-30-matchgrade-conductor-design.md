@@ -177,15 +177,16 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
 ## 3. The driver — `scripts/match_grade.py`
 
 Measures (reuses `measure_profile`), applies the pure decisions with
-`dataclasses.replace` (which re-runs `EDLEpisode.__post_init__` — the pair is
-validated on construction), and does the EDL IO. Mirror of `pacing.py`.
+`dataclasses.replace` (which re-runs `EDLEpisode.__post_init__`, re-coercing the
+tone pair to tuples — validity is a downstream `ReframeSpec` check, §7), and does
+the EDL IO. Mirror of `pacing.py`.
 
 ```python
 def conduct(edl: EDL, footage_root: str, *, eps=matchgrade.MATCH_EPS,
-            force=False) -> tuple[EDL, list[matchgrade.ToneDecision]]:
+            force=False) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision]]:
     """Measure each episode's source at its window MIDPOINT (start + dur/2 — a settled,
     representative frame of the shipped window), compute the common target, and return
-    (enriched EDL, decisions). Whole-frame measure — see §5."""
+    (enriched EDL, target, decisions). Whole-frame measure — see §5."""
     profiles = [measure_profile(str(Path(footage_root) / e.source), at=e.start + e.dur / 2)
                 for e in edl.episodes]
     target = matchgrade.common_target(profiles)
@@ -193,11 +194,11 @@ def conduct(edl: EDL, footage_root: str, *, eps=matchgrade.MATCH_EPS,
     decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force)
     # apply: author -> set the pair; within-eps/flat -> CLEAR to None (removes a stale
     # pair on a --force re-conduct); hand-authored -> leave the episode untouched.
-    eps_out = tuple(
+    new_episodes = tuple(
         e if d.reason == "hand-authored"
         else replace(e, tone_src=d.tone_src, tone_dst=d.tone_dst)
         for e, d in zip(edl.episodes, decisions))
-    return replace(edl, episodes=eps_out), decisions
+    return replace(edl, episodes=new_episodes), target, decisions
 ```
 
 - **`write_match(edl_path, footage_root, eps, force)`** — `EDL.from_json` →
@@ -290,9 +291,12 @@ def conduct(edl: EDL, footage_root: str, *, eps=matchgrade.MATCH_EPS,
   not silent.
 - **`measure_profile` seek order** — `-ss` after `-i` (§12). The conductor adds
   no new ffmpeg call; it reuses the audited one.
-- **`dataclasses.replace` re-validates.** Applying a decision through `replace`
-  re-runs `EDLEpisode.__post_init__`, so a malformed pair fails loud at authoring
-  time, not deep in the manifest gate.
+- **`dataclasses.replace` re-coerces, it does not validate.** Applying a decision
+  through `replace` re-runs `EDLEpisode.__post_init__`, which only coerces the
+  tone pair to tuples. Tone-pair VALIDITY (ordering, gap, 0-255 range) is a
+  hard-engine check in `ReframeSpec` (the soft-manifest / hard-engine split), so
+  a malformed pair fails at episode processing, not here — `EDLEpisode`
+  deliberately does not gate it, matching `hero`/`pan`/`layout`.
 
 ## 8. What this does NOT do (deferred)
 

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from scripts import match_grade
 from scripts.lib.edl import EDLEpisode, EDL
 
@@ -31,6 +33,7 @@ def test_conduct_authors_deviating_and_leaves_near_median(monkeypatch):
     assert out.episodes[0].tone_src == (10.0, 90.0, 150.0) and out.episodes[0].tone_dst == target
     assert out.episodes[1].tone_src == (40.0, 130.0, 240.0)
     assert out.episodes[2].tone_src is None          # within eps → no pair, byte-identical
+    assert out.episodes[0] == replace(edl.episodes[0], tone_src=(10.0, 90.0, 150.0), tone_dst=target)
 
 
 def test_conduct_leaves_a_hand_authored_pair(monkeypatch):
@@ -38,6 +41,7 @@ def test_conduct_leaves_a_hand_authored_pair(monkeypatch):
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)))
     out, _, _ = match_grade.conduct(edl, "/foot")
     assert out.episodes[0].tone_src == (5.0, 80.0, 140.0)     # untouched
+    assert out.episodes[0] == edl.episodes[0]      # whole episode untouched, not just tone_src
 
 
 def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
