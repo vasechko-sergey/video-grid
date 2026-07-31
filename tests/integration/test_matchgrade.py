@@ -1,9 +1,12 @@
 """Real-ffmpeg proof of the conductor: two clips of different exposure, each with tonal
 range, converge toward the median target once the authored tone_arg curve is rendered."""
+import pytest
 from scripts import match_grade
 from scripts.color_measure import measure_profile
 from scripts.lib import color, ffbin, proc
 from scripts.lib.edl import EDL, EDLEpisode
+
+pytestmark = pytest.mark.integration
 
 
 def _three_band(path, lo, mid, hi):
