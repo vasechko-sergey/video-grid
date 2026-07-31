@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> edit-plan -> [music] -> [pacing] -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: ensure the env, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> edit-plan -> [music] -> [pacing] -> [match-grade] -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
 ---
 
 # using-montage (stage 5.1)
@@ -124,7 +124,19 @@ say so rather than guessing a path.
    -> skip it (named); the EDL stays pacing-less (`beat_slot` unset). `montage status`
    never points `next` here (it is optional).
 
-8. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
+8. **match-grade (optional, §10 — colour conductor).** When episodes come from
+   mixed cameras or mixed lighting, invoke the **match-grade** skill — it
+   measures every episode's source tone, computes one common reel target (the
+   per-anchor median), and authors `tone_src`/`tone_dst` into the episodes that
+   deviate (`"$VG" scripts.match_grade build --edl <run>/EDL.json
+   --footage-root <footage_root> [--eps 4.0] [--force]`), rewriting `EDL.json`
+   IN PLACE plus a sibling `MATCH.md`. **Run it AFTER pacing (step 7)** —
+   pacing's apply pass regenerates `EDL.json` and would wipe an authored tone,
+   the same "settle the cut first" rule pacing itself carries. A single-camera
+   reel needs it not (every episode lands `within-eps`, no pair authored).
+   `montage status` never points `next` here (it is optional).
+
+9. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
    process-episode render, offer a rough draft: "Want to see a rough cut first?"
    If yes, `"$VG" scripts.draft build --edl <run>/EDL.json
    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
@@ -134,19 +146,19 @@ say so rather than guessing a path.
    approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
    `montage status` never points `next` at it, and the autonomous path skips it.
 
-9. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
-   exists) and the reel wants on-screen text, invoke the **titles** skill — it
-   reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
-   font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
-   length (`--total`); compute it here — sum `EDL.json`'s episode durations, or
-   probe `draft.mp4` if it exists; never guess it. `montage status` never points
-   `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
-   skips it and says so. **`TITLES.md` is reviewed together with the near-final
-   reel at Checkpoint 3** — not standalone. When it exists, pass it to
-   `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
-   the text.
+10. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
+    exists) and the reel wants on-screen text, invoke the **titles** skill — it
+    reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
+    font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
+    length (`--total`); compute it here — sum `EDL.json`'s episode durations, or
+    probe `draft.mp4` if it exists; never guess it. `montage status` never points
+    `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
+    skips it and says so. **`TITLES.md` is reviewed together with the near-final
+    reel at Checkpoint 3** — not standalone. When it exists, pass it to
+    `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
+    the text.
 
-10. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
+11. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
     --project <run>/project.json --footage-root <footage_root>
     --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
     [--titles <run>/TITLES.json]`. This runs
@@ -197,9 +209,13 @@ aspect (project-init's own "ask, don't guess").
   skips it without asking (no on-screen text is a valid, complete reel). pacing
   (`PACING.md`, 5.6) is optional too — it runs automatically whenever
   `MUSIC.json` exists; a music-less reel skips it and edit-plan runs pacing-less
-  (`beat_slot` stays unset). reel-review (§5.13 editorial half) runs at CP3
-  after deliver; it is optional in montage status (never next) and human-gated
-  — the reviewer proposes, you dispose.
+  (`beat_slot` stays unset). match-grade (`MATCH.md`, §10) is optional too — it
+  is opt-in (offer it only when episodes come from mixed cameras/lighting) and
+  must run AFTER pacing, never before (a pacing re-run regenerates `EDL.json`
+  and would wipe an authored tone); the autonomous path skips it (a
+  single-camera reel needs no conductor). reel-review (§5.13 editorial half)
+  runs at CP3 after deliver; it is optional in montage status (never next) and
+  human-gated — the reviewer proposes, you dispose.
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it

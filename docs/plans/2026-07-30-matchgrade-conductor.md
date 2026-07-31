@@ -1,6 +1,6 @@
 # Match-grade conductor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A `match-grade` stage that measures every EDL episode's luma profile, computes one common reel target (the per-anchor median), and auto-authors `tone_src`/`tone_dst` into the episodes that deviate — so a reel cut from mixed cameras/light reads as one grade.
 
@@ -31,7 +31,7 @@
 - Create: `scripts/lib/matchgrade.py`
 - Test: `tests/lib/test_matchgrade.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_matchgrade.py
@@ -70,12 +70,12 @@ def test_common_target_empty_is_refused():
         matchgrade.common_target([])
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.lib.matchgrade`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # scripts/lib/matchgrade.py
@@ -126,16 +126,16 @@ def _repair_gaps(t: Profile, gap: float = color.TONE_MIN_GAP) -> Profile:
     return (p5, p50, p95)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Mutation check the refusal guard**
+- [x] **Step 5: Mutation check the refusal guard**
 
 Temporarily change `_repair_gaps`'s condition to `if False:` (neutralize the refusal). Run `tests/lib/test_matchgrade.py::test_common_target_refuses_a_reel_with_no_tonal_range` — it MUST flip to FAIL (it would return a bad target instead of raising). Restore the guard; confirm green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/matchgrade.py tests/lib/test_matchgrade.py
@@ -155,7 +155,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - Modify: `scripts/lib/matchgrade.py`
 - Test: `tests/lib/test_matchgrade.py`
 
-- [ ] **Step 1: Write the failing tests** (append)
+- [x] **Step 1: Write the failing tests** (append)
 
 ```python
 def test_valid_src_true_for_a_contrasty_profile():
@@ -186,12 +186,12 @@ def test_needs_tone_boundary_exactly_eps_is_not_enough():
                                  eps=4.0) is False
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q -k "valid_src or needs_tone"`
 Expected: FAIL — `AttributeError: module 'scripts.lib.matchgrade' has no attribute 'valid_src'`.
 
-- [ ] **Step 3: Write the implementation** (append to `matchgrade.py`)
+- [x] **Step 3: Write the implementation** (append to `matchgrade.py`)
 
 ```python
 def valid_src(profile: Profile, gap: float = color.TONE_MIN_GAP) -> bool:
@@ -207,17 +207,17 @@ def needs_tone(profile: Profile, target: Profile, eps: float = MATCH_EPS) -> boo
     return max(abs(a - b) for a, b in zip(profile, target)) > eps
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q`
 Expected: PASS (11 tests).
 
-- [ ] **Step 5: Mutation check the two boundaries**
+- [x] **Step 5: Mutation check the two boundaries**
 
 (a) Change `needs_tone`'s `> eps` to `>= eps`; `test_needs_tone_boundary_exactly_eps_is_not_enough` MUST fail. Restore.
 (b) Change `valid_src`'s `>= gap` to `> gap`; `test_valid_src_boundary_exactly_the_gap_is_valid` MUST fail. Restore. Confirm green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/matchgrade.py tests/lib/test_matchgrade.py
@@ -232,7 +232,7 @@ git commit -m "feat: matchgrade.valid_src + needs_tone — the flat-source and e
 - Modify: `scripts/lib/matchgrade.py`
 - Test: `tests/lib/test_matchgrade.py`
 
-- [ ] **Step 1: Write the failing tests** (append)
+- [x] **Step 1: Write the failing tests** (append)
 
 ```python
 TARGET = (20.0, 110.0, 210.0)
@@ -285,12 +285,12 @@ def test_plan_preserves_index_order():
     assert [d.index for d in ds] == [0, 1]
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q -k plan`
 Expected: FAIL — `AttributeError: ... has no attribute 'plan'`.
 
-- [ ] **Step 3: Write the implementation** (append to `matchgrade.py`)
+- [x] **Step 3: Write the implementation** (append to `matchgrade.py`)
 
 ```python
 @dataclass(frozen=True)
@@ -327,16 +327,16 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
     return out
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py -x -q`
 Expected: PASS (18 tests).
 
-- [ ] **Step 5: Mutation check the guard order**
+- [x] **Step 5: Mutation check the guard order**
 
 Move the `ht and not force` branch to LAST (after the else authors). `test_plan_respects_a_hand_authored_pair_by_default` MUST fail (a hand-authored deviating episode would author instead of being respected). Restore; confirm green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/matchgrade.py tests/lib/test_matchgrade.py
@@ -351,7 +351,7 @@ git commit -m "feat: matchgrade.plan — per-episode tone decisions with guard o
 - Create: `scripts/match_grade.py`
 - Test: `tests/lib/test_match_grade.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_match_grade.py
@@ -406,12 +406,12 @@ def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
     assert out.episodes[0].tone_src is None and out.episodes[0].tone_dst is None
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_match_grade.py -x -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.match_grade`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # scripts/match_grade.py
@@ -454,16 +454,16 @@ def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
 
 (The rest of the driver — `write_match`, `_report_md`, `main` — lands in Task 4; this task ships `conduct` and its import head only.)
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_match_grade.py -x -q`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Mutation check the apply branch**
+- [x] **Step 5: Mutation check the apply branch**
 
 Change the apply comprehension's `e if d.reason == "hand-authored"` to `e if False` (always replace). `test_conduct_leaves_a_hand_authored_pair` MUST fail (the hand pair would be overwritten). Restore; confirm green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/match_grade.py tests/lib/test_match_grade.py
@@ -478,7 +478,7 @@ git commit -m "feat: match_grade.conduct — measure, target, apply tone decisio
 - Modify: `scripts/match_grade.py`
 - Test: `tests/lib/test_match_grade.py`
 
-- [ ] **Step 1: Write the failing tests** (append)
+- [x] **Step 1: Write the failing tests** (append)
 
 ```python
 import sys
@@ -527,12 +527,12 @@ def test_cli_build_threads_eps_and_force(tmp_path, monkeypatch):
 
 Add `import pytest` at the top of the test file if not already present.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_match_grade.py -x -q -k "write_match or cli"`
 Expected: FAIL — `AttributeError: ... has no attribute 'write_match'`.
 
-- [ ] **Step 3: Write the implementation** (append to `match_grade.py`)
+- [x] **Step 3: Write the implementation** (append to `match_grade.py`)
 
 ```python
 def _report_md(sources: list[str], target: matchgrade.Profile,
@@ -593,12 +593,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_match_grade.py -x -q`
 Expected: PASS. Then run the whole core+driver: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py tests/lib/test_match_grade.py -q`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/match_grade.py tests/lib/test_match_grade.py
@@ -613,7 +613,7 @@ git commit -m "feat: match_grade write_match + MATCH.md report + build CLI"
 - Modify: `scripts/montage.py:37` (`V1_STAGES`)
 - Test: `tests/lib/test_montage.py`
 
-- [ ] **Step 1: Write the failing test changes**
+- [x] **Step 1: Write the failing test changes**
 
 Edit `tests/lib/test_montage.py::test_v1_stages_order_and_keys` to insert `"match-grade"` after `"pacing"`:
 
@@ -646,12 +646,12 @@ def test_match_grade_optional_absent_then_present(tmp_path):
     assert _state(res2, "match-grade") == "done"
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -x -q`
 Expected: FAIL — the order list and `by["match-grade"]` lookups fail (stage absent).
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `scripts/montage.py`, insert into `V1_STAGES` between the `pacing` and `assemble-draft` entries:
 
@@ -661,12 +661,12 @@ In `scripts/montage.py`, insert into `V1_STAGES` between the `pacing` and `assem
           "the cut, before deliver)", None),
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -680,7 +680,7 @@ git commit -m "feat: montage — the optional match-grade stage after pacing"
 **Files:**
 - Create: `tests/integration/test_matchgrade.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/integration/test_matchgrade.py
@@ -742,12 +742,12 @@ def test_tone_arg_curve_is_actually_emitted(tmp_path):
     assert frag.startswith("curves=all='") and frag.endswith("',")
 ```
 
-- [ ] **Step 2: Run to verify it fails then passes**
+- [x] **Step 2: Run to verify it fails then passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_matchgrade.py -x -q`
 Expected: PASS once Tasks 0-3 are in (this task adds no production code — it is the end-to-end proof over the real actuator).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_matchgrade.py
@@ -764,29 +764,29 @@ git commit -m "test: real-ffmpeg proof the authored tone converges two exposures
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`
 - Modify: `docs/specs/2026-07-26-colour-stage-design.md` (deferred → landed cross-ref)
 
-- [ ] **Step 1: Write `skills/match-grade/SKILL.md`**
+- [x] **Step 1: Write `skills/match-grade/SKILL.md`**
 
 Frontmatter (mirror `skills/pacing/SKILL.md`) + body covering: what it is (montage §10, opt-in tone match across episodes); WHEN (after the cut settles — edit-plan + pacing — and only when episodes come from mixed cameras/light; a single-camera reel needs none); HOW (`bin/vg match_grade build --edl EDL.json --footage-root DIR [--eps 4.0] [--force]`); reading `MATCH.md`; the guarantees (touches only tone; respects a hand-authored pair unless `--force`; a within-eps episode stays byte-identical); the ordering landmine (run AFTER pacing — a pacing re-run regenerates EDL.json and wipes the tone); the honest limit (whole-frame midpoint, not the shipped crop). Resolve the runtime root via the recorded-root preamble the other runner skills use (see `skills/pacing/SKILL.md`).
 
-- [ ] **Step 2: Wire `skills/using-montage/SKILL.md`**
+- [x] **Step 2: Wire `skills/using-montage/SKILL.md`**
 
 Add `match-grade` to the conveyor order line as an optional stage after pacing:
 `… → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel → …`,
 with one sentence: optional, opt-in, runs after pacing settles the cut, authors tone consistency across episodes.
 
-- [ ] **Step 3: Docs sync**
+- [x] **Step 3: Docs sync**
 
 - `docs/build-status.md`: a DONE entry for the match-grade conductor (what landed, the files, the suite count after).
 - `docs/pipeline-map.md`: note the match-grade stage under §10/colour (optional, after pacing).
 - `CLAUDE.md`: two registry rows (design + plan) in the Quick Reference table, following the existing row style; and — since this closes the campaign — a one-line note in the colour row that the §10 conductor is no longer deferred.
 - `docs/specs/2026-07-26-colour-stage-design.md`: in its **Deferred** list, mark the conductor bullet landed with a cross-ref to this slice's design (do not delete the text — annotate, per the house style).
 
-- [ ] **Step 4: Full suite**
+- [x] **Step 4: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all green (prior baseline 1994 passed / 2 skipped, plus this slice's new tests; no golden moves — the conductor adds an opt-in stage and touches no existing render path).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add skills/match-grade/SKILL.md skills/using-montage/SKILL.md docs/ CLAUDE.md

@@ -435,7 +435,9 @@ milky, blown foam.
 
 - **The conductor / auto match-grade** — measure every episode's profile, compute
   one common reel target, auto-author `tone_src`/`tone_dst` (design §10 "final
-  match-grade pass"). Its own later slice; slice F is the foundation.
+  match-grade pass"). Its own later slice; slice F is the foundation. **Landed
+  2026-07-30** — see
+  [2026-07-30-matchgrade-conductor-design.md](2026-07-30-matchgrade-conductor-design.md).
 - **The §10 "optional mood LUT".**
 - **Per-part fidelity** — skin vs clothing vs sport gear separately (needs
   segmentation at check time); MVP is the whole subject bbox.

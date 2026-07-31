@@ -4,13 +4,75 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-29._
+_Last updated: 2026-07-30._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Match-grade conductor (montage design §10, the last colour-as-a-stage
+  deferral) DONE (2026-07-30)** — plan
+  `docs/plans/2026-07-30-matchgrade-conductor.md` + design
+  `docs/specs/2026-07-30-matchgrade-conductor-design.md`, Tasks 0–7.
+  Colour-as-a-stage (2026-07-27) landed the per-episode tone **actuator**
+  (`color.tone_arg`, the `curves` fragment that maps one source profile onto a
+  common one) and the authoring aid (`color_measure.measure_profile`), but
+  left the pairs entirely hand-authored; this slice lands the **conductor** on
+  top — a standalone post-EDL stage that measures every episode's source at
+  its window MIDPOINT, computes ONE common reel tone target (the per-anchor
+  **median** across every measured profile, gap-repaired to
+  `color.TONE_MIN_GAP` — never widened past 0–255; a reel whose median carries
+  no usable range is REFUSED, not silently flattened), and auto-authors
+  `tone_src`/`tone_dst` into the episodes that deviate past `--eps` (default 4
+  luma units), so a reel cut from mixed cameras/lighting reads as one grade.
+  New pure `scripts/lib/matchgrade.py` (`common_target`/`_repair_gaps` +
+  `valid_src`/`needs_tone` + `ToneDecision`/`plan` — no ffmpeg, no numpy) —
+  `plan`'s guard order is the contract: a **hand-authored pair is respected
+  first** (unless `--force`), then a **flat/low-contrast source is skipped**
+  (`flat-source` — its contrast cannot be invented, though it still counts
+  toward the median: every episode votes, not every episode receives), then a
+  **within-eps episode is left untouched** (byte-identical — reframe's fast
+  path is never spent on an imperceptible curve), else it authors its own
+  profile → the common target. Thin driver `scripts/match_grade.py` —
+  `conduct(edl, footage_root, eps, force)` reuses `color_measure.measure_profile`
+  (one pass; the returned `ToneDecision`s carry their measured profile so the
+  report needs no second measure), applies decisions via `dataclasses.replace`
+  (clearing a stale pair on a `--force` re-conduct — match-grade cannot tell
+  its own prior authorship from a human's, so a plain re-run without `--force`
+  is a safe no-op, `hand-authored` on every episode); `write_match` rewrites
+  `EDL.json` **IN PLACE** (git-tracked, recoverable) plus a sibling `MATCH.md`
+  (target triple · one row per episode: measured profile · max Δ ·
+  action/reason); CLI `match_grade build --edl EDL.json --footage-root DIR
+  [--eps 4.0] [--force]`. New optional `montage.py` stage `match-grade`
+  (artifact `MATCH.md`, checkpoint `None`, reviewed at CP3 like pacing)
+  inserted between `pacing` and `assemble-draft` — `next_action` never blocks
+  on it, matching every other optional stage. **Opt-in by design**: like
+  `white_balance`/`dip`/the SFX whoosh, the conductor changes the look, so it
+  never sits on the autonomous path — a human runs it only when episodes
+  actually come from mixed cameras/light (a single-camera reel would see every
+  episode land `within-eps` and receive no pair). Real-ffmpeg convergence
+  proof (`tests/integration/test_matchgrade.py`): two clips of deliberately
+  different exposure both get authored a tone pair, and rendering each through
+  the real `color.tone_arg` curve the conductor picked measurably shrinks the
+  p50 spread between them versus their un-graded source — the reel actually
+  converges, not just the decision table. **Honest limits, recorded not
+  hidden:** measures the WHOLE source frame at the window midpoint (the stage
+  runs before tracking, so there is no crop yet) — the same boundary
+  `measure_profile` already shipped with; one frame, not a temporal average;
+  tone (luma) only — it cannot fix a cross-episode colour cast, which stays a
+  hand/agent job. New `skills/match-grade/SKILL.md` + `using-montage` wiring
+  (conveyor order + a new numbered step + a Boundaries mention) name the
+  ordering landmine explicitly: run match-grade AFTER pacing, never before —
+  pacing's apply pass regenerates `EDL.json` from `selection.json` and would
+  wipe any tone the conductor had authored, the same "settle the cut first"
+  rule pacing itself carries. **2027 passed / 2 skipped** (33 new: 22
+  pure-core + 8 driver unit tests, 1 router stage-list test, 2 real-ffmpeg
+  integration tests), no golden moved. **Closes the last item colour-as-a-stage's
+  design left deferred** — the §10 mood LUT stays the one remaining deferred
+  colour item, and it is a different problem (imposing an external look, not
+  pulling episodes toward each other).
 
 - **Titles animations (§5.16 fade/reveal/colour + the platform safe-zone fix)
   DONE (2026-07-29)** — plan `docs/plans/2026-07-29-titles-animations.md` +
