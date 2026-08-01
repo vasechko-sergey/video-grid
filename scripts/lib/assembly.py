@@ -5,6 +5,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 from scripts.lib import ffbin, proc
 
 
@@ -161,11 +164,9 @@ def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
     return True
 
 
-def frame_rgb(src: str, t: float) -> "np.ndarray":
+def frame_rgb(src: str, t: float) -> np.ndarray:
     """One frame at time `t` as an HxWx3 uint8 RGB ndarray, at `src`'s own
     resolution. For re-extracting cast crops from the ORIGINAL (design §5)."""
-    import numpy as np
-    from PIL import Image
     with tempfile.TemporaryDirectory() as d:
         png = str(Path(d) / "f.png")
         # -ss AFTER -i: frame-accurate grab (repo landmine — never before -i here)
