@@ -41,7 +41,13 @@ class _FakeRes:
 def _fake_frames(n):
     # one person present throughout, sliding right — YOLO would return empty on
     # the synthetic box, so we feed a real-shaped detection stream instead.
-    return [_FakeRes([_FakeBox([300 + i * 12, 500, 200, 300], 1)]) for i in range(n)]
+    # Boxes are authored in PROXY (960-long-side) coordinates, because the analysis
+    # runs on the 960 proxy make_proxy writes from the 1920 sample_clip (design
+    # 2026-08-01): _motion/shot_type normalize by pres=(960,540), and
+    # _cast_from_original scales the box up by res/pres=2 to crop the 1920 original.
+    # In 1920 coords they would normalize/scale 2x wrong (a clipped crop, saturated
+    # motion, an inflated shot_type).
+    return [_FakeRes([_FakeBox([150 + i * 6, 250, 100, 150], 1)]) for i in range(n)]
 
 
 def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
@@ -60,10 +66,18 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     assert (out / "FOOTAGE.json").exists() and (out / "FOOTAGE.md").exists()
     assert (out / "cast_candidates.json").exists()          # cast-candidate wiring reached
     footage.Footage.from_json(out / "FOOTAGE.json")          # round-trips
-    clip = result.clips[0]
-    assert clip.source == "clip.mp4" and clip.res == (1920, 1080)
-    assert len(clip.windows) >= 1
-    assert clip.windows[0].shot_type in {"close", "medium", "wide"}
+    # Whole-object golden. res is the ORIGINAL 1920x1080 (make_proxy analyses a 960
+    # proxy but FootageClip stores the source geometry); shot_type/motion are
+    # measured in proxy space. Values re-pinned for the 960 analysis proxy (design
+    # 2026-08-01) — shake=0.0 here because vidstab.detect is faked (its real value
+    # is pinned in test_intake_real_vidstab_shake).
+    assert result.clips[0] == footage.FootageClip(
+        source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
+        scene_cuts=[],
+        windows=[footage.FootageWindow(
+            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.625,
+            shake=0.0, description="1 person, wide, dynamic", score=0.861,
+            best=True, track_ids=[1])])
     assert "# Footage —" in result.to_markdown()
 
 
@@ -76,9 +90,17 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
 
     result = intake.intake(str(root), str(tmp_path / "out"))
-    clip = result.clips[0]
-    assert len(clip.windows) >= 1
-    assert all(w.shake >= 0.0 for w in clip.windows)         # vidstabdetect measured + parsed
+    # Whole-object golden: real vidstabdetect ran on the 960 proxy + parsed its
+    # ascii .trf → shake 0.0077 (a small fraction of frame width, below SHAKY_CLIP
+    # 0.02 → shaky=False). Values re-pinned for the 960 analysis proxy (design
+    # 2026-08-01); shake shifts vs the raw 1920 pass because detect ran on the proxy.
+    assert result.clips[0] == footage.FootageClip(
+        source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
+        scene_cuts=[],
+        windows=[footage.FootageWindow(
+            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.625,
+            shake=0.0077, description="1 person, wide, dynamic", score=0.764,
+            best=True, track_ids=[1])])
 
 
 def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_clip):
