@@ -56,7 +56,11 @@ def _probe_ffmpeg() -> tuple[bool, str]:
 def _probe_filter(name: str) -> tuple[bool, str]:
     try:
         present = ffbin.has_filter(name)
-    except (ValueError, RuntimeError):
+    except (ValueError, RuntimeError, OSError):
+        # ValueError/RuntimeError: ffbin's own raises (unresolved binary, proc.run's
+        # wrapped failures). OSError (PermissionError is a subclass): a RESOLVED but
+        # non-executable/corrupted binary — proc.run does not wrap that one, so it
+        # would otherwise propagate straight through has_filter and crash this probe.
         return False, "ffmpeg unavailable"
     return (True, "present") if present else (False, f"{name} absent from this ffmpeg build")
 
@@ -104,8 +108,18 @@ _PROBES = {
 
 def run() -> preflight.RuntimeReport:
     """Run every probe and evaluate the result. evaluate() enforces that _PROBES's
-    keys match the registry — a probe/Check drift raises here, not silently."""
-    raw = {key: probe() for key, probe in _PROBES.items()}
+    keys match the registry — a probe/Check drift raises here, not silently.
+
+    Each probe is called defensively: a probe must never crash the whole checker,
+    so an unexpected raise (a hole in one probe's own except clause, or a new
+    failure mode nobody anticipated) becomes that ONE check's failed outcome
+    instead of taking every other check down with it."""
+    raw = {}
+    for key, probe in _PROBES.items():
+        try:
+            raw[key] = probe()
+        except Exception as e:            # a probe must never crash the checker
+            raw[key] = (False, f"probe raised: {e}")
     return preflight.evaluate(raw)
 
 

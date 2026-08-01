@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from scripts import verify_runtime
+from scripts.lib import preflight
 
 
 def test_probe_deps_reports_missing(monkeypatch):
@@ -31,6 +32,19 @@ def test_probe_weights_present_and_absent(monkeypatch, tmp_path):
 def test_probes_keys_match_registry():
     from scripts.lib.preflight import CHECKS
     assert set(verify_runtime._PROBES) == {c.key for c in CHECKS}
+
+
+def test_probe_filter_survives_a_non_executable_binary(monkeypatch):
+    """A resolved-but-non-executable/corrupted ffmpeg makes subprocess raise
+    PermissionError (an OSError), not ValueError/RuntimeError — ffbin.has_filter
+    does not wrap it. _probe_filter (and therefore _probe_drawtext/_probe_vidstab)
+    must catch it too, or it propagates through run() and crashes the checker."""
+    def raise_permission_error(name):
+        raise PermissionError(f"[Errno 13] Permission denied: {name!r}")
+
+    monkeypatch.setattr(verify_runtime.ffbin, "has_filter", raise_permission_error)
+    ok, detail = verify_runtime._probe_drawtext()
+    assert ok is False and detail == "ffmpeg unavailable"
 
 
 def _stub_all(monkeypatch, **overrides):
@@ -84,3 +98,21 @@ def test_cli_json(monkeypatch, capsys):
         verify_runtime.main()
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True and payload["results"][0]["key"] == "deps"
+
+
+def test_run_survives_a_raising_probe(monkeypatch):
+    """A probe must never crash the checker. Guard test for that invariant: force
+    one probe to raise and confirm run() still returns a RuntimeReport (not
+    propagate) with that check reported as a failure, while every other probe is
+    still evaluated normally (the crash is contained to the one check)."""
+    _stub_all(monkeypatch)
+
+    def boom():
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(verify_runtime._PROBES, "font", boom)
+    r = verify_runtime.run()
+    assert isinstance(r, preflight.RuntimeReport)
+    font_result = next(x for x in r.results if x.key == "font")
+    assert font_result.ok is False and "probe raised" in font_result.detail
+    assert all(x.ok for x in r.results if x.key != "font")
