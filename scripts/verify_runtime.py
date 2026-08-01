@@ -100,3 +100,25 @@ _PROBES = {
     "weights": _probe_weights,
     "demucs": _probe_demucs,
 }
+
+
+def run() -> preflight.RuntimeReport:
+    """Run every probe and evaluate the result. evaluate() enforces that _PROBES's
+    keys match the registry — a probe/Check drift raises here, not silently."""
+    raw = {key: probe() for key, probe in _PROBES.items()}
+    return preflight.evaluate(raw)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="verify the video-grid runtime is installed (design 2026-08-01)")
+    ap.add_argument("--json", action="store_true",
+                    help="machine-readable report instead of the text table")
+    a = ap.parse_args()
+    report = run()
+    print(json.dumps(report.to_dict(), indent=2) if a.json else report.to_text())
+    raise SystemExit(0 if report.ok else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -31,3 +31,56 @@ def test_probe_weights_present_and_absent(monkeypatch, tmp_path):
 def test_probes_keys_match_registry():
     from scripts.lib.preflight import CHECKS
     assert set(verify_runtime._PROBES) == {c.key for c in CHECKS}
+
+
+def _stub_all(monkeypatch, **overrides):
+    """Force every probe to a chosen (ok, detail); default all-pass."""
+    for key in verify_runtime._PROBES:
+        result = overrides.get(key, (True, "ok"))
+        monkeypatch.setitem(verify_runtime._PROBES, key, lambda r=result: r)
+
+
+def test_run_all_pass_is_ready(monkeypatch):
+    _stub_all(monkeypatch)
+    assert verify_runtime.run().ok is True
+
+
+def test_run_required_miss_not_ready(monkeypatch):
+    _stub_all(monkeypatch, vidstab=(False, "vidstabdetect absent"))
+    r = verify_runtime.run()
+    assert r.ok is False and [f.key for f in r.failures] == ["vidstab"]
+
+
+def test_cli_exit_0_when_ready(monkeypatch, capsys):
+    _stub_all(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["verify_runtime"])
+    with pytest.raises(SystemExit) as e:
+        verify_runtime.main()
+    assert e.value.code == 0
+    assert "runtime ready" in capsys.readouterr().out
+
+
+def test_cli_exit_1_on_required_miss(monkeypatch, capsys):
+    _stub_all(monkeypatch, drawtext=(False, "absent"))
+    monkeypatch.setattr(sys, "argv", ["verify_runtime"])
+    with pytest.raises(SystemExit) as e:
+        verify_runtime.main()
+    assert e.value.code == 1
+    assert "drawtext: bash setup.sh" in capsys.readouterr().out
+
+
+def test_cli_exit_0_on_advisory_only_miss(monkeypatch, capsys):
+    _stub_all(monkeypatch, demucs=(False, "not installed"))
+    monkeypatch.setattr(sys, "argv", ["verify_runtime"])
+    with pytest.raises(SystemExit) as e:
+        verify_runtime.main()
+    assert e.value.code == 0                     # advisory never changes the exit code
+
+
+def test_cli_json(monkeypatch, capsys):
+    _stub_all(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["verify_runtime", "--json"])
+    with pytest.raises(SystemExit):
+        verify_runtime.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True and payload["results"][0]["key"] == "deps"
