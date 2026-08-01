@@ -31,6 +31,12 @@ _Last updated: 2026-07-30._
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
 | 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate; titles now render **motion** — `fade` alpha ramps, `reveal="word"`/`"stair"` (one drawtext per step, each baked at its FINAL x from measured PIL font metrics — never a naive per-word re-centre) — and **colour** (`color`/`scale`/`line_spacing`), and lay out against the **platform's own safe zone** (`y_exprs(platform)` reads `safe_zone_for`, the same table `check_reel` judges the subject against, replacing a frozen generic-zone constant that disagreed with it); `deliver`/`build_reel` thread `platform` through (titles-animations, 2026-07-29) | — |
 
+**Runtime utility, not a stage:** `verify-runtime` (2026-08-01) is a startup
+preflight that gates `using-montage`'s step 0 — it asserts the `setup.sh`
+baseline contract and stops the conveyor before project-init on any required
+gap. Deliberately **not** in `V1_STAGES`; produces no run artifact. See
+[the verify-runtime design](specs/2026-08-01-verify-runtime-design.md).
+
 ## Automation loops (design §4.1 ladder)
 
 | Loop | Where | Mechanism | Status |

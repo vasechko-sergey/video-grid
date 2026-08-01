@@ -24,6 +24,10 @@ bash setup.sh          # venv + ffmpeg-full (drawtext + vidstab) + fonts; weight
 Optional capability flags compose: `bash setup.sh --with-demucs` (sharper music
 in-point) and `--with-sourcing` (fetch tracks from the internet).
 
+Verify the install any time with `/video-grid:verify-runtime` (or
+`"$VG" scripts.verify_runtime`) — it reports each missing piece with the exact
+command to fix it.
+
 **2. Install the plugin** (from inside the clone):
 
 ```

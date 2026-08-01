@@ -4,13 +4,53 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-07-30._
+_Last updated: 2026-08-01._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Verify-runtime (startup runtime preflight) DONE (2026-08-01)** — plan
+  `docs/plans/2026-08-01-verify-runtime.md` + design
+  `docs/specs/2026-08-01-verify-runtime-design.md` (branch `feat/verify-runtime`,
+  commits `6a57003`..`884d502` + this docs sync). **2052 passed / 2 skipped.**
+  Before this slice a missing ffmpeg filter surfaced only when the stage that
+  needed it ran — for `drawtext` that was `deliver`, minutes into a reel. Now
+  one startup check asserts the `setup.sh` **baseline contract** — required:
+  `deps` (the `requirements.txt` runtime set + `cv2`), `ffmpeg_bin`, `drawtext`,
+  `vidstab` (both `vidstabdetect`/`vidstabtransform`), `font`, `weights`
+  (YOLO); advisory: `demucs` — and prints each gap's exact remedy (almost
+  always `bash setup.sh`) instead of failing loud mid-run. Mirrors the repo's
+  pure-core/thin-driver split: `scripts/lib/preflight.py` is pure (no heavy
+  imports, no subprocess) — `CHECKS` registry + `CheckOutcome`/`RuntimeReport`
+  (named to dodge a collision with `models.py`'s own `CheckResult`/`Report`
+  family) + `evaluate(raw)`, raising if a probe's keys ever drift from the
+  registry's. `scripts/verify_runtime.py` is the thin impure driver — one
+  probe per check reusing the already-tested helpers (`ffbin.has_filter`,
+  `fonts.resolve_font`, `models.MODELS[0]`), kept **light-import** on purpose
+  (stdlib + `ffbin`/`fonts`/`preflight`/`models` only, numpy/cv2-free) so a
+  broken heavy dep is *reported* by `_probe_deps` rather than crashing the
+  checker's own import — plus `run()`/`main()` (`--json`; exit 0 iff every
+  **required** check passes, an advisory-only miss never flips the code).
+  **`run()` is defensive per probe:** each call is wrapped so a probe that
+  *raises* (not merely returns `False`) becomes that ONE check's failed
+  outcome (`detail` = `"probe raised: {e}"`) rather than taking every other
+  check down with it — the checker always returns a `RuntimeReport`, never a
+  traceback. **Read-only by design** — it prints remedies, never runs
+  `setup.sh` or any installer. **Honest bootstrap boundary:** it runs *inside*
+  the venv (via `bin/vg`), so it cannot report a missing venv or a missing
+  recorded root itself — those stay the pre-venv layer's job (the skill
+  preamble's root-record read, `bin/vg`'s own gate); the full picture spans
+  `skill preamble (root) → bin/vg (venv) → verify_runtime (deps/ffmpeg/
+  filters/font/weights/opt)`, no single process owns it end to end. New
+  `skills/verify-runtime/SKILL.md` — an on-demand check, runnable any time.
+  `using-montage`'s step 0 turns from a one-time "ensure the env" install
+  prompt into an explicit **gate**: it runs `scripts.verify_runtime` before
+  project-init and stops on any required failure (naming the remedy);
+  advisory gaps (e.g. `demucs`) are named and never block. Not a conveyor
+  stage — no run artifact, not in `V1_STAGES` (see `docs/pipeline-map.md`).
 
 - **Match-grade conductor (montage design §10, the last colour-as-a-stage
   deferral) DONE (2026-07-30)** — plan

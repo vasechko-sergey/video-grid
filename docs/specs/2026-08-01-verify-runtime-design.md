@@ -206,6 +206,9 @@ preamble (root record) stays as the pre-venv gate ahead of this.
    silently.
 4. `verify_runtime` performs **no** installs or writes — read-only.
 5. `verify-runtime` is **not** in `V1_STAGES` and creates no run artifact.
+6. `run()` never raises: an unexpected exception from any probe becomes that
+   ONE check's failed `CheckOutcome` (`detail` = `"probe raised: …"`), so the
+   checker always returns a `RuntimeReport`, never a traceback.
 
 ## 8. Testing
 
