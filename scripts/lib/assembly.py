@@ -1,6 +1,7 @@
 """Normalize-and-concat core for reel assembly (design 2026-07-10 §3). Shared by
 the final assembler and the draft assembler (scripts/draft.py)."""
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -142,3 +143,32 @@ def assemble(episodes: list[str], dims: tuple[int, int], fps: float, out_master:
             _normalize(ep, dims, fps, norm)
             entries.append(norm)
     return concat(entries, out_master)
+
+
+def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
+    """Downscale `src` to an analysis proxy at `dst`: long side == `long_side`,
+    native fps, no audio, analysis-grade CRF. Returns True if a proxy was written,
+    False if `src`'s long side is already <= `long_side` (caller analyses the
+    original — no upscaling, no needless re-encode). Downscale ONLY (design §8)."""
+    info = probe_stream(src)
+    if max(info.w, info.h) <= long_side:
+        return False
+    # long-side box, aspect preserved, even dims (yuv420p needs them)
+    vf = (f"scale='if(gt(iw,ih),{long_side},-2)':'if(gt(iw,ih),-2,{long_side})'")
+    proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-an", "-vf", vf,
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+              "-pix_fmt", "yuv420p", dst])
+    return True
+
+
+def frame_rgb(src: str, t: float) -> "np.ndarray":
+    """One frame at time `t` as an HxWx3 uint8 RGB ndarray, at `src`'s own
+    resolution. For re-extracting cast crops from the ORIGINAL (design §5)."""
+    import numpy as np
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as d:
+        png = str(Path(d) / "f.png")
+        # -ss AFTER -i: frame-accurate grab (repo landmine — never before -i here)
+        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-ss", f"{t}",
+                  "-frames:v", "1", png])
+        return np.asarray(Image.open(png).convert("RGB"))
