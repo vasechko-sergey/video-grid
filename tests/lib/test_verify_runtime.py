@@ -80,7 +80,8 @@ def test_cli_exit_1_on_required_miss(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         verify_runtime.main()
     assert e.value.code == 1
-    assert "drawtext: bash setup.sh" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "drawtext: cd " in out and "&& bash setup.sh" in out   # cwd-independent
 
 
 def test_cli_exit_0_on_advisory_only_miss(monkeypatch, capsys):
@@ -116,3 +117,14 @@ def test_run_survives_a_raising_probe(monkeypatch):
     font_result = next(x for x in r.results if x.key == "font")
     assert font_result.ok is False and "probe raised" in font_result.detail
     assert all(x.ok for x in r.results if x.key != "font")
+
+
+def test_run_remedies_carry_their_own_cd_so_they_run_from_any_cwd(monkeypatch):
+    """Regression: the remedy was a bare `bash setup.sh`, which fails from any cwd
+    but the clone (the user clicked Run in ~/Downloads and got 'No such file').
+    run() must render it absolute — `cd <clone> && bash setup.sh` — so Run works
+    wherever the shell is."""
+    _stub_all(monkeypatch, deps=(False, "missing"))
+    dep = next(x for x in verify_runtime.run().results if x.key == "deps")
+    assert dep.remedy.startswith("cd ") and dep.remedy.endswith("&& bash setup.sh")
+    assert str(verify_runtime._ROOT) in dep.remedy

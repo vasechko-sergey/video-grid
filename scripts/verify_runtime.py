@@ -120,7 +120,9 @@ def run() -> preflight.RuntimeReport:
             raw[key] = probe()
         except Exception as e:            # a probe must never crash the checker
             raw[key] = (False, f"probe raised: {e}")
-    return preflight.evaluate(raw)
+    # root=_ROOT so every remedy carries its own `cd <clone>` — the printed command
+    # runs from ANY cwd (the user clicks Run wherever their shell is, not the clone).
+    return preflight.evaluate(raw, root=str(_ROOT))
 
 
 def main() -> None:

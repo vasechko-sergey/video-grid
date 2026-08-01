@@ -183,8 +183,9 @@ safe to run anywhere, any number of times.
 
 Preamble resolves the root record (missing → `bash setup.sh` in the clone, stop) →
 runs `"$VG" scripts.verify_runtime` → presents the report. Green → "runtime ready".
-Any required failure → list each red check with its remedy. Advisory gaps → list as
-"optional, only for X". Never runs `setup.sh` itself. Auto-discovered from
+Any required failure → list each red check with its remedy (each already carries
+`cd <clone> &&`, so present it verbatim in a `bash` block — it runs from any cwd).
+Advisory gaps → list as "optional, only for X". Never runs `setup.sh` itself. Auto-discovered from
 `skills/` (the plugin manifests do not enumerate skills), so a reinstall picks it
 up.
 
@@ -209,6 +210,12 @@ preamble (root record) stays as the pre-venv gate ahead of this.
 6. `run()` never raises: an unexpected exception from any probe becomes that
    ONE check's failed `CheckOutcome` (`detail` = `"probe raised: …"`), so the
    checker always returns a `RuntimeReport`, never a traceback.
+7. Every printed remedy is **cwd-independent**: the registry stores it relative
+   (`bash setup.sh`), and the driver passes the resolved clone root to
+   `evaluate(root=)`, which prefixes `cd <clone> &&` (shell-quoted). The user can
+   run it — or click Run — from any directory, not only the clone. A bare
+   `bash setup.sh` fails from anywhere else (the report bug that surfaced
+   2026-08-01: Run in `~/Downloads` → `bash: setup.sh: No such file`).
 
 ## 8. Testing
 

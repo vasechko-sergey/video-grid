@@ -6,14 +6,17 @@ imports of the probed modules, no ffmpeg, no filesystem — the impure probing l
 in scripts/verify_runtime.py. That split is what makes the report logic testable
 without a working install: feed evaluate() fabricated results.
 """
+import shlex
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Check:
     """One runtime requirement. `required` True → a failure BLOCKS the run; False →
-    advisory (reported, never blocks). `remedy` is the exact shell command the user
-    runs to fix it — verify_runtime PRINTS it, never runs it (design §4)."""
+    advisory (reported, never blocks). `remedy` is the shell command the user runs
+    to fix it — verify_runtime PRINTS it, never runs it (design §4). It is stored
+    relative (`bash setup.sh`); evaluate(root=) prefixes `cd <clone> &&` so the
+    printed command runs from ANY working directory."""
     key: str
     label: str
     required: bool
@@ -95,19 +98,27 @@ class RuntimeReport:
         return "\n".join(lines)
 
 
-def evaluate(raw: dict[str, tuple[bool, str]]) -> RuntimeReport:
+def evaluate(raw: dict[str, tuple[bool, str]],
+             root: str | None = None) -> RuntimeReport:
     """Join raw probe results (key -> (ok, detail)) with CHECKS into a RuntimeReport.
 
     `raw`'s keys MUST equal the registry's keys exactly. A probe without a Check,
     or a Check without a probe, is a bug — it raises rather than silently skipping
-    a requirement (design §7 invariant 3)."""
+    a requirement (design §7 invariant 3).
+
+    When `root` (the clone directory) is given, each remedy is prefixed with
+    `cd <root> &&` so the printed command runs from ANY working directory — the
+    user can click Run wherever their shell happens to be, not only from the clone
+    root. `root` is shell-quoted, so a path with spaces stays one argument. Without
+    `root` the remedies stay relative (`bash setup.sh`)."""
     want = {c.key for c in CHECKS}
     got = set(raw)
     if want != got:
         raise ValueError(
             f"preflight raw keys {sorted(got)} != registry keys {sorted(want)}")
+    prefix = f"cd {shlex.quote(str(root))} && " if root is not None else ""
     results = tuple(
         CheckOutcome(key=c.key, label=c.label, required=c.required,
-                     ok=raw[c.key][0], detail=raw[c.key][1], remedy=c.remedy)
+                     ok=raw[c.key][0], detail=raw[c.key][1], remedy=prefix + c.remedy)
         for c in CHECKS)
     return RuntimeReport(results=results)

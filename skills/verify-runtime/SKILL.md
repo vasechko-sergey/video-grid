@@ -32,8 +32,10 @@ Announce on entry: **"Using verify-runtime to check the environment."**
 
 3. **Report the result.**
    - **Exit 0 / "runtime ready":** say the runtime is ready.
-   - **Exit non-zero:** list each `BLOCKED` required check with its remedy verbatim
-     (almost always `bash setup.sh`). Tell the user to run it, then re-check. Do
+   - **Exit non-zero:** list each `BLOCKED` required check with its remedy. The
+     remedy is already self-contained — it carries its own `cd <clone> &&`, so it
+     runs from **any** directory. Present it **verbatim in a ```bash block** (so the
+     Run button works wherever the user's shell is), then have them re-check. Do
      **not** run `setup.sh` yourself — installers are the user's to run.
    - **Optional (advisory) gaps** (e.g. `demucs`): mention them as "only needed for
      X", not as blockers.

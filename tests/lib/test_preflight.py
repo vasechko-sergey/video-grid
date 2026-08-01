@@ -105,3 +105,23 @@ def test_evaluate_orders_results_by_registry_not_raw():
     # (to_text's determinism depends on this, not on raw's incidental dict order)
     raw = {c.key: (True, "ok") for c in reversed(CHECKS)}
     assert [r.key for r in preflight.evaluate(raw).results] == [c.key for c in CHECKS]
+
+
+def test_evaluate_without_root_leaves_remedies_relative():
+    r = preflight.evaluate(_all_ok_raw())
+    assert all(x.remedy.startswith("bash setup.sh") for x in r.results)
+
+
+def test_evaluate_root_prefixes_cd_so_remedy_runs_from_any_cwd():
+    raw = _all_ok_raw()
+    raw["deps"] = (False, "x")
+    dep = next(x for x in preflight.evaluate(raw, root="/x/clone").results
+               if x.key == "deps")
+    assert dep.remedy == "cd /x/clone && bash setup.sh"
+
+
+def test_evaluate_root_shell_quotes_a_spaced_path():
+    raw = _all_ok_raw()
+    raw["demucs"] = (False, "x")
+    adv = preflight.evaluate(raw, root="/a b/clone").advisories[0]
+    assert adv.remedy == "cd '/a b/clone' && bash setup.sh --with-demucs"
