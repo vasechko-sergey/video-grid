@@ -53,7 +53,9 @@ def test_to_text_ready_header_when_ok():
         CheckOutcome(key=c.key, label=c.label, required=c.required, ok=True,
                      detail="ok", remedy=c.remedy)
         for c in CHECKS)
-    assert RuntimeReport(results=results).to_text().startswith("runtime ready")
+    text = RuntimeReport(results=results).to_text()
+    assert text.startswith("runtime ready")
+    assert "BLOCKED" not in text and "Optional" not in text
 
 
 def test_to_text_lists_failures_and_advisories_with_remedies():
@@ -96,3 +98,10 @@ def test_evaluate_raises_on_extra_key():
     raw["bogus"] = (True, "x")
     with pytest.raises(ValueError, match="keys"):
         preflight.evaluate(raw)
+
+
+def test_evaluate_orders_results_by_registry_not_raw():
+    # raw inserted in REVERSED registry order → results must still follow CHECKS
+    # (to_text's determinism depends on this, not on raw's incidental dict order)
+    raw = {c.key: (True, "ok") for c in reversed(CHECKS)}
+    assert [r.key for r in preflight.evaluate(raw).results] == [c.key for c in CHECKS]
