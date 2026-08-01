@@ -93,3 +93,21 @@ class Report:
             lines.append("Optional (not blocking):")
             lines += [f"  {r.key}: {r.remedy}" for r in self.advisories]
         return "\n".join(lines)
+
+
+def evaluate(raw: dict[str, tuple[bool, str]]) -> Report:
+    """Join raw probe results (key -> (ok, detail)) with CHECKS into a Report.
+
+    `raw`'s keys MUST equal the registry's keys exactly. A probe without a Check,
+    or a Check without a probe, is a bug — it raises rather than silently skipping
+    a requirement (design §7 invariant 3)."""
+    want = {c.key for c in CHECKS}
+    got = set(raw)
+    if want != got:
+        raise ValueError(
+            f"preflight raw keys {sorted(got)} != registry keys {sorted(want)}")
+    results = tuple(
+        CheckResult(key=c.key, label=c.label, required=c.required,
+                    ok=raw[c.key][0], detail=raw[c.key][1], remedy=c.remedy)
+        for c in CHECKS)
+    return Report(results=results)

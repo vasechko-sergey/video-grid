@@ -68,3 +68,31 @@ def test_to_text_lists_failures_and_advisories_with_remedies():
     assert "runtime NOT ready" in text
     assert "[FAIL] font" in text and "font: bash setup.sh" in text
     assert "[warn] demucs" in text and "demucs: bash setup.sh --with-demucs" in text
+
+
+def test_evaluate_all_ok_is_ready():
+    r = preflight.evaluate(_all_ok_raw())
+    assert r.ok is True and r.failures == () and r.advisories == ()
+
+
+def test_evaluate_joins_label_and_remedy_from_registry():
+    raw = _all_ok_raw()
+    raw["drawtext"] = (False, "absent from build")
+    dt = next(x for x in preflight.evaluate(raw).results if x.key == "drawtext")
+    assert dt == CheckResult(
+        key="drawtext", label="ffmpeg drawtext filter (titles, draft labels)",
+        required=True, ok=False, detail="absent from build", remedy="bash setup.sh")
+
+
+def test_evaluate_raises_on_missing_key():
+    raw = _all_ok_raw()
+    del raw["demucs"]
+    with pytest.raises(ValueError, match="keys"):
+        preflight.evaluate(raw)
+
+
+def test_evaluate_raises_on_extra_key():
+    raw = _all_ok_raw()
+    raw["bogus"] = (True, "x")
+    with pytest.raises(ValueError, match="keys"):
+        preflight.evaluate(raw)
