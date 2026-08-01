@@ -18,7 +18,7 @@ time you want to confirm the environment before conducting a montage.
 
 ## The Process
 
-Announce: **"Using verify-runtime to check the environment."**
+Announce on entry: **"Using verify-runtime to check the environment."**
 
 1. **Resolve the runtime root (pre-venv layer).** Read the recorded root:
    `ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"`. If that file
