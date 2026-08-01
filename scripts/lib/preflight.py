@@ -62,3 +62,34 @@ class Report:
     def advisories(self) -> tuple[CheckResult, ...]:
         """Optional checks that failed — reported, never blocking."""
         return tuple(r for r in self.results if not r.required and not r.ok)
+
+    def to_dict(self) -> dict:
+        """JSON payload: overall ok plus each result as a flat dict."""
+        return {
+            "ok": self.ok,
+            "results": [
+                {"key": r.key, "label": r.label, "required": r.required,
+                 "ok": r.ok, "detail": r.detail, "remedy": r.remedy}
+                for r in self.results],
+        }
+
+    def to_text(self) -> str:
+        """A human report: one line per check (OK / FAIL / warn), then the remedy
+        for each gap. Deterministic — the tests pin its shape."""
+        header = "runtime ready" if self.ok else "runtime NOT ready"
+        lines = [header]
+        for r in self.results:
+            mark = "OK  " if r.ok else ("FAIL" if r.required else "warn")
+            line = f"[{mark}] {r.key}: {r.label}"
+            if r.detail:
+                line += f" — {r.detail}"
+            lines.append(line)
+        if self.failures:
+            lines.append("")
+            lines.append("BLOCKED — required checks failed; fix then re-run:")
+            lines += [f"  {r.key}: {r.remedy}" for r in self.failures]
+        if self.advisories:
+            lines.append("")
+            lines.append("Optional (not blocking):")
+            lines += [f"  {r.key}: {r.remedy}" for r in self.advisories]
+        return "\n".join(lines)
