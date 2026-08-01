@@ -24,6 +24,7 @@ from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 
 SAMPLE_FPS = 3.0
+PROXY_LONG_SIDE = 960                             # analysis runs on a proxy downscaled to this long side (design 2026-08-01)
 WIN_MIN, WIN_MAX, WIN_TARGET = 1.2, 4.0, 2.5      # seconds — the episode length band
 W_PRESENT, W_MOTION, W_STABLE, W_DUR = 0.40, 0.25, 0.25, 0.10
 MOTION_GAIN = 10.0                                # scales mean per-sample centre displacement to [0,1]
@@ -315,7 +316,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     results: dict[Path, ClipResult] = {}
     misses: list[Path] = []
     for p in paths:
-        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL)
+        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL, PROXY_LONG_SIDE)
         if hit is not None:
             results[p] = hit
         else:
@@ -326,7 +327,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     failed: list[dict[str, str]] = []
     for p in misses:
         try:
-            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL)
+            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL, PROXY_LONG_SIDE)
         except Exception as e:                         # quarantine (§5): name it, keep going
             failed.append({"source": p.name, "error": str(e)})
             print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)

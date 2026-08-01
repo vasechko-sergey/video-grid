@@ -485,7 +485,7 @@ def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     hits = {"a.mp4", "b.mp4"}
     monkeypatch.setattr(intake.intake_cache, "load",
-                        lambda o, p, s, m: _fake_result(intake.Path(p).name)
+                        lambda o, p, s, m, *a, **k: _fake_result(intake.Path(p).name)
                         if intake.Path(p).name in hits else None)
     monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
 
