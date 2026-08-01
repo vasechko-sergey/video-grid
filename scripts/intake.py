@@ -19,7 +19,7 @@ from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
 from scripts.lib import assembly, carve, footage, intake_cache, vidstab
-from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist
+from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist, seg_mask
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 
@@ -146,18 +146,21 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
                      sample_fps: float = SAMPLE_FPS) -> tuple[list, dict]:
     """One seg pass → (timeline, best_by_track).
     timeline: [(t, people, primary_bbox, track_ids)] sampled at ~SAMPLE_FPS (primary = largest bbox).
-    best: {tid: (conf, t, bbox_xywh)} — the timestamp + PROXY box of each track's highest-confidence
-    detection, so the cast pass can re-crop that exact moment from the ORIGINAL (design 2026-08-01 §5).
-    Cheap: this records a REF (a float and four numbers), never a crop array — no crop_and_mask here."""
+    best: {tid: (conf, t, bbox_xywh, seg_mask)} — the timestamp + PROXY box + PROXY-scale
+    seg mask of each track's highest-confidence detection, so the cast pass can re-crop that
+    exact moment from the ORIGINAL and mask it like delivery (design 2026-08-01 §5/§5a).
+    Cheap: records a REF (a float + four numbers) plus one small proxy-bbox mask per track
+    (mask only via seg_mask, never the full crop), updated on confidence improvement — not
+    per frame."""
     step = max(1, round(fps / sample_fps))
-    timeline, best = [], {}                      # best: tid -> (conf, t, bbox_xywh)
+    timeline, best = [], {}                      # best: tid -> (conf, t, bbox_xywh, seg_mask)
     for i, r in _iter_seg(src):
         boxes = list(r.boxes) if getattr(r, "boxes", None) is not None else []
-        for b in boxes:
+        for j, b in enumerate(boxes):
             tid = int(b.id[0]) if getattr(b, "id", None) is not None else None
             conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
             if tid is not None and conf > best.get(tid, (-1.0,))[0]:
-                best[tid] = (conf, i / fps, tuple(float(v) for v in b.xywh[0]))
+                best[tid] = (conf, i / fps, tuple(float(v) for v in b.xywh[0]), seg_mask(r, j, b))
         if i % step:
             continue
         bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]

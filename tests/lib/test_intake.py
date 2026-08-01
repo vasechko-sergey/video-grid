@@ -155,8 +155,33 @@ def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
     monkeypatch.setattr(intake, "_iter_seg", lambda src: iter(frames))
     timeline, best = intake._people_timeline("proxy.mp4", fps=30.0, res=(960,540), sample_fps=3.0)
     assert set(best) == {1}
-    conf, t, box = best[1]
+    conf, t, box, _mask = best[1]                       # best grew a 4th element (proxy seg mask)
     assert conf == 0.9 and abs(t - 1/30.0) < 1e-6 and box == (12,10,4,8)
+
+
+class _MaskTLBox:
+    def __init__(self, xywh, tid, conf):
+        self.xywh = [xywh]; self.id = [tid]; self.conf = [conf]
+
+
+class _MaskTLMasks:
+    def __init__(self, data): self.data = data
+
+
+class _MaskTLRes:
+    def __init__(self, boxes, orig_img, masks):
+        self.boxes = boxes; self.orig_img = orig_img; self.masks = _MaskTLMasks(masks)
+
+
+def test_people_timeline_captures_the_seg_mask_into_best(monkeypatch):
+    frame = np.zeros((40, 40, 3), dtype=np.uint8)
+    m = np.zeros((20, 20), dtype=np.float32); m[5:15, 5:10] = 1.0
+    res = _MaskTLRes([_MaskTLBox([20.0, 20.0, 20.0, 20.0], 7, 0.9)], frame, [m])
+    monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter([(0, res)]))
+    _timeline, best = intake._people_timeline("x.mp4", fps=30.0, res=(40, 40), sample_fps=3.0)
+    conf, t, bbox, mask = best[7]                        # the 4-tuple, mask last
+    assert conf == 0.9 and bbox == (20.0, 20.0, 20.0, 20.0)
+    assert mask is not None and mask.shape == (20, 20)
 
 
 def test_motion_is_2d():
