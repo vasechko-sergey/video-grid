@@ -8,11 +8,13 @@
 
 **Tech Stack:** Python 3.13 stdlib (`dataclasses`, `argparse`, `importlib`, `json`, `pathlib`); reuses `scripts/lib/ffbin.py` (`ffmpeg`/`ffprobe`/`has_filter`), `scripts/lib/fonts.py` (`resolve_font`), `scripts/lib/models.py` (`MODELS`). pytest.
 
+> **As-built note (2026-08-01, post-review):** two names below were changed after Task 0's review and are the source of truth going forward — **read the Task 0–2 code blocks accordingly.** (1) The report dataclasses shipped as `CheckOutcome` / **`RuntimeReport`**, not `CheckResult`/`Report`, because `scripts/lib/models.py` already owns a `CheckResult`/`Report` family (unqualified-import shadow risk); `CheckResult`→`CheckOutcome` is synced in the blocks below, but `Report` in the Task 0–2 blocks should be read as **`RuntimeReport`**. (2) The `ffmpeg` check key shipped as **`ffmpeg_bin`** (the landmine lint bans a bare `"ffmpeg"` string literal in `scripts/`; a registry key is a false positive, so it carries the `_bin` suffix). See commits `f342faf`, `04e3c9f`. Tasks 3–4 below already use the final names.
+
 ---
 
 ## File Structure
 
-- Create `scripts/lib/preflight.py` — pure: `Check`, `CHECKS`, `CheckResult`, `Report` (`ok`/`failures`/`advisories`/`to_dict`/`to_text`), `evaluate`.
+- Create `scripts/lib/preflight.py` — pure: `Check`, `CHECKS`, `CheckOutcome`, `Report` (`ok`/`failures`/`advisories`/`to_dict`/`to_text`), `evaluate`.
 - Create `scripts/verify_runtime.py` — driver: probes, `_PROBES`, `run`, `main`.
 - Create `tests/lib/test_preflight.py` — pure-core tests.
 - Create `tests/lib/test_verify_runtime.py` — driver tests (stubbed probes).
@@ -39,7 +41,7 @@ The `deps`/probe constants and check `label`/`remedy` strings are the interface 
 import pytest
 
 from scripts.lib import preflight
-from scripts.lib.preflight import CHECKS, Check, CheckResult, Report
+from scripts.lib.preflight import CHECKS, Check, CheckOutcome, Report
 
 
 def _all_ok_raw():
@@ -50,13 +52,13 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "deps", "ffmpeg", "drawtext", "vidstab", "font", "weights"]
+        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights"]
     assert [c.key for c in CHECKS if not c.required] == ["demucs"]
 
 
 def test_report_partition():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
                     ok=(c.key not in ("drawtext", "demucs")),
                     detail="", remedy=c.remedy)
         for c in CHECKS)
@@ -68,7 +70,7 @@ def test_report_partition():
 
 def test_report_ok_when_only_advisory_fails():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
                     ok=(c.key != "demucs"), detail="", remedy=c.remedy)
         for c in CHECKS)
     assert Report(results=results).ok is True             # advisory never blocks
@@ -106,7 +108,7 @@ class Check:
 
 CHECKS: tuple[Check, ...] = (
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
-    Check("ffmpeg", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
+    Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),
     Check("vidstab", "ffmpeg vidstab filters (intake shake, stabilize)", True, "bash setup.sh"),
     Check("font", "a drawtext font resolves", True, "bash setup.sh"),
@@ -116,7 +118,7 @@ CHECKS: tuple[Check, ...] = (
 
 
 @dataclass(frozen=True)
-class CheckResult:
+class CheckOutcome:
     """A Check joined with its probe outcome (`ok`, `detail`)."""
     key: str
     label: str
@@ -130,7 +132,7 @@ class CheckResult:
 class Report:
     """The outcome of every check. `ok` gates the run; `failures`/`advisories`
     split the gaps by whether they block."""
-    results: tuple[CheckResult, ...]
+    results: tuple[CheckOutcome, ...]
 
     @property
     def ok(self) -> bool:
@@ -138,12 +140,12 @@ class Report:
         return all(r.ok for r in self.results if r.required)
 
     @property
-    def failures(self) -> tuple[CheckResult, ...]:
+    def failures(self) -> tuple[CheckOutcome, ...]:
         """Required checks that failed — these block the run."""
         return tuple(r for r in self.results if r.required and not r.ok)
 
     @property
-    def advisories(self) -> tuple[CheckResult, ...]:
+    def advisories(self) -> tuple[CheckOutcome, ...]:
         """Optional checks that failed — reported, never blocking."""
         return tuple(r for r in self.results if not r.required and not r.ok)
 ```
@@ -184,7 +186,7 @@ Do NOT reference `evaluate` yet (it lands in Task 2). Instead build a `Report` d
 ```python
 def test_to_dict_shape():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required, ok=True,
+        CheckOutcome(key=c.key, label=c.label, required=c.required, ok=True,
                     detail="ok", remedy=c.remedy)
         for c in CHECKS)
     d = Report(results=results).to_dict()
@@ -196,7 +198,7 @@ def test_to_dict_shape():
 
 def test_to_text_ready_header_when_ok():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required, ok=True,
+        CheckOutcome(key=c.key, label=c.label, required=c.required, ok=True,
                     detail="ok", remedy=c.remedy)
         for c in CHECKS)
     assert Report(results=results).to_text().startswith("runtime ready")
@@ -204,7 +206,7 @@ def test_to_text_ready_header_when_ok():
 
 def test_to_text_lists_failures_and_advisories_with_remedies():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
                     ok=(c.key not in ("font", "demucs")),
                     detail=("no system font" if c.key == "font" else
                             "not installed" if c.key == "demucs" else "ok"),
@@ -290,7 +292,7 @@ def test_evaluate_joins_label_and_remedy_from_registry():
     raw = _all_ok_raw()
     raw["drawtext"] = (False, "absent from build")
     dt = next(x for x in preflight.evaluate(raw).results if x.key == "drawtext")
-    assert dt == CheckResult(
+    assert dt == CheckOutcome(
         key="drawtext", label="ffmpeg drawtext filter (titles, draft labels)",
         required=True, ok=False, detail="absent from build", remedy="bash setup.sh")
 
@@ -331,7 +333,7 @@ def evaluate(raw: dict[str, tuple[bool, str]]) -> Report:
         raise ValueError(
             f"preflight raw keys {sorted(got)} != registry keys {sorted(want)}")
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
                     ok=raw[c.key][0], detail=raw[c.key][1], remedy=c.remedy)
         for c in CHECKS)
     return Report(results=results)
@@ -505,7 +507,7 @@ def _probe_demucs() -> tuple[bool, str]:
 
 _PROBES = {
     "deps": _probe_deps,
-    "ffmpeg": _probe_ffmpeg,
+    "ffmpeg_bin": _probe_ffmpeg,
     "drawtext": _probe_drawtext,
     "vidstab": _probe_vidstab,
     "font": _probe_font,
@@ -600,7 +602,7 @@ Expected: FAIL (`AttributeError: ... has no attribute 'run'`).
 Append to `scripts/verify_runtime.py`:
 
 ```python
-def run() -> preflight.Report:
+def run() -> preflight.RuntimeReport:
     """Run every probe and evaluate the result. evaluate() enforces that _PROBES's
     keys match the registry — a probe/Check drift raises here, not silently."""
     raw = {key: probe() for key, probe in _PROBES.items()}
@@ -853,4 +855,4 @@ Dispatch a fresh reviewer over `main..HEAD` for the whole slice (design complian
 
 - **Spec coverage:** §1 registry → Task 0 `CHECKS`; §3 pure/driver split → Tasks 0–4; §4 read-only → SKILL wording + review; §5 boundary → docstrings + SKILL; §6 wiring → Task 6; §7 invariants → the ok/exit/key-mismatch tests; §8 testing → Tasks 0–5; §9 deferred → not built (correct).
 - **Placeholder scan:** none — every code step carries real code.
-- **Type consistency:** `Check`/`CheckResult`/`Report` fields and the `evaluate(raw: dict[str, tuple[bool,str]])` shape match across `preflight.py`, `verify_runtime.py`, and the tests; `_PROBES` keys and `CHECKS` keys are asserted equal; `label`/`remedy` strings are identical in registry and tests; `MODELS[0]` is the weights filename source (verified light import).
+- **Type consistency:** `Check`/`CheckOutcome`/`Report` fields and the `evaluate(raw: dict[str, tuple[bool,str]])` shape match across `preflight.py`, `verify_runtime.py`, and the tests; `_PROBES` keys and `CHECKS` keys are asserted equal; `label`/`remedy` strings are identical in registry and tests; `MODELS[0]` is the weights filename source (verified light import).

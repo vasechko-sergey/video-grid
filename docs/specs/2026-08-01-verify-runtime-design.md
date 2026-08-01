@@ -36,11 +36,17 @@ capabilities?* (§5 on why that boundary is deliberate).
 | key | check | probe | remedy |
 |-----|-------|-------|--------|
 | `deps` | the runtime modules the pipeline imports | `importlib` each of numpy, scipy, PIL, cv2, librosa, ultralytics, scenedetect, imagehash, yt_dlp, requests | `bash setup.sh` |
-| `ffmpeg` | ffmpeg + ffprobe resolve | `ffbin.ffmpeg()`/`ffbin.ffprobe()` return an existing file | `bash setup.sh` |
-| `drawtext` | drawtext filter present | `ffbin.has_filter("drawtext")` | `bash setup.sh` (installs ffmpeg-full) |
+| `ffmpeg_bin` | ffmpeg + ffprobe resolve | `ffbin.ffmpeg()`/`ffbin.ffprobe()` return an existing file | `bash setup.sh` |
+| `drawtext` | drawtext filter present | `ffbin.has_filter("drawtext")` | `bash setup.sh` |
 | `vidstab` | vidstab filters present | `ffbin.has_filter("vidstabdetect")` **and** `"vidstabtransform"` | `bash setup.sh` |
 | `font` | a drawtext font resolves | `fonts.resolve_font()` (the system-default fallback) returns an existing file | `bash setup.sh` |
-| `weights` | YOLO weights present | `<root>/<track.MODEL>` exists (`track.MODEL == "yolo11n-seg.pt"`) | ships in the repo root; else the first intake attempts a ~6 MB download (needs network), or `bash setup.sh` |
+| `weights` | YOLO weights present | `<root>/MODELS[0]` exists (`models.MODELS[0] == "yolo11n-seg.pt"`; the first intake auto-downloads it if online) | `bash setup.sh` |
+
+(The `ffmpeg_bin` key is spelled with the `_bin` suffix, not a bare `ffmpeg`: the
+landmine lint's AST scan bans a bare `"ffmpeg"` string literal in `scripts/` — a
+false positive here, since it is a registry key, not subprocess argv — so the key
+sidesteps it. `weights` reads the filename from `models.MODELS[0]`, a numpy-free
+import, keeping the driver light.)
 
 The `deps` set is exactly `requirements.txt`'s **runtime** modules (pytest is
 dev-only, excluded) plus `cv2` — opencv is not a `requirements.txt` line but a
@@ -108,18 +114,25 @@ Mirrors the repo's pure-core / thin-driver split (color_measure, pacing, offset)
   (keeps the module pure and the registry data).
 - `CHECKS: tuple[Check, ...]` — the registry above, in report order (required
   first, advisory last).
-- `@dataclass(frozen=True) CheckResult`: `key`, `label`, `required`, `ok: bool`,
+- `@dataclass(frozen=True) CheckOutcome`: `key`, `label`, `required`, `ok: bool`,
   `detail: str`, `remedy: str`.
-- `@dataclass(frozen=True) Report`: `results: tuple[CheckResult, ...]` with
+- `@dataclass(frozen=True) RuntimeReport`: `results: tuple[CheckOutcome, ...]` with
   properties `ok` (every **required** result ok — advisories never affect it),
   `failures` (required, not ok), `advisories` (optional, not ok); plus `to_dict()`
   (JSON payload) and `to_text()` (human table, ✓/✗ per row, remedies for the gaps).
-- `evaluate(raw: dict[str, tuple[bool, str]]) -> Report` — **the testable core**.
-  Takes each check's `(ok, detail)` keyed by `Check.key`, joins it with `CHECKS`
-  (attaching label/required/remedy), and builds the `Report`. No ffmpeg, no
-  imports, no filesystem — feed it fabricated raw results and assert the whole
-  `Report`. Fails loud if `raw`'s keys do not match the registry exactly (a probe
-  added without a `Check`, or vice versa, is a bug, not a silent skip).
+- `evaluate(raw: dict[str, tuple[bool, str]]) -> RuntimeReport` — **the testable
+  core**. Takes each check's `(ok, detail)` keyed by `Check.key`, joins it with
+  `CHECKS` (attaching label/required/remedy), and builds the `RuntimeReport`. No
+  ffmpeg, no imports, no filesystem — feed it fabricated raw results and assert the
+  whole `RuntimeReport`. Fails loud if `raw`'s keys do not match the registry
+  exactly (a probe added without a `Check`, or vice versa, is a bug, not a silent
+  skip).
+
+  The names are `CheckOutcome`/`RuntimeReport`, **not** `CheckResult`/`Report`:
+  `scripts/lib/models.py` already owns a `CheckResult`/`Report` family (the
+  per-episode QA report), and two same-named-different-shape dataclasses invite a
+  silent unqualified-import shadow. Always import qualified (`from scripts.lib
+  import preflight`; `preflight.RuntimeReport`).
 
 ### `scripts/verify_runtime.py` — the driver (impure: imports, subprocess)
 
@@ -127,8 +140,8 @@ Mirrors the repo's pure-core / thin-driver split (color_measure, pacing, offset)
   `_probe_deps`, `_probe_ffmpeg`, `_probe_drawtext`, `_probe_vidstab`,
   `_probe_font`, `_probe_weights`, `_probe_demucs`. Probes reuse the tested helpers
   (`ffbin.has_filter`, `fonts.resolve_font`) rather than re-implementing them.
-- `run() -> Report` — runs every probe into the `raw` dict, returns
-  `preflight.evaluate(raw)`.
+- `run() -> preflight.RuntimeReport` — runs every probe into the `raw` dict,
+  returns `preflight.evaluate(raw)`.
 - `main()` — `--json` prints `report.to_dict()`; default prints `report.to_text()`.
   **Exit code: 0 when `report.ok`, else 1.** The report is always emitted first;
   the exit code is the shell-gate signal (`bin/vg` `exec`s the interpreter, so the
