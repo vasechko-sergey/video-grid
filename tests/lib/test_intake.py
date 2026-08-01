@@ -99,6 +99,7 @@ def test_process_clip_detects_shake_once_before_carving(monkeypatch):
     monkeypatch.setattr(intake.assembly, "probe_stream",
                         lambda s: types.SimpleNamespace(w=1000, h=1080, fps=1.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: False)   # analyse the original
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
@@ -136,11 +137,26 @@ def test_people_timeline_samples_counts_and_track_ids(monkeypatch):
     # 6 frames @ fps 6, SAMPLE_FPS 3 → step 2 → sample frames 0,2,4. subject slides right.
     frames = [_FakeRes([_FakeBox([300 + i * 40, 500, 200, 300], 1)]) for i in range(6)]
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(frames)))
-    tl, crops = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
+    tl, best = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
     assert [n for _, n, _, _ in tl] == [1, 1, 1]        # one person each sampled frame
     assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
     assert tl[0][2][2] == 200                           # primary bbox width threaded through
     assert tl[0][3] == [1]                              # track id present at the sample
+
+
+def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
+    from scripts import intake
+    class _Box:
+        def __init__(s, tid, conf, xywh): s.id=[tid]; s.conf=[conf]; s.xywh=[xywh]
+    class _Res:
+        def __init__(s, boxes): s.boxes=boxes
+    frames = [(0, _Res([_Box(1, 0.5, (10,10,4,8))])),
+              (1, _Res([_Box(1, 0.9, (12,10,4,8))]))]   # frame 1 is the better crop
+    monkeypatch.setattr(intake, "_iter_seg", lambda src: iter(frames))
+    timeline, best = intake._people_timeline("proxy.mp4", fps=30.0, res=(960,540), sample_fps=3.0)
+    assert set(best) == {1}
+    conf, t, box = best[1]
+    assert conf == 0.9 and abs(t - 1/30.0) < 1e-6 and box == (12,10,4,8)
 
 
 def test_motion_is_2d():
@@ -162,7 +178,7 @@ def test_crop_and_mask_rgb_and_aligned_mask():
     frame_bgr = np.zeros((100, 200, 3), "uint8"); frame_bgr[:, :, 0] = 255   # blue in BGR
     masks = _t.SimpleNamespace(data=[np.ones((100, 200), "float32")])
     res = _t.SimpleNamespace(orig_img=frame_bgr, masks=masks)
-    crop, mask = intake.crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
+    crop, mask = appearance.crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
     assert crop is not None and crop.shape[2] == 3
     assert crop[0, 0, 2] == 255                          # BGR→RGB: blue is now channel index 2
     assert mask is not None and mask.shape[:2] == crop.shape[:2]   # crop and mask aligned HxW
@@ -294,6 +310,7 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(intake.assembly, "probe_stream",
                         lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: False)   # analyse the original (all readers stubbed)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
@@ -315,27 +332,64 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
 
 def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     from scripts.lib.footage import DESCRIPTOR_LEN
-    red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
+    orig = np.full((1080, 1920, 3), 128, dtype="uint8")      # ORIGINAL-res frame
     monkeypatch.setattr(intake.assembly, "probe_stream",
                         lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
+    monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: True)   # 1920 > 960 → a proxy
+    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda s, t: orig)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
-    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
+    tl = [(float(i), 1, (240, 270, 100, 200), [1]) for i in range(9)]           # proxy-space bboxes
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
-                        (tl, {1: (0.9, red, np.ones((8, 8), "uint8"))}))
+                        (tl, {1: (0.9, 0.0, (240, 270, 100, 200))}))            # best = (conf, t, bbox) ref
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
     monkeypatch.setattr(intake, "_phash_at",
                         lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
     res = intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
     assert res.clip.source == "a.mp4" and res.clip.windows
+    assert res.clip.res == (1920, 1080)                     # ORIGINAL stored on FootageClip
     assert len(res.phashes) == len(res.clip.windows)
     assert all(isinstance(h, str) for h in res.phashes)     # hex, cache-serializable
     assert len(res.cast) == 1
     assert res.cast[0].source == "a.mp4" and res.cast[0].tid == 1
     assert len(res.cast[0].descriptor) == DESCRIPTOR_LEN
-    assert res.cast[0].crop_rgb is red                       # worker-form array
+    assert res.cast[0].crop_rgb is not None                  # worker-form array, cropped from ORIGINAL
+
+
+def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_path):
+    import numpy as np
+    from scripts import intake
+    from scripts.lib import assembly, vidstab, footage
+
+    calls = {"analysed": []}
+    class _Info:  w, h, fps = 3840, 2160, 30.0
+    monkeypatch.setattr(assembly, "probe_stream", lambda p: _Info())
+    monkeypatch.setattr(assembly, "probe_duration", lambda p: 2.0)
+    monkeypatch.setattr(intake, "PROXY_LONG_SIDE", 960)
+    def _mk(src, dst, long_side): calls["proxy"] = (src, dst, long_side); return True
+    monkeypatch.setattr(assembly, "make_proxy", _mk)
+    monkeypatch.setattr(intake, "scene_bounds", lambda src: calls["analysed"].append(("scene", src)) or [])
+    def _tl(src, fps, res, sf):
+        calls["analysed"].append(("yolo", src, res))       # res must be the PROXY dims
+        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80))})
+    monkeypatch.setattr(intake, "_people_timeline", _tl)
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+    monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
+    monkeypatch.setattr(intake, "carve_windows", lambda *a: [(0.0, 2.0)])
+    monkeypatch.setattr(intake, "_phash_at", lambda src, t: "abcd")
+    orig_frame = np.full((2160, 3840, 3), 128, dtype="uint8")
+    monkeypatch.setattr(assembly, "frame_rgb", lambda src, t: (calls.__setitem__("crop_src", src), orig_frame)[1])
+
+    res = intake._process_clip(str(tmp_path / "DJI.MP4"))
+    assert res.clip.res == (3840, 2160)                    # ORIGINAL stored
+    proxy = calls["proxy"][1]
+    assert ("scene", proxy) in calls["analysed"]
+    assert ("vidstab", proxy) in calls["analysed"]
+    assert any(c[0] == "yolo" and c[1] == proxy and c[2] == (960, 540) for c in calls["analysed"])
+    assert calls["crop_src"] == str(tmp_path / "DJI.MP4")  # cast crop from the ORIGINAL
+    assert res.cast and len(res.cast[0].descriptor) == footage.DESCRIPTOR_LEN
 
 
 def _two_clip_root(tmp_path):
