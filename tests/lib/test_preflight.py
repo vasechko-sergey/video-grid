@@ -12,7 +12,7 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "deps", "ffmpeg", "drawtext", "vidstab", "font", "weights"]
+        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights"]
     assert [c.key for c in CHECKS if not c.required] == ["demucs"]
 
 

@@ -22,7 +22,7 @@ class Check:
 
 CHECKS: tuple[Check, ...] = (
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
-    Check("ffmpeg", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
+    Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),
     Check("vidstab", "ffmpeg vidstab filters (intake shake, stabilize)", True, "bash setup.sh"),
     Check("font", "a drawtext font resolves", True, "bash setup.sh"),
