@@ -107,9 +107,61 @@ crops at original resolution. The crop rect is the proxy bbox scaled up by
 it is local to the crop, never leaving intake. `build_descriptor` runs on the
 original crop. This keeps `cast.json` descriptors on the same footing as delivery's,
 and the human-facing candidate PNGs stay full-res. Cost: a handful of original
-frame-seeks per clip (one per surviving track) — cheap. (The YOLO mask, used by
-`build_descriptor` today, is proxy-scale; it is upsampled to the crop, or the
-descriptor falls back to the maskless path — resolved in the plan.)
+frame-seeks per clip (one per surviving track) — cheap. The YOLO mask is
+proxy-scale; it is upsampled to the crop so the descriptor is background-removed
+like delivery's — see §5a for how (the mask survives the follow-up; the shipped
+first cut went maskless and had to be corrected).
+
+## 5a. Cast descriptor mask symmetry (follow-up 2026-08-01)
+
+`build_descriptor(crop, mask)` builds an L1 colour histogram over the segmentation
+mask pixels only — background removed — because §6.1a's identity match keys on
+**clothing colour, not location**: intake snaps a person from one clip and delivery
+re-snaps them from a different extracted segment (different background, light, pose),
+and a masked histogram is what lets the two compare. `CAST_MATCH = 0.6` already
+budgets for that cross-clip drift; it does not budget for one side carrying
+background pixels the other dropped.
+
+The first cut of §5 resolved the "upsampled or maskless" parenthetical as
+**maskless** on the intake side (`_cast_from_original` → `build_descriptor(crop,
+None)`) while delivery stayed **masked** (`track._track_crops` →
+`build_descriptor(crop, mask)`). That asymmetry — intake histograms polluted by a
+person-bbox's background triangles (arms/legs leave large gaps), delivery's not —
+did not exist before the proxy slice (intake was masked via `crop_and_mask`), and
+the final review flagged it: it shifts the L1 distance one-sidedly and can push a
+true hero past `CAST_MATCH` or flip the margin rule.
+
+**Decision — restore symmetry (mask both sides), do not go maskless-both.**
+Maskless-both was rejected: dropping delivery's mask regresses the discrimination
+§6.1a depends on (two people against the same background read as falsely similar),
+and "measure it's harmless" has no fixture — `sample_clip` is a white box, no person
+for YOLO to segment.
+
+**Mechanism.** The YOLO seg mask exists at **proxy** scale (YOLO ran on the 960
+proxy); the cast crop is taken at **original** scale. So:
+
+1. `_people_timeline` records, alongside each track's best `(conf, t, bbox)`, the
+   seg mask cropped to that proxy bbox → `best[tid] = (conf, t, bbox, mask)`. This
+   mirrors `crop_and_mask`'s model→frame resize + bbox crop, at proxy scale; a
+   detection with no mask (mocked YOLO) records `None`.
+2. A shared `appearance.seg_mask(res, idx, box)` extracts the proxy-bbox mask (mask
+   only, no pixels — the pixels come from the original later); `crop_and_mask` is
+   refactored to reuse it, so the resize-landmine has one spelling.
+3. `appearance.upsample_mask(mask, (H, W))` resizes the proxy-bbox mask up to the
+   original crop's shape.
+4. `_cast_from_original` crops the original as before; when a mask is present it
+   builds `build_descriptor(crop, upsample_mask(mask, crop.shape[:2]))`, else falls
+   back to the maskless path (unchanged for the mocked-YOLO tests).
+
+**Honest limit.** The intake mask (proxy-YOLO, then upsampled) is **not** the
+pixel-identical twin of delivery's mask (original-YOLO): YOLO ran on differently
+scaled inputs. But both are background-removed clothing histograms — vastly closer
+than maskless-vs-masked, and the same proxy-scale equivalence §4 already measured
+and accepted. The residual is the irreducible proxy effect, not a new asymmetry.
+
+**Cache.** `CACHE_VERSION` 3→4: the real-footage descriptor changes shape
+(maskless → masked), so every v3 entry must miss and recompute. The mocked-YOLO
+goldens carry no masks → maskless → their recorded values are unchanged.
 
 ## 6. vidstab shared-recipe interaction
 
