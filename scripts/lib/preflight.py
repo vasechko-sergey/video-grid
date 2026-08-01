@@ -1,7 +1,7 @@
 """Runtime-preflight registry (design docs/specs/2026-08-01-verify-runtime-design.md).
 
 The PURE half of the verify-runtime check: the CHECKS registry (what the setup.sh
-baseline contract is) and how a set of raw probe results becomes a Report. No
+baseline contract is) and how a set of raw probe results becomes a RuntimeReport. No
 imports of the probed modules, no ffmpeg, no filesystem — the impure probing lives
 in scripts/verify_runtime.py. That split is what makes the report logic testable
 without a working install: feed evaluate() fabricated results.
@@ -32,7 +32,7 @@ CHECKS: tuple[Check, ...] = (
 
 
 @dataclass(frozen=True)
-class CheckResult:
+class CheckOutcome:
     """A Check joined with its probe outcome (`ok`, `detail`)."""
     key: str
     label: str
@@ -43,10 +43,10 @@ class CheckResult:
 
 
 @dataclass(frozen=True)
-class Report:
+class RuntimeReport:
     """The outcome of every check. `ok` gates the run; `failures`/`advisories`
     split the gaps by whether they block."""
-    results: tuple[CheckResult, ...]
+    results: tuple[CheckOutcome, ...]
 
     @property
     def ok(self) -> bool:
@@ -54,12 +54,12 @@ class Report:
         return all(r.ok for r in self.results if r.required)
 
     @property
-    def failures(self) -> tuple[CheckResult, ...]:
+    def failures(self) -> tuple[CheckOutcome, ...]:
         """Required checks that failed — these block the run."""
         return tuple(r for r in self.results if r.required and not r.ok)
 
     @property
-    def advisories(self) -> tuple[CheckResult, ...]:
+    def advisories(self) -> tuple[CheckOutcome, ...]:
         """Optional checks that failed — reported, never blocking."""
         return tuple(r for r in self.results if not r.required and not r.ok)
 
@@ -95,8 +95,8 @@ class Report:
         return "\n".join(lines)
 
 
-def evaluate(raw: dict[str, tuple[bool, str]]) -> Report:
-    """Join raw probe results (key -> (ok, detail)) with CHECKS into a Report.
+def evaluate(raw: dict[str, tuple[bool, str]]) -> RuntimeReport:
+    """Join raw probe results (key -> (ok, detail)) with CHECKS into a RuntimeReport.
 
     `raw`'s keys MUST equal the registry's keys exactly. A probe without a Check,
     or a Check without a probe, is a bug — it raises rather than silently skipping
@@ -107,7 +107,7 @@ def evaluate(raw: dict[str, tuple[bool, str]]) -> Report:
         raise ValueError(
             f"preflight raw keys {sorted(got)} != registry keys {sorted(want)}")
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
-                    ok=raw[c.key][0], detail=raw[c.key][1], remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
+                     ok=raw[c.key][0], detail=raw[c.key][1], remedy=c.remedy)
         for c in CHECKS)
-    return Report(results=results)
+    return RuntimeReport(results=results)

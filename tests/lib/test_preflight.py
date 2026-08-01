@@ -1,7 +1,7 @@
 import pytest
 
 from scripts.lib import preflight
-from scripts.lib.preflight import CHECKS, Check, CheckResult, Report
+from scripts.lib.preflight import CHECKS, CheckOutcome, RuntimeReport
 
 
 def _all_ok_raw():
@@ -18,11 +18,11 @@ def test_registry_keys_unique_and_expected_split():
 
 def test_report_partition():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
-                    ok=(c.key not in ("drawtext", "demucs")),
-                    detail="", remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
+                     ok=(c.key not in ("drawtext", "demucs")),
+                     detail="", remedy=c.remedy)
         for c in CHECKS)
-    r = Report(results=results)
+    r = RuntimeReport(results=results)
     assert r.ok is False                                  # a required miss (drawtext)
     assert [f.key for f in r.failures] == ["drawtext"]
     assert [a.key for a in r.advisories] == ["demucs"]
@@ -30,18 +30,18 @@ def test_report_partition():
 
 def test_report_ok_when_only_advisory_fails():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
-                    ok=(c.key != "demucs"), detail="", remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
+                     ok=(c.key != "demucs"), detail="", remedy=c.remedy)
         for c in CHECKS)
-    assert Report(results=results).ok is True             # advisory never blocks
+    assert RuntimeReport(results=results).ok is True             # advisory never blocks
 
 
 def test_to_dict_shape():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required, ok=True,
-                    detail="ok", remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required, ok=True,
+                     detail="ok", remedy=c.remedy)
         for c in CHECKS)
-    d = Report(results=results).to_dict()
+    d = RuntimeReport(results=results).to_dict()
     assert d["ok"] is True
     assert d["results"][0] == {
         "key": "deps", "label": "Python runtime deps import", "required": True,
@@ -50,21 +50,21 @@ def test_to_dict_shape():
 
 def test_to_text_ready_header_when_ok():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required, ok=True,
-                    detail="ok", remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required, ok=True,
+                     detail="ok", remedy=c.remedy)
         for c in CHECKS)
-    assert Report(results=results).to_text().startswith("runtime ready")
+    assert RuntimeReport(results=results).to_text().startswith("runtime ready")
 
 
 def test_to_text_lists_failures_and_advisories_with_remedies():
     results = tuple(
-        CheckResult(key=c.key, label=c.label, required=c.required,
-                    ok=(c.key not in ("font", "demucs")),
-                    detail=("no system font" if c.key == "font" else
-                            "not installed" if c.key == "demucs" else "ok"),
-                    remedy=c.remedy)
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
+                     ok=(c.key not in ("font", "demucs")),
+                     detail=("no system font" if c.key == "font" else
+                             "not installed" if c.key == "demucs" else "ok"),
+                     remedy=c.remedy)
         for c in CHECKS)
-    text = Report(results=results).to_text()
+    text = RuntimeReport(results=results).to_text()
     assert "runtime NOT ready" in text
     assert "[FAIL] font" in text and "font: bash setup.sh" in text
     assert "[warn] demucs" in text and "demucs: bash setup.sh --with-demucs" in text
@@ -79,7 +79,7 @@ def test_evaluate_joins_label_and_remedy_from_registry():
     raw = _all_ok_raw()
     raw["drawtext"] = (False, "absent from build")
     dt = next(x for x in preflight.evaluate(raw).results if x.key == "drawtext")
-    assert dt == CheckResult(
+    assert dt == CheckOutcome(
         key="drawtext", label="ffmpeg drawtext filter (titles, draft labels)",
         required=True, ok=False, detail="absent from build", remedy="bash setup.sh")
 
