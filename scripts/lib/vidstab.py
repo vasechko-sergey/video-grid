@@ -14,16 +14,18 @@ from pathlib import Path
 
 from scripts.lib import assembly, ffbin, proc
 
-# vidstabdetect over a whole raw clip is the one analysis in this repo whose
-# input is unbounded raw footage; everything else works on 15-60s reels or
-# extracted windows. A same-class motion-estimation proxy (mestimate=epzs)
-# measured 13.6 fps analysing 4K/30 footage — ~2.2x realtime — and 4K/60 doubles
-# the per-second frame count, so ~4.4x realtime is the worst measured case. 10x
-# leaves > 2x headroom above that for slower hardware or larger frames.
+# vidstabdetect's cost scales with pixel count AND shakiness's search window. On
+# raw 4K/60 at shakiness=8 it is ~0.009x realtime — ~67 min for a 35 s clip
+# (measured 2026-08-01; the earlier mestimate=epzs estimate of 2.2-4.4x was wrong by
+# ~25x). intake therefore runs detect on a 960-long-side analysis PROXY, not the raw
+# 4K (design 2026-08-01-intake-analysis-proxy): the shake fraction is preserved above
+# the pixel-quantization floor (measured ratio 1.008, r 0.985 near the 0.02 gate),
+# and the same 35 s clip drops to ~13 s. stabilize()'s detect still runs on the
+# ORIGINAL short extracted segment.
 #
-# stabilize() reuses the same multiple on a SHORT extracted segment, where it is
-# simply generous rather than load-bearing. The floor in _timeout keeps both cases
-# at proc's already-generous default when the input is short.
+# The 10x multiple is the timeout headroom over realtime (ample for the ~0.37x proxy
+# pass, generous for stabilize's short segment). The floor in _timeout keeps both at
+# proc's already-generous default when the input is short.
 SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
 # The detect recipe, shared by BOTH consumers on purpose (design 2026-07-20 §5).
