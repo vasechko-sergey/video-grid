@@ -34,12 +34,15 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
 `reel_brief build --project <run>/project.json --out-dir <run>`, `edit_plan build --out-dir <run>`,
 `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
 
-0. **Ensure env (one-time install).** `bash setup.sh` once per machine — one
-   install, no capability flags. It puts keg-only `ffmpeg-full` (drawtext +
-   vidstab) beside core ffmpeg and records the path in `config/ffmpeg.env`,
-   which is how every stage resolves its binary. Not a per-run command — a
-   missing venv on any later run surfaces as `bin/vg`'s own remedy message,
-   not a reason to re-run this step.
+0. **Verify the runtime (gate).** After resolving `$VG` (below), run
+   `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
+   proceed. Non-zero → surface each `BLOCKED` check with its remedy (almost always
+   `bash setup.sh`) and **stop** — do not run project-init against a broken
+   runtime, and never run `setup.sh` yourself. Advisory gaps (e.g. `demucs`) are
+   named, not blocking (they only affect optional lanes — e.g. music in-point uses
+   the librosa proxy without demucs). The venv and the recorded root are the
+   pre-venv layer, checked by the launcher preamble and `bin/vg` before this runs.
+   The dedicated `verify-runtime` skill runs the same check on demand.
 
 **Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
 bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
