@@ -43,7 +43,7 @@ def _importable(name: str) -> bool:
         return False
 
 
-def _probe_ffmpeg() -> tuple[bool, str]:
+def _probe_ffmpeg_bin() -> tuple[bool, str]:
     try:
         fb, fp = ffbin.ffmpeg(), ffbin.ffprobe()
     except ValueError:
@@ -81,7 +81,7 @@ def _probe_font() -> tuple[bool, str]:
     try:
         return True, fonts.resolve_font()
     except ValueError:
-        return False, "no usable font among fonts.FONT_CANDIDATES"
+        return False, f"no usable font found (checked {len(fonts.FONT_CANDIDATES)} candidates)"
 
 
 def _probe_weights() -> tuple[bool, str]:
@@ -97,7 +97,7 @@ def _probe_demucs() -> tuple[bool, str]:
 
 _PROBES = {
     "deps": _probe_deps,
-    "ffmpeg_bin": _probe_ffmpeg,
+    "ffmpeg_bin": _probe_ffmpeg_bin,
     "drawtext": _probe_drawtext,
     "vidstab": _probe_vidstab,
     "font": _probe_font,
