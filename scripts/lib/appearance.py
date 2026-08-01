@@ -68,24 +68,53 @@ def descriptor_dist(a: list[float], b: list[float]) -> float:
     return sum(abs(x - y) for x, y in zip(a, b))
 
 
+def _bbox_ltrb(box: object) -> tuple[int, int, int, int]:
+    """Clamp a box's centre-format xywh to integer (l, t, r, b), left/top >= 0.
+    One spelling, shared by crop_and_mask and seg_mask so the crop and its mask
+    are cut to the SAME rectangle."""
+    x, y, w, h = (float(v) for v in box.xywh[0])
+    l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
+    return max(0, l), max(0, t), r_, b_
+
+
+def seg_mask(res: object, idx: int, box: object) -> np.ndarray | None:
+    """The segmentation mask for detection `idx`, resized from model space up to the
+    result's frame dims and cropped to `box`'s bbox — the mask half of crop_and_mask,
+    extracted so intake (which crops pixels from the ORIGINAL, not this frame) can
+    reuse the exact same resize+crop. None when the result carries no frame or masks
+    (a mocked result), which is how the maskless fallback stays reachable."""
+    img = getattr(res, "orig_img", None)
+    masks = getattr(res, "masks", None)
+    if img is None or masks is None or getattr(masks, "data", None) is None:
+        return None
+    arr = np.asarray(img)
+    l, t, r_, b_ = _bbox_ltrb(box)
+    m = np.asarray(masks.data[idx])                        # (H, W) in model space
+    m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
+    return m[t:b_, l:r_]
+
+
 def crop_and_mask(res: object, idx: int, box: object) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Extract the box's crop (RGB) + seg mask from an ultralytics result. Returns
-    (None, None) when the frame image or masks are unavailable (mocked tests)."""
+    (None, None) when the frame image is unavailable (mocked tests); the mask alone
+    is None when only masks are absent. The mask is extracted by seg_mask, so the
+    model-space resize lives in one place."""
     img = getattr(res, "orig_img", None)
     if img is None:
         return None, None
     arr = np.asarray(img)[..., ::-1]                       # ultralytics orig_img is BGR → RGB
-    x, y, w, h = (float(v) for v in box.xywh[0])
-    l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
-    l, t = max(0, l), max(0, t)
+    l, t, r_, b_ = _bbox_ltrb(box)
     crop = arr[t:b_, l:r_]
-    mask = None
-    masks = getattr(res, "masks", None)
-    if masks is not None and getattr(masks, "data", None) is not None:
-        m = np.asarray(masks.data[idx])                    # (H, W) in model space
-        m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
-        mask = m[t:b_, l:r_]
-    return (crop if crop.size else None), mask
+    return (crop if crop.size else None), seg_mask(res, idx, box)
+
+
+def upsample_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Resize a proxy-scale bbox mask up to `shape` (H, W) — the original crop's — so
+    build_descriptor masks the same region at full res (design §5a). Same PIL resize
+    crop_and_mask uses (default resampling), because build_descriptor thresholds
+    `mask > 0`; PIL's resize takes (W, H)."""
+    h, w = shape
+    return np.asarray(Image.fromarray(mask.astype("uint8")).resize((w, h)))
 
 
 def crop_bbox(frame_rgb: np.ndarray, box_xywh: tuple[float, float, float, float],

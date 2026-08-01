@@ -100,3 +100,41 @@ def test_crop_bbox_scales_a_proxy_box_up_to_original():
     frame[80:120, 180:220] = 255
     crop = appearance.crop_bbox(frame, (100.0, 50.0, 20.0, 20.0), scale=2.0)  # proxy box, 2x
     assert crop.shape == (40, 40, 3) and crop.mean() == 255
+
+
+class _Masks:
+    def __init__(self, data): self.data = data
+
+
+class _ResM:
+    def __init__(self, orig_img, masks): self.orig_img = orig_img; self.masks = _Masks(masks)
+
+
+class _BoxM:
+    def __init__(self, xywh): self.xywh = [xywh]
+
+
+def test_seg_mask_resizes_model_space_and_crops_to_bbox():
+    # frame 40x40; model-space mask 20x20 (half) with a person blob → seg_mask
+    # resizes the mask up to frame dims and crops it to the box's bbox
+    frame = np.zeros((40, 40, 3), dtype=np.uint8)
+    m = np.zeros((20, 20), dtype=np.float32)
+    m[5:15, 5:10] = 1.0                                  # model-space blob
+    box = _BoxM([20.0, 20.0, 20.0, 20.0])                # centre (20,20) → bbox [10:30, 10:30]
+    mask = appearance.seg_mask(_ResM(frame, [m]), 0, box)
+    assert mask.shape == (20, 20)                        # cropped to the bbox
+    assert mask.max() > 0                                # the blob survived resize + crop
+
+
+def test_seg_mask_is_none_without_masks_or_frame():
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    assert appearance.seg_mask(_ResM(frame, None), 0, _BoxM([4, 4, 4, 4])) is None
+    assert appearance.seg_mask(_ResM(None, [np.ones((4, 4), np.float32)]), 0, _BoxM([4, 4, 4, 4])) is None
+
+
+def test_upsample_mask_matches_target_shape():
+    small = np.zeros((10, 5), dtype=np.uint8)
+    small[2:8, 1:4] = 255
+    up = appearance.upsample_mask(small, (200, 80))
+    assert up.shape == (200, 80)
+    assert up.max() > 0 and up.min() == 0                # foreground survived, corners stay bg
