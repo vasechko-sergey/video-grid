@@ -1,6 +1,6 @@
 ---
 name: titles
-description: Stage 5.16 — the reel's on-screen text. Use after reel-brief (SPEC.json exists) to turn hook/text/ending into a timed, positioned titles track and write TITLES.json (+ TITLES.md), the on-screen text reviewed alongside the near-final reel at the CP3 checkpoint. Words, timing, position (top/center/bottom), style (bold-box/outline/plain), font — drawtext burns them into deliver's one encode, never a second pass. Optional: enriches the reel; the autonomous path runs without it.
+description: Conveyor stage — the reel's on-screen text. Turns hook/text/ending into a timed, positioned titles track, writing TITLES.json (+ TITLES.md). using-montage invokes this after reel-brief; the text is reviewed alongside the near-final reel at checkpoint CP3. Words, timing, position (top/center/bottom), style (bold-box/outline/plain), font — drawtext burns them into deliver's one encode, never a second pass. Optional — enriches the reel; the autonomous path skips it.
 ---
 
 # titles (stage 5.16)

@@ -1,6 +1,6 @@
 ---
 name: edit-plan
-description: Stage 5.7 — author an EDL from scored footage windows. Use after footage-intake (FOOTAGE.json exists) and project-init (project.json) to turn candidate moment-windows into a typed EDL.json + a human EDL.md map that edl_to_reel drives to a reel. Autonomous draft + one review gate.
+description: Conveyor stage — author an EDL from scored footage windows. Writes EDL.json (typed) + EDL.md (human map) that edl_to_reel drives to a reel. using-montage invokes this after footage-intake; run it directly only to (re)author or curate the cut. Needs FOOTAGE.json and project.json; autonomous draft + one review gate. Required — its output drives the whole conveyor.
 ---
 
 # edit-plan (stage 5.7)

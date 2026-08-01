@@ -1,6 +1,6 @@
 ---
 name: match-grade
-description: Montage design §10 — the match-grade conductor: measure every EDL episode's source tone (luma) at its window midpoint, compute one common reel target (the per-anchor median across episodes), and auto-author tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.md report. Runs AFTER edit-plan and pacing — a pacing re-run regenerates EDL.json and would wipe an authored tone — and BEFORE edl_to_reel. Opt-in: only useful when episodes come from mixed cameras/lighting; a single-camera reel skips it.
+description: Conveyor stage — the match-grade conductor. Measures every EDL episode's source tone at its window midpoint, computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.md report. using-montage invokes this after pacing (a pacing re-run wipes authored tone) and before edl_to_reel; run it directly only to re-grade. Use for a reel cut from mixed cameras/lighting. Optional — a single-camera reel skips it.
 ---
 
 # match-grade (design §10, tone conductor)

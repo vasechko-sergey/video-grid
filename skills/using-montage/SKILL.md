@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: The montage conveyor's front door — use when a folder of raw footage plus a natural-language brief ("a 9:16 reel from this trip, no music") should become a delivered reel. The "1% chance a montage skill applies -> invoke it" router: verify the runtime, then conduct the built stages (project-init -> footage-intake -> [reel-brief] -> edit-plan -> [music] -> [pacing] -> [match-grade] -> [assemble-draft] -> [titles] -> edl_to_reel -> [reel-review]) in order, stopping only at the three user checkpoints, resuming a half-finished run for free, and naming any stage it skips. Stage 5.1.
+description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → [reel-brief] → edit-plan → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
 ---
 
 # using-montage (stage 5.1)

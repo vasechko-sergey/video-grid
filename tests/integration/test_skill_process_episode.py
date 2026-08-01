@@ -20,7 +20,9 @@ def test_frontmatter_name_and_description():
     desc = re.search(r"^description:\s*(.+)$", fm, re.M)
     assert desc, "description required"
     assert len(desc.group(1)) <= 500
-    assert desc.group(1).lstrip().lower().startswith(("use when", '"use when'))
+    # role-led descriptions (2026-08-01): the lead names how you reach the skill,
+    # not the old "Use when …" opener. process-episode is a conveyor sub-worker.
+    assert desc.group(1).lstrip().lower().startswith("conveyor stage")
 
 
 def test_required_sections_present():

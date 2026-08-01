@@ -1,6 +1,6 @@
 ---
 name: reel-brief
-description: Stage 5.3 — the reel's editorial brief. Use after project-init (project.json exists) to interrogate the idea one question at a time and write SPEC.md (+ SPEC.json), the brief the user approves at the CP1 checkpoint. Mood, hook, length, music intent, style-lean, cast — the editorial layer atop the machine canvas/delivery. Optional: enriches the reel; the autonomous path runs without it.
+description: Conveyor stage — the editorial brief. Interrogate the idea one question at a time and write SPEC.md (+ SPEC.json). using-montage invokes this after project-init; run it directly only to (re)write the brief. Sets mood, hook, length, music intent, style-lean, cast — the editorial layer atop the machine canvas/delivery, approved by the user at checkpoint CP1. Optional — enriches the reel; the autonomous path skips it.
 ---
 
 # reel-brief (stage 5.3)

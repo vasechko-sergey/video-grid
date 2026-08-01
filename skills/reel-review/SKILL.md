@@ -1,6 +1,6 @@
 ---
 name: reel-review
-description: Stage 5.13 editorial half (Slice B) — the reel's final editorial review. Use at Checkpoint 3, after edl_to_reel delivers out/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine (and anything from the EDL missing/weak). Dispatch a fresh reviewer subagent with a crafted context packet, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes.
+description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers out/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Optional — a final quality pass.
 ---
 
 # reel-review (stage 5.13, editorial half)

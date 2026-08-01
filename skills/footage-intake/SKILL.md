@@ -1,6 +1,6 @@
 ---
 name: footage-intake
-description: Use when a folder of raw clips needs to become the reel's candidate material — scan every clip into scored moment-windows (FOOTAGE.json/.md) and, when people matter, run one interactive pass to name the heroes into cast.json. Stage 5.2. Mechanical scan in Python; you own only the human-in-the-loop naming.
+description: Conveyor stage — scan a folder of raw clips into scored moment-windows (FOOTAGE.json/.md) and, when people matter, name the heroes into cast.json. using-montage invokes this after project-init; run it directly only to (re)scan footage. Needs project.json. Mechanical scan in Python; you own only the human-in-the-loop naming. Required — feeds edit-plan.
 ---
 
 # footage-intake

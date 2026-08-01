@@ -5,6 +5,7 @@ Every pipeline command a skill issues must go through bin/vg, never a bare
 this slice removes). Lints the outcome so a reverted call-site fails loud, and
 catches line-wrapped invocations a text-replace would miss.
 """
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -12,6 +13,10 @@ SKILLS = REPO / "skills"
 # the 6 skills that issue pipeline commands (design §2.5)
 RUNNERS = {"using-montage", "music-source", "music-match", "pacing",
            "process-episode", "project-init"}
+# every skill description leads with one of these role tags (2026-08-01): the lead
+# says HOW you reach the skill, not a design §5.x stage number (run order != §5.x,
+# and two skills have no number — the number limped, so it is gone from descriptions).
+ROLE_LEADS = ("Start here —", "Router —", "Conveyor stage", "Preflight —")
 
 
 def test_no_skill_invokes_a_bare_venv_python():
@@ -47,3 +52,19 @@ def test_the_pacing_skill_documents_the_two_pass_flow():
 def test_using_montage_orders_edit_plan_before_music():
     text = (SKILLS / "using-montage" / "SKILL.md").read_text()
     assert text.index("edit_plan build") < text.index("scripts.beats")
+
+
+def test_every_skill_description_leads_with_a_role_tag():
+    """Uniform, role-led descriptions: the lead names the skill's place in the
+    conveyor (Start here / Router / Conveyor stage / Preflight), so a reader sees
+    at a glance what to run and what the conveyor drives. Guards against drift."""
+    offenders = []
+    for path in sorted(SKILLS.glob("*/SKILL.md")):
+        fm = path.read_text().split("---", 2)[1]
+        m = re.search(r"^description:\s*(.+)$", fm, re.M)
+        desc = m.group(1).strip() if m else ""
+        if not desc.startswith(ROLE_LEADS):
+            offenders.append(path.parent.name)
+    assert offenders == [], (
+        f"skills whose description doesn't lead with a role tag {ROLE_LEADS}: "
+        f"{offenders}")

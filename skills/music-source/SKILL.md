@@ -1,6 +1,6 @@
 ---
 name: music-source
-description: Stage 5.5 (network lanes) — source the reel's track from the internet when the brief has a mood but no chosen track and no local folder. Discovers candidates (free = ccMixter/Jamendo CC; any = YouTube/iTunes/Deezer incl. copyrighted), ranks them by fit to SPEC.mood into MUSIC_SHORTLIST.md, you present the top few, the user picks, then it downloads the pick and beats --auto-start writes MUSIC.json. The any lane is copyrighted and legally gray — opt-in, user's responsibility.
+description: Conveyor stage — source the reel's track from the internet by mood. using-montage invokes this when the brief has a mood but no chosen track AND no local folder; run it directly only to re-source. Discovers candidates (free = ccMixter/Jamendo CC; any = YouTube/iTunes/Deezer, incl. copyrighted), ranks by fit to SPEC.mood, the user picks, then it downloads and `beats --auto-start` writes MUSIC.json. The any lane is copyrighted/legally gray — opt-in, user's responsibility. Optional — see music-match for a local folder.
 ---
 
 # music-source (stage 5.5, network lanes)
