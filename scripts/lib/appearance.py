@@ -86,3 +86,15 @@ def crop_and_mask(res: object, idx: int, box: object) -> tuple[np.ndarray | None
         m = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((arr.shape[1], arr.shape[0])))
         mask = m[t:b_, l:r_]
     return (crop if crop.size else None), mask
+
+
+def crop_bbox(frame_rgb: np.ndarray, box_xywh: tuple[float, float, float, float],
+              scale: float = 1.0) -> np.ndarray | None:
+    """Crop `frame_rgb` (HxWx3 RGB) to the xywh `box` scaled by `scale`
+    (proxy→original). No mask: the maskless descriptor path is accurate enough for
+    a full-body crop (design §5). Returns None on an empty crop."""
+    x, y, w, h = (v * scale for v in box_xywh)
+    l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
+    l, t = max(0, l), max(0, t)
+    crop = frame_rgb[t:b_, l:r_]
+    return crop if crop.size else None

@@ -82,3 +82,21 @@ def test_crop_and_mask_without_orig_img_is_none():
 
 def test_cast_match_is_below_the_distance_maximum():
     assert 0.0 < appearance.CAST_MATCH < 2.0
+
+
+def test_crop_bbox_extracts_scaled_region():
+    import numpy as np
+    from scripts.lib import appearance
+    frame = np.zeros((100, 200, 3), dtype="uint8")
+    frame[40:60, 90:110] = 255                        # a white 20x20 block, centre (100,50)
+    crop = appearance.crop_bbox(frame, (100.0, 50.0, 20.0, 20.0), scale=1.0)
+    assert crop.shape == (20, 20, 3) and crop.mean() == 255
+
+
+def test_crop_bbox_scales_a_proxy_box_up_to_original():
+    import numpy as np
+    from scripts.lib import appearance
+    frame = np.zeros((200, 400, 3), dtype="uint8")    # original 2x the proxy
+    frame[80:120, 180:220] = 255
+    crop = appearance.crop_bbox(frame, (100.0, 50.0, 20.0, 20.0), scale=2.0)  # proxy box, 2x
+    assert crop.shape == (40, 40, 3) and crop.mean() == 255
