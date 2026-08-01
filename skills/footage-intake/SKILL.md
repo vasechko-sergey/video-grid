@@ -11,7 +11,9 @@ You turn a folder of raw footage into what the edit-plan selects from: a typed
 `FOOTAGE.json` (+ a readable `FOOTAGE.md`) of **scored candidate moment-windows**,
 and — when the reel is about specific people — a `cast.json` hero registry. The
 scan is mechanical Python (`scripts/intake.py`); the one thing it cannot do is
-ask a human who the heroes are. That naming pass is yours.
+ask a human who the heroes are. That naming pass is yours. The scan analyses a
+downscaled 960-long-side proxy of each clip while delivery always uses the
+original frames, so a folder of 4K footage scans in seconds rather than hours.
 
 **Core principle:** intake **ranks and flags**; it never picks the reel's
 episodes or their order (that is 5.7 edit-plan + the episode-choice human loop).

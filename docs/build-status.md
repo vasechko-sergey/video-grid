@@ -12,6 +12,61 @@ _Last updated: 2026-08-01._
 
 ## Done
 
+- **Intake analysis proxy (all CV analysis on one decode-once proxy) DONE
+  (2026-08-01)** — plan `docs/plans/2026-08-01-intake-analysis-proxy.md` +
+  design `docs/specs/2026-08-01-intake-analysis-proxy-design.md`, Tasks 0–7
+  (branch `feat/intake-analysis-proxy`, commits `3d87ff5`..`688039e` + this
+  docs sync). **2066 passed / 2 skipped.** Intake decoded every clip's
+  ORIGINAL three times — scene-detect, YOLO+ByteTrack, `vidstabdetect` — and
+  one of those, `vidstabdetect` at `shakiness=8`, ran at FULL resolution: on
+  real 4K/60 drone footage a **measured ~0.0089× realtime — ≈ 67 min for a
+  35 s clip** (the old `lib/vidstab.py` `mestimate=epzs` estimate of 2.2–4.4×
+  was wrong by ~25×, because `shakiness=8`'s wide block search scales with
+  pixel count). This slice routes ALL of intake's analysis (scene-detect,
+  YOLO+ByteTrack, `vidstabdetect`, per-window phash) through **one decode-once
+  960-long-side proxy** per clip — the three 4K decodes collapse to one, and
+  the vidstab wall drops to **~13 s (~300×)**. New `assembly.make_proxy`
+  builds the proxy once (long side 960, native fps, no audio, CRF ~18; a clip
+  already ≤960 long side is analysed in place — no needless re-encode, no
+  upscale) and `assembly.frame_rgb` grabs a single ORIGINAL frame.
+  **Analysis-only — the load-bearing invariant:** the proxy is never a
+  delivered pixel. Cast crops re-extract from the ORIGINAL frame
+  (`appearance.crop_bbox` scales the proxy bbox up by original/proxy;
+  `build_descriptor` runs on the original crop, so `cast.json` descriptors
+  stay on the same footing as the delivery-time tracker's), and
+  extract/reframe/stabilize-apply/deliver are untouched. `FootageClip.res`
+  still records the ORIGINAL geometry; intake's stored numbers are already
+  **scale-normalized fractions** (`_motion`, `mean_shake`, `shot_type` all
+  divide by frame width), so moving to the proxy only changes the divisor
+  width fed to the measurement helpers — no coordinate ever maps back to the
+  original (`edit_plan`→`process_episode` re-tracks the extracted segment from
+  scratch, so intake's proxy-space geometry never leaves intake).
+  **Equivalence, measured** on a real 4K clip: the `mean_shake` fraction
+  survives downscaling exactly where a decision is made — near the 0.02
+  `SHAKY_CLIP` gate (synthetic shake ~0.016) the full-vs-960 ratio is
+  **1.008**, per-frame **r 0.985**; only BELOW the integer-pixel quantization
+  floor (a near-still ~0.002 clip, r≈0.07) does it collapse, and there the
+  footage is `calm` at either scale, so no window's shaky/calm verdict flips —
+  the honest limit, recorded not hidden. `_people_timeline` now returns
+  best-crop **refs** `(conf, t, bbox)` per track (the pixel crop moved to the
+  original-frame re-extraction). `CACHE_VERSION` 2 → 3 (the analysis basis
+  changed — every existing `.intake_cache` entry must miss and recompute) and
+  `intake_cache.clip_key` gains `proxy_long_side`, so a scale change
+  invalidates the cache the same way `sample_fps`/`model` do. The stale
+  `lib/vidstab.py` cost comment is corrected to the measured reality + the
+  proxy note; `stabilize()`'s detect still runs on the ORIGINAL short
+  extracted segment (it stabilizes delivered pixels), and §4's scale-invariance
+  above the floor is exactly the property the shared `shakiness=8` recipe
+  exists to protect. Real-ffmpeg equivalence proof
+  (`tests/integration/test_intake_proxy.py`) runs proxy intake on a real
+  fixture and asserts the emitted cast crops carry ORIGINAL resolution; the
+  existing intake golden was re-pinned to the proxy-measured values (the
+  proxy-basis change, not a regression). **Deferred (NOT built):** a proxy for
+  delivery-time track/reframe (they already run on short *original* extracted
+  segments — no wall there), any **fps** reduction of the proxy (rejected —
+  breaks `vidstabdetect`'s inter-frame motion and ByteTrack continuity), and a
+  user-tunable proxy scale beyond the fixed 960 (YAGNI).
+
 - **Verify-runtime (startup runtime preflight) DONE (2026-08-01)** — plan
   `docs/plans/2026-08-01-verify-runtime.md` + design
   `docs/specs/2026-08-01-verify-runtime-design.md` (branch `feat/verify-runtime`,
