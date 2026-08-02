@@ -66,3 +66,20 @@ def test_frames_rgb_dedupes_and_empty(tmp_path):
     dup = assembly.frames_rgb(clip, [0.3, 0.3], 10.0)        # same frame twice
     assert len(dup) == 2 and np.array_equal(dup[0], dup[1])
     assert assembly.frames_rgb(clip, [], 10.0) == []         # no times → no decode
+
+
+def test_frames_rgb_handles_more_than_one_select_chunk(tmp_path):
+    # >_SELECT_CHUNK distinct frames must all come back, in input order, across
+    # chunk boundaries — the case a single giant select expression ENOMEMs on 4K.
+    n = assembly._SELECT_CHUNK * 2 + 5           # forces >=3 chunks
+    src = tmp_path / "ramp"; src.mkdir()
+    for i in range(n):
+        Image.new("RGB", (16, 16), (i % 256, i % 256, i % 256)).save(src / f"{i:04d}.png")
+    clip = tmp_path / "ramp.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-framerate", "30", "-i", str(src / "%04d.png"),
+              "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)])
+    order = list(range(n - 1, -1, -1))           # reversed → also checks ordering
+    frames = assembly.frames_rgb(clip.as_posix(), [i / 30.0 for i in order], 30.0)
+    assert len(frames) == n
+    vals = [int(f.mean()) for f in frames]
+    assert all(abs(v - (i % 256)) < 8 for v, i in zip(vals, order))   # each slot = its frame

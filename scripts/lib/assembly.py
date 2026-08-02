@@ -164,33 +164,43 @@ def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
     return True
 
 
+_SELECT_CHUNK = 60   # max eq(n,N) terms per select pass. A single select expression
+                     # ENOMEMs on a 4K decode above ~100 terms (measured: 81 ok, 106
+                     # fails); 60 keeps margin for wider (5-digit) frame numbers. More
+                     # frames than this → ceil(N/chunk) decodes, still O(1) in practice.
+
+
 def frames_rgb(src: str, times: list[float], fps: float) -> list[np.ndarray]:
     """Every frame at `times` (seconds) as HxWx3 uint8 RGB arrays at `src`'s own
-    resolution, in ONE decode. Frame number is round(t*fps); a select filter picks
-    those exact frames in a single pass, so cost is one decode regardless of how many
-    frames are asked — the O(1)-decode replacement for per-grab output seeks (design
-    2026-08-02 §4). Returns a list aligned to `times`: same order and length,
-    duplicate times share one decoded frame. Empty `times` → [] with no ffmpeg call.
-    Uses select, never -ss, so the §12 seek landmine cannot apply."""
+    resolution, decoding the clip once per chunk of up to _SELECT_CHUNK frames (one
+    decode for the common small-N case). Frame number is round(t*fps); a select
+    filter picks those exact frames, so this is the O(1)-decode replacement for
+    per-grab output seeks (design 2026-08-02 §4). Returns a list aligned to `times`:
+    same order and length, duplicate times share one decoded frame. Empty `times` →
+    [] with no ffmpeg call. Uses select, never -ss, so the §12 seek landmine cannot
+    apply."""
     if not times:
         return []
     nums = [round(t * fps) for t in times]
     uniq = sorted(set(nums))
-    expr = "+".join(rf"eq(n\,{n})" for n in uniq)
+    by_num: dict[int, np.ndarray] = {}
     with tempfile.TemporaryDirectory() as d:
-        # -vsync 0 keeps only the selected frames; image2 numbers them from 1 in
-        # emission (ascending-n) order. No -ss: a select is not a cut.
-        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", f"select='{expr}'",
-                  "-vsync", "0", "-frames:v", str(len(uniq)),
-                  str(Path(d) / "f%05d.png")])
-        pngs = sorted(Path(d).glob("f*.png"))
-        frames = [np.asarray(Image.open(p).convert("RGB")) for p in pngs]
-    if len(frames) != len(uniq):
-        raise RuntimeError(
-            f"frames_rgb: requested {len(uniq)} frames {uniq} but ffmpeg emitted "
-            f"{len(frames)} — a frame number is past the stream end (a time >= "
-            f"duration). times={times}")
-    by_num = dict(zip(uniq, frames))
+        for ci in range(0, len(uniq), _SELECT_CHUNK):
+            chunk = uniq[ci:ci + _SELECT_CHUNK]
+            expr = "+".join(rf"eq(n\,{n})" for n in chunk)
+            sub = Path(d) / f"c{ci:05d}"
+            sub.mkdir()
+            proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", f"select='{expr}'",
+                      "-vsync", "0", "-frames:v", str(len(chunk)),
+                      str(sub / "f%05d.png")])
+            pngs = sorted(sub.glob("f*.png"))
+            if len(pngs) != len(chunk):
+                raise RuntimeError(
+                    f"frames_rgb: chunk requested {len(chunk)} frames {chunk} but ffmpeg "
+                    f"emitted {len(pngs)} — a frame number is past the stream end (a time "
+                    f">= duration). times={times}")
+            for n, p in zip(chunk, pngs):
+                by_num[n] = np.asarray(Image.open(p).convert("RGB"))
     return [by_num[n] for n in nums]
 
 
