@@ -138,3 +138,47 @@ def test_cast_descriptor_survives_the_cast_json_round_trip(tmp_path):
     path.write_text(json.dumps(_cast().to_dict()))
     pin = hero_lib.resolve("Blue", Cast.from_json(str(path)))
     assert appearance.descriptor_dist(list(pin.descriptor), _descriptor_of(_BLUE)) == 0.0
+
+
+class _BoxC:
+    def __init__(self, xywh, tid, conf):
+        self.xywh = [xywh]; self.id = [tid]; self.cls = [0]; self.conf = [conf]
+
+
+class _ResC:
+    """A person occupying the LEFT half of its bbox on a differently-coloured
+    background filling the RIGHT half, with a model-space mask over the person only
+    — so masking is NOT a no-op (unlike _Res, whose bbox is one flat colour)."""
+    def __init__(self):
+        W, H = 200, 200
+        img = np.zeros((H, W, 3), dtype=np.uint8)        # BGR, like ultralytics orig_img
+        img[40:160, 40:100] = (0, 0, 220)                # red person (BGR), left of bbox
+        img[40:160, 100:160] = (0, 220, 0)               # green background, right of bbox
+        m = np.zeros((H // 2, W // 2), dtype=np.float32)  # model space (half source)
+        m[20:80, 20:50] = 1.0                            # person half only
+        self.orig_img = img
+        self.masks = _Masks([m])
+        self.boxes = [_BoxC([100.0, 100.0, 120.0, 120.0], 1, 0.95)]   # bbox [40:160, 40:160]
+
+
+@pytest.mark.integration
+def test_intake_and_delivery_cast_descriptors_agree_after_masking(monkeypatch):
+    r = _ResC()
+    box = r.boxes[0]
+    # delivery: crop_and_mask (BGR→RGB + model-mask resize) → masked descriptor
+    crop_rgb, mask = appearance.crop_and_mask(r, 0, box)
+    delivery = appearance.build_descriptor(crop_rgb, mask)
+    # intake: same person, crop from the ORIGINAL (here the same frame, RGB), proxy
+    # mask via seg_mask, upsampled inside _cast_from_original
+    rgb = np.asarray(r.orig_img)[..., ::-1]
+    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: rgb)
+    best = {1: (0.95, 0.0, tuple(float(v) for v in box.xywh[0]), appearance.seg_mask(r, 0, box))}
+    cast = intake._cast_from_original("orig.mp4", best, res=(200, 200), pres=(200, 200))
+    intake_desc = cast[0].descriptor
+    # symmetric: the two masked descriptors match well within the cast gate
+    assert appearance.descriptor_dist(intake_desc, delivery) < appearance.CAST_MATCH
+    # and the pre-fix maskless bbox descriptor is measurably FARTHER — the regression
+    l, t, r_, b_ = 40, 40, 160, 160
+    maskless = appearance.build_descriptor(rgb[t:b_, l:r_], None)
+    assert (appearance.descriptor_dist(maskless, delivery)
+            > appearance.descriptor_dist(intake_desc, delivery))
