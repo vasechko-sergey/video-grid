@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
-from scripts.lib import assembly, ffbin
+from PIL import Image
+
+from scripts.lib import assembly, ffbin, proc
 
 pytestmark = pytest.mark.integration
 
@@ -33,3 +35,34 @@ def test_frame_rgb_returns_original_resolution_array(tmp_path):
     src = tmp_path / "s.mp4"; _make_src(src, w=1920, h=1080)
     arr = assembly.frame_rgb(str(src), 0.5)
     assert isinstance(arr, np.ndarray) and arr.shape == (1080, 1920, 3)
+
+
+def _gray_ramp_clip(tmp_path, n=10, fps=10):
+    """A clip whose frame i is solid gray v=i*25 — distinct, 420-subsampling-robust."""
+    src = tmp_path / "ramp"; src.mkdir()
+    for i in range(n):
+        v = i * 25
+        Image.new("RGB", (64, 64), (v, v, v)).save(src / f"{i:03d}.png")
+    clip = tmp_path / "ramp.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-framerate", str(fps), "-i", str(src / "%03d.png"),
+              "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)])
+    return str(clip)
+
+
+@pytest.mark.integration
+def test_frames_rgb_selects_exact_frames_in_input_order(tmp_path):
+    clip = _gray_ramp_clip(tmp_path)
+    # unsorted → frames 8, 2, 5 (gray ≈ 200, 50, 125); result stays in INPUT order
+    frames = assembly.frames_rgb(clip, [0.8, 0.2, 0.5], 10.0)
+    vals = [int(f.mean()) for f in frames]
+    assert vals[0] > vals[2] > vals[1]                       # order preserved, not sorted
+    assert abs(vals[0] - 200) < 15 and abs(vals[1] - 50) < 15 and abs(vals[2] - 125) < 15
+    assert frames[0].ndim == 3 and frames[0].shape[2] == 3
+
+
+@pytest.mark.integration
+def test_frames_rgb_dedupes_and_empty(tmp_path):
+    clip = _gray_ramp_clip(tmp_path, n=5)
+    dup = assembly.frames_rgb(clip, [0.3, 0.3], 10.0)        # same frame twice
+    assert len(dup) == 2 and np.array_equal(dup[0], dup[1])
+    assert assembly.frames_rgb(clip, [], 10.0) == []         # no times → no decode

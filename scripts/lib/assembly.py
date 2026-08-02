@@ -164,12 +164,39 @@ def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
     return True
 
 
+def frames_rgb(src: str, times: list[float], fps: float) -> list[np.ndarray]:
+    """Every frame at `times` (seconds) as HxWx3 uint8 RGB arrays at `src`'s own
+    resolution, in ONE decode. Frame number is round(t*fps); a select filter picks
+    those exact frames in a single pass, so cost is one decode regardless of how many
+    frames are asked — the O(1)-decode replacement for per-grab output seeks (design
+    2026-08-02 §4). Returns a list aligned to `times`: same order and length,
+    duplicate times share one decoded frame. Empty `times` → [] with no ffmpeg call.
+    Uses select, never -ss, so the §12 seek landmine cannot apply."""
+    if not times:
+        return []
+    nums = [round(t * fps) for t in times]
+    uniq = sorted(set(nums))
+    expr = "+".join(rf"eq(n\,{n})" for n in uniq)
+    with tempfile.TemporaryDirectory() as d:
+        # -vsync 0 keeps only the selected frames; image2 numbers them from 1 in
+        # emission (ascending-n) order. No -ss: a select is not a cut.
+        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", f"select='{expr}'",
+                  "-vsync", "0", "-frames:v", str(len(uniq)),
+                  str(Path(d) / "f%05d.png")])
+        pngs = sorted(Path(d).glob("f*.png"))
+        frames = [np.asarray(Image.open(p).convert("RGB")) for p in pngs]
+    if len(frames) != len(uniq):
+        raise RuntimeError(
+            f"frames_rgb: requested {len(uniq)} frames {uniq} but ffmpeg emitted "
+            f"{len(frames)} — a frame number is past the stream end (a time >= "
+            f"duration). times={times}")
+    by_num = dict(zip(uniq, frames))
+    return [by_num[n] for n in nums]
+
+
 def frame_rgb(src: str, t: float) -> np.ndarray:
     """One frame at time `t` as an HxWx3 uint8 RGB ndarray, at `src`'s own
-    resolution. For re-extracting cast crops from the ORIGINAL (design §5)."""
-    with tempfile.TemporaryDirectory() as d:
-        png = str(Path(d) / "f.png")
-        # -ss AFTER -i: frame-accurate grab (repo landmine — never before -i here)
-        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-ss", f"{t}",
-                  "-frames:v", "1", png])
-        return np.asarray(Image.open(png).convert("RGB"))
+    resolution — a single-frame convenience over frames_rgb (probes fps to place the
+    frame). For many frames call frames_rgb directly: it decodes once (design
+    2026-08-02 §4). For re-extracting cast crops from the ORIGINAL (design §5)."""
+    return frames_rgb(src, [t], probe_stream(src).fps)[0]
