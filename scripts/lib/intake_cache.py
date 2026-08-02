@@ -29,9 +29,11 @@ from scripts.lib.footage import FootageClip
 # — computed on full-res — must miss, design 2026-08-01). The cast-mask-symmetry
 # follow-up bumps it once more (v3 → v4: the cast descriptor is masked again — the
 # proxy seg mask upsampled onto the original crop — so a v3 maskless descriptor must
-# miss, design §5a). An all-or-nothing version beats a per-field logic hash nobody
-# can audit.
-CACHE_VERSION = 4
+# miss, design §5a). The 4 → 5 bump is the frame-grab batch (design 2026-08-02) —
+# cast descriptors and window phashes shift by ≤1 frame because `frames_rgb` selects
+# round(t*fps) where output-seek grabbed the first frame with pts >= t. An
+# all-or-nothing version beats a per-field logic hash nobody can audit.
+CACHE_VERSION = 5
 
 
 @dataclass
