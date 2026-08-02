@@ -17,7 +17,7 @@ from pathlib import Path
 import imagehash
 from PIL import Image
 
-from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
+from scripts import check_reel                    # reuse _hamming for cull dedup
 from scripts.lib import assembly, carve, footage, intake_cache, vidstab
 from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist, seg_mask, upsample_mask
 from scripts.lib.intake_cache import CastEntry, ClipResult
@@ -170,10 +170,6 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
     return timeline, best
 
 
-def _phash_at(clip: str, t: float) -> imagehash.ImageHash:
-    return check_reel._phash_bits(clip, t)             # reuse the reel-variety phash
-
-
 def cull(clips: list, phash_of: object) -> None:
     """Rank all windows by score; a window whose phash Hamming distance to an
     already-kept higher-scored window is < DEDUP_DIST is a duplicate (compare by
@@ -281,7 +277,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
     proxy → scene → YOLO seg → vidstab → carve → score, all on the PROXY, plus the
     two facts Phase 2 needs pre-computed so it stays pure — each window's midpoint
     phash (hex, cache-serializable) and each track's descriptor. Cast crop PIXELS
-    come from the ORIGINAL (assembly.frame_rgb + crop_bbox), never the proxy:
+    come from the ORIGINAL (assembly.frames_rgb + crop_bbox), never the proxy:
     analysis is downscaled, delivery-space crops stay full-res (design 2026-08-01
     §5). Raises on a bad clip; the driver quarantines it. Calls its CV collaborators
     by module name so tests that monkeypatch them still intercept."""
@@ -300,7 +296,9 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
         spans = carve_windows(cuts, timeline, mags, info.fps, dur)
         shakes = _windowed_shake(mags, spans, info.fps, pres[0])    # divide by the PROXY width
         windows = [_build_window(sp, timeline, sh, pres) for sp, sh in zip(spans, shakes)]
-        phashes = [str(_phash_at(src, w.start + w.dur / 2)) for w in windows]
+        mids = [w.start + w.dur / 2 for w in windows]
+        phashes = [str(imagehash.phash(Image.fromarray(f)))
+                   for f in assembly.frames_rgb(src, mids, info.fps)]
         cast = _cast_from_original(path, best, res, pres, info.fps)   # crops from the ORIGINAL
     med = statistics.median([w.shake for w in windows]) if windows else 0.0
     name = Path(path).name

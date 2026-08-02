@@ -112,8 +112,8 @@ def test_process_clip_detects_shake_once_before_carving(monkeypatch):
         return [0.0] * 8
 
     monkeypatch.setattr(intake.vidstab, "detect", fake_detect)
-    monkeypatch.setattr(intake, "_phash_at",
-                        lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
+    monkeypatch.setattr(intake.assembly, "frames_rgb",
+                        lambda s, times, fps: [np.zeros((8, 8, 3), dtype="uint8") for _ in times])
     intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
     assert seen == [("/foot/a.mp4", 8.0)]     # detect once, with the clip's OWN length
 
@@ -342,10 +342,9 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
-    import imagehash
-    from PIL import Image as I
-    monkeypatch.setattr(intake, "_phash_at",
-                        lambda clip, t: imagehash.average_hash(I.new("L", (8, 8), int(t) % 256)))
+    monkeypatch.setattr(intake.assembly, "frames_rgb",
+                        lambda s, times, fps:
+                        [np.full((8, 8, 3), int(t) % 256, dtype="uint8") for t in times])
     out = tmp_path / "out"
     result = intake.intake(str(root), str(out))
     assert (out / "FOOTAGE.json").exists() and (out / "FOOTAGE.md").exists()
@@ -370,8 +369,6 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
                         (tl, {1: (0.9, 0.0, (240, 270, 100, 200), None)}))      # best = (conf, t, bbox, mask) ref
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
-    monkeypatch.setattr(intake, "_phash_at",
-                        lambda clip, t: imagehash.average_hash(_Img.new("L", (8, 8), 0)))
     res = intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
     assert res.clip.source == "a.mp4" and res.clip.windows
     assert res.clip.res == (1920, 1080)                     # ORIGINAL stored on FootageClip
@@ -403,7 +400,6 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(vidstab, "require", lambda: None)
     monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
     monkeypatch.setattr(intake, "carve_windows", lambda *a: [(0.0, 2.0)])
-    monkeypatch.setattr(intake, "_phash_at", lambda src, t: "abcd")
     orig_frame = np.full((2160, 3840, 3), 128, dtype="uint8")
     monkeypatch.setattr(assembly, "frames_rgb", lambda src, times, fps: (calls.__setitem__("crop_src", src), [orig_frame for _ in times])[1])
 
