@@ -132,11 +132,17 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v3(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v4(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960)
-    assert k["version"] == 3
+    assert k["version"] == 4
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280)
     assert k != k2                              # a scale change invalidates
+
+
+def test_cache_version_is_four_for_the_masked_cast_descriptor():
+    # masked intake descriptor (design §5a) changes the cached shape → v3 must miss
+    from scripts.lib import intake_cache
+    assert intake_cache.CACHE_VERSION == 4

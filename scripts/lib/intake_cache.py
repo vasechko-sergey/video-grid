@@ -26,9 +26,12 @@ from scripts.lib.footage import FootageClip
 # trusting a result the new code would not produce. The #3 window-band slice bumps
 # this (v1 → v2: activity-unit carving + FootageWindow.track_ids); the analysis-proxy
 # slice bumps it again (v2 → v3: analysis runs on a downscaled proxy, so a v2 result
-# — computed on full-res — must miss, design 2026-08-01). An all-or-nothing version
-# beats a per-field logic hash nobody can audit.
-CACHE_VERSION = 3
+# — computed on full-res — must miss, design 2026-08-01). The cast-mask-symmetry
+# follow-up bumps it once more (v3 → v4: the cast descriptor is masked again — the
+# proxy seg mask upsampled onto the original crop — so a v3 maskless descriptor must
+# miss, design §5a). An all-or-nothing version beats a per-field logic hash nobody
+# can audit.
+CACHE_VERSION = 4
 
 
 @dataclass

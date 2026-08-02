@@ -367,7 +367,7 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     tl = [(float(i), 1, (240, 270, 100, 200), [1]) for i in range(9)]           # proxy-space bboxes
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
-                        (tl, {1: (0.9, 0.0, (240, 270, 100, 200))}))            # best = (conf, t, bbox) ref
+                        (tl, {1: (0.9, 0.0, (240, 270, 100, 200), None)}))      # best = (conf, t, bbox, mask) ref
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
     monkeypatch.setattr(intake, "_phash_at",
@@ -398,7 +398,7 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(intake, "scene_bounds", lambda src: calls["analysed"].append(("scene", src)) or [])
     def _tl(src, fps, res, sf):
         calls["analysed"].append(("yolo", src, res))       # res must be the PROXY dims
-        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80))})
+        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80), None)})
     monkeypatch.setattr(intake, "_people_timeline", _tl)
     monkeypatch.setattr(vidstab, "require", lambda: None)
     monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
@@ -580,3 +580,28 @@ def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
     assert report == {"scanned": 1, "cached": 2,
                       "failed": [{"source": "d.mp4", "error": "boom"}]}
     assert [c.source for c in result.clips] == ["a.mp4", "b.mp4", "c.mp4"]   # sorted, d dropped
+
+
+def test_cast_from_original_removes_background_via_the_mask(monkeypatch):
+    # bbox = frame[10:30, 10:30]; red clothing fills its left, blue background its
+    # right; the mask covers only the clothing → descriptor must be the pure-red one,
+    # NOT the maskless (background-polluted) bbox histogram
+    frame = np.zeros((40, 40, 3), dtype=np.uint8)
+    frame[10:30, 10:25] = (250, 0, 0)                    # red clothing (RGB), left of bbox
+    frame[10:30, 25:30] = (0, 0, 250)                    # blue background, right of bbox
+    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: frame)
+    proxy_mask = np.zeros((10, 10), dtype=np.uint8); proxy_mask[:, :5] = 255   # left half
+    best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), proxy_mask)}   # scale 1 (res == pres)
+    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40))
+    red_only = intake.build_descriptor(np.full((20, 10, 3), (250, 0, 0), np.uint8), None)
+    assert appearance.descriptor_dist(cast[0].descriptor, red_only) < 1e-9      # background gone
+    maskless = intake.build_descriptor(frame[10:30, 10:30], None)
+    assert appearance.descriptor_dist(cast[0].descriptor, maskless) > 0.1       # and NOT the polluted one
+
+
+def test_cast_from_original_falls_back_to_maskless_when_no_mask(monkeypatch):
+    frame = np.full((40, 40, 3), (250, 0, 0), dtype=np.uint8)
+    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: frame)
+    best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), None)}         # no mask (mocked YOLO)
+    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40))
+    assert cast[0].descriptor == intake.build_descriptor(frame[10:30, 10:30], None)

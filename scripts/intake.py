@@ -19,7 +19,7 @@ from PIL import Image
 
 from scripts import check_reel                    # reuse _phash_bits / _hamming for cull
 from scripts.lib import assembly, carve, footage, intake_cache, vidstab
-from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist, seg_mask
+from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist, seg_mask, upsample_mask
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 
@@ -324,16 +324,19 @@ def _proxy_dims(res: tuple[int, int], long_side: int) -> tuple[int, int]:
 
 def _cast_from_original(path: str, best: dict, res: tuple[int, int],
                         pres: tuple[int, int]) -> list[CastEntry]:
-    """Re-crop each track's best moment from the ORIGINAL-res frame: the proxy box
-    scales up by res/pres. The maskless descriptor is accurate enough for a
-    full-body crop (design §5); a box that yields an empty crop is dropped."""
+    """Re-crop each track's best moment from the ORIGINAL-res frame (the proxy box
+    scales up by res/pres) and mask it with that track's proxy seg mask upsampled to
+    the crop, so the descriptor is background-removed like delivery's (design §5a).
+    A track with no mask (mocked YOLO) falls back to the maskless path; a box that
+    yields an empty crop is dropped."""
     scale = res[0] / pres[0]                                     # proxy→original
     out: list[CastEntry] = []
-    for tid, (conf, t, box) in best.items():
+    for tid, (conf, t, box, mask) in best.items():
         crop = crop_bbox(assembly.frame_rgb(path, t), box, scale=scale)
         if crop is not None:
+            m = upsample_mask(mask, crop.shape[:2]) if mask is not None else None
             out.append(CastEntry(source=Path(path).name, tid=tid, conf=conf,
-                                 descriptor=build_descriptor(crop, None), crop_rgb=crop))
+                                 descriptor=build_descriptor(crop, m), crop_rgb=crop))
     return out
 
 
