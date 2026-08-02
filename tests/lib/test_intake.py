@@ -362,7 +362,7 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
                         lambda s: types.SimpleNamespace(w=1920, h=1080, fps=6.0))
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
     monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: True)   # 1920 > 960 → a proxy
-    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda s, t: orig)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda s, times, fps: [orig for _ in times])
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     tl = [(float(i), 1, (240, 270, 100, 200), [1]) for i in range(9)]           # proxy-space bboxes
     monkeypatch.setattr(intake, "_people_timeline",
@@ -405,7 +405,7 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(intake, "carve_windows", lambda *a: [(0.0, 2.0)])
     monkeypatch.setattr(intake, "_phash_at", lambda src, t: "abcd")
     orig_frame = np.full((2160, 3840, 3), 128, dtype="uint8")
-    monkeypatch.setattr(assembly, "frame_rgb", lambda src, t: (calls.__setitem__("crop_src", src), orig_frame)[1])
+    monkeypatch.setattr(assembly, "frames_rgb", lambda src, times, fps: (calls.__setitem__("crop_src", src), [orig_frame for _ in times])[1])
 
     res = intake._process_clip(str(tmp_path / "DJI.MP4"))
     assert res.clip.res == (3840, 2160)                    # ORIGINAL stored
@@ -589,10 +589,10 @@ def test_cast_from_original_removes_background_via_the_mask(monkeypatch):
     frame = np.zeros((40, 40, 3), dtype=np.uint8)
     frame[10:30, 10:25] = (250, 0, 0)                    # red clothing (RGB), left of bbox
     frame[10:30, 25:30] = (0, 0, 250)                    # blue background, right of bbox
-    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: frame)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [frame for _ in times])
     proxy_mask = np.zeros((10, 10), dtype=np.uint8); proxy_mask[:, :5] = 255   # left half
     best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), proxy_mask)}   # scale 1 (res == pres)
-    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40))
+    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40), fps=30.0)
     red_only = intake.build_descriptor(np.full((20, 10, 3), (250, 0, 0), np.uint8), None)
     assert appearance.descriptor_dist(cast[0].descriptor, red_only) < 1e-9      # background gone
     maskless = intake.build_descriptor(frame[10:30, 10:30], None)
@@ -601,7 +601,20 @@ def test_cast_from_original_removes_background_via_the_mask(monkeypatch):
 
 def test_cast_from_original_falls_back_to_maskless_when_no_mask(monkeypatch):
     frame = np.full((40, 40, 3), (250, 0, 0), dtype=np.uint8)
-    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: frame)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [frame for _ in times])
     best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), None)}         # no mask (mocked YOLO)
-    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40))
+    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40), fps=30.0)
     assert cast[0].descriptor == intake.build_descriptor(frame[10:30, 10:30], None)
+
+
+def test_cast_from_original_grabs_all_tracks_in_one_call(monkeypatch, tmp_path):
+    frame = np.zeros((20, 20, 3), dtype=np.uint8)
+    calls = {"n": 0, "times": None}
+    def fake(src, times, fps):
+        calls["n"] += 1; calls["times"] = list(times)
+        return [frame for _ in times]
+    monkeypatch.setattr(intake.assembly, "frames_rgb", fake)
+    best = {1: (0.9, 1.0, (10.0, 10.0, 8.0, 8.0), None),
+            2: (0.8, 2.0, (10.0, 10.0, 8.0, 8.0), None)}
+    intake._cast_from_original("orig.mp4", best, res=(20, 20), pres=(20, 20), fps=30.0)
+    assert calls["n"] == 1 and calls["times"] == [1.0, 2.0]   # ONE decode, both times

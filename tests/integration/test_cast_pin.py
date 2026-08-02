@@ -171,9 +171,9 @@ def test_intake_and_delivery_cast_descriptors_agree_after_masking(monkeypatch):
     # intake: same person, crop from the ORIGINAL (here the same frame, RGB), proxy
     # mask via seg_mask, upsampled inside _cast_from_original
     rgb = np.asarray(r.orig_img)[..., ::-1]
-    monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: rgb)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [rgb for _ in times])
     best = {1: (0.95, 0.0, tuple(float(v) for v in box.xywh[0]), appearance.seg_mask(r, 0, box))}
-    cast = intake._cast_from_original("orig.mp4", best, res=(200, 200), pres=(200, 200))
+    cast = intake._cast_from_original("orig.mp4", best, res=(200, 200), pres=(200, 200), fps=30.0)
     intake_desc = cast[0].descriptor
     # symmetric: the two masked descriptors match well within the cast gate
     assert appearance.descriptor_dist(intake_desc, delivery) < appearance.CAST_MATCH

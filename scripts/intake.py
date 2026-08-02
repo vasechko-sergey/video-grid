@@ -301,7 +301,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
         shakes = _windowed_shake(mags, spans, info.fps, pres[0])    # divide by the PROXY width
         windows = [_build_window(sp, timeline, sh, pres) for sp, sh in zip(spans, shakes)]
         phashes = [str(_phash_at(src, w.start + w.dur / 2)) for w in windows]
-        cast = _cast_from_original(path, best, res, pres)          # crops from the ORIGINAL
+        cast = _cast_from_original(path, best, res, pres, info.fps)   # crops from the ORIGINAL
     med = statistics.median([w.shake for w in windows]) if windows else 0.0
     name = Path(path).name
     clip = footage.FootageClip(source=name, dur=dur, res=res, fps=info.fps,
@@ -323,16 +323,20 @@ def _proxy_dims(res: tuple[int, int], long_side: int) -> tuple[int, int]:
 
 
 def _cast_from_original(path: str, best: dict, res: tuple[int, int],
-                        pres: tuple[int, int]) -> list[CastEntry]:
+                        pres: tuple[int, int], fps: float) -> list[CastEntry]:
     """Re-crop each track's best moment from the ORIGINAL-res frame (the proxy box
     scales up by res/pres) and mask it with that track's proxy seg mask upsampled to
     the crop, so the descriptor is background-removed like delivery's (design §5a).
-    A track with no mask (mocked YOLO) falls back to the maskless path; a box that
-    yields an empty crop is dropped."""
+    All best-frames are grabbed in ONE decode (assembly.frames_rgb; design
+    2026-08-02) rather than one output-seek per track. A track with no mask (mocked
+    YOLO) falls back to the maskless path; a box that yields an empty crop is
+    dropped."""
     scale = res[0] / pres[0]                                     # proxy→original
+    items = list(best.items())
+    frames = assembly.frames_rgb(path, [t for _, (_, t, _, _) in items], fps)
     out: list[CastEntry] = []
-    for tid, (conf, t, box, mask) in best.items():
-        crop = crop_bbox(assembly.frame_rgb(path, t), box, scale=scale)
+    for (tid, (conf, t, box, mask)), frame in zip(items, frames):
+        crop = crop_bbox(frame, box, scale=scale)
         if crop is not None:
             m = upsample_mask(mask, crop.shape[:2]) if mask is not None else None
             out.append(CastEntry(source=Path(path).name, tid=tid, conf=conf,
