@@ -12,6 +12,17 @@ _Last updated: 2026-08-02._
 
 ## Done
 
+- **Intake flush-per-clip + `--jobs` default 2 DONE (2026-08-02)** — surfaced by
+  the first real full-folder scan (branch `feat/intake-flush-per-clip`). `intake()`
+  submitted all clips then stored nothing until the whole pool drained, so every
+  clip's `crop_rgb` arrays piled in RAM at once (swaps a big 4K folder) and no
+  artifact appeared until the end ("5 min, not one clip"). Now `as_completed` +
+  `store()` **inside** the pool, and `futs.pop(fut)` drops each completed future so
+  its cached `.result()` stops pinning the worker's crop arrays — live crops bounded
+  to ~`jobs` clips, per-clip progress (`✓`), per-clip crash-resume. `DEFAULT_JOBS`
+  3→2 (a laptop thermally throttles at 3 full-clip passes; `--jobs` raises it).
+  Clean per-clip cost measured ~155s (YOLO 72s floor + cast 59s + proxy 11 +
+  vidstab 9); no thread regression (worker≈main). `edl_to_reel` jobs untouched.
 - **Intake frame-grab batch (one decode per chunk for cast crops + window
   phashes) DONE (2026-08-02)** — plan
   `docs/plans/2026-08-02-intake-frame-grab-batch.md` + design

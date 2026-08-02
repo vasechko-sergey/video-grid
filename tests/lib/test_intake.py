@@ -614,3 +614,39 @@ def test_cast_from_original_grabs_all_tracks_in_one_call(monkeypatch, tmp_path):
             2: (0.8, 2.0, (10.0, 10.0, 8.0, 8.0), None)}
     intake._cast_from_original("orig.mp4", best, res=(20, 20), pres=(20, 20), fps=30.0)
     assert calls["n"] == 1 and calls["times"] == [1.0, 2.0]   # ONE decode, both times
+
+
+def test_intake_flushes_each_clip_as_its_worker_finishes(monkeypatch, tmp_path, capsys):
+    """store() runs as each future completes (inside the pool) — freeing that clip's
+    crop arrays and writing its cache immediately — not batched after every worker
+    drains. Proven by holding clip b's worker until clip a is stored: under a
+    store-after-the-pool shape, store(a) can only run once every worker (incl. b) has
+    finished, so a_stored never sets while b waits and b's guard trips."""
+    from scripts.lib import intake_cache
+    from scripts.lib.footage import FootageClip
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    root = tmp_path / "f"; root.mkdir()
+    (root / "a.mp4").write_bytes(b"x"); (root / "b.mp4").write_bytes(b"x")
+    a_stored = threading.Event()
+
+    def fake_process(path, sample_fps=intake.SAMPLE_FPS):
+        if str(path).endswith("b.mp4"):
+            assert a_stored.wait(timeout=10), \
+                "store(a) never ran while b was in flight — intake is not flushing per clip"
+        return intake_cache.ClipResult(
+            clip=FootageClip(source=str(path).split("/")[-1], dur=1.0, res=(1920, 1080), fps=30.0))
+
+    real_store = intake_cache.store
+    def spy_store(out_dir, path, *a, **k):
+        r = real_store(out_dir, path, *a, **k)
+        if str(path).endswith("a.mp4"):
+            a_stored.set()
+        return r
+
+    monkeypatch.setattr(intake, "_process_clip", fake_process)
+    monkeypatch.setattr(intake.intake_cache, "store", spy_store)
+    intake.intake(str(root), str(tmp_path / "out"), jobs=2)
+
+    assert (tmp_path / "out" / ".intake_cache" / "a.mp4" / "clip.json").exists()
+    assert (tmp_path / "out" / ".intake_cache" / "b.mp4" / "clip.json").exists()
+    assert "✓ a.mp4" in capsys.readouterr().err        # per-clip progress line

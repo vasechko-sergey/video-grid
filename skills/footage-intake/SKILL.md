@@ -53,8 +53,9 @@ are later stages.
    window, not a forced split.
 
    Two flags tune that same command: `--jobs N` controls how many clips are
-   scanned in parallel (default 3 — lower it on a memory-constrained box,
-   raise only with a GPU), and `--fresh` ignores the per-clip `.intake_cache`
+   scanned in parallel (default 2 — a laptop thermally throttles at 3 full-clip
+   passes; raise it on a cooled/desktop box, lower it on tight memory), and
+   `--fresh` ignores the per-clip `.intake_cache`
    and rescans every clip (a plain re-run instead resumes: cached clips are
    skipped, only new/changed/failed ones re-scan). A bad/corrupt clip is
    quarantined rather than killing the scan — it is named in

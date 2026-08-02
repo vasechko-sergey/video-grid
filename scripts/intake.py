@@ -10,7 +10,7 @@ import argparse, json, statistics, tempfile
 import shutil
 import sys
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import hypot
 from pathlib import Path
 
@@ -39,8 +39,10 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
-DEFAULT_JOBS = 3          # cap-3's measured knee (design 2026-07-18 §2); see design §7 —
-                          # not re-measured for full-clip passes; --jobs tunes on tight memory
+DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
+                          # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
+                          # sustainable default. --jobs raises it on a cooled/desktop box or
+                          # lowers it on tight memory (cap-3's knee was design 2026-07-18 §2).
 
 
 def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, int]) -> str:
@@ -362,15 +364,28 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
         else:
             misses.append(p)
     print(f"intake: {len(results)} cached, {len(misses)} to scan", file=sys.stderr)
-    with ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = {p: ex.submit(_process_clip, str(p), sample_fps) for p in misses}
     failed: list[dict[str, str]] = []
-    for p in misses:
-        try:
-            results[p] = intake_cache.store(str(out), str(p), sample_fps, futs[p].result(), MODEL, PROXY_LONG_SIDE)
-        except Exception as e:                         # quarantine (§5): name it, keep going
-            failed.append({"source": p.name, "error": str(e)})
-            print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
+    # Store each clip AS its worker finishes (as_completed), not after the whole pool
+    # drains: store() returns the crop_rgb-free cached form AND futs.pop drops the
+    # completed future — whose cached .result() would otherwise pin the worker's
+    # crop_rgb-bearing ClipResult for the rest of the scan — so live crop arrays never
+    # pile past ~jobs clips (a full-batch pile swaps a big 4K folder). The pop is
+    # load-bearing, not tidiness: without it store()'s freeing is undone by fut._result.
+    # Progress is visible and a crash resumes per clip. results fills in completion
+    # order; `ok` below re-sorts by `paths`, so output stays byte-identical to any
+    # jobs/cache mix (the design invariant). as_completed iterates its own copy, so
+    # mutating futs here is safe.
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        futs = {ex.submit(_process_clip, str(p), sample_fps): p for p in misses}
+        for fut in as_completed(futs):
+            p = futs.pop(fut)                          # free the future so its result can GC
+            try:
+                results[p] = intake_cache.store(str(out), str(p), sample_fps,
+                                                fut.result(), MODEL, PROXY_LONG_SIDE)
+                print(f"intake: ✓ {p.name}", file=sys.stderr)
+            except Exception as e:                     # quarantine (§5): name it, keep going
+                failed.append({"source": p.name, "error": str(e)})
+                print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
     ok = [results[p] for p in paths if p in results]
     result = footage.Footage(clips=[r.clip for r in ok])
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
