@@ -285,11 +285,13 @@ def _track_crops(res: object, boxes: list[object],
                  crops: dict[int, tuple[float, list[float]]]) -> None:
     """Accumulate the highest-confidence crop DESCRIPTOR per track id, in place.
 
-    Mirrors intake._people_timeline: one crop_and_mask per confidence improvement
-    (≈ once per track), never once per frame. crop_and_mask carries the two
-    landmines — ultralytics' orig_img is BGR, and the mask is in model space and
-    must be resized to source dims — and returns (None, None) for a mocked result
-    with no pixels, which is how every track test drives this.
+    Mirrors intake._people_timeline, which now captures the mask alone (seg_mask,
+    once per confidence improvement) and crops pixels from the original later; here
+    the crop and mask come together via crop_and_mask, since delivery already has the
+    source frame. crop_and_mask carries the two landmines — ultralytics' orig_img is
+    BGR, and the mask is in model space and must be resized to source dims — and
+    returns (None, None) for a mocked result with no pixels, which is how every track
+    test drives this.
     """
     for j, b in enumerate(boxes):
         if getattr(b, "id", None) is None:

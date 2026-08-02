@@ -12,6 +12,11 @@ _Last updated: 2026-08-01._
 
 ## Done
 
+- **Cast-descriptor mask symmetry (analysis-proxy follow-up) DONE
+  (2026-08-01)** — cast-descriptor mask symmetry restored: intake masks again
+  via the proxy seg mask upsampled onto the original crop, keeping intake and
+  delivery descriptors on the same footing (design §5a). `CACHE_VERSION` 3 → 4.
+
 - **Intake analysis proxy (all CV analysis on one decode-once proxy) DONE
   (2026-08-01)** — plan `docs/plans/2026-08-01-intake-analysis-proxy.md` +
   design `docs/specs/2026-08-01-intake-analysis-proxy-design.md`, Tasks 0–7
