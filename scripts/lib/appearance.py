@@ -120,8 +120,9 @@ def upsample_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
 def crop_bbox(frame_rgb: np.ndarray, box_xywh: tuple[float, float, float, float],
               scale: float = 1.0) -> np.ndarray | None:
     """Crop `frame_rgb` (HxWx3 RGB) to the xywh `box` scaled by `scale`
-    (proxy→original). No mask: the maskless descriptor path is accurate enough for
-    a full-body crop (design §5). Returns None on an empty crop."""
+    (proxy→original). A pure cropper — it carries no mask; the caller masks the crop
+    with the track's seg mask upsampled to it (design §5a). Returns None on an empty
+    crop."""
     x, y, w, h = (v * scale for v in box_xywh)
     l, t, r_, b_ = int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)
     l, t = max(0, l), max(0, t)
