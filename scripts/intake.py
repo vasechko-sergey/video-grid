@@ -325,10 +325,10 @@ def _cast_from_original(path: str, best: dict, res: tuple[int, int],
     """Re-crop each track's best moment from the ORIGINAL-res frame (the proxy box
     scales up by res/pres) and mask it with that track's proxy seg mask upsampled to
     the crop, so the descriptor is background-removed like delivery's (design §5a).
-    All best-frames are grabbed in ONE decode (assembly.frames_rgb; design
-    2026-08-02) rather than one output-seek per track. A track with no mask (mocked
-    YOLO) falls back to the maskless path; a box that yields an empty crop is
-    dropped."""
+    All best-frames are grabbed via assembly.frames_rgb (design 2026-08-02) — one
+    decode per chunk of ≤60 frames (one decode for the common case) — rather than
+    one output-seek per track. A track with no mask (mocked YOLO) falls back to the
+    maskless path; a box that yields an empty crop is dropped."""
     scale = res[0] / pres[0]                                     # proxy→original
     items = list(best.items())
     frames = assembly.frames_rgb(path, [t for _, (_, t, _, _) in items], fps)

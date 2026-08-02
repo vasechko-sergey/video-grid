@@ -4,13 +4,57 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-01._
+_Last updated: 2026-08-02._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Intake frame-grab batch (one decode per chunk for cast crops + window
+  phashes) DONE (2026-08-02)** — plan
+  `docs/plans/2026-08-02-intake-frame-grab-batch.md` + design
+  `docs/specs/2026-08-02-intake-frame-grab-batch-design.md`, Tasks 0–4 (branch
+  `feat/intake-frame-grab-batch`, commits `23a87c7`..`c229ca7` + this docs
+  sync). The analysis-proxy slice (2026-08-01) killed the `vidstabdetect`
+  wall; profiling the finished pipeline on real 4K footage then found the
+  **frame GRABS**, not the transcode, dominate — one of them pathologically:
+  `_cast_from_original` issued one output-seek 4K decode per track (cost
+  **linear in the timestamp**) and blew past a 10-minute timeout; phash added
+  another 15s on top. New `assembly.frames_rgb(src, times, fps)` selects every
+  requested frame via one `select`-filter decode per **chunk of ≤60 frame
+  numbers** (`_SELECT_CHUNK`) — a single `select` expression above ~100 terms
+  **ENOMEMs a 4K decode** (measured 81 ok / 106 fail), so chunking at 60 keeps
+  margin; the common small-N case (every per-window phash batch, most
+  per-clip cast batches) still costs exactly one decode, while N>60 unique
+  frames costs `ceil(N/60)` decodes — bounded, never one-per-frame, but not a
+  flat O(1) either. Both `_cast_from_original` (cast crops from the ORIGINAL)
+  and intake's per-window phash (from the proxy) now route through it;
+  `frame_rgb` becomes a thin `frames_rgb(src, [t], fps)[0]` wrapper,
+  `_phash_at` is deleted, and `check_reel`/`storyboard` stay untouched — reels
+  are short enough that output-seek's frame-accuracy at cut boundaries is
+  still the right tradeoff (design §6). Batch uses `select`, never `-ss`, so
+  the §12 seek landmine does not apply (the repo's own lint already exempts a
+  `-frames:v` still grab). Batch selects frame `round(t·fps)` vs
+  output-seek's first-frame-at-`pts≥t` — these differ by ≤1 frame, so
+  `CACHE_VERSION` 4 → 5 (every existing `.intake_cache` entry misses and
+  recomputes) and the real-ffmpeg intake golden is re-pinned to the
+  batch-measured values (mocked unit goldens monkeypatch the grab, so they do
+  not move). **Measured before/after** (real DJI 4K/60 HEVC clip, 3840×2160,
+  35.5 s, 123 tracks, `_process_clip`, `jobs=1`, M4 Pro): phash **15.3 s →
+  1.14 s**; `_cast_from_original` **>480 s (hung, unbounded) → 57.4 s** (123
+  tracks chunk into `ceil(123/60) = 3` decodes); per-clip total **>600 s
+  (timed out) → 149.8 s**, now **YOLO-bound** (`_people_timeline` ~70.7 s of
+  that — the compute floor, untouched by this slice). **A load-bearing bug
+  surfaced by this exact measurement mid-slice:** the first cut's unchunked
+  `select` (every unique frame number in one expression) ENOMEMed on the real
+  123-track clip — unit tests never caught it, since their clips are tiny;
+  fixed by the chunking above (commit `c229ca7`) before this docs sync
+  landed. **2078 passed / 2 skipped**, no golden moved beyond the already
+  re-pinned intake values. **Deferred (NOT built):** the YOLO floor
+  (`_people_timeline`, ~71 s) and `make_proxy` VideoToolbox transcode —
+  both named, neither touched, this slice is the frame-grab tail only.
 
 - **Cast-descriptor mask symmetry (analysis-proxy follow-up) DONE
   (2026-08-01)** — cast-descriptor mask symmetry restored: intake masks again

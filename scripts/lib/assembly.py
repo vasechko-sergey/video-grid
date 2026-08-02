@@ -166,19 +166,23 @@ def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
 
 _SELECT_CHUNK = 60   # max eq(n,N) terms per select pass. A single select expression
                      # ENOMEMs on a 4K decode above ~100 terms (measured: 81 ok, 106
-                     # fails); 60 keeps margin for wider (5-digit) frame numbers. More
-                     # frames than this → ceil(N/chunk) decodes, still O(1) in practice.
+                     # fails); 60 keeps margin for wider (5-digit) frame numbers. Cost
+                     # is one decode per chunk of <= _SELECT_CHUNK frames — ceil(N/chunk)
+                     # decodes for N unique frames (one decode for the common small-N
+                     # case; not O(1) for every N — a >60-unique-frame request costs
+                     # more than one decode, by design).
 
 
 def frames_rgb(src: str, times: list[float], fps: float) -> list[np.ndarray]:
     """Every frame at `times` (seconds) as HxWx3 uint8 RGB arrays at `src`'s own
     resolution, decoding the clip once per chunk of up to _SELECT_CHUNK frames (one
-    decode for the common small-N case). Frame number is round(t*fps); a select
-    filter picks those exact frames, so this is the O(1)-decode replacement for
-    per-grab output seeks (design 2026-08-02 §4). Returns a list aligned to `times`:
-    same order and length, duplicate times share one decoded frame. Empty `times` →
-    [] with no ffmpeg call. Uses select, never -ss, so the §12 seek landmine cannot
-    apply."""
+    decode for the common small-N case, ceil(N/_SELECT_CHUNK) decodes for larger N —
+    see _SELECT_CHUNK above). Frame number is round(t*fps); a select filter picks
+    those exact frames per chunk, so this is the batched-decode replacement for
+    per-grab output seeks (design 2026-08-02 §4/§8). Returns a list aligned to
+    `times`: same order and length, duplicate times share one decoded frame. Empty
+    `times` → [] with no ffmpeg call. Uses select, never -ss, so the §12 seek
+    landmine cannot apply."""
     if not times:
         return []
     nums = [round(t * fps) for t in times]

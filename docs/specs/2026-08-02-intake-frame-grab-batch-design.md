@@ -74,6 +74,18 @@ Three approaches were on the table:
 3. **Zero seek surface.** Batch uses `select`, no `-ss` at all, so the §12 seek
    landmine simply does not apply to the new path.
 
+### 2.1 Follow-up (2026-08-02): the select itself is chunked, not one shot
+
+"O(1) decodes" above is true **per consumer, relative to track/window count** — the
+point that matters for the decision — but it is not literally one decode for any N.
+The shipped `frames_rgb` found a second ceiling: a single `select='eq(n,N1)+eq(n,N2)+
+...'` expression **ENOMEMs a 4K decode** above ~100 terms (measured 81 ok / 106
+fail). So the primitive chunks the unique frame numbers into groups of
+`_SELECT_CHUNK = 60` and issues one decode per chunk — `ceil(N/60)` decodes for N
+unique frames. The common case (window phashes, most per-clip cast batches) still
+costs exactly one decode; only a track/window count past 60 costs more than one,
+and even then it is `ceil(N/60)`, never one decode per frame. See §4 and §8.
+
 ## 3. The seek landmine is already satisfied (why this is allowed)
 
 The §12 landmine is `-ss` **before** `-i` on a **re-encoded cut** — it puts black
@@ -115,6 +127,11 @@ owns single-frame extraction and the proxy. Pure ffmpeg + Pillow + numpy, no cv2
 single-frame API and its test survive and there is one decode path. (Its current
 signature `frame_rgb(src, t)` probes fps internally to stay source-compatible; the
 wrapper keeps that.) The plan settles whether any caller still needs it.
+
+**Follow-up 2026-08-02 (§2.1):** the shipped decode step chunks the unique frame
+numbers at `_SELECT_CHUNK = 60` per `select` expression — one decode per chunk, not
+one unbounded `select` for every N — because a single expression above ~100 terms
+ENOMEMs a 4K decode (measured 81 ok / 106 fail).
 
 ## 5. Consumers
 
@@ -158,6 +175,12 @@ phashes shift infinitesimally. A color histogram / perceptual hash is unaffected
 
 ## 8. Honest limits
 
+- **The select is chunked, not one shot (§2.1).** A single `select` expression
+  ENOMEMs a 4K decode above ~100 terms (measured 81 ok / 106 fail), so
+  `frames_rgb` caps each expression at `_SELECT_CHUNK = 60` terms — `ceil(N/60)`
+  decodes for N unique frames, one decode only for the common N≤60 case. "O(1)
+  decodes" in §2 means per-consumer-relative-to-track-count, not literally one
+  decode for every N.
 - The ≤ 1-frame shift above is real, accepted, and the reason for the cache bump.
 - This does not touch the run's floor: after the fix the clip is **YOLO-bound**
   (~79 s). Rough projection with cast+phash batched: > 600 s → **~110 s/clip**.
