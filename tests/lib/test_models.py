@@ -1437,3 +1437,14 @@ def test_reel_manifest_carries_a_provenance_dict():
     assert rm.provenance == {}
     rm.provenance = {"edl": {"state": "intact"}}
     assert rm.provenance["edl"]["state"] == "intact"
+
+
+def test_reel_manifest_from_dict_reads_a_provenance_key():
+    # test_reel_manifest_carries_a_provenance_dict (above) only exercises the dataclass
+    # default and a raw attribute assignment — it never puts a "provenance" key in the
+    # input dict, so it cannot catch a regression in ReelManifest.from_dict's own
+    # `provenance=d.get("provenance") or {}` wiring (review finding, fix round 1). This
+    # does, using _reel_dict's existing override mechanism (same pattern
+    # test_reel_manifest_platform_default_and_set uses for `platform`).
+    rm = m.ReelManifest.from_dict(_reel_dict(provenance={"a": 1}))
+    assert rm.provenance == {"a": 1}
