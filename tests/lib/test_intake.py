@@ -666,3 +666,29 @@ def test_intake_without_reid_warns_and_skips_cast(monkeypatch, tmp_path, capsys)
     intake.intake(str(src), str(tmp_path / "out"), jobs=1)
     assert seen["embed_cast"] is False
     assert "torchreid" in capsys.readouterr().err
+
+
+def test_intake_threads_the_real_reid_model_into_the_cache_key(monkeypatch, tmp_path):
+    # The companion to the reID-absent test above: when torchreid IS available, intake
+    # must thread the REAL reid.MODEL ("osnet_x1_0") into the cache key on BOTH load and
+    # store — a scan run WITH reID must not share a key with one run without it (that
+    # absent case keys on reid_model=""). The sibling tests cover embed_cast and the ""
+    # branch; none pins that the value threaded through IS the public model name.
+    from scripts.lib import reid
+    monkeypatch.setattr(reid, "available", lambda: True)
+    monkeypatch.setattr(reid, "ensure_model", lambda: None)             # no real OSNet build/download
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)   # no real YOLO
+    seen = {"load": [], "store": []}
+    def spy_load(out, p, sf, model, proxy, *, reid_model):
+        seen["load"].append(reid_model); return None                   # force a miss -> the pool runs
+    def spy_store(out, p, sf, r, model, proxy, *, reid_model):
+        seen["store"].append(reid_model); return r
+    monkeypatch.setattr(intake.intake_cache, "load", spy_load)
+    monkeypatch.setattr(intake.intake_cache, "store", spy_store)
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
+    root = _two_clip_root(tmp_path)
+    intake.intake(str(root), str(tmp_path / "out"))
+    assert reid.MODEL == "osnet_x1_0"                                   # the value the key carries
+    assert seen["load"] == [reid.MODEL, reid.MODEL]                     # real model on every load probe
+    assert seen["store"] == [reid.MODEL, reid.MODEL]                    # ...and every store
