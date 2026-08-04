@@ -36,6 +36,7 @@ def require() -> None:
 
 
 def _device() -> str:
+    # lazy import: heavy optional dep (torch)
     import torch
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
@@ -43,6 +44,7 @@ def _device() -> str:
 def _get_extractor():
     global _extractor
     if _extractor is None:
+        # lazy import: heavy optional dep (torchreid)
         from torchreid.utils import FeatureExtractor
         _extractor = FeatureExtractor(model_name=_MODEL, device=_device())
     return _extractor
