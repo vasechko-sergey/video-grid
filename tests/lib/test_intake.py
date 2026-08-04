@@ -437,7 +437,7 @@ def test_ensure_model_runs_before_any_worker(monkeypatch, tmp_path):
     seen = []
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: seen.append("ensure"))
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
                         (seen.append("pe"), _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(tmp_path / "out"), jobs=2)
     assert seen[0] == "ensure" and seen.count("ensure") == 1 and "pe" in seen
@@ -453,7 +453,7 @@ def test_pool_reaches_the_cap_and_never_exceeds_it(monkeypatch, tmp_path):
     lock = threading.Lock()
     barrier = threading.Barrier(jobs, timeout=10)
 
-    def fake_pe(path, sf=intake.SAMPLE_FPS):
+    def fake_pe(path, sf=intake.SAMPLE_FPS, embed_cast=True):
         with lock:
             live["n"] += 1; live["peak"] = max(live["peak"], live["n"])
         barrier.wait()                       # forces `jobs` workers to co-exist; times out if serial
@@ -470,7 +470,7 @@ def test_output_is_byte_identical_across_jobs(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path)
     _stub_cache(monkeypatch)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS: _fake_result(intake.Path(path).name))
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
     intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
     intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
     assert (tmp_path / "o1" / "FOOTAGE.json").read_text() == (tmp_path / "o3" / "FOOTAGE.json").read_text()
@@ -481,7 +481,7 @@ def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     submitted = []
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
                         (submitted.append(intake.Path(path).name),
                          _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(out))                 # first run: both are misses
@@ -501,7 +501,7 @@ def test_fresh_bypasses_the_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     submitted = []
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
                         (submitted.append(intake.Path(path).name),
                          _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(out))
@@ -514,7 +514,7 @@ def test_output_is_byte_identical_scanned_vs_cached(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS: _fake_result(intake.Path(path).name))
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
     intake.intake(str(root), str(out))
     a = (out / "FOOTAGE.json").read_text()
     intake.intake(str(root), str(out))                 # all cache hits
@@ -526,7 +526,7 @@ def test_a_bad_clip_is_quarantined_not_fatal(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     _stub_cache(monkeypatch)
 
-    def flaky(path, sf=intake.SAMPLE_FPS):
+    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True):
         name = intake.Path(path).name
         if name == "b.mp4":
             raise RuntimeError("corrupt moov atom")
@@ -554,7 +554,7 @@ def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
                         if intake.Path(p).name in hits else None)
     monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
 
-    def flaky(path, sf=intake.SAMPLE_FPS):
+    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True):
         name = intake.Path(path).name
         if name == "d.mp4":
             raise RuntimeError("boom")
@@ -623,7 +623,7 @@ def test_intake_flushes_each_clip_as_its_worker_finishes(monkeypatch, tmp_path, 
     (root / "a.mp4").write_bytes(b"x"); (root / "b.mp4").write_bytes(b"x")
     a_stored = threading.Event()
 
-    def fake_process(path, sample_fps=intake.SAMPLE_FPS):
+    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True):
         if str(path).endswith("b.mp4"):
             assert a_stored.wait(timeout=10), \
                 "store(a) never ran while b was in flight — intake is not flushing per clip"
@@ -644,3 +644,24 @@ def test_intake_flushes_each_clip_as_its_worker_finishes(monkeypatch, tmp_path, 
     assert (tmp_path / "out" / ".intake_cache" / "a.mp4" / "clip.json").exists()
     assert (tmp_path / "out" / ".intake_cache" / "b.mp4" / "clip.json").exists()
     assert "✓ a.mp4" in capsys.readouterr().err        # per-clip progress line
+
+
+def test_intake_without_reid_warns_and_skips_cast(monkeypatch, tmp_path, capsys):
+    # The producer half of the §6 split: reID absent must NOT block the scan — windows
+    # and scoring still run, the cast embed is skipped (_process_clip gets embed_cast=
+    # False), and ONE stderr warning names the remedy. No clip is quarantined for it.
+    from scripts.lib import reid
+    monkeypatch.setattr(reid, "available", lambda: False)
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)   # no real YOLO (mirrors sibling tests)
+    seen = {}
+    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True):
+        seen["embed_cast"] = embed_cast
+        from scripts.lib.footage import FootageClip
+        from scripts.lib.intake_cache import ClipResult
+        return ClipResult(clip=FootageClip(source="a.mp4", dur=2.0, res=(64, 64), fps=30.0),
+                          phashes=[], cast=[])
+    monkeypatch.setattr(intake, "_process_clip", fake_process)
+    src = tmp_path / "src"; src.mkdir(); (src / "a.mp4").write_bytes(b"x")
+    intake.intake(str(src), str(tmp_path / "out"), jobs=1)
+    assert seen["embed_cast"] is False
+    assert "torchreid" in capsys.readouterr().err

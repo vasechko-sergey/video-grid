@@ -202,6 +202,15 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
   echo "installing demucs (vocal separation for phrase-aware music points; pulls torch)..."
   "$VENV/bin/pip" install demucs \
     || echo "WARNING: demucs install failed (no torch wheel for this platform?) -> music in/out-point falls back to the librosa mix-silence proxy (coarser). Re-run 'bash setup.sh' to retry."; }
+# torchreid: person re-ID embeddings for cast identity (§6.1 / backlog #1). Baseline
+# install, WARN-AND-CONTINUE like demucs: pulls torch, can lack a wheel on some
+# platforms. Kept OUT of requirements.txt so a failed wheel degrades HERE (cast
+# surfacing unavailable; windows/scoring still run) instead of aborting the venv.
+# OSNet weights download on the first reid.ensure_model() (like YOLO on first track).
+"$VENV/bin/pip" show torchreid >/dev/null 2>&1 || {
+  echo "installing torchreid (person re-ID for cast identity; pulls torch)..."
+  "$VENV/bin/pip" install torchreid \
+    || echo "WARNING: torchreid install failed (no torch wheel for this platform?) -> cast identity is unavailable; intake still produces windows & scoring. Re-run 'bash setup.sh' to retry."; }
 # music sourcing (§5.5 B3): yt-dlp (the `any` lane) now ships in requirements.txt, so
 # there is nothing to install here. The `any`-lane legal/responsibility gate is
 # UNTOUCHED — it lives in the sourcing code at USE time, not at install time; having the

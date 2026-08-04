@@ -369,8 +369,12 @@ def test_cast_pin_threaded_to_track(monkeypatch, tmp_path):
     # a cast-name hero, backed by a real cast.json on disk, must reach the
     # TrackSpec as a resolved "cast" HeroPin carrying the registered descriptor —
     # proves the shell loads the registry AND hands the SAME object to both
-    # validate() and the tracking step (not two independent loads that could drift)
+    # validate() and the tracking step (not two independent loads that could drift).
+    # A cast (identity) pin now legitimately REQUIRES reID (design 2026-08-04 §6), so
+    # this "cast pin threads and passes" path presumes reID present — stub it, since
+    # the repo env ships no torchreid (the absent case is its own test below).
     calls = _stub_engine(monkeypatch, tmp_path)
+    monkeypatch.setattr(pe.reid, "available", lambda: True)
     cast_path = tmp_path / "cast.json"
     cast_path.write_text(json.dumps(Cast(members=[
         CastMember(name="Lena", descriptor=_desc(0.5, 0.5))]).to_dict()))
@@ -379,6 +383,28 @@ def test_cast_pin_threaded_to_track(monkeypatch, tmp_path):
     assert result["status"] == "mechanical_pass"
     assert calls["track_pin"] == models.HeroPin(kind="cast", name="Lena",
                                                 descriptor=tuple(_desc(0.5, 0.5)))
+
+
+def test_cast_pin_without_reid_stops_with_reid_unavailable(monkeypatch, tmp_path):
+    # The consumer half of the §6 split: a cast (identity) pin needs torchreid re-ID.
+    # When the tracker itself IS present but reID is not, the episode STOPS with the
+    # honest reid-unavailable remedy — never a misleading no-track (§12), never the
+    # identity-blind optical-flow rung. build_route is stubbed to blow up so the test
+    # proves the gate short-circuits BEFORE any tracking is attempted.
+    _stub_engine(monkeypatch, tmp_path)
+    monkeypatch.setattr(pe.track, "_ultra_available", lambda: True)   # tracker present
+    monkeypatch.setattr(pe.reid, "available", lambda: False)          # reID absent
+    def boom(*a, **k):
+        raise AssertionError("build_route must not run for a cast pin when reID is absent")
+    monkeypatch.setattr(pe.track, "build_route", boom)
+    cast_path = tmp_path / "cast.json"
+    cast_path.write_text(json.dumps(Cast(members=[
+        CastMember(name="Lena", descriptor=_desc(0.5, 0.5))]).to_dict()))
+    result = pe.process_episode(
+        _manifest(tmp_path, hero="Lena", cast=str(cast_path)), project_dir=str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert [f["reason"] for f in result["findings"]] == ["reid-unavailable"]
+    assert "setup.sh" in result["findings"][0]["detail"]
 
 
 def test_unreadable_cast_path_returns_needs_input(monkeypatch, tmp_path):

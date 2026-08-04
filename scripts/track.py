@@ -61,16 +61,32 @@ def ensure_model(model_path: str = MODEL) -> None:
     YOLO(model_path)
 
 
-def available() -> bool:
-    """True iff the primary tracker's heavy deps import. The rung-1 gate in
-    process_episode: an absent ultralytics/torch falls to the degradation ladder
-    (design 2026-07-21 §2.1) instead of raising a traceback inside build_route on
-    attempt 1. Mirrors flow.available()."""
+def _ultra_available() -> bool:
+    """True iff the primary tracker's heavy deps import. Isolated from available()
+    so process_episode and the tests can probe the BARE tracker independently of the
+    reID term available() layers on top for a descriptor pin."""
     try:
         import ultralytics  # noqa: F401  — lazy: the whole point is to not require it
         return True
     except ImportError:
         return False
+
+
+def available(descriptor: bool = False) -> bool:
+    """True iff the primary tracker's heavy deps import. The rung-1 gate in
+    process_episode: an absent ultralytics/torch falls to the degradation ladder
+    (design 2026-07-21 §2.1) instead of raising a traceback inside build_route on
+    attempt 1. Mirrors flow.available().
+
+    `descriptor=True` (a resolved cast/identity pin) ALSO requires reID: a descriptor
+    pin cannot degrade to the ladder's identity-blind optical flow — guessing an
+    identity from a motion blob is exactly the failure the hero-pin slice deleted
+    (design 2026-08-04 §6). process_episode passes descriptor= whether the resolved
+    pin is a cast pin; every other pin kind (and the unpinned path) passes False and
+    sees the unchanged ultralytics-only gate."""
+    if not _ultra_available():
+        return False
+    return reid.available() if descriptor else True
 
 
 _Det = tuple[int, float, float, float, float]

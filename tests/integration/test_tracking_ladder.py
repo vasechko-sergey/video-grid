@@ -39,7 +39,7 @@ def test_empty_yolo_route_falls_to_optical_flow(sample_clip, tmp_path):
 
 def test_manual_keyframes_rung_when_both_auto_rungs_are_down(sample_clip, tmp_path, monkeypatch):
     # force rungs 1 and 2 unavailable; a supplied keyframes.json drives rung 3
-    monkeypatch.setattr(track, "available", lambda: False)
+    monkeypatch.setattr(track, "available", lambda descriptor=False: False)
     monkeypatch.setattr(flow, "available", lambda: False)
     kf = tmp_path / "keyframes.json"
     kf.write_text(json.dumps([{"t": 0.0, "x": 300, "y": 540, "w": 200, "h": 400},
@@ -51,7 +51,7 @@ def test_manual_keyframes_rung_when_both_auto_rungs_are_down(sample_clip, tmp_pa
 
 
 def test_no_route_and_no_keyframes_stops_for_the_human(sample_clip, tmp_path, monkeypatch):
-    monkeypatch.setattr(track, "available", lambda: False)
+    monkeypatch.setattr(track, "available", lambda descriptor=False: False)
     monkeypatch.setattr(flow, "available", lambda: False)
     res = process_episode.process_episode(_manifest(sample_clip, tmp_path), tmp_path / "ep")
     assert res["status"] == "stop_and_report"

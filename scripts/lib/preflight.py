@@ -31,6 +31,7 @@ CHECKS: tuple[Check, ...] = (
     Check("font", "a drawtext font resolves", True, "bash setup.sh"),
     Check("weights", "YOLO segmentation weights present", True, "bash setup.sh"),
     Check("demucs", "demucs (sharper music in-point)", False, "bash setup.sh"),
+    Check("reid", "torchreid person-re-ID (cast identity)", False, "bash setup.sh"),
 )
 
 

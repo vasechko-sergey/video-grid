@@ -314,7 +314,7 @@ def _motion(samples: list, res: tuple[int, int]) -> float:
     return float(min(1.0, (sum(disps) / len(disps)) * MOTION_GAIN))
 
 
-def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
+def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True) -> ClipResult:
     """One clip's CV (Phase 1, design §2): probe → build a decode-once analysis
     proxy → scene → YOLO seg → vidstab → carve → score, all on the PROXY, plus the
     two facts Phase 2 needs pre-computed so it stays pure — each window's midpoint
@@ -322,7 +322,11 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
     PIXELS come from the ORIGINAL (assembly.frames_rgb + crop_bbox), never the proxy:
     analysis is downscaled, delivery-space crops stay full-res (design 2026-08-01
     §5). Raises on a bad clip; the driver quarantines it. Calls its CV collaborators
-    by module name so tests that monkeypatch them still intercept."""
+    by module name so tests that monkeypatch them still intercept.
+
+    embed_cast=False (reID not installed, design 2026-08-04 §6) skips ONLY the cast
+    embedding — windows, scoring and phashes still compute, cast comes back empty —
+    so an absent optional dep degrades the cast surface, never the whole scan."""
     info = assembly.probe_stream(path)
     dur = assembly.probe_duration(path)
     res = (info.w, info.h)                                       # ORIGINAL — stored on FootageClip
@@ -341,7 +345,8 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
         mids = [w.start + w.dur / 2 for w in windows]
         phashes = [str(imagehash.phash(Image.fromarray(f)))
                    for f in assembly.frames_rgb(src, mids, info.fps)]
-        cast = _cast_from_original(path, best, res, pres, info.fps, presence)   # crops from the ORIGINAL
+        cast = (_cast_from_original(path, best, res, pres, info.fps, presence)  # crops from the ORIGINAL
+                if embed_cast else [])                                          # reID absent → no cast embed (§6)
     med = statistics.median([w.shake for w in windows]) if windows else 0.0
     name = Path(path).name
     clip = footage.FootageClip(source=name, dur=dur, res=res, fps=info.fps,
@@ -399,10 +404,26 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     out.mkdir(parents=True, exist_ok=True)
     paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
     ensure_model(MODEL)                                # weights-race landmine (§4), before the pool
+    # reID is ADVISORY (design 2026-08-04 §6): the producer WARNS and continues. When
+    # torchreid is installed, warm its OSNet weights once before the pool (the same
+    # concurrent-writer landmine ensure_model closes for YOLO); when it is not, the
+    # scan still produces windows/scoring/phashes — only the cast embed is skipped
+    # (embed_cast=False → cast_candidates.json empty). reid_model rides into the cache
+    # key so a scan run WITHOUT reID never masquerades as one run WITH it.
+    reid_ok = reid.available()
+    reid_model = reid._MODEL if reid_ok else ""
+    if reid_ok:
+        reid.ensure_model()
+    else:
+        print("WARNING: torchreid not installed — cast surfacing skipped (windows & scoring "
+              "still produced; cast_candidates.json will be empty). Install it with "
+              "`bash setup.sh`, then re-run intake with --fresh to build the cast.",
+              file=sys.stderr)
     results: dict[Path, ClipResult] = {}
     misses: list[Path] = []
     for p in paths:
-        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL, PROXY_LONG_SIDE)
+        hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL,
+                                                   PROXY_LONG_SIDE, reid_model=reid_model)
         if hit is not None:
             results[p] = hit
         else:
@@ -420,12 +441,13 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     # jobs/cache mix (the design invariant). as_completed iterates its own copy, so
     # mutating futs here is safe.
     with ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = {ex.submit(_process_clip, str(p), sample_fps): p for p in misses}
+        futs = {ex.submit(_process_clip, str(p), sample_fps, embed_cast=reid_ok): p for p in misses}
         for fut in as_completed(futs):
             p = futs.pop(fut)                          # free the future so its result can GC
             try:
                 results[p] = intake_cache.store(str(out), str(p), sample_fps,
-                                                fut.result(), MODEL, PROXY_LONG_SIDE)
+                                                fut.result(), MODEL, PROXY_LONG_SIDE,
+                                                reid_model=reid_model)
                 print(f"intake: ✓ {p.name}", file=sys.stderr)
             except Exception as e:                     # quarantine (§5): name it, keep going
                 failed.append({"source": p.name, "error": str(e)})

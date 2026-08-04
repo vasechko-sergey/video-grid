@@ -17,7 +17,7 @@ from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
-from scripts.lib import flow, keyframes, vidstab
+from scripts.lib import flow, keyframes, reid, vidstab
 from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, LayoutSpec, route_from_json, CropPath, PathMeta,
@@ -238,13 +238,38 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         # the SAME route.json + route.meta.json pair _load_route reads one line down.
         rp = str(Path(project_dir) / "route.json")
         pinned = m.hero is not None
+        # Resolve the pin ONCE, up front: the rung-1 gate below now depends on the pin
+        # KIND (a cast pin needs reID), and the TrackSpec reuses it. resolve() cannot
+        # raise: validate() above already ran hero_lib.resolve on this same (m.hero,
+        # cast) pair and returned no problems, so a second identical call is guaranteed
+        # not to. wants_reid marks a cast (identity) pin — the one kind that must not
+        # degrade to the ladder's identity-blind optical flow (design 2026-08-04 §6).
+        pin = hero_lib.resolve(m.hero, cast)
+        wants_reid = pin is not None and pin.kind == "cast"
+        # A cast-identity pin needs torchreid person-re-ID. When the tracker itself IS
+        # present but reID is not, stop HERE with the honest remedy rather than let the
+        # ladder speak for it: build_route would fall to an empty route and the
+        # contradiction gate would fire `no-track` ("hero never detected"), a MISLEADING
+        # remedy for an install gap (§12 forbids those) — and the pinned-⇒-no-flow rule
+        # would otherwise leave the real cause unnamed. (Both trackers absent is a
+        # different story: _ultra_available() is False, this block is skipped, and the
+        # normal ladder's `no-track` is then the correct diagnosis.)
+        if wants_reid and track._ultra_available() and not reid.available():
+            result = {"status": "stop_and_report", "attempt": 0, "timings": timings,
+                      "findings": [{"reason": "reid-unavailable",
+                                    "detail": "this episode pins a hero by cast identity, which needs "
+                                              "torchreid person-re-ID, and it is not installed. Install it "
+                                              "with `bash setup.sh` and re-run, or pin the hero another way "
+                                              "(--seed bbox / --rule / --track-id) that does not need reID."}]}
+            if stabilize_report is not None:
+                result["stabilize"] = stabilize_report
+            return result
         # rung 1: YOLO — gated so an absent ultralytics falls to the ladder instead of
-        # raising a traceback inside build_route on attempt 1. resolve() cannot raise:
-        # validate() above already ran hero_lib.resolve on this same (m.hero, cast) pair
-        # and returned no problems, so a second identical call is guaranteed not to.
-        if track.available():
-            tspec = TrackSpec(src=src, model=m.model,
-                              pin=hero_lib.resolve(m.hero, cast), intent=intent)
+        # raising a traceback inside build_route on attempt 1. descriptor=wants_reid so a
+        # cast pin ALSO requires reID (available() returns False without it); the empty
+        # route then falls through the pinned-⇒-no-flow rule, never to optical flow.
+        if track.available(descriptor=wants_reid):
+            tspec = TrackSpec(src=src, model=m.model, pin=pin, intent=intent)
             _timed("track", lambda: track.build_route(tspec, rp))
             route, track_meta = _load_route(rp)
         else:

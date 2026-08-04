@@ -13,7 +13,7 @@ def test_registry_keys_unique_and_expected_split():
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
         "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights"]
-    assert [c.key for c in CHECKS if not c.required] == ["demucs"]
+    assert [c.key for c in CHECKS if not c.required] == ["demucs", "reid"]
 
 
 def test_report_partition():

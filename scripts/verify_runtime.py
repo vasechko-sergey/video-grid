@@ -95,6 +95,10 @@ def _probe_demucs() -> tuple[bool, str]:
     return (True, "installed") if _importable("demucs") else (False, "not installed")
 
 
+def _probe_reid() -> tuple[bool, str]:
+    return (True, "installed") if _importable("torchreid") else (False, "not installed")
+
+
 _PROBES = {
     "deps": _probe_deps,
     "ffmpeg_bin": _probe_ffmpeg_bin,
@@ -103,6 +107,7 @@ _PROBES = {
     "font": _probe_font,
     "weights": _probe_weights,
     "demucs": _probe_demucs,
+    "reid": _probe_reid,
 }
 
 

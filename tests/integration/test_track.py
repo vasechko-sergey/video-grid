@@ -702,3 +702,32 @@ def test_build_route_overlap_pick_follows_route_not_detection_order(monkeypatch,
     assert meta.stitched == [66]
     f6 = next(p for p in route if abs(p.t - 6/60.0) < 1e-9)
     assert f6.x == 160.0     # nearest holds id 1; 190.0 == detection order / sort removed
+
+
+# --- the reID descriptor gate (design 2026-08-04 §6) ----------------------------
+
+def test_available_false_for_descriptor_path_when_reid_absent(monkeypatch):
+    # A cast (identity) pin cannot degrade to the ladder's identity-blind optical
+    # flow, so available(descriptor=True) also demands reID — even with the tracker
+    # itself present. The plain (descriptor=False) path is unchanged: ultralytics only.
+    from scripts.lib import reid
+    monkeypatch.setattr(track, "_ultra_available", lambda: True)   # tracker present
+    monkeypatch.setattr(reid, "available", lambda: False)
+    assert track.available(descriptor=True) is False
+    assert track.available(descriptor=False) is True
+
+
+def test_available_true_for_descriptor_path_when_reid_present(monkeypatch):
+    from scripts.lib import reid
+    monkeypatch.setattr(track, "_ultra_available", lambda: True)
+    monkeypatch.setattr(reid, "available", lambda: True)
+    assert track.available(descriptor=True) is True
+
+
+def test_available_false_when_tracker_absent_regardless_of_reid(monkeypatch):
+    # No tracker ⇒ False on BOTH paths (reID never consulted — short-circuit).
+    from scripts.lib import reid
+    monkeypatch.setattr(track, "_ultra_available", lambda: False)
+    monkeypatch.setattr(reid, "available", lambda: True)
+    assert track.available(descriptor=True) is False
+    assert track.available(descriptor=False) is False
