@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from scripts.lib import appearance, ffbin, proc
+from scripts.lib import appearance, ffbin, proc, reid
 from scripts.lib import hero as hero_lib
 from scripts.lib.footage import Cast
 from scripts.lib.models import (HERO_KINDS, HERO_RULES, INTENTS, RoutePoint, TrackMeta,
@@ -94,10 +94,10 @@ def _probe_meta(src: str) -> tuple[float, int, int]:
 def _iter_detections(src: str, model_path: str = MODEL) -> Iterator[tuple[int, Any]]:
     """Yield (frame_index, ultralytics_result) using YOLO+ByteTrack.
 
-    Yields the whole result, not just .boxes: a cast-name hero pin needs the seg
-    masks + frame pixels to build a per-track appearance descriptor (§6.1a). The
-    masks are only READ on that path — every other pin costs nothing extra.
-    Isolated for testability; res.boxes expose .xywh, .id, .cls like ultralytics.
+    Yields the whole result, not just .boxes: a cast-name hero pin needs the frame
+    pixels (orig_img) to crop each track for a re-ID embedding (§6.1a). The pixels
+    are only READ on that path — every other pin costs nothing extra. Isolated for
+    testability; res.boxes expose .xywh, .id, .cls, .conf like ultralytics.
     """
     # lazy import: heavy optional dep (ultralytics/torch)
     from ultralytics import YOLO
@@ -282,27 +282,21 @@ def _id_track(feats: dict[int, dict], track_id: int) -> int | None:
 
 
 def _track_crops(res: object, boxes: list[object],
-                 crops: dict[int, tuple[float, list[float]]]) -> None:
-    """Accumulate the highest-confidence crop DESCRIPTOR per track id, in place.
-
-    Mirrors intake._people_timeline, which now captures the mask alone (seg_mask,
-    once per confidence improvement) and crops pixels from the original later; here
-    the crop and mask come together via crop_and_mask, since delivery already has the
-    source frame. crop_and_mask carries the two landmines — ultralytics' orig_img is
-    BGR, and the mask is in model space and must be resized to source dims — and
-    returns (None, None) for a mocked result with no pixels, which is how every track
-    test drives this.
-    """
-    for j, b in enumerate(boxes):
+                 crops: dict[int, tuple[float, object]]) -> None:
+    """Accumulate the highest-confidence unmasked RGB crop per track id, in place.
+    build_route embeds them all in one reid.embed batch afterwards (a cast pin
+    only). crop_from_result carries the BGR→RGB landmine (design §10) and returns
+    None for a mocked result with no pixels, which is how the track tests drive it."""
+    for b in boxes:
         if getattr(b, "id", None) is None:
             continue
         tid = int(b.id[0])
         conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
         if conf <= crops.get(tid, (-1.0,))[0]:
             continue
-        crop_rgb, mask = appearance.crop_and_mask(res, j, b)
-        if crop_rgb is not None:
-            crops[tid] = (conf, appearance.build_descriptor(crop_rgb, mask))
+        crop = appearance.crop_from_result(res, b)
+        if crop is not None:
+            crops[tid] = (conf, crop)
 
 
 def _descriptor_track(descs: dict[int, list[float]],
@@ -316,10 +310,10 @@ def _descriptor_track(descs: dict[int, list[float]],
     than the runner-up), not on a similarity ratio, because lower-is-better here —
     a similarity transform pushes both terms to ~1.0 whenever both matches are
     good and would call every clean match ambiguous. Two people in similar
-    clothing is §6.1a's mode 1, the failure a colour histogram is most exposed to.
+    appearance is §6.1a's mode 1, which even a re-ID embedding can leave close.
 
     An exact tie (d1 == d2, including a perfect 0.0 double-match) is therefore
-    ambiguous, not confident: identical distances mean a colour histogram cannot
+    ambiguous, not confident: identical distances mean the re-ID embedding cannot
     separate those two tracks at all, which is precisely when a human must look.
     """
     if not descs:
@@ -440,8 +434,9 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
             tid = int(b.id[0])
             dets.append((tid, x, y, w, h))
         per_frame.append((idx, dets))
-        # crop descriptors are only useful for a cast-name pin (§6.1a layer 2);
-        # every other pin kind leaves `crops` empty at zero extra cost
+        # per-track crops are only useful for a cast-name pin (§6.1a layer 2), which
+        # embeds them in one reid.embed batch below; every other pin kind leaves
+        # `crops` empty at zero extra cost
         if spec.pin is not None and spec.pin.kind == "cast":
             _track_crops(res, boxes, crops)
 
@@ -460,8 +455,11 @@ def build_route(spec: TrackSpec, out: str | Path) -> list[RoutePoint]:
     elif spec.pin.kind == "track":
         hero_id = _id_track(feats, spec.pin.track_id)
     elif spec.pin.kind == "cast":
-        hero_id, ambiguous = _descriptor_track({t: d for t, (_c, d) in crops.items()},
-                                               spec.pin.descriptor)
+        reid.require()                                     # explicit identity pin — fail loud if absent
+        tids = list(crops)
+        embs = reid.embed([crops[t][1] for t in tids]) if tids else []
+        descs = {t: e for t, e in zip(tids, embs)}
+        hero_id, ambiguous = _descriptor_track(descs, spec.pin.descriptor)
     else:
         # HeroPin.kind is gated to HERO_KINDS at construction, so this branch is
         # reachable only if HERO_KINDS grows a kind with no matching rung here —

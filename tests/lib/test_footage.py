@@ -219,12 +219,14 @@ def test_castmember_rejects_a_wrong_length_descriptor():
         assert "footage-intake" in str(ex.value), ex.value    # the remedy, not just the diagnosis
 
 
-def test_descriptor_len_is_three_channels_of_hist_bins():
-    # the derived fact gets ONE spelling, here — appearance.build_descriptor imports
-    # HIST_BINS from this module rather than declaring its own, so the producer and
-    # the on-disk contract cannot drift
-    from scripts.lib.footage import HIST_BINS
-    assert DESCRIPTOR_LEN == 3 * HIST_BINS
+def test_castmember_descriptor_must_be_512():
+    from scripts.lib.footage import DESCRIPTOR_LEN, CastMember
+    assert DESCRIPTOR_LEN == 512
+    for bad in ([0.5, 0.5], [0.0] * 511, [0.0] * 513):
+        with pytest.raises(ValueError) as ex:
+            CastMember(name="Lena", descriptor=bad)
+        assert "512" in str(ex.value)
+    CastMember(name="Lena", descriptor=[0.0] * 512)     # exact length accepted
 
 
 def test_cast_from_json_roundtrip(tmp_path):

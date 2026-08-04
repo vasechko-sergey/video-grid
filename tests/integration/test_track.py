@@ -3,7 +3,6 @@ import numpy as np
 import pytest
 from scripts import track
 from scripts.lib import models, orchestration
-from scripts.lib.appearance import HIST_BINS
 
 class _FakeBox:
     def __init__(self, xywh, tid):
@@ -11,8 +10,8 @@ class _FakeBox:
 
 
 class _FakeRes:
-    """An ultralytics-result-shaped fake: boxes only. No orig_img/masks, so
-    appearance.crop_and_mask returns (None, None) — the same way the intake tests
+    """An ultralytics-result-shaped fake: boxes only. No orig_img, so
+    appearance.crop_from_result returns None — the same way the intake tests
     drive it. Tests that need real pixels build their own (see test_cast_pin.py)."""
     def __init__(self, boxes):
         self.boxes = boxes
@@ -23,6 +22,24 @@ class _FakeRes:
 def _fake_iter(frames):
     """The monkeypatch body every track test shares: frames of boxes → (i, res)."""
     return lambda src, **k: iter(enumerate(_FakeRes(f) for f in frames))
+
+
+def _unit(i, dim=512):
+    """A 512-d one-hot embedding — distinct i ⇒ orthogonal ⇒ cosine dist 1.0."""
+    v = [0.0] * dim
+    v[i] = 1.0
+    return v
+
+
+def _at_dist(d, dim=512):
+    """A 512-d L2-normalized embedding at cosine distance exactly `d` from _unit(0):
+    dot with e0 is (1 - d), the rest packed into e1 so the vector stays unit-norm.
+    Lets a fixture sit at a CHOSEN distance ratio either side of AMBIG_MARGIN."""
+    c = 1.0 - d
+    v = [0.0] * dim
+    v[0] = c
+    v[1] = (1.0 - c * c) ** 0.5
+    return v
 
 def test_route_from_frames(monkeypatch, tmp_path):
     # fake per-frame detections: subject slides right
@@ -347,46 +364,20 @@ def test_pick_hero_reads_ambig_margin_not_a_reinlined_literal(monkeypatch):
     assert ambiguous_raised is False
 
 
-def _desc(*channels):
-    """A hand-built descriptor: `channels` are per-channel weights, HIST_BINS wide."""
-    d = []
-    for w in channels:
-        d.extend([w / HIST_BINS] * HIST_BINS)
-    return tuple(d)
-
-
-def _twin(shift: float) -> list[float]:
-    """A descriptor at L1 distance exactly `2 * shift` from `_CAST_PIN` — one of two
-    near-identical twins whose RELATIVE distance is the only thing the margin rule
-    reads (§6.1a mode 1: two people in similar clothing).
-
-    Shaped the way build_descriptor really emits: three per-channel histograms
-    normalized over the GRAND total, so each channel's HIST_BINS bins sum to 1/3 —
-    every pixel feeds all three. Only red differs from the pin: `shift` of its mass
-    moves from bin 0 to bin 1, costing `shift` out of one bin plus `shift` into the
-    next; green and blue are the pin's own and cancel. So two twins' distance ratio
-    is just their shift ratio — which is what lets a fixture sit at a CHOSEN ratio
-    either side of AMBIG_MARGIN instead of only at the degenerate extremes.
-    """
-    red = [1 / 3 - shift, shift] + [0.0] * (HIST_BINS - 2)
-    green_blue = ([1 / 3] + [0.0] * (HIST_BINS - 1)) * 2
-    return red + green_blue
-
-
-_CAST_PIN = tuple(_twin(0.0))       # the pinned cast member: each channel's mass in bin 0
-
-
 def test_descriptor_track_picks_the_closest():
-    crops = {1: [1.0, 0.0, 0.0] + [0.0] * 21, 2: [0.0, 0.0, 1.0] + [0.0] * 21}
-    pin = tuple([0.0, 0.0, 1.0] + [0.0] * 21)
+    # orthogonal one-hot embeddings: track 2 IS the pin (cosine 0), track 1 is
+    # orthogonal (cosine 1.0) — descriptor similarity, not kinematics, decides.
+    crops = {1: _unit(0), 2: _unit(2)}
+    pin = tuple(_unit(2))
     hero_id, ambiguous = track._descriptor_track(crops, pin)
     assert hero_id == 2 and ambiguous is False
 
 
 def test_descriptor_track_beyond_the_threshold_is_unmatched():
-    # both tracks sit at the maximum distance (disjoint supports) → nobody matches
-    crops = {1: [1.0] + [0.0] * 23, 2: [1.0] + [0.0] * 23}
-    pin = tuple([0.0] * 23 + [1.0])
+    # both tracks are orthogonal to the pin → cosine dist 1.0 > CAST_MATCH 0.35 →
+    # nobody matches (the pinned person is not in this episode at all)
+    crops = {1: _unit(0), 2: _unit(0)}
+    pin = tuple(_unit(5))
     hero_id, ambiguous = track._descriptor_track(crops, pin)
     assert hero_id is None and ambiguous is False
 
@@ -408,11 +399,12 @@ def test_descriptor_track_reads_ambig_margin_not_a_reinlined_literal(monkeypatch
     # track.AMBIG_MARGIN at call time rather than a re-inlined 0.8 that could later
     # drift from _pick_hero's copy. The constant's comment claims "one spelling, two
     # readers"; this is the second reader's half of that claim (the first is
-    # test_pick_hero_reads_ambig_margin_not_a_reinlined_literal above).
-    crops = {1: _twin(0.085), 2: _twin(0.10)}
-    assert track._descriptor_track(crops, _CAST_PIN) == (1, True)
+    # test_pick_hero_reads_ambig_margin_not_a_reinlined_literal above). Both cosine
+    # distances sit under CAST_MATCH 0.35 so the absence gate never fires.
+    crops = {1: _at_dist(0.17), 2: _at_dist(0.20)}
+    assert track._descriptor_track(crops, tuple(_unit(0))) == (1, True)
     monkeypatch.setattr(track, "AMBIG_MARGIN", 0.9)
-    assert track._descriptor_track(crops, _CAST_PIN) == (1, False)
+    assert track._descriptor_track(crops, tuple(_unit(0))) == (1, False)
 
 
 def test_descriptor_track_below_the_margin_is_confident():
@@ -421,43 +413,44 @@ def test_descriptor_track_below_the_margin_is_confident():
     # is the margin's other side, and the side no test had: the band is a range, and
     # a fixture that only ever proves "a tie is ambiguous" cannot notice a margin
     # LOWERED far enough to call every clean match a coin flip — stopping delivery
-    # to ask about a person the histogram already separated perfectly well.
-    crops = {1: _twin(0.075), 2: _twin(0.10)}
-    assert track._descriptor_track(crops, _CAST_PIN) == (1, False)
+    # to ask about a person the embedding already separated perfectly well.
+    crops = {1: _at_dist(0.15), 2: _at_dist(0.20)}
+    assert track._descriptor_track(crops, tuple(_unit(0))) == (1, False)
 
 
 def test_descriptor_track_single_track_is_never_ambiguous():
-    crops = {7: [1.0, 0.0] + [0.0] * 22}
-    hero_id, ambiguous = track._descriptor_track(crops, tuple([1.0, 0.0] + [0.0] * 22))
+    crops = {7: _unit(0)}
+    hero_id, ambiguous = track._descriptor_track(crops, tuple(_unit(0)))
     assert hero_id == 7 and ambiguous is False
 
 
 def test_descriptor_track_no_crops_is_unmatched():
-    assert track._descriptor_track({}, _desc(1.0, 0.0, 0.0)) == (None, False)
+    assert track._descriptor_track({}, tuple(_unit(0))) == (None, False)
 
 
 def test_descriptor_track_exact_tie_is_the_most_ambiguous_case():
-    # Two tracks whose descriptors are bit-identical to the pinned cast member's --
+    # Two tracks whose embeddings are bit-identical to the pinned cast member's --
     # and therefore to each other. A PERFECT double-match reads at a glance like
-    # maximum confidence; it is the exact opposite. d1 == d2 == 0.0 means a colour
-    # histogram cannot tell these two people apart at all, which is the most
-    # extreme instance of §6.1a mode 1 (two people in similar clothing) -- the very
-    # failure the ambiguous flag exists to catch. Picking one silently would be a
-    # coin flip dressed up as a decision; only a human can break this tie.
-    pin = _desc(0.5, 0.3, 0.2)
-    crops = {1: list(pin), 2: list(pin)}
+    # maximum confidence; it is the exact opposite. d1 == d2 == 0.0 means re-ID
+    # cannot tell these two people apart at all, which is the most extreme instance
+    # of §6.1a mode 1 (two people in similar appearance) -- the very failure the
+    # ambiguous flag exists to catch. Picking one silently would be a coin flip
+    # dressed up as a decision; only a human can break this tie.
+    pin = tuple(_unit(3))
+    crops = {1: _unit(3), 2: _unit(3)}
     hero_id, ambiguous = track._descriptor_track(crops, pin)
     assert hero_id in (1, 2) and ambiguous is True
 
 
 # --- _track_crops: the highest-confidence-crop accumulator ------------------
-# _FakeRes above is deliberately pixel-less (crop_and_mask → (None, None)), which
-# is right for the build_route tests but means it can never exercise the store.
-# These need real pixels, so they bring their own minimal fixture: a flat colour
-# is enough -- _track_crops's contract is WHICH crop is kept, not what the
-# histogram of it contains (that is test_appearance.py's job).
+# _FakeRes above is deliberately pixel-less (crop_from_result → None), which is
+# right for the build_route tests but means it can never exercise the store. These
+# need real pixels, so they bring their own minimal fixture: a flat colour is
+# enough -- _track_crops's contract is WHICH crop is kept (highest conf per tid),
+# and build_route embeds them in one reid.embed batch afterwards.
 
 _RED, _GREEN = (0, 0, 255), (0, 255, 0)     # BGR — orig_img is BGR, like ultralytics
+_RED_RGB, _GREEN_RGB = (255, 0, 0), (0, 255, 0)     # what crop_from_result returns (BGR→RGB)
 
 
 class _PixelRes:
@@ -465,7 +458,7 @@ class _PixelRes:
     def __init__(self, colour_bgr=_RED, size=(40, 40)):
         h, w = size
         self.orig_img = np.full((h, w, 3), colour_bgr, dtype=np.uint8)
-        self.masks = None                   # no seg mask → build_descriptor uses every pixel
+        self.masks = None                   # crop_from_result ignores masks (raw bbox crop)
 
 
 class _ConfBox(_FakeBox):
@@ -482,25 +475,18 @@ def _box(tid, conf=None):
     return _ConfBox(xywh, tid, conf) if conf is not None else _FakeBox(xywh, tid)
 
 
-def _flat_desc(r_bin, g_bin, b_bin):
-    """The descriptor a flat-colour crop must produce: each channel's whole mass
-    lands in exactly one of its HIST_BINS bins, and the three channels are
-    normalized over the GRAND total — so each spike is 1/3, not 1.0. Spelled out
-    from the histogram's semantics rather than by calling build_descriptor, so the
-    assert cannot pass by echoing the code under test back at itself."""
-    d = [0.0] * (3 * HIST_BINS)
-    d[r_bin] = d[HIST_BINS + g_bin] = d[2 * HIST_BINS + b_bin] = 1 / 3
-    return d
+def _stored(crops, tid):
+    """(conf, (r,g,b) of the stored crop's top-left) — the accumulator keeps a crop
+    ARRAY now, so identity is read off its pixels, not a descriptor."""
+    conf, crop = crops[tid]
+    assert crop.shape == (20, 20, 3)
+    return conf, tuple(int(v) for v in crop[0, 0])
 
 
-_RED_DESC = _flat_desc(7, 0, 0)             # BGR (0,0,255) → RGB (255,0,0): R maxed, G/B zero
-_GREEN_DESC = _flat_desc(0, 7, 0)           # BGR (0,255,0) → RGB (0,255,0): G maxed, R/B zero
-
-
-def test_track_crops_first_sighting_stores_the_descriptor():
+def test_track_crops_first_sighting_stores_the_crop():
     crops = {}
     track._track_crops(_PixelRes(_RED), [_box(1, conf=0.7)], crops)
-    assert crops == {1: (0.7, pytest.approx(_RED_DESC))}
+    assert _stored(crops, 1) == (0.7, _RED_RGB)
 
 
 def test_track_crops_lower_confidence_resighting_does_not_overwrite():
@@ -508,7 +494,7 @@ def test_track_crops_lower_confidence_resighting_does_not_overwrite():
     track._track_crops(_PixelRes(_RED), [_box(1, conf=0.9)], crops)
     track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.4)], crops)
     # the GREEN pixels of the worse sighting must not have displaced the RED ones
-    assert crops == {1: (0.9, pytest.approx(_RED_DESC))}
+    assert _stored(crops, 1) == (0.9, _RED_RGB)
 
 
 def test_track_crops_higher_confidence_resighting_replaces_the_crop():
@@ -519,16 +505,17 @@ def test_track_crops_higher_confidence_resighting_replaces_the_crop():
     crops = {}
     track._track_crops(_PixelRes(_RED), [_box(1, conf=0.4)], crops)
     track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.9)], crops)
-    assert crops == {1: (0.9, pytest.approx(_GREEN_DESC))}
+    conf, crop = crops[1]
+    assert conf == 0.9 and tuple(crop[0, 0]) == (0, 255, 0)   # GREEN kept (RGB)
 
 
 def test_track_crops_equal_confidence_resighting_keeps_the_first():
     # `conf <= stored` is a <=, not a <: an exact tie keeps the incumbent rather
-    # than re-running crop_and_mask on every frame of a steady-confidence track.
+    # than re-cropping on every frame of a steady-confidence track.
     crops = {}
     track._track_crops(_PixelRes(_RED), [_box(1, conf=0.9)], crops)
     track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.9)], crops)
-    assert crops == {1: (0.9, pytest.approx(_RED_DESC))}
+    assert _stored(crops, 1) == (0.9, _RED_RGB)
 
 
 def test_track_crops_box_without_conf_defaults_to_full_confidence():
@@ -537,15 +524,15 @@ def test_track_crops_box_without_conf_defaults_to_full_confidence():
     # a later 0.99 sighting losing to it is what proves the value is really 1.0.
     crops = {}
     track._track_crops(_PixelRes(_RED), [_box(1)], crops)          # no .conf at all
-    assert crops == {1: (1.0, pytest.approx(_RED_DESC))}
+    assert _stored(crops, 1) == (1.0, _RED_RGB)
     track._track_crops(_PixelRes(_GREEN), [_box(1, conf=0.99)], crops)
-    assert crops == {1: (1.0, pytest.approx(_RED_DESC))}
+    assert _stored(crops, 1) == (1.0, _RED_RGB)
 
 
 def test_track_crops_without_pixels_stores_nothing_and_leaves_the_dict_clean():
-    # crop_and_mask returns (None, None) for a result with no orig_img (every
-    # build_route test drives exactly this). Storing a None crop would poison the
-    # dict -- _descriptor_track would hand it to descriptor_dist and crash on len().
+    # crop_from_result returns None for a result with no orig_img (every build_route
+    # test drives exactly this). Storing a None crop would poison the dict --
+    # reid.embed would choke on it and _descriptor_track never even runs.
     crops = {}
     track._track_crops(_FakeRes([]), [_box(1, conf=0.9)], crops)
     assert crops == {}
@@ -555,7 +542,7 @@ def test_track_crops_skips_unconfirmed_detections():
     # id=None is a normal ByteTrack state (first frames / after occlusion). There
     # is no tid to file the crop under, so it must be skipped outright -- int(None[0])
     # would raise, and any fabricated shared id would blend two strangers' pixels
-    # into one descriptor.
+    # into one crop.
     unconfirmed = _ConfBox([20.0, 20.0, 20.0, 20.0], 1, 0.9)
     unconfirmed.id = None
     crops = {}

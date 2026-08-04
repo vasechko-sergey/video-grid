@@ -57,6 +57,8 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "embed",           # torchreid absent on CI: fake 512-d rows
+                        lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [])
 
@@ -88,6 +90,8 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     shutil.copy(sample_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(_fake_frames(90))))
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "embed",           # torchreid absent on CI: fake 512-d rows
+                        lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
 
     result = intake.intake(str(root), str(tmp_path / "out"))
     # Whole-object golden: real vidstabdetect ran on the 960 proxy + parsed its
@@ -111,6 +115,8 @@ def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [])
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "embed",           # torchreid absent on CI: fake 512-d rows
+                        lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
     out = tmp_path / "out"
     intake.intake(str(root), str(out))
     first = (out / "FOOTAGE.json").read_text()

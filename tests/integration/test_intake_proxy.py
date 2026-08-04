@@ -37,6 +37,8 @@ def test_proxy_intake_analyses_proxy_but_stores_original_res(need_filter, sample
     monkeypatch.setattr(intake, "_iter_seg",
                         lambda src, **k: iter(enumerate(_fake_frames(90))))
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "embed",           # torchreid absent on CI: fake 512-d rows
+                        lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
 
     # Spy on the real detect: capture the width of the pixels it actually analyses
     # (probed inside the spy, before _process_clip's TemporaryDirectory is torn down).

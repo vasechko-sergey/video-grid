@@ -4,7 +4,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
-from scripts.lib import appearance, vidstab
+from scripts.lib import reid
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
 
 
@@ -104,7 +104,7 @@ def test_process_clip_detects_shake_once_before_carving(monkeypatch):
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
-                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
+                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}, {}))
     seen = []
 
     def fake_detect(src, trf, dur):
@@ -137,11 +137,12 @@ def test_people_timeline_samples_counts_and_track_ids(monkeypatch):
     # 6 frames @ fps 6, SAMPLE_FPS 3 → step 2 → sample frames 0,2,4. subject slides right.
     frames = [_FakeRes([_FakeBox([300 + i * 40, 500, 200, 300], 1)]) for i in range(6)]
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(frames)))
-    tl, best = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
+    tl, best, presence = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
     assert [n for _, n, _, _ in tl] == [1, 1, 1]        # one person each sampled frame
     assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
     assert tl[0][2][2] == 200                           # primary bbox width threaded through
     assert tl[0][3] == [1]                              # track id present at the sample
+    assert presence[1] == pytest.approx(1.0)            # 3 sampled frames × step/fps (2/6)
 
 
 def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
@@ -153,35 +154,10 @@ def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
     frames = [(0, _Res([_Box(1, 0.5, (10,10,4,8))])),
               (1, _Res([_Box(1, 0.9, (12,10,4,8))]))]   # frame 1 is the better crop
     monkeypatch.setattr(intake, "_iter_seg", lambda src: iter(frames))
-    timeline, best = intake._people_timeline("proxy.mp4", fps=30.0, res=(960,540), sample_fps=3.0)
+    timeline, best, presence = intake._people_timeline("proxy.mp4", fps=30.0, res=(960,540), sample_fps=3.0)
     assert set(best) == {1}
-    conf, t, box, _mask = best[1]                       # best grew a 4th element (proxy seg mask)
+    conf, t, box = best[1]                              # 3-tuple now: (conf, t, bbox) — no mask
     assert conf == 0.9 and abs(t - 1/30.0) < 1e-6 and box == (12,10,4,8)
-
-
-class _MaskTLBox:
-    def __init__(self, xywh, tid, conf):
-        self.xywh = [xywh]; self.id = [tid]; self.conf = [conf]
-
-
-class _MaskTLMasks:
-    def __init__(self, data): self.data = data
-
-
-class _MaskTLRes:
-    def __init__(self, boxes, orig_img, masks):
-        self.boxes = boxes; self.orig_img = orig_img; self.masks = _MaskTLMasks(masks)
-
-
-def test_people_timeline_captures_the_seg_mask_into_best(monkeypatch):
-    frame = np.zeros((40, 40, 3), dtype=np.uint8)
-    m = np.zeros((20, 20), dtype=np.float32); m[5:15, 5:10] = 1.0
-    res = _MaskTLRes([_MaskTLBox([20.0, 20.0, 20.0, 20.0], 7, 0.9)], frame, [m])
-    monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter([(0, res)]))
-    _timeline, best = intake._people_timeline("x.mp4", fps=30.0, res=(40, 40), sample_fps=3.0)
-    conf, t, bbox, mask = best[7]                        # the 4-tuple, mask last
-    assert conf == 0.9 and bbox == (20.0, 20.0, 20.0, 20.0)
-    assert mask is not None and mask.shape == (20, 20)
 
 
 def test_motion_is_2d():
@@ -196,17 +172,6 @@ def test_build_window_unions_track_ids():
     tl = [(0.0, 1, (500, 500, 10, 10), [2]), (1.0, 1, (500, 500, 10, 10), [5])]
     w = intake._build_window((0.0, 2.0), tl, shake=0.0, res=(1000, 1000))
     assert w.track_ids == [2, 5]
-
-
-def test_crop_and_mask_rgb_and_aligned_mask():
-    import types as _t
-    frame_bgr = np.zeros((100, 200, 3), "uint8"); frame_bgr[:, :, 0] = 255   # blue in BGR
-    masks = _t.SimpleNamespace(data=[np.ones((100, 200), "float32")])
-    res = _t.SimpleNamespace(orig_img=frame_bgr, masks=masks)
-    crop, mask = appearance.crop_and_mask(res, 0, _FakeBox([100, 50, 40, 60], 1))
-    assert crop is not None and crop.shape[2] == 3
-    assert crop[0, 0, 2] == 255                          # BGR→RGB: blue is now channel index 2
-    assert mask is not None and mask.shape[:2] == crop.shape[:2]   # crop and mask aligned HxW
 
 
 import imagehash
@@ -249,34 +214,27 @@ def test_cull_low_score_not_best():
     assert w.best is False           # below BEST_FLOOR even though unique
 
 
-def test_build_descriptor_normalised_and_masked():
-    crop = np.zeros((10, 10, 3), dtype="uint8"); crop[:, :, 0] = 255   # pure red
-    mask = np.ones((10, 10), dtype="uint8")
-    d = intake.build_descriptor(crop, mask)
-    assert len(d) == 3 * appearance.HIST_BINS
-    assert abs(sum(d) - 1.0) < 1e-6                    # L1-normalized
-    assert d[appearance.HIST_BINS - 1] > 0            # red maxed → top R bin populated
-
 def test_surface_crops_dedups_identities():
+    # 512-d embeddings now (Task 3 replaces surface with clustering; here the greedy
+    # form runs cosine): two IDENTICAL embeddings collapse (cosine dist 0 < CAST_DEDUP),
+    # an orthogonal one (cosine dist 1.0) survives.
     from scripts.lib.intake_cache import CastEntry
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
     blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
-    dr = appearance.build_descriptor(red, np.ones((8, 8), "uint8"))
-    db = appearance.build_descriptor(blue, np.ones((8, 8), "uint8"))
+    dr = _desc(1.0)                    # the "red" identity embedding
+    db = _desc(0.0, 1.0)              # orthogonal → cosine dist 1.0 > CAST_DEDUP 0.30
     entries = [CastEntry("a.mp4", 1, 0.9, dr, crop_rgb=red),
                CastEntry("a.mp4", 2, 0.8, list(dr), crop_rgb=red.copy()),
                CastEntry("b.mp4", 3, 0.7, db, crop_rgb=blue)]
     picked = intake.surface_crops(entries, top_n=8)
-    assert len(picked) == 2                            # the two reds collapse to one identity
+    assert len(picked) == 2                            # the two identical embeddings collapse to one
 
 def test_save_cast_candidates_saves_and_manifests(tmp_path):
     from scripts.lib.intake_cache import CastEntry
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
     blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
-    dr = appearance.build_descriptor(red, np.ones((8, 8), "uint8"))
-    db = appearance.build_descriptor(blue, np.ones((8, 8), "uint8"))
-    entries = [CastEntry("a.mp4", 1, 0.9, dr, crop_rgb=red),
-               CastEntry("b.mp4", 1, 0.8, db, crop_rgb=blue)]
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), crop_rgb=red),
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), crop_rgb=blue)]
     manifest = intake.save_cast_candidates(entries, str(tmp_path))
     assert len(manifest) == 2
     assert (tmp_path / "cast_candidates.json").exists()
@@ -290,9 +248,7 @@ def test_save_cast_candidates_copies_a_cached_form_crop(tmp_path):
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
     src = tmp_path / "cached_crop.png"
     _Img.fromarray(red).save(src)
-    e = CastEntry("a.mp4", 1, 0.9,
-                  appearance.build_descriptor(red, np.ones((8, 8), "uint8")),
-                  crop=str(src))
+    e = CastEntry("a.mp4", 1, 0.9, _desc(1.0), crop=str(src))
     out = tmp_path / "out"
     manifest = intake.save_cast_candidates([e], str(out))
     dest = out / "cast_crops" / "candidate_0.png"
@@ -339,7 +295,7 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
-                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}))
+                        lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}, {}))
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
     monkeypatch.setattr(intake.assembly, "frames_rgb",
@@ -366,9 +322,10 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     tl = [(float(i), 1, (240, 270, 100, 200), [1]) for i in range(9)]           # proxy-space bboxes
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
-                        (tl, {1: (0.9, 0.0, (240, 270, 100, 200), None)}))      # best = (conf, t, bbox, mask) ref
+                        (tl, {1: (0.9, 0.0, (240, 270, 100, 200))}, {1: 3.0}))  # best 3-tuple + presence
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
     monkeypatch.setattr(intake.vidstab, "detect", lambda src, trf, dur: [0.0] * 8)
+    monkeypatch.setattr(reid, "embed", lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
     res = intake._process_clip("/foot/a.mp4", intake.SAMPLE_FPS)
     assert res.clip.source == "a.mp4" and res.clip.windows
     assert res.clip.res == (1920, 1080)                     # ORIGINAL stored on FootageClip
@@ -377,6 +334,7 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     assert len(res.cast) == 1
     assert res.cast[0].source == "a.mp4" and res.cast[0].tid == 1
     assert len(res.cast[0].descriptor) == DESCRIPTOR_LEN
+    assert res.cast[0].presence == 3.0                       # presence carried from _people_timeline
     assert res.cast[0].crop_rgb is not None                  # worker-form array, cropped from ORIGINAL
 
 
@@ -395,11 +353,12 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(intake, "scene_bounds", lambda src: calls["analysed"].append(("scene", src)) or [])
     def _tl(src, fps, res, sf):
         calls["analysed"].append(("yolo", src, res))       # res must be the PROXY dims
-        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80), None)})
+        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80))}, {1: 2.0})
     monkeypatch.setattr(intake, "_people_timeline", _tl)
     monkeypatch.setattr(vidstab, "require", lambda: None)
     monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
     monkeypatch.setattr(intake, "carve_windows", lambda *a: [(0.0, 2.0)])
+    monkeypatch.setattr(reid, "embed", lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
     orig_frame = np.full((2160, 3840, 3), 128, dtype="uint8")
     monkeypatch.setattr(assembly, "frames_rgb", lambda src, times, fps: (calls.__setitem__("crop_src", src), [orig_frame for _ in times])[1])
 
@@ -578,29 +537,32 @@ def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
     assert [c.source for c in result.clips] == ["a.mp4", "b.mp4", "c.mp4"]   # sorted, d dropped
 
 
-def test_cast_from_original_removes_background_via_the_mask(monkeypatch):
-    # bbox = frame[10:30, 10:30]; red clothing fills its left, blue background its
-    # right; the mask covers only the clothing → descriptor must be the pure-red one,
-    # NOT the maskless (background-polluted) bbox histogram
-    frame = np.zeros((40, 40, 3), dtype=np.uint8)
-    frame[10:30, 10:25] = (250, 0, 0)                    # red clothing (RGB), left of bbox
-    frame[10:30, 25:30] = (0, 0, 250)                    # blue background, right of bbox
-    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [frame for _ in times])
-    proxy_mask = np.zeros((10, 10), dtype=np.uint8); proxy_mask[:, :5] = 255   # left half
-    best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), proxy_mask)}   # scale 1 (res == pres)
-    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40), fps=30.0)
-    red_only = intake.build_descriptor(np.full((20, 10, 3), (250, 0, 0), np.uint8), None)
-    assert appearance.descriptor_dist(cast[0].descriptor, red_only) < 1e-9      # background gone
-    maskless = intake.build_descriptor(frame[10:30, 10:30], None)
-    assert appearance.descriptor_dist(cast[0].descriptor, maskless) > 0.1       # and NOT the polluted one
+def test_cast_from_original_embeds_unmasked_crops(monkeypatch, tmp_path):
+    # the raw bbox crop (RGB, UNMASKED — a silhouette is OOD for OSNet) is what
+    # reaches reid.embed; the returned 512-d row becomes the descriptor
+    frame = np.zeros((40, 40, 3), np.uint8); frame[10:30, 10:30] = (250, 0, 0)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda *a, **k: [frame])
+    seen = {}
+    def fake_embed(crops):
+        seen["n"] = len(crops); seen["shape"] = crops[0].shape
+        return [[1.0] + [0.0] * 511]
+    monkeypatch.setattr(reid, "embed", fake_embed)
+    best = {1: (0.9, 0.0, (20.0, 20.0, 20.0, 20.0))}     # NB: 3-tuple now — no mask
+    cast = intake._cast_from_original("a.mp4", best, (40, 40), (40, 40), 30.0)
+    assert seen["n"] == 1 and seen["shape"] == (20, 20, 3)   # one unmasked crop embedded
+    assert cast[0].descriptor == [1.0] + [0.0] * 511
+    assert cast[0].presence >= 0.0
 
 
-def test_cast_from_original_falls_back_to_maskless_when_no_mask(monkeypatch):
-    frame = np.full((40, 40, 3), (250, 0, 0), dtype=np.uint8)
-    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [frame for _ in times])
-    best = {1: (0.9, 0.5, (20.0, 20.0, 20.0, 20.0), None)}         # no mask (mocked YOLO)
-    cast = intake._cast_from_original("x.mp4", best, res=(40, 40), pres=(40, 40), fps=30.0)
-    assert cast[0].descriptor == intake.build_descriptor(frame[10:30, 10:30], None)
+def test_cast_from_original_carries_presence(monkeypatch):
+    # presence (on-screen seconds) is threaded from _people_timeline through to the
+    # CastEntry — the surfacing rank Task 3 clusters on
+    frame = np.zeros((40, 40, 3), np.uint8); frame[10:30, 10:30] = (250, 0, 0)
+    monkeypatch.setattr(intake.assembly, "frames_rgb", lambda *a, **k: [frame])
+    monkeypatch.setattr(reid, "embed", lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
+    best = {1: (0.9, 0.0, (20.0, 20.0, 20.0, 20.0))}
+    cast = intake._cast_from_original("a.mp4", best, (40, 40), (40, 40), 30.0, {1: 7.5})
+    assert cast[0].presence == 7.5
 
 
 def test_cast_from_original_grabs_all_tracks_in_one_call(monkeypatch, tmp_path):
@@ -610,8 +572,9 @@ def test_cast_from_original_grabs_all_tracks_in_one_call(monkeypatch, tmp_path):
         calls["n"] += 1; calls["times"] = list(times)
         return [frame for _ in times]
     monkeypatch.setattr(intake.assembly, "frames_rgb", fake)
-    best = {1: (0.9, 1.0, (10.0, 10.0, 8.0, 8.0), None),
-            2: (0.8, 2.0, (10.0, 10.0, 8.0, 8.0), None)}
+    monkeypatch.setattr(reid, "embed", lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
+    best = {1: (0.9, 1.0, (10.0, 10.0, 8.0, 8.0)),
+            2: (0.8, 2.0, (10.0, 10.0, 8.0, 8.0))}
     intake._cast_from_original("orig.mp4", best, res=(20, 20), pres=(20, 20), fps=30.0)
     assert calls["n"] == 1 and calls["times"] == [1.0, 2.0]   # ONE decode, both times
 

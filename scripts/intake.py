@@ -4,7 +4,7 @@ registry (design docs/specs/2026-07-12-footage-intake-design.md).
 Mechanical CV: probe + PySceneDetect + one YOLO11-seg pass + vidstabdetect +
 sub-scene carve + score + phash cull. The interactive hero-naming lives in the
 footage-intake SKILL — Python cannot ask a human — this module only surfaces
-crops and builds descriptors.
+crops and embeds them (512-d OSNet via lib/reid, design 2026-08-04).
 """
 import argparse, json, statistics, tempfile
 import shutil
@@ -18,8 +18,8 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
-from scripts.lib import assembly, carve, footage, intake_cache, vidstab
-from scripts.lib.appearance import build_descriptor, crop_bbox, descriptor_dist, seg_mask, upsample_mask
+from scripts.lib import assembly, carve, footage, intake_cache, reid, vidstab
+from scripts.lib.appearance import crop_bbox, descriptor_dist
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 
@@ -37,7 +37,7 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
                                                   # threshold is deliberately NOT re-tuned to compensate — no real footage has been
                                                   # through this pipeline, so any new value would be invented (design §5).
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
-CAST_DEDUP = 0.30                                 # L1 descriptor distance below which two tracks are the same identity
+CAST_DEDUP = 0.30                                 # cosine descriptor distance below which two tracks are the same identity
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
@@ -135,8 +135,9 @@ def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: 
 
 
 def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]:
-    """Mirror track.py's YOLO+ByteTrack config but keep masks (track omits them
-    for speed). Yields (frame_index, ultralytics_result)."""
+    """Mirror track.py's YOLO+ByteTrack config. Yields (frame_index,
+    ultralytics_result); the seg model's masks are no longer read (the cast crop is
+    the raw bbox now, design 2026-08-04), only the boxes and their confidences."""
     from ultralytics import YOLO           # lazy import: heavy optional dep (ultralytics/torch)
     model = YOLO(model_path)
     for i, res in enumerate(model.track(src, stream=True, persist=True, classes=[0],
@@ -145,31 +146,34 @@ def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]
 
 
 def _people_timeline(src: str, fps: float, res: tuple[int, int],
-                     sample_fps: float = SAMPLE_FPS) -> tuple[list, dict]:
-    """One seg pass → (timeline, best_by_track).
+                     sample_fps: float = SAMPLE_FPS) -> tuple[list, dict, dict]:
+    """One seg pass → (timeline, best_by_track, presence_by_track).
     timeline: [(t, people, primary_bbox, track_ids)] sampled at ~SAMPLE_FPS (primary = largest bbox).
-    best: {tid: (conf, t, bbox_xywh, seg_mask)} — the timestamp + PROXY box + PROXY-scale
-    seg mask of each track's highest-confidence detection, so the cast pass can re-crop that
-    exact moment from the ORIGINAL and mask it like delivery (design 2026-08-01 §5/§5a).
-    Cheap: records a REF (a float + four numbers) plus one small proxy-bbox mask per track
-    (mask only via seg_mask, never the full crop), updated on confidence improvement — not
+    best: {tid: (conf, t, bbox_xywh)} — timestamp + PROXY box of each track's
+    highest-confidence detection (the cast pass re-crops that moment from the
+    ORIGINAL, unmasked — design 2026-08-04 §4.1). presence: {tid: seconds on screen}
+    (sampled-frame count × step, the surfacing rank — design §4.1). Cheap: records a
+    REF (a float + four numbers) per track, updated on confidence improvement — not
     per frame."""
     step = max(1, round(fps / sample_fps))
-    timeline, best = [], {}                      # best: tid -> (conf, t, bbox_xywh, seg_mask)
+    timeline, best, seen = [], {}, {}            # best: tid -> (conf, t, bbox_xywh)
     for i, r in _iter_seg(src):
         boxes = list(r.boxes) if getattr(r, "boxes", None) is not None else []
-        for j, b in enumerate(boxes):
+        for b in boxes:
             tid = int(b.id[0]) if getattr(b, "id", None) is not None else None
             conf = float(b.conf[0]) if getattr(b, "conf", None) is not None else 1.0
             if tid is not None and conf > best.get(tid, (-1.0,))[0]:
-                best[tid] = (conf, i / fps, tuple(float(v) for v in b.xywh[0]), seg_mask(r, j, b))
+                best[tid] = (conf, i / fps, tuple(float(v) for v in b.xywh[0]))
         if i % step:
             continue
         bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]
         primary = max(bbs, key=lambda bb: bb[2] * bb[3]) if bbs else None
         tids = sorted({int(b.id[0]) for b in boxes if getattr(b, "id", None) is not None})
+        for tid in tids:
+            seen[tid] = seen.get(tid, 0) + 1
         timeline.append((i / fps, len(bbs), primary, tids))
-    return timeline, best
+    presence = {tid: n * (step / fps) for tid, n in seen.items()}
+    return timeline, best, presence
 
 
 def cull(clips: list, phash_of: object) -> None:
@@ -278,8 +282,8 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
     """One clip's CV (Phase 1, design §2): probe → build a decode-once analysis
     proxy → scene → YOLO seg → vidstab → carve → score, all on the PROXY, plus the
     two facts Phase 2 needs pre-computed so it stays pure — each window's midpoint
-    phash (hex, cache-serializable) and each track's descriptor. Cast crop PIXELS
-    come from the ORIGINAL (assembly.frames_rgb + crop_bbox), never the proxy:
+    phash (hex, cache-serializable) and each track's 512-d re-ID embedding. Cast crop
+    PIXELS come from the ORIGINAL (assembly.frames_rgb + crop_bbox), never the proxy:
     analysis is downscaled, delivery-space crops stay full-res (design 2026-08-01
     §5). Raises on a bad clip; the driver quarantines it. Calls its CV collaborators
     by module name so tests that monkeypatch them still intercept."""
@@ -292,7 +296,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
         src = proxy if made else path                           # analyse the proxy when one was written
         pres = _proxy_dims(res, PROXY_LONG_SIDE) if made else res   # the space the analysis pixels live in
         cuts = scene_bounds(src)
-        timeline, best = _people_timeline(src, info.fps, pres, sample_fps)
+        timeline, best, presence = _people_timeline(src, info.fps, pres, sample_fps)
         vidstab.require()
         mags = vidstab.detect(src, str(Path(d) / "t.trf"), dur)
         spans = carve_windows(cuts, timeline, mags, info.fps, dur)
@@ -301,7 +305,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS) -> ClipResult:
         mids = [w.start + w.dur / 2 for w in windows]
         phashes = [str(imagehash.phash(Image.fromarray(f)))
                    for f in assembly.frames_rgb(src, mids, info.fps)]
-        cast = _cast_from_original(path, best, res, pres, info.fps)   # crops from the ORIGINAL
+        cast = _cast_from_original(path, best, res, pres, info.fps, presence)   # crops from the ORIGINAL
     med = statistics.median([w.shake for w in windows]) if windows else 0.0
     name = Path(path).name
     clip = footage.FootageClip(source=name, dur=dur, res=res, fps=info.fps,
@@ -323,25 +327,29 @@ def _proxy_dims(res: tuple[int, int], long_side: int) -> tuple[int, int]:
 
 
 def _cast_from_original(path: str, best: dict, res: tuple[int, int],
-                        pres: tuple[int, int], fps: float) -> list[CastEntry]:
-    """Re-crop each track's best moment from the ORIGINAL-res frame (the proxy box
-    scales up by res/pres) and mask it with that track's proxy seg mask upsampled to
-    the crop, so the descriptor is background-removed like delivery's (design §5a).
-    All best-frames are grabbed via assembly.frames_rgb (design 2026-08-02) — one
-    decode per chunk of ≤60 frames (one decode for the common case) — rather than
-    one output-seek per track. A track with no mask (mocked YOLO) falls back to the
-    maskless path; a box that yields an empty crop is dropped."""
+                        pres: tuple[int, int], fps: float,
+                        presence: dict | None = None) -> list[CastEntry]:
+    """Re-crop each track's best moment from the ORIGINAL-res frame (unmasked —
+    design 2026-08-04 §4.1/§10; the proxy box scales up by res/pres) and embed the
+    batch via reid.embed (512-d OSNet). All best-frames are grabbed via
+    assembly.frames_rgb (design 2026-08-02) — one decode per chunk of ≤60 frames
+    (one decode for the common case) — rather than one output-seek per track. A box
+    that yields an empty crop is dropped. Each entry carries its track's presence
+    (on-screen seconds), the surfacing rank."""
+    presence = presence or {}
     scale = res[0] / pres[0]                                     # proxy→original
     items = list(best.items())
-    frames = assembly.frames_rgb(path, [t for _, (_, t, _, _) in items], fps)
-    out: list[CastEntry] = []
-    for (tid, (conf, t, box, mask)), frame in zip(items, frames):
+    frames = assembly.frames_rgb(path, [t for _, (_, t, _) in items], fps)
+    keep, crops = [], []
+    for (tid, (conf, t, box)), frame in zip(items, frames):
         crop = crop_bbox(frame, box, scale=scale)
         if crop is not None:
-            m = upsample_mask(mask, crop.shape[:2]) if mask is not None else None
-            out.append(CastEntry(source=Path(path).name, tid=tid, conf=conf,
-                                 descriptor=build_descriptor(crop, m), crop_rgb=crop))
-    return out
+            keep.append((tid, conf, crop))
+            crops.append(crop)
+    embs = reid.embed(crops)
+    return [CastEntry(source=Path(path).name, tid=tid, conf=conf,
+                      descriptor=emb, presence=float(presence.get(tid, 0.0)), crop_rgb=crop)
+            for (tid, conf, crop), emb in zip(keep, embs)]
 
 
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
