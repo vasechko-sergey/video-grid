@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from scripts.lib import ffbin, proc
+from scripts.lib import ffbin, proc, provenance
 from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Titles, build_filterchain
 
@@ -48,7 +48,7 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             report: ReelReport, *, audio: str | None = None, titles: str | None = None,
-            platform: str = "") -> str:
+            platform: str = "", run_provenance: dict | None = None) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -59,10 +59,31 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     With `titles` (a TITLES.json path), burn the drawtext chain into this one encode
     (design §5.16) — no second pass. `platform` is the same safe-zone table key
     check_reel judges the PICTURE against; it must reach here too, or a bottom title
-    is laid out against generic margins and lands under the app's chrome."""
+    is laid out against generic margins and lands under the app's chrome.
+
+    Two bindings guard the gate, in this order. `report.overall` refuses a reel that
+    failed; then `report.master_digest` refuses a report that does not describe THIS
+    file — an empty digest means the report was not written by `check_reel` (its only
+    producer, which always stamps), a mismatched one means the master was re-made after
+    the check or assembled outside the pipeline. `run_provenance` carries what only the
+    driver knows (the run's start stamp, the EDL's digest and state, the loosened
+    thresholds) into the `REEL_v{n}.attest.json` sidecar this writes."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
+    if not report.master_digest:
+        raise RuntimeError(
+            "this reel report carries no master digest, so it did not come from check_reel — "
+            "nothing binds it to the file being shipped. check_reel is the only thing that "
+            "writes a report and it always stamps one. Run `check_reel` on this master and "
+            "deliver with the report it writes")
+    actual = provenance.digest_file(master)
+    if actual != report.master_digest:
+        raise RuntimeError(
+            f"this reel report describes a different file than the master being shipped "
+            f"(report {report.master_digest[:12]}…, master {actual[:12]}…) — the master was "
+            f"re-made after the check, or assembled outside the pipeline. Re-run "
+            f"`check_reel` on THIS master and deliver with the report it writes")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     # Titles ride deliver's ONE encode (§5.16): build_filterchain writes each title's
     # text to a title_i.txt sidecar in out_dir (work_dir=out_dir) and returns a drawtext
@@ -83,6 +104,19 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, "-i", audio, *vf, *_video_only_args(profile),
                   "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
+    # The delivery's record (design §6). reel_digest binds it to the SHIPPED file, not
+    # only to the master, so a reel swapped after delivery is detectable. A hand-run
+    # ffmpeg produces no sidecar at all, which is what montage status reports.
+    rp = run_provenance or {}
+    provenance.Attestation(
+        reel=Path(out).name, reel_digest=provenance.digest_file(out),
+        master_digest=actual, report_digest=provenance.digest_obj(report.to_dict()),
+        overall=report.overall,
+        engine_at_start=rp.get("engine_at_start") or {},
+        engine_at_deliver=provenance.engine_stamp(),
+        edl=rp.get("edl") or {}, overrides=rp.get("overrides") or [],
+        delivered_at=datetime.now().isoformat(timespec="seconds"),
+    ).write(provenance.attest_path(out))
     return out
 
 

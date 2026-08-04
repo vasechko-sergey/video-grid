@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from scripts import deliver as deliver_mod
-from scripts.lib import assembly, ffbin, proc
+from scripts.lib import assembly, ffbin, proc, provenance
 from scripts.lib.fonts import resolve_font
 from scripts.lib.models import REEL_H264, CheckResult, ReelReport
 from scripts.lib.titles import Title, Titles, build_filterchain
@@ -22,8 +22,12 @@ def _need_drawtext(need_filter):
     need_filter("drawtext")
 
 
-def _passing_report():
-    return ReelReport(checks={"length": CheckResult("length", True, {})})
+def _passing_report(master):
+    # bound to the real master on disk — deliver now refuses an unbound report
+    # (design §4); both deliver() calls in a test below ship the SAME sample_clip,
+    # so one digest binds both.
+    return ReelReport(checks={"length": CheckResult("length", True, {})},
+                      master_digest=provenance.digest_file(master))
 
 
 def _frame_bytes(src, tmp_path, name):
@@ -41,10 +45,11 @@ def _frame_bytes(src, tmp_path, name):
 def test_title_burns_into_the_silent_encode(sample_clip, tmp_path):
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("HELLO", 0.0, 3.0, pos="center", style="bold-box"),)).write(tj)
+    rep = _passing_report(sample_clip)
     titled = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "t"),
-                                 "titled", _passing_report(), titles=str(tj))
+                                 "titled", rep, titles=str(tj))
     plain = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "p"),
-                                "plain", _passing_report())
+                                "plain", rep)
     assert Path(titled).exists() and Path(plain).exists()
     codec = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0", "-show_entries",
                       "stream=codec_type", "-of", "csv=p=0", titled]).stdout.decode()
@@ -63,10 +68,11 @@ def test_title_burns_into_the_mux_encode_with_audio(sample_clip, tmp_path):
               "-c:a", "aac", str(aac)])
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("HELLO", 0.0, 3.0, pos="center", style="bold-box"),)).write(tj)
+    rep = _passing_report(sample_clip)
     titled = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "t"),
-                                 "titled+audio", _passing_report(), audio=str(aac), titles=str(tj))
+                                 "titled+audio", rep, audio=str(aac), titles=str(tj))
     plain = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "p"),
-                                "plain", _passing_report())
+                                "plain", rep)
     # the muxed output carries BOTH a video and an audio stream...
     types = proc.run([ffbin.ffprobe(), "-v", "error", "-show_entries", "stream=codec_type",
                       "-of", "csv=p=0", titled]).stdout.decode()
