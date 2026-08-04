@@ -12,7 +12,7 @@ from pathlib import Path
 
 from scripts.color_measure import measure_profile
 from scripts.lib import matchgrade
-from scripts.lib.edl import EDL
+from scripts.lib.edl import EDL, write_edl
 
 
 def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
@@ -63,7 +63,8 @@ def write_match(edl_path: str, footage_root: str, *, eps: float = matchgrade.MAT
     decisions carry the measured profiles the report needs. Returns a status dict."""
     edl = EDL.from_json(edl_path)
     out, target, decisions = conduct(edl, footage_root, eps=eps, force=force)
-    Path(edl_path).write_text(json.dumps(out.to_dict(), indent=2))
+    write_edl(out, edl_path)      # re-stamp: match_grade is a legitimate tool, and its
+                                  # output is the tool's output (design §4)
     md_path = Path(edl_path).parent / "MATCH.md"
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps))
     skipped = Counter(d.reason for d in decisions if d.action == "skip")

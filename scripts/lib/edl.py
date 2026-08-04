@@ -213,6 +213,19 @@ class EDL:
             d = json.loads(Path(path).read_text())
         except json.JSONDecodeError as e:
             raise ValueError(f"{path} is not valid JSON ({e}) — fix the EDL syntax") from e
+        # A MISSING block is legal — a hand-authored EDL.json is edl_to_reel's
+        # documented front door (extract-spine SP1), and refusing it would delete a
+        # designed capability to punish nobody. A block that no longer matches its own
+        # contents is something else entirely: the tool's output, edited afterwards.
+        if isinstance(d, dict):
+            state, detail = provenance.check(d)
+            if state == "tampered":
+                raise ValueError(
+                    f"{path} was edited after edit_plan wrote it ({detail}). Editorial "
+                    f"changes belong in selection.json — edit that and re-run "
+                    f"`edit_plan build`; raw-JSON surgery bypasses the manifest preflight "
+                    f"that catches a window past EOF, a scene-cut straddle, and an "
+                    f"unresolved cast pin")
         return cls.from_dict(d)
 
     def to_dict(self) -> dict:
@@ -243,6 +256,19 @@ class EDL:
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
                          f"{e.composition} | {e.grid} | {motion} | {beat} | {e.processing_notes} |")
         return "\n".join(lines)
+
+
+def write_edl(edl: EDL, path: str | Path, *, selection: str | Path | None = None) -> None:
+    """The ONE place an EDL.json is written. Both authoring tools route through it —
+    edit_plan projects a selection, match_grade rewrites the tone pair in place — so
+    the stamp cannot drift between them; two writers stamping independently is the
+    shape that rots. `selection` is the judgment file this cut was projected from;
+    its digest rides in the block so a later reader can tell WHICH selection produced
+    this EDL."""
+    d = edl.to_dict()
+    inputs = {"selection": provenance.digest_file(selection)} if selection is not None else {}
+    d[provenance.PROV_KEY] = provenance.stamp(d, inputs=inputs)
+    Path(path).write_text(json.dumps(d, indent=2))
 
 
 def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,

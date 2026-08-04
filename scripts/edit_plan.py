@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from scripts.lib import gridfit
-from scripts.lib.edl import EDL, EDLEpisode, preflight
+from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
@@ -279,7 +279,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
         return stop
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     edl_path, md_path = Path(out_dir) / "EDL.json", Path(out_dir) / "EDL.md"
-    edl_path.write_text(json.dumps(edl.to_dict(), indent=2))
+    write_edl(edl, edl_path, selection=selection_path)
     md_path.write_text(edl.to_markdown())
     return {"status": "written", "edl": str(edl_path), "md": str(md_path),
             "episodes": len(edl.episodes)}

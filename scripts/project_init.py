@@ -7,6 +7,7 @@ Custom aspect: --purpose custom --canvas 4:5 ; explicit delivery: --delivery exa
 import argparse
 from pathlib import Path
 
+from scripts.lib import provenance
 from scripts.lib.project import resolve_project
 
 
@@ -31,6 +32,9 @@ def main() -> None:
                           delivery=a.delivery, notes=a.notes)
     Path(a.project_dir).mkdir(parents=True, exist_ok=True)
     out = Path(a.project_dir) / "project.json"
+    # The run's START stamp: edl_to_reel compares the engine against this and refuses a
+    # run that straddles an engine change (design §7).
+    cfg.provenance = provenance.stamp(cfg.to_dict())
     cfg.write(out)
     print(str(out))
 

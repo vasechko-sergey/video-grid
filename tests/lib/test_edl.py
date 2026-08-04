@@ -543,3 +543,64 @@ def test_edl_without_provenance_emits_no_key():
 def test_edl_refuses_a_non_dict_provenance():
     with pytest.raises(ValueError, match="EDL.provenance"):
         _edl(provenance="nope")
+
+
+# --- attested-run Task 2: write_edl (the one EDL.json writer chokepoint) + from_json's
+# tampered-EDL refusal (design docs/specs/2026-08-04-attested-run-design.md §4/§5)
+# NOTE: the task brief's snippets write `EDL.from_dict({"episodes": [_ep()]})`, but (as
+# Task 1's tests above already found) `_ep()` returns a constructed EDLEpisode OBJECT,
+# not a dict — EDL.from_dict requires each `episodes[i]` to be a dict. `_edl(**kw)` is
+# this file's existing helper for exactly this shape (a valid multi-episode EDL via
+# EDL.from_dict); swapped to it below wherever the brief built an EDL through
+# from_dict. `test_from_json_still_loads_a_hand_authored_unstamped_edl` writes RAW json
+# directly (never goes through EDL.from_dict/EDL()) to simulate hand authorship, so it
+# needs a JSON-serializable episode dict instead — `_ep().to_dict()` is that same
+# episode's dict form.
+
+def test_write_edl_stamps_and_from_json_reads_it_back_intact(tmp_path):
+    from scripts.lib import edl as edl_mod, provenance
+    e = _edl()
+    p = tmp_path / "EDL.json"
+    edl_mod.write_edl(e, p)
+    assert provenance.check(json.loads(p.read_text()))[0] == "intact"
+    assert edl_mod.EDL.from_json(p).provenance["self"]
+
+
+def test_write_edl_records_the_selection_digest(tmp_path):
+    from scripts.lib import edl as edl_mod, provenance
+    sel = tmp_path / "selection.json"
+    sel.write_text('{"episodes": []}')
+    p = tmp_path / "EDL.json"
+    edl_mod.write_edl(_edl(), p, selection=sel)
+    block = json.loads(p.read_text())["provenance"]
+    assert block["inputs"]["selection"] == provenance.digest_file(sel)
+
+
+def test_from_json_refuses_an_edl_edited_after_the_tool_wrote_it(tmp_path):
+    from scripts.lib import edl as edl_mod
+    p = tmp_path / "EDL.json"
+    edl_mod.write_edl(_edl(), p)
+    d = json.loads(p.read_text())
+    d["cap"] = 9                                   # raw-JSON surgery
+    p.write_text(json.dumps(d, indent=2))
+    with pytest.raises(ValueError, match="selection.json"):
+        edl_mod.EDL.from_json(p)
+
+
+def test_from_json_still_loads_a_hand_authored_unstamped_edl(tmp_path):
+    # edl_to_reel's documented SP1 front door: absence is legal, tampering is not
+    from scripts.lib import edl as edl_mod
+    p = tmp_path / "EDL.json"
+    p.write_text(json.dumps({"episodes": [_ep().to_dict()]}, indent=2))
+    assert edl_mod.EDL.from_json(p).provenance == {}
+
+
+def test_a_rewritten_edl_restamps_rather_than_going_stale(tmp_path):
+    from scripts.lib import edl as edl_mod, provenance
+    p = tmp_path / "EDL.json"
+    e = _edl()
+    edl_mod.write_edl(e, p)
+    e2 = edl_mod.EDL.from_json(p)
+    e2.cap = 5                                     # a TOOL changing the EDL
+    edl_mod.write_edl(e2, p)
+    assert provenance.check(json.loads(p.read_text()))[0] == "intact"

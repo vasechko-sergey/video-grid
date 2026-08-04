@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from scripts import match_grade
-from scripts.lib import matchgrade
+from scripts.lib import matchgrade, provenance
 from scripts.lib.edl import EDLEpisode, EDL
 
 
@@ -75,7 +75,12 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
                       "authored": 2, "skipped": {}}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
-    assert back == EDL(episodes=(
+    # attested-run Task 2: match_grade now routes its rewrite through edl.write_edl,
+    # so the file on disk carries a fresh, self-consistent stamp — check it, then
+    # strip it before the whole-object comparison below (that comparison's own intent
+    # predates provenance and is about the EPISODES, not the stamp's exact contents).
+    assert provenance.check(back.to_dict())[0] == "intact"
+    assert replace(back, provenance={}) == EDL(episodes=(
         replace(ep0, tone_src=(10.0, 90.0, 150.0), tone_dst=target),
         replace(ep1, tone_src=(40.0, 130.0, 240.0), tone_dst=target),
     ))

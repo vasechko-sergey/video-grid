@@ -5,6 +5,7 @@ import imagehash
 import pytest
 
 from scripts import check_reel
+from scripts.lib import provenance
 from scripts.lib.models import ReelCheckSpec
 
 
@@ -32,9 +33,19 @@ class _Stub:
         monkeypatch.setattr(check_reel, "_hamming", lambda a, b: abs(a - b), raising=False)
 
 
+def _master(tmp_path):
+    """A real (dummy-content) master file. `run` now hashes the master for
+    ReelReport.master_digest (design §4) — a literal "m.mp4" that names no real file
+    no longer works here, unlike every other path `run` takes (those stay fake
+    strings because `_Stub` reroutes every function that would touch them)."""
+    p = tmp_path / "m.mp4"
+    p.write_bytes(b"master-bytes")
+    return str(p)
+
+
 def test_length_passes_within_half_second(tmp_path, monkeypatch):
     _Stub([3.0, 3.0]).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["length"].passed is True
     assert rep.checks["black"].passed is True
@@ -42,7 +53,7 @@ def test_length_passes_within_half_second(tmp_path, monkeypatch):
 
 def test_length_fails_and_attributes_to_pacing(tmp_path, monkeypatch):
     _Stub([3.0, 4.0]).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["length"].passed is False and rep.overall is False
     f = [x for x in rep.fail_reasons if x.check == "length"][0]
@@ -52,7 +63,7 @@ def test_length_fails_and_attributes_to_pacing(tmp_path, monkeypatch):
 def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
     # a black frame at t=4.0 lands in episode 1 (spans 3.0..6.0)
     _Stub([3.0, 3.0], blacks=[4.0]).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["black"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "black"][0]
@@ -62,7 +73,7 @@ def test_black_hit_attributes_to_the_owning_episode(tmp_path, monkeypatch):
 def test_beat_loudness_safe_zones_not_checked_when_silent(tmp_path, monkeypatch):
     # distinct hashes so the variety check passes (see the color/variety tests).
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     # all three now read "not-checked" — beat/loudness lack audio, safe_zones lacks geometry.
     for name in ("beat", "loudness", "safe_zones"):
@@ -77,7 +88,7 @@ def test_color_across_cuts_passes_when_neighbours_match(tmp_path, monkeypatch):
     _Stub([3.0, 3.0], means={2.95: (100.0, 120.0, 130.0), 3.05: (101.0, 121.0, 131.0),
                              1.5: (100.0, 120.0, 130.0), 4.5: (101.0, 121.0, 131.0)}
           ).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["color_across_cuts"].passed is True
 
@@ -88,7 +99,7 @@ def test_color_across_cuts_blames_the_episode_farther_from_the_reel_median(tmp_p
              2.95: (100.0, 120.0, 130.0), 3.05: (100.0, 120.0, 130.0),  # cut 0 sides (match)
              1.5: (100.0, 120.0, 130.0), 4.5: (100.0, 120.0, 130.0), 7.5: (160.0, 120.0, 130.0)}
     _Stub([3.0, 3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4", "c.mp4"], ReelCheckSpec(target_dur=9.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"], ReelCheckSpec(target_dur=9.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["color_across_cuts"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
@@ -97,7 +108,7 @@ def test_color_across_cuts_blames_the_episode_farther_from_the_reel_median(tmp_p
 
 def test_color_across_cuts_is_not_applicable_for_a_single_episode(tmp_path, monkeypatch):
     _Stub([3.0]).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["color_across_cuts"].passed is None      # no cut to judge
 
@@ -108,7 +119,7 @@ def test_color_across_cuts_two_episode_tie_blames_the_later_episode(tmp_path, mo
     means = {2.95: (100.0, 120.0, 130.0), 3.05: (200.0, 120.0, 130.0),   # cut sides: delta 33.3 → fail
              1.5: (100.0, 120.0, 130.0), 4.5: (200.0, 120.0, 130.0)}     # span midpoints
     _Stub([3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.checks["color_across_cuts"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
@@ -127,7 +138,7 @@ def test_color_across_cuts_uses_median_not_mean_so_a_far_outlier_does_not_mislea
              7.5: (100.0, 120.0, 130.0), 10.5: (100.0, 120.0, 130.0),     # span mids 2,3
              13.5: (9999.0, 120.0, 130.0)}                                # span mid 4 — far outlier
     _Stub([3.0, 3.0, 3.0, 3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"],
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"],
                          ReelCheckSpec(target_dur=15.0), str(tmp_path / "r.json"))
     assert rep.checks["color_across_cuts"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "color_across_cuts" and x.detail["cut"] == 0][0]
@@ -143,7 +154,7 @@ def test_color_fail_detail_carries_target_and_culprit_mean(tmp_path, monkeypatch
           means={2.95: (100.0, 120.0, 130.0), 3.05: (160.0, 120.0, 130.0),
                  1.5: (100.0, 120.0, 130.0), 4.5: (160.0, 120.0, 130.0)}
           ).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
                          ReelCheckSpec(target_dur=6.0, color_delta_max=12.0),
                          str(tmp_path / "r.json"))
     f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
@@ -157,7 +168,7 @@ def test_color_fail_detail_carries_target_and_culprit_mean(tmp_path, monkeypatch
 def test_variety_flags_a_near_duplicate_pair(tmp_path, monkeypatch):
     # ep0 and ep1 identical hash (distance 0 < variety_min) → fail, blame ep1
     _Stub([3.0, 3.0], hashes={1.5: 100, 4.5: 100}).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
                          ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
     assert rep.checks["variety"].passed is False
     f = [x for x in rep.fail_reasons if x.check == "variety"][0]
@@ -166,7 +177,7 @@ def test_variety_flags_a_near_duplicate_pair(tmp_path, monkeypatch):
 
 def test_variety_passes_for_distinct_episodes(tmp_path, monkeypatch):
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
                          ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
     assert rep.checks["variety"].passed is True
 
@@ -174,7 +185,7 @@ def test_variety_passes_for_distinct_episodes(tmp_path, monkeypatch):
 def test_variety_passes_at_exactly_the_threshold(tmp_path, monkeypatch):
     # distance == variety_min must PASS (spec: Hamming >= variety_min); guards the < boundary
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 8}).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"],
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
                          ReelCheckSpec(target_dur=6.0, variety_min=8), str(tmp_path / "r.json"))
     assert rep.checks["variety"].passed is True
 
@@ -190,7 +201,7 @@ def test_variety_failure_report_is_json_serializable_with_real_hamming(tmp_path,
     monkeypatch.setattr(check_reel, "_phash_bits", lambda v, t: same)
     # _hamming is intentionally NOT stubbed → the real numpy-returning path runs
     out = tmp_path / "r.json"
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0), str(out))
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0), str(out))
     assert rep.checks["variety"].passed is False
     reloaded = json.loads(out.read_text())             # must parse → proves json.dumps didn't crash
     assert reloaded["checks"]["variety"]["pass"] is False
@@ -250,7 +261,7 @@ def test_safe_zones_passes_when_every_subject_is_framed_safely(tmp_path, monkeyp
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # fy 0.45 safe
             _write_geom(tmp_path / "ep1", 500.0, 900.0)]
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is True
     assert rep.checks["safe_zones"].detail["advisory"] is True
@@ -260,7 +271,7 @@ def test_safe_zones_flags_low_subject_but_stays_advisory(tmp_path, monkeypatch):
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # safe
             _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # fy 0.98 → under tiktok caption band
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is False
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1
@@ -286,7 +297,7 @@ def test_editorial_checks_report_and_stay_advisory(tmp_path, monkeypatch):
     # ep0 fills; ep1's subject (x=980, w=100 via _write_geom) pokes past the right edge → key_action False
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),
             _write_geom(tmp_path / "ep1", 980.0, 900.0)]
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["key_action"].passed is False           # clipped subject flagged
     assert rep.checks["key_action"].detail["advisory"] is True
@@ -301,7 +312,7 @@ def test_editorial_checks_flag_padbars_and_transitions(tmp_path, monkeypatch):
     # ep0 fill; ep1 an asymmetric letterbox AND a fill→insert-ish layout jump
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),
             _write_geom_layout(tmp_path / "ep1", "insert", (0, 300, 400, 800))]
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["pad_bars"].passed is False and rep.checks["pad_bars"].detail["worst_episode"] == 1
     assert rep.checks["transitions"].passed is False and rep.checks["transitions"].detail["worst_cut"] == 0
@@ -310,7 +321,7 @@ def test_editorial_checks_flag_padbars_and_transitions(tmp_path, monkeypatch):
 
 def test_editorial_checks_not_checked_when_silent(tmp_path, monkeypatch):
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))            # no geometry
     for name in ("key_action", "pad_bars", "transitions"):
         assert rep.checks[name].passed is None
@@ -339,7 +350,7 @@ def test_pan_episode_does_not_crash_on_the_route_file_it_never_wrote(tmp_path, m
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom_pan(tmp_path / "ep0"), _write_geom_pan(tmp_path / "ep1")]
     assert not Path(geom[0][0]).exists()      # the fixture really is the production situation
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.episode_count == 2 and rep.overall is True
 
@@ -350,7 +361,7 @@ def test_all_pan_reel_states_the_absence_instead_of_passing_vacuously(tmp_path, 
     # down. It must be stated, not fallen through.
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom_pan(tmp_path / "ep0"), _write_geom_pan(tmp_path / "ep1")]
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     for name in ("safe_zones", "key_action"):
         assert rep.checks[name].passed is None
@@ -368,7 +379,7 @@ def test_all_pan_reel_still_runs_the_meta_only_checks(tmp_path, monkeypatch):
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom_pan(tmp_path / "ep0", "fit", (0, 500, 1000, 1000)),
             _write_geom_pan(tmp_path / "ep1", "fit", (0, 500, 1000, 1000))]
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     # the counts prove the checks ACTUALLY RAN over both episodes — a not-checked
     # fall-through carries a "status" key and neither of these
@@ -382,7 +393,7 @@ def test_mixed_reel_checks_the_tracked_episodes_and_names_the_skipped_ones(tmp_p
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # tracked, safe
             _write_geom_pan(tmp_path / "ep1")]                # generated
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is True            # the tracked one was examined
     assert rep.checks["key_action"].passed is True
@@ -400,7 +411,7 @@ def test_a_pan_at_a_lower_index_does_not_renumber_the_episode_that_is_blamed(tmp
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom_pan(tmp_path / "ep0"),                # generated
             _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # tracked, fy 0.98 → violates
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is False
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1      # 0 under a filtering impl
@@ -419,7 +430,7 @@ def test_provenance_not_file_existence_decides_whether_a_route_is_read(tmp_path,
     Path(geom[0][0]).write_text(json.dumps(                   # stray route beside the pan
         [{"t": 0.0, "x": 500.0, "y": 1960.0, "w": 100.0, "h": 200.0},
          {"t": 3.0, "x": 500.0, "y": 1960.0, "w": 100.0, "h": 200.0}]))   # would violate if read
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is True            # False if the stray file were read
     assert rep.checks["safe_zones"].detail["skipped_episodes"] == [0]
@@ -431,7 +442,7 @@ def test_an_all_tracked_reel_is_untouched_by_the_pan_branch(tmp_path, monkeypatc
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0),      # safe
             _write_geom(tmp_path / "ep1", 500.0, 1960.0)]     # violates
-    rep = check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is False
     assert rep.checks["safe_zones"].detail["worst_episode"] == 1
@@ -455,10 +466,23 @@ def test_check_reel_names_the_tracked_episode_missing_its_route(tmp_path, monkey
     _, p1, m1 = _write_geom(tmp_path / "ep1", 500.0, 900.0)   # tracked (pan=false)...
     geom = [ep0, (None, p1, m1)]                              # ...but its route is None
     with pytest.raises(ValueError) as e:
-        check_reel.run("m.mp4", ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+        check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                        str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     msg = str(e.value)
     assert "episode 1" in msg                  # names the OFFENDING episode, not "an episode"
     assert "pan=false" in msg                  # the sidecar's own provenance phrasing
     assert "route_path is None" in msg
     assert "re-render with a pan" in msg       # the remedy, not just the complaint
+
+
+def test_run_stamps_the_master_digest(tmp_path, monkeypatch):
+    # design §4: check_reel is ReelReport.master_digest's only producer, and it always
+    # stamps — deliver (Task 3) refuses a report with no digest as proof it did not
+    # come from check_reel. A real file (not _master's fixed dummy bytes) so the
+    # digest is unambiguously tied to THIS master's own content.
+    master = tmp_path / "master.mp4"
+    master.write_bytes(b"master-bytes")
+    _Stub([3.0, 3.0]).install(monkeypatch)
+    rep = check_reel.run(str(master), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))
+    assert rep.master_digest == provenance.digest_file(master)

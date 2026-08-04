@@ -13,7 +13,7 @@ import imagehash
 import numpy as np
 from PIL import Image
 
-from scripts.lib import ffbin, proc, reel_final, safezones
+from scripts.lib import ffbin, proc, provenance, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -273,7 +273,8 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
 
     rep = ReelReport(checks=checks, fail_reasons=fails, episode_count=len(episodes),
-                     wall_s=round(time.monotonic() - t0, 3))
+                     wall_s=round(time.monotonic() - t0, 3),
+                     master_digest=provenance.digest_file(master))
     rep.write(out_report)
     return rep
 
