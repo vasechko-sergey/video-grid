@@ -132,18 +132,43 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v5(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v6(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960)
-    assert k["version"] == 5
+    assert k["version"] == 6
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280)
     assert k != k2                              # a scale change invalidates
 
 
-def test_cache_version_is_five_for_the_frame_grab_batch():
-    # frame-grab batch (design 2026-08-02): frames_rgb's round(t*fps) shifts
-    # phash/descriptor by <=1 frame vs the old output-seek → v4 must miss
-    from scripts.lib import intake_cache
-    assert intake_cache.CACHE_VERSION == 5
+def test_cast_entry_presence_round_trips(tmp_path):
+    from scripts.lib import intake_cache as ic
+    clip = _clip()                                    # existing helper in this file
+    entry = ic.CastEntry(source="a.mp4", tid=1, conf=0.9,
+                         descriptor=_desc((1.0,)), presence=2.5,
+                         crop_rgb=__import__("numpy").zeros((4, 4, 3), "uint8"))
+    out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
+    stored = ic.store(str(out), str(src), 3.0,
+                      ic.ClipResult(clip=clip, phashes=[], cast=[entry]),
+                      model="m", proxy_long_side=960, reid_model="osnet_x1_0")
+    assert stored.cast[0].presence == 2.5
+    loaded = ic.load(str(out), str(src), 3.0, model="m",
+                     proxy_long_side=960, reid_model="osnet_x1_0")
+    assert loaded.cast[0].presence == 2.5
+
+
+def test_reid_model_is_part_of_the_key(tmp_path):
+    from scripts.lib import intake_cache as ic
+    clip = _clip()
+    out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
+    ic.store(str(out), str(src), 3.0, ic.ClipResult(clip=clip, phashes=[], cast=[]),
+             model="m", proxy_long_side=960, reid_model="")           # cached reid-absent
+    # a later run WITH reid must MISS, not serve the stale empty-cast entry
+    assert ic.load(str(out), str(src), 3.0, model="m",
+                   proxy_long_side=960, reid_model="osnet_x1_0") is None
+
+
+def test_cache_version_is_6():
+    from scripts.lib import intake_cache as ic
+    assert ic.CACHE_VERSION == 6

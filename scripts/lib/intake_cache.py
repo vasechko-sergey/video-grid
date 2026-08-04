@@ -31,9 +31,12 @@ from scripts.lib.footage import FootageClip
 # proxy seg mask upsampled onto the original crop — so a v3 maskless descriptor must
 # miss, design §5a). The 4 → 5 bump is the frame-grab batch (design 2026-08-02) —
 # cast descriptors and window phashes shift by ≤1 frame because `frames_rgb` selects
-# round(t*fps) where output-seek grabbed the first frame with pts >= t. An
-# all-or-nothing version beats a per-field logic hash nobody can audit.
-CACHE_VERSION = 5
+# round(t*fps) where output-seek grabbed the first frame with pts >= t. The 5 → 6
+# bump is the hero re-ID slice (design 2026-08-04): descriptors are now 512-d OSNet
+# embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
+# result must miss. An all-or-nothing version beats a per-field logic hash nobody
+# can audit.
+CACHE_VERSION = 6
 
 
 @dataclass
@@ -45,6 +48,7 @@ class CastEntry:
     tid: int
     conf: float
     descriptor: list[float]
+    presence: float = 0.0            # on-screen seconds of the track (surfacing rank, design §4.1)
     crop: str | None = None
     crop_rgb: object | None = None
 
@@ -56,15 +60,20 @@ class ClipResult:
     cast: list[CastEntry] = field(default_factory=list)
 
 
-def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int) -> dict:
+def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
+             reid_model: str = "") -> dict:
     """Everything that changes a ClipResult. A mismatch on load → recompute. `model`
     is supplied by the driver (the fact is its), never imported from track.
     `proxy_long_side` is the analysis-proxy scale: change it and every result must
-    miss, because the CV ran on differently downscaled pixels (design 2026-08-01)."""
+    miss, because the CV ran on differently downscaled pixels (design 2026-08-01).
+    `reid_model` is whether (and with which model) cast was embedded: a scan run
+    without torchreid caches an empty cast, and a later resume WITH torchreid must
+    not silently serve that stale empty cast (design 2026-08-04)."""
     st = os.stat(path)
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
             "sample_fps": float(sample_fps), "model": model,
-            "proxy_long_side": int(proxy_long_side), "version": CACHE_VERSION}
+            "proxy_long_side": int(proxy_long_side), "reid_model": str(reid_model),
+            "version": CACHE_VERSION}
 
 
 def _dir(out_dir: str, path: str) -> Path:
@@ -73,7 +82,7 @@ def _dir(out_dir: str, path: str) -> Path:
 
 
 def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
-          model: str, proxy_long_side: int) -> ClipResult:
+          model: str, proxy_long_side: int, reid_model: str = "") -> ClipResult:
     """Write the crop PNGs, then commit clip.json atomically (os.replace), and
     return the result in cached form (crop_rgb arrays replaced by their PNG paths)
     so a just-scanned clip and a loaded one present one shape to Phase 2 (§2/§3).
@@ -89,11 +98,12 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
         Image.fromarray(e.crop_rgb.astype("uint8")).save(tmp_png, format="PNG")
         os.replace(tmp_png, png)                   # atomic; a torn crop never outlives the write
         cached.append(replace(e, crop=str(png), crop_rgb=None))
-    payload = {"key": clip_key(path, sample_fps, model, proxy_long_side),
+    payload = {"key": clip_key(path, sample_fps, model, proxy_long_side, reid_model),
                "clip": result.clip.to_dict(),
                "phashes": list(result.phashes),
                "cast": [{"source": e.source, "tid": e.tid, "conf": e.conf,
-                         "descriptor": e.descriptor, "crop": e.crop} for e in cached]}
+                         "descriptor": e.descriptor, "presence": e.presence,
+                         "crop": e.crop} for e in cached]}
     tmp = d / "clip.json.tmp"
     tmp.write_text(json.dumps(payload))
     os.replace(tmp, d / "clip.json")               # atomic commit; presence == committed
@@ -101,7 +111,7 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
 
 
 def load(out_dir: str, path: str, sample_fps: float, model: str,
-         proxy_long_side: int) -> ClipResult | None:
+         proxy_long_side: int, reid_model: str = "") -> ClipResult | None:
     """Return the cached-form ClipResult on a key match, else None. Any problem —
     absent, stale, truncated, wrong-shape, or a source file that has since moved —
     reads as a miss, never a crash: the cache is regenerable, and a corrupt entry
@@ -112,11 +122,12 @@ def load(out_dir: str, path: str, sample_fps: float, model: str,
         payload = json.loads(f.read_text())
         if not isinstance(payload, dict):
             return None
-        if payload.get("key") != clip_key(path, sample_fps, model, proxy_long_side):
+        if payload.get("key") != clip_key(path, sample_fps, model, proxy_long_side, reid_model):
             return None
         clip = FootageClip.from_dict(payload["clip"])
         cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
-                          descriptor=c["descriptor"], crop=c["crop"]) for c in payload["cast"]]
+                          descriptor=c["descriptor"], presence=c.get("presence", 0.0),
+                          crop=c["crop"]) for c in payload["cast"]]
         return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)
     except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
