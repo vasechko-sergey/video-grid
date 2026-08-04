@@ -1411,3 +1411,29 @@ def test_reframespec_accepts_the_inclusive_smooth_window_s_upper_bound():
     s = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                     color_means=(105, 122, 137), delivery=Delivery(), smooth_window_s=2.0)
     assert s.smooth_window_s == 2.0
+
+
+# --- attested-run Task 1: ReelReport.master_digest / ReelManifest.provenance
+# (design docs/specs/2026-08-04-attested-run-design.md §4/§6) ---
+
+def test_reel_report_round_trips_master_digest():
+    from scripts.lib.models import CheckResult, ReelReport
+    r = ReelReport(checks={"length": CheckResult("length", True, {})}, master_digest="a" * 64)
+    assert r.to_dict()["master_digest"] == "a" * 64
+    assert ReelReport.from_dict(r.to_dict()).master_digest == "a" * 64
+
+
+def test_reel_report_defaults_master_digest_to_empty():
+    from scripts.lib.models import CheckResult, ReelReport
+    assert ReelReport(checks={"length": CheckResult("length", True, {})}).master_digest == ""
+
+
+def test_reel_manifest_carries_a_provenance_dict():
+    # NOTE: the task brief's snippet called a `_manifest()` helper; this file has no such
+    # helper — its existing pattern for building a ReelManifest is `m.ReelManifest.from_dict
+    # (_reel_dict())` (see test_reel_manifest_from_dict_round_trip and friends above). Reused
+    # here rather than inventing a new one.
+    rm = m.ReelManifest.from_dict(_reel_dict())
+    assert rm.provenance == {}
+    rm.provenance = {"edl": {"state": "intact"}}
+    assert rm.provenance["edl"]["state"] == "intact"

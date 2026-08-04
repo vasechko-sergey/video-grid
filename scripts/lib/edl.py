@@ -11,9 +11,10 @@ cast registry from footage — none of models/manifest/project/footage import
 edl, so no cycle.
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.lib import provenance
 from scripts.lib.footage import Cast
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
@@ -156,6 +157,7 @@ class EDL:
     cast: str | None = None        # cast.json path; needed only when an episode pins a cast name
     cap: int = 3                   # build_reel reprocess cap
     target_dur: float | None = None
+    provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
         eps = tuple(self.episodes)
@@ -174,6 +176,10 @@ class EDL:
         if self.target_dur is not None and (isinstance(self.target_dur, bool)
                 or not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0):
             raise ValueError(f"EDL.target_dur must be a positive number or null, got {self.target_dur!r}")
+        if not isinstance(self.provenance, dict):
+            raise ValueError(f"EDL.provenance must be an object, got "
+                             f"{type(self.provenance).__name__} — re-run edit_plan build "
+                             f"to regenerate EDL.json")
 
     @classmethod
     def from_dict(cls, d: dict) -> "EDL":
@@ -198,7 +204,8 @@ class EDL:
                 raise ValueError(f"EDL.from_dict: episodes[{k}] has a missing or unknown field — {ex}") from ex
         cap = d.get("cap")
         return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
-                   cap=cap if cap is not None else 3, target_dur=d.get("target_dur"))
+                   cap=cap if cap is not None else 3, target_dur=d.get("target_dur"),
+                   provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
     def from_json(cls, path: str | Path) -> "EDL":
@@ -209,8 +216,12 @@ class EDL:
         return cls.from_dict(d)
 
     def to_dict(self) -> dict:
-        return {"episodes": [e.to_dict() for e in self.episodes],
-                "music": self.music, "cast": self.cast, "cap": self.cap, "target_dur": self.target_dur}
+        d = {"episodes": [e.to_dict() for e in self.episodes],
+             "music": self.music, "cast": self.cast, "cap": self.cap,
+             "target_dur": self.target_dur}
+        if self.provenance:
+            d[provenance.PROV_KEY] = dict(self.provenance)
+        return d
 
     def to_markdown(self) -> str:
         total = sum(e.dur for e in self.episodes)

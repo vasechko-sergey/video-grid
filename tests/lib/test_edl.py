@@ -519,3 +519,27 @@ def test_tone_pair_coerces_to_tuples_from_json_arrays():
     assert ep.tone_src == (30, 100, 148) and isinstance(ep.tone_src, tuple)
     assert ep.tone_dst == (35, 110, 150) and isinstance(ep.tone_dst, tuple)
     assert EDLEpisode(**ep.to_dict()) == ep   # full round-trip equality
+
+
+# --- attested-run Task 1: EDL.provenance (design docs/specs/2026-08-04-attested-run-design.md §4) ---
+# NOTE: the task brief's snippet used `_ep()` inside an `EDL.from_dict({"episodes": [_ep()], ...})`
+# call, but this file's `_ep()` returns a constructed EDLEpisode object, not a dict — EDL.from_dict
+# requires each `episodes[i]` to be a dict (it raises "must be an object" otherwise; confirmed by
+# running the snippet verbatim before this fix). `_edl(**kw)` (above) is this file's existing
+# helper for exactly this shape: a minimal 2-episode EDL.from_dict payload with reel-level fields
+# overridden via **kw — the same helper test_edl_reel_level_fields/test_edl_bad_reel_field_raises
+# already use. Swapped to it here.
+
+def test_edl_round_trips_a_provenance_block():
+    e = _edl(provenance={"v": 1, "self": "abc"})
+    assert e.provenance == {"v": 1, "self": "abc"}
+    assert e.to_dict()["provenance"] == {"v": 1, "self": "abc"}
+
+
+def test_edl_without_provenance_emits_no_key():
+    assert "provenance" not in _edl().to_dict()
+
+
+def test_edl_refuses_a_non_dict_provenance():
+    with pytest.raises(ValueError, match="EDL.provenance"):
+        _edl(provenance="nope")

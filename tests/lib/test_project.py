@@ -172,3 +172,20 @@ def test_projectconfig_from_json_non_object_top_level_names_a_remedy(body, tmp_p
     p = tmp_path / "project.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run project-init"):
         pj.ProjectConfig.from_json(p)
+
+
+def test_project_config_round_trips_a_provenance_block(tmp_path):
+    from scripts.lib.project import ProjectConfig
+    cfg = ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                        provenance={"v": 1, "self": "abc"})
+    p = tmp_path / "project.json"
+    cfg.write(p)
+    assert ProjectConfig.from_json(p).provenance == {"v": 1, "self": "abc"}
+
+
+def test_project_config_without_provenance_emits_no_key(tmp_path):
+    # an existing project.json must stay byte-comparable: no empty block noise
+    from scripts.lib.project import ProjectConfig
+    cfg = ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native")
+    assert "provenance" not in cfg.to_dict()
+    assert cfg.provenance == {}

@@ -987,6 +987,11 @@ class ReelReport:
     fail_reasons: list[ReelFailure] = field(default_factory=list)
     episode_count: int = 0
     wall_s: float = 0.0                      # §11 binding: wall-time in every check report
+    # sha256 of the master this report actually measured (design §4). deliver refuses
+    # a report that does not bind to the file being shipped — check_reel is the only
+    # producer and always sets it, so an empty value means the report was not written
+    # by check_reel.
+    master_digest: str = ""
 
     @property
     def overall(self) -> bool:
@@ -997,7 +1002,8 @@ class ReelReport:
         return {"checks": {n: c.to_dict() for n, c in self.checks.items()},
                 "overall": self.overall,
                 "fail_reasons": [f.to_dict() for f in self.fail_reasons],
-                "episode_count": self.episode_count, "wall_s": self.wall_s}
+                "episode_count": self.episode_count, "wall_s": self.wall_s,
+                "master_digest": self.master_digest}
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelReport":
@@ -1016,7 +1022,8 @@ class ReelReport:
                 checks[n] = CheckResult(n, None, dict(cd))
         return cls(checks=checks,
                    fail_reasons=[ReelFailure.from_dict(f) for f in d.get("fail_reasons", [])],
-                   episode_count=d.get("episode_count", 0), wall_s=d.get("wall_s", 0.0))
+                   episode_count=d.get("episode_count", 0), wall_s=d.get("wall_s", 0.0),
+                   master_digest=d.get("master_digest", ""))
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
@@ -1070,6 +1077,7 @@ class ReelManifest:
     ambient: bool = True               # duck each clip's nat-sound under the music (§5.12); False → pure-music stem
     sfx: bool = False                  # whoosh on major transitions (§5.12); default off (opt-in stylistic accent)
     platform: str = ""                 # UI safe-zone table key (§5.13); "" → generic; from Spec.platform
+    provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
         if not self.episodes:
@@ -1107,6 +1115,9 @@ class ReelManifest:
         if not isinstance(self.platform, str):
             raise ValueError(f"ReelManifest.platform must be a string label (e.g. 'tiktok'), "
                              f"got {self.platform!r}")
+        if not isinstance(self.provenance, dict):
+            raise ValueError(f"ReelManifest.provenance must be an object, got "
+                             f"{type(self.provenance).__name__}")
         self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
 
     @property
@@ -1141,7 +1152,8 @@ class ReelManifest:
                    color_delta_max=d.get("color_delta_max", 12.0),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
                    music=d.get("music"), ambient=d.get("ambient", True),
-                   sfx=d.get("sfx", False), platform=d.get("platform", ""))
+                   sfx=d.get("sfx", False), platform=d.get("platform", ""),
+                   provenance=d.get("provenance") or {})
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":

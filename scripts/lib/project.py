@@ -3,7 +3,7 @@ start (design 2026-07-09). Determinism here; the interactive asking lives in
 skills/project-init/SKILL.md. Episode manifests inherit canvas/delivery from the
 project unless they override."""
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from scripts.lib.models import Delivery
@@ -28,6 +28,10 @@ class ProjectConfig:
     canvas: tuple
     delivery: str
     notes: str = ""
+    # The run's START stamp (design §4): project_init writes it, edl_to_reel compares
+    # against it. Empty = a run started before this existed, or git could not answer —
+    # either way no comparison is possible and nothing is inferred.
+    provenance: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.purpose not in PURPOSE_CANVAS:
@@ -42,6 +46,9 @@ class ProjectConfig:
             Delivery.from_spec(self.delivery)
         except (ValueError, TypeError) as e:
             raise ValueError(f"ProjectConfig.delivery {self.delivery!r} invalid — {e}") from e
+        if not isinstance(self.provenance, dict):
+            raise ValueError(f"ProjectConfig.provenance must be an object, got "
+                             f"{type(self.provenance).__name__} — re-run project-init")
 
     @classmethod
     def from_dict(cls, d: dict) -> "ProjectConfig":
@@ -55,11 +62,15 @@ class ProjectConfig:
         # pass raw values through; __post_init__ produces clean ValueError-with-remedy
         # for missing/None/garbage (never a bare KeyError/TypeError)
         return cls(purpose=d.get("purpose"), canvas=d.get("canvas"),
-                   delivery=d.get("delivery"), notes=d.get("notes") or "")
+                   delivery=d.get("delivery"), notes=d.get("notes") or "",
+                   provenance=d.get("provenance") or {})
 
     def to_dict(self) -> dict:
-        return {"purpose": self.purpose, "canvas": list(self.canvas),
-                "delivery": self.delivery, "notes": self.notes}
+        d = {"purpose": self.purpose, "canvas": list(self.canvas),
+             "delivery": self.delivery, "notes": self.notes}
+        if self.provenance:                  # omit when empty: an unstamped project.json
+            d["provenance"] = dict(self.provenance)   # stays byte-identical to before
+        return d
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ProjectConfig":
