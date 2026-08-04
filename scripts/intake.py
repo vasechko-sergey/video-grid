@@ -11,6 +11,7 @@ import shutil
 import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from math import hypot
 from pathlib import Path
 
@@ -37,7 +38,9 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
                                                   # threshold is deliberately NOT re-tuned to compensate — no real footage has been
                                                   # through this pipeline, so any new value would be invented (design §5).
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
-CAST_DEDUP = 0.30                                 # cosine descriptor distance below which two tracks are the same identity
+CLUSTER_COS = 0.30       # cosine cut for "same identity" in surfacing (design §5). A FIRST CUT
+                         # calibratable on the real cache — no footage exists to tune it.
+MAX_CAST = 15            # adaptive cap on surfaced identities; excess is dropped WITH a log (no silent cap)
 _VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
@@ -194,27 +197,59 @@ def cull(clips: list, phash_of: object) -> None:
             kept.append(h)
 
 
-def surface_crops(entries: list[CastEntry], top_n: int = 8) -> list[CastEntry]:
-    """Cluster CastEntry list by descriptor similarity → top_n distinct identities
-    (highest confidence first). Descriptors are precomputed by the worker (§6), so
-    this no longer builds them. Returns the picked CastEntry subset."""
-    items = sorted(entries, key=lambda e: e.conf, reverse=True)
-    picked: list = []
-    for e in items:
-        if all(descriptor_dist(e.descriptor, p.descriptor) > CAST_DEDUP for p in picked):
-            picked.append(e)
-        if len(picked) >= top_n:
-            break
+def _centroid(descs: list[list[float]]) -> list[float]:
+    import numpy as np
+    m = np.asarray(descs, dtype="float64").mean(axis=0)
+    n = float(np.linalg.norm(m)) or 1.0
+    return (m / n).tolist()
+
+
+def _medoid(members: list[CastEntry], centroid: list[float]) -> CastEntry:
+    return min(members, key=lambda e: descriptor_dist(e.descriptor, centroid))
+
+
+def surface_crops(entries: list[CastEntry], max_cast: int = MAX_CAST) -> list[CastEntry]:
+    """Cluster ALL tracks' embeddings into real identities (agglomerative, average
+    linkage, cosine, cut at CLUSTER_COS), one CastEntry per cluster: descriptor =
+    centroid (mean, re-L2-normed), representative crop = medoid, presence = sum
+    over members. Ranked by presence (design §4.1); capped at max_cast with a
+    logged drop — never a silent cap."""
+    if not entries:
+        return []
+    import numpy as np
+    if len(entries) == 1:
+        labels = [1]
+    else:
+        from scipy.cluster.hierarchy import fcluster, linkage
+        from scipy.spatial.distance import pdist
+        Z = linkage(pdist(np.asarray([e.descriptor for e in entries], "float64"),
+                          metric="cosine"), method="average")
+        labels = fcluster(Z, t=CLUSTER_COS, criterion="distance").tolist()
+    groups: dict[int, list[CastEntry]] = {}
+    for e, lab in zip(entries, labels):
+        groups.setdefault(int(lab), []).append(e)
+    picked: list[CastEntry] = []
+    for members in groups.values():
+        cent = _centroid([m.descriptor for m in members])
+        rep = _medoid(members, cent)
+        picked.append(replace(rep, descriptor=cent,
+                              presence=float(sum(m.presence for m in members))))
+    picked.sort(key=lambda e: e.presence, reverse=True)
+    if len(picked) > max_cast:
+        print(f"cast surfacing: {len(picked)} identities clustered, keeping the top "
+              f"{max_cast} by presence (dropped {len(picked) - max_cast})", file=sys.stderr)
+        picked = picked[:max_cast]
     return picked
 
 
-def save_cast_candidates(entries: list[CastEntry], out_dir: str, top_n: int = 8) -> list[dict]:
-    """Surface the top-N distinct identities across ALL footage, persist their crop
-    PNGs under out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json
-    — the footage-intake SKILL shows these to the human to name (§4/§5). A cached
-    entry carries its crop as an on-disk PNG (copied); a fresh one carries the live
-    array (written). Empty footage → empty manifest, still written."""
-    picked = surface_crops(entries, top_n)
+def save_cast_candidates(entries: list[CastEntry], out_dir: str, max_cast: int = MAX_CAST) -> list[dict]:
+    """Surface up to max_cast distinct identities across ALL footage (clustered and
+    ranked by presence — design §4.1), persist their crop PNGs under
+    out_dir/cast_crops/candidate_{i}.png, and write cast_candidates.json — the
+    footage-intake SKILL shows these to the human to name (§4/§5). A cached entry
+    carries its crop as an on-disk PNG (copied); a fresh one carries the live array
+    (written). Empty footage → empty manifest, still written."""
+    picked = surface_crops(entries, max_cast)
     crop_dir = Path(out_dir) / "cast_crops"
     if picked:
         crop_dir.mkdir(parents=True, exist_ok=True)
@@ -226,6 +261,7 @@ def save_cast_candidates(entries: list[CastEntry], out_dir: str, top_n: int = 8)
         else:
             Image.fromarray(e.crop_rgb.astype("uint8")).save(dest)
         manifest.append({"id": i, "source": e.source, "conf": round(float(e.conf), 3),
+                         "presence": round(float(e.presence), 2),
                          "crop": dest, "descriptor": e.descriptor})
     (Path(out_dir) / "cast_candidates.json").write_text(json.dumps(manifest, indent=2))
     return manifest

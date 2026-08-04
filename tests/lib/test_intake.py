@@ -214,19 +214,50 @@ def test_cull_low_score_not_best():
     assert w.best is False           # below BEST_FLOOR even though unique
 
 
+def _emb(i):
+    v = [0.0] * 512; v[i] = 1.0
+    return v
+
+
+def test_surface_clusters_by_identity_and_ranks_by_presence():
+    from scripts.lib.intake_cache import CastEntry
+    # two people: id A (emb slot 0) with 3 near-identical tracks & lots of presence,
+    # id B (emb slot 5) with 1 track & little presence
+    A = [CastEntry("c.mp4", tid=i, conf=0.9, descriptor=_emb(0), presence=p)
+         for i, p in ((1, 2.0), (2, 3.0), (3, 1.0))]
+    B = [CastEntry("c.mp4", tid=9, conf=0.99, descriptor=_emb(5), presence=0.5)]
+    picked = intake.surface_crops(A + B)
+    assert len(picked) == 2
+    assert picked[0].presence == 6.0 and picked[0].descriptor == _emb(0)   # A first, summed
+    assert picked[1].presence == 0.5 and picked[1].descriptor == _emb(5)   # B second
+
+
+def test_surface_adaptive_cap_logs_the_drop(capsys):
+    from scripts.lib.intake_cache import CastEntry
+    entries = [CastEntry("c.mp4", tid=i, conf=0.9, descriptor=_emb(i), presence=float(i))
+               for i in range(intake.MAX_CAST + 3)]
+    picked = intake.surface_crops(entries)
+    assert len(picked) == intake.MAX_CAST
+    assert "dropped 3" in capsys.readouterr().err
+
+
+def test_surface_empty_is_empty():
+    assert intake.surface_crops([]) == []
+
+
 def test_surface_crops_dedups_identities():
-    # 512-d embeddings now (Task 3 replaces surface with clustering; here the greedy
-    # form runs cosine): two IDENTICAL embeddings collapse (cosine dist 0 < CAST_DEDUP),
-    # an orthogonal one (cosine dist 1.0) survives.
+    # clustering (average-linkage, cosine, cut at CLUSTER_COS) collapses two
+    # IDENTICAL embeddings into one cluster (cosine dist 0 < CLUSTER_COS); an
+    # orthogonal one (cosine dist 1.0) forms its own, distinct cluster.
     from scripts.lib.intake_cache import CastEntry
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
     blue = np.zeros((8, 8, 3), "uint8"); blue[:, :, 2] = 255
     dr = _desc(1.0)                    # the "red" identity embedding
-    db = _desc(0.0, 1.0)              # orthogonal → cosine dist 1.0 > CAST_DEDUP 0.30
+    db = _desc(0.0, 1.0)              # orthogonal → cosine dist 1.0 > CLUSTER_COS 0.30
     entries = [CastEntry("a.mp4", 1, 0.9, dr, crop_rgb=red),
                CastEntry("a.mp4", 2, 0.8, list(dr), crop_rgb=red.copy()),
                CastEntry("b.mp4", 3, 0.7, db, crop_rgb=blue)]
-    picked = intake.surface_crops(entries, top_n=8)
+    picked = intake.surface_crops(entries, max_cast=8)
     assert len(picked) == 2                            # the two identical embeddings collapse to one
 
 def test_save_cast_candidates_saves_and_manifests(tmp_path):
