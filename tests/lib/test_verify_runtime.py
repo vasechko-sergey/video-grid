@@ -29,6 +29,22 @@ def test_probe_weights_present_and_absent(monkeypatch, tmp_path):
     assert ok is True and verify_runtime.MODELS[0] in detail
 
 
+def test_probe_reid_reports_installed_and_absent(monkeypatch):
+    # mirrors test_probe_deps_reports_missing's style: drive _probe_reid via
+    # importlib rather than the real machine, since torchreid stays absent/mocked
+    # in this suite (design 2026-08-04 §7/§8) regardless of what is installed here.
+    monkeypatch.setattr(verify_runtime.importlib, "import_module", lambda name: object())
+    ok, detail = verify_runtime._probe_reid()
+    assert ok is True and detail == "installed"
+
+    def fake_absent(name):
+        raise ImportError("no torchreid")
+
+    monkeypatch.setattr(verify_runtime.importlib, "import_module", fake_absent)
+    ok, detail = verify_runtime._probe_reid()
+    assert ok is False and detail == "not installed"
+
+
 def test_probes_keys_match_registry():
     from scripts.lib.preflight import CHECKS
     assert set(verify_runtime._PROBES) == {c.key for c in CHECKS}

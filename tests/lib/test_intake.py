@@ -304,9 +304,10 @@ def test_write_cast_rejects_a_stale_descriptor_before_writing_the_file(tmp_path)
 
 
 def test_write_cast_rejects_two_crops_named_the_same(tmp_path):
-    # THE birth site of a duplicate name: surface_crops dedups by descriptor
-    # (CAST_DEDUP=0.30), so one person in two lightings is surfaced twice and the
-    # human naming both "Lena" is the obvious move. Cast's uniqueness check fires
+    # THE birth site of a duplicate name: surface_crops clusters by descriptor at a
+    # cosine cut (CLUSTER_COS=0.30, design 2026-08-04), so one person in two
+    # lightings can still surface twice and the human naming both "Lena" is the
+    # obvious move. Cast's uniqueness check fires
     # during the naming pass — where the human is standing and can actually fix it —
     # and cast.json never reaches disk broken.
     with pytest.raises(ValueError, match="duplicate"):

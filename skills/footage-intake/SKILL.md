@@ -43,8 +43,8 @@ are later stages.
    shot-type, people, motion, shake, score, and a `★` on the best moments), plus
    — from the same single YOLO-seg pass — candidate hero crops under
    `<out_dir>/cast_crops/candidate_*.png` and a `<out_dir>/cast_candidates.json`
-   manifest (`id, source, conf, crop, descriptor`). Skim `FOOTAGE.md`: confirm
-   every clip is logged and the starred windows look like real moments.
+   manifest (`id, source, conf, presence, crop, descriptor`). Skim `FOOTAGE.md`:
+   confirm every clip is logged and the starred windows look like real moments.
 
    Windows are **activity units**, not equal-length tiles: each is an activity
    peak plus its lead-in (windows may overlap a neighbor, never a fixed-size
@@ -63,10 +63,19 @@ are later stages.
    `FOOTAGE.md`, and a re-run retries exactly the failed clips.
 
 3. **Cast pass — only when people matter to the reel.** Read
-   `cast_candidates.json` and look at each `candidate_*.png`. **Ask the human who
-   each hero is** — any domain (family, athletes, friends, a vlogger). If the
-   reel is scenery or the footage has no people (empty manifest), skip this step
-   cleanly. Never name a candidate the human did not identify; leave unknowns out.
+   `cast_candidates.json` and look at each `candidate_*.png`. Candidates are
+   **presence-ranked** — clustered into real identities (a person re-ID
+   embedding, not a colour/clothing feature) and sorted by on-screen seconds
+   across all clips, most-visible first — so each entry is one real person, not
+   one track, and entry 0 is normally the easiest to recognize. **Ask the human
+   who each hero is** — any domain (family, athletes, friends, a vlogger); name
+   the people you recognize and skip the rest. If the reel is scenery or the
+   footage has no people (empty manifest), skip this step cleanly. Never name a
+   candidate the human did not identify; leave unknowns out. If intake printed a
+   `WARNING: torchreid not installed` line, `cast_candidates.json` is empty
+   regardless of how many people are on screen — that is a missing dependency,
+   not an empty cast: run `bash setup.sh` to install it, then re-run intake with
+   `--fresh` to rebuild the cast.
 
 4. **Write cast.** For each named candidate, take its **persisted descriptor**
    from `cast_candidates.json` (already computed — do not recompute) and call

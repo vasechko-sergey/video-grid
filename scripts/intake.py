@@ -216,10 +216,10 @@ def surface_crops(entries: list[CastEntry], max_cast: int = MAX_CAST) -> list[Ca
     logged drop — never a silent cap."""
     if not entries:
         return []
-    import numpy as np
     if len(entries) == 1:
         labels = [1]
     else:
+        import numpy as np
         from scipy.cluster.hierarchy import fcluster, linkage
         from scipy.spatial.distance import pdist
         Z = linkage(pdist(np.asarray([e.descriptor for e in entries], "float64"),

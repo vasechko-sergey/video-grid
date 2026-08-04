@@ -400,8 +400,9 @@ def test_preflight_resolves_a_cast_name_hero_via_the_registry(tmp_path):
 
 def test_preflight_stops_on_a_stale_cast_descriptor(tmp_path):
     # preflight's docstring sells "fail in ms, before any ffmpeg". It did not: a
-    # descriptor of the wrong length (a cast.json built under a different HIST_BINS)
-    # passed Cast.from_json, hero.resolve and validate() — stop was None — and blew
+    # descriptor of the wrong length (a cast.json built under a different
+    # DESCRIPTOR_LEN — e.g. a pre-2026-08-04 24-d colour histogram) passed
+    # Cast.from_json, hero.resolve and validate() — stop was None — and blew
     # up later in track.build_route, after every window had been cut. The registry
     # load is the boundary, so the stop must come from there: episode_idx is None
     # (the cast is reel-level, not one episode's fault) and the remedy names intake.

@@ -4,13 +4,67 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-02._
+_Last updated: 2026-08-04._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Hero re-ID embedding DONE (2026-08-04)** — plan
+  `docs/plans/2026-08-04-hero-reid.md` + design
+  `docs/specs/2026-08-04-hero-reid-design.md`, Tasks 0–6 (branch `feat/hero-reid`,
+  commits `91202aa`..`6aef567` + this docs sync). Promoted from fixes-backlog #1:
+  the appearance descriptor (`lib/appearance.build_descriptor`) was a 24-dim
+  L1-normalized RGB colour histogram (8 bins × 3 channels) over the seg-mask
+  pixels — it encoded clothing colour, not identity, and on the 2026-08-03 surf
+  run 4062 tracks collapsed to 892 "identities" with true/false-match distances
+  overlapping (not separable by any threshold). This slice replaces it
+  end-to-end with a 512-dim OSNet (`osnet_x1_0`, Market-1501) person-re-ID
+  embedding, cosine-compared. New `scripts/lib/reid.py` is the ONLY importer of
+  `torchreid` (mirrors `lib/vidstab`'s isolation of libvidstab) —
+  `available`/`require`/`ensure_model`/`embed`, lazy torch/torchreid imports,
+  weights warmed once before a pool (closes the concurrent-download landmine
+  already closed for YOLO). `appearance.descriptor_dist` becomes true cosine
+  distance (range [0,2]); `appearance.crop_from_result` replaces `crop_and_mask`
+  — the OSNet crop is the raw bbox, UNMASKED (a silhouette is out-of-distribution
+  for a bbox-trained reID net) — `build_descriptor`/`seg_mask`/`crop_and_mask`/
+  `upsample_mask` all deleted. `footage.DESCRIPTOR_LEN` 24→512 (`HIST_BINS`
+  gone), `CastMember` validates the new length with a re-run-intake remedy.
+  `CastEntry.presence` (on-screen seconds) rides the cache; `intake_cache.clip_key`
+  gains a `reid_model` term so a scan run without reID never masquerades as one
+  run with it; `CACHE_VERSION` 5→6. `intake.surface_crops` is rewritten from
+  greedy top-n dedup to agglomerative clustering (`scipy.cluster.hierarchy`,
+  average linkage, cosine, cut at `CLUSTER_COS`) — one candidate per real
+  identity (centroid descriptor, medoid crop), ranked by summed presence,
+  adaptive-capped at `MAX_CAST` with a logged (never silent) drop. The reID gate
+  (design §6) resolves backlog #1's three-way tension: `preflight`'s `reid`
+  Check is advisory (never blocks a run); `intake()` warns-and-continues when
+  torchreid is absent (windows/scoring/phashes still produced, cast embed
+  skipped, `cast_candidates.json` empty); a cast-identity hero pin fails loud —
+  `process_episode` checks `reid.available()` the moment a cast pin resolves and
+  the tracker itself is present, returning an explicit `stop_and_report`
+  (finding reason `reid-unavailable`, naming torchreid + the `bash setup.sh`
+  remedy) BEFORE the ladder runs, rather than let an empty route misreport
+  `no-track` (optical flow is correctly skipped regardless — a pinned hero never
+  falls to flow, design 2026-07-21 §1.1). `setup.sh` installs `torchreid` at
+  baseline, warn-and-continue, kept OUT of `requirements.txt` (the demucs
+  pattern). A weights-gated real-OSNet integration test (skipped when torchreid
+  is absent, like vidstab/demucs) embeds two synthetic crops and asserts cosine
+  separates them past `CAST_MATCH`, and that the same crop embeds ≈identically
+  twice — the only place the BGR→RGB colour-order landmine (design §10) can be
+  corroborated. **Honest limits (§9, not yet resolved):**
+  `CAST_MATCH`(0.35)/`CLUSTER_COS`(0.30)/`MAX_CAST`(15) are first-cut thresholds
+  with no labelled data — the repo's honest-threshold pattern; they must be
+  calibrated against the real cache after the FIRST re-scan with reID installed,
+  the same way `CAST_DEDUP` was left uncalibrated in the original cast→hero-pin
+  slice. Single crop per track for v1 (multi-crop averaging deferred). **2087
+  passed / 3 skipped** (demucs, iTunes-network, and the weights-gated real-OSNet
+  test — torchreid stays absent/mocked in this suite by design; two tests added
+  by this docs-sync task: a non-skipped negative-stride-crop contiguity proof
+  for `reid.embed`'s `np.ascontiguousarray` fix, and a
+  `verify_runtime._probe_reid` unit test).
 
 - **Setup installs everything — no opt-in flags DONE (2026-08-04)** — backlog #4,
   design `docs/specs/2026-08-04-setup-install-all-design.md` (branch

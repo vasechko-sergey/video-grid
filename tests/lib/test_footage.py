@@ -7,8 +7,9 @@ from scripts.lib.footage import (DESCRIPTOR_LEN, FootageWindow, FootageClip, Foo
 
 def _desc(*head: float) -> list[float]:
     """A registry-valid descriptor: DESCRIPTOR_LEN floats — `head`, zero-padded.
-    Reads the length from its one home rather than hardcoding 24, so a HIST_BINS
-    change moves these fixtures with the contract instead of breaking them."""
+    Reads the length from its one home rather than hardcoding 512, so a
+    DESCRIPTOR_LEN change moves these fixtures with the contract instead of
+    breaking them."""
     return list(head) + [0.0] * (DESCRIPTOR_LEN - len(head))
 
 
@@ -205,13 +206,14 @@ def test_castmember_rejects_bad(kw, msg):
 
 
 def test_castmember_rejects_a_wrong_length_descriptor():
-    # A descriptor is 3 channels × HIST_BINS = DESCRIPTOR_LEN floats. Nothing used
-    # to check that until appearance.descriptor_dist ran deep inside tracking, so a
-    # stale cast.json (built under a different HIST_BINS, or hand-edited) passed
-    # Cast.from_json, hero.resolve, manifest.validate AND edl.preflight, then
-    # detonated in track.build_route — after every window had been cut. A typo'd
-    # cast NAME fails in milliseconds; a stale descriptor must too. This is the one
-    # boundary a foreign descriptor crosses, so this is where the shape is checked.
+    # A descriptor is a DESCRIPTOR_LEN-float 512-d OSNet person-re-ID embedding.
+    # Nothing used to check that until appearance.descriptor_dist ran deep inside
+    # tracking, so a stale cast.json (built under a different DESCRIPTOR_LEN — e.g.
+    # a pre-2026-08-04 24-d colour histogram — or hand-edited) passed Cast.from_json,
+    # hero.resolve, manifest.validate AND edl.preflight, then detonated in
+    # track.build_route — after every window had been cut. A typo'd cast NAME fails
+    # in milliseconds; a stale descriptor must too. This is the one boundary a
+    # foreign descriptor crosses, so this is where the shape is checked.
     for bad in ([0.5, 0.5], [0.0] * (DESCRIPTOR_LEN - 1), [0.0] * (DESCRIPTOR_LEN + 1)):
         with pytest.raises(ValueError, match="descriptor") as ex:
             CastMember(name="Lena", descriptor=bad)
@@ -246,9 +248,10 @@ def test_cast_rejects_duplicate_names():
     # A registry maps a NAME to an identity; two entries under one name map it to
     # neither. hero.resolve returned whichever was listed first, so the route
     # followed a coin flip decided by list order — silently, with no way to tell.
-    # Not exotic: intake dedups surfaced crops at CAST_DEDUP=0.30, so one person
-    # shot in two lightings gets surfaced twice, and naming both "Lena" is the
-    # obvious human move. Uniqueness is the registry's invariant, so it is checked
+    # Not exotic: intake clusters surfaced crops at a cosine cut (CLUSTER_COS=0.30,
+    # design 2026-08-04), so one person shot in two lightings can still surface
+    # twice, and naming both "Lena" is the obvious human move. Uniqueness is the
+    # registry's invariant, so it is checked
     # on construction — which also makes resolve's first-match loop correct rather
     # than merely lucky.
     with pytest.raises(ValueError, match="Lena") as ex:

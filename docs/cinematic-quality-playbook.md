@@ -152,7 +152,8 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
 
 ## 4. Proposed priority order (to detail together)
 
-1. **#1 hero re-ID** — unblocks identity/personality; revives the hero-pin slice.
+1. **#1 hero re-ID — ✅ LANDED 2026-08-04** (`docs/plans/2026-08-04-hero-reid.md`)
+   — unblocks identity/personality; revives the hero-pin slice.
 2. **Governance hardening** (#8, #11, #13, #20, #15, #6) — make agent runs trustworthy
    before adding more power; also decide the current dirty-tree (still pending).
 3. **Editorial intelligence** — #19 shot variety + #3 per-episode QC + #12

@@ -24,7 +24,14 @@ build-status Done).
 
 ## 1. Hero identity — replace the colour-histogram descriptor with a person-re-ID embedding
 
-**Status:** DESIGN APPROVED (2026-08-03). Not yet planned/built.
+**Status:** ✅ LANDED 2026-08-04 — plan `docs/plans/2026-08-04-hero-reid.md` +
+design `docs/specs/2026-08-04-hero-reid-design.md`. The colour-histogram
+descriptor is replaced end-to-end with a 512-d OSNet person-re-ID embedding
+(cosine) behind the new `lib/reid.py` boundary; cast surfacing is now
+presence-ranked agglomerative clustering. `torchreid` installs at the setup
+baseline (warn-and-continue), closing the note in #4 below. Thresholds
+(`CAST_MATCH`/`CLUSTER_COS`/`MAX_CAST`) are first-cut — calibrate on the next
+real cache (§5/§9 of the design).
 
 **Symptom (reported):** hero selection on real footage is very poor — the
 candidate list collapses genuinely different people together, and the actual
@@ -178,8 +185,8 @@ extend/trim the last episode to reach a phrase line. Separate subsystem from #1
 install with warn-and-continue (kept out of `requirements.txt` so a torch-wheel
 failure degrades to the librosa proxy instead of aborting the venv);
 `--with-demucs`/`--with-sourcing` removed; the Jamendo key became a non-blocking
-notice; the `any`-lane use-time legal gate preserved untouched. `torchreid` (#1) is
-NOT yet added — it lands with the hero re-ID slice, following the same
+notice; the `any`-lane use-time legal gate preserved untouched. `torchreid` (#1)
+landed 2026-08-04 with the hero re-ID slice, following the same
 baseline+warn-and-continue pattern established here.
 
 **Feedback (as given):** setup must install **all** capabilities — no `--with-*`

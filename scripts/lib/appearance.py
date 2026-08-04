@@ -1,7 +1,7 @@
 """Appearance primitives (§6.1a layer 1 / design 2026-08-04).
 
 The 512-d OSNet embedding itself is produced by lib/reid (the only torchreid
-importer). This module stays numpy+PIL-free of the model: it owns the pure cosine
+importer). This module is numpy-based and torch-free: it owns the pure cosine
 DISTANCE between two embeddings and the crop helpers that feed reid.embed.
 footage.DESCRIPTOR_LEN is the on-disk length; the metric here must agree with
 reid.embed's output (L2-normalized), so descriptor_dist is a true cosine distance.

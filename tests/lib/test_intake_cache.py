@@ -147,7 +147,7 @@ def test_cast_entry_presence_round_trips(tmp_path):
     clip = _clip()                                    # existing helper in this file
     entry = ic.CastEntry(source="a.mp4", tid=1, conf=0.9,
                          descriptor=_desc((1.0,)), presence=2.5,
-                         crop_rgb=__import__("numpy").zeros((4, 4, 3), "uint8"))
+                         crop_rgb=np.zeros((4, 4, 3), "uint8"))
     out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
     stored = ic.store(str(out), str(src), 3.0,
                       ic.ClipResult(clip=clip, phashes=[], cast=[entry]),
@@ -169,6 +169,8 @@ def test_reid_model_is_part_of_the_key(tmp_path):
                    proxy_long_side=960, reid_model="osnet_x1_0") is None
 
 
-def test_cache_version_is_6():
+def test_cache_version_is_six_for_the_hero_reid():
+    # hero re-ID (design 2026-08-04): descriptors are now 512-d OSNet embeddings
+    # (was a 24-d colour histogram) and CastEntry carries presence → v5 must miss
     from scripts.lib import intake_cache as ic
     assert ic.CACHE_VERSION == 6
