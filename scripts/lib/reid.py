@@ -71,6 +71,10 @@ def embed(crops: list[np.ndarray]) -> list[list[float]]:
     if not crops:
         return []
     require()
+    # appearance.crop_from_result slices a BGR->RGB `[..., ::-1]` view (negative-stride,
+    # non-contiguous) — real torch/torchreid can choke on that layout, so force a
+    # contiguous copy before it reaches the extractor.
+    crops = [np.ascontiguousarray(c) for c in crops]
     feats = _get_extractor()(list(crops))          # torch.Tensor (N, 512)
     arr = np.asarray(feats.detach().cpu().numpy(), dtype="float64")
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
