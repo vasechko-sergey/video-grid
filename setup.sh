@@ -14,14 +14,13 @@ export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate m
 # upgrades what is already present; ffmpeg-full is pinned once installed, same reason.
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# scan all args so --with-demucs and --with-sourcing compose (order-independent)
-WANT_DEMUCS=0; WANT_SOURCING=0
-for arg in "$@"; do
-  case "$arg" in
-    --with-demucs)   WANT_DEMUCS=1 ;;
-    --with-sourcing) WANT_SOURCING=1 ;;
-  esac
-done
+# No opt-in flags: this script installs the WHOLE runtime. A capability the pipeline
+# is meant to have must be present after one `bash setup.sh`, or a run silently
+# degrades (a real run had no demucs, so its phrase-aware music in/out-point fell
+# back to the coarse librosa proxy, unnoticed). Where a platform genuinely cannot
+# provide something, the relevant block WARNS and continues — it never aborts the
+# venv and never leaves a capability missing without a printed reason. (design
+# 2026-08-04 setup-install-all)
 
 # --- system deps: install what's missing (brew), fail loud only when we can't ---
 # NOTE: macOS/homebrew only for now. On Linux/Windows install python3.13 + a
@@ -191,40 +190,29 @@ fi
 ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
-# demucs: vocal separation for start-offset intelligence (§5.5). Opt-in — pulls
-# torch (large). Absent → choose_offset falls back to a librosa mix-silence proxy,
-# so this is accuracy, not a hard requirement. Guarded on already-installed so a
-# rerun is a clean no-op (kept out of requirements.txt to keep the base install lean).
-if [ "$WANT_DEMUCS" = 1 ]; then
-  "$VENV/bin/pip" show demucs >/dev/null 2>&1 || {
-    echo "installing demucs (vocal separation; pulls torch) into the venv..."
-    "$VENV/bin/pip" install demucs; }
-fi
-# music sourcing (§5.5 B3). Opt-in — installs yt-dlp (the `any` lane) and configures the
-# free lane's OPTIONAL Jamendo key. The free lane works out of the box via ccMixter (no
-# key), so this is capability, not a hard requirement. Guarded on already-installed so a
-# rerun is a clean no-op (kept out of requirements.txt to keep the base install lean).
-if [ "$WANT_SOURCING" = 1 ]; then
-  "$VENV/bin/pip" show yt-dlp >/dev/null 2>&1 || {
-    echo "installing yt-dlp (any-lane audio sourcing) into the venv..."
-    "$VENV/bin/pip" install yt-dlp; }
-  SRC_ENV="$SKILL_DIR/config/sourcing.env"
-  if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
-    echo ""
-    echo "Free-lane music source. Jamendo (richer CC catalog) needs a free client_id;"
-    echo "without one the free lane uses ccMixter (no key)."
-    echo "  [1] paste a Jamendo client_id   [2] open the devportal to create one   [3] use ccMixter"
-    printf "choose [1/2/3] (default 3): "
-    read -r choice || choice=3
-    case "${choice:-3}" in
-      1) printf "paste client_id: "; read -r cid
-         mkdir -p "$SKILL_DIR/config"; echo "JAMENDO_CLIENT_ID=$cid" > "$SRC_ENV"
-         echo "saved to config/sourcing.env (gitignored)" ;;
-      2) echo "open https://devportal.jamendo.com/ , create an app, then re-run: bash setup.sh --with-sourcing"
-         echo "(the free lane uses ccMixter until a key is configured)" ;;
-      *) echo "using ccMixter (no key) for the free lane" ;;
-    esac
-  fi
+# demucs: vocal separation for phrase-aware music in/out-point (§5.5, backlog #2 —
+# "разбиение по фразам"). Baseline install, no longer behind --with-demucs. Pulls
+# torch (large) and can lack a wheel on some platforms, so this is WARN-AND-CONTINUE,
+# not a hard requirement: absent → choose_offset falls back to a librosa mix-silence
+# proxy (coarser phrase detection). Kept OUT of requirements.txt precisely so a failed
+# torch wheel degrades HERE instead of aborting the whole `pip install -r` (and with it
+# the venv and the recorded runtime root). Guarded on already-installed so a rerun is a
+# clean no-op; the `|| echo` also makes the compound exit 0, so `set -e` does not trip.
+"$VENV/bin/pip" show demucs >/dev/null 2>&1 || {
+  echo "installing demucs (vocal separation for phrase-aware music points; pulls torch)..."
+  "$VENV/bin/pip" install demucs \
+    || echo "WARNING: demucs install failed (no torch wheel for this platform?) -> music in/out-point falls back to the librosa mix-silence proxy (coarser). Re-run 'bash setup.sh' to retry."; }
+# music sourcing (§5.5 B3): yt-dlp (the `any` lane) now ships in requirements.txt, so
+# there is nothing to install here. The `any`-lane legal/responsibility gate is
+# UNTOUCHED — it lives in the sourcing code at USE time, not at install time; having the
+# yt-dlp binary present does not invoke it. The free lane works out of the box via
+# ccMixter (no key); Jamendo's richer CC catalog needs a free client_id, surfaced as a
+# NON-BLOCKING notice (no interactive read, so a non-interactive/CI `bash setup.sh`
+# never stalls). Add the key yourself when you want it.
+SRC_ENV="$SKILL_DIR/config/sourcing.env"
+if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
+  echo "note: the free music lane uses ccMixter (no key). For Jamendo's richer CC catalog,"
+  echo "  add 'JAMENDO_CLIENT_ID=...' to config/sourcing.env (get one at https://devportal.jamendo.com/)."
 fi
 # YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"

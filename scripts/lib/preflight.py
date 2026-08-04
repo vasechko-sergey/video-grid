@@ -30,7 +30,7 @@ CHECKS: tuple[Check, ...] = (
     Check("vidstab", "ffmpeg vidstab filters (intake shake, stabilize)", True, "bash setup.sh"),
     Check("font", "a drawtext font resolves", True, "bash setup.sh"),
     Check("weights", "YOLO segmentation weights present", True, "bash setup.sh"),
-    Check("demucs", "demucs (sharper music in-point)", False, "bash setup.sh --with-demucs"),
+    Check("demucs", "demucs (sharper music in-point)", False, "bash setup.sh"),
 )
 
 

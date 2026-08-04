@@ -69,7 +69,7 @@ def test_to_text_lists_failures_and_advisories_with_remedies():
     text = RuntimeReport(results=results).to_text()
     assert "runtime NOT ready" in text
     assert "[FAIL] font" in text and "font: bash setup.sh" in text
-    assert "[warn] demucs" in text and "demucs: bash setup.sh --with-demucs" in text
+    assert "[warn] demucs" in text and "demucs: bash setup.sh" in text
 
 
 def test_evaluate_all_ok_is_ready():
@@ -124,4 +124,4 @@ def test_evaluate_root_shell_quotes_a_spaced_path():
     raw = _all_ok_raw()
     raw["demucs"] = (False, "x")
     adv = preflight.evaluate(raw, root="/a b/clone").advisories[0]
-    assert adv.remedy == "cd '/a b/clone' && bash setup.sh --with-demucs"
+    assert adv.remedy == "cd '/a b/clone' && bash setup.sh"

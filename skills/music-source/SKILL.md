@@ -29,8 +29,9 @@ user makes the final call (the §4.1 music checkpoint stays human-influenced).
 
 - **`SPEC.json`** (from reel-brief) — `mood`, `length_s`, `music_mode`. No SPEC? pass
   `--mood "..." --mode free|any`.
-- **`yt-dlp`** is needed for the `any` lane — `bash setup.sh --with-sourcing` (opt-in).
-  The `free` lane needs no install.
+- **`yt-dlp`** (needed for the `any` lane) ships with `bash setup.sh` — no separate
+  install. The `free` lane needs no install either. A Jamendo `client_id` is optional
+  (add it to `config/sourcing.env`) and only enriches the `free` lane's catalog.
 
 ## Procedure
 

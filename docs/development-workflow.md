@@ -44,8 +44,12 @@ _Last updated: 2026-07-20._
   uninstalled font makes `deliver` fail loud — never a silent fallback to a
   different font. Every script fails loud with a remedy if a binary, filter, or
   font is missing.
-- **Still opt-in, for size not capability:** `--with-demucs` (torch, 2–3 GB) and
-  `--with-sourcing` (yt-dlp + the optional Jamendo key).
+- **All installed at baseline (no opt-in flags):** demucs (torch, 2–3 GB; the
+  phrase-aware music in/out-point) installs with **warn-and-continue** — a platform
+  with no torch wheel degrades to the librosa mix-silence proxy rather than aborting
+  the venv (which is why it stays OUT of `requirements.txt`); yt-dlp (the `any`
+  music-source lane) ships in `requirements.txt`. A Jamendo `client_id` is an
+  optional non-blocking notice (`config/sourcing.env`), not a flag.
 - `setup.sh` is **macOS/homebrew only for now** (cross-platform auto-install is a
   TODO), and warns-and-continues without brew so the venv still gets built. The
   runtime code is already portable — `scripts/lib/fonts.py` `FONT_CANDIDATES`

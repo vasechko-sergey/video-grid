@@ -57,15 +57,18 @@ catches a broken opencv independently.
 
 | key | check | needed only for | remedy |
 |-----|-------|-----------------|--------|
-| `demucs` | demucs importable | sharper music in-point (§5.5); absent → librosa mix-silence proxy | `bash setup.sh --with-demucs` |
+| `demucs` | demucs importable | phrase-aware music in/out-point (§5.5); absent → librosa mix-silence proxy | `bash setup.sh` |
 
-`demucs` is the one genuinely opt-in **importable** capability: it is the only
-runtime module not in `requirements.txt`, installed solely by `--with-demucs`.
-`--with-sourcing` is **not** a second advisory row — it installs `yt-dlp`, which is
-already a `requirements.txt` baseline line (so it lives under the required `deps`
-check), and otherwise only configures an optional Jamendo `client_id`; the free
-music-sourcing lane works keyless via ccMixter, so a missing key is not a gap and
-is not gated here.
+`demucs` is the only runtime module not in `requirements.txt`, so it stays the one
+**importable** advisory row. **Superseded 2026-08-04 (setup-install-all):** it is no
+longer opt-in — `setup.sh` installs it at baseline with warn-and-continue, so its
+remedy is a plain `bash setup.sh`. It remains *advisory* (not required) precisely
+because that warn-and-continue can legitimately leave it absent on a platform with
+no torch wheel, and the pipeline still runs via the librosa proxy. The old
+`--with-sourcing` flag is gone: `yt-dlp` is a `requirements.txt` baseline line (so it
+lives under the required `deps` check), and the Jamendo `client_id` is an optional
+non-blocking notice — the free music-sourcing lane works keyless via ccMixter, so a
+missing key is not a gap and is not gated here.
 
 **Tiering note (deliberate, approved).** `drawtext`/`font` are strictly needed only
 by the optional titles (§5.16) and draft-label (§5.9) stages, yet they sit in

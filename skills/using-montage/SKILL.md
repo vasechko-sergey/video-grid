@@ -97,8 +97,8 @@ say so rather than guessing a path.
    - a **local file path** -> analyse it directly, preferring the tool's own
      in-point pick: `"$VG" scripts.beats <track> --auto-start
      --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
-     strongest fragment, in a vocal pause (accurate with `bash setup.sh
-     --with-demucs`; a librosa mix-silence proxy otherwise). Pass an explicit
+     strongest fragment, in a vocal pause (demucs — installed by `bash setup.sh` —
+     sharpens this; a librosa mix-silence proxy is the fallback). Pass an explicit
      `--start-offset S` instead only to override.
    - an explicit **track name** (not a path) -> skip discovery; invoke
      **music-source** with `--track "<name>"` to resolve and fetch it, then the

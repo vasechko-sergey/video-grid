@@ -12,6 +12,22 @@ _Last updated: 2026-08-02._
 
 ## Done
 
+- **Setup installs everything — no opt-in flags DONE (2026-08-04)** — backlog #4,
+  design `docs/specs/2026-08-04-setup-install-all-design.md` (branch
+  `feat/setup-install-all`). The real run had no `demucs`, so its phrase-aware music
+  in/out-point silently fell back to the coarse librosa proxy ("разбиение по фразам"
+  effectively off). `setup.sh` now installs the **whole** runtime: `demucs` is a
+  baseline install (was `--with-demucs`) with **warn-and-continue** — kept OUT of
+  `requirements.txt` so a platform with no torch wheel degrades to the proxy instead
+  of aborting the venv; `--with-sourcing` is gone (yt-dlp already ships in
+  `requirements.txt`; the `any`-lane legal gate is use-time, untouched) and its
+  Jamendo `client_id` prompt became a **non-blocking notice** so a non-interactive
+  run never stalls on `read`. `preflight.py`'s `demucs` row stays advisory (a warn-
+  and-continue absence is valid) with its remedy moved to plain `bash setup.sh`;
+  `vocals.py`'s ValueError remedy likewise. `bash -n` clean (the installer itself is
+  not run here — no autonomous system mutation); full suite green. Docs swept
+  (README, CLAUDE registry left as history, dev-workflow, verify-runtime row, both
+  SKILLs, this file).
 - **Intake flush-per-clip + `--jobs` default 2 DONE (2026-08-02)** — surfaced by
   the first real full-folder scan (branch `feat/intake-flush-per-clip`). `intake()`
   submitted all clips then stored nothing until the whole pool drained, so every
@@ -876,8 +892,9 @@ _Last updated: 2026-08-02._
   `track_dur − duration`) + `scripts/lib/vocals.py` (`has_demucs`/
   `separate_vocal_energy`, the lone lazy demucs importer) + `scripts/beats.py`
   `choose_offset` driver and CLI `--auto-start` (mutually exclusive with
-  `--start-offset`, needs `--duration`). demucs is opt-in (`setup.sh --with-demucs`,
-  pulls torch); absent → a logged librosa mix-silence proxy, never a crash. Pure
+  `--start-offset`, needs `--duration`). demucs installs at baseline (`bash setup.sh`,
+  pulls torch; warn-and-continue since 2026-08-04, was `--with-demucs`); absent → a
+  logged librosa mix-silence proxy, never a crash. Pure
   decision exhaustively unit-tested; the demucs path is mocked (unit) +
   skip-if-absent (integration `test_offset.py`, real proxy path always runs).
   `analyze()` untouched. **Deferred:** beat-snap of the start, section detection
@@ -914,8 +931,9 @@ _Last updated: 2026-08-02._
   Jamendo (keyed upgrade), `any` = YouTube (yt-dlp, default) + iTunes/Deezer
   opt-in, behind an explicit responsibility switch — `any` always logs + records
   `license="unknown (any lane)"`, never silently. `music-source` SKILL runs
-  find→pick→fetch; `setup.sh --with-sourcing` installs yt-dlp + interactively
-  configures a Jamendo key. **5.5 now fully ✅** — all three `music.mode` rights
+  find→pick→fetch; yt-dlp ships in `requirements.txt` and a Jamendo key is an
+  optional non-blocking notice (`config/sourcing.env`) since 2026-08-04 (was
+  `setup.sh --with-sourcing`). **5.5 now fully ✅** — all three `music.mode` rights
   lanes (`local`/`free`/`any`) complete. **740 tests green** (+8 skipped: 3
   drawtext-gated draft-goldens + 2 drawtext-gated titles-goldens on a machine
   whose ffmpeg lacks drawtext, +1 pre-existing vidstab-gated intake golden, +1
@@ -1679,8 +1697,10 @@ _Last updated: 2026-08-02._
     is why the pin the old comments credited with protecting the goldens had
     never once applied. `--with-vidstab` and `--with-fonts` are deleted; both
     fold into baseline (fonts are four small casks, and without them titles
-    fails loud). `--with-demucs` / `--with-sourcing` stay opt-in — torch and
-    yt-dlp are size, not capability. Three brew gates warn-and-continue so a
+    fails loud). `--with-demucs` / `--with-sourcing` stayed opt-in then — torch
+    and yt-dlp as size, not capability — **superseded 2026-08-04: both folded
+    into baseline** (see the setup-install-all entry). Three brew gates
+    warn-and-continue so a
     no-brew box still builds its venv, which hoisting `need_brew` had silently
     turned into a hard requirement.
   - **Found by the docs sync (Task 6), beyond the plan's file list:**
@@ -2044,6 +2064,13 @@ resumability / Phase A.5 retry-state persistence.
   entry). `build_reel`'s loop-2 reprocess batch stays sequential by decision, not
   by oversight: batches are typically one or two culprits, so the fan-out's 1.70×
   has little to bite on there.
+- **Real-run findings** (defects/quality gaps from running on real surf footage)
+  live in [fixes-backlog.md](fixes-backlog.md), not here — a living list added to
+  during the 2026-08-03 review pass. Hero identity (colour-histogram descriptor →
+  OSNet re-ID embedding) is **design-approved**; the rest need
+  design/investigation. The synthesis — craft research + session verdict + the
+  mood-preset idea, prioritized — is [cinematic-quality-playbook.md](cinematic-quality-playbook.md),
+  the working doc we develop from.
 
 ## External assets (outside this repo)
 

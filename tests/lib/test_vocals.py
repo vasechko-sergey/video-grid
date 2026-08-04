@@ -17,5 +17,5 @@ def test_has_demucs_false(monkeypatch):
 
 def test_separate_vocal_energy_raises_a_remedy_when_absent(monkeypatch):
     monkeypatch.setattr(vocals, "has_demucs", lambda: False)
-    with pytest.raises(ValueError, match="--with-demucs"):
+    with pytest.raises(ValueError, match="bash setup.sh"):
         vocals.separate_vocal_energy("track.wav")

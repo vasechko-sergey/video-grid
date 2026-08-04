@@ -21,8 +21,9 @@ cd video-grid
 bash setup.sh          # venv + ffmpeg-full (drawtext + vidstab) + fonts; weights on first run
 ```
 
-Optional capability flags compose: `bash setup.sh --with-demucs` (sharper music
-in-point) and `--with-sourcing` (fetch tracks from the internet).
+`bash setup.sh` installs the **whole** runtime — including demucs (phrase-aware
+music in-point) and yt-dlp (fetch tracks from the internet). No opt-in flags:
+where a platform genuinely cannot provide a piece, setup warns and continues.
 
 Verify the install any time with `/video-grid:verify-runtime` (or
 `"$VG" scripts.verify_runtime`) — it reports each missing piece with the exact

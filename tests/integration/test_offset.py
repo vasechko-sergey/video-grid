@@ -36,7 +36,7 @@ def test_choose_offset_mix_proxy_runs_without_demucs(tmp_path, monkeypatch, caps
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _has_demucs(), reason="needs demucs (bash setup.sh --with-demucs)")
+@pytest.mark.skipif(not _has_demucs(), reason="needs demucs (bash setup.sh)")
 def test_choose_offset_vocal_path_wiring(tmp_path):
     # smoke: the whole demucs→envelope→decision path runs on real bytes and returns
     # a valid offset (slow — real separation). Semantic correctness is unit-tested.
