@@ -3,6 +3,7 @@ import threading
 import pytest
 from pathlib import Path
 from scripts import edl_to_reel
+from scripts.lib.footage import DESCRIPTOR_LEN
 
 
 def _project(tmp_path):
@@ -18,6 +19,23 @@ def _edl_file(tmp_path, episodes=None, **reel):
     p = tmp_path / "EDL.json"
     p.write_text(json.dumps(doc))
     return str(p)
+
+
+def _cast_json(tmp_path, name="Lena"):
+    """A cast.json carrying one 512-d OSNet descriptor — the real shape, so preflight
+    RESOLVES the cast-name pin instead of stopping on a stale-length descriptor (which
+    would make the cast-pin tests below pass for the wrong reason)."""
+    p = tmp_path / "cast.json"
+    p.write_text(json.dumps({"members": [{"name": name, "descriptor": [0.1] * DESCRIPTOR_LEN}]}))
+    return str(p)
+
+
+def _cast_edl(tmp_path, cast_path, hero="Lena"):
+    """An EDL whose one episode pins a cast-name hero, with the reel-level cast path —
+    the ONE shape that resolves to a cast (identity) pin, the OSNet weight-race trigger."""
+    ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+              composition="lead", grid="thirds", crop_scale=0.8, hero=hero)
+    return _edl_file(tmp_path, episodes=[ep], cast=cast_path)
 
 
 def _wire(monkeypatch, pe_results=None, build_result=None):
@@ -296,6 +314,49 @@ def test_the_weights_are_warmed_before_any_worker_starts(monkeypatch, tmp_path):
     assert seen["warm"] == [edl_to_reel.track.MODEL]               # one distinct model → warmed once
     assert all(kind == "pe" for kind, _ in seen["order"][1:])
     assert len(seen["order"]) == 7                                 # 1 warm + 6 episodes
+
+
+def test_reid_weights_are_warmed_before_the_pool_when_a_cast_pin_is_present(monkeypatch, tmp_path):
+    # The OSNet twin of the YOLO warm-up above (design 2026-08-04 §3.1/§10). A
+    # cast-identity pin drives process_episode -> track.build_route -> reid.embed ->
+    # a cold OSNet weight download; N cold pool workers would race it into the same
+    # path (the repo's highest-priority silent-corruption class). So edl_to_reel MUST
+    # materialize the weights ONCE, on the main thread, before any worker submits.
+    seen = _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.reid, "available", lambda: True)
+    monkeypatch.setattr(edl_to_reel.reid, "ensure_model",
+                        lambda: seen["order"].append(("reid", "warm")))
+    edl_to_reel.edl_to_reel(_cast_edl(tmp_path, _cast_json(tmp_path)), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
+    assert ("reid", "warm") in seen["order"]                       # warmed at all
+    reid_i = seen["order"].index(("reid", "warm"))
+    assert all(reid_i < i for i, (k, _) in enumerate(seen["order"]) if k == "pe")  # before any worker
+
+
+def test_reid_weights_are_not_warmed_for_a_scenery_reel(monkeypatch, tmp_path):
+    # No episode pins a cast identity, so building OSNet would be a needless heavy
+    # model download. available() is left TRUE on purpose: this pins that the guard
+    # keys on the cast pin, not merely on availability.
+    seen = _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.reid, "available", lambda: True)
+    warmed = []
+    monkeypatch.setattr(edl_to_reel.reid, "ensure_model", lambda: warmed.append(True))
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    assert warmed == []                                            # not warmed — no cast pin
+
+
+def test_reid_weights_are_not_warmed_when_reid_is_unavailable(monkeypatch, tmp_path):
+    # A cast pin IS present, but torchreid is absent — process_episode itself will
+    # stop that episode with reid-unavailable (design §6); warming here could not run
+    # and would only pay the torchreid import for nothing. available() False -> skip.
+    seen = _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.reid, "available", lambda: False)
+    warmed = []
+    monkeypatch.setattr(edl_to_reel.reid, "ensure_model", lambda: warmed.append(True))
+    edl_to_reel.edl_to_reel(_cast_edl(tmp_path, _cast_json(tmp_path)), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert warmed == []                                            # not warmed — reID unavailable
 
 
 def test_the_lowest_raising_episode_escapes_with_its_own_type(monkeypatch, tmp_path):

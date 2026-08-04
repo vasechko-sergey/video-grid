@@ -12,7 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
+from scripts.lib import hero as hero_lib, reid
 from scripts.lib.edl import EDL, preflight
+from scripts.lib.footage import Cast
 from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
 
@@ -58,6 +60,19 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     for model in sorted({(md.get("model") or track.MODEL) for md in mds}):
         track.ensure_model(model)      # before ANY worker: N cold workers would race the
                                        # same weights download into the same path (§5)
+    # Same weights-race, the OTHER model: a cast-identity pin drives process_episode ->
+    # track.build_route -> reid.embed -> a cold OSNet weight download, and N cold workers
+    # would race it into the same path — the concurrent-writer landmine track.ensure_model
+    # above already closes for YOLO (design 2026-08-04 §3.1/§10). Guarded so a scenery reel
+    # never forces the heavy torchreid import or a needless model build: warm ONLY when some
+    # episode actually resolves to a cast pin (tested first — the resolve is pure) AND reID
+    # is installed. The resolve mirrors process_episode's own — cheap, idempotent, and
+    # guaranteed not to raise here because preflight already validated every pin against
+    # this same registry (a bad name/descriptor would have returned a stop above).
+    cast = Cast.from_json(edl.cast) if edl.cast is not None else None
+    pins = (hero_lib.resolve(md.get("hero"), cast) for md in mds)
+    if any(p is not None and p.kind == "cast" for p in pins) and reid.available():
+        reid.ensure_model()
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futures = [ex.submit(process_episode.process_episode, md,
                              str(Path(work_dir) / f"ep{i}"))   # md already resolved → no project=
