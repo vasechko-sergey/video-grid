@@ -411,7 +411,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     # (embed_cast=False → cast_candidates.json empty). reid_model rides into the cache
     # key so a scan run WITHOUT reID never masquerades as one run WITH it.
     reid_ok = reid.available()
-    reid_model = reid._MODEL if reid_ok else ""
+    reid_model = reid.MODEL if reid_ok else ""
     if reid_ok:
         reid.ensure_model()
     else:

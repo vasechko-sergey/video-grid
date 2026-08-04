@@ -9,6 +9,13 @@ def test_embed_dim_is_512():
     assert reid.EMBED_DIM == 512
 
 
+def test_model_is_public_osnet_x1_0():
+    # MODEL is PUBLIC (alongside EMBED_DIM) because intake reads it for the cache key —
+    # a consumer must not reach into a private _MODEL to learn which net produced a
+    # descriptor. The name and value are the on-disk cache-key contract.
+    assert reid.MODEL == "osnet_x1_0"
+
+
 def test_available_false_when_torchreid_absent(monkeypatch):
     real_import = builtins.__import__
 

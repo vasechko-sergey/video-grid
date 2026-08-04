@@ -10,7 +10,7 @@ nothing until an embedding is actually computed.
 import numpy as np
 
 EMBED_DIM = 512                     # OSNet osnet_x1_0 feature width; footage.DESCRIPTOR_LEN mirrors it
-_MODEL = "osnet_x1_0"
+MODEL = "osnet_x1_0"                 # PUBLIC: intake reads it for the cache key (the net that authored a descriptor)
 _REMEDY = ("run `bash setup.sh`, which installs torchreid (person re-ID) and "
            "fetches its OSNet weights")
 _extractor = None                   # built once, reused; ensure_model() warms it before a pool
@@ -46,7 +46,7 @@ def _get_extractor():
     if _extractor is None:
         # lazy import: heavy optional dep (torchreid)
         from torchreid.utils import FeatureExtractor
-        _extractor = FeatureExtractor(model_name=_MODEL, device=_device())
+        _extractor = FeatureExtractor(model_name=MODEL, device=_device())
     return _extractor
 
 
