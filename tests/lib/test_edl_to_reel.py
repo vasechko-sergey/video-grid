@@ -586,6 +586,21 @@ def test_an_unstamped_edl_is_recorded_as_unstamped(tmp_path, monkeypatch):
     assert seen["rm"].provenance["edl"] == {"digest": "", "state": "unstamped"}
 
 
+def test_a_provenance_block_with_no_self_key_is_recorded_as_unstamped(tmp_path, monkeypatch):
+    # provenance.check() (the predicate EDL.from_json uses to refuse TAMPERING) treats a
+    # block as stamped only when block["self"] is truthy — a hand-authored EDL.json
+    # carrying a non-empty provenance object with no valid "self" is "unstamped" to
+    # check(), and from_json rightly admits it (absence, not tampering). The attestation
+    # must record that SAME judgement: re-deriving "intact" from plain dict truthiness
+    # (the bug) would invert design §5.1's guarantee that a reel cut from a
+    # hand-authored EDL says so on the record.
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(
+        _edl_file(tmp_path, provenance={"v": 1, "engine": {"sha": "", "dirty": None}, "inputs": {}}),
+        _project(tmp_path), str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].provenance["edl"] == {"digest": "", "state": "unstamped"}
+
+
 def test_the_changelog_is_a_reason_not_the_log_path(tmp_path, monkeypatch):
     # #16 root cause: edl_to_reel passed str(out_dir/"VERSIONS.md") as the NOTE — 12 of 13
     # entries in a real run's VERSIONS.md then logged the file's own path.

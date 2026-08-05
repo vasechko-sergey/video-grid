@@ -2,6 +2,7 @@ import json
 
 import pytest
 from scripts import edit_plan
+from scripts.lib import provenance
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
@@ -172,6 +173,14 @@ def test_write_edit_plan_writes_both_files_and_round_trips(tmp_path):
     edl = EDL.from_json(str(out / "EDL.json"))                 # round-trips through the contract
     assert edl.episodes[0].source == "A.mp4" and edl.episodes[1].source == "B.mp4"
     assert "# Edit plan — 2 episodes" in (out / "EDL.md").read_text()
+    # The written EDL.json must be STAMPED, not merely loadable: an unstamped EDL is
+    # legal (edl_to_reel's hand-authored SP1 front door), so a regression that swapped
+    # the write_edl() chokepoint for a raw write_text(json.dumps(...)) would still load
+    # here and pass every assertion above in silence — exactly the regression class
+    # this slice exists to prevent (design docs/specs/2026-08-04-attested-run-design.md
+    # §4: "two writers stamping independently is the shape that drifts").
+    on_disk = json.loads((out / "EDL.json").read_text())
+    assert provenance.check(on_disk)[0] == "intact"
 
 
 def test_write_edit_plan_bad_episode_stops_and_writes_nothing(tmp_path):

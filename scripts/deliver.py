@@ -71,6 +71,16 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
+    # Two refusals below, deliberately in this order, and deliberately carrying DIFFERENT
+    # remedies: an empty digest means no check_reel run ever produced this report at all
+    # (no producer); a mismatched one means a check_reel run happened but not against
+    # THIS file. Do not fold them into one condition. Deleting the empty-digest check
+    # would not go silent — a real sha256 (`actual`) is never "", so "" != actual falls
+    # straight through to the mismatch branch and still raises — but
+    # test_deliver_refuses_a_report_with_no_master_digest pins the FIRST message's text
+    # ("did not come from check_reel"), which the mismatch branch does not contain. That
+    # test would still go red on a dropped check, just on the regex, not on "no exception
+    # was raised" — a weaker signal to notice, which is why the message text is load-bearing.
     if not report.master_digest:
         raise RuntimeError(
             "this reel report carries no master digest, so it did not come from check_reel — "

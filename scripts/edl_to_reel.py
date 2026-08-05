@@ -138,7 +138,12 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     # override list is a DIFF of the effective check spec against a default one, so a
     # threshold added to ReelCheckSpec later is covered without touching this line.
     rm.provenance = {"edl": {"digest": edl.provenance.get("self", ""),
-                             "state": "intact" if edl.provenance else "unstamped"},
+                             # Same predicate provenance.check() uses (block.get("self")),
+                             # not plain dict truthiness — a hand-authored provenance object
+                             # with no "self" key is "unstamped" to check() (from_json rightly
+                             # admits it), and the attestation must record that SAME judgement
+                             # rather than re-derive a different one that can drift from it.
+                             "state": "intact" if edl.provenance.get("self") else "unstamped"},
                      "engine_at_start": started,
                      "overrides": provenance.spec_overrides(rm.check_spec)}
     return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)

@@ -330,12 +330,31 @@ Concretely, the bypasses that remain and what they now cost:
 - **Hand-assembled reel, delivered outside `deliver`.** Still possible; produces no
   `attest.json`, so `montage status` reports the delivery as `unattested` and CP3
   shows it. Detectable, not preventable.
-- **A gate-weakening knob outside `ReelCheckSpec`/`CheckSpec`.** `spec_overrides`
-  diffs those two dataclasses; a future flag that weakens a gate some other way
-  (a new `--skip-x`, a threshold living elsewhere) would not appear in the override
-  list. There is **no machine predicate for "this flag weakens a gate"** — the
-  mitigation is the convention that thresholds live in the spec dataclasses, plus the
-  §9 brief line. Named as a real gap, in the tradition of the wade-in landmine.
+- **Hand-assembled master + hand-written report, delivered THROUGH `deliver`.** A
+  digest is computable by anyone: paste a real `shasum -a 256` of a hand-assembled
+  master into a hand-written `ReelReport.master_digest` and both of §5.2's checks
+  pass, because they only prove the report describes THIS file, never that
+  `check_reel` produced it. This is not a flaw to patch — signing was considered and
+  rejected here for the same reason: it is pointless against a local agent that
+  already holds the key. What this bypass cannot forge is the rest of the record:
+  `deliver.py`'s CLI passes no `run_provenance`, so the resulting
+  `REEL_v{n}.attest.json` carries `engine_at_start: {}`, `edl: {}`, `overrides: []`
+  — an impoverished attestation sitting next to a driver run's populated one.
+  `montage verify` still reports this delivery's `state` as `attested`,
+  indistinguishable from a driver run on that field alone; the tell is the empty
+  fields, surfaced at CP3, not a blocked delivery.
+- **A gate-weakening knob outside `ReelCheckSpec`.** `spec_overrides` only ever runs
+  on `ReelCheckSpec` (`edl_to_reel.py:143`) — no per-episode `CheckSpec` override
+  reaches any attestation. It could not, as written: `CheckSpec` has three fields
+  with no default (`composition`, `grid`, `target_dur`), so calling
+  `spec_overrides(a_check_spec)` with the documented default `exempt=("target_dur",)`
+  raises a bare `TypeError` building the diff's baseline instance — the function is
+  not merely unused on `CheckSpec`, it cannot be pointed at it without a code change.
+  A future flag that weakens a gate some other way (a new `--skip-x`, a threshold
+  living elsewhere) would not appear in the override list either. There is **no
+  machine predicate for "this flag weakens a gate"** — the mitigation is the
+  convention that thresholds live in the spec dataclasses, plus the §9 brief line.
+  Named as a real gap, in the tradition of the wade-in landmine.
 - **`assemble.py` stays.** Making a master is not the offence; delivering an unchecked
   one is, and §5.2 closes that. Removing the standalone assembler would cost a useful
   tool and close nothing.
@@ -347,6 +366,21 @@ Concretely, the bypasses that remain and what they now cost:
   run's comparison. One point, chosen for cost; more points would narrow this.
 - **`dirty` is a boolean over three directories.** It does not say *what* changed and
   does not distinguish a whitespace fix from a loosened threshold.
+- **`verify_delivery`'s `engine_drift` is silent about which honest state it is in.**
+  `engine_drift = bool(a.get("sha") and b.get("sha") and a != b)` reads `False` in two
+  situations it does not distinguish from each other: the two engine stamps genuinely
+  agree, or either one is unknown (`sha == ""` — git absent, or a run from before this
+  slice existed). Both report `engine_drift: false`, which is a positive claim of "no
+  drift" built, in the second case, from the absence of evidence rather than from
+  agreement.
+- **The attestation sidecar is the one artifact this slice does not digest.** Every
+  other artifact in the chain — `project.json`, `EDL.json`, the master, the reel
+  itself — is hashed and checked against tampering somewhere. `REEL_v{n}.attest.json`
+  is not: `verify` re-hashes the REEL and compares it to `reel_digest`, but nothing
+  recomputes a digest over the attestation's own fields. A post-delivery hand-edit of
+  `engine_at_start`, `edl`, or `overrides` — leaving `reel_digest` untouched — still
+  verifies. The record of a run is only as trustworthy as the filesystem permissions
+  on `out/`.
 
 ## 12. Deferred / non-goals
 

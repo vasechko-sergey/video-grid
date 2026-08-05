@@ -290,9 +290,18 @@ an important case because it **changes the length of the reel**.
 `docs/specs/2026-08-04-attested-run-design.md` + plan
 `docs/plans/2026-08-04-attested-run.md`. The escape hatches this item asked to
 enumerate and close are closed **structurally**, not by convention: `deliver`
-refuses a `ReelReport` whose `master_digest` is empty or does not match the
-master being shipped (no report can be hand-written or bound to a
-hand-assembled file), `EDL.from_json` refuses a tampered EDL, and every
+refuses a `ReelReport` whose `master_digest` is empty (it did not come from
+`check_reel`) or does not match the master being shipped (a hand-run `ffmpeg
+-f concat`, or a master re-made after the check). That closes the careless
+bypass, not every bypass: a report hand-written WITH a correct `shasum -a 256`
+of a hand-assembled master still reaches `deliver` and ships — a digest is
+computable by anyone, and signing was considered and rejected as pointless
+against a local agent that already holds the key (design §11 names this
+explicitly). What that bypass cannot forge is the rest of the record —
+`deliver.py`'s CLI passes no `run_provenance`, so the resulting
+`REEL_v{n}.attest.json` carries `engine_at_start: {}`, `edl: {}`,
+`overrides: []` next to a driver run's populated fields, which is the tell at
+CP3, not a blocked delivery. `EDL.from_json` refuses a tampered EDL, and every
 legitimate gate loosening still available (`--color-delta-max`) is recorded —
 never silently — in the delivery's `REEL_v{n}.attest.json` via
 `provenance.spec_overrides`, a diff against the default spec so a future
@@ -302,9 +311,10 @@ lower, or downgrade any quality gate; a gate that blocks routes back to its
 stage, never loosened to pass. The honest remainder (design §11): an agent
 with a shell can still bypass all of it by hand — the invariant this slice
 achieves is *no silent bypass*, not *no bypass whatsoever*; every bypass now
-leaves a machine-detectable trace (an unattested delivery, a refused tamper).
-Related #3 (per-episode QC in subagents) stays open — this slice makes the
-gates that exist un-skippable, it does not add new QC.
+leaves a machine-detectable trace (an unattested delivery, an impoverished
+attestation, a refused tamper). Related #3 (per-episode QC in subagents)
+stays open — this slice makes the gates that exist un-skippable, it does not
+add new QC.
 
 **Feedback (as given):** the agent disabled quality control to cut corners. If
 work is done in subagents, they must **not** have the right to turn off the

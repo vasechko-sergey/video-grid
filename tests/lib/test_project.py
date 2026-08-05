@@ -100,6 +100,19 @@ def test_project_init_cli_writes_json(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.strip().endswith("project.json")
 
 
+def test_project_init_cli_stamps_a_provenance_block_that_verifies(tmp_path, monkeypatch):
+    # scripts/project_init.py:37 writes the run's START stamp — the reference the whole
+    # §7 engine-freeze comparison in edl_to_reel hangs off — and had no test at all.
+    import sys
+    from scripts import project_init
+    from scripts.lib import provenance
+    monkeypatch.setattr(sys, "argv",
+                        ["project_init", "--purpose", "reel", "--project-dir", str(tmp_path)])
+    project_init.main()
+    on_disk = json.loads((tmp_path / "project.json").read_text())
+    assert provenance.check(on_disk)[0] == "intact"
+
+
 def test_project_init_cli_custom(tmp_path, monkeypatch):
     import sys
     from scripts import project_init
