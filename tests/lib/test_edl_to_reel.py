@@ -526,6 +526,23 @@ def test_an_unknown_engine_stamp_never_stops_the_run(tmp_path, monkeypatch):
     assert res["status"] == "delivered"
 
 
+def test_a_known_start_stamp_with_an_unknown_current_stamp_never_stops_the_run(tmp_path, monkeypatch):
+    # Mirror image of test_an_unknown_engine_stamp_never_stops_the_run above: this time
+    # project.json recorded a REAL sha at run start, but engine_stamp() cannot answer NOW
+    # (e.g. git unavailable at delivery time) — an unknown stamp on EITHER side cannot
+    # prove drift (design §7), so this arm of the guard must not raise either.
+    project = tmp_path / "project.json"
+    ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                  provenance={"v": 1, "engine": {"sha": "aaaaaaa", "dirty": False},
+                              "self": "x", "inputs": {}}).write(project)
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "", "dirty": None})
+    _wire(monkeypatch)
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), str(project), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "o"))
+    assert res["status"] == "delivered"
+
+
 def test_a_run_started_before_this_existed_never_stops(tmp_path, monkeypatch):
     # project.json with NO provenance block at all — absence, not tampering
     _wire(monkeypatch)
