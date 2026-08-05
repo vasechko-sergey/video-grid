@@ -134,10 +134,12 @@ One cell per `FootageWindow`, one frame at the window's **midpoint**
 `FOOTAGE.json`, so no extra probe.
 
 Frames are grabbed per clip through `assembly.frames_rgb(src, times, fps)`,
-which selects exact frames in `_SELECT_CHUNK`-sized batches: **one decode per
-clip** for the ordinary case (a clip with >60 windows costs `ceil(n/60)`, by
-design). This is the same batched-select pattern that replaced the per-track
-output seeks in `_cast_from_original`, which had hung >480 s on 4K.
+where `src` is `footage_root` joined against the clip's `source` (§5 explains
+why the join is required — `source` alone is a bare filename), which selects
+exact frames in `_SELECT_CHUNK`-sized batches: **one decode per clip** for the
+ordinary case (a clip with >60 windows costs `ceil(n/60)`, by design). This is
+the same batched-select pattern that replaced the per-track output seeks in
+`_cast_from_original`, which had hung >480 s on 4K.
 
 ### 4.2 What goes on it
 
@@ -153,9 +155,11 @@ MVI_3739 #2
 medium · 3.4s · 0.71 ★
 ```
 
-`★` and a `MARK_PX` border mark `best`. The star is a **fact to weigh**, not a
-ranking to follow — `SHEETS.md` says so in as many words, because §1.1 is
-precisely why the ranking should not be obeyed blindly.
+`best` is marked twice, by two separate mechanisms: the label text appends the
+`★` glyph, and — independently — `marked=True` draws a plain `MARK_PX` gold
+rectangle outline around the cell (no star in the outline itself). The star is
+a **fact to weigh**, not a ranking to follow — `SHEETS.md` says so in as many
+words, because §1.1 is precisely why the ranking should not be obeyed blindly.
 
 ### 4.3 Output
 
@@ -185,9 +189,13 @@ skipped (§7).
 ### 4.4 CLI
 
 ```bash
-python -m scripts.contact_sheet build --footage FOOTAGE.json --out-dir .
-python -m scripts.contact_sheet build --footage FOOTAGE.json --out-dir . --best-only
+python -m scripts.contact_sheet build --footage FOOTAGE.json --footage-root clips/ --out-dir .
+python -m scripts.contact_sheet build --footage FOOTAGE.json --footage-root clips/ --out-dir . --best-only
 ```
+
+`--footage-root` is required: it is the dir `FOOTAGE.json`'s `source` entries
+(bare filenames — §5) resolve against, the same convention `edl_to_reel` and
+`draft` already use for `EDL.source`.
 
 ---
 
@@ -198,20 +206,26 @@ for the slow-mo?" and "who is that?", the two questions the run kept guessing
 at.
 
 ```bash
-# explicit range
+# explicit range — no --footage-root: --source is a real filesystem path already
 python -m scripts.contact_sheet strip --source clips/MVI_3739.mp4 \
   --start 12.4 --dur 3.0 --frames 12 --out strip.png
 
 # sugar: resolve the range from a FOOTAGE window
-python -m scripts.contact_sheet strip --footage FOOTAGE.json \
+python -m scripts.contact_sheet strip --footage FOOTAGE.json --footage-root clips/ \
   --source MVI_3739.mp4 --window 2 --frames 12 --out strip.png
 ```
 
-`--source` is a filesystem path when `--footage` is absent, and the exact
-`FootageClip.source` key when it is present — those are the same string,
-because intake records a clip under the path it was given. A `--source` that
-matches no clip in `FOOTAGE.json` fails loud, listing the sources it has (the
-`build_edl` precedent for a mistyped source).
+`--source` is a filesystem path when `--footage` is absent (used as-is, no
+root needed), and the exact `FootageClip.source` key — a **bare filename**,
+since intake stores only `Path(path).name`, never the path it was given —
+when `--footage` is present; `--footage-root` (required together with
+`--footage`/`--window`) is the dir that name resolves against, so `resolve_window`
+can return something the caller can actually decode, not the bare name alone.
+A `--source` that matches no clip in `FOOTAGE.json` fails loud, listing the
+sources it has (the `build_edl` precedent for a mistyped source). A resolved
+path absent from disk fails loud too, naming `footage_root` and `source`
+separately (`extract.extract_edl`'s precedent), so a user sees which half is
+wrong.
 
 `--frames` samples evenly across the range (`start + (k + 0.5) * dur / n`,
 the `storyboard._sample_times` convention). Each cell is labelled with its
@@ -256,16 +270,29 @@ change — the new stage is data in the existing table.
 ## 7. Failure modes
 
 - **A clip that will not decode** is skipped, its windows omitted, and the
-  clip named under a **Not sheeted** heading in `SHEETS.md` with the error.
-  Aborting the whole build over one bad file would lose the other 98 clips'
-  sheets; this mirrors intake's quarantine-and-report precedent
-  (`intake_report.json`). Skipped, but never silently.
+  clip named under a **Not sheeted** heading in `SHEETS.md` with the error
+  (trimmed to its last meaningful line — a `proc.run` failure banner runs to
+  ~30 lines, and a `SHEETS.md` with many skips must not become thousands of
+  lines over it). Aborting the whole build over one bad file would lose the
+  other 98 clips' sheets; this mirrors intake's quarantine-and-report
+  precedent (`intake_report.json`). Skipped, but never silently.
+- **Every clip with a candidate window failing to decode** is a different
+  failure, not a bigger version of the one above: it is the signature of a
+  wrong `--footage-root`, a moved footage folder, or a broken ffmpeg install
+  — not one corrupt file among many. `build_sheets` raises instead of writing
+  a `SHEETS.md` that looks like a normal, if thin, success; no `SHEETS.md` is
+  written at all. This is what keeps §9's presence gate honest — without it, a
+  wrong root produced a `SHEETS.md` with zero cells that `next_action` still
+  read as "done".
 - **A window whose midpoint lies past the stream end** surfaces as
   `frames_rgb`'s existing `RuntimeError` naming the frame numbers. It means
   `FOOTAGE.json` disagrees with the file on disk, which is a re-run of intake,
   not something a viewer should paper over — so it is reported as a clip-level
-  skip with that message.
-- **No windows at all** (an empty or `--best-only`-emptied set) writes a
+  skip with that message. Because `frames_rgb` decodes every window of a clip
+  in one batched call, this one bad window skips the WHOLE clip, not just
+  itself (§10 — deferred, not this slice).
+- **No windows at all** (an empty or `--best-only`-emptied set — nothing was
+  ever a candidate, as opposed to every candidate failing, above) writes a
   `SHEETS.md` that says so and produces no PNGs. The stage is then "done"
   with an honest empty answer rather than a missing artifact that would
   wedge `next_action` forever.
@@ -295,6 +322,13 @@ change — the new stage is data in the existing table.
 - `--best-only` drops the non-`best` windows and nothing else.
 - a clip path that does not exist lands under **Not sheeted** and the other
   clip's sheet is still written.
+- every candidate window failing to decode (a wrong `footage_root` among
+  them) raises and writes no `SHEETS.md`, proved distinct from the
+  genuinely-empty-selection case, which still writes the honest-empty one.
+- the FOOTAGE fixture these tests write carries a bare filename `source` plus
+  a separate `footage_root`, matching what `intake.py` actually produces —
+  not an absolute path standing in for both, which would pass against a
+  driver that never joined a root at all.
 - `strip` produces one image with `--frames` cells whose timestamps ascend,
   and `--window` resolves to the same range as the explicit `--start/--dur`.
 
@@ -307,11 +341,18 @@ exists.
 ## 9. Honest limits
 
 - **The conveyor can force the sheet to exist. It cannot prove the agent
-  looked at it.** This stage gates the presence of the sensor, not the use of
-  it. Calling it a quality gate would be the same overclaim the attested-run
-  slice had to retract from the backlog. The enforcement that does exist is
-  worth exactly what it is: a run can no longer reach `edit-plan` having never
-  produced a single frame of the footage it is about to cut.
+  looked at it.** This stage gates the presence of the artifact — `SHEETS.md`
+  on disk — not the use of it, and presence is not the same claim as "holds a
+  frame". Calling it a quality gate would be the same overclaim the
+  attested-run slice had to retract from the backlog. What the gate actually
+  buys: a run can no longer reach `edit-plan` without a `SHEETS.md`, and (§7)
+  `build_sheets` refuses to write one that silently claims success when every
+  candidate window failed to decode — it raises instead, naming the likely
+  cause (a wrong `--footage-root`, a moved footage folder, a broken ffmpeg
+  install). Only a genuinely empty selection (no windows at all, or
+  `--best-only` matching none) still earns a `SHEETS.md` with zero frames —
+  that answer is real, not a masked failure, and an absent artifact would
+  wedge the router on this stage forever.
 - **One frame per window is a sample, not the window.** A midpoint frame can
   miss a wipeout two seconds later. That is what `strip` is for, and why the
   sheet's label carries the window's duration.
@@ -342,3 +383,12 @@ exists.
   cell). Same decode cost, but at 300 px a cell that holds three frames holds
   none of them legibly. The `strip` mode covers the need without the
   compromise.
+- **A per-window catch around the batched `frames_rgb` call.** Today one
+  window whose midpoint lies past the stream end drops the WHOLE clip's sheet
+  (§7), because `build_sheets` decodes every window of a clip in one
+  `frames_rgb` call and the whole call raises when any single frame number is
+  past the stream end. Design-sanctioned for this slice — it is still a
+  clip-level skip, reported like any other decode failure — but it is a
+  sharper edge than the other skip causes (a single stale window can cost an
+  otherwise-good clip its whole sheet). Catching per-window instead of
+  per-clip belongs with the next slice that touches this loop.

@@ -59,21 +59,21 @@ def fake_frames(monkeypatch):
 def test_one_frame_per_window_at_the_window_midpoint(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=4.0, dur=2.0),
                                             _win(start=10.0, dur=3.0)])])
-    contact_sheet.build_sheets(fp, str(tmp_path))
-    assert fake_frames == [("a.mp4", [5.0, 11.5], 30.0)]
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    assert fake_frames == [(str(tmp_path / "a.mp4"), [5.0, 11.5], 30.0)]
 
 
 def test_one_decode_call_per_clip(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip("a.mp4"), _clip("b.mp4")])
-    contact_sheet.build_sheets(fp, str(tmp_path))
-    assert [c[0] for c in fake_frames] == ["a.mp4", "b.mp4"]
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    assert [c[0] for c in fake_frames] == [str(tmp_path / "a.mp4"), str(tmp_path / "b.mp4")]
 
 
 def test_cells_run_in_clip_then_window_order_not_score_order(tmp_path, fake_frames):
     # window 0 scores lower than window 1: a score-ordered sheet would swap them.
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, score=0.51),
                                             _win(start=8.0, score=0.99)])])
-    contact_sheet.build_sheets(fp, str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     assert fake_frames[0][1] == [1.0, 9.0]
 
 
@@ -82,14 +82,14 @@ def test_cells_run_in_clip_then_window_order_not_score_order(tmp_path, fake_fram
 def test_every_window_is_shown_by_default(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path))
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     assert res["cells"] == 2
 
 
 def test_best_only_drops_the_rest(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), best_only=True)
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path), best_only=True)
     assert res["cells"] == 1
     assert fake_frames[0][1] == [1.0]
 
@@ -98,7 +98,7 @@ def test_best_only_drops_the_rest(tmp_path, fake_frames):
 
 def test_writes_sheets_and_an_index_that_links_every_one(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=float(i)) for i in range(31)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path))
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     assert len(res["sheets"]) == 2                      # 31 cells at 30 per sheet
     md = (tmp_path / "SHEETS.md").read_text()
     for p in res["sheets"]:
@@ -111,7 +111,7 @@ def test_the_index_says_the_star_is_not_a_ranking_to_follow(tmp_path, fake_frame
     # the scoring bias (design §1.1) is why a reader must not simply take the top of
     # the list; the index has to say so where the reader is.
     fp = _footage(tmp_path, [_clip()])
-    contact_sheet.build_sheets(fp, str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     md = (tmp_path / "SHEETS.md").read_text()
     assert "not a ranking to follow" in md
 
@@ -125,7 +125,7 @@ def test_labels_carry_the_window_index_and_the_measurements(tmp_path, monkeypatc
                                    windows=[_win(start=0.0, dur=3.4, shot="medium",
                                                  score=0.71, best=True),
                                             _win(start=8.0, best=False)])])
-    contact_sheet.build_sheets(fp, str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     assert seen[0] == ("MVI_3739.mp4 #0", "medium · 3.4s · 0.71 ★")
     assert seen[1][0] == "MVI_3739.mp4 #1"
     assert "★" not in seen[1][1]
@@ -138,42 +138,117 @@ def test_best_windows_are_marked(tmp_path, monkeypatch):
                         _stub_tile(lambda cells, kw: seen.extend(c.marked for c in cells)))
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    contact_sheet.build_sheets(fp, str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
     assert seen == [True, False]
+
+
+# ---- footage_root ----
+
+def test_frames_rgb_is_called_with_footage_root_joined_against_the_bare_source(
+        tmp_path, fake_frames):
+    # the bug this guards: FootageClip.source is a BARE filename (intake stores only
+    # Path(path).name), so calling frames_rgb with clip.source alone can never
+    # resolve — the driver must join footage_root against it.
+    root = tmp_path / "clips"
+    fp = _footage(tmp_path, [_clip("a.mp4")])
+    contact_sheet.build_sheets(fp, str(root), str(tmp_path))
+    assert fake_frames[0][0] == str(root / "a.mp4")
 
 
 # ---- failure modes ----
 
 def test_a_clip_that_will_not_decode_is_skipped_and_named(tmp_path, monkeypatch):
+    root = str(tmp_path)
+    bad_src = str(tmp_path / "bad.mp4")
+
     def _frames(src, times, fps):
-        if src == "bad.mp4":
+        if src == bad_src:
             raise RuntimeError("bad.mp4 is missing")
         return [np.zeros((180, 320, 3), np.uint8) for _ in times]
     monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _frames)
     fp = _footage(tmp_path, [_clip("bad.mp4"), _clip("good.mp4")])
-    res = contact_sheet.build_sheets(fp, str(tmp_path))
-    assert res["skipped"] == ["bad.mp4"]
+    res = contact_sheet.build_sheets(fp, root, str(tmp_path))
+    assert res["skipped"] == ["bad.mp4"]                 # the bare clip.source, not the joined path
     assert res["cells"] == 1                             # good.mp4 still sheeted
     md = (tmp_path / "SHEETS.md").read_text()
     assert "Not sheeted" in md and "bad.mp4" in md and "is missing" in md
 
 
+def test_the_skip_reason_in_sheets_md_is_trimmed_to_its_last_line(tmp_path, monkeypatch):
+    # proc.run's failure banner runs to ~30 lines; SHEETS.md must carry the one line
+    # that names what went wrong, not the whole banner (99 skips would be ~3000 lines).
+    banner = "command failed (exit 1): ffmpeg ...\n--- stderr tail ---\n" + \
+             "\n".join(f"junk line {i}" for i in range(20)) + \
+             "\nreal_clip.mp4: No such file or directory"
+    fp = _footage(tmp_path, [_clip("bad.mp4"), _clip("good.mp4")])
+
+    def _one_ok(src, times, fps):
+        if src == str(tmp_path / "good.mp4"):
+            return [np.zeros((180, 320, 3), np.uint8) for _ in times]
+        raise RuntimeError(banner)
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _one_ok)
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    md = (tmp_path / "SHEETS.md").read_text()
+    assert "junk line" not in md
+    assert "real_clip.mp4: No such file or directory" in md
+    assert res["skipped"] == ["bad.mp4"]
+
+
 def test_no_windows_writes_an_honest_index_and_no_png(tmp_path, fake_frames):
     # an absent artifact would wedge next_action on this stage forever; an empty
-    # answer is a real answer.
+    # answer is a real answer. This is the "nothing to attempt" case — no clip ever
+    # had a candidate window — distinct from "attempted and every attempt failed"
+    # below, which must raise instead (Critical-2 floor).
     fp = _footage(tmp_path, [_clip(windows=[_win(best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), best_only=True)
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path), best_only=True)
     assert res["sheets"] == [] and res["cells"] == 0
     assert (tmp_path / "SHEETS.md").exists()
     assert "No sheets" in (tmp_path / "SHEETS.md").read_text()
     assert not (tmp_path / "sheets").exists()
 
 
+def test_every_clip_failing_to_decode_raises_instead_of_a_silent_empty_success(
+        tmp_path, monkeypatch):
+    # the OTHER empty case: windows existed, a decode was attempted for every one of
+    # them, and every attempt failed. That is the signature of a wrong
+    # --footage-root, a moved footage folder, or a broken ffmpeg install — NOT one
+    # corrupt file among many — so it must not look like a normal (if thin) success.
+    def _frames(src, times, fps):
+        raise RuntimeError("no such file or directory")
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _frames)
+    fp = _footage(tmp_path, [_clip("a.mp4"), _clip("b.mp4")])
+    with pytest.raises(RuntimeError, match="every one of 2"):
+        contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    assert not (tmp_path / "SHEETS.md").exists()
+
+
+def test_the_every_clip_failed_error_names_the_root_as_the_likely_cause(tmp_path, monkeypatch):
+    def _frames(src, times, fps):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _frames)
+    fp = _footage(tmp_path, [_clip("a.mp4")])
+    with pytest.raises(RuntimeError, match="footage-root") as exc:
+        contact_sheet.build_sheets(fp, "/nonexistent/root", str(tmp_path))
+    assert "/nonexistent/root" in str(exc.value)
+
+
 def test_a_corrupt_footage_file_fails_loud(tmp_path):
     bad = tmp_path / "FOOTAGE.json"
     bad.write_text("{not json")
     with pytest.raises(ValueError):
-        contact_sheet.build_sheets(str(bad), str(tmp_path))
+        contact_sheet.build_sheets(str(bad), str(tmp_path), str(tmp_path))
+
+
+def test_markdown_distinguishes_every_clip_failing_from_nothing_to_attempt(tmp_path):
+    # _markdown's own contract: an honest answer for what it was given, distinguishing
+    # "nothing to attempt" from "attempted and every attempt failed" — even though
+    # build_sheets (above) now intercepts the second case with a raise before
+    # _markdown is ever reached, so this exercises the helper directly.
+    footage = Footage(clips=[_clip("a.mp4")])
+    failed = contact_sheet._markdown(footage, 0, [], [("a.mp4", "boom")], best_only=False)
+    assert "every clip with a candidate window failed to decode" in failed
+    empty = contact_sheet._markdown(footage, 0, [], [], best_only=False)
+    assert "No sheets: no window matched the selection." in empty
 
 
 # ---- CLI ----
@@ -181,13 +256,27 @@ def test_a_corrupt_footage_file_fails_loud(tmp_path):
 def test_cli_build_passes_best_only(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(contact_sheet, "build_sheets",
-                        lambda fp, out, **kw: seen.update(kw) or {"status": "written"})
+                        lambda fp, root, out, **kw: seen.update(kw) or {"status": "written"})
     monkeypatch.setattr("sys.argv", ["contact_sheet", "build", "--footage", "F.json",
-                                     "--out-dir", str(tmp_path), "--best-only"])
+                                     "--footage-root", "R", "--out-dir", str(tmp_path),
+                                     "--best-only"])
     with pytest.raises(SystemExit) as e:
         contact_sheet.main()
     assert e.value.code == 0
     assert seen == {"best_only": True}
+
+
+def test_cli_build_passes_the_footage_root_through(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(contact_sheet, "build_sheets",
+                        lambda fp, root, out, **kw: seen.update(
+                            {"fp": fp, "root": root, "out": out}) or {"status": "written"})
+    monkeypatch.setattr("sys.argv", ["contact_sheet", "build", "--footage", "F.json",
+                                     "--footage-root", "/clips", "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        contact_sheet.main()
+    assert e.value.code == 0
+    assert seen == {"fp": "F.json", "root": "/clips", "out": str(tmp_path)}
 
 
 # ---- strip ----
@@ -244,23 +333,35 @@ def test_strip_refuses_a_non_positive_duration(tmp_path):
 # ---- --window sugar ----
 
 def test_resolve_window_returns_the_windows_own_range_and_the_clips_fps(tmp_path):
-    fp = _footage(tmp_path, [_clip("clips/MVI_3739.mp4",
+    (tmp_path / "MVI_3739.mp4").touch()
+    fp = _footage(tmp_path, [_clip("MVI_3739.mp4",
                                    windows=[_win(start=1.0, dur=2.0),
                                             _win(start=9.0, dur=3.0)])])
-    assert contact_sheet.resolve_window(fp, "clips/MVI_3739.mp4", 1) == \
-        ("clips/MVI_3739.mp4", 9.0, 3.0, 30.0)
+    assert contact_sheet.resolve_window(fp, str(tmp_path), "MVI_3739.mp4", 1) == \
+        (str(tmp_path / "MVI_3739.mp4"), 9.0, 3.0, 30.0)
 
 
 def test_resolve_window_fails_loud_on_an_unknown_source(tmp_path):
     fp = _footage(tmp_path, [_clip("a.mp4")])
     with pytest.raises(ValueError, match="not in"):
-        contact_sheet.resolve_window(fp, "typo.mp4", 0)
+        contact_sheet.resolve_window(fp, str(tmp_path), "typo.mp4", 0)
 
 
 def test_resolve_window_fails_loud_on_an_out_of_range_index(tmp_path):
     fp = _footage(tmp_path, [_clip("a.mp4")])
     with pytest.raises(ValueError, match="out of range"):
-        contact_sheet.resolve_window(fp, "a.mp4", 7)
+        contact_sheet.resolve_window(fp, str(tmp_path), "a.mp4", 7)
+
+
+def test_resolve_window_fails_loud_on_a_missing_file_naming_both_halves(tmp_path):
+    # a.mp4 is never created on disk here — the source key resolves in FOOTAGE.json,
+    # but the joined path does not exist, so the message must name footage_root and
+    # source SEPARATELY (extract.extract_edl's precedent) so a user sees which is wrong.
+    fp = _footage(tmp_path, [_clip("a.mp4")])
+    with pytest.raises(ValueError, match="source not found") as exc:
+        contact_sheet.resolve_window(fp, str(tmp_path), "a.mp4", 0)
+    assert f"footage_root={str(tmp_path)!r}" in str(exc.value)
+    assert "source='a.mp4'" in str(exc.value)
 
 
 def test_cli_strip_with_window_resolves_the_same_range_as_explicit_args(tmp_path, monkeypatch):
@@ -268,15 +369,18 @@ def test_cli_strip_with_window_resolves_the_same_range_as_explicit_args(tmp_path
     monkeypatch.setattr(contact_sheet, "build_strip",
                         lambda src, out, **kw: seen.update({"src": src, **kw})
                         or {"status": "written"})
+    (tmp_path / "a.mp4").touch()
     fp = _footage(tmp_path, [_clip("a.mp4", windows=[_win(start=1.0, dur=2.0),
                                                      _win(start=9.0, dur=3.0)])])
     monkeypatch.setattr("sys.argv", ["contact_sheet", "strip", "--footage", fp,
+                                     "--footage-root", str(tmp_path),
                                      "--source", "a.mp4", "--window", "1",
                                      "--frames", "8", "--out", str(tmp_path / "s.png")])
     with pytest.raises(SystemExit) as e:
         contact_sheet.main()
     assert e.value.code == 0
-    assert seen["src"] == "a.mp4" and seen["start"] == 9.0 and seen["dur"] == 3.0
+    assert seen["src"] == str(tmp_path / "a.mp4")
+    assert seen["start"] == 9.0 and seen["dur"] == 3.0
     assert seen["frames"] == 8 and seen["fps"] == 30.0
 
 
@@ -286,3 +390,29 @@ def test_cli_strip_requires_a_range_or_a_window(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit):
         contact_sheet.main()
     assert "--start/--dur" in capsys.readouterr().err
+
+
+def test_cli_strip_footage_window_without_footage_root_fails_loud(tmp_path, monkeypatch, capsys):
+    fp = _footage(tmp_path, [_clip("a.mp4", windows=[_win(start=1.0, dur=2.0)])])
+    monkeypatch.setattr("sys.argv", ["contact_sheet", "strip", "--footage", fp,
+                                     "--source", "a.mp4", "--window", "0",
+                                     "--out", str(tmp_path / "s.png")])
+    with pytest.raises(SystemExit):
+        contact_sheet.main()
+    assert "--footage-root" in capsys.readouterr().err
+
+
+def test_cli_strip_explicit_source_and_range_needs_no_footage_root(tmp_path, monkeypatch):
+    # the explicit --source/--start/--dur path must keep working unchanged, with no
+    # root at all — it never touches FOOTAGE.json or footage_root.
+    seen = {}
+    monkeypatch.setattr(contact_sheet, "build_strip",
+                        lambda src, out, **kw: seen.update({"src": src, **kw})
+                        or {"status": "written"})
+    monkeypatch.setattr("sys.argv", ["contact_sheet", "strip", "--source", "a.mp4",
+                                     "--start", "1.0", "--dur", "2.0",
+                                     "--out", str(tmp_path / "s.png")])
+    with pytest.raises(SystemExit) as e:
+        contact_sheet.main()
+    assert e.value.code == 0
+    assert seen["src"] == "a.mp4" and seen["start"] == 1.0 and seen["dur"] == 2.0

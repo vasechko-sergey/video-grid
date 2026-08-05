@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from scripts.lib import assembly, sheet
-from scripts.lib.footage import Footage
+from scripts.lib.footage import Footage, FootageWindow
 
 STRIP_COLS = 6      # a strip reads left-to-right in time; 6 keeps the row inside the
                     # image-size limit while staying wide enough to see a motion arc.
@@ -25,15 +25,24 @@ def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def _label(source: str, idx: int, w) -> tuple[str, str]:
+def _tail(err: str) -> str:
+    """The last non-blank line of an exception message. `proc.run`'s failure banner
+    runs to ~30 lines of ffmpeg stderr; a SHEETS.md with 99 skipped clips must not
+    become ~3000 lines over it — one bullet per skip, carrying the one line that
+    actually names what went wrong, not the whole banner."""
+    lines = [ln for ln in err.strip().splitlines() if ln.strip()]
+    return lines[-1] if lines else err
+
+
+def _label(source: str, idx: int, w: FootageWindow) -> tuple[str, str]:
     """The two label lines of a window's cell: what it is, then how it measured."""
     star = " ★" if w.best else ""
     return (f"{Path(source).name} #{idx}",
             f"{w.shot_type} · {w.dur:.1f}s · {w.score:.2f}{star}")
 
 
-def _markdown(footage: Footage, n_cells: int, written: list, skipped: list,
-              *, best_only: bool) -> str:
+def _markdown(footage: Footage, n_cells: int, written: list[tuple[Path, str, str]],
+              skipped: list[tuple[str, str]], *, best_only: bool) -> str:
     """The index the reader actually opens. It states the scoring bias in place,
     because the ★ column is exactly where a reader would otherwise defer to the
     ranking (design §1.1)."""
@@ -55,7 +64,18 @@ def _markdown(footage: Footage, n_cells: int, written: list, skipped: list,
         lines += [f"## {path.stem} — {first} … {last}", "",
                   f"![{path.stem}](sheets/{path.name})", ""]
     if not written:
-        lines += ["No sheets: no window matched the selection.", ""]
+        # skipped is empty whenever build_sheets actually reaches this point: a clip
+        # that HAD a candidate window and failed to decode makes build_sheets raise
+        # before _markdown is ever called (the floor in build_sheets below), so this
+        # branch is not reachable through that caller today. It stays anyway — this
+        # function's own contract is "an honest answer for what it was given", not
+        # "whatever its one caller happens to guarantee" — and it is what makes the
+        # two empty causes distinguishable if that guarantee ever changes.
+        if skipped:
+            lines += ["No sheets: every clip with a candidate window failed to "
+                      "decode — see Not sheeted below.", ""]
+        else:
+            lines += ["No sheets: no window matched the selection.", ""]
     if skipped:
         lines += ["## Not sheeted", ""]
         lines += [f"- `{src}` — {err}" for src, err in skipped]
@@ -63,17 +83,31 @@ def _markdown(footage: Footage, n_cells: int, written: list, skipped: list,
     return "\n".join(lines)
 
 
-def build_sheets(footage_path: str, out_dir: str, *, best_only: bool = False) -> dict:
+def build_sheets(footage_path: str, footage_root: str, out_dir: str, *,
+                 best_only: bool = False) -> dict:
     """FOOTAGE.json -> <out_dir>/sheets/sheet_NN.png + <out_dir>/SHEETS.md.
 
     One cell per window, one frame at the window's MIDPOINT, in clip-then-index order
     — timeline order, not score order, so the eye is not led by a scorer that already
     leans toward action. Every window by default; best_only narrows.
 
+    `footage_root` joins against `FootageClip.source`, which is a BARE filename:
+    intake stores only `Path(path).name`, never the path it was given. Same
+    convention as `edl_to_reel`/`draft`'s `--footage-root` for `EDL.source`.
+
     A clip that will not decode is skipped, named under "Not sheeted" in SHEETS.md
     with its error, and the remaining clips are still sheeted — aborting the build
     over one bad file would lose every other clip's sheet (intake's
-    quarantine-and-report precedent). Skipped, never silently."""
+    quarantine-and-report precedent). Skipped, never silently.
+
+    But EVERY candidate window failing is not "one bad file" — it is what a wrong
+    footage_root, a moved footage folder, or a broken ffmpeg install looks like, and
+    writing a normal-looking SHEETS.md over it would let a run reach edit-plan having
+    shown not one real frame. That raises instead (the floor below) rather than
+    writing an artifact that silently claims success; a build with no CANDIDATE
+    windows at all (nothing to attempt — an empty FOOTAGE or a --best-only that
+    matched nothing) keeps the honest-empty SHEETS.md from design §7, because an
+    absent artifact would wedge the router on this stage forever."""
     footage = Footage.from_json(footage_path)
     out = Path(out_dir)
     cells: list[sheet.Cell] = []
@@ -83,17 +117,28 @@ def build_sheets(footage_path: str, out_dir: str, *, best_only: bool = False) ->
         picked = [(i, w) for i, w in enumerate(clip.windows) if w.best or not best_only]
         if not picked:
             continue
+        src = str(Path(footage_root) / clip.source)
         times = [w.start + w.dur / 2 for _, w in picked]
         try:
-            frames = assembly.frames_rgb(clip.source, times, clip.fps)
+            frames = assembly.frames_rgb(src, times, clip.fps)
         except (RuntimeError, ValueError) as ex:
             _log(f"contact-sheet: {clip.source} skipped — {ex}")
-            skipped.append((clip.source, str(ex)))
+            skipped.append((clip.source, _tail(str(ex))))
             continue
         for (i, w), frame in zip(picked, frames):
             cells.append(sheet.Cell(image=frame, lines=_label(clip.source, i, w),
                                     marked=w.best))
             index.append(f"{Path(clip.source).name} #{i}")
+    if not cells and skipped:
+        first_src, first_err = skipped[0]
+        raise RuntimeError(
+            f"contact-sheet: every one of {len(skipped)} clip(s) with a candidate "
+            f"window failed to decode (first: {first_src!r} — {first_err}) — zero "
+            f"frames would be shown. This is what a wrong --footage-root, a moved "
+            f"footage folder, or a broken ffmpeg install look like, not one corrupt "
+            f"file. Check --footage-root={footage_root!r} is the dir the FOOTAGE "
+            f"'source' names actually resolve against (or fix the ffmpeg install), "
+            f"then re-run; no SHEETS.md was written.")
     pages = sheet.paginate(cells)
     out.mkdir(parents=True, exist_ok=True)
     written: list[tuple[Path, str, str]] = []
@@ -110,11 +155,20 @@ def build_sheets(footage_path: str, out_dir: str, *, best_only: bool = False) ->
             "cells": len(cells), "skipped": [s for s, _ in skipped], "md": str(md)}
 
 
-def resolve_window(footage_path: str, source: str, index: int) -> tuple[str, float, float, float]:
-    """(clip source, start, dur, fps) for one FOOTAGE window — the --window sugar over
-    an explicit --start/--dur. A source not in FOOTAGE fails loud listing the ones that
-    ARE there (build_edl's precedent for a mistyped source: a typo must not surface as
-    a FileNotFound deep inside a decode)."""
+def resolve_window(footage_path: str, footage_root: str, source: str,
+                   index: int) -> tuple[str, float, float, float]:
+    """(clip path, start, dur, fps) for one FOOTAGE window — the --window sugar over
+    an explicit --start/--dur. `source` is the exact `FootageClip.source` key — a BARE
+    filename, since intake stores only `Path(path).name`, never the path it was given
+    — and `footage_root` is the dir that name resolves against (same convention as
+    `edl_to_reel`/`draft`'s `--footage-root`). Returns the JOINED path, so the caller
+    gets something it can actually decode, not the bare name alone.
+
+    A source not in FOOTAGE fails loud listing the ones that ARE there (build_edl's
+    precedent for a mistyped source: a typo must not surface as a FileNotFound deep
+    inside a decode). A resolved path absent from disk fails loud too, naming
+    footage_root and source separately (extract.extract_edl's precedent), so a user
+    sees which half is wrong."""
     footage = Footage.from_json(footage_path)
     by_source = {c.source: c for c in footage.clips}
     clip = by_source.get(source)
@@ -125,7 +179,13 @@ def resolve_window(footage_path: str, source: str, index: int) -> tuple[str, flo
         raise ValueError(f"strip: window {index} out of range for {source} "
                          f"(has {len(clip.windows)})")
     w = clip.windows[index]
-    return clip.source, w.start, w.dur, clip.fps
+    src = str(Path(footage_root) / clip.source)
+    if not Path(src).exists():
+        raise ValueError(f"strip: source not found: {src!r} "
+                         f"(footage_root={footage_root!r} + source={clip.source!r}) — "
+                         f"one of the two is wrong: check footage_root is the dir the "
+                         f"clip actually lives in, and source matches its real filename.")
+    return src, w.start, w.dur, clip.fps
 
 
 def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
@@ -158,6 +218,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="one frame per FOOTAGE window -> sheets + SHEETS.md")
     b.add_argument("--footage", required=True, help="FOOTAGE.json from footage-intake")
+    b.add_argument("--footage-root", required=True,
+                   help="dir the FOOTAGE 'source' paths resolve against")
     b.add_argument("--out-dir", required=True, help="dir for SHEETS.md + sheets/")
     b.add_argument("--best-only", action="store_true",
                    help="show only intake's `best` windows (default: every window)")
@@ -166,16 +228,28 @@ def main() -> None:
                    help="clip path, or the FOOTAGE clip source when --footage is given")
     s.add_argument("--out", required=True, help="the image to write")
     s.add_argument("--frames", type=int, default=12, help="how many frames to sample")
-    s.add_argument("--start", type=float, help="range start, seconds")
-    s.add_argument("--dur", type=float, help="range length, seconds")
-    s.add_argument("--footage", help="FOOTAGE.json — with --window, resolves the range")
-    s.add_argument("--window", type=int, help="window index into --footage's clip")
+    s.add_argument("--start", type=float,
+                   help="range start, seconds (ignored if --footage/--window are both "
+                        "given — the window sugar takes precedence)")
+    s.add_argument("--dur", type=float,
+                   help="range length, seconds (ignored if --footage/--window are both "
+                        "given — the window sugar takes precedence)")
+    s.add_argument("--footage", help="FOOTAGE.json — with --window, resolves the range "
+                   "(takes precedence over --start/--dur when both are given)")
+    s.add_argument("--footage-root",
+                   help="dir the FOOTAGE 'source' paths resolve against (required "
+                        "together with --footage/--window)")
+    s.add_argument("--window", type=int, help="window index into --footage's clip "
+                   "(with --footage, takes precedence over --start/--dur)")
     a = ap.parse_args()
     if a.cmd == "build":
-        result = build_sheets(a.footage, a.out_dir, best_only=a.best_only)
+        result = build_sheets(a.footage, a.footage_root, a.out_dir, best_only=a.best_only)
     else:
         if a.footage is not None and a.window is not None:
-            src, start, dur, fps = resolve_window(a.footage, a.source, a.window)
+            if a.footage_root is None:
+                ap.error("strip --footage/--window needs --footage-root too")
+            src, start, dur, fps = resolve_window(a.footage, a.footage_root, a.source,
+                                                   a.window)
         elif a.start is not None and a.dur is not None:
             src, start, dur, fps = a.source, a.start, a.dur, None
         else:

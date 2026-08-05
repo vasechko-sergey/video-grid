@@ -61,10 +61,14 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    zoom in before deciding:
 
        python -m scripts.contact_sheet strip --footage FOOTAGE.json \
-         --source MVI_3739.mp4 --window 2 --frames 12 --out w2.png
+         --footage-root <footage_root> --source MVI_3739.mp4 --window 2 \
+         --frames 12 --out w2.png
 
-   Each cell is labelled with its absolute timestamp; subtract the window's
-   start to get the `start_offset` for that frame.
+   `--footage-root` is the same raw-clips folder footage-intake scanned —
+   `FOOTAGE.json`'s `source` is a bare filename, not a path, so resolving a
+   window into a decodable clip needs the root too. Each cell is labelled
+   with its absolute timestamp; subtract the window's start to get the
+   `start_offset` for that frame.
 
 2. **Author `selection.json`.** Pick the best windows (they are already ranked).
 

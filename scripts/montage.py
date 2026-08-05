@@ -42,8 +42,10 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("footage-intake", "FOOTAGE.json", "required",
           "footage-intake SKILL -> intake CLI", None),
     # required, not optional (design 2026-08-05 §2.5): a run must not reach the cut
-    # having never produced one frame of the footage it is about to cut. It gates the
-    # PRESENCE of the sensor, not its use — see the design's §9 honest limit.
+    # without a SHEETS.md on disk. It gates the PRESENCE of the artifact, not its
+    # use, and not a guarantee it holds a frame (a genuinely empty selection still
+    # writes an honest zero-frame SHEETS.md, design §7) — see the design's §9
+    # honest limit.
     Stage("contact-sheet", "SHEETS.md", "required",
           "contact_sheet build CLI (run by using-montage; edit-plan reads the sheets)",
           None),

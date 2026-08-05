@@ -32,8 +32,10 @@ _Last updated: 2026-08-05._
   order — clip then window index, never score order, because the scorer
   already leans toward action (§1.1 below) and sorting by it would just
   repeat the bias the sheet exists to correct — over **every** window by
-  default (`--best-only` narrows; `best` still draws a ★ border, named in
-  `SHEETS.md` as a fact to weigh, not a ranking to follow), writing
+  default (`--best-only` narrows; `best` is marked twice — the label appends
+  a ★ glyph, and separately `marked=True` draws a plain gold rectangle
+  outline with no star in it — named in `SHEETS.md` as a fact to weigh, not
+  a ranking to follow), writing
   `sheets/sheet_NN.png` + `SHEETS.md`, the artifact the router keys on and
   the agent's entry point. `strip` renders MANY frames inside **one** window
   (explicit `--start`/`--dur`, or `--footage`+`--window` sugar), each cell
@@ -50,17 +52,28 @@ _Last updated: 2026-08-05._
   `Stage("contact-sheet", "SHEETS.md", "required", ..., None)` between
   `footage-intake` and `reel-brief` — **required, not optional**, the #15
   lesson applied again (a stage that costs nothing to skip is not a stage):
-  a run can no longer reach `edit-plan` having produced zero frames of the
-  footage it is about to cut. A clip that will not decode is skipped and
-  named under a `SHEETS.md` "Not sheeted" section (`intake_report.json`'s
-  quarantine precedent) rather than aborting every other clip's sheet; an
-  empty or `--best-only`-emptied window set writes an honest empty
-  `SHEETS.md` instead of wedging `next_action` on a missing artifact.
-  Real-ffmpeg proof (`tests/integration/test_contact_sheet.py`, 6 tests)
+  a run can no longer reach `edit-plan` without a `SHEETS.md` on disk — the
+  gate is the artifact's PRESENCE, not a guarantee it holds a frame. A clip
+  that will not decode is skipped and named under a `SHEETS.md` "Not
+  sheeted" section (`intake_report.json`'s quarantine precedent, its error
+  trimmed to the one line that names what went wrong) rather than aborting
+  every other clip's sheet; an empty or `--best-only`-emptied window set
+  writes an honest empty `SHEETS.md` instead of wedging `next_action` on a
+  missing artifact — but every candidate window failing to decode (a wrong
+  `--footage-root`, a moved footage folder, a broken ffmpeg install) is a
+  different case from one bad file, and now raises instead of silently
+  writing a thin `SHEETS.md` that looked like a normal success. Both the
+  floor and the `--footage-root` it depends on (`FootageClip.source` is a
+  bare filename — intake stores only `Path(path).name` — resolved against
+  the root the same way `edl_to_reel`/`draft` already do) are a
+  whole-branch-review fixup landed on `feat/footage-contact-sheet` after
+  Tasks 0–5, not part of the original five tasks.
+  Real-ffmpeg proof (`tests/integration/test_contact_sheet.py`, 7 tests)
   covers sheet count/dimensions, label and clip-then-index ordering against
   the FOOTAGE order (not re-derived), `--best-only` filtering, the
-  not-sheeted skip path, and `strip`'s `--window` sugar resolving to the
-  same range as an explicit `--start`/`--dur`. Two skills now read the
+  not-sheeted skip path, the every-clip-failed floor against a real missing
+  root, and `strip`'s `--window` sugar resolving to the same range as an
+  explicit `--start`/`--dur`. Two skills now read the
   output: `using-montage` runs the build directly after footage-intake and
   reads every sheet before moving on, offering them at CP1 alongside the
   brief; `edit-plan`'s Recon step reads `SHEETS.md` and every sheet before
@@ -69,11 +82,18 @@ _Last updated: 2026-08-05._
   motion-peaks-at-0.35/zero-at-static finding recorded in the design's §1.1,
   so S3 (backlog #19) does not have to rediscover it. **Honest limit
   (design §9), stated in the stage's own code comment and both skills, not
-  strengthened by this slice:** the conveyor can force the sheet to exist;
-  it cannot prove the agent looked at it — this closes backlog #12 for the
-  **selection** half only, and the per-episode QC agent that judges
-  rendered frames (#3) is the remaining half. **2206 passed / 3 skipped**
-  (no golden moved; this docs-sync task changed no code).
+  strengthened by this slice:** the conveyor can force the sheet to exist —
+  gating its PRESENCE, not a guarantee it holds a frame — and it cannot prove
+  the agent looked at it; this closes backlog #12 for the **selection** half
+  only, and the per-episode QC agent that judges rendered frames (#3) is the
+  remaining half. **2206 passed / 3 skipped** (no golden moved; this
+  docs-sync task changed no code). **Whole-branch-review fixup, same
+  branch:** the `--footage-root` join above, the every-candidate-failed
+  floor, the trimmed skip reasons, the `_markdown`/build-status/backlog
+  wording corrections, and the re-pointed integration fixture (bare filename
+  + root, not an absolute path standing in for both) all landed together in
+  one follow-up commit after Tasks 0–5, closing the seam none of the six
+  per-task reviews owned. **2216 passed / 3 skipped**, no golden moved.
 
 - **Attested run (provenance chain + gates out of the worker's reach) DONE
   (2026-08-04)** — plan `docs/plans/2026-08-04-attested-run.md` + design
