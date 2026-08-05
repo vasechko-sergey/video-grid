@@ -110,6 +110,48 @@ def build_sheets(footage_path: str, out_dir: str, *, best_only: bool = False) ->
             "cells": len(cells), "skipped": [s for s, _ in skipped], "md": str(md)}
 
 
+def resolve_window(footage_path: str, source: str, index: int) -> tuple[str, float, float, float]:
+    """(clip source, start, dur, fps) for one FOOTAGE window — the --window sugar over
+    an explicit --start/--dur. A source not in FOOTAGE fails loud listing the ones that
+    ARE there (build_edl's precedent for a mistyped source: a typo must not surface as
+    a FileNotFound deep inside a decode)."""
+    footage = Footage.from_json(footage_path)
+    by_source = {c.source: c for c in footage.clips}
+    clip = by_source.get(source)
+    if clip is None:
+        raise ValueError(f"strip: source {source!r} is not in {footage_path} — have "
+                         f"{sorted(by_source)}")
+    if not 0 <= index < len(clip.windows):
+        raise ValueError(f"strip: window {index} out of range for {source} "
+                         f"(has {len(clip.windows)})")
+    w = clip.windows[index]
+    return clip.source, w.start, w.dur, clip.fps
+
+
+def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
+                fps: float | None = None) -> dict:
+    """Many frames inside ONE range -> a single image, one cell per frame labelled with
+    its ABSOLUTE timestamp, so a chosen frame converts straight into a `start_offset`
+    for selection.json. This is the answer to "where exactly is the peak?" that one
+    midpoint frame on the overview sheet cannot give.
+
+    Not a conveyor stage: it writes only where --out says and leaves no artifact
+    behind, because it is asked for when a question arises."""
+    if isinstance(frames, bool) or not isinstance(frames, int) or frames < 1:
+        raise ValueError(f"strip: frames must be >= 1, got {frames!r}")
+    if dur <= 0:
+        raise ValueError(f"strip: dur must be > 0 seconds, got {dur!r}")
+    rate = fps if fps is not None else assembly.probe_stream(source).fps
+    times = [start + (k + 0.5) * dur / frames for k in range(frames)]
+    images = assembly.frames_rgb(source, times, rate)
+    cells = [sheet.Cell(image=im, lines=(f"{t:.2f}s",)) for im, t in zip(images, times)]
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.tile(cells, cols=min(frames, STRIP_COLS)).save(path)
+    return {"status": "written", "strip": str(path), "frames": frames,
+            "times": [round(t, 3) for t in times]}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="footage contact sheets (stage 5.2b): look before you cut")
@@ -119,8 +161,26 @@ def main() -> None:
     b.add_argument("--out-dir", required=True, help="dir for SHEETS.md + sheets/")
     b.add_argument("--best-only", action="store_true",
                    help="show only intake's `best` windows (default: every window)")
+    s = sub.add_parser("strip", help="many frames inside ONE window -> one image")
+    s.add_argument("--source", required=True,
+                   help="clip path, or the FOOTAGE clip source when --footage is given")
+    s.add_argument("--out", required=True, help="the image to write")
+    s.add_argument("--frames", type=int, default=12, help="how many frames to sample")
+    s.add_argument("--start", type=float, help="range start, seconds")
+    s.add_argument("--dur", type=float, help="range length, seconds")
+    s.add_argument("--footage", help="FOOTAGE.json — with --window, resolves the range")
+    s.add_argument("--window", type=int, help="window index into --footage's clip")
     a = ap.parse_args()
-    result = build_sheets(a.footage, a.out_dir, best_only=a.best_only)
+    if a.cmd == "build":
+        result = build_sheets(a.footage, a.out_dir, best_only=a.best_only)
+    else:
+        if a.footage is not None and a.window is not None:
+            src, start, dur, fps = resolve_window(a.footage, a.source, a.window)
+        elif a.start is not None and a.dur is not None:
+            src, start, dur, fps = a.source, a.start, a.dur, None
+        else:
+            ap.error("strip needs either --start/--dur or --footage with --window")
+        result = build_strip(src, a.out, start=start, dur=dur, frames=a.frames, fps=fps)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)
 

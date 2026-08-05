@@ -188,3 +188,101 @@ def test_cli_build_passes_best_only(tmp_path, monkeypatch):
         contact_sheet.main()
     assert e.value.code == 0
     assert seen == {"best_only": True}
+
+
+# ---- strip ----
+
+def test_strip_samples_evenly_across_the_range(tmp_path, fake_frames):
+    out = tmp_path / "s.png"
+    res = contact_sheet.build_strip("a.mp4", str(out), start=10.0, dur=4.0,
+                                    frames=4, fps=30.0)
+    assert fake_frames == [("a.mp4", [10.5, 11.5, 12.5, 13.5], 30.0)]
+    assert res["times"] == [10.5, 11.5, 12.5, 13.5]
+    assert out.exists()
+
+
+def test_strip_labels_each_cell_with_its_absolute_timestamp(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _grey_frames)
+    monkeypatch.setattr(contact_sheet.sheet, "tile",
+                        _stub_tile(lambda cells, kw: seen.extend(c.lines for c in cells)))
+    contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=10.0, dur=2.0,
+                              frames=2, fps=30.0)
+    assert seen == [("10.50s",), ("11.50s",)]
+
+
+def test_strip_columns_cap_at_strip_cols(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _grey_frames)
+    monkeypatch.setattr(contact_sheet.sheet, "tile",
+                        _stub_tile(lambda cells, kw: seen.update(kw)))
+    contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0, dur=4.0,
+                              frames=10, fps=30.0)
+    assert seen["cols"] == contact_sheet.STRIP_COLS
+
+
+def test_strip_probes_fps_when_not_given(tmp_path, fake_frames, monkeypatch):
+    monkeypatch.setattr(contact_sheet.assembly, "probe_stream",
+                        lambda p: type("I", (), {"fps": 60.0})())
+    contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0, dur=1.0,
+                              frames=1)
+    assert fake_frames[0][2] == 60.0
+
+
+def test_strip_refuses_a_non_positive_frame_count(tmp_path):
+    with pytest.raises(ValueError, match="frames must be >= 1"):
+        contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0,
+                                  dur=1.0, frames=0, fps=30.0)
+
+
+def test_strip_refuses_a_non_positive_duration(tmp_path):
+    with pytest.raises(ValueError, match="dur must be > 0"):
+        contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0,
+                                  dur=0.0, frames=4, fps=30.0)
+
+
+# ---- --window sugar ----
+
+def test_resolve_window_returns_the_windows_own_range_and_the_clips_fps(tmp_path):
+    fp = _footage(tmp_path, [_clip("clips/MVI_3739.mp4",
+                                   windows=[_win(start=1.0, dur=2.0),
+                                            _win(start=9.0, dur=3.0)])])
+    assert contact_sheet.resolve_window(fp, "clips/MVI_3739.mp4", 1) == \
+        ("clips/MVI_3739.mp4", 9.0, 3.0, 30.0)
+
+
+def test_resolve_window_fails_loud_on_an_unknown_source(tmp_path):
+    fp = _footage(tmp_path, [_clip("a.mp4")])
+    with pytest.raises(ValueError, match="not in"):
+        contact_sheet.resolve_window(fp, "typo.mp4", 0)
+
+
+def test_resolve_window_fails_loud_on_an_out_of_range_index(tmp_path):
+    fp = _footage(tmp_path, [_clip("a.mp4")])
+    with pytest.raises(ValueError, match="out of range"):
+        contact_sheet.resolve_window(fp, "a.mp4", 7)
+
+
+def test_cli_strip_with_window_resolves_the_same_range_as_explicit_args(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(contact_sheet, "build_strip",
+                        lambda src, out, **kw: seen.update({"src": src, **kw})
+                        or {"status": "written"})
+    fp = _footage(tmp_path, [_clip("a.mp4", windows=[_win(start=1.0, dur=2.0),
+                                                     _win(start=9.0, dur=3.0)])])
+    monkeypatch.setattr("sys.argv", ["contact_sheet", "strip", "--footage", fp,
+                                     "--source", "a.mp4", "--window", "1",
+                                     "--frames", "8", "--out", str(tmp_path / "s.png")])
+    with pytest.raises(SystemExit) as e:
+        contact_sheet.main()
+    assert e.value.code == 0
+    assert seen["src"] == "a.mp4" and seen["start"] == 9.0 and seen["dur"] == 3.0
+    assert seen["frames"] == 8 and seen["fps"] == 30.0
+
+
+def test_cli_strip_requires_a_range_or_a_window(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["contact_sheet", "strip", "--source", "a.mp4",
+                                     "--out", str(tmp_path / "s.png")])
+    with pytest.raises(SystemExit):
+        contact_sheet.main()
+    assert "--start/--dur" in capsys.readouterr().err
