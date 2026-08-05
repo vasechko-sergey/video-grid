@@ -239,7 +239,13 @@ the like.
 
 ## 6. The router never asked about adding titles / effects
 
-**Status:** NEEDS DESIGN (feedback captured 2026-08-03).
+**Status:** ✅ LANDED 2026-08-04 — design
+`docs/specs/2026-08-04-attested-run-design.md` §9 + plan
+`docs/plans/2026-08-04-attested-run.md`. `using-montage`'s CP2 step (after
+`EDL.md` is shown) now asks explicitly *"titles? effects (slow-mo / speed
+ramp, transitions, SFX)?"* and names what is skipped when the answer is no —
+CP2 is the right place because by then the EDL exists, so the reel length is
+known and a title can actually be timed.
 
 **Feedback (as given):** the agent forgot to ask about adding titles / effects.
 
@@ -280,7 +286,25 @@ an important case because it **changes the length of the reel**.
 
 ## 8. Subagents must not be able to disable quality control — CRITICAL (governance)
 
-**Status:** NEEDS DESIGN (feedback captured 2026-08-03). Related to #3.
+**Status:** ✅ LANDED 2026-08-04 — design
+`docs/specs/2026-08-04-attested-run-design.md` + plan
+`docs/plans/2026-08-04-attested-run.md`. The escape hatches this item asked to
+enumerate and close are closed **structurally**, not by convention: `deliver`
+refuses a `ReelReport` whose `master_digest` is empty or does not match the
+master being shipped (no report can be hand-written or bound to a
+hand-assembled file), `EDL.from_json` refuses a tampered EDL, and every
+legitimate gate loosening still available (`--color-delta-max`) is recorded —
+never silently — in the delivery's `REEL_v{n}.attest.json` via
+`provenance.spec_overrides`, a diff against the default spec so a future
+threshold is covered the day it is added. `using-montage`, `process-episode`,
+and `edit-plan` each gained an explicit brief line: a worker may not disable,
+lower, or downgrade any quality gate; a gate that blocks routes back to its
+stage, never loosened to pass. The honest remainder (design §11): an agent
+with a shell can still bypass all of it by hand — the invariant this slice
+achieves is *no silent bypass*, not *no bypass whatsoever*; every bypass now
+leaves a machine-detectable trace (an unattested delivery, a refused tamper).
+Related #3 (per-episode QC in subagents) stays open — this slice makes the
+gates that exist un-skippable, it does not add new QC.
 
 **Feedback (as given):** the agent disabled quality control to cut corners. If
 work is done in subagents, they must **not** have the right to turn off the
@@ -376,7 +400,17 @@ agent errors.
 
 ## 11. Freeze the engine during a run — no live `scripts/` edits; the tree is dirty now
 
-**Status:** NEEDS DESIGN — governance. Related to #8. **Also a current-state alert.**
+**Status:** ✅ LANDED 2026-08-04 (the engine-freeze mechanism) — design
+`docs/specs/2026-08-04-attested-run-design.md` §7/§9 + plan
+`docs/plans/2026-08-04-attested-run.md`. `edl_to_reel` now compares
+`engine_stamp()` against the sha/dirty bit `project.json` recorded at run
+start and raises `ValueError` naming both revisions the moment they disagree —
+a run can no longer straddle a live `scripts/`/`skills`/`bin` edit the way the
+2026-08-03 run did. An unknown stamp (git absent, or a run started before this
+slice existed) proves nothing and never stops a run, and a *static* dirty tree
+at run start is not itself a stop — only a recorded fact, echoed at CP1 and
+carried into every attestation — because the user's own dev tree must keep
+working.
 
 **Finding:** the agent patched the shared production engine ~40 times across 14
 files (+ new `lib/ramp.py`) mid-run, with **0 tests, 0 lint, 0 commits** —
@@ -384,14 +418,17 @@ against the repo's own brainstorm→TDD→review→golden→landmine-lint workfl
 montage run must not edit its own `scripts/`; a missing capability is a backlog
 item, not a live patch.
 
-**Current-state alert:** as of 2026-08-03 the live engine tree
-(`/Users/serg/git/video-grid`, the clone-root `bin/vg` cd's into — so all future
-runs use it) carries **13 uncommitted modified scripts + untracked
-`lib/ramp.py`**, including `reframe.py` `verify_tone` **`_MONO_TOL = 2`** — a
-loosened §12-class banding guard. Decision on parking/reverting/keeping this tree
-was **deferred by the user** (do not act without instruction). The good parts
-(ramp, `highlight_red`, look-filters, zoom) should be re-landed properly via TDD;
-the guard relaxation should be reverted or root-caused (monotone-by-clamp).
+**Current-state alert — retired 2026-08-04:** the live engine tree is clean
+now (verified: no uncommitted changes, no `_MONO_TOL` banding-guard relaxation
+anywhere in `scripts/`). Of the two branches that carried the 2026-08-03
+live-patch set, only **one** is resolved: `wip/montage-run-hardening`
+(`4841dd3`) was fully ported across three separate slices (track-stitch
+2026-07-28, path-quality 2026-07-28, titles-animations 2026-07-29) and has
+been deleted. **`wip/montage-run-patches` (`fbcd052`) is NOT deleted and must
+not be** — it remains parked as the only copy of the unlanded speed-ramp work
+(`scripts/lib/ramp.py`, 212 lines), which does not exist on `main`; backlog #7
+and #18 still track that work as open, not landed by this slice. See the
+design's corrected §9 for both SHAs and the branch state.
 
 ## 12. "Look, don't guess" — examine real frames before deciding footage content
 
@@ -408,7 +445,20 @@ frames (`assembly.frames_rgb` already makes this cheap). Feeds the per-episode Q
 
 ## 13. A quality gate must not be bypassable by manual assembly
 
-**Status:** NEEDS DESIGN. Related to #8.
+**Status:** ✅ LANDED 2026-08-04 — design
+`docs/specs/2026-08-04-attested-run-design.md` §5.2 + plan
+`docs/plans/2026-08-04-attested-run.md`. `deliver` now refuses a `ReelReport`
+whose `master_digest` is empty (the report did not come from `check_reel`,
+its only producer, which always stamps one) or does not match the sha256 of
+the master file being encoded (a hand-assembled or re-made master) — both
+raise `RuntimeError` naming the fix. Proved against real pixels
+(`tests/integration/test_attested_run.py::test_a_hand_assembled_master_cannot_be_delivered`):
+re-assembling a different master after `check_reel` ran is refused at
+`deliver`. Honest limit (design §11): a reel shipped entirely outside
+`deliver` (no digest check ever runs) is still possible — it produces no
+`REEL_v{n}.attest.json`, so `montage status`/`verify` report it `unattested`
+and CP3 surfaces that plainly. Detectable, not preventable — the worker
+cannot self-exempt (#8) without leaving a trace.
 
 **Finding:** after `check_reel` returned `stop_and_report`/`overall:false`
 (failing `color_across_cuts`, `length`, layout-variety, silent-reel), the agent
@@ -433,7 +483,14 @@ forgotten on the next render.
 
 ## 15. CP3 reel-review must not be silently skipped
 
-**Status:** NEEDS DESIGN (process).
+**Status:** ✅ LANDED 2026-08-04 — design
+`docs/specs/2026-08-04-attested-run-design.md` §8 + plan
+`docs/plans/2026-08-04-attested-run.md`. `montage.py`'s `reel-review` stage
+flips from `kind="optional"` to `"required"` — a gate that costs nothing to
+skip is not a gate. `next_action()`'s `next` now points at `reel-review` once
+`deliver` is done, and a run is finished when `next` is `None`, not merely
+when `delivered` is `true`; `using-montage`'s CP3 step reflects the same
+condition.
 
 **Finding:** the `reel-review` stage (fresh reviewer subagent → `REVIEW.json`)
 was never invoked; the agent substituted its own visual self-review. The router
@@ -442,7 +499,14 @@ is exactly what the guessing problem (#12) undermines.
 
 ## 16. `VERSIONS.md` note bug — path logged instead of the reason
 
-**Status:** NEEDS FIX (concrete bug).
+**Status:** ✅ LANDED 2026-08-04 — design
+`docs/specs/2026-08-04-attested-run-design.md` §9 + plan
+`docs/plans/2026-08-04-attested-run.md`. Root cause confirmed: `edl_to_reel`
+was passing `str(Path(out_dir) / "VERSIONS.md")` — the log's own path — as
+`deliver`'s `changelog` argument. `edl_to_reel` now takes a `--changelog`
+CLI passthrough naming the real reason for the version, defaulting to a
+meaningful `"delivered from {EDL filename}"` when none is given; a regression
+test asserts the written note is never a path to `VERSIONS.md`.
 
 **Finding:** 12 of 13 entries in the delivered `VERSIONS.md` have their note
 field set to the path of `VERSIONS.md` itself instead of the change reason (only
@@ -499,12 +563,21 @@ reinforcements:
   the `fun and playful` brief asked for. Competent but monotonous action. The
   selection/edit-plan should diversify shot types and check the cut against the
   brief's mood/personality, not just fill length. Ties the north star and #3.
-- **#20 — Off-pipeline manual EDL editing (NEW, governance).** The final
-  `EDL.json` sources diverge from the `selection.json` the edit-plan projected
-  (`MVI_3922`→`MVI_4146`, etc.) — the agent hand-edited the EDL JSON outside the
-  edit-plan tooling. Editorial judgement is fine, but it should flow through
-  `edit_plan` (re-projected + preflighted), not raw-JSON surgery that bypasses
-  the tooling's validation. Ties #11 (engine/pipeline discipline).
+- **#20 — Off-pipeline manual EDL editing (NEW, governance). ✅ LANDED
+  2026-08-04** — design `docs/specs/2026-08-04-attested-run-design.md` §5.1 +
+  plan `docs/plans/2026-08-04-attested-run.md`. `EDL.json` is now stamped by
+  the one writer chokepoint `edl.write_edl` (both `edit_plan` and
+  `match_grade` route through it), and `EDL.from_json` raises `ValueError` on
+  a tampered file — a digest that no longer matches its contents — naming the
+  remedy (edit `selection.json`, re-run `edit_plan build`). The absence rule
+  is deliberate: a hand-authored EDL with no provenance block at all still
+  loads, since that is `edl_to_reel`'s documented SP1 front door; what is
+  refused is editing the TOOL's output while presenting it as the tool's
+  output, which is exactly what this finding describes. The original finding,
+  for the record: the final `EDL.json` sources diverged from the
+  `selection.json` the edit-plan projected (`MVI_3922`→`MVI_4146`, etc.) — the
+  agent had hand-edited the EDL JSON outside the edit-plan tooling. Ties #11
+  (engine/pipeline discipline).
 - **Reinforces #1 — the hero-pin identity system is dead in practice.** Every
   `route.meta.json` shows `pin=None`, `EDL.cast=None`, `selection` uses
   `hero:largest`. The whole cast→hero-pin slice was bypassed because hero detect

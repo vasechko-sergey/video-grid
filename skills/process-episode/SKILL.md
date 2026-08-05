@@ -101,6 +101,17 @@ Both hold → the episode is done. Either fails → `stop_and_report` with which
   YOLO: verify the storyboard hero marker with extra care before passing a
   degraded episode.
 
+## Boundaries
+
+**You may not disable, lower, or downgrade any quality gate.** A gate that
+blocks is routed back to its stage's skill (here: `stop_and_report` /
+`escalate`, upstream to the EDL), never loosened to pass. This is structural,
+not a courtesy — `check_episode`'s thresholds are not parameters this skill's
+invocation can reach, and a reel-level override such as `--color-delta-max`
+belongs to `edl_to_reel`, is recorded in the delivery's attestation, and is
+never something a per-episode worker reaches for to make a failing episode
+pass.
+
 ## Red Flags
 
 | Thought | Reality |

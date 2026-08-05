@@ -84,7 +84,12 @@ say so rather than guessing a path.
    edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
    **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
    assemble-draft step below), it is what the user approves at Checkpoint 2; on a
-   run without it, `EDL.md` still anchors CP2.
+   run without it, `EDL.md` still anchors CP2. **Ask explicitly at this checkpoint
+   (#6):** *"titles? effects (slow-mo / speed ramp, transitions, SFX)?"* — CP2 is
+   the right place because the EDL now exists, so the reel length is known and a
+   title can actually be timed. Name what you are skipping on "no" (e.g. "no
+   titles — the reel will carry no on-screen text") rather than silently passing
+   over the optional stages below.
 
    The scenario comes first and the music is fitted to it (design 2026-07-24). Run
    `edit_plan build` with NO `--pacing` to get the cuts at their material lengths, then
@@ -167,19 +172,27 @@ say so rather than guessing a path.
     [--titles <run>/TITLES.json]`. This runs
     the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
     deliver). When `TITLES.json` is passed, `deliver` burns its drawtext chain into
-    the ONE encode it already runs — no second pass. **Checkpoint 3 — final
-    review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when titles
-    were authored) `TITLES.md` alongside them. A `stop_and_report` (a failed gate)
-    is surfaced verbatim — never fixed forward; route it to the culprit stage's
-    skill.
+    the ONE encode it already runs — no second pass; `deliver` also writes a
+    `REEL_v{n}.attest.json` sidecar beside the encode (design 2026-08-04). **Checkpoint
+    3 — final review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
+    titles were authored) `TITLES.md` alongside them. Before presenting the reel as
+    final, run `"$VG" scripts.montage verify --run-dir <run>` and show its result — a
+    delivery whose state is not `attested` (most notably `unattested`: no
+    `REEL_v{n}.attest.json`, meaning the file did not come out of `deliver`) must be
+    named plainly as such, never presented as a finished reel. A `stop_and_report` (a
+    failed gate) is surfaced verbatim — never fixed forward; route it to the culprit
+    stage's skill.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
     that judges the reel against `SPEC` (idea/mood/hook/ending/spine) and writes
     `REVIEW.json` + `REVIEW.md`; present `REVIEW.md` alongside the reel and the
     `check_reel` report. For each finding the user chooses to act on, re-run the
     routed stage (`edit-plan`/`pacing`/`music`/`titles`) — never fix the reel
-    forward — then re-review the new cut. reel-review is the §5.13 editorial half;
-    on a bare autonomous run it still runs, judging against the `EDL`.
+    forward — then re-review the new cut. reel-review is **required**, not optional
+    (§5.13 editorial half, design 2026-08-04 §8) — the run is not finished when
+    `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run>`
+    reports `next: null`; on a bare autonomous run reel-review still runs, judging
+    against the `EDL`.
 
 ## Reading the brief (intent -> param)
 
@@ -217,13 +230,26 @@ aspect (project-init's own "ask, don't guess").
   must run AFTER pacing, never before (a pacing re-run regenerates `EDL.json`
   and would wipe an authored tone); the autonomous path skips it (a
   single-camera reel needs no conductor). reel-review (§5.13 editorial half)
-  runs at CP3 after deliver; it is optional in montage status (never next) and
-  human-gated — the reviewer proposes, you dispose.
+  runs at CP3 after deliver; it is **required** — `montage status` points `next`
+  at it until it runs, so the run is not finished on `delivered: true` alone — and
+  still human-gated: the reviewer proposes, you dispose.
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it
   is the source of record for on-screen text (no upstream judgment file to
   regenerate from), and `Title`/`Titles` validate on load, so a bad hand-edit fails
-  loud at `deliver`.
-- **Not built here:** the cap-3 **parallel** episode fan-out — `edl_to_reel`
-  processes episodes sequentially; parallelising it is a later slice.
+  loud at `deliver`. `EDL.json` is additionally **stamped** (design 2026-08-04):
+  `edl_to_reel` loads a hand-authored EDL exactly as before, but refuses one whose
+  provenance digest no longer matches its own contents — never hand-edit a
+  tool-generated `EDL.json`, even to fix a small thing; revise `selection.json` and
+  re-run the build instead.
+- **You may not disable, lower, or downgrade any quality gate.** A gate that
+  blocks is routed back to its stage's skill, never loosened to pass.
+  `--color-delta-max` exists for a reel that deliberately cuts between scenes of
+  different exposure, with the measured delta in hand — never to silence a grade
+  that is genuinely wrong — and every use of it is recorded in the delivery's
+  attestation and shown at CP3.
+- **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
+  2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
+  (`jobs`, default 3, the measured knee) inside its own loop; you invoke
+  `edl_to_reel` once per run and never drive the fan-out yourself.

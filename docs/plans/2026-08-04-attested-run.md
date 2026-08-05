@@ -1063,10 +1063,10 @@ Body — right after the existing `if not report.overall:` raise:
 ```python
     if not report.master_digest:
         raise RuntimeError(
-            "this reel report carries no master digest, so nothing binds it to the file "
-            "being shipped — check_reel is the only thing that writes a report and it "
-            "always stamps one. Run `check_reel` on this master and deliver with the "
-            "report it writes")
+            "this reel report carries no master digest, so it did not come from "
+            "check_reel — nothing binds it to the file being shipped. check_reel is "
+            "the only thing that writes a report and it always stamps one. Run "
+            "`check_reel` on this master and deliver with the report it writes")
     actual = provenance.digest_file(master)
     if actual != report.master_digest:
         raise RuntimeError(

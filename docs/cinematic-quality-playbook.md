@@ -154,8 +154,14 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
 
 1. **#1 hero re-ID — ✅ LANDED 2026-08-04** (`docs/plans/2026-08-04-hero-reid.md`)
    — unblocks identity/personality; revives the hero-pin slice.
-2. **Governance hardening** (#8, #11, #13, #20, #15, #6) — make agent runs trustworthy
-   before adding more power; also decide the current dirty-tree (still pending).
+2. **Governance hardening — ✅ LANDED 2026-08-04**
+   (`docs/plans/2026-08-04-attested-run.md`) — #8/#11/#13/#15/#20/#6 (+ rider
+   #16) landed behind a provenance chain (`scripts/lib/provenance.py`) that
+   refuses a tampered EDL or an unbound reel report and stamps every delivery
+   with an attestation; the dirty-tree question is resolved (the live tree is
+   clean, one parked branch deleted). #7/#18's speed-ramp/effects work stays
+   open — its only copy still lives on the parked `wip/montage-run-patches`
+   branch — and priority 3 below is otherwise unblocked.
 3. **Editorial intelligence** — #19 shot variety + #3 per-episode QC + #12
    look-don't-guess, on top of the **mood-preset spine (§3)**.
 4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep
@@ -176,8 +182,10 @@ finish; polish last.
   documented fallback behind `lib/reid.py`.
 - **Editorial judgement split:** how much stays with the agent's taste vs. encoded
   rules/QC (the run showed unguided taste drifts and guesses).
-- **Dirty tree:** the 13-file uncommitted montage patch set (incl. the loosened
-  `verify_tone` guard) — park / land-properly / revert (deferred).
+- ~~**Dirty tree:**~~ resolved 2026-08-04 — the live tree is clean;
+  `wip/montage-run-hardening` was fully ported and deleted, and
+  `wip/montage-run-patches` stays parked (deliberately, not deferred) as the
+  only copy of the still-open #7/#18 speed-ramp/effects work.
 - **Effect QC:** what "visible on the frame" and "composition-respecting" checks look
   like concretely (the 3-frame probe, #10, extended beyond colour).
 

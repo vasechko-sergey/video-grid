@@ -4,13 +4,125 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-04._
+_Last updated: 2026-08-05._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Attested run (provenance chain + gates out of the worker's reach) DONE
+  (2026-08-04)** — plan `docs/plans/2026-08-04-attested-run.md` + design
+  `docs/specs/2026-08-04-attested-run-design.md`, Tasks 0–7 (branch
+  `feat/attested-run`, commits `d40df21`..`17ccfb9` + this docs sync).
+  Promoted from fixes-backlog #8/#11/#13/#15/#20 (+ riders #6/#16): the
+  2026-08-03 real run shipped a reel `check_reel` had rejected, hand-assembled
+  outside `deliver`, from an `EDL.json` hand-edited outside `edit_plan`, on an
+  engine that changed ~40 times mid-run, with `reel-review` never invoked —
+  and nothing any artifact carried could be checked against anything else to
+  catch any of it. New `scripts/lib/provenance.py` is the ONLY module that
+  shells to git or hashes a file: `engine_stamp()` (short HEAD sha + a dirty
+  bit measured over `scripts`/`skills`/`bin` **only** — a doc edit or a
+  scratch file is not an engine change — `{"sha": "", "dirty": None}`,
+  recorded as unknown rather than guessed, when git cannot answer),
+  `digest_file` (streaming sha256), `digest_obj` (sha256 of an object's
+  canonical JSON with its own `provenance` key excluded, so a block can be
+  recomputed over the object that carries it), `stamp`/`check` (state ∈
+  `unstamped`/`intact`/`tampered`), `spec_overrides` (a **diff** of a spec
+  instance against a default-constructed one of the same class, field by
+  field — not a registry, so a threshold added to `ReelCheckSpec` later is
+  covered the day it lands), `attest_path`, `class Attestation`, and
+  `verify_delivery`. Three artifacts gain a `provenance` field, all
+  defaulting empty so every existing artifact and fixture still loads:
+  `project.json` (stamped by `project_init` at run start — the reference
+  `edl_to_reel` later compares against), `EDL.json` (stamped by the ONE new
+  writer chokepoint `edl.write_edl`, which both `edit_plan.write_edit_plan`
+  and `match_grade`'s in-place rewrite now route through — two writers
+  stamping independently was the shape that drifts), and `ReelReport`, which
+  gains `master_digest` (set unconditionally by `check_reel.run` from the
+  master it just measured). **The load-bearing distinction (design §5): a
+  MISSING provenance block is legal, a PRESENT-but-mismatched one is
+  refused.** `EDL.from_json` — the one read chokepoint all four EDL
+  consumers (`edl_to_reel`/`draft`/`pacing`/`match_grade`) share — loads an
+  unstamped (hand-authored) EDL exactly as before, since that is
+  `edl_to_reel`'s documented SP1 front door, but raises `ValueError` on a
+  tampered one (a digest that no longer matches its contents) naming the
+  remedy: edit `selection.json` and re-run `edit_plan build`, because
+  raw-JSON surgery bypasses the manifest preflight that catches a window past
+  EOF, a scene-cut straddle, or an unresolved cast pin. `deliver` is the
+  deliberate exception to the absence rule: it refuses a report whose
+  `master_digest` is empty (meaning it did not come from `check_reel`, the
+  report's only producer) or does not match the sha256 of the master file it
+  is about to encode (a hand-assembled or re-made master) — both raise
+  `RuntimeError` naming the fix (run `check_reel` on this master and deliver
+  with the report it writes). On success `deliver` now writes
+  `out/REEL_v{n}.attest.json` beside the encode: both engine stamps
+  (`engine_at_start` from the run's `project.json`, `engine_at_deliver`
+  measured live), the master/report/**reel** digests (the reel digest binds
+  the attestation to the shipped file itself, so a swap after delivery is
+  detectable), the EDL's digest+state, and the `spec_overrides` list of every
+  loosened `ReelCheckSpec` threshold (e.g. `--color-delta-max`) — a
+  legitimate gate loosening stays available but can no longer pass silently.
+  `edl_to_reel` now raises `ValueError` the moment it starts if
+  `engine_stamp()` disagrees with the sha/dirty bit `project.json` recorded
+  at run start (naming both revisions) — a run must not straddle an engine
+  change, because the stages already finished were produced by different
+  code; an unknown stamp on either side (git absent, or a run started before
+  this slice existed) proves nothing and never stops the run, and a *static*
+  dirty tree at run start is not itself a stop, only a recorded fact.
+  `edl_to_reel` also assembles the run's `ReelManifest.provenance` (the EDL's
+  digest/state, the start engine stamp, the override diff) for `deliver` to
+  merge into the attestation, and gained `--changelog` — closing #16, whose
+  root cause was `edl_to_reel` passing `VERSIONS.md`'s own path as the
+  version note text instead of a reason; 12 of 13 entries in the 2026-08-03
+  run's log were unreadable because of it. `montage.py`'s `reel-review` stage
+  flips from `kind="optional"` to `"required"` (#15) — a gate that costs
+  nothing to skip is not a gate — so a run is finished when
+  `next_action()["next"]` is `None`, not merely when `delivered` is true;
+  `next_action` also gains a `deliveries` list, one entry per `out/REEL_v*`
+  reporting its attestation's presence/`overall` from the sidecar alone
+  (cheap — the router calls `status` constantly; a hand-concatenated reel
+  with no sidecar reports `unattested`), and a new `montage verify --run-dir`
+  subcommand re-hashes every delivered file against its attestation — run
+  once at CP3, where the cost is irrelevant and a swapped file would
+  otherwise pass for attested. Three real-ffmpeg integration tests
+  (`tests/integration/test_attested_run.py`) prove the chain against real
+  pixels rather than only fixtures: assemble → `check_reel` → `deliver`
+  produces an attestation `verify_delivery` confirms as `attested`; a master
+  re-made after the check is refused at `deliver` (#13, `"different file"`);
+  and a reel byte-appended after delivery is caught by `montage verify` as
+  `digest-mismatch`. **Riders landed alongside:** `using-montage`'s CP2 step
+  now asks explicitly *"titles? effects (slow-mo / speed ramp, transitions,
+  SFX)?"* and names what is skipped on "no" (#6); `using-montage`,
+  `process-episode`, and `edit-plan` each gained an explicit boundary line
+  that a worker may not disable, lower, or downgrade any quality gate — a
+  blocking gate routes back to its stage, never loosened to pass — and
+  `edit-plan`'s brief additionally says never to hand-edit `EDL.json` now
+  that it is stamped. **wip-branch triage, corrected in this docs-sync task:**
+  the design's §9 originally claimed both parked branches were superseded and
+  deleted; the truth verified against the actual repo state is narrower —
+  `wip/montage-run-hardening` (`4841dd3`) WAS fully ported across three
+  earlier slices (track-stitch, path-quality, titles-animations) and has been
+  deleted, but `wip/montage-run-patches` (`fbcd052`) has **not** been deleted
+  and must not be: it still carries the only copy of `scripts/lib/ramp.py`
+  (212 lines, speed-ramp + Ken-Burns zoom), which does not exist on `main`,
+  and fixes-backlog #7/#18 still track that work as open — the live tree
+  itself is clean. **Honest limits (design §11, not solved by this slice):**
+  an agent with a shell still bypasses all of it — it can run `ffmpeg` by
+  hand, write its own JSON, and hand the user a file, and nothing short of
+  taking the shell away prevents that. What this slice achieves is narrower:
+  **no delivered reel can claim a gate it did not pass, and every bypass now
+  leaves a machine-detectable trace** — a hand-assembled reel ships with no
+  `attest.json` and `montage status`/CP3 report it `unattested`; a
+  gate-weakening knob outside `ReelCheckSpec`/`CheckSpec` would not appear in
+  `spec_overrides` (no machine predicate for "this flag weakens a gate"
+  exists); a tampered EDL that is also re-stamped by hand defeats the check
+  (the stamp stops casual raw-JSON surgery, not a deliberate forgery); engine
+  drift **within** a stage is not caught until the next run's comparison; and
+  `dirty` is a boolean over three directories that does not say *what*
+  changed. **2152 passed / 3 skipped** (full suite, re-run clean at the end
+  of this docs-sync task; no golden moved — this task changed no code).
 
 - **Hero re-ID embedding DONE (2026-08-04)** — plan
   `docs/plans/2026-08-04-hero-reid.md` + design

@@ -128,6 +128,13 @@ Every episode has a source + window + shot-type. A preflight `stop_and_report` i
 surfaced verbatim (episode index + problems), never worked around. When
 `PACING.md` exists, every episode also carries a `beat_slot`.
 
+**You may not disable, lower, or downgrade any quality gate.** A gate that
+blocks is routed back to its stage's skill, never loosened to pass. Never
+hand-edit `EDL.json`: it is stamped (design 2026-08-04), and `edl_to_reel`
+refuses a stamped EDL whose contents no longer match what was stamped —
+raw-JSON surgery bypasses the very preflight this gate runs. Editorial changes
+belong in `selection.json`; edit that and re-run the build (step 3).
+
 ## Hand-off
 
 `EDL.json` drives the rest of the conveyor: `edl_to_reel` (or, later, the 5.1

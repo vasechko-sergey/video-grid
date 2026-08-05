@@ -278,14 +278,21 @@ over.
   that blocks is routed back to its stage, never loosened to pass.* The memory rule
   that subagents do not inherit their dispatcher's prohibitions is why this must be
   written in each brief, not assumed.
-- **wip-branch triage (#11's current-state alert).** `wip/montage-run-hardening`
-  (`4841dd3`) was fully ported in three slices (track-stitch 2026-07-28,
-  path-quality 2026-07-28, titles-animations 2026-07-29). `wip/montage-run-patches`
-  (`fbcd052`) is superseded — its diff against `main` is now mostly the *removal* of
-  work `main` has since landed. Both branches are deleted; **their SHAs are recorded
-  here** so the commits stay reachable via `git reflog`/`git show` if anything is ever
-  wanted back. The `#11` alert about the dirty live tree is retired: the tree is clean
-  and the patches are landed or superseded.
+- **wip-branch triage (#11's current-state alert) — corrected 2026-08-05.**
+  `wip/montage-run-hardening` (`4841dd3`) was fully ported in three slices
+  (track-stitch 2026-07-28, path-quality 2026-07-28, titles-animations
+  2026-07-29) and **has been deleted**; its SHA is recorded here so the commit
+  stays reachable via `git reflog`/`git show` if anything is ever wanted back.
+  `wip/montage-run-patches` (`fbcd052`) is a **different** branch carrying
+  **different, still-unlanded** work — it is **not superseded and not
+  deleted, and must not be**: it is the only copy of `scripts/lib/ramp.py`
+  (212 lines, speed-ramp + Ken-Burns zoom), which does not exist on `main`,
+  and fixes-backlog #7 and #18 still track that work as open. (An earlier
+  draft of this paragraph claimed both branches were superseded and deleted —
+  that was wrong; verified against the actual repo state, only the first is
+  true.) The `#11` alert about the dirty live tree is still retired: the tree
+  itself is clean (no uncommitted changes), and one of the two parked
+  branches is resolved — the other remains parked on purpose.
 
 ## 10. Testing
 
