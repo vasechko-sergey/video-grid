@@ -3,7 +3,9 @@ import threading
 import pytest
 from pathlib import Path
 from scripts import edl_to_reel
+from scripts.lib.edl import EDL, write_edl
 from scripts.lib.footage import DESCRIPTOR_LEN
+from scripts.lib.project import ProjectConfig
 
 
 def _project(tmp_path):
@@ -493,3 +495,92 @@ def test_a_routable_finding_at_a_lower_index_beats_a_raise_above_it(monkeypatch,
                                   str(tmp_path / "w"), str(tmp_path / "out"), jobs=3)
     assert res["status"] == "stop_and_report"          # NOT a raised RuntimeError
     assert res["finding"]["episode_idx"] == 0 and res["finding"]["sub_status"] == "needs_input"
+
+
+# --- Task 4: engine-drift stop, run provenance, real changelog -------------------
+
+def test_a_run_that_straddles_an_engine_change_is_refused(tmp_path, monkeypatch):
+    # #11: project.json records the engine at run start; if the code moved since, the
+    # stages already finished were produced by different code.
+    project = tmp_path / "project.json"
+    ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                  provenance={"v": 1, "engine": {"sha": "aaaaaaa", "dirty": False},
+                              "self": "x", "inputs": {}}).write(project)
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    with pytest.raises(ValueError, match="must not straddle an engine change"):
+        edl_to_reel.edl_to_reel(_edl_file(tmp_path), str(project), str(tmp_path),
+                                str(tmp_path / "w"), str(tmp_path / "o"))
+
+
+def test_an_unknown_engine_stamp_never_stops_the_run(tmp_path, monkeypatch):
+    project = tmp_path / "project.json"
+    ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                  provenance={"v": 1, "engine": {"sha": "", "dirty": None},
+                              "self": "x", "inputs": {}}).write(project)
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    _wire(monkeypatch)
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), str(project), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "o"))
+    assert res["status"] == "delivered"
+
+
+def test_a_run_started_before_this_existed_never_stops(tmp_path, monkeypatch):
+    # project.json with NO provenance block at all — absence, not tampering
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "o"))
+    assert res["status"] == "delivered"
+
+
+def test_the_run_provenance_reaches_build_reel(tmp_path, monkeypatch):
+    seen = {}
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda rm, o, w, titles=None: seen.setdefault("rm", rm) and None
+                        or {"status": "delivered"})
+    project = tmp_path / "project.json"
+    ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                  provenance={"v": 1, "engine": {"sha": "aaaaaaa", "dirty": False},
+                              "self": "x", "inputs": {}}).write(project)
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "aaaaaaa", "dirty": False})   # == recorded -> no drift
+    ep = dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+              composition="lead", grid="thirds", crop_scale=0.8)
+    edl = EDL.from_dict({"episodes": [ep, {**ep, "start": 2.0}]})
+    edl_path = tmp_path / "EDL.json"
+    write_edl(edl, edl_path)
+    edl_to_reel.edl_to_reel(str(edl_path), str(project), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "o"), color_delta_max=20.0)
+    prov = seen["rm"].provenance
+    assert prov["edl"]["state"] == "intact"
+    assert prov["overrides"] == [{"field": "color_delta_max", "value": 20.0, "default": 12.0}]
+    assert prov["engine_at_start"] == {"sha": "aaaaaaa", "dirty": False}
+
+
+def test_an_unstamped_edl_is_recorded_as_unstamped(tmp_path, monkeypatch):
+    # the hand-authored SP1 front door still works, and says so on the record
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].provenance["edl"] == {"digest": "", "state": "unstamped"}
+
+
+def test_the_changelog_is_a_reason_not_the_log_path(tmp_path, monkeypatch):
+    # #16 root cause: edl_to_reel passed str(out_dir/"VERSIONS.md") as the NOTE — 12 of 13
+    # entries in a real run's VERSIONS.md then logged the file's own path.
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].changelog == "delivered from EDL.json"
+    assert "VERSIONS.md" not in seen["rm"].changelog
+
+
+def test_an_explicit_changelog_wins(tmp_path, monkeypatch):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"), changelog="regraded ep1")
+    assert seen["rm"].changelog == "regraded ep1"

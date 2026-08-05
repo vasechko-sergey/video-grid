@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import hero as hero_lib, reid
+from scripts.lib import hero as hero_lib, provenance, reid
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.footage import Cast
 from scripts.lib.models import ReelEpisode, ReelManifest
@@ -24,7 +24,7 @@ DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                 work_dir: str, out_dir: str, *, music: str | None = None,
                 titles: str | None = None, jobs: int = DEFAULT_JOBS,
-                color_delta_max: float | None = None) -> dict:
+                color_delta_max: float | None = None, changelog: str = "") -> dict:
     """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
     for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
@@ -42,6 +42,21 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                          f"memory-constrained box, raise it only with a GPU)")
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
+    # #11 — a montage run must not straddle an engine change. project.json records the
+    # engine at run START; if the code has moved since, the stages already finished were
+    # produced by different code and this reel would be a chimera of two engines. An
+    # UNKNOWN stamp on either side cannot prove drift and never stops the run (design §7);
+    # neither does an absent one, which is a run started before this existed.
+    started = cfg.provenance.get("engine") or {}
+    now = provenance.engine_stamp()
+    if started.get("sha") and now.get("sha") and started != now:
+        raise ValueError(
+            f"the engine changed since this run started (project.json records "
+            f"{started['sha']} {'dirty' if started.get('dirty') else 'clean'}, now "
+            f"{now['sha']} {'dirty' if now.get('dirty') else 'clean'}) — a montage run must "
+            f"not straddle an engine change, because the stages already finished were "
+            f"produced by different code. Start a fresh run dir, or re-run project_init "
+            f"against the current engine to re-baseline")
     seg_dir = str(Path(work_dir) / "segments")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
@@ -113,9 +128,19 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)
     extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}
+    # #16: this argument is the version-log NOTE, not the log's path. Passing
+    # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's
+    # VERSIONS.md log the file's own path instead of the reason for the version.
+    note = changelog or f"delivered from {Path(edl_path).name}"
     rm = ReelManifest(episodes=episodes, target_dur=target, cap=edl.cap,
-                      changelog=str(Path(out_dir) / "VERSIONS.md"), music=music or edl.music,
-                      **extra)
+                      changelog=note, music=music or edl.music, **extra)
+    # The run's record, assembled where all three parts are in hand (design §6). The
+    # override list is a DIFF of the effective check spec against a default one, so a
+    # threshold added to ReelCheckSpec later is covered without touching this line.
+    rm.provenance = {"edl": {"digest": edl.provenance.get("self", ""),
+                             "state": "intact" if edl.provenance else "unstamped"},
+                     "engine_at_start": started,
+                     "overrides": provenance.spec_overrides(rm.check_spec)}
     return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
 
 
@@ -135,10 +160,13 @@ def main() -> None:
                     help="across-cut mean-RGB ceiling (default 12.0). Raise ONLY for a reel "
                          "that deliberately cuts between scenes of different exposure "
                          "(open water -> bright beach), with the measured delta in hand")
+    ap.add_argument("--changelog", default="",
+                    help="version-log note for this delivery — the REASON for the version "
+                         "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'")
     a = ap.parse_args()
     result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
                          music=a.music, titles=a.titles, jobs=a.jobs,
-                         color_delta_max=a.color_delta_max)
+                         color_delta_max=a.color_delta_max, changelog=a.changelog)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "delivered" else 1)
 

@@ -53,7 +53,10 @@ def _wire(monkeypatch, reports, pe_results=None):
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
-    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform=""):
+    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform="", run_provenance=None):
+        # run_provenance= tolerated (and ignored): build_reel now always passes it (Task 4)
+        # — not the subject of this fixture; see
+        # test_build_reel_threads_the_manifest_provenance_into_deliver for the dedicated check.
         seen["deliver"].append(od)
         seen["titles"].append(titles)
         seen["deliver_platform"] = platform
@@ -463,3 +466,17 @@ def test_build_reel_music_delivers_after_full_budget_plus_a_length_retime(tmp_pa
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
     assert res["status"] == "delivered"                  # NOT reel-cap-exhausted
     assert mixed == [5.3] and delivered == ["stem.m4a"]  # stem built at the re-timed length
+
+
+def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monkeypatch):
+    # Task 4: edl_to_reel assembles rm.provenance (the run's start-engine stamp, the EDL's
+    # digest/state, the loosened-threshold diff); build_reel must carry it to deliver
+    # UNCHANGED — deliver is what writes the REEL_v{n}.attest.json sidecar from it.
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    rm = _rm()
+    rm.provenance = {"edl": {"state": "intact"}}
+    build_reel.build_reel(rm, str(tmp_path / "o"), str(tmp_path / "w"))
+    assert seen["run_provenance"] == {"edl": {"state": "intact"}}
