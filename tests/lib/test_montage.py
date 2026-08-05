@@ -32,7 +32,7 @@ def test_stage_accepts_good():
 
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
-        "project-init", "footage-intake", "reel-brief", "trend-scan",
+        "project-init", "footage-intake", "contact-sheet", "reel-brief", "trend-scan",
         "edit-plan", "music-and-mood", "pacing", "match-grade", "assemble-draft", "titles",
         "deliver", "reel-review"]
 
@@ -67,6 +67,10 @@ def test_v1_stages_kinds_and_flags():
     assert by["match-grade"].artifact == "MATCH.md"
     assert by["match-grade"].checkpoint is None
     assert by["match-grade"].in_out is False
+    assert by["contact-sheet"].kind == "required"
+    assert by["contact-sheet"].artifact == "SHEETS.md"
+    assert by["contact-sheet"].checkpoint is None
+    assert by["contact-sheet"].in_out is False
 
 
 # ---- next_action inspector ----
@@ -103,6 +107,7 @@ def test_project_only_next_is_footage(tmp_path):
 def test_music_optional_absent_then_present(tmp_path):
     _touch(tmp_path, "project.json")
     _touch(tmp_path, "FOOTAGE.json")
+    _touch(tmp_path, "SHEETS.md")     # contact-sheet is required and comes first
     res = next_action(str(tmp_path))
     assert res["next"] == "edit-plan"
     assert _state(res, "music-and-mood") == "optional"   # absent optional never blocks
@@ -115,6 +120,7 @@ def test_music_optional_absent_then_present(tmp_path):
 def test_pacing_optional_absent_then_present(tmp_path):
     _touch(tmp_path, "project.json")
     _touch(tmp_path, "FOOTAGE.json")
+    _touch(tmp_path, "SHEETS.md")     # contact-sheet is required and comes first
     res = next_action(str(tmp_path))
     assert _state(res, "pacing") == "optional"   # absent optional never blocks
     assert res["next"] == "edit-plan"
@@ -145,7 +151,7 @@ def test_reel_brief_optional_absent_then_present(tmp_path):
 
 
 def test_assemble_draft_optional_absent_then_present(tmp_path):
-    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
     assert _state(res, "assemble-draft") == "optional"   # absent optional never blocks
@@ -157,7 +163,7 @@ def test_assemble_draft_optional_absent_then_present(tmp_path):
 
 
 def test_titles_optional_absent_then_present(tmp_path):
-    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
     assert _state(res, "titles") == "optional"   # absent optional never blocks
@@ -170,7 +176,7 @@ def test_titles_optional_absent_then_present(tmp_path):
 
 def test_reel_review_required_absent_then_present(tmp_path):
     # review runs AFTER deliver; it is required (design §8) and blocks `next` until reviewed
-    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     out = tmp_path / "out"
     out.mkdir()
@@ -185,7 +191,7 @@ def test_reel_review_required_absent_then_present(tmp_path):
 
 
 def test_edl_present_next_is_deliver(tmp_path):
-    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
     assert res["next"] == "deliver"
@@ -193,7 +199,7 @@ def test_edl_present_next_is_deliver(tmp_path):
 
 
 def test_delivered_when_reel_in_out(tmp_path):
-    for n in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     out = tmp_path / "out"
     out.mkdir()
@@ -268,6 +274,7 @@ def test_pacing_still_follows_the_music_it_fits_against():
 def test_a_run_with_footage_but_no_edl_asks_for_edit_plan_not_music(tmp_path):
     (tmp_path / "project.json").write_text("{}")
     (tmp_path / "FOOTAGE.json").write_text("{}")
+    (tmp_path / "SHEETS.md").write_text("{}")
     assert montage.next_action(str(tmp_path))["next"] == "edit-plan"
 
 
@@ -278,7 +285,7 @@ def test_reel_review_is_next_after_delivery(tmp_path):
     run = tmp_path / "run"
     out = run / "out"
     out.mkdir(parents=True)
-    for name in ("project.json", "FOOTAGE.json", "EDL.json"):
+    for name in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         (run / name).write_text("{}")
     (out / "REEL_v1.mp4").write_text("x")
     got = montage.next_action(str(run))
@@ -290,7 +297,7 @@ def test_a_run_is_only_finished_when_the_review_exists(tmp_path):
     run = tmp_path / "run"
     out = run / "out"
     out.mkdir(parents=True)
-    for name in ("project.json", "FOOTAGE.json", "EDL.json", "REVIEW.json"):
+    for name in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json", "REVIEW.json"):
         (run / name).write_text("{}")
     (out / "REEL_v1.mp4").write_text("x")
     assert montage.next_action(str(run))["next"] is None
@@ -350,3 +357,33 @@ def test_status_does_not_rehash_but_verify_does(tmp_path):
     reel.write_bytes(b"swapped after delivery")
     assert montage.next_action(str(run))["deliveries"][0]["state"] == "attested"
     assert montage.verify(str(run))["deliveries"][0]["state"] == "digest-mismatch"
+
+
+# ---- contact-sheet required before edit-plan (design 2026-08-05 §6) ----
+
+def test_footage_without_sheets_asks_for_the_contact_sheet(tmp_path):
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "FOOTAGE.json")
+    assert next_action(str(tmp_path))["next"] == "contact-sheet"
+
+
+def test_the_sheet_unblocks_edit_plan(tmp_path):
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "FOOTAGE.json")
+    _touch(tmp_path, "SHEETS.md")
+    res = next_action(str(tmp_path))
+    assert res["next"] == "edit-plan"
+    assert _state(res, "contact-sheet") == "done"
+
+
+def test_the_sheet_comes_after_the_footage_it_sheets_and_before_the_cut():
+    keys = [s.key for s in montage.V1_STAGES]
+    assert keys.index("footage-intake") < keys.index("contact-sheet")
+    assert keys.index("contact-sheet") < keys.index("edit-plan")
+
+
+def test_no_footage_still_asks_for_intake_first(tmp_path):
+    # the sheet is not reachable before the FOOTAGE it reads
+    _touch(tmp_path, "project.json")
+    _touch(tmp_path, "SHEETS.md")
+    assert next_action(str(tmp_path))["next"] == "footage-intake"

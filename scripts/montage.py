@@ -41,6 +41,12 @@ V1_STAGES: tuple[Stage, ...] = (
           "project-init SKILL -> project_init CLI", "spec"),
     Stage("footage-intake", "FOOTAGE.json", "required",
           "footage-intake SKILL -> intake CLI", None),
+    # required, not optional (design 2026-08-05 §2.5): a run must not reach the cut
+    # having never produced one frame of the footage it is about to cut. It gates the
+    # PRESENCE of the sensor, not its use — see the design's §9 honest limit.
+    Stage("contact-sheet", "SHEETS.md", "required",
+          "contact_sheet build CLI (run by using-montage; edit-plan reads the sheets)",
+          None),
     Stage("reel-brief", "SPEC.json", "optional", "reel-brief SKILL -> reel_brief CLI", "spec"),
     Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None),
     Stage("edit-plan", "EDL.json", "required",
