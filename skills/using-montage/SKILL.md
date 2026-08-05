@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → [reel-brief] → edit-plan → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
+description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
 ---
 
 # using-montage (stage 5.1)
@@ -68,7 +68,16 @@ say so rather than guessing a path.
    `FOOTAGE.json`/`FOOTAGE.md` and, when people matter, runs the interactive
    cast-naming -> `cast.json`). Point its out-dir at `<run>`.
 
-4. **reel-brief (optional).** If the brief deserves shaping (mood/hook/ending/
+4. **contact-sheet** — if `next`. `"$VG" scripts.contact_sheet build
+   --footage <run>/FOOTAGE.json --out-dir <run>`. Then **read every sheet it
+   wrote** — `SHEETS.md` links them. This is the only point in the conveyor
+   where you see the raw footage; every later stage works from your reading of
+   it, so a skipped look is a guess propagated through the whole reel. The
+   sheets do not replace `FOOTAGE.md` — the table carries the numbers, the
+   sheets carry what the numbers cannot say. Read both, and offer the sheets
+   to the user at CP1 alongside the brief.
+
+5. **reel-brief (optional).** If the brief deserves shaping (mood/hook/ending/
    style-lean beyond the bare aspect), invoke the **reel-brief** skill — it asks the
    idea one question at a time and writes `SPEC.md` + `SPEC.json` into `<run>`.
    `montage status` never points `next` here (it is optional); offer it proactively.
@@ -76,9 +85,9 @@ say so rather than guessing a path.
    approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
    bare autonomous run, skip it and say so; `project.json` still anchors CP1.
 
-5. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
+6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). edit-plan runs
-   **before** music and pacing (steps 6-7): this first `edit_plan build` carries **no
+   **before** music and pacing (steps 7-8): this first `edit_plan build` carries **no
    `--pacing`**, so each cut keeps the length its footage gives it. **Checkpoint 2 —
    EDL approval + curation:** show the user `EDL.md`. To swap or re-order an episode,
    edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
@@ -96,7 +105,7 @@ say so rather than guessing a path.
    `pacing`, then `edit_plan build --pacing` to apply the fit. Never re-time a shot to make
    a slot: a shot that IS the content — a ride, a trick — is not a slot's length.
 
-6. **music-and-mood (optional).** The cuts already exist (step 5), so the reel's
+7. **music-and-mood (optional).** The cuts already exist (step 6), so the reel's
    length is the sum of `EDL.json`'s episode durations — analyse the track against
    **that** length, not a SPEC target. If the brief names a **track**:
    - a **local file path** -> analyse it directly, preferring the tool's own
@@ -118,11 +127,11 @@ say so rather than guessing a path.
      internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — confirm
      with the user first) into the same shortlist shape, the user picks, and it
      downloads then runs `beats --auto-start`.
-   Either way, `MUSIC.json` feeds **pacing** next (step 7), and the EDL references it
+   Either way, `MUSIC.json` feeds **pacing** next (step 8), and the EDL references it
    (`selection.json`'s `music` field) for the audio mux. On "no music" / "без
    музыки", leave it unset — the reel is silent, pacing is skipped (a valid path).
 
-7. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
+8. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
    skill — it **fits** the cuts `EDL.json` already holds onto the music's beat grid
    (`"$VG" scripts.pacing --edl <run>/EDL.json --footage <run>/FOOTAGE.json
    --music <run>/MUSIC.json --out-dir <run>`) and writes `PACING.json` + `PACING.md`
@@ -132,29 +141,29 @@ say so rather than guessing a path.
    -> skip it (named); the EDL stays pacing-less (`beat_slot` unset). `montage status`
    never points `next` here (it is optional).
 
-8. **match-grade (optional, §10 — colour conductor).** When episodes come from
+9. **match-grade (optional, §10 — colour conductor).** When episodes come from
    mixed cameras or mixed lighting, invoke the **match-grade** skill — it
    measures every episode's source tone, computes one common reel target (the
    per-anchor median), and authors `tone_src`/`tone_dst` into the episodes that
    deviate (`"$VG" scripts.match_grade build --edl <run>/EDL.json
    --footage-root <footage_root> [--eps 4.0] [--force]`), rewriting `EDL.json`
-   IN PLACE plus a sibling `MATCH.md`. **Run it AFTER pacing (step 7)** —
+   IN PLACE plus a sibling `MATCH.md`. **Run it AFTER pacing (step 8)** —
    pacing's apply pass regenerates `EDL.json` and would wipe an authored tone,
    the same "settle the cut first" rule pacing itself carries. A single-camera
    reel needs it not (every episode lands `within-eps`, no pair authored).
    `montage status` never points `next` here (it is optional).
 
-9. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
-   process-episode render, offer a rough draft: "Want to see a rough cut first?"
-   If yes, `"$VG" scripts.draft build --edl <run>/EDL.json
-   --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
-   --out <run>/draft.mp4 [--music <run>/MUSIC.json]`. `draft.mp4` concats the raw
-   segments, scale-fit into the canvas, with `processing_notes` labels and a rough
-   music bed — the user eyeballs layout / order / length / beat-landing and
-   approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
-   `montage status` never points `next` at it, and the autonomous path skips it.
+10. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
+    process-episode render, offer a rough draft: "Want to see a rough cut first?"
+    If yes, `"$VG" scripts.draft build --edl <run>/EDL.json
+    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
+    --out <run>/draft.mp4 [--music <run>/MUSIC.json]`. `draft.mp4` concats the raw
+    segments, scale-fit into the canvas, with `processing_notes` labels and a rough
+    music bed — the user eyeballs layout / order / length / beat-landing and
+    approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
+    `montage status` never points `next` at it, and the autonomous path skips it.
 
-10. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
+11. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
     exists) and the reel wants on-screen text, invoke the **titles** skill — it
     reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
     font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
@@ -166,7 +175,7 @@ say so rather than guessing a path.
     `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
     the text.
 
-11. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
+12. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
     --project <run>/project.json --footage-root <footage_root>
     --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
     [--titles <run>/TITLES.json]`. This runs

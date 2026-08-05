@@ -162,8 +162,16 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    clean, one parked branch deleted). #7/#18's speed-ramp/effects work stays
    open — its only copy still lives on the parked `wip/montage-run-patches`
    branch — and priority 3 below is otherwise unblocked.
-3. **Editorial intelligence** — #19 shot variety + #3 per-episode QC + #12
-   look-don't-guess, on top of the **mood-preset spine (§3)**.
+3. **Editorial intelligence** — #12 look-don't-guess, the **selection** half,
+   **✅ LANDED 2026-08-05** (design
+   `docs/specs/2026-08-05-footage-contact-sheet-design.md` + plan
+   `docs/plans/2026-08-05-footage-contact-sheet.md`): `contact_sheet`'s
+   `build`/`strip` give the edit-plan agent its first look at actual pixels,
+   wired as a **required** conveyor stage between footage-intake and
+   edit-plan — it gates the sensor's presence, never proof that anyone
+   looked (design §9). Open: #19 shot variety + #3 per-episode QC (the
+   per-episode half of #12) + #14 editorial-rule memory, on top of the
+   **mood-preset spine (§3)**.
 4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep
    iteration affordable.
 5. **Polish** — #2 music phrase-out, #16 versioning, #4 setup.

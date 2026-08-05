@@ -442,7 +442,16 @@ design's corrected §9 for both SHAs and the branch state.
 
 ## 12. "Look, don't guess" — examine real frames before deciding footage content
 
-**Status:** NEEDS DESIGN (behavioral). Related to #3, north star.
+**Status:** ◐ PARTIALLY LANDED 2026-08-05 (the selection half) — design
+`docs/specs/2026-08-05-footage-contact-sheet-design.md` + plan
+`docs/plans/2026-08-05-footage-contact-sheet.md`. `contact_sheet build` is now
+a **required** stage between footage-intake and edit-plan: a run cannot reach
+the cut without having produced a contact sheet of every window, and
+`contact_sheet strip` answers the timing/identity questions a single frame
+cannot. The edit-plan skill reads both. **What this does NOT do** (design §9):
+it gates the PRESENCE of the sensor, not its use — no mechanism can prove an
+agent looked at an image it was handed. The remaining half is the per-episode
+QC agent (#3), which judges rendered frames rather than merely producing them.
 
 **Finding:** the agent repeatedly described footage it had not actually looked at
 — hero identity and slow-mo peak timing — and the user had to correct it: *"ты

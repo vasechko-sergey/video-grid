@@ -22,6 +22,11 @@ from `FOOTAGE.json`.
 - **`FOOTAGE.json` + `FOOTAGE.md`** (required, from footage-intake) — the ranked
   candidate windows. Read `FOOTAGE.md` for the human view; the window **index**
   you reference is the 0-based position within that clip's window list.
+- **`SHEETS.md` + `sheets/*.png`** (required, from contact-sheet) — one
+  thumbnail per window, in timeline order. **Read every sheet before you
+  select.** `shot_type` is bbox area and `description` is three generated
+  tokens; neither can tell you whether a moment has a face, a laugh, or a
+  story. The frames can.
 - **`project.json`** (required, from project-init) — the canvas/delivery the
   episodes inherit; used by the preflight.
 - **`references/editing-canon.md`** (required read) — thirds, headroom, lead room,
@@ -50,8 +55,24 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 1. **Recon.** Read `FOOTAGE.md`, `project.json`, `references/editing-canon.md`, and
    any soft inputs present. Note the reel's target length (from `SPEC.md` or
    `project.json`, else propose one from the strongest windows).
-2. **Author `selection.json`.** Pick the best windows (they are already ranked),
-   dedup across sources so one clip doesn't dominate, fit the running sum to the
+
+   Read `SHEETS.md` and every sheet it links. When a window's exact in-point
+   matters — the peak of a manoeuvre, the frame a person turns to camera —
+   zoom in before deciding:
+
+       python -m scripts.contact_sheet strip --footage FOOTAGE.json \
+         --source MVI_3739.mp4 --window 2 --frames 12 --out w2.png
+
+   Each cell is labelled with its absolute timestamp; subtract the window's
+   start to get the `start_offset` for that frame.
+
+2. **Author `selection.json`.** Pick the best windows (they are already ranked).
+
+   The ranking is not the answer. The window score peaks at motion 0.35 and is
+   zero at static, so a calm, personality-forward moment ranks below action
+   even when it is the better cut. Pick from what the sheets show.
+
+   Dedup across sources so one clip doesn't dominate, fit the running sum to the
    target length, and order them **hook first**. For each episode assign:
    - `composition` ∈ `lead` / `center` / `break` (required)
    - `grid` ∈ `thirds` / `phi` (required)

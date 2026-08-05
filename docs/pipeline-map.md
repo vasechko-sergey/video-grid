@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-08-04._
+_Last updated: 2026-08-05._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -16,6 +16,7 @@ _Last updated: 2026-08-04._
 |---|-------|--------|:------:|---------------|-----------------|
 | 5.1  | using-montage (router) | routing + ensure-env | ✅ | `using-montage` SKILL conducts the built stages footage→reel with the three §4.1 checkpoints; `montage.py` inspector (`next_action`) drives resume-from-`next`; `edl_to_reel` fans out episodes across a bounded thread pool (`jobs`, default 3 — the measured knee, 2026-07-18). **No open sub-items.** | Router + curation |
 | 5.2  | footage-intake | `FOOTAGE.json`+`.md` | ✅ | `intake.py`: probe + PySceneDetect + YOLO11-seg + vidstabdetect → activity-unit carve → score → phash cull → `FOOTAGE.json`/`.md` + `cast.json` (SP2); carving is **activity-anchored units** (an activity peak + its lead-in, may overlap) carrying `track_ids` — #3 slice 3a landed 2026-07-25, 3b `edit_plan` span-merge landed 2026-07-26; **parallel + resumable** (`--jobs`, per-clip `.intake_cache`, `--fresh`; bad clip → `intake_report.json`) since 2026-07-25; all CV analysis now runs on a **decode-once 960 proxy** per clip (2026-08-01, ~300× on 4K `vidstabdetect`; analysis-only — originals deliver, cache v3) | — |
+| 5.2b | contact-sheet | `SHEETS.md` | ✅ | `contact_sheet.py`: required; overview sheet + `strip` zoom | — |
 | 5.3  | reel-brief | `SPEC.md` | ✅ | `reel_brief` SKILL → CLI + typed `Spec` (`scripts/lib/spec.py`) writes `SPEC.md`+`SPEC.json` atop project-init's machine subset (5.3) | Front-half authoring |
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ✅ | beats-core (tempo/beat-grid/RMS energy) ✅ + start_offset intelligence (auto in-point: peak-energy window, vocal-pause start via opt-in demucs / librosa proxy) ✅ + mood-match (local: rank a folder vs SPEC.mood → MUSIC_SHORTLIST) ✅ + sourcing (free/any, network) ✅ | **Phase B — music spine** |

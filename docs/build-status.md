@@ -12,6 +12,69 @@ _Last updated: 2026-08-05._
 
 ## Done
 
+- **Footage contact-sheet (cinematic-quality playbook P3 slice S1, backlog
+  #12 "look, don't guess" — the selection half) DONE (2026-08-05)** — plan
+  `docs/plans/2026-08-05-footage-contact-sheet.md` + design
+  `docs/specs/2026-08-05-footage-contact-sheet-design.md`, Tasks 0–5 (branch
+  `feat/footage-contact-sheet`, commits `6cc9e31`..`bc30b82` + this docs
+  sync). Until this slice, the edit-plan agent's entire sensory input was
+  text: `FOOTAGE.md`'s `shot_type` (a bbox area fraction) and a three-token
+  `description`. The 2026-08-03 real run priced that out — slow-mo placement
+  took ≥6 corrections, hero identity was described rather than observed
+  (*"«Шаг назад» я выдумал"*), and the delivered reel stayed one shot size
+  end to end — so this slice gives the agent its first look at actual
+  pixels. New pure `scripts/lib/sheet.py` (`Cell`/`tile`/`paginate` — PIL +
+  numpy only, no ffmpeg, no `footage` import, fully testable on synthetic
+  arrays) contain-fits every thumbnail into a fixed `CELL_W×CELL_H` box so
+  mixed source aspects tile without distortion or a ragged grid; thin driver
+  `scripts/contact_sheet.py` adds two modes sharing that tiler. `build`
+  renders ONE frame per `FootageWindow` at its **midpoint**, in **timeline**
+  order — clip then window index, never score order, because the scorer
+  already leans toward action (§1.1 below) and sorting by it would just
+  repeat the bias the sheet exists to correct — over **every** window by
+  default (`--best-only` narrows; `best` still draws a ★ border, named in
+  `SHEETS.md` as a fact to weigh, not a ranking to follow), writing
+  `sheets/sheet_NN.png` + `SHEETS.md`, the artifact the router keys on and
+  the agent's entry point. `strip` renders MANY frames inside **one** window
+  (explicit `--start`/`--dur`, or `--footage`+`--window` sugar), each cell
+  labelled with its **absolute** timestamp so a chosen frame converts
+  straight into a `selection.json` `start_offset` — the answer to "where
+  exactly is the peak?" that one midpoint frame cannot give. Both modes grab
+  frames through the existing `assembly.frames_rgb` batched-select decoder
+  (one decode per clip for the ordinary case, `ceil(n/60)` beyond 60
+  windows), never `-ss` (§12). **A separate pass after intake, not inside
+  it:** riding intake's own proxy decode would cost `CACHE_VERSION` 6→7 — a
+  full re-scan of every clip — for thumbnails a `FOOTAGE.json` already on
+  disk can produce in one additional pass; it also keeps the boundary clean
+  (intake measures, the sheet presents). `montage.V1_STAGES` gains
+  `Stage("contact-sheet", "SHEETS.md", "required", ..., None)` between
+  `footage-intake` and `reel-brief` — **required, not optional**, the #15
+  lesson applied again (a stage that costs nothing to skip is not a stage):
+  a run can no longer reach `edit-plan` having produced zero frames of the
+  footage it is about to cut. A clip that will not decode is skipped and
+  named under a `SHEETS.md` "Not sheeted" section (`intake_report.json`'s
+  quarantine precedent) rather than aborting every other clip's sheet; an
+  empty or `--best-only`-emptied window set writes an honest empty
+  `SHEETS.md` instead of wedging `next_action` on a missing artifact.
+  Real-ffmpeg proof (`tests/integration/test_contact_sheet.py`, 6 tests)
+  covers sheet count/dimensions, label and clip-then-index ordering against
+  the FOOTAGE order (not re-derived), `--best-only` filtering, the
+  not-sheeted skip path, and `strip`'s `--window` sugar resolving to the
+  same range as an explicit `--start`/`--dur`. Two skills now read the
+  output: `using-montage` runs the build directly after footage-intake and
+  reads every sheet before moving on, offering them at CP1 alongside the
+  brief; `edit-plan`'s Recon step reads `SHEETS.md` and every sheet before
+  selection (with the `strip` incantation for a timing/identity question),
+  and its selection step is told the ranking is not the answer — the same
+  motion-peaks-at-0.35/zero-at-static finding recorded in the design's §1.1,
+  so S3 (backlog #19) does not have to rediscover it. **Honest limit
+  (design §9), stated in the stage's own code comment and both skills, not
+  strengthened by this slice:** the conveyor can force the sheet to exist;
+  it cannot prove the agent looked at it — this closes backlog #12 for the
+  **selection** half only, and the per-episode QC agent that judges
+  rendered frames (#3) is the remaining half. **2206 passed / 3 skipped**
+  (no golden moved; this docs-sync task changed no code).
+
 - **Attested run (provenance chain + gates out of the worker's reach) DONE
   (2026-08-04)** — plan `docs/plans/2026-08-04-attested-run.md` + design
   `docs/specs/2026-08-04-attested-run-design.md`, Tasks 0–7 (branch
@@ -2159,6 +2222,16 @@ _Last updated: 2026-08-05._
 
 ## Next action
 
+- **Cinematic-quality P3 continues — S2+S3: mood presets + shot variety**
+  (backlog #19, synthesis `docs/cinematic-quality-playbook.md` §3/§4 priority
+  3) — S1 (footage contact-sheet, DONE 2026-08-05, see the Done entry above)
+  gave the edit-plan agent its first look at pixels; the next slice builds
+  the §3 mood-preset spine and makes shot-size variety a **selection
+  objective**, instead of leaving the agent to follow a ranking that is
+  biased toward action (§1.1 of the contact-sheet design). This is the
+  active critical path now — the north star (`docs/fixes-backlog.md`,
+  2026-08-03) reprioritized ahead of the front-half items below, which stay
+  open but are no longer next. **OR**
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
   (`TRENDS.md` cache, §5.4 — low-priority/YAGNI) — the only front-half stage
   left now that SP1b (assemble-draft, DONE 2026-07-13) has shipped; once it's
