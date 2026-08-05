@@ -55,7 +55,7 @@ def test_v1_stages_kinds_and_flags():
     assert by["titles"].artifact == "TITLES.json"
     assert by["titles"].checkpoint == "final"
     assert by["titles"].in_out is False
-    assert by["reel-review"].kind == "optional"
+    assert by["reel-review"].kind == "required"
     assert by["reel-review"].artifact == "REVIEW.json"
     assert by["reel-review"].checkpoint == "final"
     assert by["reel-review"].in_out is False
@@ -168,20 +168,20 @@ def test_titles_optional_absent_then_present(tmp_path):
     assert res2["next"] == "deliver"
 
 
-def test_reel_review_optional_absent_then_present(tmp_path):
-    # review runs AFTER deliver; it is optional and never blocks `next`
+def test_reel_review_required_absent_then_present(tmp_path):
+    # review runs AFTER deliver; it is required (design §8) and blocks `next` until reviewed
     for n in ("project.json", "FOOTAGE.json", "EDL.json"):
         _touch(tmp_path, n)
     out = tmp_path / "out"
     out.mkdir()
     (out / "REEL_v1.mp4").write_text("x")
     res = next_action(str(tmp_path))
-    assert res["delivered"] is True and res["next"] is None
-    assert _state(res, "reel-review") == "optional"   # absent optional never blocks
+    assert res["delivered"] is True and res["next"] == "reel-review"
+    assert _state(res, "reel-review") == "next"   # absent required blocks `next`
     _touch(tmp_path, "REVIEW.json")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "reel-review") == "done"
-    assert res2["next"] is None                        # still nothing required outstanding
+    assert res2["next"] is None                    # nothing required outstanding now
 
 
 def test_edl_present_next_is_deliver(tmp_path):
@@ -199,7 +199,7 @@ def test_delivered_when_reel_in_out(tmp_path):
     out.mkdir()
     (out / "REEL_v1.mp4").write_text("x")
     res = next_action(str(tmp_path))
-    assert res["next"] is None
+    assert res["next"] == "reel-review"   # deliver is done; reel-review is required and next
     assert res["delivered"] is True
     assert _state(res, "deliver") == "done"
 
@@ -269,3 +269,63 @@ def test_a_run_with_footage_but_no_edl_asks_for_edit_plan_not_music(tmp_path):
     (tmp_path / "project.json").write_text("{}")
     (tmp_path / "FOOTAGE.json").write_text("{}")
     assert montage.next_action(str(tmp_path))["next"] == "edit-plan"
+
+
+# ---- reel-review required (#15) + delivery attestation reporting (design §6) ----
+
+def test_reel_review_is_next_after_delivery(tmp_path):
+    # #15: CP3 must not be free. Every required artifact present except REVIEW.json.
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    for name in ("project.json", "FOOTAGE.json", "EDL.json"):
+        (run / name).write_text("{}")
+    (out / "REEL_v1.mp4").write_text("x")
+    got = montage.next_action(str(run))
+    assert got["delivered"] is True
+    assert got["next"] == "reel-review"
+
+
+def test_a_run_is_only_finished_when_the_review_exists(tmp_path):
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    for name in ("project.json", "FOOTAGE.json", "EDL.json", "REVIEW.json"):
+        (run / name).write_text("{}")
+    (out / "REEL_v1.mp4").write_text("x")
+    assert montage.next_action(str(run))["next"] is None
+
+
+def test_status_reports_an_unattested_delivery(tmp_path):
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    (out / "REEL_v1.mp4").write_bytes(b"hand-concatenated")
+    got = montage.next_action(str(run))["deliveries"]
+    assert got == [{"file": "REEL_v1.mp4", "state": "unattested", "overall": None,
+                    "overrides": [], "engine_drift": False,
+                    "detail": "no attestation sidecar — this file was not produced by deliver()"}]
+
+
+def test_status_does_not_list_the_sidecar_as_a_delivery(tmp_path):
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    (out / "REEL_v1.mp4").write_bytes(b"x")
+    (out / "REEL_v1.attest.json").write_text("{}")
+    assert [d["file"] for d in montage.next_action(str(run))["deliveries"]] == ["REEL_v1.mp4"]
+
+
+def test_verify_rehashes_and_catches_a_swapped_reel(tmp_path):
+    from scripts.lib import provenance
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    reel = out / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered")
+    provenance.Attestation(reel="REEL_v1.mp4", reel_digest=provenance.digest_file(reel),
+                           master_digest="m" * 64, report_digest="r" * 64,
+                           overall=True).write(provenance.attest_path(reel))
+    assert montage.verify(str(run))["deliveries"][0]["state"] == "attested"
+    reel.write_bytes(b"swapped after delivery")
+    assert montage.verify(str(run))["deliveries"][0]["state"] == "digest-mismatch"

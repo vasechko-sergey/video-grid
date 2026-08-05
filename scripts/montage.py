@@ -10,6 +10,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from scripts.lib import provenance
+
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
 
@@ -57,7 +59,10 @@ V1_STAGES: tuple[Stage, ...] = (
           "titles SKILL -> titles build CLI (optional on-screen text)", "final"),
     Stage("deliver", "REEL_v*.*", "required",
           "edl_to_reel CLI", "final", in_out=True),
-    Stage("reel-review", "REVIEW.json", "optional",
+    # required, not optional (design §8): the reviewer stage was skipped outright on
+    # the 2026-08-03 run because `next` never pointed at it, and a gate that costs
+    # nothing to skip is not a gate.
+    Stage("reel-review", "REVIEW.json", "required",
           "reel-review SKILL -> reel_review build CLI (editorial CP3 review)", "final"),
 )
 
@@ -69,6 +74,14 @@ def _exists(base: Path, glob: str) -> bool:
     return any(base.glob(glob))
 
 
+def _deliveries(out: Path, *, rehash: bool = False) -> list[dict]:
+    """One entry per delivered reel with its attestation state (design §6). The
+    sidecars share the REEL_v* prefix, so they are filtered out by suffix — listing
+    REEL_v1.attest.json as a delivery would double every reel."""
+    return [provenance.verify_delivery(p, rehash=rehash)
+            for p in sorted(out.glob("REEL_v*")) if p.suffix != ".json"]
+
+
 def next_action(run_dir: str, out_dir: str | None = None) -> dict:
     """Inspect a run dir -> the ordered v1 stages with each stage's state, the next
     required action, and whether the reel is delivered. out_dir defaults to
@@ -78,8 +91,10 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
       pending  - a required stage after `next` still missing its artifact
       optional - an optional built stage not yet produced (music/pacing); never blocks
       skip     - a deferred stage (trend-scan); named, not silent
+    `deliveries` reports each delivered file's attestation state from the sidecar
+    alone — cheap, because the router calls status constantly. `verify()` re-hashes.
     Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
-             "next": <stage key | None>, "delivered": <bool>}."""
+             "next": <stage key | None>, "delivered": <bool>, "deliveries": [...]}."""
     run = Path(run_dir)
     out = Path(out_dir) if out_dir is not None else run / "out"
     stages: list[dict] = []
@@ -103,7 +118,16 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
             delivered = done
         stages.append({"key": st.key, "artifact": st.artifact, "kind": st.kind,
                        "state": state, "checkpoint": st.checkpoint, "runner": st.runner})
-    return {"stages": stages, "next": next_key, "delivered": delivered}
+    return {"stages": stages, "next": next_key, "delivered": delivered,
+            "deliveries": _deliveries(out)}
+
+
+def verify(run_dir: str, out_dir: str | None = None) -> dict:
+    """Re-hash every delivered reel against its attestation (design §6). Run once at
+    CP3, where the cost is irrelevant and the answer matters: status answers "is there
+    a record", verify answers "is this file the one the record describes"."""
+    out = Path(out_dir) if out_dir is not None else Path(run_dir) / "out"
+    return {"deliveries": _deliveries(out, rehash=True)}
 
 
 def main() -> None:
@@ -116,8 +140,14 @@ def main() -> None:
                    help="the project/run dir where stage artifacts land")
     s.add_argument("--out-dir", default=None,
                    help="delivery dir (default <run-dir>/out)")
+    v = sub.add_parser("verify",
+                       help="re-hash delivered reels against their attestations (CP3)")
+    v.add_argument("--run-dir", required=True,
+                   help="the project/run dir where stage artifacts land")
+    v.add_argument("--out-dir", default=None, help="delivery dir (default <run-dir>/out)")
     a = ap.parse_args()
-    print(json.dumps(next_action(a.run_dir, a.out_dir), indent=2))
+    result = next_action(a.run_dir, a.out_dir) if a.cmd == "status" else verify(a.run_dir, a.out_dir)
+    print(json.dumps(result, indent=2))
     raise SystemExit(0)
 
 
