@@ -329,3 +329,24 @@ def test_verify_rehashes_and_catches_a_swapped_reel(tmp_path):
     assert montage.verify(str(run))["deliveries"][0]["state"] == "attested"
     reel.write_bytes(b"swapped after delivery")
     assert montage.verify(str(run))["deliveries"][0]["state"] == "digest-mismatch"
+
+
+def test_status_does_not_rehash_but_verify_does(tmp_path):
+    # The whole point of the two-command split: status is cheap (sidecar-only, safe
+    # to call on every router tick), verify is the one that proves the shipped bytes
+    # still match. Same swapped-reel setup as test_verify_rehashes_and_catches_a_
+    # swapped_reel above, but this time asserting BOTH sides in one test — status
+    # must stay "attested" (stale, but that is the cheap-read contract) while verify
+    # alone catches the swap as "digest-mismatch".
+    from scripts.lib import provenance
+    run = tmp_path / "run"
+    out = run / "out"
+    out.mkdir(parents=True)
+    reel = out / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered")
+    provenance.Attestation(reel="REEL_v1.mp4", reel_digest=provenance.digest_file(reel),
+                           master_digest="m" * 64, report_digest="r" * 64,
+                           overall=True).write(provenance.attest_path(reel))
+    reel.write_bytes(b"swapped after delivery")
+    assert montage.next_action(str(run))["deliveries"][0]["state"] == "attested"
+    assert montage.verify(str(run))["deliveries"][0]["state"] == "digest-mismatch"
