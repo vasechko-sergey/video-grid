@@ -80,7 +80,7 @@ existing `scripts/lib/fonts.resolve_font`. No new dependency.
   - constants `CELL_W = 300`, `CELL_H = 169`, `COLS = 5`, `PER_SHEET = 30`,
     `LABEL_H = 34`, `FONT_PX = 13`, `MARK_PX = 3`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_sheet.py`:
 
@@ -227,12 +227,12 @@ def test_tiling_the_same_cells_twice_is_byte_identical():
     assert sheet.tile(cells).tobytes() == sheet.tile(cells).tobytes()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_sheet.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'scripts.lib.sheet'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/lib/sheet.py`:
 
@@ -343,19 +343,19 @@ def paginate(cells: Sequence[Cell], per_sheet: int = PER_SHEET) -> list[list[Cel
     return [list(cells[i:i + per_sheet]) for i in range(0, len(cells), per_sheet)]
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_sheet.py -q`
 Expected: PASS, 18 tests.
 
-- [ ] **Step 5: Mutation check — prove the layout tests bite**
+- [x] **Step 5: Mutation check — prove the layout tests bite**
 
 Temporarily change `x, y = (k % cols) * CELL_W, (k // cols) * ch` to
 `x, y = (k // cols) * CELL_W, (k % cols) * ch` (transpose). Run the file.
 Expected: `test_cell_k_lands_at_column_k_mod_cols_row_k_div_cols` FAILS.
 **Revert the change** and re-run to confirm green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/sheet.py tests/lib/test_sheet.py
@@ -387,7 +387,7 @@ aligned to `times`, decoding once per 60-frame chunk; it raises `RuntimeError`
 when a requested time is past the stream end, and the missing-file check inside
 `probe_stream` raises `RuntimeError` too.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_contact_sheet.py`:
 
@@ -584,12 +584,12 @@ def test_cli_build_passes_best_only(tmp_path, monkeypatch):
     assert seen == {"best_only": True}
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_contact_sheet.py -q`
 Expected: collection error — `ImportError: cannot import name 'contact_sheet'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/contact_sheet.py`:
 
@@ -725,19 +725,19 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_contact_sheet.py -q`
 Expected: PASS, 14 tests.
 
-- [ ] **Step 5: Mutation check — prove the ordering test bites**
+- [x] **Step 5: Mutation check — prove the ordering test bites**
 
 Temporarily sort `picked` by score inside `build_sheets`
 (`picked.sort(key=lambda p: -p[1].score)` after the list comprehension). Run the file.
 Expected: `test_cells_run_in_clip_then_window_order_not_score_order` FAILS.
 **Revert** and re-run green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/contact_sheet.py tests/lib/test_contact_sheet.py
@@ -761,7 +761,7 @@ git commit -m "feat(contact-sheet): build the FOOTAGE overview sheets + SHEETS.m
   - `build_strip(source: str, out: str, *, start: float, dur: float, frames: int, fps: float | None = None) -> dict`
     returning `{"status": "written", "strip": str, "frames": int, "times": [float]}`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_contact_sheet.py`:
 
@@ -864,12 +864,12 @@ def test_cli_strip_requires_a_range_or_a_window(tmp_path, monkeypatch, capsys):
     assert "--start/--dur" in capsys.readouterr().err
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_contact_sheet.py -q -k "strip or resolve_window"`
 Expected: FAIL — `AttributeError: module 'scripts.contact_sheet' has no attribute 'build_strip'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add to `scripts/contact_sheet.py`, above `main`:
 
@@ -952,12 +952,12 @@ def main() -> None:
     raise SystemExit(0)
 ```
 
-- [ ] **Step 4: Run the whole driver test file**
+- [x] **Step 4: Run the whole driver test file**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_contact_sheet.py -q`
 Expected: PASS, 25 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/contact_sheet.py tests/lib/test_contact_sheet.py
@@ -982,7 +982,7 @@ resolve, so no extra guard is needed. There is no filter dependency here —
 `frames_rgb` uses `select`, which every ffmpeg build has, so `need_filter` is
 not required.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 Create `tests/integration/test_contact_sheet.py`:
 
@@ -1090,12 +1090,12 @@ def test_strip_window_sugar_matches_the_explicit_range(sample_clip, tmp_path):
     assert (tmp_path / "a.png").read_bytes() == (tmp_path / "b.png").read_bytes()
 ```
 
-- [ ] **Step 2: Run them**
+- [x] **Step 2: Run them**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_contact_sheet.py -q`
 Expected: PASS, 6 tests (or SKIPPED if ffmpeg does not resolve on this box).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_contact_sheet.py
@@ -1122,7 +1122,7 @@ whose artifact is missing. Four existing tests build a run with `project.json`
 exists. Those setups gain a `SHEETS.md` touch — the assertion they were
 written to make (an optional stage never blocks) is preserved exactly.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/lib/test_montage.py`, replace the body of `test_v1_stages_order_and_keys`:
 
@@ -1193,39 +1193,51 @@ uses raw writes rather than `_touch`; add the matching line:
     (tmp_path / "SHEETS.md").write_text("{}")
 ```
 
-- [ ] **Step 2: Run to verify the new ones fail**
+- [x] **Step 2: Run to verify the new ones fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 Expected: FAIL — `test_v1_stages_order_and_keys` mismatch (no `contact-sheet`
 in the list), `KeyError: 'contact-sheet'`, and the four `next` assertions.
 
-- [ ] **Step 3: Insert the stage**
+- [x] **Step 3: Insert the stage**
 
 In `scripts/montage.py`, insert between the `footage-intake` and `reel-brief`
 rows of `V1_STAGES`:
 
 ```python
     # required, not optional (design 2026-08-05 §2.5): a run must not reach the cut
-    # having never produced one frame of the footage it is about to cut. It gates the
-    # PRESENCE of the sensor, not its use — see the design's §9 honest limit.
+    # without a SHEETS.md on disk. It gates the PRESENCE of the artifact, not its
+    # use, and not a guarantee it holds a frame (a genuinely empty selection still
+    # writes an honest zero-frame SHEETS.md, design §7) — see the design's §9
+    # honest limit.
     Stage("contact-sheet", "SHEETS.md", "required",
           "contact_sheet build CLI (run by using-montage; edit-plan reads the sheets)",
           None),
 ```
 
-- [ ] **Step 4: Run the router tests**
+**Correction (`3dfbb77`, review-driven):** the comment above (as first drafted)
+claimed the stage means a run "must not reach the cut having never produced one
+frame of the footage" — false, and false in the direction that matters. Design
+§7's honest-empty path (a FOOTAGE with no windows at all, or a `--best-only`
+that matches nothing) legitimately writes a zero-frame `SHEETS.md`, and the
+router marks the stage done on that file's existence alone. What the row
+actually gates is the PRESENCE of the artifact; a frame count is not something
+`next_action` can see. The same false claim had leaked into `build-status.md`,
+`fixes-backlog.md` #12 and the design's own §9 — corrected in all four.
+
+- [x] **Step 4: Run the router tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Run the whole suite for collateral damage**
+- [x] **Step 5: Run the whole suite for collateral damage**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS; the only pre-existing skips are demucs, the iTunes network
 test, and the weights-gated reID test. If anything else fails, it is a real
 break in this task — fix it here, do not defer it.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -1262,7 +1274,7 @@ git commit -m "feat(montage): contact-sheet becomes a required stage between int
   `.venv/bin/python`, and on a runner skill that loses `bin/vg` or the
   recorded-root line. Run it after editing.
 
-- [ ] **Step 1: `using-montage` — run it and look**
+- [x] **Step 1: `using-montage` — run it and look**
 
 In `skills/using-montage/SKILL.md`, insert a new numbered step directly after
 the footage-intake step (renumbering the ones below it), in the same shape as
@@ -1279,7 +1291,7 @@ N. **contact-sheet** — if `next`. `"$VG" scripts.contact_sheet build
    to the user at CP1 alongside the brief.
 ```
 
-- [ ] **Step 2: `edit-plan` — read it before selecting**
+- [x] **Step 2: `edit-plan` — read it before selecting**
 
 In `skills/edit-plan/SKILL.md`, add to the **Inputs** list:
 
@@ -1313,7 +1325,7 @@ In step 2, after "Pick the best windows (they are already ranked)", add:
    even when it is the better cut. Pick from what the sheets show.
 ```
 
-- [ ] **Step 3: `CLAUDE.md` — two registry rows**
+- [x] **Step 3: `CLAUDE.md` — two registry rows**
 
 Insert after the intake frame-grab batch rows:
 
@@ -1322,7 +1334,7 @@ Insert after the intake frame-grab batch rows:
 | Footage contact-sheet plan | [2026-08-05-footage-contact-sheet.md](docs/plans/2026-08-05-footage-contact-sheet.md) | Tasks 0–5: `lib/sheet.py` tiler, `build` + `SHEETS.md` + quarantine, `strip` + `--window` sugar, real-ffmpeg proof, the required `V1_STAGES` row + four patched router setups, skills/docs sync. |
 ```
 
-- [ ] **Step 4: `docs/build-status.md` + `docs/pipeline-map.md`**
+- [x] **Step 4: `docs/build-status.md` + `docs/pipeline-map.md`**
 
 In `build-status.md`, add the slice to the Done list with its date and both
 doc paths, in the same shape as the entry above it, and update the "next
@@ -1332,7 +1344,7 @@ In `pipeline-map.md`, add a `5.2b contact-sheet` row between `5.2
 footage-intake` and `5.7 edit-plan`, marked ✅ with the artifact `SHEETS.md`
 and the note "required; overview sheet + `strip` zoom".
 
-- [ ] **Step 5: `docs/fixes-backlog.md` #12 and the playbook**
+- [x] **Step 5: `docs/fixes-backlog.md` #12 and the playbook**
 
 Rewrite #12's status line to:
 
@@ -1341,28 +1353,44 @@ Rewrite #12's status line to:
 `docs/specs/2026-08-05-footage-contact-sheet-design.md` + plan
 `docs/plans/2026-08-05-footage-contact-sheet.md`. `contact_sheet build` is now
 a **required** stage between footage-intake and edit-plan: a run cannot reach
-the cut without having produced a contact sheet of every window, and
-`contact_sheet strip` answers the timing/identity questions a single frame
-cannot. The edit-plan skill reads both. **What this does NOT do** (design §9):
-it gates the PRESENCE of the sensor, not its use — no mechanism can prove an
-agent looked at an image it was handed. The remaining half is the per-episode
-QC agent (#3), which judges rendered frames rather than merely producing them.
+the cut without a `SHEETS.md` on disk, covering every window of every clip
+that decoded — a clip that fails outright is named under **Not sheeted**
+instead, its windows shown nowhere (design §7), and a build where every
+candidate window failed to decode raises rather than writing a `SHEETS.md`
+that looks like a normal, if thin, success. `contact_sheet strip` answers the
+timing/identity questions a single frame cannot. The edit-plan skill reads
+both. **What this does NOT do** (design §9): it gates the PRESENCE of the
+artifact, not its use, and presence is not a guarantee every window got
+shown — no mechanism can prove an agent looked at an image it was handed,
+and #12 stays **partially** landed on that account. The remaining half is
+the per-episode QC agent (#3), which judges rendered frames rather than
+merely producing them; #19 (shot variety) and #14 (editorial-rule memory)
+stay open too.
 ```
+
+**Correction (`3dfbb77`, review-driven):** the block above (as first drafted)
+promised "a contact sheet of every window" — an unconditional claim the code
+does not keep. A clip that will not decode is skipped into **Not sheeted**, so
+its windows appear on no sheet at all; the honest wording is "every window of
+every clip that decoded". The same draft also called the gated thing the
+PRESENCE of the *sensor*, where what the router can actually observe is the
+presence of the *artifact*. Both are fixed in the shipped `fixes-backlog.md`
+text quoted here.
 
 In `docs/cinematic-quality-playbook.md` §4, mark priority 3's first component
 landed and leave #19/#3/#14 open, naming this slice's spec and plan.
 
-- [ ] **Step 6: Verify docs and skills still lint**
+- [x] **Step 6: Verify docs and skills still lint**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py tests/lib/test_lint.py tests/test_plugin_manifests.py -q`
 Expected: PASS.
 
-- [ ] **Step 7: Full suite**
+- [x] **Step 7: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS with only the three known environmental skips.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add skills/using-montage/SKILL.md skills/edit-plan/SKILL.md CLAUDE.md \
@@ -1390,3 +1418,44 @@ deferrals → nothing implemented, nothing claimed.
 
 **No `next_action` code change** is required — the stage is data in an existing
 table, which is why Task 4 has no implementation step beyond the tuple insert.
+
+---
+
+## What execution found
+
+**The per-task review loop stayed clean for all six tasks; the whole-branch
+review (`3dfbb77`) found the one defect no task-scoped lens could see** — it
+lived in the seam between two modules, and every task that touched it was
+individually correct.
+
+`intake.py:352` records a clip as `FootageClip(source=name, ...)` — a **bare
+basename**, not the path intake was handed. Every sibling media consumer joins
+it against a `--footage-root` (`draft.build_draft`, `edl_to_reel`, both via
+`extract.extract_edl`). This plan's Task 1 snippet instead decodes
+`assembly.frames_rgb(clip.source, ...)` directly, and Task 2's
+`resolve_window` returns `clip.source` unjoined. On a real run — where `bin/vg`
+`cd`s to the clone root, not the footage dir — every clip would raise, land in
+**Not sheeted**, and produce a `SHEETS.md` with zero frames that the router
+still counts as the required stage done: precisely the blindness this slice
+exists to end.
+
+**The root cause was this plan's own source, not an implementer's work.** The
+design's §5 asserted that intake records a clip under the path it was given.
+It does not. Both test layers then hid the consequence — the unit tests
+monkeypatch `frames_rgb` (so no path is ever resolved), and the integration
+test passed an absolute path (so the join was a no-op). The fix threaded
+`footage_root` through `build_sheets`/`resolve_window`, made `--footage-root`
+required, corrected design §5/§4.4, and — the part that actually holds the
+line — re-pointed the integration test at a bare filename plus a separate
+root, so reverting the join now fails four tests on real ffmpeg.
+
+**Not retro-fitted into the snippets above:** Task 1's and Task 2's quoted
+definitions and their ~24 quoted call sites still show the pre-fix
+two-argument signature. Correcting them means mechanically rewriting the
+plan's quoted code and tests to restate what `scripts/contact_sheet.py`
+already says authoritatively, so this note is the correction of record —
+**read any `build_sheets(...)` / `resolve_window(...)` snippet above as
+carrying a `footage_root` second argument.** The lesson worth carrying to the
+next plan is narrower than "check signatures": a cross-module contract that
+neither module states in its own types is invisible to a task-scoped review,
+and both test layers can be green while the seam is broken.
