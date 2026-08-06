@@ -22,6 +22,13 @@ text:
 | `description` (`intake._describe`) | a three-token string — `"1 person, medium, dynamic"` |
 | `shot_type` (`intake.shot_type`) | close/medium/wide from the primary bbox **area fraction** alone (`CLOSE_AREA=0.30`, `MEDIUM_AREA=0.08`) |
 
+**Correction (2026-08-06):** `intake.shot_type` moved — the mood-preset-variety
+slice relocated the classifier to `footage.shot_type(w_frac, h_frac)`, with a new
+`delivered_shot(...)` computing the same tag in the project's delivered geometry
+rather than the source frame. See
+[2026-08-06-mood-preset-variety-design.md](2026-08-06-mood-preset-variety-design.md)
+§6.
+
 Nothing in `skills/edit-plan/SKILL.md`'s Inputs section is an image. The one
 contact sheet in the repo, `scripts/storyboard.py`, samples a **rendered
 episode** at delivery resolution and overlays composition grids — a

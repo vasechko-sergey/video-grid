@@ -83,10 +83,12 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    *zero* of a shot size the mood's preset wants when the footage offers three or
    more windows of it — the reason is `variety-gap` and it names candidate windows
    by clip and index. Shot size is judged in the **delivered** frame, so a window
-   tagged `wide` in `FOOTAGE.md` may well be `medium` once the 9:16 crop is taken;
-   trust the refusal's numbers over the tag. If the cut is genuinely right as it
-   stands — every close window is soft, or the reel is deliberately one texture —
-   state why in `selection.json`:
+   tagged `wide` in `FOOTAGE.md` or on its `SHEETS.md` tile may well be `medium`
+   once the 9:16 crop is taken; trust the refusal's numbers over the tag. The
+   census reads a window's measured geometry directly, never an episode's
+   `shot_type` label — relabelling an episode in `selection.json` cannot clear a
+   gap. If the cut is genuinely right as it stands — every close window is soft,
+   or the reel is deliberately one texture — state why in `selection.json`:
 
        {"episodes": [...], "variety_waiver": "every close window is out of focus"}
 

@@ -58,9 +58,11 @@ say so rather than guessing a path.
    rejected WITH the number that rejected it. A miss is actionable, not fatal: try
    another window, change a scenario length, or accept an off-grid reel (check_reel's
    beat gate is advisory).
-5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/PACING.json` — this is
-   what writes the snapped durations and `beat_slot` into `EDL.json`. Stopping at step 4
-   leaves the EDL un-snapped.
+5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/PACING.json
+   [--spec <run>/SPEC.json]` — this is what writes the snapped durations and
+   `beat_slot` into `EDL.json`. Carry `--spec` through when a brief exists: this
+   pass re-stamps the EDL from scratch, and a dropped `--spec` silently re-resolves
+   the variety preset to `balanced`. Stopping at step 4 leaves the EDL un-snapped.
 
 ## Not this skill
 

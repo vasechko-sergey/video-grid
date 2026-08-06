@@ -148,10 +148,13 @@ say so rather than guessing a path.
    (`"$VG" scripts.pacing --edl <run>/EDL.json --footage <run>/FOOTAGE.json
    --music <run>/MUSIC.json --out-dir <run>`) and writes `PACING.json` + `PACING.md`
    into `<run>`. Then **apply the fit** by re-running edit-plan with the report:
-   `edit_plan build ... --pacing <run>/PACING.json` — this second pass writes the
-   snapped durations and `beat_slot` into `EDL.json`. No `MUSIC.json` (a silent reel)
-   -> skip it (named); the EDL stays pacing-less (`beat_slot` unset). `montage status`
-   never points `next` here (it is optional).
+   `edit_plan build ... --pacing <run>/PACING.json [--spec <run>/SPEC.json]` — carry
+   `--spec` through when reel-brief (step 5) ran, same as step 6's first build. This
+   second pass re-stamps `EDL.json` from scratch, so a dropped `--spec` silently
+   re-resolves the variety preset to `balanced` and re-stamps that instead of the
+   brief's mood. No `MUSIC.json` (a silent reel) -> skip it (named); the EDL stays
+   pacing-less (`beat_slot` unset). `montage status` never points `next` here (it is
+   optional).
 
 9. **match-grade (optional, §10 — colour conductor).** When episodes come from
    mixed cameras or mixed lighting, invoke the **match-grade** skill — it

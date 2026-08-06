@@ -218,8 +218,11 @@ def _available_census(footage: Footage, aspect: tuple[int, int]) -> dict[str, in
 
     Every window, never only the `best` ones: `best` is a threshold on a score whose
     ordering leans toward motion (design §1.1), and a denominator drawn from it would
-    inherit the very lean this gate exists to correct. Windows the phash cull removed
-    are already absent from FOOTAGE.json, so they are correctly outside the pool."""
+    inherit the very lean this gate exists to correct — that reason stands on its
+    own. Windows are candidate SPANS, not distinct moments: `intake.cull` only
+    demotes a duplicate's `best` flag, it never removes a window from FOOTAGE.json,
+    and `carve.units_for_span` deliberately emits overlapping candidates — so one
+    real moment can contribute several windows to this count (design §13.9)."""
     counts = {s: 0 for s in SHOT_TYPES}
     for clip in footage.clips:
         for w in clip.windows:

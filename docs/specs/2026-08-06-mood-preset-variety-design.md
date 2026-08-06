@@ -301,8 +301,12 @@ gap(s)  ⟺  used[s] == 0
 
 - **`available` counts every window, never only `best`.** `best` is a threshold on a
   score whose ordering leans toward motion (§1.1); a denominator drawn from it would
-  inherit the very lean the gate exists to correct. Windows the phash cull removed
-  are already absent from `FOOTAGE.json` and so are correctly outside the pool.
+  inherit the very lean the gate exists to correct — that reason stands on its own.
+  **Windows are candidate spans, not distinct moments:** the phash cull
+  (`intake.cull`) only demotes a duplicate's `best` flag — it never removes a window
+  from `FOOTAGE.json` — and `carve.units_for_span` deliberately emits overlapping
+  candidates (a lead-in and a tight unit per activity peak), so one real moment can
+  contribute several windows to `available` (§13.9).
 - **`MIN_AVAIL = 3`** — one stray misdetection must not block a reel.
 - **`WANT_FLOOR = 0.20`** — a size the preset genuinely asks for.
 - Counting is by **window**, not by duration: the grammar rule is about how many
@@ -452,7 +456,12 @@ SP3→SP1 golden carries a `variety` block through `EDL.json` → `EDL.md`.
    is exactly `src_w / crop_w` (3.16 for 16:9 → 9:16). Footage whose subject never
    exceeds 2.5 % of the source frame is still legitimately all-`wide`, and then the
    gate cannot fire at all. It proves *"you used what was there"*. It never proves
-   *"the reel is varied"*.
+   *"the reel is varied"*. **The corollary:** at an unchanged aspect the multiplier
+   is exactly `1.0` — `crop_for` returns the source resolution itself (verified for
+   16:9 source → 16:9 canvas) — so `delivered_shot` reproduces `shot_type` byte for
+   byte. A same-aspect project (a 16:9 YouTube cut from 16:9 footage) therefore runs
+   the gate on precisely the source-geometry classifier §1c calls unable to
+   discriminate.
 3. **One geometry for both sides.** Per-episode `fit`, `insert`, and punch-in
    framings are invisible to the census (§6).
 4. **ASL is measured, never enforced** (decision 4).
@@ -469,6 +478,24 @@ SP3→SP1 golden carries a `variety` block through `EDL.json` → `EDL.md`.
 8. **The ranking stays action-leaning.** `_motion_fit` is untouched (§1.1), so
    `FOOTAGE.md`'s order still favours motion. The gate is blind to `best` precisely
    so that it does not inherit that ordering.
+9. **`available` counts candidate windows, not distinct moments.** `intake.cull`
+   only demotes a duplicate's `best` flag — it never removes a window from
+   `FOOTAGE.json` (§7) — and `carve.units_for_span` deliberately emits overlapping
+   candidates per activity peak (a lead-in unit and a tight unit each). A single
+   moment carved into several overlapping windows can therefore clear `MIN_AVAIL`
+   (3) on its own. `MIN_AVAIL`'s stated rationale — "one stray misdetection must not
+   block a reel" (§7) — does not cover this case: these are not misdetections, they
+   are correct, overlapping measurements of the same moment. Real dedup — counting
+   overlapping spans once — is a behaviour change with its own threshold and is
+   deferred (§14).
+10. **No shipped preset falls below `WANT_FLOOR`.** Every row of `PRESETS` and
+    `BALANCED` (§4.2) places every shot size at `0.25` or above; `WANT_FLOOR` is
+    `0.20`. So `preset.shot_mix[s] >= WANT_FLOOR` (§7) holds for every size in every
+    preset today, and all five presets gate identically — preset choice changes only
+    the reported ASL band and the `target N%` string in the refusal message, never
+    *which* size is refusable. The mechanism is real and the floor is enforced; this
+    is a property of the numbers (item 7 above — the first-cut guesses), not of the
+    code, and it changes the day any preset row drops a size below `0.20`.
 
 ---
 
@@ -482,6 +509,11 @@ SP3→SP1 golden carries a `variety` block through `EDL.json` → `EDL.md`.
   depend on it.
 - **`_motion_fit` re-tune** — free after §5's bump, and blocked on having real
   footage to tune against rather than on code (§1.1).
+- **Real window dedup for `available`** (§13.9) — count overlapping candidate spans
+  from `carve.units_for_span` as one moment instead of one per candidate. Needs its
+  own overlap threshold (what counts as "the same moment") and its own calibration
+  against real footage — a behaviour change with a threshold nobody can justify yet,
+  not a docs fix.
 - **Colour palette from the preset** — biasing `match_grade`'s common target by mood
   instead of by source median. Touches a landed conductor and needs its own
   real-ffmpeg convergence proofs.
