@@ -181,17 +181,32 @@ def test_people_timeline_row_carries_boxes_by_track_id(monkeypatch):
     assert primary == (50.0, 60.0, 70.0, 80.0)      # largest area, unchanged
 
 
-def test_motion_is_2d():
-    # a purely vertical slide registers now (x-only would have read 0)
+def test_motion_measures_a_tracks_own_displacement():
     res = (1000, 1000)
-    samples = [(0.0, 1, (500, 100, 10, 10), [1], {1: (500.0, 100.0, 10.0, 10.0)}),
-               (1.0, 1, (500, 300, 10, 10), [1], {1: (500.0, 300.0, 10.0, 10.0)})]
-    assert intake._motion(samples, res) > 0.0
+    samples = [(0.0, 1, (100, 100, 50, 90), [1], {1: (100.0, 100.0, 50.0, 90.0)}),
+               (1.0, 1, (110, 100, 50, 90), [1], {1: (110.0, 100.0, 50.0, 90.0)})]
+    assert intake._motion(samples, res) == pytest.approx(0.01)   # 10px / 1000px, no gain
+
+
+def test_motion_is_zero_when_only_the_largest_person_changes():
+    # both people stationary; the larger box swaps. The old primary-bbox difference
+    # reported a full-frame jump here (design §1.2) — the whole bug in one assert.
+    res = (1000, 1000)
+    a = {1: (100.0, 100.0, 50.0, 90.0), 2: (900.0, 100.0, 30.0, 60.0)}
+    b = {1: (100.0, 100.0, 30.0, 60.0), 2: (900.0, 100.0, 50.0, 90.0)}
+    samples = [(0.0, 2, (100, 100, 50, 90), [1, 2], a),
+               (1.0, 2, (900, 100, 50, 90), [1, 2], b)]
+    assert intake._motion(samples, res) == 0.0
+
+
+def test_motion_needs_two_samples():
+    assert intake._motion([(0.0, 1, (1, 1, 1, 1), [1], {1: (1.0, 1.0, 1.0, 1.0)})], (100, 100)) == 0.0
 
 
 def test_build_window_unions_track_ids():
     # disjoint ids per sample → a last-sample-only bug would drop id 2; the union keeps both
-    tl = [(0.0, 1, (500, 500, 10, 10), [2]), (1.0, 1, (500, 500, 10, 10), [5])]
+    tl = [(0.0, 1, (500, 500, 10, 10), [2], {2: (500.0, 500.0, 10.0, 10.0)}),
+          (1.0, 1, (500, 500, 10, 10), [5], {5: (500.0, 500.0, 10.0, 10.0)})]
     w = intake._build_window((0.0, 2.0), tl, shake=0.0, res=(1000, 1000))
     assert w.track_ids == [2, 5]
 

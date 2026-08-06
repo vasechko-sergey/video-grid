@@ -12,7 +12,6 @@ import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
-from math import hypot
 from pathlib import Path
 
 import imagehash
@@ -28,7 +27,6 @@ SAMPLE_FPS = 3.0
 PROXY_LONG_SIDE = 960                             # analysis runs on a proxy downscaled to this long side (design 2026-08-01)
 WIN_MIN, WIN_MAX, WIN_TARGET = 1.2, 4.0, 2.5      # seconds — the episode length band
 W_PRESENT, W_MOTION, W_STABLE, W_DUR = 0.40, 0.25, 0.25, 0.10
-MOTION_GAIN = 10.0                                # scales mean per-sample centre displacement to [0,1]
 MOTION_PEAK = 0.35                                # motion value scored highest (triangular)
 DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
 BEST_FLOOR = 0.50
@@ -303,13 +301,21 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
 
 
 def _motion(samples: list, res: tuple[int, int]) -> float:
-    centers = [bb for (t, n, bb, tids) in samples if bb is not None]
-    if len(centers) < 2:
+    """Mean per-sample identity-consistent displacement, as a fraction of the
+    ANALYSIS width (design 2026-08-06-intake-motion-scoring §3.3). Fewer than two
+    samples → 0.0.
+
+    No gain: the reported number is the measurement. The deleted MOTION_GAIN
+    existed only to stretch this fraction onto [0, 1] so a fixed triangular
+    preference could be applied to it, and scoring is a rank now (§3.4) — a rank
+    has no scale to choose and no ceiling to saturate against. Expect values ~10x
+    smaller than before the change."""
+    if len(samples) < 2:
         return 0.0
     w = res[0] or 1
-    disps = [hypot(centers[i][0] - centers[i - 1][0], centers[i][1] - centers[i - 1][1]) / w
-             for i in range(1, len(centers))]
-    return float(min(1.0, (sum(disps) / len(disps)) * MOTION_GAIN))
+    disps = [carve.track_displacements(samples[i - 1][4], samples[i][4])
+             for i in range(1, len(samples))]
+    return float(min(1.0, (sum(disps) / len(disps)) / w))
 
 
 def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True) -> ClipResult:
