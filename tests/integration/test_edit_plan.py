@@ -12,6 +12,7 @@ import pytest
 
 from scripts import edit_plan, edl_to_reel
 from scripts.lib import ffbin, proc
+from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 pytestmark = pytest.mark.integration
@@ -132,3 +133,105 @@ def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypa
     assert reel["status"] == "delivered", reel
     out = Path(reel["output"])
     assert out.exists() and out.name == "REEL_v1.mp4"
+
+
+def _variety_footage_json(tmp_path, source):
+    # 3 close windows (subject fills 80% of the frame each way) + 6 wide (2%x5%) on
+    # one 4K clip. geometry.crop_for((9, 16), 1.0, 3840, 2160) == (1215, 2160): the
+    # close windows stay close after a 9:16 crop (area 0.8*0.8=0.64, clamped, either
+    # way > CLOSE_AREA 0.30) and the wide windows stay wide (area 0.001 source /
+    # 0.0032 delivered, both under MEDIUM_AREA 0.08) — so only "close" can gap.
+    windows = (
+        [FootageWindow(start=float(i), dur=0.5, shot_type="close", people=1, motion=0.3,
+                       shake=0.0, subject_w=0.8, subject_h=0.8) for i in range(3)]
+        + [FootageWindow(start=float(10 + i), dur=0.5, shot_type="wide", people=1, motion=0.3,
+                         shake=0.0, subject_w=0.02, subject_h=0.05) for i in range(6)])
+    f = Footage(clips=[FootageClip(source=source, dur=20.0, res=(3840, 2160), fps=30.0,
+                                   windows=windows)])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def _variety_selection(source):
+    # windows 3, 4, 5 are the first three "wide" windows above — the cut takes only
+    # those, leaving all 3 "close" windows (0, 1, 2) and 3 more "wide" ones unused.
+    return {"episodes": [
+        {"source": source, "window": w, "composition": "lead", "grid": "thirds", "crop_scale": 0.8}
+        for w in (3, 4, 5)]}
+
+
+def test_sp3_stops_on_a_variety_gap_then_passes_with_a_waiver(tmp_path):
+    """A cut that ignores every close window the footage offers is refused; the same
+    cut with a stated reason is written, and the reason lands INSIDE the stamped
+    EDL.json where it cannot be quietly revised (design §8)."""
+    source = "clip.mp4"
+    fp = _variety_footage_json(tmp_path, source)
+    selection = _variety_selection(source)
+    sp = tmp_path / "selection.json"
+    sp.write_text(json.dumps(selection))
+    pp = _project_json(tmp_path)      # purpose "reel" -> 9:16 canvas
+
+    stop = edit_plan.write_edit_plan(str(fp), str(sp), str(pp), str(tmp_path))
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "variety-gap"
+    assert not (tmp_path / "EDL.json").exists()
+
+    sp.write_text(json.dumps({**selection, "variety_waiver": "close windows are out of focus"}))
+    ok = edit_plan.write_edit_plan(str(fp), str(sp), str(pp), str(tmp_path))
+    assert ok["status"] == "written"
+
+    edl = EDL.from_json(tmp_path / "EDL.json")        # provenance check passes
+    assert edl.variety.gaps == ("close",)
+    assert edl.variety.waiver == "close windows are out of focus"
+    assert "## Variety" in (tmp_path / "EDL.md").read_text()
+
+
+def _geo_footage_json(tmp_path, source):
+    # 3 "borderline" windows at 10%x30% of the frame (area 0.030) + 3 genuinely wide
+    # ones (2%x5%, area 0.001) on one 4K clip. At 16:9 (no crop scaling) the
+    # borderline windows read `wide` (0.030 < MEDIUM_AREA 0.08); at 9:16
+    # (geometry.crop_for scales width by 3840/1215 = 3.16x) their area becomes
+    # 0.0948, crossing into `medium`. The genuinely-wide windows stay `wide` in
+    # either geometry (design §6).
+    windows = (
+        [FootageWindow(start=float(i), dur=0.5, shot_type="wide", people=1, motion=0.3,
+                       shake=0.0, subject_w=0.1, subject_h=0.3) for i in range(3)]
+        + [FootageWindow(start=float(10 + i), dur=0.5, shot_type="wide", people=1, motion=0.3,
+                         shake=0.0, subject_w=0.02, subject_h=0.05) for i in range(3)])
+    f = Footage(clips=[FootageClip(source=source, dur=20.0, res=(3840, 2160), fps=30.0,
+                                   windows=windows)])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def _geo_selection(source):
+    # windows 3, 4, 5 are the genuinely-wide ones — the cut never references the
+    # borderline windows 0, 1, 2 at all, in EITHER canvas.
+    return {"episodes": [
+        {"source": source, "window": w, "composition": "lead", "grid": "thirds", "crop_scale": 0.8}
+        for w in (3, 4, 5)]}
+
+
+def _project_json_16x9(tmp_path):
+    p = tmp_path / "project_16x9.json"
+    p.write_text(json.dumps({"purpose": "youtube", "canvas": [1920, 1080], "delivery": "native"}))
+    return str(p)
+
+
+def test_sp3_delivered_geometry_is_what_decides(tmp_path):
+    """The SAME footage passes 16:9 and stops 9:16 — proof the gate reads the crop,
+    not the source frame. A subject at 3% of the source frame is `wide` in source
+    geometry and `medium` once a 9:16 crop is taken (design §6)."""
+    source = "clip.mp4"
+    fp = _geo_footage_json(tmp_path, source)
+    sp = tmp_path / "selection.json"
+    sp.write_text(json.dumps(_geo_selection(source)))
+    pp_16x9 = _project_json_16x9(tmp_path)
+    pp_9x16 = _project_json(tmp_path)      # purpose "reel" -> 9:16 canvas, same helper test1 uses
+
+    wide_canvas = edit_plan.write_edit_plan(str(fp), str(sp), str(pp_16x9), str(tmp_path))
+    assert wide_canvas["status"] == "written"          # nothing but wide exists at 16:9
+    tall = edit_plan.write_edit_plan(str(fp), str(sp), str(pp_9x16), str(tmp_path / "b"))
+    assert tall["finding"]["reason"] == "variety-gap"  # the same windows read `medium`
