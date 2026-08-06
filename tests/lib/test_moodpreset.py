@@ -52,3 +52,69 @@ def test_balanced_is_never_a_match_target():
 def test_balanced_still_asks_for_close_ups():
     # the autonomous path (no SPEC.json) must not get a dead gate
     assert moodpreset.BALANCED.shot_mix["close"] >= 0.20
+
+
+def _counts(close=0, medium=0, wide=0):
+    return {"close": close, "medium": medium, "wide": wide}
+
+
+def test_evaluate_flags_a_size_the_preset_wants_and_the_footage_offers():
+    r = moodpreset.evaluate(_counts(close=11, wide=40), _counts(wide=8), 2.0,
+                            moodpreset.resolve("fun"))
+    assert r.gaps == ("close",)
+    assert r.ok is False
+    assert r.available["close"] == 11 and r.used["close"] == 0
+
+
+def test_evaluate_is_silent_when_the_footage_cannot_offer_the_size():
+    # 2 close windows is below MIN_AVAIL — one stray misdetection must not block a reel
+    r = moodpreset.evaluate(_counts(close=2, wide=40), _counts(wide=8), 2.0,
+                            moodpreset.resolve("fun"))
+    assert r.gaps == () and r.ok is True
+
+
+def test_evaluate_is_silent_at_the_min_avail_boundary_and_fires_one_above():
+    fun = moodpreset.resolve("fun")
+    assert moodpreset.evaluate(_counts(close=2, wide=9), _counts(wide=3), 2.0, fun).gaps == ()
+    assert moodpreset.evaluate(_counts(close=3, wide=9), _counts(wide=3), 2.0, fun).gaps == ("close",)
+
+
+def test_evaluate_ignores_a_size_the_preset_barely_wants():
+    # a shot_mix share below WANT_FLOOR is reported, never refused
+    quiet = moodpreset.MoodPreset("quiet", None, {"close": 0.10, "medium": 0.45, "wide": 0.45},
+                                  (2.0, 4.0))
+    r = moodpreset.evaluate(_counts(close=20, wide=40), _counts(wide=8), 2.0, quiet)
+    assert r.gaps == ()
+
+
+def test_evaluate_does_not_flag_a_size_the_cut_already_uses():
+    r = moodpreset.evaluate(_counts(close=11, wide=40), _counts(close=1, wide=8), 2.0,
+                            moodpreset.resolve("fun"))
+    assert r.gaps == ()
+
+
+def test_a_waiver_makes_a_gapped_report_ok_without_erasing_the_gap():
+    r = moodpreset.evaluate(_counts(close=11, wide=40), _counts(wide=8), 2.0,
+                            moodpreset.resolve("fun"), waiver="every close window is out of focus")
+    assert r.gaps == ("close",)          # the finding survives — it is recorded, not deleted
+    assert r.ok is True
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n"])
+def test_a_blank_waiver_is_refused(blank):
+    with pytest.raises(ValueError, match="waiver"):
+        moodpreset.evaluate(_counts(close=11), _counts(wide=8), 2.0,
+                            moodpreset.resolve("fun"), waiver=blank)
+
+
+def test_report_round_trips_through_json():
+    r = moodpreset.evaluate(_counts(close=11, wide=40), _counts(wide=8), 2.5,
+                            moodpreset.resolve("fun"), waiver="deliberate")
+    assert moodpreset.VarietyReport.from_dict(r.to_dict()).to_dict() == r.to_dict()
+
+
+def test_gaps_are_reported_in_shot_type_order():
+    bare = moodpreset.MoodPreset("bare", None, {"close": 0.34, "medium": 0.33, "wide": 0.33},
+                                 (1.0, 5.0))
+    r = moodpreset.evaluate(_counts(close=5, medium=5, wide=5), _counts(wide=3), 2.0, bare)
+    assert r.gaps == ("close", "medium")

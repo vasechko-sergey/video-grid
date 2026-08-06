@@ -90,3 +90,87 @@ def resolve(mood_text: str | None) -> MoodPreset:
     if target is None:
         return BALANCED
     return min(PRESETS, key=lambda p: mood.distance(p.anchor, target))
+
+
+MIN_AVAIL = 3        # windows of a size below which a zero-use is NOT refusable — one
+                     # stray misdetection must not block a reel (design §7)
+WANT_FLOOR = 0.20    # shot_mix share at or above which the preset genuinely asks for a size
+
+
+@dataclass
+class VarietyReport:
+    """What the cut did with the shot sizes the footage offered.
+
+    Both censuses are measured in the SAME geometry (the project's default framing —
+    design §6); comparing a delivered `used` against a source `available` would put
+    the two sides of the comparison in different units. `gaps` survives a waiver on
+    purpose: the waiver records a decision, it does not delete the finding."""
+    preset: str
+    available: dict[str, int]
+    used: dict[str, int]
+    asl: float
+    asl_band: tuple[float, float]
+    gaps: tuple[str, ...] = ()
+    waiver: str | None = None
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.preset, str) and self.preset):
+            raise ValueError("VarietyReport.preset must be the preset's name")
+        for name in ("available", "used"):
+            c = getattr(self, name)
+            if not isinstance(c, dict) or set(c) != set(SHOT_TYPES):
+                raise ValueError(f"VarietyReport.{name} must be a count per {SHOT_TYPES}, got {c!r}")
+            for k, v in c.items():
+                if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+                    raise ValueError(f"VarietyReport.{name}[{k!r}] must be an int >= 0, got {v!r}")
+        if not (_num(self.asl) and self.asl >= 0):
+            raise ValueError(f"VarietyReport.asl must be a number >= 0 seconds, got {self.asl!r}")
+        if not (isinstance(self.asl_band, (tuple, list)) and len(self.asl_band) == 2
+                and all(_num(v) for v in self.asl_band)):
+            raise ValueError(f"VarietyReport.asl_band must be a (lo, hi) pair, got {self.asl_band!r}")
+        self.asl_band = (float(self.asl_band[0]), float(self.asl_band[1]))
+        self.gaps = tuple(self.gaps)
+        bad = [g for g in self.gaps if g not in SHOT_TYPES]
+        if bad:
+            raise ValueError(f"VarietyReport.gaps must name shot types from {SHOT_TYPES}, got {bad}")
+        if self.waiver is not None and not (isinstance(self.waiver, str) and self.waiver.strip()):
+            raise ValueError(
+                "VarietyReport.waiver must be a non-empty reason or null — a blank waiver is a "
+                'bypass wearing the costume of a decision. State why the cut stays one size in '
+                'selection.json\'s "variety_waiver"')
+
+    @property
+    def ok(self) -> bool:
+        """A gap with a recorded reason passes; a gap without one does not."""
+        return not self.gaps or bool(self.waiver)
+
+    def to_dict(self) -> dict:
+        return {"preset": self.preset, "available": dict(self.available),
+                "used": dict(self.used), "asl": self.asl, "asl_band": list(self.asl_band),
+                "gaps": list(self.gaps), "waiver": self.waiver}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "VarietyReport":
+        if not isinstance(d, dict):
+            raise ValueError(f"VarietyReport.from_dict: expected an object with preset/available/"
+                             f"used fields, got {type(d).__name__} — re-run edit_plan build")
+        return cls(preset=d.get("preset"), available=d.get("available"), used=d.get("used"),
+                   asl=d.get("asl"), asl_band=d.get("asl_band"),
+                   gaps=tuple(d.get("gaps") or ()), waiver=d.get("waiver"))
+
+
+def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
+             preset: MoodPreset, waiver: str | None = None) -> VarietyReport:
+    """Refuse only on a size the cut uses ZERO of, that the footage genuinely offers,
+    and that the preset genuinely wants (design §7, decision 6). Deviation from the
+    target fractions when the size IS used, and the realized ASL, are carried in the
+    report for the human and never refused: the machine can prove 'the footage offered
+    close-ups and you took none', not that some ideal mix was reachable."""
+    gaps = tuple(s for s in SHOT_TYPES
+                 if used.get(s, 0) == 0
+                 and available.get(s, 0) >= MIN_AVAIL
+                 and preset.shot_mix[s] >= WANT_FLOOR)
+    return VarietyReport(preset=preset.name,
+                         available={s: int(available.get(s, 0)) for s in SHOT_TYPES},
+                         used={s: int(used.get(s, 0)) for s in SHOT_TYPES},
+                         asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver)
