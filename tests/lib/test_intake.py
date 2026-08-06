@@ -4,7 +4,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
-from scripts.lib import reid
+from scripts.lib import footage, reid
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
 
 
@@ -14,11 +14,11 @@ def _desc(*head: float) -> list[float]:
 
 
 def test_shot_type_buckets():
-    res = (1000, 1000)
-    assert intake.shot_type((500, 500, 700, 700), res) == "close"    # area 0.49 > CLOSE_AREA
-    assert intake.shot_type((500, 500, 300, 300), res) == "medium"   # area 0.09 in [0.08, 0.30)
-    assert intake.shot_type((500, 500, 100, 100), res) == "wide"     # area 0.01 < MEDIUM_AREA
-    assert intake.shot_type(None, res) == "wide"
+    w, h = 1000, 1000
+    assert footage.shot_type(700 / w, 700 / h) == "close"    # area 0.49 > CLOSE_AREA
+    assert footage.shot_type(300 / w, 300 / h) == "medium"   # area 0.09 in [0.08, 0.30)
+    assert footage.shot_type(100 / w, 100 / h) == "wide"     # area 0.01 < MEDIUM_AREA
+    assert footage.shot_type(0.0, 0.0) == "wide"
 
 
 def _line(n_from_to):   # helper: timeline [(t, people, bbox, track_ids)] at 1s steps

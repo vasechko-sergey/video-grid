@@ -11,6 +11,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.lib import geometry
+
 # The descriptor is a 512-d OSNet person-re-ID embedding (design 2026-08-04),
 # L2-normalized, compared by cosine. It lives HERE as the on-disk contract of
 # cast.json so a reader validates a descriptor without importing the CV/torch
@@ -22,6 +24,38 @@ DESCRIPTOR_LEN = 512
 
 def _num(v: object) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+SHOT_TYPES = ("close", "medium", "wide")
+CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08     # subject-area fractions bounding the three tags
+
+
+def shot_type(subject_w: float, subject_h: float) -> str:
+    """close/medium/wide from the subject's area as a fraction of the FRAME it is
+    measured against. Geometry-agnostic on purpose (design 2026-08-06 §6): intake
+    passes source fractions, edit_plan passes delivered ones via delivered_shot,
+    and one classifier keeps the two from drifting apart. No subject — (0.0, 0.0) —
+    is 'wide', the same answer scenery gets."""
+    area = subject_w * subject_h
+    if area > CLOSE_AREA:
+        return "close"
+    if area >= MEDIUM_AREA:
+        return "medium"
+    return "wide"
+
+
+def delivered_shot(subject_w: float, subject_h: float, res: tuple[int, int],
+                   aspect: tuple[int, int], crop_scale: float = 1.0) -> str:
+    """The window's shot size as it will READ in the delivered frame rather than in
+    the source one. A 9:16 fill crop of a 16:9 source keeps the height and cuts the
+    width, so the subject's area fraction grows by src_w/crop_w — 3.16x for
+    3840x2160 — which is why the source-geometry tag cannot discriminate on footage
+    shot from a distance (design §1c, §6). The fractions are scale-normalized, so it
+    does not matter that intake measured them on the 960 analysis proxy while `res`
+    is the original: only the divisor changes, and it changes on both sides."""
+    crop_w, crop_h = geometry.crop_for(aspect, crop_scale, *res)
+    return shot_type(min(1.0, subject_w * res[0] / crop_w),
+                     min(1.0, subject_h * res[1] / crop_h))
 
 
 @dataclass

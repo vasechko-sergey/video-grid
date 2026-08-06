@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from scripts.lib import footage
 from scripts.lib.footage import (DESCRIPTOR_LEN, FootageWindow, FootageClip, Footage,
                                  CastMember, Cast)
 
@@ -369,3 +370,30 @@ def test_footage_window_track_ids_rejects_bad_values():
         with pytest.raises(ValueError):
             FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=1,
                           motion=0.0, shake=0.0, track_ids=bad)
+
+
+def test_shot_type_buckets_on_area_with_exact_boundaries():
+    # MEDIUM_AREA 0.08 is inclusive, CLOSE_AREA 0.30 is exclusive (> not >=)
+    assert footage.shot_type(0.0, 0.0) == "wide"          # no subject → scenery
+    assert footage.shot_type(0.2, 0.399) == "wide"         # area 0.0798 < 0.08
+    assert footage.shot_type(0.2, 0.4) == "medium"         # area 0.08 exactly
+    assert footage.shot_type(0.5, 0.6) == "medium"         # area 0.30 exactly, NOT close
+    assert footage.shot_type(0.5, 0.61) == "close"         # area 0.305 > 0.30
+
+
+def test_delivered_shot_grows_the_area_by_the_width_crop():
+    # 3840x2160 → 9:16 fill: crop is 1215x2160, so width scales by 3840/1215 = 3.16
+    # and height does not scale at all. A subject at 3% of the source frame is `wide`
+    # in source geometry and `medium` once the delivery crop is taken into account.
+    src, aspect = (3840, 2160), (9, 16)
+    assert footage.shot_type(0.1, 0.3) == "wide"                       # area 0.030
+    assert footage.delivered_shot(0.1, 0.3, src, aspect) == "medium"   # area 0.0948
+
+
+def test_delivered_shot_clamps_a_subject_wider_than_the_crop():
+    # a subject filling the source width is fully framed after the crop, not 3.16x wide
+    assert footage.delivered_shot(1.0, 1.0, (3840, 2160), (9, 16)) == "close"
+
+
+def test_delivered_shot_without_people_is_wide_in_any_geometry():
+    assert footage.delivered_shot(0.0, 0.0, (3840, 2160), (9, 16)) == "wide"

@@ -37,7 +37,6 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
                                                   # shakiness=5 to vidstab.DETECT_ARGS' 8, so recorded shake values shifted. The
                                                   # threshold is deliberately NOT re-tuned to compensate — no real footage has been
                                                   # through this pipeline, so any new value would be invented (design §5).
-CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08
 CLUSTER_COS = 0.30       # cosine cut for "same identity" in surfacing (design §5). A FIRST CUT
                          # calibratable on the real cache — no footage exists to tune it.
 MAX_CAST = 15            # adaptive cap on surfaced identities; excess is dropped WITH a log (no silent cap)
@@ -46,20 +45,6 @@ DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x lib
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or
                           # lowers it on tight memory (cap-3's knee was design 2026-07-18 §2).
-
-
-def shot_type(bbox: tuple[float, float, float, float] | None, res: tuple[int, int]) -> str:
-    """close/medium/wide from the primary person's bbox area fraction. None → wide (scenery)."""
-    if bbox is None:
-        return "wide"
-    _, _, bw, bh = bbox
-    w, h = res
-    area = (bw * bh) / float(w * h) if w and h else 0.0
-    if area > CLOSE_AREA:
-        return "close"
-    if area >= MEDIUM_AREA:
-        return "medium"
-    return "wide"
 
 
 def carve_windows(scene_cuts: list[float],
@@ -295,7 +280,10 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
     boxes = [row[2] for row in samples if row[2] is not None]
     primary = max(boxes, key=lambda bb: bb[2] * bb[3]) if boxes else None
     motion = _motion(samples, res)
-    shot = shot_type(primary, res)
+    w, h = res
+    sw = (primary[2] / w) if primary is not None and w else 0.0
+    sh = (primary[3] / h) if primary is not None and h else 0.0
+    shot = footage.shot_type(sw, sh)
     score = score_window(present, motion, shake, d)
     track_ids = sorted({tid for row in samples for tid in row[3]})
     return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
