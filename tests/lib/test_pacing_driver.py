@@ -23,7 +23,8 @@ def run_dir(tmp_path):
                        "shaky": False, "scene_cuts": [],
                        "windows": [{"start": 0.0, "dur": 2.0, "shot_type": "wide",
                                     "people": 1, "motion": 0.4, "shake": 0.001,
-                                    "description": "d", "score": 0.8, "best": True}]}]})
+                                    "description": "d", "score": 0.8, "best": True,
+                                    "present": 1.0, "subject_w": 0.0, "subject_h": 0.0}]}]})
     _write(tmp_path / "EDL.json",
            {"episodes": [{"source": "a.mp4", "start": 0.0, "dur": 1.9, "shot_type": "wide",
                           "composition": "center", "grid": "thirds"},
@@ -94,7 +95,8 @@ def test_off_grid_report_logs_a_remedy_and_lists_each_level_once(tmp_path, capsy
                        "shaky": False, "scene_cuts": [],
                        "windows": [{"start": 0.0, "dur": 5.0, "shot_type": "wide",
                                     "people": 1, "motion": 0.4, "shake": 0.001,
-                                    "description": "d", "score": 0.8, "best": True}]}]})
+                                    "description": "d", "score": 0.8, "best": True,
+                                    "present": 1.0, "subject_w": 0.0, "subject_h": 0.0}]}]})
     _write(tmp_path / "EDL.json",
            {"episodes": [{"source": "a.mp4", "start": 0.0, "dur": 5.0, "shot_type": "wide",
                           "composition": "center", "grid": "thirds"},

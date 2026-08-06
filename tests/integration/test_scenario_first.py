@@ -31,7 +31,8 @@ def test_a_ride_keeps_its_length_through_fit_and_bind(tmp_path):
                     "shaky": False, "scene_cuts": [],
                     "windows": [{"start": 0.0, "dur": _LONG, "shot_type": "wide",
                                  "people": 1, "motion": 0.4, "shake": 0.0,
-                                 "description": "ride", "score": 0.9, "best": True}]}]}))
+                                 "description": "ride", "score": 0.9, "best": True,
+                                 "present": 1.0, "subject_w": 0.0, "subject_h": 0.0}]}]}))
     (tmp_path / "EDL.json").write_text(json.dumps(
         {"episodes": [{"source": "ride.mp4", "start": 0.0, "dur": _LONG,
                        "shot_type": "wide", "composition": "center", "grid": "thirds"},
@@ -66,7 +67,8 @@ def test_a_spine_from_another_edit_is_refused_not_applied(tmp_path):
                     "shaky": False, "scene_cuts": [],
                     "windows": [{"start": 0.0, "dur": _LONG, "shot_type": "wide",
                                  "people": 1, "motion": 0.4, "shake": 0.0,
-                                 "description": "ride", "score": 0.9, "best": True}]}]}))
+                                 "description": "ride", "score": 0.9, "best": True,
+                                 "present": 1.0, "subject_w": 0.0, "subject_h": 0.0}]}]}))
     foreign = core.Spine((core.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=0.0),), 2.0,
                          120.0)
     selection = {"episodes": [{"source": "ride.mp4", "window": 0,
@@ -95,7 +97,8 @@ def test_with_anchors_names_the_measured_anchor_in_the_report(tmp_path):
                     "shaky": False, "scene_cuts": [],
                     "windows": [{"start": 0.0, "dur": 4.0, "shot_type": "wide",
                                  "people": 1, "motion": 0.4, "shake": 0.0,
-                                 "description": "d", "score": 0.9, "best": True}]}]}))
+                                 "description": "d", "score": 0.9, "best": True,
+                                 "present": 1.0, "subject_w": 0.0, "subject_h": 0.0}]}]}))
     (tmp_path / "EDL.json").write_text(json.dumps(
         {"episodes": [{"source": "clip.mp4", "start": 0.0, "dur": 4.0,
                        "shot_type": "wide", "composition": "center", "grid": "thirds"}],

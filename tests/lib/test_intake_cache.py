@@ -132,11 +132,11 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v6(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v7(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960)
-    assert k["version"] == 6
+    assert k["version"] == 7
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280)
     assert k != k2                              # a scale change invalidates
@@ -169,8 +169,9 @@ def test_reid_model_is_part_of_the_key(tmp_path):
                    proxy_long_side=960, reid_model="osnet_x1_0") is None
 
 
-def test_cache_version_is_six_for_the_hero_reid():
-    # hero re-ID (design 2026-08-04): descriptors are now 512-d OSNet embeddings
-    # (was a 24-d colour histogram) and CastEntry carries presence → v5 must miss
+def test_cache_version_is_seven_for_the_shot_size_fields():
+    # shot-size fields (design 2026-08-06): FootageWindow stores subject_w/subject_h/
+    # present, measured in Phase 1 — a cached ClipResult (built under v6) cannot
+    # supply them → v6 must miss
     from scripts.lib import intake_cache as ic
-    assert ic.CACHE_VERSION == 6
+    assert ic.CACHE_VERSION == 7

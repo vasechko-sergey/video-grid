@@ -70,6 +70,9 @@ class FootageWindow:
     score: float = 0.0
     best: bool = False
     track_ids: list[int] = field(default_factory=list)
+    subject_w: float = 0.0   # primary subject's bbox width as a fraction of the frame width
+    subject_h: float = 0.0   # ...and height. 0.0 / 0.0 = no person detected in this window
+    present: float = 0.0     # fraction of this window's samples holding >= 1 person
 
     def __post_init__(self) -> None:
         if not (_num(self.start) and self.start >= 0):
@@ -94,12 +97,21 @@ class FootageWindow:
                 isinstance(t, bool) or not isinstance(t, int) or t < 0 for t in self.track_ids):
             raise ValueError(f"FootageWindow.track_ids must be a list of ints >= 0 "
                              f"(the track ids present in the window), got {self.track_ids!r}")
+        for name in ("subject_w", "subject_h", "present"):
+            v = getattr(self, name)
+            if not (_num(v) and 0.0 <= v <= 1.0):
+                raise ValueError(
+                    f"FootageWindow.{name} must be a number in [0, 1] — subject_w/subject_h "
+                    f"are fractions of the frame, present is a fraction of the window's "
+                    f"samples; got {v!r}")
 
     def to_dict(self) -> dict:
         return {"start": self.start, "dur": self.dur, "shot_type": self.shot_type,
                 "people": self.people, "motion": self.motion, "shake": self.shake,
                 "description": self.description, "score": self.score,
-                "best": self.best, "track_ids": list(self.track_ids)}
+                "best": self.best, "track_ids": list(self.track_ids),
+                "subject_w": self.subject_w, "subject_h": self.subject_h,
+                "present": self.present}
 
 
 @dataclass
@@ -159,6 +171,13 @@ class FootageClip:
         for k, w in enumerate(wins_in):
             if not isinstance(w, dict):
                 raise ValueError(f"FootageClip.from_dict: windows[{k}] must be an object")
+            if "present" not in w:
+                raise ValueError(
+                    f"FootageClip.from_dict: windows[{k}] predates the 2026-08-06 shot-size "
+                    f"fields (missing 'present') — re-run footage-intake to rescan. The "
+                    f"fields carry 0.0 defaults so the object would build, but it would then "
+                    f"claim 'no people anywhere' and the variety gate would read that as a "
+                    f"monotone footage set")
             try:
                 wins.append(FootageWindow(**w))
             except TypeError as ex:

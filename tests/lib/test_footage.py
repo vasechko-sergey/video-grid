@@ -397,3 +397,30 @@ def test_delivered_shot_clamps_a_subject_wider_than_the_crop():
 
 def test_delivered_shot_without_people_is_wide_in_any_geometry():
     assert footage.delivered_shot(0.0, 0.0, (3840, 2160), (9, 16)) == "wide"
+
+
+def test_window_carries_the_three_measurements_and_round_trips():
+    w = footage.FootageWindow(start=0.0, dur=2.0, shot_type="medium", people=1,
+                              motion=0.3, shake=0.01, subject_w=0.25, subject_h=0.4,
+                              present=0.75)
+    assert (w.subject_w, w.subject_h, w.present) == (0.25, 0.4, 0.75)
+    assert footage.FootageWindow(**w.to_dict()).to_dict() == w.to_dict()
+
+
+@pytest.mark.parametrize("bad", [
+    dict(subject_w=-0.1), dict(subject_w=1.1), dict(subject_h=-0.1),
+    dict(subject_h=1.1), dict(present=-0.1), dict(present=1.1),
+    dict(present="1.0"), dict(present=True),
+])
+def test_window_refuses_a_measurement_outside_the_unit_interval(bad):
+    base = dict(start=0.0, dur=2.0, shot_type="wide", people=0, motion=0.0, shake=0.0)
+    with pytest.raises(ValueError, match="subject_w|subject_h|present"):
+        footage.FootageWindow(**{**base, **bad})
+
+
+def test_clip_from_dict_refuses_a_footage_json_written_before_the_shot_size_fields():
+    legacy = {"source": "a.mp4", "dur": 10.0, "res": [1920, 1080], "fps": 30.0,
+              "windows": [{"start": 0.0, "dur": 2.0, "shot_type": "wide",
+                           "people": 0, "motion": 0.0, "shake": 0.0}]}
+    with pytest.raises(ValueError, match="predates.*re-run footage-intake"):
+        footage.FootageClip.from_dict(legacy)

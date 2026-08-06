@@ -36,7 +36,8 @@ from scripts.lib.footage import FootageClip
 # embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
 # result must miss. An all-or-nothing version beats a per-field logic hash nobody
 # can audit.
-CACHE_VERSION = 6
+CACHE_VERSION = 7   # 6→7 (2026-08-06): FootageWindow stores subject_w/subject_h/present,
+                    # measured in Phase 1 — a cached ClipResult cannot supply them.
 
 
 @dataclass

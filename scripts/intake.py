@@ -289,7 +289,8 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
     return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
                                  people=people, motion=round(motion, 3), shake=round(shake, 4),
                                  description=_describe(people, shot, motion), score=round(score, 3),
-                                 track_ids=track_ids)
+                                 track_ids=track_ids, subject_w=round(sw, 4),
+                                 subject_h=round(sh, 4), present=round(present, 3))
 
 
 def _motion(samples: list, res: tuple[int, int]) -> float:

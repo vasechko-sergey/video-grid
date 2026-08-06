@@ -79,7 +79,8 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
         windows=[footage.FootageWindow(
             start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.625,
             shake=0.0, description="1 person, wide, dynamic", score=0.861,
-            best=True, track_ids=[1])])
+            best=True, track_ids=[1], subject_w=0.1042, subject_h=0.2778,
+            present=1.0)])
     assert "# Footage —" in result.to_markdown()
 
 
@@ -104,7 +105,8 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
         windows=[footage.FootageWindow(
             start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.625,
             shake=0.0077, description="1 person, wide, dynamic", score=0.764,
-            best=True, track_ids=[1])])
+            best=True, track_ids=[1], subject_w=0.1042, subject_h=0.2778,
+            present=1.0)])
 
 
 def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_clip):
