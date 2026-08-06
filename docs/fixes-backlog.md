@@ -609,8 +609,9 @@ reinforcements:
   against real footage. Original finding, for the record: every shot in the
   delivered reel was the same medium-wide side-on "surfer on a wave" — no
   close-ups, no faces, none of the *"laughs and moments, personality-forward"*
-  the `fun and playful` brief asked for. Competent but monotonous action.
-  Ties the north star and #3.
+  the `fun and playful` brief asked for. Competent but monotonous action. The
+  selection/edit-plan should diversify shot types and check the cut against the
+  brief's mood/personality, not just fill length. Ties the north star and #3.
 - **#20 — Off-pipeline manual EDL editing (NEW, governance). ✅ LANDED
   2026-08-04** — design `docs/specs/2026-08-04-attested-run-design.md` §5.1 +
   plan `docs/plans/2026-08-04-attested-run.md`. `EDL.json` is now stamped by
