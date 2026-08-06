@@ -152,8 +152,12 @@ def test_build_edl_bad_source_type_raises():
         edit_plan.build_edl(_footage(), sel)
 
 
-def _write_inputs(tmp_path, sel):
-    (tmp_path / "FOOTAGE.json").write_text(json.dumps(_footage().to_dict()))
+def _write_inputs(tmp_path, sel, footage=None):
+    # footage=None reuses this file's plain wide-only _footage() fixture — the variety
+    # tests below pass _varied_footage() instead, so this one helper stays the file's
+    # single "write FOOTAGE/selection/project.json into tmp_path" fixture style rather
+    # than a second one growing up beside it.
+    (tmp_path / "FOOTAGE.json").write_text(json.dumps((footage or _footage()).to_dict()))
     (tmp_path / "selection.json").write_text(json.dumps(sel))
     (tmp_path / "project.json").write_text(
         json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
@@ -598,3 +602,81 @@ def test_build_edl_span_crossing_a_scene_cut_raises():
     sel = {"episodes": [{"source": "M.mp4", "window": [0, 1], "composition": "lead", "grid": "thirds"}]}
     with pytest.raises(ValueError, match=r"scene cut at 5\.50s.*cannot cross"):
         edit_plan.build_edl(footage, sel)
+
+
+from scripts.lib import moodpreset
+
+
+def _varied_footage():
+    """One clip: 3 close windows (a subject filling the frame) + 6 wide ones."""
+    close = [FootageWindow(start=float(i), dur=1.0, shot_type="close", people=1,
+                           motion=0.2, shake=0.0, subject_w=0.8, subject_h=0.8,
+                           present=1.0) for i in range(3)]
+    wide = [FootageWindow(start=float(3 + i), dur=1.0, shot_type="wide", people=1,
+                          motion=0.3, shake=0.0, subject_w=0.02, subject_h=0.05,
+                          present=1.0) for i in range(6)]
+    clip = FootageClip(source="a.mp4", dur=20.0, res=(3840, 2160), fps=30.0,
+                       windows=close + wide)
+    return Footage(clips=[clip])
+
+
+def _wide_only_selection():
+    return {"episodes": [{"source": "a.mp4", "window": 3 + i, "composition": "center",
+                          "grid": "thirds"} for i in range(3)]}
+
+
+def test_build_edl_counts_both_censuses_in_delivered_geometry():
+    edl = edit_plan.build_edl(_varied_footage(), _wide_only_selection(),
+                              aspect=(9, 16), preset=moodpreset.resolve("fun"))
+    assert edl.variety.available["close"] == 3
+    assert edl.variety.used == {"close": 0, "medium": 0, "wide": 3}
+    assert edl.variety.gaps == ("close",)
+
+
+def test_build_edl_skips_the_evaluation_without_an_aspect_or_preset():
+    # the SP1 boundary: no project geometry, no report — not a silent pass
+    edl = edit_plan.build_edl(_varied_footage(), _wide_only_selection())
+    assert edl.variety is None
+
+
+def test_build_edl_reads_the_waiver_from_the_selection():
+    sel = {**_wide_only_selection(), "variety_waiver": "the close windows are all soft"}
+    edl = edit_plan.build_edl(_varied_footage(), sel, aspect=(9, 16),
+                              preset=moodpreset.resolve("fun"))
+    assert edl.variety.waiver == "the close windows are all soft"
+    assert edl.variety.ok is True
+
+
+def test_build_edl_refuses_a_blank_waiver():
+    sel = {**_wide_only_selection(), "variety_waiver": "   "}
+    with pytest.raises(ValueError, match="waiver"):
+        edit_plan.build_edl(_varied_footage(), sel, aspect=(9, 16),
+                            preset=moodpreset.resolve("fun"))
+
+
+def test_write_edit_plan_stops_on_a_variety_gap_and_names_candidates(tmp_path):
+    fp, sp, pp = _write_inputs(tmp_path, _wide_only_selection(), _varied_footage())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["status"] == "stop_and_report"
+    assert result["finding"]["reason"] == "variety-gap"
+    problems = " ".join(result["finding"]["problems"])
+    assert "close" in problems and "a.mp4 #0" in problems and "variety_waiver" in problems
+    assert not (tmp_path / "EDL.json").exists()      # nothing lands on a stop
+
+
+def test_write_edit_plan_passes_with_a_waiver(tmp_path):
+    sel = {**_wide_only_selection(), "variety_waiver": "close windows are soft"}
+    fp, sp, pp = _write_inputs(tmp_path, sel, _varied_footage())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["status"] == "written"
+    written = json.loads((tmp_path / "EDL.json").read_text())
+    assert written["variety"]["waiver"] == "close windows are soft"
+    assert written["variety"]["gaps"] == ["close"]
+
+
+def test_write_edit_plan_without_a_spec_uses_balanced(tmp_path):
+    # no --spec: the gate stays live, so the same wide-only selection still stops
+    fp, sp, pp = _write_inputs(tmp_path, _wide_only_selection(), _varied_footage())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["finding"]["reason"] == "variety-gap"
+    assert "balanced" in " ".join(result["finding"]["problems"])

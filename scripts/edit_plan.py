@@ -17,11 +17,13 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import gridfit
+from scripts.lib import gridfit, moodpreset
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
-from scripts.lib.footage import Footage, FootageClip, FootageWindow
+from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
+from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
+from scripts.lib.spec import Spec
 
 
 def _log(msg: str) -> None:
@@ -211,8 +213,34 @@ def _back_edge_target(episodes: list, spine: Spine) -> float:
     return min(realized, spine.target_dur)
 
 
+def _available_census(footage: Footage, aspect: tuple[int, int]) -> dict[str, int]:
+    """Every window the footage offers, bucketed in DELIVERED geometry (design §6).
+
+    Every window, never only the `best` ones: `best` is a threshold on a score whose
+    ordering leans toward motion (design §1.1), and a denominator drawn from it would
+    inherit the very lean this gate exists to correct. Windows the phash cull removed
+    are already absent from FOOTAGE.json, so they are correctly outside the pool."""
+    counts = {s: 0 for s in SHOT_TYPES}
+    for clip in footage.clips:
+        for w in clip.windows:
+            counts[delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)] += 1
+    return counts
+
+
+def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
+                limit: int = 3) -> list[tuple[str, int, float]]:
+    """The strongest unused-size windows, as (source, window index, score), so a
+    refusal names a mechanical fix instead of an abstract complaint."""
+    rows = [(clip.source, i, w.score)
+            for clip in footage.clips
+            for i, w in enumerate(clip.windows)
+            if delivered_shot(w.subject_w, w.subject_h, clip.res, aspect) == want]
+    return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
+
+
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
-              cast: str | None = None) -> EDL:
+              cast: str | None = None, *, aspect: tuple[int, int] | None = None,
+              preset: MoodPreset | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -226,12 +254,23 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     editorial field in selection.json, since it names the registry an episode's hero *name*
     resolves against, not a per-episode choice. Fail-loud on a source not in FOOTAGE or an
     out-of-range window index (a typo would else surface as a FileNotFound deep in extract —
-    montage §12)."""
+    montage §12).
+
+    `aspect` and `preset` (design 2026-08-06, keyword-only) drive the shot-size variety
+    census: when BOTH are given, every selected window is tallied by footage.delivered_shot
+    into `used` as it is resolved, `_available_census` walks the whole footage pool the same
+    way, and moodpreset.evaluate compares the two into the returned EDL.variety. A MISSING
+    aspect or preset means the census was never run — EDL.variety stays None, which reads as
+    "not evaluated", never as "passed" — the SP1 boundary for a hand-authored selection with
+    no project geometry. build_edl only MEASURES here; it never refuses on a gap — that
+    policy lives one level up, in write_edit_plan, so the report reaches the caller either
+    way."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
     by_source = {c.source: c for c in footage.clips}
     episodes: list[EDLEpisode] = []
+    used = {s: 0 for s in SHOT_TYPES}
     for k, sel in enumerate(eps_in):
         if not isinstance(sel, dict):
             raise ValueError(f"selection episode {k} must be an object, got {type(sel).__name__}")
@@ -248,32 +287,68 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
             raise ValueError(f"selection episode {k}: source {source!r} not in FOOTAGE — "
                              f"have {sorted(by_source)}")
         fw = _resolve_window(clip, window, source, k)
+        if aspect is not None:
+            used[delivered_shot(fw.subject_w, fw.subject_h, clip.res, aspect)] += 1
         episodes.append(window_to_episode(clip, fw, start_offset=start_offset, **ed))
     target = selection.get("target_dur")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
         target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
     cap = selection.get("cap")
+    variety = None
+    if aspect is not None and preset is not None:
+        asl = (sum(e.dur for e in episodes) / len(episodes)) if episodes else 0.0
+        variety = moodpreset.evaluate(_available_census(footage, aspect), used, asl,
+                                      preset, waiver=selection.get("variety_waiver"))
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
-               cap=cap if cap is not None else 3, target_dur=target)
+               cap=cap if cap is not None else 3, target_dur=target, variety=variety)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
-                    pacing_path: str | None = None, cast: str | None = None) -> dict:
+                    pacing_path: str | None = None, cast: str | None = None,
+                    spec: str | None = None) -> dict:
     """Author EDL.json + EDL.md from FOOTAGE + a selection, gated by the project's
     manifest preflight. Nothing is written when preflight fails — a bad EDL never
     lands as a half-valid artifact. cast is cast.json from intake — required if any
     episode pins a cast name (§6.1a); preflight below loads the registry and reports
-    an unresolved name as part of its normal stop_and_report, not a raise. Returns
-    {"status": "written", ...} or the preflight stop_and_report verbatim."""
+    an unresolved name as part of its normal stop_and_report, not a raise. `spec` is
+    SPEC.json (§5.3, optional) — its mood resolves the shot-mix preset the variety
+    gate (design 2026-08-06) holds the cut to; without one the gate still runs
+    against the `balanced` preset, since skipping the optional brief must not
+    disable a quality gate. A cut that leaves an available, wanted shot size unused
+    and unwaived stops here too, before preflight, with its own reason
+    `variety-gap` (never `edl-invalid`, so the two failure classes stay
+    attributable without parsing prose). Returns {"status": "written", ...} or a
+    stop_and_report — from the variety gate or from preflight — verbatim."""
     footage = Footage.from_json(footage_path)
     try:
         selection = json.loads(Path(selection_path).read_text())
     except json.JSONDecodeError as e:
         raise ValueError(f"{selection_path} is not valid JSON ({e}) — fix the selection syntax") from e
     cfg = ProjectConfig.from_json(project_path)
+    preset = moodpreset.resolve(Spec.from_json(spec).mood if spec else None)
+    if preset.name == "balanced":
+        _log(f"variety: no SPEC mood matched a preset — using the 'balanced' shot mix "
+             f"{preset.shot_mix} (a skipped brief must not disable the gate)")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
-    edl = build_edl(footage, selection, pacing=pacing, cast=cast)
+    edl = build_edl(footage, selection, pacing=pacing, cast=cast,
+                    aspect=tuple(cfg.canvas), preset=preset)
+    v = edl.variety
+    _log("variety: preset {} — footage offers {}".format(
+        v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES)))
+    if not v.ok:
+        problems = []
+        for s in v.gaps:
+            cands = ", ".join(f"{src} #{i} (score {sc:.2f})"
+                              for src, i, sc in _candidates(footage, tuple(cfg.canvas), s))
+            problems.append(
+                f"preset {v.preset!r} wants {s} (target {preset.shot_mix[s]:.0%}) and the "
+                f"footage offers {v.available[s]} {s} windows in the delivered frame, but "
+                f"the cut uses 0. Candidates: {cands}. Add one, or state why the cut stays "
+                f'as it is in selection.json: "variety_waiver": "<reason>"')
+        return {"status": "stop_and_report",
+                "finding": {"reason": "variety-gap", "episode_idx": None,
+                            "problems": problems}}
     _, stop = preflight(edl, cfg, str(Path(out_dir) / "segments"), out_dir)
     if stop:
         return stop
@@ -295,8 +370,10 @@ def main() -> None:
     b.add_argument("--out-dir", required=True, help="dir for EDL.json + EDL.md")
     b.add_argument("--pacing", help="PACING.json — bind episodes to the energy spine (optional, §5.6)")
     b.add_argument("--cast", help="cast.json from intake — required if any episode pins a cast name (§6.1a)")
+    b.add_argument("--spec", help="SPEC.json — its mood picks the shot-mix preset "
+                                  "(optional; without it the 'balanced' preset applies)")
     a = ap.parse_args()
-    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing, cast=a.cast)
+    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing, cast=a.cast, spec=a.spec)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "written" else 1)
 
