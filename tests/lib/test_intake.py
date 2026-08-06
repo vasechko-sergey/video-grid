@@ -131,12 +131,26 @@ def test_score_penalises_shake_across_the_pool():
     assert ws[0].score > ws[1].score
 
 
+def test_equal_motion_and_stability_weights_make_a_swapped_pair_tie():
+    """W_MOTION == W_STABLE, so a window with (motion rank 1.0, stability rank 0.25) must score
+    exactly as one with the pair SWAPPED — that equality IS the trade-off design §4.4 says the
+    weights set, and nothing else in the suite pins it. A swapped PAIR, not merely two blends
+    that are mathematically equal: _percentile_rank detects ties with exact ==, and
+    0.28*0.75 + 0.28*0.25 is not bit-equal to 0.28*1.0 + 0.28*0.0. Swapping reuses the same two
+    products in the opposite order, which two-operand IEEE-754 addition makes bit-identical."""
+    ws = [_w(motion=m, shake=s) for m, s in
+          ((0.05, 0.007), (0.02, 0.001), (0.03, 0.005), (0.04, 0.003), (0.01, 0.009))]
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert ws[0].score == ws[1].score
+
+
 def test_score_pool_fills_description_from_the_motion_rank():
     ws = [_w(motion=m, shake=0.001, people=p)
           for m, p in ((0.001, 0), (0.002, 1), (0.003, 2), (0.004, 2), (0.900, 2))]
     intake.score_pool([_clip("a.mp4", ws)])
     assert ws[0].description == "no people, wide, calm"
     assert ws[1].description == "1 person, wide, calm"
+    assert ws[2].description == "2 people, wide, dynamic"   # rank EXACTLY DYNAMIC_RANK — pins >=
     assert ws[-1].description == "2 people, wide, dynamic"
 
 
@@ -148,6 +162,10 @@ def test_score_pool_on_an_empty_pool_is_a_no_op():
 def test_describe_reads_a_rank_not_a_raw_motion():
     assert intake._describe(1, "medium", 0.9) == "1 person, medium, dynamic"
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
+    # 0.4 straddles the two thresholds: >= the deleted MOTION_PEAK (0.35) but < DYNAMIC_RANK
+    # (0.5), so the old code said "dynamic" and the new one says "calm". The two assertions
+    # above cannot tell the constants apart (Global Constraint 8).
+    assert intake._describe(1, "medium", 0.4) == "1 person, medium, calm"
 
 
 def test_process_clip_detects_shake_once_before_carving(monkeypatch):

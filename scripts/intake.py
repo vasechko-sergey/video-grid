@@ -25,7 +25,7 @@ from scripts.track import MODEL, ensure_model       # reuse the tracker's model 
 
 SAMPLE_FPS = 3.0
 PROXY_LONG_SIDE = 960                             # analysis runs on a proxy downscaled to this long side (design 2026-08-01)
-WIN_MIN, WIN_MAX, WIN_TARGET = 1.2, 4.0, 2.5      # seconds — the episode length band
+WIN_MIN, WIN_MAX = 1.2, 4.0        # seconds — the episode length band carve.units_for_span enforces
 W_PRESENT, W_MOTION, W_STABLE = 0.44, 0.28, 0.28   # sum to 1. First cuts calibrated on ONE drone
                                                    # shoot (design 2026-08-06-intake-motion-scoring
                                                    # §8.1) — the SHAKY_CLIP precedent below.
@@ -120,7 +120,7 @@ def _percentile_rank(values: list[float]) -> list[float]:
     return out
 
 
-def score_pool(clips: list) -> None:
+def score_pool(clips: list[footage.FootageClip]) -> None:
     """Fill every window's `score` and `description` from the WHOLE pool — Phase 2
     (design 2026-08-06-intake-motion-scoring §4). Mutates in place, like cull.
 
