@@ -69,6 +69,8 @@ MOOD_ANCHORS: dict[str, MoodVector] = {
     "brooding": MoodVector(0.50, 0.18, 0.40),
     "happy": MoodVector(0.70, 0.85, 0.70),     "joyful": MoodVector(0.75, 0.88, 0.72),
     "upbeat": MoodVector(0.72, 0.80, 0.75),    "bright": MoodVector(0.68, 0.90, 0.68),
+    "fun": MoodVector(0.75, 0.85, 0.72),       "playful": MoodVector(0.72, 0.82, 0.70),
+    "adventure": MoodVector(0.80, 0.60, 0.65), "nostalgic": MoodVector(0.35, 0.45, 0.35),
     "melancholic": MoodVector(0.30, 0.35, 0.35), "sad": MoodVector(0.28, 0.30, 0.30),
     "somber": MoodVector(0.30, 0.28, 0.32),
     "dreamy": MoodVector(0.30, 0.60, 0.30),    "ethereal": MoodVector(0.28, 0.65, 0.28),

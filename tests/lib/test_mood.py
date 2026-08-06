@@ -152,3 +152,14 @@ def test_moodvector_from_dict_rejects_a_non_object_top_level(d, name):
     assert "re-run music-match" in msg
     for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
         assert bad not in msg
+
+
+from scripts.lib import mood
+
+
+def test_the_real_brief_vocabulary_now_matches_an_anchor():
+    # 'fun and playful' matched NO anchor before 2026-08-06 and fell into the
+    # drive-ranking fallback — the music ranking was running blind on the real run
+    assert mood.mood_target("fun and playful") is not None
+    for token in ("fun", "playful", "nostalgic", "adventure"):
+        assert token in mood.MOOD_ANCHORS
