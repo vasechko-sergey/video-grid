@@ -793,7 +793,7 @@ git add skills/match-grade/SKILL.md skills/using-montage/SKILL.md docs/ CLAUDE.m
 git commit -m "docs: match-grade conductor — SKILL, router wiring, registry, build-status"
 ```
 
-- [ ] **Step 6: Final whole-slice review**
+- [x] **Step 6: Final whole-slice review**
 
 Dispatch a fresh code-quality reviewer over `git diff main...HEAD` against the design doc. Confirm: the five design invariants (§7) hold; the single-measure DRY fix landed (no double `measure_profile`); the byte-identical claim (within-eps → no pair) is real; scope held (tone only, opt-in, no golden moved). Fix any Critical/Important in a SEPARATE follow-up commit (never `--amend`).
 

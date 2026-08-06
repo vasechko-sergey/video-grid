@@ -47,7 +47,7 @@ A checker (`check_reel`/`safezones`) must not import a sibling driver (`storyboa
 - Modify: `scripts/storyboard.py:5` (import), delete `scripts/storyboard.py:57-98`
 - Test: `tests/lib/test_geometry.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_geometry.py`:
 
@@ -75,12 +75,12 @@ def test_marks_at_times_rejects_desync():
         geometry.marks_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py::test_marks_at_times_projects_subject_into_canvas_fractions -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.geometry' has no attribute 'marks_at_times'`
 
-- [ ] **Step 3: Add the functions to `lib/geometry.py`**
+- [x] **Step 3: Add the functions to `lib/geometry.py`**
 
 Change the top of `scripts/lib/geometry.py` (lines 1-4):
 
@@ -139,7 +139,7 @@ def marks_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta"
     return marks
 ```
 
-- [ ] **Step 4: Point storyboard at the moved function**
+- [x] **Step 4: Point storyboard at the moved function**
 
 In `scripts/storyboard.py`, change line 5 from:
 
@@ -155,12 +155,12 @@ from scripts.lib.geometry import grid_lines, marks_at_times
 
 Then **delete** the now-duplicate `_interp` (lines 57-66) and `marks_at_times` (lines 69-98) definitions from `scripts/storyboard.py`. Its `build()` still calls `marks_at_times(...)` (now the import).
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py tests/integration/test_verify.py tests/integration/test_storyboard.py tests/integration/test_process_episode.py -v`
 Expected: PASS — the new geometry tests pass, and the storyboard/verify/process_episode tests that reference `storyboard.marks_at_times` still resolve it through the re-export.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/geometry.py scripts/storyboard.py tests/lib/test_geometry.py
@@ -175,7 +175,7 @@ git commit -m "refactor: move marks_at_times projection to lib/geometry (checker
 - Create: `scripts/lib/safezones.py`
 - Test: `tests/lib/test_safezones.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_safezones.py`:
 
@@ -219,12 +219,12 @@ def test_default_zone_is_generic_and_matches_titles_presets():
     assert (z.top, z.bottom) == (0.08, 0.12)      # == titles _Y_EXPR presets
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_safezones.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.safezones'`
 
-- [ ] **Step 3: Write `lib/safezones.py` (table half)**
+- [x] **Step 3: Write `lib/safezones.py` (table half)**
 
 Create `scripts/lib/safezones.py`:
 
@@ -284,12 +284,12 @@ def default_zone() -> SafeZone:
     return SAFE_ZONES["generic"]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_safezones.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/safezones.py tests/lib/test_safezones.py
@@ -304,7 +304,7 @@ git commit -m "feat: SafeZone config-spec + SAFE_ZONES platform table + safe_zon
 - Modify: `scripts/lib/safezones.py` (append)
 - Test: `tests/lib/test_safezones.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_safezones.py`:
 
@@ -346,12 +346,12 @@ def test_evaluate_flags_the_worst_offender_episode():
     assert detail["advisory"] is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_safezones.py::test_subject_marks_samples_five_points_across_the_episode -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.safezones' has no attribute 'subject_marks'`
 
-- [ ] **Step 3: Append `subject_marks` + `evaluate` to `lib/safezones.py`**
+- [x] **Step 3: Append `subject_marks` + `evaluate` to `lib/safezones.py`**
 
 ```python
 _SAFE_SAMPLES = 5
@@ -389,12 +389,12 @@ def evaluate(marks_per_ep: list[list[tuple[float, float]]],
                             "left": zone.left, "right": zone.right}, "advisory": True}
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_safezones.py -v`
 Expected: PASS (all Task 1 + Task 2 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/safezones.py tests/lib/test_safezones.py
@@ -409,7 +409,7 @@ git commit -m "feat: safezones.subject_marks (k=5 projection) + evaluate (adviso
 - Modify: `scripts/lib/models.py` — `_ADVISORY_CHECKS` (632), `ReelEpisode` (683-690), `ReelManifest` (693-759)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -441,12 +441,12 @@ def test_reelreport_overall_excludes_advisory_safe_zones():
     assert rr.overall is True          # advisory False never blocks the reel
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py::test_reel_episode_path_meta_round_trip tests/lib/test_models.py::test_reelreport_overall_excludes_advisory_safe_zones -v`
 Expected: FAIL — `TypeError: ReelEpisode.__init__() got an unexpected keyword argument 'path'` and the advisory test fails (`overall is False`).
 
-- [ ] **Step 3: Edit `models.py`**
+- [x] **Step 3: Edit `models.py`**
 
 Change `_ADVISORY_CHECKS` (line 632):
 
@@ -508,12 +508,12 @@ In `ReelManifest.from_dict`, change the `ReelEpisode(...)` construction (lines 7
                    sfx=d.get("sfx", False), platform=d.get("platform", ""))
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -v`
 Expected: PASS (new tests + all existing model tests — the `ReelEpisode` positional construction in other tests still works because `path`/`meta` default to `""`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -528,7 +528,7 @@ git commit -m "feat: ReelEpisode.path/meta + ReelManifest.platform + safe_zones 
 - Modify: `scripts/check_reel.py` — imports (16-23), `run` signature + body (126-209)
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/lib/test_check_reel.py`, **replace** `test_beat_loudness_not_checked_safe_zones_not_implemented` (lines 61-76) with:
 
@@ -588,12 +588,12 @@ def test_safe_zones_flags_low_subject_but_stays_advisory(tmp_path, monkeypatch):
     assert not [f for f in rep.fail_reasons if f.check == "safe_zones"]   # no ReelFailure emitted
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py::test_safe_zones_flags_low_subject_but_stays_advisory -v`
 Expected: FAIL — `TypeError: run() got an unexpected keyword argument 'geometry'`
 
-- [ ] **Step 3: Edit `check_reel.py`**
+- [x] **Step 3: Edit `check_reel.py`**
 
 Change the imports block (lines 16-23):
 
@@ -641,12 +641,12 @@ After the `if music is not None:` block (after line 199) and before the `_UNCHEC
 
 (The `_UNCHECKED` loop at 201-202 now fills `safe_zones` too when geometry is absent.)
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -662,7 +662,7 @@ git commit -m "feat: check_reel computes safe_zones (advisory) from per-episode 
 - Modify: `scripts/edl_to_reel.py:47-48`
 - Test: `tests/lib/test_build_reel.py`, `tests/lib/test_edl_to_reel.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/lib/test_build_reel.py`, **widen** the `_wire` mock lambda (line 38) so it tolerates + records the new kwargs:
 
@@ -707,12 +707,12 @@ In `tests/lib/test_edl_to_reel.py`, after the existing route assertion (line 62)
     assert rm.episodes[0].meta.endswith("ep0/path.meta.json")
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py::test_build_reel_builds_geometry_and_platform_when_sidecars_present -v`
 Expected: FAIL — `seen["geometry"]` is `None` / `KeyError` (build_reel doesn't build or pass geometry yet).
 
-- [ ] **Step 3: Edit `build_reel.py`**
+- [x] **Step 3: Edit `build_reel.py`**
 
 In `build_reel`, after `audio: str | None = None` (line 37) and before `need_assemble = True` (line 38), add:
 
@@ -728,7 +728,7 @@ Change the `check_reel.run` call (line 44):
                                 music=music, audio=audio, geometry=geometry, platform=rm.platform)
 ```
 
-- [ ] **Step 4: Edit `edl_to_reel.py`**
+- [x] **Step 4: Edit `edl_to_reel.py`**
 
 Change the `ReelEpisode` construction (lines 47-48):
 
@@ -739,12 +739,12 @@ Change the `ReelEpisode` construction (lines 47-48):
                                     meta=str(Path(epdir) / "path.meta.json")))
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py tests/lib/test_edl_to_reel.py -v`
 Expected: PASS (new + existing — the `_wire_music`/`_wire` fixtures already tolerate the extra kwargs).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/build_reel.py scripts/edl_to_reel.py tests/lib/test_build_reel.py tests/lib/test_edl_to_reel.py
@@ -759,7 +759,7 @@ git commit -m "feat: build_reel threads per-episode geometry + platform to check
 - Modify: `scripts/lib/titles.py:115-119`
 - Test: `tests/lib/test_titles.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_titles.py`:
 
@@ -773,12 +773,12 @@ def test_titles_margins_are_sourced_from_the_safe_zone_table():
     assert titles._Y_EXPR["bottom"] == f"h-th-h*{safezones.default_zone().bottom}"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py::test_titles_margins_are_sourced_from_the_safe_zone_table -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.titles' has no attribute '_Z'` (the margins are still the hardcoded literals).
 
-- [ ] **Step 3: Edit `titles.py`**
+- [x] **Step 3: Edit `titles.py`**
 
 Replace the `_Y_EXPR` block (lines 115-119) with a table-derived one:
 
@@ -794,12 +794,12 @@ _Y_EXPR: dict[str, str] = {          # safe-margin presets from the shared SafeZ
 
 Add the import near the other imports (line 12 area) — the `from scripts.lib import safezones` line may live either at the top with the other imports or immediately above `_Z`; keep it above `_Z`. Ensure the top-of-file imports stay grouped (move `from scripts.lib import safezones` up next to `from scripts.lib.fonts import resolve_font` if the linter prefers).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py tests/integration/test_titles.py -v`
 Expected: PASS — the new pin passes, and the existing `test_build_filterchain_positions_and_styles` still finds `"y=h*0.08"` / `"y=h-th-h*0.12"` (generic top/bottom are `0.08`/`0.12`, so the rendered expressions are unchanged).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/titles.py tests/lib/test_titles.py
@@ -813,7 +813,7 @@ git commit -m "refactor: titles _Y_EXPR margins from safezones.default_zone (one
 **Files:**
 - Create: `tests/integration/test_safezones.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `tests/integration/test_safezones.py`:
 
@@ -873,12 +873,12 @@ def test_safe_zones_flags_low_subject_without_blocking_delivery(tmp_path):
     assert rep.overall is True                                      # advisory → deliver's gate still opens
 ```
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_safezones.py -v`
 Expected: PASS (assembles a real master, computes safe_zones from the hand-written sidecars).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_safezones.py
@@ -892,7 +892,7 @@ git commit -m "test: real-ffmpeg proof — safe_zones flags a low subject, advis
 **Files:**
 - Modify: `docs/pipeline-map.md`, `docs/build-status.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `docs/specs/2026-07-10-reel-back-half-design.md`, `docs/specs/2026-07-11-music-spine-design.md`, `docs/specs/2026-07-13-titles-design.md`, `CLAUDE.md`
 
-- [ ] **Step 1: `docs/pipeline-map.md`**
+- [x] **Step 1: `docs/pipeline-map.md`**
 
 - Row 5.13 (line 29): status `◐ → ✅`; note becomes: `check_reel mechanical ✅; loudness (hard) + beat (advisory) ✅; safe_zones (advisory: route-geom subject vs platform SafeZone table) ✅ — §5.13 complete`.
 - Blockers row 5.13 (line 65): `◐ → ✅`, "Left to build" → `— (2026-07-16)`.
@@ -902,7 +902,7 @@ git commit -m "test: real-ffmpeg proof — safe_zones flags a low subject, advis
 - Roadmap "Editorial reel-final" bullet (line 128): mark `safe_zones` done; leave structural/editorial review as the remaining editorial follow-on.
 - Bump `_Last updated_` (line 9) to `2026-07-16`.
 
-- [ ] **Step 2: `docs/build-status.md`**
+- [x] **Step 2: `docs/build-status.md`**
 
 Add a new DONE entry at the top of the changelog list:
 
@@ -931,18 +931,18 @@ Add a new DONE entry at the top of the changelog list:
 
 (Fill `N`/`M` from the Step 4 suite run.) Update any Next-action pointer that still names `safe_zones` as pending.
 
-- [ ] **Step 3: master spec `docs/specs/2026-07-05-montage-skillset-design.md`**
+- [x] **Step 3: master spec `docs/specs/2026-07-05-montage-skillset-design.md`**
 
 - §5.13/§584 (line ~584): the "**safe-zones** remains deferred, reporting `not-implemented`" clause → "**safe-zones** (advisory) — the tracked subject, projected into canvas coords, tested against a platform `SafeZone` table; reports an advisory pass/False, or `not-checked` when a reel carries no per-episode geometry (built 2026-07-16)."
 - §5.13 checks line (line ~542): leave "subject in safe-zone" but note it is the advisory, route-geometry check; "layout transitions not jarring" / "pad bars clean" stay editorial follow-ons.
 
-- [ ] **Step 4: flip the "deferred" notes in the three specs**
+- [x] **Step 4: flip the "deferred" notes in the three specs**
 
 - `docs/specs/2026-07-10-reel-back-half-design.md` (lines ~152, ~252): the `safe_zones` `not-implemented`/"needs per-episode route" rows → note it is built (2026-07-16) as an advisory route-geometry check.
 - `docs/specs/2026-07-11-music-spine-design.md` (lines ~26, ~344): "`safe_zones` stays deferred / honest `passed=None`" → built 2026-07-16 (advisory).
 - `docs/specs/2026-07-13-titles-design.md` (lines ~7, ~161, ~171): safe-zones is no longer deferred — titles now resolve their margins from the shared `SafeZone` table (`safezones.default_zone()`); the full pixel-level gate is still a non-goal (this is subject-route geometry, not pixel CV).
 
-- [ ] **Step 5: `CLAUDE.md` registry**
+- [x] **Step 5: `CLAUDE.md` registry**
 
 Add two rows to the Quick Reference table (after the Transition-SFX rows):
 
@@ -953,19 +953,19 @@ Add two rows to the Quick Reference table (after the Transition-SFX rows):
 
 Update the Music-spine registry row's tail if it still claims safe_zones deferred (it names the §5.12 SFX close; leave unless it mentions safe_zones).
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: all green (unit + integration where ffmpeg present), `EXIT: 0`. Record the pass/skip counts and backfill `N`/`M` in the build-status entry (Step 2).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add docs/ CLAUDE.md
 git commit -m "docs: sync safe-zones (§5.13) — 5.13 ✅, tally 15✅·0◐·1❌, specs+registry"
 ```
 
-- [ ] **Step 8: Final whole-slice review**
+- [x] **Step 8: Final whole-slice review**
 
 Dispatch a final reviewer over the whole branch diff (`git diff main...HEAD`) against the design. Verify, on real ffmpeg where relevant:
 - the moved `marks_at_times` is byte-equivalent behaviour (storyboard golden unchanged);

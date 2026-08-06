@@ -782,7 +782,7 @@ git add docs/pipeline-map.md docs/build-status.md docs/specs/2026-07-05-montage-
 git commit -m "docs: sync pipeline-map/build-status/spec/registry for assemble-draft (5.9)"
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a final code-quality reviewer over the whole branch diff (`git diff main...HEAD`) against the spec `docs/specs/2026-07-13-assemble-draft-design.md`. Confirm: the drawtext landmines (explicit `fontfile=`, `textfile=` for free-text) are honoured; `assembly.concat` behaviour is identical (existing tests green); the draft Stage is optional (never `next`); the golden proves canvas-fit + music mux + silent variant. Then use superpowers:finishing-a-development-branch.
 

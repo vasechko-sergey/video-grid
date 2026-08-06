@@ -34,7 +34,7 @@ The `deps`/probe constants and check `label`/`remedy` strings are the interface 
 - Create: `scripts/lib/preflight.py`
 - Test: `tests/lib/test_preflight.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_preflight.py
@@ -76,12 +76,12 @@ def test_report_ok_when_only_advisory_fails():
     assert Report(results=results).ok is True             # advisory never blocks
 ```
 
-- [ ] **Step 2: Run it — expect failure**
+- [x] **Step 2: Run it — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -q`
 Expected: FAIL (`ModuleNotFoundError: scripts.lib.preflight`).
 
-- [ ] **Step 3: Write `scripts/lib/preflight.py`**
+- [x] **Step 3: Write `scripts/lib/preflight.py`**
 
 ```python
 """Runtime-preflight registry (design docs/specs/2026-08-01-verify-runtime-design.md).
@@ -150,16 +150,16 @@ class Report:
         return tuple(r for r in self.results if not r.required and not r.ok)
 ```
 
-- [ ] **Step 4: Run it — expect pass**
+- [x] **Step 4: Run it — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -q`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Mutation check — `ok` is required-only**
+- [x] **Step 5: Mutation check — `ok` is required-only**
 
 Temporarily change `ok` to `all(r.ok for r in self.results)` (drop the `if r.required`). Run `test_report_ok_when_only_advisory_fails` — it must FAIL (advisory now blocks). Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/preflight.py tests/lib/test_preflight.py
@@ -174,7 +174,7 @@ git commit -m "feat: preflight registry + Report partition (verify-runtime)"
 - Modify: `scripts/lib/preflight.py`
 - Test: `tests/lib/test_preflight.py`
 
-- [ ] **Step 1: Add the failing tests**
+- [x] **Step 1: Add the failing tests**
 
 ```python
 def test_to_dict_shape():
@@ -218,12 +218,12 @@ def test_to_text_lists_failures_and_advisories_with_remedies():
     assert "[warn] demucs" in text and "demucs: bash setup.sh --with-demucs" in text
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -k "to_dict or to_text" -q`
 Expected: FAIL (`AttributeError: 'Report' object has no attribute 'to_dict'`).
 
-- [ ] **Step 3: Implement `to_dict` + `to_text` on `Report`**
+- [x] **Step 3: Implement `to_dict` + `to_text` on `Report`**
 
 Add these methods to the `Report` dataclass:
 
@@ -260,12 +260,12 @@ Add these methods to the `Report` dataclass:
         return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/preflight.py tests/lib/test_preflight.py
@@ -280,7 +280,7 @@ git commit -m "feat: Report.to_dict + to_text (verify-runtime)"
 - Modify: `scripts/lib/preflight.py`
 - Test: `tests/lib/test_preflight.py`
 
-- [ ] **Step 1: Add the failing tests**
+- [x] **Step 1: Add the failing tests**
 
 ```python
 def test_evaluate_all_ok_is_ready():
@@ -311,12 +311,12 @@ def test_evaluate_raises_on_extra_key():
         preflight.evaluate(raw)
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -k evaluate -q`
 Expected: FAIL (`AttributeError: module ... has no attribute 'evaluate'`).
 
-- [ ] **Step 3: Implement `evaluate`**
+- [x] **Step 3: Implement `evaluate`**
 
 Append to `scripts/lib/preflight.py`:
 
@@ -339,16 +339,16 @@ def evaluate(raw: dict[str, tuple[bool, str]]) -> Report:
     return Report(results=results)
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_preflight.py -q`
 Expected: PASS (all preflight tests).
 
-- [ ] **Step 5: Mutation check — the key guard**
+- [x] **Step 5: Mutation check — the key guard**
 
 Temporarily change `if want != got:` to `if False:`. Run `test_evaluate_raises_on_extra_key` — it must FAIL (now `raw["bogus"]` is silently ignored / a KeyError elsewhere, not the ValueError). Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/preflight.py tests/lib/test_preflight.py
@@ -365,7 +365,7 @@ git commit -m "feat: preflight.evaluate joins probes to the registry (verify-run
 
 Design §3 / §5: the driver must import **light** (only stdlib + `ffbin`/`fonts`/`preflight`/`models`, all confirmed numpy-free), so a broken heavy dep is *reported* by `_probe_deps` rather than crashing the checker on import. `MODELS[0] == "yolo11n-seg.pt"` and importing `scripts.lib.models` pulls no numpy/cv2 (verified).
 
-- [ ] **Step 1: Write the failing probe tests**
+- [x] **Step 1: Write the failing probe tests**
 
 ```python
 # tests/lib/test_verify_runtime.py
@@ -404,12 +404,12 @@ def test_probes_keys_match_registry():
     assert set(verify_runtime._PROBES) == {c.key for c in CHECKS}
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_verify_runtime.py -q`
 Expected: FAIL (`ModuleNotFoundError: scripts.verify_runtime`).
 
-- [ ] **Step 3: Write the probes + `_PROBES`**
+- [x] **Step 3: Write the probes + `_PROBES`**
 
 ```python
 """verify-runtime driver (design docs/specs/2026-08-01-verify-runtime-design.md).
@@ -516,12 +516,12 @@ _PROBES = {
 }
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_verify_runtime.py -q`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/verify_runtime.py tests/lib/test_verify_runtime.py
@@ -536,7 +536,7 @@ git commit -m "feat: verify_runtime probes (light imports) (verify-runtime)"
 - Modify: `scripts/verify_runtime.py`
 - Test: `tests/lib/test_verify_runtime.py`
 
-- [ ] **Step 1: Add the failing tests**
+- [x] **Step 1: Add the failing tests**
 
 ```python
 def _stub_all(monkeypatch, **overrides):
@@ -592,12 +592,12 @@ def test_cli_json(monkeypatch, capsys):
     assert payload["ok"] is True and payload["results"][0]["key"] == "deps"
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_verify_runtime.py -k "run or cli" -q`
 Expected: FAIL (`AttributeError: ... has no attribute 'run'`).
 
-- [ ] **Step 3: Implement `run` + `main`**
+- [x] **Step 3: Implement `run` + `main`**
 
 Append to `scripts/verify_runtime.py`:
 
@@ -624,16 +624,16 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_verify_runtime.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Mutation check — the exit-code gate**
+- [x] **Step 5: Mutation check — the exit-code gate**
 
 Temporarily change `SystemExit(0 if report.ok else 1)` to `SystemExit(0)`. Run `test_cli_exit_1_on_required_miss` — it must FAIL. Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/verify_runtime.py tests/lib/test_verify_runtime.py
@@ -647,7 +647,7 @@ git commit -m "feat: verify_runtime run + CLI, exit 0/1 (verify-runtime)"
 **Files:**
 - Create: `tests/integration/test_verify_runtime.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 """On a completed `bash setup.sh` install, the baseline contract holds (design §8).
@@ -664,12 +664,12 @@ def test_real_runtime_is_ready():
     assert report.ok, "\n" + report.to_text()      # show the failing checks if red
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_verify_runtime.py -q -m integration`
 Expected: PASS on this machine (setup.sh has run; `config/ffmpeg.env` recorded, deps present, weights shipped). If it fails, the report text names the gap — that is a real finding, not a test bug.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_verify_runtime.py
@@ -685,7 +685,7 @@ git commit -m "test: real-runtime verify-runtime integration proof"
 - Modify: `skills/using-montage/SKILL.md`
 - Create: `tests/test_verify_runtime_skill.py`
 
-- [ ] **Step 1: Write the wiring lint (failing)**
+- [x] **Step 1: Write the wiring lint (failing)**
 
 ```python
 # tests/test_verify_runtime_skill.py
@@ -707,12 +707,12 @@ def test_using_montage_step0_gates_on_verify_runtime():
     assert "scripts.verify_runtime" in UM.read_text()
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/test_verify_runtime_skill.py -q`
 Expected: FAIL (skill file missing; `scripts.verify_runtime` absent from using-montage).
 
-- [ ] **Step 3: Write `skills/verify-runtime/SKILL.md`**
+- [x] **Step 3: Write `skills/verify-runtime/SKILL.md`**
 
 ```markdown
 ---
@@ -764,7 +764,7 @@ Announce: **"Using verify-runtime to check the environment."**
   relevance.
 ```
 
-- [ ] **Step 4: Rewrite `using-montage` step 0**
+- [x] **Step 4: Rewrite `using-montage` step 0**
 
 In `skills/using-montage/SKILL.md`, replace the current step 0 block:
 
@@ -791,17 +791,17 @@ with:
    The dedicated `verify-runtime` skill runs the same check on demand.
 ```
 
-- [ ] **Step 5: Run the lint — expect pass**
+- [x] **Step 5: Run the lint — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/test_verify_runtime_skill.py -q`
 Expected: PASS.
 
-- [ ] **Step 6: Confirm the skill-convention suite still passes**
+- [x] **Step 6: Confirm the skill-convention suite still passes**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -q`
 Expected: PASS (the new skill's frontmatter conforms). If it enforces a field the new SKILL lacks, add that field to match the other skills, then re-run.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/verify-runtime/SKILL.md skills/using-montage/SKILL.md tests/test_verify_runtime_skill.py
@@ -815,7 +815,7 @@ git commit -m "feat: verify-runtime skill + using-montage step-0 gate"
 **Files:**
 - Modify: `CLAUDE.md`, `docs/build-status.md`, `docs/pipeline-map.md`, `README.md`
 
-- [ ] **Step 1: `CLAUDE.md` — two Quick Reference rows**
+- [x] **Step 1: `CLAUDE.md` — two Quick Reference rows**
 
 Add, near the other util rows (e.g. the landmine-lint / ffmpeg-baseline rows):
 
@@ -824,13 +824,13 @@ Add, near the other util rows (e.g. the landmine-lint / ffmpeg-baseline rows):
 | Verify-runtime plan | [2026-08-01-verify-runtime.md](docs/plans/2026-08-01-verify-runtime.md) | Tasks 0–7: `preflight` registry/Report/evaluate, `verify_runtime` probes+run+CLI (exit 0/1), real-machine proof, `verify-runtime` SKILL + using-montage step-0 gate, docs sync. |
 ```
 
-- [ ] **Step 2: `docs/build-status.md`** — record verify-runtime as built (a runtime utility, not a conveyor stage). Mirror the phrasing of the ffmpeg-baseline / landmine-lint util entries.
+- [x] **Step 2: `docs/build-status.md`** — record verify-runtime as built (a runtime utility, not a conveyor stage). Mirror the phrasing of the ffmpeg-baseline / landmine-lint util entries.
 
-- [ ] **Step 3: `docs/pipeline-map.md`** — add a one-line note that `verify-runtime` is a runtime util that gates `using-montage` step 0 (explicitly **not** in `V1_STAGES`, produces no run artifact).
+- [x] **Step 3: `docs/pipeline-map.md`** — add a one-line note that `verify-runtime` is a runtime util that gates `using-montage` step 0 (explicitly **not** in `V1_STAGES`, produces no run artifact).
 
-- [ ] **Step 4: `README.md`** — in the Use section, after the `bash setup.sh` step, add a line: verify the install any time with `/video-grid:verify-runtime` (or `"$VG" scripts.verify_runtime`).
+- [x] **Step 4: `README.md`** — in the Use section, after the `bash setup.sh` step, add a line: verify the install any time with `/video-grid:verify-runtime` (or `"$VG" scripts.verify_runtime`).
 
-- [ ] **Step 5: Full suite**
+- [x] **Step 5: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS (prior green count + the new preflight/driver/skill tests; integration deselected by default).
@@ -838,14 +838,14 @@ Expected: PASS (prior green count + the new preflight/driver/skill tests; integr
 Run: `.venv/bin/python -m pytest -q -m integration -k verify_runtime`
 Expected: the real-runtime proof PASSES.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CLAUDE.md docs/build-status.md docs/pipeline-map.md README.md
 git commit -m "docs: verify-runtime — registry, build-status, pipeline-map, README"
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a fresh reviewer over `main..HEAD` for the whole slice (design compliance + code quality). Address any Critical/Important in separate follow-up commits (never amend). Confirm: read-only (no installer call), light imports (no numpy pulled at `verify_runtime` import), `_PROBES` keys == registry keys, exit 0/1 correct, honest bootstrap boundary documented.
 

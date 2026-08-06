@@ -34,7 +34,7 @@ golden fixtures. `pythonpath = .`; scripts run as modules; `.venv/bin/python`.
 - Modify: `scripts/lib/pathsmooth.py`
 - Test: `tests/lib/test_pathsmooth.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_pathsmooth.py` (top-of-file `import pytest` if absent):
 
@@ -69,12 +69,12 @@ def test_window_frames_rejects_degenerate_input(seconds, fps):
         ps.window_frames(seconds, fps)
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pathsmooth.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.pathsmooth' has no attribute 'window_frames'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/pathsmooth.py`, after the module docstring / imports and before
 `_rate_limit`, add the constants and `window_frames`:
@@ -118,18 +118,18 @@ def smooth(raw: list[float], max_step: float, window: int | None = DEFAULT_WINDO
            polyorder: int = 2) -> list[float]:
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pathsmooth.py -q`
 Expected: PASS (existing smooth tests still pass — the default is unchanged in value).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Temporarily change `n -= 1` to `n += 1`; run
 `test_window_frames_preserves_the_historical_30fps_default` — it must FAIL (9 ≠ 7).
 Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/pathsmooth.py tests/lib/test_pathsmooth.py
@@ -144,7 +144,7 @@ git commit -m "feat: pathsmooth.window_frames — savgol window in seconds, 30fp
 - Modify: `scripts/lib/models.py` (`ReframeSpec`, ~line 616 and `__post_init__`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_models.py`:
 
@@ -168,12 +168,12 @@ def test_reframespec_rejects_bad_smooth_window_s(bad):
 (If `pytest` / `ReframeSpec` / `Delivery` are already imported at the top of the
 file, drop the local imports and reuse them.)
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q -k smooth_window_s`
 Expected: FAIL — `TypeError: ... unexpected keyword argument 'smooth_window_s'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/models.py`, `class ReframeSpec`, add the field immediately after
 `max_speed: float = 750.0`:
@@ -201,12 +201,12 @@ In `__post_init__`, after the `max_speed` validation block, add:
                 "a couple of seconds stops following the subject rather than smoothing it")
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -221,7 +221,7 @@ git commit -m "feat: ReframeSpec.smooth_window_s — savgol span in seconds, (0,
 - Modify: `scripts/lib/orchestration.py` (`DEFAULT_PARAMS` ~124, `adjust_reframe_params` ~136)
 - Test: `tests/lib/test_orchestration.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_orchestration.py` (module imports `orchestration as orch`):
 
@@ -253,12 +253,12 @@ def test_adjust_fills_a_partial_params_dict():
     assert set(p) == set(orch.DEFAULT_PARAMS)
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q -k "smoothing_window or widens or narrows or partial"`
 Expected: FAIL — `KeyError: 'smooth_window_s'` / `AttributeError: ... SMOOTH_WINDOW_S_MAX`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/orchestration.py`, replace the `DEFAULT_PARAMS` line:
 
@@ -297,18 +297,18 @@ def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str]) -> 
     return p
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: PASS (existing `max_speed` ladder tests still pass — those factors are unchanged).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Change `min(SMOOTH_WINDOW_S_MAX, ...)` to `max(...)`; run
 `test_smoothing_window_ladder_is_bounded` — it must FAIL (unbounded growth).
 Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/orchestration.py tests/lib/test_orchestration.py
@@ -323,7 +323,7 @@ git commit -m "feat: retry ladder tunes smooth_window_s (jitter widens, line-lag
 - Modify: `scripts/lib/checks.py` (`jitter` ~line 34)
 - Test: `tests/lib/test_checks.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_checks.py` (module imports `checks as ck`, `import pytest`):
 
@@ -388,12 +388,12 @@ def test_jitter_reports_reversal_count():
     assert res["reversals"] == 2
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q -k jitter`
 Expected: FAIL — `TypeError: jitter() got an unexpected keyword argument 'route'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/checks.py`, add `_moving_average` before `jitter`, then replace
 `jitter` entirely:
@@ -469,12 +469,12 @@ def jitter(path: list[int], direction: str, max_reversal: float,
             "reversals": reversals}
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_checks.py -q`
 Expected: PASS (existing vacuum-jitter tests still pass — `route=None` is unchanged).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Change `step -= min(0.0, subj)` to `step -= subj`; run
 `test_jitter_fails_the_excess_beyond_the_subject_s_backtrack` — it must FAIL
@@ -490,7 +490,7 @@ guard's effective test is
 lagging a faster forward subject — the case only the `min(0.0, ...)` clamp
 protects.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/checks.py tests/lib/test_checks.py
@@ -505,7 +505,7 @@ git commit -m "feat: jitter subtracts the subject's own backtrack, box-filtered 
 - Modify: `scripts/lib/motion.py`
 - Test: `tests/lib/test_motion.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_motion.py` (module imports `motion as m`):
 
@@ -526,12 +526,12 @@ def test_travel_direction_defaults_to_right_without_travel():
     assert travel_direction(flat) == "right"
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_motion.py -q -k travel_direction`
 Expected: FAIL — `ImportError: cannot import name 'travel_direction'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/motion.py`:
 
@@ -555,12 +555,12 @@ def travel_direction(route: list[dict[str, float]]) -> str:
     return "right" if route[-1]["x"] - route[0]["x"] >= 0 else "left"
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_motion.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/motion.py tests/lib/test_motion.py
@@ -575,7 +575,7 @@ git commit -m "feat: motion.travel_direction — net-dx sign, one spelling for t
 - Modify: `scripts/lib/orchestration.py` (import block; `detect_contradictions` lead gate ~99)
 - Test: `tests/lib/test_orchestration.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_orchestration.py`. If a `_route_right()` helper is not
 already present in the file, add the small helper too:
@@ -617,13 +617,13 @@ def test_lead_over_a_plain_lateral_shot_is_unchanged():
 (If the file already defines `_route_right()`, use it in the third test instead of
 the inline `right`.)
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q -k "lead_is_allowed or lead_is_still"`
 Expected: FAIL — the diagonal shot currently produces a `composition-motion-mismatch`
 finding (`classify` says static → the old gate refuses).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/orchestration.py`, add the import above `from scripts.lib.motion import classify`:
 
@@ -655,19 +655,19 @@ Replace the `if composition == "lead":` gate:
                                        f"or 'break', or fix the window/segment"})
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_orchestration.py -q`
 Expected: PASS (existing lead-mismatch tests over genuinely non-travelling routes
 still fail-and-report, unchanged).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Change `and not travels` to `and False` (i.e. never refuse); run
 `test_lead_is_still_refused_when_the_subject_does_not_travel` — it must FAIL.
 Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/orchestration.py tests/lib/test_orchestration.py
@@ -682,7 +682,7 @@ git commit -m "feat: lead gate allows an authored lead when the subject net-trav
 - Modify: `scripts/reframe.py` (import ~line 8; `compute_path` 13–33)
 - Test: `tests/lib/test_reframe.py` (new file)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_reframe.py`:
 
@@ -748,14 +748,14 @@ def test_smooth_window_reaches_the_smoother():
     assert tight != wide
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reframe.py -q`
 Expected: FAIL — `test_authored_lead_is_honoured...` (currently renders centred) and
 `test_smooth_window_reaches_the_smoother` (`compute_path` has no `smooth_window`
 kwarg → `TypeError`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/reframe.py`, change the motion import (line ~8):
 
@@ -804,20 +804,20 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
     return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reframe.py tests/integration/test_reframe.py -q`
 Expected: PASS (the integration `compute_path` tests still pass — `break`/`center`
 and plain `lateral` are unchanged; the default `smooth_window` equals the old
 literal).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Change `kind, direction = "lateral", classify_direction(route)` to `pass`; run
 `test_authored_lead_is_honoured_when_the_shot_classifies_static` — it must FAIL
 (`lead == centred`). Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/reframe.py tests/lib/test_reframe.py
@@ -832,7 +832,7 @@ git commit -m "feat: compute_path honours an authored lead in the ambiguous zone
 - Modify: `scripts/check_episode.py` (import ~8; add `_route_window` ~66; direction ~149; jitter call ~189)
 - Test: `tests/integration/test_check_episode.py` (unit part of `_route_window` is pure; add there or a `tests/lib/test_check_episode.py` if the repo has one)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Find where `check_episode` is tested (`git ls-files | grep check_episode` — likely
 `tests/integration/test_check_episode.py`). Add a pure unit test for the new
@@ -858,12 +858,12 @@ def test_route_window_is_one_for_degenerate_routes():
                              {"t": 0.0, "x": 2.0, "y": 0.0}]) == 1
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest <that file> -q -k route_window`
 Expected: FAIL — `AttributeError: module 'scripts.check_episode' has no attribute '_route_window'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/check_episode.py`, extend the motion import:
 
@@ -914,12 +914,12 @@ Change the jitter call (currently one line):
                            route=route or None, route_window=_route_window(route))
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_check_episode.py -q`
 Expected: PASS (the `meta.pan` branch still passes `route=[]` → historical jitter).
 
-- [ ] **Step 5: Mutation check**
+- [x] **Step 5: Mutation check**
 
 Change `direction or travel_direction(route)` to `direction or "right"`; add/confirm
 a test that a **left-moving** diagonal route (classify → static) is graded on the
@@ -927,7 +927,7 @@ a test that a **left-moving** diagonal route (classify → static) is graded on 
 no such integration test exists yet, add a minimal one over the real `sample_clip`;
 otherwise rely on Task 9's end-to-end left-lead proof. Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/check_episode.py tests/integration/test_check_episode.py
@@ -943,7 +943,7 @@ git commit -m "feat: check_episode route-aware jitter + lead direction from net 
 - Modify: `scripts/process_episode.py` (ReframeSpec build ~308; pan comment ~346)
 - Test: `tests/integration/test_reframe.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The wiring cannot be caught on a 30fps clip (`window_frames(0.25, 30) == 7 ==` the
 old default) or a frozen route (a constant smooths to itself). Prove it directly:
@@ -977,13 +977,13 @@ def test_reframe_passes_the_fps_resolved_window_to_compute_path(tmp_path, monkey
     assert captured["smooth_window"] == pathsmooth.window_frames(0.25, 60.0) == 15
 ```
 
-- [ ] **Step 2: Run — verify red**
+- [x] **Step 2: Run — verify red**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py -q -k passes_the_fps_resolved`
 Expected: FAIL — `reframe()` still calls `compute_path` without a `smooth_window`
 kwarg, so `captured["smooth_window"]` is `None`, not 15.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/reframe.py`, `reframe()`, update the `compute_path` call:
 
@@ -1015,12 +1015,12 @@ Update the `pan-not-retryable` comment block to name both knobs:
             # describes nothing.
 ```
 
-- [ ] **Step 4: Run — verify green**
+- [x] **Step 4: Run — verify green**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py tests/integration/test_process_episode.py -q`
 Expected: PASS — including the frozen-route resolves-window test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reframe.py scripts/process_episode.py tests/integration/test_reframe.py
@@ -1034,20 +1034,20 @@ git commit -m "feat: reframe resolves smooth_window from seconds; process_episod
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-28-path-quality-design.md` (Status line).
 
-- [ ] **Step 1: Full suite**
+- [x] **Step 1: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS. Record the counts (before this slice the suite was ~1897 passed / 2
 skipped; expect the new unit + integration tests on top).
 
-- [ ] **Step 2: Golden-immunity confirmation**
+- [x] **Step 2: Golden-immunity confirmation**
 
 No golden may move (design §7). Check: `git status --porcelain tests/` shows no
 modified fixture / `*.json`. If any golden changed, STOP — investigate the fps of
 that fixture; the byte-identical claim is violated and must be understood before
 landing.
 
-- [ ] **Step 3: Mutation battery (teeth confirmation)**
+- [x] **Step 3: Mutation battery (teeth confirmation)**
 
 For each, apply the mutation, run the named test, confirm RED, then restore:
 1. `pathsmooth.window_frames`: `n -= 1` → `n += 1` ⇒ `test_window_frames_preserves_the_historical_30fps_default`.
@@ -1059,7 +1059,7 @@ For each, apply the mutation, run the named test, confirm RED, then restore:
 7. `check_episode`: `direction or travel_direction(route)` → `direction or "right"` ⇒ the left-lead grading test (Task 7 Step 5); if it was deferred there, add it now over `sample_clip` with a left-moving diagonal route.
 8. `reframe` (Task 8): remove the `smooth_window=window_frames(...)` kwarg ⇒ `test_reframe_passes_the_fps_resolved_window_to_compute_path`.
 
-- [ ] **Step 4: Docs sync**
+- [x] **Step 4: Docs sync**
 
 - `docs/build-status.md` — DONE entry for the path-quality cluster (smooth_window_s +
   route-aware jitter + lead-from-travel), final suite count, "no golden moved",
@@ -1069,7 +1069,7 @@ For each, apply the mutation, run the named test, confirm RED, then restore:
 - `CLAUDE.md` — two Quick Reference rows for the design + plan, house-style hooks.
 - design Status line → "landed 2026-07-28 (feat/path-quality)".
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/ CLAUDE.md

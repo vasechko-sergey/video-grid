@@ -22,7 +22,7 @@
 
 One spelling of "model-space seg mask → resize to frame dims → crop to bbox" (the resize-landmine crop_and_mask carries), plus a proxy→crop upsampler. `crop_and_mask`'s public behaviour is unchanged — its existing tests must stay green.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_appearance.py` (module already imports `numpy as np`, `pytest`, `appearance`):
 
@@ -65,12 +65,12 @@ def test_upsample_mask_matches_target_shape():
     assert up.max() > 0 and up.min() == 0                # foreground survived, corners stay bg
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_appearance.py -q`
 Expected: FAIL — `AttributeError: module ... has no attribute 'seg_mask'` / `'upsample_mask'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/appearance.py`, add a shared bbox helper + `seg_mask`, refactor `crop_and_mask` to reuse both, and add `upsample_mask`. Replace the existing `crop_and_mask` (lines 71-88) with:
 
@@ -124,12 +124,12 @@ def upsample_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     return np.asarray(Image.fromarray(mask.astype("uint8")).resize((w, h)))
 ```
 
-- [ ] **Step 4: Run the whole appearance suite**
+- [x] **Step 4: Run the whole appearance suite**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_appearance.py tests/lib/test_intake.py -q`
 Expected: PASS — new tests green AND the existing `test_crop_and_mask_*` / `test_crop_and_mask_rgb_and_aligned_mask` unchanged (behaviour preserved by the refactor).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/appearance.py tests/lib/test_appearance.py
@@ -146,7 +146,7 @@ git commit -m "feat(appearance): seg_mask extractor + upsample_mask; crop_and_ma
 
 `best[tid]` grows from `(conf, t, bbox)` to `(conf, t, bbox, seg_mask)`. Mask captured only on confidence improvement (≈ once per track), never per frame; None for a mocked result with no masks.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_intake.py` (it already imports `numpy as np`, `intake`, `appearance`; it defines a `_FakeBox` — if that fake lacks `conf`/`id`, define the local fakes below rather than reuse it):
 
@@ -176,12 +176,12 @@ def test_people_timeline_captures_the_seg_mask_into_best(monkeypatch):
     assert mask is not None and mask.shape == (20, 20)
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py::test_people_timeline_captures_the_seg_mask_into_best -q`
 Expected: FAIL — `ValueError: not enough values to unpack (expected 4, got 3)`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/intake.py` line 22, add `seg_mask` to the import:
 
@@ -220,14 +220,14 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
     return timeline, best
 ```
 
-- [ ] **Step 4: Run it**
+- [x] **Step 4: Run it**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: PASS (new test + existing lib intake tests).
 
 Note: `_cast_from_original` still unpacks a 3-tuple at this point → the integration goldens fail until Task 2. That is expected mid-slice; the next task fixes it in the same working tree.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py tests/lib/test_intake.py
@@ -245,7 +245,7 @@ git commit -m "feat(intake): _people_timeline captures each track's proxy seg ma
 
 The crop still comes from the ORIGINAL frame; when a mask is present it is upsampled to the crop and passed to `build_descriptor`, else the maskless fallback (mocked YOLO). The real-footage descriptor changes shape → `CACHE_VERSION` 3→4 in the same commit.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_intake.py`:
 
@@ -284,12 +284,12 @@ def test_cache_version_is_four_for_the_masked_cast_descriptor():
     assert intake_cache.CACHE_VERSION == 4
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k cast_from_original tests/lib/test_intake_cache.py::test_cache_version_is_four_for_the_masked_cast_descriptor -q`
 Expected: FAIL — `_cast_from_original` unpacks a 3-tuple (`ValueError`) / `CACHE_VERSION == 3`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/intake.py` line 22, extend the import:
 
@@ -331,12 +331,12 @@ In `scripts/lib/intake_cache.py`, bump `CACHE_VERSION` (line 31) to `4` and exte
 CACHE_VERSION = 4
 ```
 
-- [ ] **Step 4: Run the intake suite (unit + integration)**
+- [x] **Step 4: Run the intake suite (unit + integration)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py tests/lib/test_intake_cache.py tests/integration/test_intake.py -q`
 Expected: PASS. The `test_intake.py` integration goldens are UNCHANGED — its fake YOLO (`_FakeRes.masks = None`) → `seg_mask` returns None → maskless fallback → identical descriptors and the same `FootageClip` goldens.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py scripts/lib/intake_cache.py tests/lib/test_intake.py tests/lib/test_intake_cache.py
@@ -352,7 +352,7 @@ git commit -m "feat(intake): cast descriptors masked again (proxy mask upsampled
 
 The equivalence proof (analogous to §4's shake exercise): for the SAME person on a background, intake's `_cast_from_original` descriptor and delivery's `crop_and_mask`+`build_descriptor` descriptor land within `CAST_MATCH`, while the pre-fix maskless intake descriptor is measurably FARTHER. The existing `_Res` fixture fills the whole bbox with one colour (no background inside the box), so this test builds its own person-on-background fixture.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/integration/test_cast_pin.py` (it already imports `numpy as np`, `pytest`, `intake`, `track`, `appearance`; reuse its module-level `_Masks`):
 
@@ -401,12 +401,12 @@ def test_intake_and_delivery_cast_descriptors_agree_after_masking(monkeypatch):
             > appearance.descriptor_dist(intake_desc, delivery))
 ```
 
-- [ ] **Step 2: Run it to verify it fails, then passes**
+- [x] **Step 2: Run it to verify it fails, then passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_cast_pin.py -q`
 Expected: PASS once Tasks 0-2 are in (the test exercises the shipped code, not new production code). If it fails, the fix is wrong — debug before proceeding, do not weaken the assertion.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_cast_pin.py
@@ -423,7 +423,7 @@ git commit -m "test(intake): real-pixel proof intake↔delivery cast descriptors
 - Modify: `docs/build-status.md` (changelog line)
 - (Design §5/§5a already amended — verify, do not rewrite.)
 
-- [ ] **Step 1: Correct the delivery mirror docstring**
+- [x] **Step 1: Correct the delivery mirror docstring**
 
 `scripts/track.py` `_track_crops` says it "Mirrors intake._people_timeline: one crop_and_mask per confidence improvement". Intake now uses `seg_mask` (mask only; the crop comes from the original later). Update that sentence for accuracy:
 
@@ -437,28 +437,28 @@ git commit -m "test(intake): real-pixel proof intake↔delivery cast descriptors
     test drives this.
 ```
 
-- [ ] **Step 2: Sync the registry + build-status**
+- [x] **Step 2: Sync the registry + build-status**
 
 In `CLAUDE.md`, the intake-analysis-proxy design row ends with the cast-crop note; append that the cast descriptor is masked via the proxy mask upsampled (design §5a), so intake/delivery stay symmetric. In `docs/build-status.md`, add a changelog line dated 2026-08-01: cast-descriptor mask symmetry restored (intake masks again via the proxy seg mask upsampled; `CACHE_VERSION` 3→4). Keep both edits to one line each — this is a registry, detail lives in the design.
 
-- [ ] **Step 3: Verify the design doc already carries §5a**
+- [x] **Step 3: Verify the design doc already carries §5a**
 
 Run: `grep -n "5a. Cast descriptor mask symmetry" docs/specs/2026-08-01-intake-analysis-proxy-design.md`
 Expected: one hit. If missing, the brainstorm amendment was lost — re-add per the design (it was written during brainstorming); otherwise do not edit.
 
-- [ ] **Step 4: Full suite**
+- [x] **Step 4: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all pass / prior skips only (the analysis-proxy baseline was 2066 passed / 2 skipped; this slice adds tests, moves no golden). If the run exceeds the tool timeout, split: `.venv/bin/python -m pytest -q -m "not integration"` then `.venv/bin/python -m pytest -q -m integration`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/track.py CLAUDE.md docs/build-status.md
 git commit -m "docs(intake): cast-mask symmetry — registry, build-status, track mirror docstring"
 ```
 
-- [ ] **Step 6: Final whole-slice review**
+- [x] **Step 6: Final whole-slice review**
 
 Dispatch a fresh reviewer subagent (superpowers:requesting-code-review) over `main..HEAD`: verify (1) intake builds a MASKED descriptor on real masks and the maskless fallback survives for mocked YOLO; (2) `crop_and_mask` behaviour is unchanged by the refactor; (3) `CACHE_VERSION` bumped and no test pins the literal `3`; (4) the integration proof genuinely exercises `_cast_from_original` (not a re-assertion of `build_descriptor`); (5) no new ffmpeg argv / landmine. Then superpowers:finishing-a-development-branch.
 

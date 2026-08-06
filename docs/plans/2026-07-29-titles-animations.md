@@ -39,7 +39,7 @@ mutation check (neutralize the line, confirm a *named* test flips red, restore).
 - Modify: `scripts/lib/titles.py` (constants after `STYLES`; six fields after `style`; refusals in `__post_init__`; `to_dict`; `_steps` at module end)
 - Test: `tests/lib/test_titles.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/lib/test_titles.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/lib/test_titles.py`:
 
 ```python
 def test_title_animation_defaults_and_roundtrip():
@@ -86,12 +86,12 @@ def test_steps_stair_splits_on_newlines_and_strips():
     assert _steps(t) == ["salt,", "sun", "& you"]
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -k "animation or steps or reveal_that_fits" -q`
 Expected: FAIL (`Title.__init__` has no `fade`/… ; `_steps` undefined).
 
-- [ ] **Step 3: Add the constants** — after `STYLES` (line 16):
+- [x] **Step 3: Add the constants** — after `STYLES` (line 16):
 
 ```python
 REVEALS: tuple[str, ...] = ("none", "word", "stair")
@@ -104,7 +104,7 @@ _MEASURE_AT = 100      # px font size the metrics are taken at, then scaled by h
 LINE_SPACING = 1.15    # multiples of the font size between staircase lines
 ```
 
-- [ ] **Step 4: Add the six fields** — after `style: str = "bold-box"` in the `Title` dataclass:
+- [x] **Step 4: Add the six fields** — after `style: str = "bold-box"` in the `Title` dataclass:
 
 ```python
     fade: float = 0.0         # seconds to ramp alpha in AND out; 0.0 = hard cut (historical
@@ -118,7 +118,7 @@ LINE_SPACING = 1.15    # multiples of the font size between staircase lines
     line_spacing: float = LINE_SPACING  # multiples of the font size between staircase lines
 ```
 
-- [ ] **Step 5: Add the refusals** — at the end of `__post_init__`, after the `style` check:
+- [x] **Step 5: Add the refusals** — at the end of `__post_init__`, after the `style` check:
 
 ```python
         if isinstance(self.fade, bool) or not isinstance(self.fade, (int, float)):
@@ -165,7 +165,7 @@ LINE_SPACING = 1.15    # multiples of the font size between staircase lines
                     "Shorten reveal_step, shorten fade, or lengthen dur")
 ```
 
-- [ ] **Step 6: Extend `to_dict`** — replace the `Title.to_dict` return with:
+- [x] **Step 6: Extend `to_dict`** — replace the `Title.to_dict` return with:
 
 ```python
     def to_dict(self) -> dict:
@@ -176,7 +176,7 @@ LINE_SPACING = 1.15    # multiples of the font size between staircase lines
                 "scale": self.scale, "line_spacing": self.line_spacing}
 ```
 
-- [ ] **Step 7: Add `_steps`** — at the very end of `scripts/lib/titles.py`:
+- [x] **Step 7: Add `_steps`** — at the very end of `scripts/lib/titles.py`:
 
 ```python
 def _steps(t: Title) -> list[str]:
@@ -189,12 +189,12 @@ def _steps(t: Title) -> list[str]:
     return t.text.split()
 ```
 
-- [ ] **Step 8: Run — expect pass**
+- [x] **Step 8: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -q`
 Expected: PASS (existing tests unaffected — defaults are historical; new tests green).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/lib/titles.py tests/lib/test_titles.py
@@ -209,7 +209,7 @@ git commit -m "feat: Title gains fade/reveal/colour/scale fields (validated, his
 - Modify: `scripts/lib/titles.py` (add `_measure`, `_layers` near `_steps`)
 - Test: `tests/lib/test_titles.py`
 
-- [ ] **Step 1: Write the failing tests** — append:
+- [x] **Step 1: Write the failing tests** — append:
 
 ```python
 def _stub_measure(font, text):
@@ -258,12 +258,12 @@ def test_layers_baseline_shift_uses_ink_box_top():
     assert layers[1][3] == "+0.000000*h"
 ```
 
-- [ ] **Step 2: Run — expect failure**
+- [x] **Step 2: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -k layers -q`
 Expected: FAIL (`_layers` undefined).
 
-- [ ] **Step 3: Add `_measure` and `_layers`** — before `_steps` at the end of the module:
+- [x] **Step 3: Add `_measure` and `_layers`** — before `_steps` at the end of the module:
 
 ```python
 def _measure(font_path: str, text: str) -> tuple[float, float]:
@@ -307,12 +307,12 @@ def _layers(t: Title, font: str, measure) -> list[tuple[str, float, str, str]]:
     return layers
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -k layers -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/titles.py tests/lib/test_titles.py
@@ -327,7 +327,7 @@ git commit -m "feat: _measure + _layers bake reveal words at their final x as fr
 - Modify: `scripts/lib/titles.py` (add `y_exprs`; delete `_Z`/`_Y_EXPR`; rewrite `build_filterchain`)
 - Test: `tests/lib/test_titles.py` (re-pin two assertions; add render tests)
 
-- [ ] **Step 1: Re-pin the two default-render assertions.**
+- [x] **Step 1: Re-pin the two default-render assertions.**
 
 In `test_build_filterchain_positions_and_styles`, replace line 111
 (`assert "x=(w-tw)/2" in vf and "fontsize=h/18" in vf`) with:
@@ -356,7 +356,7 @@ def test_y_exprs_platform_zone_pushes_the_bottom_title_up():
     assert titles.y_exprs("reel")["top"] == titles.y_exprs("")["top"]   # top zone equal
 ```
 
-- [ ] **Step 2: Write the new render tests** — append:
+- [x] **Step 2: Write the new render tests** — append:
 
 ```python
 def test_build_filterchain_fade_zero_emits_no_alpha(tmp_path):
@@ -396,13 +396,13 @@ def test_build_filterchain_scale_and_colour(tmp_path):
     assert "fontsize=h*0.111111" in vf and "fontcolor=0xffcc00" in vf
 ```
 
-- [ ] **Step 3: Run — expect failure**
+- [x] **Step 3: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -q`
 Expected: FAIL (`y_exprs` undefined; fade/platform/word behaviour absent; the two
 re-pinned assertions fail against the old code).
 
-- [ ] **Step 4: Replace `_Z`/`_Y_EXPR` with `y_exprs`.**
+- [x] **Step 4: Replace `_Z`/`_Y_EXPR` with `y_exprs`.**
 
 Delete these lines (currently after `_STYLE_FRAGMENTS`):
 
@@ -433,7 +433,7 @@ def y_exprs(platform: str = "") -> dict[str, str]:
             "bottom": f"h-th-h*{z.bottom}"}
 ```
 
-- [ ] **Step 5: Rewrite `build_filterchain`** — replace the whole function body with:
+- [x] **Step 5: Rewrite `build_filterchain`** — replace the whole function body with:
 
 ```python
 def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
@@ -484,13 +484,13 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
     return ",".join(parts)
 ```
 
-- [ ] **Step 6: Run — expect pass (whole file)**
+- [x] **Step 6: Run — expect pass (whole file)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_titles.py -q`
 Expected: PASS — including the untouched `test_build_filterchain_one_drawtext_per_title_with_windows`
 (default titles still write `title_0.txt`/`title_1.txt`) and the re-pinned assertions.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/titles.py tests/lib/test_titles.py
@@ -506,7 +506,7 @@ git commit -m "feat: build_filterchain renders reveals/fade and lays out against
 - Modify: `scripts/build_reel.py` (one line — pass `platform=rm.platform` to `deliver.deliver`)
 - Test: `tests/lib/test_deliver.py`, `tests/lib/test_build_reel.py`
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 Append to `tests/lib/test_deliver.py`:
 
@@ -560,7 +560,7 @@ def test_build_reel_forwards_platform_to_deliver(monkeypatch, tmp_path):
     assert seen["deliver_platform"] == "reel"       # rm.platform → deliver(platform=)
 ```
 
-- [ ] **Step 2: Update the `test_build_reel` fixture so the new kwarg is tolerated and captured.**
+- [x] **Step 2: Update the `test_build_reel` fixture so the new kwarg is tolerated and captured.**
 
 In `_wire`, add `"deliver_platform": ""` to the `seen` dict, and change `fake_deliver`:
 
@@ -582,13 +582,13 @@ def _rm(cap=3, n=2, platform=""):
                         platform=platform)
 ```
 
-- [ ] **Step 3: Run — expect failure**
+- [x] **Step 3: Run — expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py tests/lib/test_build_reel.py -q`
 Expected: FAIL (`deliver()` has no `platform`; `deliver.sys` unused/undefined for the CLI
 test; build_reel does not pass `platform`, so `seen["deliver_platform"]` stays `""`).
 
-- [ ] **Step 4: Thread `platform` through `deliver`.**
+- [x] **Step 4: Thread `platform` through `deliver`.**
 
 In `scripts/deliver.py`, add `import sys` at the top if absent. Change the signature:
 
@@ -628,19 +628,19 @@ In `main()`, add the argument (place it after `--titles`), and pass it through:
 > Do **not** add the parked `--audio` CLI argument — it is out of scope for this
 > slice (see design §2). Leave `main`'s audio handling exactly as it is.
 
-- [ ] **Step 5: Wire `build_reel`** — the `deliver.deliver(...)` call (around line 87) gains one kwarg:
+- [x] **Step 5: Wire `build_reel`** — the `deliver.deliver(...)` call (around line 87) gains one kwarg:
 
 ```python
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   audio=audio, titles=titles, platform=rm.platform)
 ```
 
-- [ ] **Step 6: Run — expect pass**
+- [x] **Step 6: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py tests/lib/test_build_reel.py -q`
 Expected: PASS (all existing deliver/build_reel tests + the three new ones).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/deliver.py scripts/build_reel.py tests/lib/test_deliver.py tests/lib/test_build_reel.py
@@ -655,13 +655,13 @@ git commit -m "feat: deliver threads platform to titles; build_reel passes rm.pl
 - Create/Modify: `tests/integration/test_titles.py` (add an animated-title golden; follow the existing titles golden pattern if one lives elsewhere — search first)
 - Test: the new integration test
 
-- [ ] **Step 1: Locate the existing titles integration golden** (TT Task 8) to mirror its fixture and markers:
+- [x] **Step 1: Locate the existing titles integration golden** (TT Task 8) to mirror its fixture and markers:
 
 Run: `grep -rln "build_filterchain\|drawtext\|TITLES" tests/integration/`
 Read whichever file renders titles through ffmpeg; reuse its real-font resolution
 (`resolve_font`), its `require_filter`/skip guard for drawtext, and its tiny-clip fixture.
 
-- [ ] **Step 2: Write the failing test** — an animated title actually encodes on real ffmpeg:
+- [x] **Step 2: Write the failing test** — an animated title actually encodes on real ffmpeg:
 
 ```python
 def test_word_reveal_with_fade_burns_into_a_real_encode(tmp_path):
@@ -687,12 +687,12 @@ def test_word_reveal_with_fade_burns_into_a_real_encode(tmp_path):
 Adjust the exact `ffbin` entrypoint names/helpers to whatever the existing integration
 golden uses (this repo resolves ffmpeg only through `scripts/lib/ffbin` — never PATH).
 
-- [ ] **Step 3: Run — expect pass** (real ffmpeg with libfreetype)
+- [x] **Step 3: Run — expect pass** (real ffmpeg with libfreetype)
 
 Run: `.venv/bin/python -m pytest tests/integration/test_titles.py -q`
 Expected: PASS (or SKIP only if the module's drawtext guard trips — it must not on the baseline).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_titles.py
@@ -706,11 +706,11 @@ git commit -m "test: real-ffmpeg golden burns a fading word-reveal into an encod
 **Files:**
 - Modify: `skills/titles/SKILL.md`
 
-- [ ] **Step 1: Read the current SKILL** to match its voice and section layout:
+- [x] **Step 1: Read the current SKILL** to match its voice and section layout:
 
 Run: `sed -n '1,200p' skills/titles/SKILL.md`
 
-- [ ] **Step 2: Add a "Motion & colour" subsection** documenting, with a worked example, the
+- [x] **Step 2: Add a "Motion & colour" subsection** documenting, with a worked example, the
 six fields and — critically — the refusal math the author must size against:
 
 - `fade` (seconds each way) must satisfy `2*fade <= dur`.
@@ -721,12 +721,12 @@ six fields and — critically — the refusal math the author must size against:
 
 Include a JSON snippet showing a faded, word-revealed hook so the author can copy it.
 
-- [ ] **Step 3: Verify no lint/reference breakage** (the SKILL is text; just confirm the file reads cleanly):
+- [x] **Step 3: Verify no lint/reference breakage** (the SKILL is text; just confirm the file reads cleanly):
 
 Run: `.venv/bin/python -m pytest tests/ -k lint -q`
 Expected: PASS (no new landmine/argv lint touched — this is docs).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add skills/titles/SKILL.md
@@ -741,7 +741,7 @@ git commit -m "docs: titles SKILL — motion/colour fields and the reveal/fade r
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md` (registry rows),
   `docs/specs/2026-07-29-titles-animations-design.md` (Status → landed)
 
-- [ ] **Step 1: Run the mutation battery.** For EACH, make the one-line edit, run the named
+- [x] **Step 1: Run the mutation battery.** For EACH, make the one-line edit, run the named
 test, confirm it goes RED, then `git checkout -- <file>` to restore before the next:
 
 | # | Mutation | Named test that must flip |
@@ -757,26 +757,26 @@ test, confirm it goes RED, then `git checkout -- <file>` to restore before the n
 
 Run per mutation, e.g.: `.venv/bin/python -m pytest tests/lib/test_titles.py -k fade_zero -q`
 
-- [ ] **Step 2: Full suite green, no golden moved**
+- [x] **Step 2: Full suite green, no golden moved**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS (all; the two skips are pre-existing). Confirm no golden fixture changed
 (`git status --porcelain tests/` shows only intended files).
 
-- [ ] **Step 3: Docs sync.**
+- [x] **Step 3: Docs sync.**
 - `docs/build-status.md`: add the titles-animations DONE entry (fade/reveal/colour + platform safe-zone).
 - `docs/pipeline-map.md`: note §5.16 titles now render motion/colour + lay out against the platform zone.
 - `CLAUDE.md`: two registry rows (design + plan) in the Quick Reference table, in date order after track-stitch/path-quality.
 - The design doc's Status line: `designed` → `landed 2026-07-29`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/build-status.md docs/pipeline-map.md CLAUDE.md docs/specs/2026-07-29-titles-animations-design.md
 git commit -m "docs: titles-animations landed — build-status, pipeline-map, registry rows"
 ```
 
-- [ ] **Step 5: Final whole-slice review.** Dispatch an opus code-quality reviewer over
+- [x] **Step 5: Final whole-slice review.** Dispatch an opus code-quality reviewer over
 `git diff <design-commit>^..HEAD` (the whole branch): verify the four design §4
 invariants hold in code, the byte-identical claim (§7) is accurate (pixel-identical
 defaults; two re-pins; no golden moved), and the `--audio` exclusion held (deliver's

@@ -43,7 +43,7 @@ The module owns two internal shapes and the atomic store/load. `ClipResult` and
 contracts a foreign tool reads — design §8), so no `from_dict` gate. The on-disk
 `clip.json` embeds `FootageClip.to_dict()`, which already round-trips.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_intake_cache.py`:
 
@@ -150,12 +150,12 @@ def test_crop_png_round_trips_red(tmp_path):
     assert px[0, 0, 0] == 255 and px[0, 0, 1] == 0     # still red
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.lib.intake_cache`.
 
-- [ ] **Step 3: Implement `scripts/lib/intake_cache.py`**
+- [x] **Step 3: Implement `scripts/lib/intake_cache.py`**
 
 ```python
 """Footage-intake checkpoint (design docs/specs/2026-07-25-intake-parallel-checkpoint-design.md §3).
@@ -257,12 +257,12 @@ def load(out_dir: str, path: str, sample_fps: float,
     return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py -q`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/intake_cache.py tests/lib/test_intake_cache.py
@@ -295,7 +295,7 @@ caller's `phash_of` closure changes (now reads worker phashes, not ffmpeg).
 - Modify: `scripts/intake.py`
 - Test: `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing worker test + update the cast/driver tests**
+- [x] **Step 1: Write the failing worker test + update the cast/driver tests**
 
 Add to `tests/lib/test_intake.py` (new test):
 
@@ -367,13 +367,13 @@ Add an `ensure_model` stub to the existing `test_intake_builds_footage_and_write
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
 ```
 
-- [ ] **Step 2: Run to verify the new/changed tests fail**
+- [x] **Step 2: Run to verify the new/changed tests fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: FAIL — `_process_clip` missing; `surface_crops`/`save_cast_candidates`
 still expect the old dict shape.
 
-- [ ] **Step 3: Implement in `scripts/intake.py`**
+- [x] **Step 3: Implement in `scripts/intake.py`**
 
 Add imports near the top (after the existing `import argparse, json, statistics, tempfile`):
 
@@ -492,13 +492,13 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS) -> f
     return result
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: PASS (all — the new worker test, the two rewritten cast tests, and the
 existing driver test that proves the extraction did not change the output).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py tests/lib/test_intake.py
@@ -517,7 +517,7 @@ No cache yet (every clip a miss). `ensure_model` already lands before the pool
 - Modify: `scripts/intake.py`
 - Test: `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_intake.py`:
 
@@ -598,12 +598,12 @@ def test_output_is_byte_identical_across_jobs(monkeypatch, tmp_path):
     assert (tmp_path / "o1" / "FOOTAGE.json").read_text() == (tmp_path / "o3" / "FOOTAGE.json").read_text()
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k "jobs or ensure_model_runs or pool_reaches or byte_identical_across_jobs" -q`
 Expected: FAIL — `intake()` has no `jobs` parameter yet (`TypeError`).
 
-- [ ] **Step 3: Implement in `scripts/intake.py`**
+- [x] **Step 3: Implement in `scripts/intake.py`**
 
 Add the constant just below the other tuning constants (after `_VIDEO_EXTS`):
 
@@ -637,12 +637,12 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
 (The `ok = [...]` assembly block and everything after it from Task 1 stays
 unchanged.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: PASS (all).
 
-- [ ] **Step 5: Add the `--jobs` CLI + commit**
+- [x] **Step 5: Add the `--jobs` CLI + commit**
 
 In `main()`, add after the `--sample-fps` argument:
 
@@ -673,7 +673,7 @@ miss's result after it completes, and add `--fresh` to bypass the cache.
 - Modify: `scripts/intake.py`
 - Test: `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_intake.py`:
 
@@ -729,12 +729,12 @@ Note `_fake_result` (Task 2) has empty windows/cast, so `store` writes an empty
 crops dir and a phash-less clip.json — the round-trip through `intake_cache` is
 real here, which is what makes the resume assertions meaningful.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k "cache_misses or fresh" -q`
 Expected: FAIL — `intake()` has no `fresh` parameter; the second run re-submits.
 
-- [ ] **Step 3: Implement in `scripts/intake.py`**
+- [x] **Step 3: Implement in `scripts/intake.py`**
 
 Change the signature to add `fresh`, and replace the scan section (the
 `paths = ...` through the `for p in paths: results[p] = futs[p].result()` block
@@ -769,12 +769,12 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
 
 (The `ok = [...]` assembly block and everything after it stay unchanged.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: PASS (all).
 
-- [ ] **Step 5: Add the `--fresh` CLI + commit**
+- [x] **Step 5: Add the `--fresh` CLI + commit**
 
 In `main()`, add after `--jobs`:
 
@@ -807,7 +807,7 @@ the failures land in `intake_report.json`, a `## Failed clips` section of
 - Modify: `scripts/intake.py`
 - Test: `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_intake.py`:
 
@@ -831,13 +831,13 @@ def test_a_bad_clip_is_quarantined_not_fatal(monkeypatch, tmp_path):
     assert (out / "FOOTAGE.json").exists()             # a valid artifact was produced
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k quarantined -q`
 Expected: FAIL — the exception propagates out of `futs[p].result()` and crashes
 `intake()`.
 
-- [ ] **Step 3: Implement in `scripts/intake.py`**
+- [x] **Step 3: Implement in `scripts/intake.py`**
 
 Replace the store loop (`for p in misses: results[p] = intake_cache.store(...)` from
 Task 3) with the quarantining form:
@@ -877,12 +877,12 @@ Replace the output-writing tail (the `(out / "FOOTAGE.json") ...` through the
     return result
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 Expected: PASS (all).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py tests/lib/test_intake.py
@@ -900,7 +900,7 @@ byte-identical output.
 **Files:**
 - Modify: `tests/integration/test_intake.py`
 
-- [ ] **Step 1: Add the `ensure_model` stub to both existing tests + write the resume test**
+- [x] **Step 1: Add the `ensure_model` stub to both existing tests + write the resume test**
 
 In `tests/integration/test_intake.py`, add this line to the body of BOTH
 `test_intake_wiring_on_real_bytes` and `test_intake_real_vidstab_shake`, right after
@@ -932,14 +932,14 @@ def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_
     assert (out / "FOOTAGE.json").read_text() == first
 ```
 
-- [ ] **Step 2: Run to verify the resume test drives the cache**
+- [x] **Step 2: Run to verify the resume test drives the cache**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -q`
 Expected: PASS (3 tests; the vidstab one skips if libvidstab is absent). If the
 resume test FAILS at `pytest.fail("resume recomputed...")`, the cache is not being
 consulted — a real regression, not a test bug.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_intake.py
@@ -954,7 +954,7 @@ git commit -m "test: intake resumes from cache byte-identical on real bytes"
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`,
   `docs/specs/2026-07-12-footage-intake-design.md`
 
-- [ ] **Step 1: `CLAUDE.md` — two registry rows**
+- [x] **Step 1: `CLAUDE.md` — two registry rows**
 
 In the Quick Reference table, add after the existing footage-intake plan row (the
 `2026-07-12-footage-intake.md` line):
@@ -964,7 +964,7 @@ In the Quick Reference table, add after the existing footage-intake plan row (th
 | Intake parallel+checkpoint plan | [2026-07-25-intake-parallel-checkpoint.md](docs/plans/2026-07-25-intake-parallel-checkpoint.md) | Tasks 0–6: `intake_cache` module, `_process_clip` worker + Phase-2 assembly + cast refactor, the pool + `ensure_model`, cache wiring + resume, quarantine + report, integration resume proof, docs. |
 ```
 
-- [ ] **Step 2: `docs/build-status.md` — a Done entry + date**
+- [x] **Step 2: `docs/build-status.md` — a Done entry + date**
 
 Change the top `_Last updated: 2026-07-24._` to `_Last updated: 2026-07-25._`, and
 add this as the FIRST bullet under `## Done`:
@@ -982,7 +982,7 @@ add this as the FIRST bullet under `## Done`:
   exactly the failed clips. #3 window band deferred to its own slice.
 ```
 
-- [ ] **Step 3: `docs/pipeline-map.md` — annotate stage 5.2**
+- [x] **Step 3: `docs/pipeline-map.md` — annotate stage 5.2**
 
 Replace the stage-5.2 row of the first table (currently the line beginning
 `| 5.2  | footage-intake | \`FOOTAGE.json\`+\`.md\` | ✅ |`) with:
@@ -991,7 +991,7 @@ Replace the stage-5.2 row of the first table (currently the line beginning
 | 5.2  | footage-intake | `FOOTAGE.json`+`.md` | ✅ | `intake.py`: probe + PySceneDetect + YOLO11-seg + vidstabdetect → sub-scene carve → score → phash cull → `FOOTAGE.json`/`.md` + `cast.json` (SP2); **parallel + resumable** (`--jobs`, per-clip `.intake_cache`, `--fresh`; bad clip → `intake_report.json`) since 2026-07-25 | — |
 ```
 
-- [ ] **Step 4: `docs/specs/2026-07-12-footage-intake-design.md` — a superseded-in-part note**
+- [x] **Step 4: `docs/specs/2026-07-12-footage-intake-design.md` — a superseded-in-part note**
 
 Add this note immediately under the design's title/status header:
 
@@ -1003,13 +1003,13 @@ Add this note immediately under the design's title/status header:
 > window band (`_split_span`, #3) is a separate deferred slice.
 ```
 
-- [ ] **Step 5: Verify the whole suite is green**
+- [x] **Step 5: Verify the whole suite is green**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS — the prior slice's baseline plus this slice's new tests, integration
 vidstab test skipping only if libvidstab is absent.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/ CLAUDE.md

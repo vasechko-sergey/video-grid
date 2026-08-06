@@ -35,7 +35,7 @@ Design spec: [docs/specs/2026-07-15-transition-sfx-design.md](../specs/2026-07-1
 - Modify: `scripts/lib/models.py:705` (field), `:726-728` (guard), `:754` (from_dict)
 - Test: `tests/lib/test_models.py` (after the `sfx`-adjacent ambient tests, ~`:647`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py` (mirrors the existing `ambient` trio at `:637-647`; `_reel_dict(**over)` is already defined at `:511`):
 
@@ -53,12 +53,12 @@ def test_reel_manifest_rejects_non_bool_sfx():
         m.ReelManifest.from_dict(_reel_dict(sfx="yes"))
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k sfx -q ; echo "EXIT: $?"`
 Expected: FAIL (`AttributeError: 'ReelManifest' object has no attribute 'sfx'` / `TypeError` on the `sfx=` kwarg).
 
-- [ ] **Step 3: Add the field**
+- [x] **Step 3: Add the field**
 
 In `scripts/lib/models.py`, after the `ambient` field (`:705`):
 
@@ -67,7 +67,7 @@ In `scripts/lib/models.py`, after the `ambient` field (`:705`):
     sfx: bool = False                  # whoosh on major transitions (§5.12); default off (opt-in stylistic accent)
 ```
 
-- [ ] **Step 4: Add the guard**
+- [x] **Step 4: Add the guard**
 
 After the `ambient` bool guard (`:726-728`), before `self.check_spec`:
 
@@ -77,7 +77,7 @@ After the `ambient` bool guard (`:726-728`), before `self.check_spec`:
                              f"transitions, False → no SFX), got {self.sfx!r}")
 ```
 
-- [ ] **Step 5: Thread `from_dict`**
+- [x] **Step 5: Thread `from_dict`**
 
 In `from_dict`'s `return cls(...)` (`:754`), add `sfx`:
 
@@ -86,12 +86,12 @@ In `from_dict`'s `return cls(...)` (`:754`), add `sfx`:
                    sfx=d.get("sfx", False))
 ```
 
-- [ ] **Step 6: Run to verify they pass**
+- [x] **Step 6: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q ; echo "EXIT: $?"`
 Expected: PASS (all model tests green — the new trio + the untouched rest).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -106,7 +106,7 @@ git commit -m "feat: ReelManifest.sfx flag (default off) — the transition-SFX 
 - Modify: `scripts/mix.py` (imports, constants after `_AR` at `:33`, three new module funcs)
 - Test: `tests/test_mix.py` (add `import pytest`; new tests)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 At the top of `tests/test_mix.py` add `import pytest` (currently absent). Then append (the `_R` stub at `:7` is reused):
 
@@ -148,12 +148,12 @@ def test_build_sfx_places_a_whoosh_at_each_major_cut(tmp_path, monkeypatch):
     assert "amix=inputs=2:duration=first:normalize=0" in joined   # base + 1 whoosh, levels kept
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -k "major_cuts or build_sfx" -q ; echo "EXIT: $?"`
 Expected: FAIL (`AttributeError: module 'scripts.mix' has no attribute '_major_cuts'`).
 
-- [ ] **Step 3: Add the import + constants**
+- [x] **Step 3: Add the import + constants**
 
 In `scripts/mix.py`, add `import statistics` to the stdlib imports (`:5-8`, keep them sorted):
 
@@ -180,7 +180,7 @@ _SFX_MIX = 1.0          # whoosh volume entering the final amix (relative punch)
 _SFX_SEED = 42          # anoisesrc seed → a deterministic whoosh
 ```
 
-- [ ] **Step 4: Add the three functions**
+- [x] **Step 4: Add the three functions**
 
 After `_build_ambient` (`:67`), add:
 
@@ -245,12 +245,12 @@ def _build_sfx(durs: list[float], tmp_dir: str) -> str | None:
     return out
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -k "major_cuts or build_sfx" -q ; echo "EXIT: $?"`
 Expected: PASS (7 passed).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/mix.py tests/test_mix.py
@@ -265,7 +265,7 @@ git commit -m "feat: mix._build_sfx — synth whoosh placed on major transitions
 - Modify: `scripts/mix.py` (module docstring `:1-4`; new `_mix_graph`; `mix()` signature `:70-71` + body `:95-110`)
 - Test: `tests/test_mix.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_mix.py` (`_ms`/`_loudnorm_stderr` helpers at `:47-55` already exist):
 
@@ -310,12 +310,12 @@ def test_mix_sfx_false_leaves_ambient_graph_unchanged(tmp_path, monkeypatch):
     assert "[sfx]" not in joined
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -k "sfx_only or ambient_and_sfx or sfx_false" -q ; echo "EXIT: $?"`
 Expected: FAIL (`mix()` has no `sfx`/`ambient` kwargs → `TypeError`).
 
-- [ ] **Step 3: Update the module docstring**
+- [x] **Step 3: Update the module docstring**
 
 Replace `scripts/mix.py:1-4`:
 
@@ -328,7 +328,7 @@ transitions and mixed in on top. Both bake into the one stem before the final
 loudnorm, so deliver/check_reel see a single pre-normalized signal."""
 ```
 
-- [ ] **Step 4: Add `_mix_graph`**
+- [x] **Step 4: Add `_mix_graph`**
 
 After `_build_sfx`, before `mix()`:
 
@@ -358,7 +358,7 @@ def _mix_graph(has_ambient: bool, has_sfx: bool) -> str:
     return ";".join(parts)
 ```
 
-- [ ] **Step 5: Grow `mix()`**
+- [x] **Step 5: Grow `mix()`**
 
 Signature (`:70-71`):
 
@@ -395,12 +395,12 @@ Replace the body block that today runs from `norm_src = frag` through the ambien
 
 (The `dur` guards, the seek+fade `frag` pass above, and the `_measure` + loudnorm pass below stay exactly as they are.)
 
-- [ ] **Step 6: Run the mix suite**
+- [x] **Step 6: Run the mix suite**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -q ; echo "EXIT: $?"`
 Expected: PASS — the three new graph tests **and** the pre-existing ambient/music-only tests (`test_mix_music_only_makes_no_sidechain`, `test_mix_with_ambient_inserts_sidechain_and_pins_length`, `test_mix_all_silent_bed_falls_back_to_music_only`) stay green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/mix.py tests/test_mix.py
@@ -415,7 +415,7 @@ git commit -m "feat: mix() composes optional ambient+sfx layers (ambient-only gr
 - Modify: `scripts/build_reel.py:47-51` (stem hook)
 - Test: `tests/lib/test_build_reel.py` (patch 4 `mix.mix` mocks + `_rm_music`; 2 new tests)
 
-- [ ] **Step 1: Patch the mock signatures + add failing tests**
+- [x] **Step 1: Patch the mock signatures + add failing tests**
 
 In `tests/lib/test_build_reel.py`, every `build_reel.mix.mix` monkeypatch lambda must accept the new kwargs (build_reel will pass `ambient=`/`sfx=` → the current `segments=None`-only lambdas would `TypeError`). Update all four:
 
@@ -485,12 +485,12 @@ def test_build_reel_sfx_only_still_passes_segments(tmp_path, monkeypatch):
     assert got["segments"] == [("s0.mp4", 3.0), ("s1.mp4", 3.0)]
 ```
 
-- [ ] **Step 2: Run to verify (some fail)**
+- [x] **Step 2: Run to verify (some fail)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py -q ; echo "EXIT: $?"`
 Expected: the two new tests FAIL (`got["sfx"]`/`got["ambient"]` not set — build_reel doesn't pass the flags yet). The mock-signature edits keep the rest green.
 
-- [ ] **Step 3: Wire the stem hook**
+- [x] **Step 3: Wire the stem hook**
 
 Replace `scripts/build_reel.py:47-51`:
 
@@ -504,12 +504,12 @@ Replace `scripts/build_reel.py:47-51`:
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py -q ; echo "EXIT: $?"`
 Expected: PASS (all — the two new flag-flow tests + the pre-existing A.5/music tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/build_reel.py tests/lib/test_build_reel.py
@@ -523,7 +523,7 @@ git commit -m "feat: build_reel passes segments+ambient/sfx flags when either au
 **Files:**
 - Create: `tests/integration/test_sfx.py`
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 ```python
 """Real-ffmpeg proofs for transition SFX (design §8): (A) mix with a whoosh layer
@@ -586,12 +586,12 @@ def test_sfx_lands_on_the_major_cut_only(tmp_path):
     assert at_cut > control * 2.0                         # the whoosh transient dominates the cut window
 ```
 
-- [ ] **Step 2: Run the integration tests**
+- [x] **Step 2: Run the integration tests**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_sfx.py -q ; echo "EXIT: $?"`
 Expected: PASS (2 passed), or SKIP if ffmpeg is absent. If `test_sfx_lands_on_the_major_cut_only` is marginal (loudnorm's true-peak limiter can clamp the transient), first confirm the whoosh is present, then, if needed, lower the control `amp` or raise `_SFX_MIX` — do **not** loosen the assertion below a clear margin. Report the measured `at_cut`/`control` ratio.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_sfx.py
@@ -604,12 +604,12 @@ git commit -m "test: real-ffmpeg SFX proofs — −14 LUFS + whoosh lands on the
 
 **Files:** `docs/build-status.md`, `docs/pipeline-map.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `docs/specs/2026-07-11-music-spine-design.md`, `CLAUDE.md`
 
-- [ ] **Step 1: Run the full suite for the real count**
+- [x] **Step 1: Run the full suite for the real count**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: all green. Note the `<N> passed / <M> skipped` — use the real numbers in build-status below.
 
-- [ ] **Step 2: `docs/pipeline-map.md`**
+- [x] **Step 2: `docs/pipeline-map.md`**
 
 - `_Last updated:_` line — keep `2026-07-15`.
 - Stage 5.12 row (`:28`) → status ✅, note SFX built:
@@ -625,15 +625,15 @@ Expected: all green. Note the `<N> passed / <M> skipped` — use the real number
 - "What produces a reel today" (`:104-105`): drop `SFX (5.12)` from the "rest of audio" list.
 - Phase roadmap Upcoming (`:125`): drop `SFX (5.12),` from Remaining; note 5.12 is complete (music-only + ambient + SFX).
 
-- [ ] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md` §5.12**
+- [x] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md` §5.12**
 
 In the §5.12 block (`:355-369`), flip the "SFX still deferred" note to built: SFX (whoosh on major transitions) landed 2026-07-15 — synth whoosh, `ReelManifest.sfx` (off by default), placed on `max(neighbour dur) > median` cuts, mixed un-ducked before loudnorm; cross-reference `docs/specs/2026-07-15-transition-sfx-design.md`. §5.12 is now complete.
 
-- [ ] **Step 4: `docs/specs/2026-07-11-music-spine-design.md`**
+- [x] **Step 4: `docs/specs/2026-07-11-music-spine-design.md`**
 
 Where the music-only decision and non-goals mention SFX deferred (`:49-53`, `:170-172`, `:337`, `:357`): note SFX landed 2026-07-15 (`docs/specs/2026-07-15-transition-sfx-design.md`), so the only remaining Phase-B open item is the pacing retry-time auto-fix.
 
-- [ ] **Step 5: `docs/build-status.md`**
+- [x] **Step 5: `docs/build-status.md`**
 
 Add a Done entry (use the real suite count from Step 1) and update the "next action" pointer so SFX is no longer next:
 
@@ -650,7 +650,7 @@ Add a Done entry (use the real suite count from Step 1) and update the "next act
   Suite <N> passed / <M> skipped.
 ```
 
-- [ ] **Step 6: `CLAUDE.md` registry**
+- [x] **Step 6: `CLAUDE.md` registry**
 
 Add two rows after the Ambient-ducking plan row, and extend the Music-spine row's tail (`… ambient ducking landed 2026-07-15`) with `; SFX whoosh landed 2026-07-15`:
 
@@ -659,7 +659,7 @@ Add two rows after the Ambient-ducking plan row, and extend the Music-spine row'
 | Transition-SFX plan | [2026-07-15-transition-sfx.md](docs/plans/2026-07-15-transition-sfx.md) | Tasks 0-5: `ReelManifest.sfx`, `_major_cuts`/`_whoosh`/`_build_sfx`, mix filtergraph compose (4 cases, ambient-only byte-identical), build_reel wiring, real-ffmpeg −14/placement proofs, docs sync. |
 ```
 
-- [ ] **Step 7: Verify + commit**
+- [x] **Step 7: Verify + commit**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: all green (unchanged from Step 1 — docs only).

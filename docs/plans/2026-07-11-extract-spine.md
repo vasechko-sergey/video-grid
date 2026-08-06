@@ -31,7 +31,7 @@ Reused unchanged: `extract.extract()`, `process_episode`, `resolve_manifest`, `b
 - Create: `scripts/lib/edl.py`
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_edl.py
@@ -84,12 +84,12 @@ def test_bad_field_raises_valueerror_with_remedy(kw, needle):
         _ep(**kw)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.lib.edl`.
 
-- [ ] **Step 3: Write `scripts/lib/edl.py` (episode only)**
+- [x] **Step 3: Write `scripts/lib/edl.py` (episode only)**
 
 ```python
 """EDL contract + the EDL→manifest bridge (design docs/specs/2026-07-11-extract-spine-design.md).
@@ -171,12 +171,12 @@ class EDLEpisode:
             self.rect = tuple(self.rect)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -191,7 +191,7 @@ git commit -m "feat: EDLEpisode config-spec (Front-half SP1)"
 - Modify: `scripts/lib/edl.py`
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Add the failing tests**
+- [x] **Step 1: Add the failing tests**
 
 ```python
 # append to tests/lib/test_edl.py
@@ -256,12 +256,12 @@ def test_edl_from_json_roundtrip(tmp_path):
 
 Add `import json` at the top of the test file if not already present.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: FAIL — `ImportError: cannot import name 'EDL'`.
 
-- [ ] **Step 3: Append `EDL` to `scripts/lib/edl.py`**
+- [x] **Step 3: Append `EDL` to `scripts/lib/edl.py`**
 
 ```python
 @dataclass
@@ -316,12 +316,12 @@ class EDL:
         return cls.from_dict(d)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -336,7 +336,7 @@ git commit -m "feat: EDL config-spec + JSON round-trip (Front-half SP1)"
 - Modify: `scripts/lib/edl.py`
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Add the failing tests** — the bridge output, merged with a project canvas, must pass the real manifest gate clean and carry no EDL-only keys.
+- [x] **Step 1: Add the failing tests** — the bridge output, merged with a project canvas, must pass the real manifest gate clean and carry no EDL-only keys.
 
 ```python
 # append to tests/lib/test_edl.py
@@ -375,12 +375,12 @@ def test_bridge_omits_crop_aspect_when_none_so_manifest_auto_picks():
     assert "crop_aspect" not in md                                  # manifest defaults it to 'source' for insert
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: FAIL — `ImportError: cannot import name 'to_manifest_dict'`.
 
-- [ ] **Step 3: Append the bridge to `scripts/lib/edl.py`**
+- [x] **Step 3: Append the bridge to `scripts/lib/edl.py`**
 
 ```python
 def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
@@ -408,12 +408,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str) -> dict:
     return md
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -428,7 +428,7 @@ git commit -m "feat: EDL→manifest bridge to_manifest_dict (Front-half SP1)"
 - Modify: `scripts/extract.py`
 - Test: `tests/integration/test_extract.py`
 
-- [ ] **Step 1: Add the failing tests** (real ffmpeg — uses the `sample_clip` fixture: 1920×1080 @ 30 fps, 3.0 s).
+- [x] **Step 1: Add the failing tests** (real ffmpeg — uses the `sample_clip` fixture: 1920×1080 @ 30 fps, 3.0 s).
 
 ```python
 # append to tests/integration/test_extract.py
@@ -469,12 +469,12 @@ def test_extract_edl_missing_source_names_the_resolved_path(tmp_path):
         extract.extract_edl(edl, str(tmp_path), str(tmp_path / "segments"))
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_extract.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.extract' has no attribute 'extract_edl'`.
 
-- [ ] **Step 3: Add `_probe_dur` + `extract_edl` to `scripts/extract.py`**
+- [x] **Step 3: Add `_probe_dur` + `extract_edl` to `scripts/extract.py`**
 
 Add imports at the top (keep `import argparse` and `from scripts.lib import proc`):
 
@@ -524,12 +524,12 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str) -> list[str]:
 
 Note: the gate is one-sided (`probed < window`) — a re-encode never overshoots the requested `-t`, and a source shorter than `start+dur` yields a short tail, exactly the case to catch.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_extract.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/extract.py tests/integration/test_extract.py
@@ -544,7 +544,7 @@ git commit -m "feat: extract_edl loop + length gate (Front-half SP1)"
 - Create: `scripts/edl_to_reel.py`
 - Test: `tests/lib/test_edl_to_reel.py`
 
-- [ ] **Step 1: Write the failing tests** (monkeypatch extract/process_episode/build_reel — mirrors `tests/lib/test_build_reel.py`).
+- [x] **Step 1: Write the failing tests** (monkeypatch extract/process_episode/build_reel — mirrors `tests/lib/test_build_reel.py`).
 
 ```python
 # tests/lib/test_edl_to_reel.py
@@ -647,12 +647,12 @@ def test_build_reel_stop_is_passed_through(monkeypatch, tmp_path):
     assert res["status"] == "stop_and_report" and res["finding"]["reason"] == "variety"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.edl_to_reel`.
 
-- [ ] **Step 3: Write `scripts/edl_to_reel.py`**
+- [x] **Step 3: Write `scripts/edl_to_reel.py`**
 
 ```python
 """Front-half SP1 driver (design docs/specs/2026-07-11-extract-spine-design.md):
@@ -742,12 +742,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edl_to_reel.py tests/lib/test_edl_to_reel.py
@@ -763,7 +763,7 @@ git commit -m "feat: edl_to_reel sequential driver + CLI (Front-half SP1)"
 
 **Why `process_episode` is faked here:** the driver's first `process_episode` pass runs YOLO tracking (`route_path=None`), which needs a *person* in-frame — the `sample_clip` fixture is a moving box, so real tracking returns an empty route. The stub therefore stands in for `process_episode`'s *whole mechanical middle* — not just tracking, but reframe's crop-to-canvas and check_episode too — writing a real `route.json` and producing a real clip by copying its segment (uniform streams, distinct box position per window → variety passes; same source colour → colour-across-cuts passes). So this golden proves the SP1 *wiring* — real `extract_edl` → bridge → `ReelManifest` → real `build_reel`/`deliver` (assemble, check_reel gates, mix, deliver mux) on real bytes — and deliberately NOT pixel-level canvas/crop correctness: because nothing crops, the delivered reel keeps the raw source dims (1920×1080), not the project canvas (1080×1920). That the resolved canvas flows into each manifest is pinned by the Task 4 driver unit test; crop-to-canvas has its own real-footage goldens (`test_process_episode`/`test_golden`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/integration/test_front_spine.py
@@ -842,21 +842,21 @@ def test_edl_drives_a_reel_with_music(sample_clip, tmp_path, monkeypatch):
 
 If `MusicSpec.to_dict`'s field order differs, construct the dict directly from the design's MUSIC.json shape — the point is a valid `MusicSpec.from_json` round-trip, which `build_reel` calls.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_front_spine.py -q`
 Expected: FAIL first for the right reason (the driver already exists from Task 4, so this exercises the real `extract_edl` + `build_reel` path). If it fails, read the failure: a length/variety/colour gate miss means the fixture windows need adjusting, not a code change.
 
-- [ ] **Step 3: Make it pass**
+- [x] **Step 3: Make it pass**
 
 No new production code is expected — Tasks 0–4 built the path. If a check gate legitimately fails on the synthetic clip (e.g. variety distance below `ReelManifest.variety_min` default 8), widen the window separation in `_edl` until the two box positions differ enough, and document why in a comment. Do **not** loosen a real gate to pass a test.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS (prior 426 + the new SP1 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_front_spine.py
@@ -870,7 +870,7 @@ git commit -m "test: real-ffmpeg EDL→REEL_v1 end-to-end golden (Front-half SP1
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md`
 
-- [ ] **Step 1: `docs/pipeline-map.md`** — flip the stage rows and roadmap:
+- [x] **Step 1: `docs/pipeline-map.md`** — flip the stage rows and roadmap:
   - 5.7 edit-plan: `❌` → `◐` — "EDL.json contract + bridge ✅ (SP1); markdown render + interactive authoring ❌ (SP3)".
   - 5.8 extract: `❌` → `✅` — "`extract_edl` loop + length gate ✅ (SP1)".
   - 5.9 assemble-draft: stays `❌` — note "draft (labels + music bed) → SP1b".
@@ -878,13 +878,13 @@ git commit -m "test: real-ffmpeg EDL→REEL_v1 end-to-end golden (Front-half SP1
   - "What produces a reel today": a hand-authored `EDL.json` now drives the full conveyor (`edl_to_reel`); the remaining front half (5.2 intake, 5.3 full brief, 5.4 trends, 5.9 draft) is unbuilt.
   - Phase roadmap "Front-half authoring": mark SP1 done, list SP1b (draft) / SP2 (intake) / SP3 (authoring skills) / SP4 (trends) as remaining.
 
-- [ ] **Step 2: `docs/build-status.md`** — add a "Done" entry: **extract spine (Front-half SP1) DONE (2026-07-11)** — plan + design paths, the four units (`lib/edl.py`, `extract.extract_edl`, `edl_to_reel.py`), what closes (EDL→delivered reel), the faked-tracking golden rationale, and the deferrals (SP1b draft, SP2 intake, SP3 authoring, cap-3 router). Update the total test count. Point "Next action" at SP1b / SP2 / SP3.
+- [x] **Step 2: `docs/build-status.md`** — add a "Done" entry: **extract spine (Front-half SP1) DONE (2026-07-11)** — plan + design paths, the four units (`lib/edl.py`, `extract.extract_edl`, `edl_to_reel.py`), what closes (EDL→delivered reel), the faked-tracking golden rationale, and the deferrals (SP1b draft, SP2 intake, SP3 authoring, cap-3 router). Update the total test count. Point "Next action" at SP1b / SP2 / SP3.
 
-- [ ] **Step 3: `CLAUDE.md`** — add a Quick Reference row for the extract-spine design + plan; if a landmine surfaced during implementation (e.g. the one-sided length gate), add it to the Known-troubles only if it fails silently.
+- [x] **Step 3: `CLAUDE.md`** — add a Quick Reference row for the extract-spine design + plan; if a landmine surfaced during implementation (e.g. the one-sided length gate), add it to the Known-troubles only if it fails silently.
 
-- [ ] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — add "Built (2026-07-11, SP1)" notes under §5.7 (EDL.json typed contract + bridge; markdown/authoring = SP3) and §5.8 (`extract_edl` loop + length gate), mirroring the §5.5 music-spine note style.
+- [x] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — add "Built (2026-07-11, SP1)" notes under §5.7 (EDL.json typed contract + bridge; markdown/authoring = SP3) and §5.8 (`extract_edl` loop + length gate), mirroring the §5.5 music-spine note style.
 
-- [ ] **Step 5: Run the full suite once more, then commit**
+- [x] **Step 5: Run the full suite once more, then commit**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -892,7 +892,7 @@ git add docs/ CLAUDE.md
 git commit -m "docs: sync build-status/pipeline-map/registry for extract spine (SP1)"
 ```
 
-- [ ] **Step 6: Final whole-slice review** — dispatch a code-quality reviewer over the whole SP1 diff (`git diff main...feat/extract-spine`): the contract's fail-loud completeness, the bridge boundary (no key leak), the one-sided length gate, the driver's resolve-once/store-resolved invariant (the `build_reel`-reprocess-without-project coupling), and the golden's faked-tracking honesty. Fold findings, then finish via `superpowers:finishing-a-development-branch`.
+- [x] **Step 6: Final whole-slice review** — dispatch a code-quality reviewer over the whole SP1 diff (`git diff main...feat/extract-spine`): the contract's fail-loud completeness, the bridge boundary (no key leak), the one-sided length gate, the driver's resolve-once/store-resolved invariant (the `build_reel`-reprocess-without-project coupling), and the golden's faked-tracking honesty. Fold findings, then finish via `superpowers:finishing-a-development-branch`.
 
 ---
 

@@ -29,7 +29,7 @@
 - Produces: `assembly.frames_rgb(src: str, times: list[float], fps: float) -> list[np.ndarray]` — RGB `HxWx3 uint8`, one per input time, in input order, one decode. `assembly.frame_rgb(src: str, t: float) -> np.ndarray` — unchanged signature, now a wrapper.
 - Consumes: `assembly.probe_stream(src).fps`, `ffbin.ffmpeg()`, `proc.run` (all already in `assembly.py`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/integration/test_assembly_proxy.py` (ensure the file imports `numpy as np`, `pytest`, `from PIL import Image`, and `from scripts.lib import assembly, ffbin, proc` — add any missing):
 
@@ -65,12 +65,12 @@ def test_frames_rgb_dedupes_and_empty(tmp_path):
     assert assembly.frames_rgb(clip, [], 10.0) == []         # no times → no decode
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_assembly_proxy.py -k frames_rgb -v`
 Expected: FAIL with `AttributeError: module 'scripts.lib.assembly' has no attribute 'frames_rgb'`.
 
-- [ ] **Step 3: Implement `frames_rgb` and rewrite `frame_rgb`**
+- [x] **Step 3: Implement `frames_rgb` and rewrite `frame_rgb`**
 
 In `scripts/lib/assembly.py`, replace the current `frame_rgb` (lines 167-175) with:
 
@@ -113,12 +113,12 @@ def frame_rgb(src: str, t: float) -> np.ndarray:
     return frames_rgb(src, [t], probe_stream(src).fps)[0]
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_assembly_proxy.py -v`
 Expected: PASS (the new `frames_rgb` tests and the existing `test_frame_rgb_returns_original_resolution_array`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py tests/integration/test_assembly_proxy.py
@@ -137,7 +137,7 @@ git commit -m "feat(assembly): frames_rgb — one-decode frame-accurate batch gr
 - Consumes: `assembly.frames_rgb(src, times, fps)` (Task 0).
 - Produces: `_cast_from_original(path, best, res, pres, fps) -> list[CastEntry]` — now takes `fps` (originally 4 args; `fps` is new, last).
 
-- [ ] **Step 1: Update the cast tests to the batched interface (make them fail)**
+- [x] **Step 1: Update the cast tests to the batched interface (make them fail)**
 
 In `tests/lib/test_intake.py`, repoint the four `frame_rgb` monkeypatches to `frames_rgb` (which returns a **list**, one array per requested time):
 
@@ -166,12 +166,12 @@ def test_cast_from_original_grabs_all_tracks_in_one_call(monkeypatch, tmp_path):
     assert calls["n"] == 1 and calls["times"] == [1.0, 2.0]   # ONE decode, both times
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k cast -v`
 Expected: FAIL — `_cast_from_original` still calls `assembly.frame_rgb` (the `frames_rgb` monkeypatch is not hit; the new arity test errors on the extra `fps` arg).
 
-- [ ] **Step 3: Rewrite `_cast_from_original` and its call site**
+- [x] **Step 3: Rewrite `_cast_from_original` and its call site**
 
 In `scripts/intake.py`, replace `_cast_from_original` (lines 325-340) with:
 
@@ -204,19 +204,19 @@ Change the call site (line 304) from `cast = _cast_from_original(path, best, res
         cast = _cast_from_original(path, best, res, pres, info.fps)   # crops from the ORIGINAL
 ```
 
-- [ ] **Step 4: Repoint the integration cast-pin test**
+- [x] **Step 4: Repoint the integration cast-pin test**
 
 In `tests/integration/test_cast_pin.py` (line ~174), change:
 `monkeypatch.setattr(intake.assembly, "frame_rgb", lambda path, t: rgb)`
 → `monkeypatch.setattr(intake.assembly, "frames_rgb", lambda path, times, fps: [rgb for _ in times])`
 and update the call on the next lines to pass `fps` (any value, monkeypatched): `intake._cast_from_original("orig.mp4", best, res=(200, 200), pres=(200, 200), fps=30.0)`.
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -k cast tests/integration/test_cast_pin.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/intake.py tests/lib/test_intake.py tests/integration/test_cast_pin.py
@@ -235,12 +235,12 @@ git commit -m "feat(intake): _cast_from_original grabs every track in one frames
 - Consumes: `assembly.frames_rgb(src, times, fps)` (Task 0), `imagehash.phash`, `Image.fromarray` (both already imported in `intake.py`), `check_reel._hamming` (kept, used by `cull`).
 - Produces: no new symbol; removes `intake._phash_at`.
 
-- [ ] **Step 1: Check `_phash_at` has no test references**
+- [x] **Step 1: Check `_phash_at` has no test references**
 
 Run: `grep -rn "_phash_at" tests/ scripts/`
 Expected: only `scripts/intake.py:303` (call) and `:173` (def). If a test references it, update that test to call `_process_clip` instead. (No production caller besides line 303.)
 
-- [ ] **Step 2: Batch the phash grab**
+- [x] **Step 2: Batch the phash grab**
 
 In `scripts/intake.py`, replace the phash line (303):
 
@@ -256,7 +256,7 @@ with a single batched decode of all window midpoints from the proxy:
                    for f in assembly.frames_rgb(src, mids, info.fps)]
 ```
 
-- [ ] **Step 3: Delete `_phash_at` and fix the import comment**
+- [x] **Step 3: Delete `_phash_at` and fix the import comment**
 
 Remove `_phash_at` (lines 173-175):
 
@@ -271,12 +271,12 @@ Update the `check_reel` import comment (line 20) — `_phash_bits` is no longer 
 from scripts import check_reel                    # reuse _hamming for cull dedup
 ```
 
-- [ ] **Step 4: Run the intake unit suite**
+- [x] **Step 4: Run the intake unit suite**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py -v`
 Expected: PASS. The `_process_clip` tests route phash through the `frames_rgb` monkeypatch from Task 1 (`Image.fromarray` accepts the fake uint8 array those tests supply).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/intake.py
@@ -295,31 +295,31 @@ git commit -m "feat(intake): window phashes batch through frames_rgb; drop per-g
 - Consumes: nothing new.
 - Produces: `intake_cache.CACHE_VERSION == 5`.
 
-- [ ] **Step 1: Bump the cache version test (make it fail)**
+- [x] **Step 1: Bump the cache version test (make it fail)**
 
 In `tests/lib/test_intake_cache.py`, find the version assertion (currently `== 4`, in a test named like `test_cache_version_is_four...` / `..._v4`) and change it to `5` (rename the test's `four`/`v4` to `five`/`v5` to match).
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py -k version -v`
 Expected: FAIL (`assert 4 == 5`).
 
-- [ ] **Step 3: Bump `CACHE_VERSION`**
+- [x] **Step 3: Bump `CACHE_VERSION`**
 
 In `scripts/lib/intake_cache.py` (line 34), change `CACHE_VERSION = 4` to `CACHE_VERSION = 5`. Update the adjacent version-history comment sentence to add: the 4→5 bump is the frame-grab batch (design 2026-08-02) — cast descriptors and window phashes shift by ≤1 frame because `frames_rgb` selects `round(t*fps)` where output-seek grabbed the first frame with `pts >= t`.
 
-- [ ] **Step 4: Re-pin the real-ffmpeg intake goldens**
+- [x] **Step 4: Re-pin the real-ffmpeg intake goldens**
 
 Run the intake integration tests: `.venv/bin/python -m pytest tests/integration/test_intake.py tests/integration/test_intake_proxy.py -v`
 
 For any assertion that fails on a **real-decode** phash hex or descriptor value (not a structural/shape assertion), update the pinned literal to the value the test now produces. These moved by ≤1 frame by design (§7). Do **not** loosen a structural assertion to hide a real regression — only re-pin exact value literals that shifted. If a test monkeypatches the frame grab (no real decode), it will not move; leave it.
 
-- [ ] **Step 5: Run to verify all pass**
+- [x] **Step 5: Run to verify all pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py tests/integration/test_intake.py tests/integration/test_intake_proxy.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/intake_cache.py tests/lib/test_intake_cache.py tests/integration/test_intake.py tests/integration/test_intake_proxy.py
@@ -336,7 +336,7 @@ git commit -m "feat(intake): CACHE_VERSION 4->5 for the frame-grab batch; re-pin
 
 **Interfaces:** none.
 
-- [ ] **Step 1: Add the registry rows to `CLAUDE.md`**
+- [x] **Step 1: Add the registry rows to `CLAUDE.md`**
 
 In the Quick Reference table, add two rows near the intake-analysis-proxy rows:
 
@@ -345,7 +345,7 @@ In the Quick Reference table, add two rows near the intake-analysis-proxy rows:
 | Intake frame-grab batch plan | [2026-08-02-intake-frame-grab-batch.md](docs/plans/2026-08-02-intake-frame-grab-batch.md) | Tasks 0–4: `frames_rgb` + `frame_rgb` wrapper (real-ffmpeg), `_cast_from_original` one-decode batch, phash batch + `_phash_at` delete, `CACHE_VERSION` 4→5 + golden re-pin, docs sync + measurement re-run. |
 ```
 
-- [ ] **Step 2: Add the build-status bullet**
+- [x] **Step 2: Add the build-status bullet**
 
 In `docs/build-status.md`, under the most recent "Done" grouping, add:
 
@@ -357,12 +357,12 @@ In `docs/build-status.md`, under the most recent "Done" grouping, add:
   `CACHE_VERSION` 4→5, real goldens re-pinned. Design/plan 2026-08-02.
 ```
 
-- [ ] **Step 3: Full suite green**
+- [x] **Step 3: Full suite green**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all pass (bar pre-existing skips). Fix any fallout before committing.
 
-- [ ] **Step 4: Re-run the measurement (before/after evidence)**
+- [x] **Step 4: Re-run the measurement (before/after evidence)**
 
 Re-run the per-phase harness on the same drone clip used to justify the slice and record cast + phash wall-time:
 
@@ -370,7 +370,7 @@ Run: `.venv/bin/python /private/tmp/claude-501/-Users-serg-git-video-grid/22776f
 
 Record the new `_cast_from_original` and `phash` phase times against the pre-fix baseline (cast >480s hung → expect ~one 4K decode; phash 15.3s → expect a few s) in the commit body. If the harness path is gone, a fresh `intake()` run on a folder holding that clip with wall timing is an acceptable substitute.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md docs/build-status.md

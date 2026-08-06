@@ -24,7 +24,7 @@ Run the suite without piping through `tail` (masks exit code): `.venv/bin/python
 - Create: `scripts/lib/review.py`
 - Test: `tests/lib/test_review.py`
 
-- [ ] **Step 1: Write the failing tests** (`tests/lib/test_review.py`)
+- [x] **Step 1: Write the failing tests** (`tests/lib/test_review.py`)
 
 ```python
 import pytest
@@ -94,12 +94,12 @@ def test_vocab_constants_are_the_allowed_sets():
     assert REVIEW_CONFIDENCE == ("high", "medium", "low")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.review'`.
 
-- [ ] **Step 3: Implement `scripts/lib/review.py`** (`Finding` + vocabs; `Review` lands in Task 1)
+- [x] **Step 3: Implement `scripts/lib/review.py`** (`Finding` + vocabs; `Review` lands in Task 1)
 
 ```python
 """Reel-review: the §5.13 editorial verdict (design
@@ -163,12 +163,12 @@ class Finding:
                 "route": self.route, "suggestion": self.suggestion, "confidence": self.confidence}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -q ; echo "EXIT: $?"`
 Expected: PASS (11 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/review.py tests/lib/test_review.py
@@ -183,7 +183,7 @@ git commit -m "feat: Finding config-spec + vocabs (reel-review §5.13 Slice B)"
 - Modify: `scripts/lib/review.py` (add `Review` after `Finding`)
 - Test: `tests/lib/test_review.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/lib/test_review.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/lib/test_review.py`)
 
 ```python
 from scripts.lib.review import Review
@@ -244,12 +244,12 @@ def test_review_write_then_from_json(tmp_path):
     assert Review.from_json(p).to_dict() == r.to_dict()
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -k review -q ; echo "EXIT: $?"`
 Expected: FAIL — `ImportError: cannot import name 'Review' from 'scripts.lib.review'`.
 
-- [ ] **Step 3: Add `Review` to `scripts/lib/review.py`** (after `Finding`)
+- [x] **Step 3: Add `Review` to `scripts/lib/review.py`** (after `Finding`)
 
 ```python
 @dataclass
@@ -317,12 +317,12 @@ class Review:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -q ; echo "EXIT: $?"`
 Expected: PASS (20 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/review.py tests/lib/test_review.py
@@ -337,7 +337,7 @@ git commit -m "feat: Review config-spec + verdict property (reel-review §5.13 S
 - Modify: `scripts/lib/review.py` (add method to `Review`, after `write`)
 - Test: `tests/lib/test_review.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/lib/test_review.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/lib/test_review.py`)
 
 ```python
 def test_to_markdown_approve_header_and_summary():
@@ -362,12 +362,12 @@ def test_to_markdown_empty_findings_is_clean():
     assert "✅ No findings" in md
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -k to_markdown -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: 'Review' object has no attribute 'to_markdown'`.
 
-- [ ] **Step 3: Add `to_markdown` to `Review`** (in `scripts/lib/review.py`, after `write`)
+- [x] **Step 3: Add `to_markdown` to `Review`** (in `scripts/lib/review.py`, after `write`)
 
 ```python
     def to_markdown(self) -> str:
@@ -389,12 +389,12 @@ Expected: FAIL — `AttributeError: 'Review' object has no attribute 'to_markdow
         return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_review.py -q ; echo "EXIT: $?"`
 Expected: PASS (23 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/review.py tests/lib/test_review.py
@@ -409,7 +409,7 @@ git commit -m "feat: Review.to_markdown REVIEW.md render (reel-review §5.13 Sli
 - Create: `scripts/reel_review.py`
 - Test: `tests/test_reel_review.py`
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_reel_review.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_reel_review.py`)
 
 ```python
 import pytest
@@ -463,12 +463,12 @@ def test_write_review_emits_both_files(tmp_path):
     assert (tmp_path / "REVIEW.md").read_text().startswith("# Reel review —")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_review.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.reel_review'`.
 
-- [ ] **Step 3: Implement `scripts/reel_review.py`** (driver half; CLI lands in Task 4)
+- [x] **Step 3: Implement `scripts/reel_review.py`** (driver half; CLI lands in Task 4)
 
 ```python
 """Reel-review writer (design docs/specs/2026-07-18-reel-review-editorial-design.md,
@@ -508,12 +508,12 @@ def write_review(review: Review, out_dir: str) -> dict:
             "review": str(rj), "md": str(rm)}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_review.py -q ; echo "EXIT: $?"`
 Expected: PASS (6 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reel_review.py tests/test_reel_review.py
@@ -528,7 +528,7 @@ git commit -m "feat: reel_review build_review + write_review (§5.13 Slice B)"
 - Modify: `scripts/reel_review.py` (add `_load_findings` + `main` + `__main__` guard)
 - Test: `tests/test_reel_review.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_reel_review.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_reel_review.py`)
 
 ```python
 import json
@@ -580,12 +580,12 @@ def test_cli_bad_findings_json_fails_loud(tmp_path, monkeypatch):
         reel_review.main()
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_review.py -k cli -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.reel_review' has no attribute 'main'`.
 
-- [ ] **Step 3: Add `_load_findings` + the CLI** (append to `scripts/reel_review.py`)
+- [x] **Step 3: Add `_load_findings` + the CLI** (append to `scripts/reel_review.py`)
 
 ```python
 def _load_findings(path: str) -> tuple[list, str]:
@@ -631,12 +631,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify they pass** (and the module runs end-to-end)
+- [x] **Step 4: Run to verify they pass** (and the module runs end-to-end)
 
 Run: `.venv/bin/python -m pytest tests/test_reel_review.py -q ; echo "EXIT: $?"`
 Expected: PASS (9 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reel_review.py tests/test_reel_review.py
@@ -651,7 +651,7 @@ git commit -m "feat: reel_review CLI build subcommand (§5.13 Slice B)"
 - Modify: `scripts/montage.py:53-55` (add the Stage after `deliver`)
 - Test: `tests/lib/test_montage.py` (patch structural assertions + add optional case)
 
-- [ ] **Step 1: Patch the montage tests to the new expectation**
+- [x] **Step 1: Patch the montage tests to the new expectation**
 
 In `tests/lib/test_montage.py`, edit `test_v1_stages_order_and_keys` — append `"reel-review"` after `"deliver"`:
 
@@ -691,12 +691,12 @@ def test_reel_review_optional_absent_then_present(tmp_path):
     assert res2["next"] is None                        # still nothing required outstanding
 ```
 
-- [ ] **Step 2: Run to verify the patched tests fail against current code**
+- [x] **Step 2: Run to verify the patched tests fail against current code**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `V1_STAGES` has no `reel-review` key; the order list and the kinds assertions mismatch.
 
-- [ ] **Step 3: Add the Stage in `scripts/montage.py`**
+- [x] **Step 3: Add the Stage in `scripts/montage.py`**
 
 After the `deliver` Stage (line 53-54), add a final row inside `V1_STAGES` (review happens **after** delivery):
 
@@ -709,12 +709,12 @@ After the `deliver` Stage (line 53-54), add a final row inside `V1_STAGES` (revi
 
 (`reel-review` reads the run dir, not the out dir — `in_out` stays the default `False`; its `REVIEW.json` lands beside `SPEC.json`/`EDL.json`.)
 
-- [ ] **Step 4: Run the montage suite**
+- [x] **Step 4: Run the montage suite**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: PASS (all montage tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -732,7 +732,7 @@ git commit -m "feat: router adds optional reel-review Stage (REVIEW.json, CP3) (
 
 No pytest (SKILLs are prose). The gate is the full-suite green check (Task 7) + the final review.
 
-- [ ] **Step 1: Write `SKILLS/reel-review/SKILL.md`**
+- [x] **Step 1: Write `SKILLS/reel-review/SKILL.md`**
 
 ```markdown
 ---
@@ -847,7 +847,7 @@ block. `REVIEW.json` records the reviewer's findings + verdict; the human approv
   regenerates it from the reviewer's findings.
 ```
 
-- [ ] **Step 2: Write `SKILLS/reel-review/reel-reviewer.md`** (the reviewer subagent prompt template)
+- [x] **Step 2: Write `SKILLS/reel-review/reel-reviewer.md`** (the reviewer subagent prompt template)
 
 ```markdown
 # Reel Editorial Reviewer Prompt Template
@@ -907,7 +907,7 @@ An empty "findings" list means the reel delivers the brief.
 ```
 ```
 
-- [ ] **Step 3: Wire `reel-review` into `SKILLS/using-montage/SKILL.md`**
+- [x] **Step 3: Wire `reel-review` into `SKILLS/using-montage/SKILL.md`**
 
 (a) Overview stage list — line 3 (the `description:` frontmatter) and line 13's prose chain, append `-> [reel-review]` after `edl_to_reel`:
 `... -> edl_to_reel -> [reel-review])`.
@@ -928,12 +928,12 @@ An empty "findings" list means the reel delivers the brief.
 
 (d) Boundaries — the deferred/optional-stages bullet (~line 157-166): add a sentence — `reel-review (§5.13 editorial half) runs at CP3 after deliver; it is optional in montage status (never `next`) and human-gated (the reviewer proposes, you dispose).`
 
-- [ ] **Step 4: Verify the full suite still green** (no code changed here, but confirm nothing references the SKILL text in tests)
+- [x] **Step 4: Verify the full suite still green** (no code changed here, but confirm nothing references the SKILL text in tests)
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS (all), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add SKILLS/reel-review/SKILL.md SKILLS/reel-review/reel-reviewer.md SKILLS/using-montage/SKILL.md
@@ -947,7 +947,7 @@ git commit -m "feat: reel-review SKILL + reviewer template + using-montage CP3 w
 **Files:**
 - Modify: `docs/pipeline-map.md`, `docs/build-status.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `CLAUDE.md`
 
-- [ ] **Step 1: `docs/pipeline-map.md`** — flip 5.13 to built.
+- [x] **Step 1: `docs/pipeline-map.md`** — flip 5.13 to built.
 
 In the 16-stage table (row 5.13), change status `◐ → ✅` and append to the note:
 `Editorial half ✅ (2026-07-18) — reel-review SKILL dispatches a fresh reviewer subagent → typed REVIEW.json (Finding/Review), human-gated at CP3.` Remove "the stage stays ◐" wording.
@@ -958,7 +958,7 @@ Update the **Tally** line `**Tally:** 14 ✅ · 1 ◐ · 1 ❌.` → `**Tally:**
 
 In the "Phase roadmap → Upcoming", tick the **"Editorial reel-final"** item (`- [ ]` → `- [x]`) and rewrite its body: the mechanical half + the agent review are both built; the `trend_flavor` sub-criterion is judged at low confidence pending §5.4. Update the "Genuinely open on the quality side" sentence to drop 5.13 (leaving the two pacing auto-fixes).
 
-- [ ] **Step 2: `docs/build-status.md`** — append to the Done section (chronological, newest last):
+- [x] **Step 2: `docs/build-status.md`** — append to the Done section (chronological, newest last):
 
 ```markdown
 - **reel-review editorial (§5.13 Slice B) DONE (2026-07-18)** — plan
@@ -989,7 +989,7 @@ In the "Phase roadmap → Upcoming", tick the **"Editorial reel-final"** item (`
 
 Update the "Next action" pointer: §5.13 is closed; the genuinely-open quality items are the two pacing auto-fixes and §5.4 trend-scan.
 
-- [ ] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`** — §5.13.
+- [x] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`** — §5.13.
 
 - Line 403 (the Editorial bullet): change the tail `**Not yet built (Slice B) — the only part of §5.13 still open.**` → `**Built 2026-07-18 (Slice B) — see below.**`
 - After the "Built (2026-07-17 …)" block (after line 422), add a new note block:
@@ -1006,26 +1006,26 @@ Update the "Next action" pointer: §5.13 is closed; the genuinely-open quality i
 > parts green.** See `docs/specs/2026-07-18-reel-review-editorial-design.md`.
 ```
 
-- [ ] **Step 4: `CLAUDE.md`** — add two registry rows to the Quick Reference table (after the Reel-final editorial checks rows):
+- [x] **Step 4: `CLAUDE.md`** — add two registry rows to the Quick Reference table (after the Reel-final editorial checks rows):
 
 ```markdown
 | Reel-review editorial design | [2026-07-18-reel-review-editorial-design.md](docs/specs/2026-07-18-reel-review-editorial-design.md) | §5.13 editorial half (Slice B): a fresh reviewer subagent judges the delivered reel vs `SPEC` (idea/mood/hook/ending/spine/edl_completeness/trend_flavor) → typed `Finding`/`Review` (`REVIEW.json`+`.md`), routed findings, **human-gated** at CP3; the `requesting-code-review` calque, reel-brief's twin. Closes §5.13 ◐ → ✅. |
 | Reel-review editorial plan | [2026-07-18-reel-review-editorial.md](docs/plans/2026-07-18-reel-review-editorial.md) | Tasks 0–7: `Finding`+`Review` config-specs + `verdict` + `to_markdown`, `reel_review` `build_review`/`write_review` + CLI, optional `montage.py` Stage, `reel-review` SKILL + `reel-reviewer.md` + using-montage CP3 wiring, docs sync. |
 ```
 
-- [ ] **Step 5: Full suite green** — record the count.
+- [x] **Step 5: Full suite green** — record the count.
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS (all prior + new review / reel_review / montage tests), EXIT: 0. Note the passed/skipped totals and backfill the `NN`/total in Step 2's bullet.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/pipeline-map.md docs/build-status.md docs/specs/2026-07-05-montage-skillset-design.md CLAUDE.md
 git commit -m "docs: sync pipeline-map/build-status/spec/registry — §5.13 closed (reel-review Slice B)"
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a code reviewer over the whole slice (BASE = the commit before Task 0; HEAD = current). Spec compliance vs `docs/specs/2026-07-18-reel-review-editorial-design.md` first, then code quality. Confirm the load-bearing invariants:
 - **Every gate is enforced in `__post_init__`** — `Finding` rejects out-of-vocab axis/severity/route/confidence + empty evidence/suggestion; `Review` rejects empty reel + raw-dict findings.

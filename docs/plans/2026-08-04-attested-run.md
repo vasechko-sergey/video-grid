@@ -96,7 +96,7 @@ the existing `scripts/lib/proc.run` wrapper, pytest.
   - `class Attestation` with `to_dict/from_dict/write/from_json`
   - `verify_delivery(reel_path, *, rehash: bool = False) -> dict`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/lib/test_provenance.py`:
 
@@ -266,12 +266,12 @@ def test_verify_delivery_on_corrupt_json_is_unattested(tmp_path):
     assert got["state"] == "unattested" and "unreadable" in got["detail"]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_provenance.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.provenance'`
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 `scripts/lib/provenance.py`:
 
@@ -474,12 +474,12 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     return {**out, "state": "attested"}
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_provenance.py -v`
 Expected: PASS (all tests).
 
-- [ ] **Step 5: Prove the subprocess allowlist still holds**
+- [x] **Step 5: Prove the subprocess allowlist still holds**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_landmine_scan.py -v`
 Expected: PASS — in particular
@@ -487,7 +487,7 @@ Expected: PASS — in particular
 `provenance.py`, the module imported `subprocess` directly: route the git call
 through `proc.run` instead of widening the allowlist.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/provenance.py tests/lib/test_provenance.py
@@ -515,7 +515,7 @@ dataclasses and share one review lens (does it round-trip, does it default empty
 does an existing artifact still load). Splitting them would give a reviewer nothing
 new to reject.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_project.py`:
 
@@ -587,13 +587,13 @@ def test_reel_manifest_carries_a_provenance_dict():
     assert rm.provenance["edl"]["state"] == "intact"
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py tests/lib/test_edl.py tests/lib/test_models.py -v`
 Expected: FAIL — `TypeError: ... unexpected keyword argument 'provenance'` /
 `'master_digest'`.
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 `scripts/lib/project.py` — add the field, validate it, round-trip it:
 
@@ -690,18 +690,18 @@ and in `__post_init__`:
                              f"{type(self.provenance).__name__}")
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_project.py tests/lib/test_edl.py tests/lib/test_models.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Prove nothing downstream broke**
+- [x] **Step 5: Prove nothing downstream broke**
 
 Run: `.venv/bin/python -m pytest tests/lib -q`
 Expected: PASS. Every field defaults empty, so existing artifacts and fixtures load
 unchanged.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/project.py scripts/lib/edl.py scripts/lib/models.py \
@@ -728,7 +728,7 @@ git commit -m "feat(models): provenance fields on ProjectConfig/EDL/ReelManifest
   — the ONE place an `EDL.json` is written. `EDL.from_json` now raises `ValueError`
   on a tampered file.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py`:
 
@@ -794,13 +794,13 @@ def test_run_stamps_the_master_digest(tmp_path, monkeypatch):
     assert rep.master_digest == provenance.digest_file(master)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_check_reel.py -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.edl' has no attribute 'write_edl'`
 and `assert '' == '<digest>'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/lib/edl.py` — the writer chokepoint, at module level after the `EDL` class:
 
@@ -886,19 +886,19 @@ with `from scripts.lib import provenance` at the top.
 
 with `provenance` added to the `from scripts.lib import ...` line.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_edit_plan.py tests/lib/test_match_grade.py tests/lib/test_check_reel.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Mutation check — the refusal is load-bearing**
+- [x] **Step 5: Mutation check — the refusal is load-bearing**
 
 Temporarily change `if state == "tampered":` to `if False:` and re-run
 `tests/lib/test_edl.py`. Expected: `test_from_json_refuses_an_edl_edited_after_the_tool_wrote_it`
 FAILS. Restore the line. A refusal with no test that goes red when it is removed is
 not a refusal.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/edl.py scripts/edit_plan.py scripts/match_grade.py \
@@ -928,7 +928,7 @@ create a real file and bind the report to it. That is not incidental churn: a te
 that "delivers" a master which does not exist was not testing delivery. Add one
 helper per test file rather than repeating the two lines.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_deliver.py`:
 
@@ -1031,13 +1031,13 @@ def test_the_version_note_is_the_reason_not_a_path(tmp_path, monkeypatch):
     assert "VERSIONS.md" not in text.split("\n", 2)[-1]
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py -v`
 Expected: FAIL — `TypeError: deliver() got an unexpected keyword argument 'run_provenance'`
 and no refusals raised.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/deliver.py` — add `from datetime import datetime` (already present) and
 `from scripts.lib import ffbin, proc, provenance`. Signature:
@@ -1095,7 +1095,7 @@ At the end, after `_log_version(out_dir, n, changelog)` and before `return out`:
     return out
 ```
 
-- [ ] **Step 4: Sweep the other call sites**
+- [x] **Step 4: Sweep the other call sites**
 
 Update every remaining `deliver.deliver(...)` caller in tests so its master exists
 and its report is bound, and every `proc.run` stub so it writes its output file:
@@ -1108,20 +1108,20 @@ and its report is bound, and every `proc.run` stub so it writes its output file:
   already exists; only the report needs binding, and it comes from `check_reel.run`,
   which now stamps it (verify rather than patch).
 
-- [ ] **Step 5: Run to verify everything passes**
+- [x] **Step 5: Run to verify everything passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_deliver.py tests/test_deliver.py -v`
 Then: `.venv/bin/python -m pytest tests/integration/test_titles.py tests/integration/test_reel_backhalf.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Mutation check — both refusals are load-bearing**
+- [x] **Step 6: Mutation check — both refusals are load-bearing**
 
 Comment out the `if not report.master_digest:` block and re-run
 `tests/lib/test_deliver.py`: `test_deliver_refuses_a_report_with_no_master_digest`
 must FAIL. Restore it, then comment out the `actual != report.master_digest` block:
 `test_deliver_refuses_a_report_bound_to_a_different_master` must FAIL. Restore.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/deliver.py tests/lib/test_deliver.py tests/test_deliver.py \
@@ -1145,7 +1145,7 @@ git commit -m "feat(deliver): bind the report to the master, write REEL_v{n}.att
 - Produces: `edl_to_reel(..., changelog: str = "")`; `rm.provenance` populated;
   `build_reel` passes it through unchanged.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl_to_reel.py` (reuse this file's existing stubbing of
 `preflight`/`extract`/`process_episode`/`build_reel` — do not re-invent it):
@@ -1226,12 +1226,12 @@ def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monke
     assert seen["run_provenance"] == {"edl": {"state": "intact"}}
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -v`
 Expected: FAIL — no drift check, `rm.provenance == {}`, `changelog` is a path.
 
-- [ ] **Step 3: Implement `edl_to_reel`**
+- [x] **Step 3: Implement `edl_to_reel`**
 
 Add `provenance` to `from scripts.lib import ...`. Signature gains `changelog`:
 
@@ -1294,7 +1294,7 @@ CLI: add
 
 and pass `changelog=a.changelog` in the `edl_to_reel(...)` call.
 
-- [ ] **Step 4: Implement `build_reel` threading**
+- [x] **Step 4: Implement `build_reel` threading**
 
 `scripts/build_reel.py:87`:
 
@@ -1304,18 +1304,18 @@ and pass `changelog=a.changelog` in the `edl_to_reel(...)` call.
                                   run_provenance=rm.provenance)
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Mutation check — the drift stop is load-bearing**
+- [x] **Step 6: Mutation check — the drift stop is load-bearing**
 
 Change `if started.get("sha") and now.get("sha") and started != now:` to
 `if False:` and re-run `tests/lib/test_edl_to_reel.py`:
 `test_a_run_that_straddles_an_engine_change_is_refused` must FAIL. Restore.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/edl_to_reel.py scripts/build_reel.py tests/lib/test_edl_to_reel.py \
@@ -1336,7 +1336,7 @@ git commit -m "feat(edl_to_reel): refuse a run that straddles an engine change; 
 - Produces: `next_action(...)["deliveries"]`; `montage verify --run-dir <d> [--out-dir <d>]`;
   `V1_STAGES`'s `reel-review` entry is `kind="required"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_montage.py`:
 
@@ -1403,13 +1403,13 @@ Also update this file's existing whole-object assertions on the stage table and 
 `next_action`'s return shape: `reel-review` is now `"required"`, and every
 `next_action` result carries a `deliveries` key.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -v`
 Expected: FAIL — `next` is `None` after delivery; `KeyError: 'deliveries'`;
 `AttributeError: module 'scripts.montage' has no attribute 'verify'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/montage.py` — add `from scripts.lib import provenance`. Flip the stage:
 
@@ -1470,12 +1470,12 @@ and dispatch on `a.cmd`:
     raise SystemExit(0)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -1495,7 +1495,7 @@ git commit -m "feat(montage): reel-review becomes required; report delivery atte
 - Produces: nothing new — this is the end-to-end proof that the chain holds against
   real pixels, not only fixtures.
 
-- [ ] **Step 1: Write the integration test**
+- [x] **Step 1: Write the integration test**
 
 `tests/integration/test_attested_run.py` — follow the conventions in
 `tests/integration/test_reel_backhalf.py` (real ffmpeg through `proc.run`, synthesized
@@ -1555,19 +1555,19 @@ def test_a_reel_swapped_after_delivery_stops_verifying(tmp_path):
     assert montage.verify(...)["deliveries"][0]["state"] == "digest-mismatch"
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_attested_run.py -v`
 Expected: PASS (3 tests, real ffmpeg).
 
-- [ ] **Step 3: Run the whole suite**
+- [x] **Step 3: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS. The only acceptable skips are the environmental ones this repo
 already has (demucs absent, iTunes network, weights-gated `test_reid`). **A new skip
 is a failure** — report it rather than accepting it.
 
-- [ ] **Step 4: Triage the parked wip branches**
+- [x] **Step 4: Triage the parked wip branches**
 
 Confirm both are superseded before deleting, and record the SHAs (they are already in
 the design doc §9 and stay reachable through `git reflog`):
@@ -1586,7 +1586,7 @@ superseded — its diff against `main` is now mostly the removal of work `main` 
 since landed. If either check shows unported work, STOP and report it instead of
 deleting.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_attested_run.py
@@ -1605,7 +1605,7 @@ git commit -m "test(provenance): real-ffmpeg proof that the attestation chain ho
 - Modify: `skills/using-montage/SKILL.md`, `skills/process-episode/SKILL.md`,
   `skills/edit-plan/SKILL.md`
 
-- [ ] **Step 1: `CLAUDE.md` — add two registry rows** after the hero re-ID rows,
+- [x] **Step 1: `CLAUDE.md` — add two registry rows** after the hero re-ID rows,
   in the established one-row-per-doc style:
 
 ```markdown
@@ -1613,20 +1613,20 @@ git commit -m "test(provenance): real-ffmpeg proof that the attestation chain ho
 | Attested-run plan | [2026-08-04-attested-run.md](docs/plans/2026-08-04-attested-run.md) | Tasks 0–7: `lib/provenance.py`, the four contract fields, the `write_edl` chokepoint + `from_json` refusal, `deliver`'s binding + attestation (+ the #16 `VERSIONS.md` note fix), `edl_to_reel`'s drift stop + run provenance, `montage` required-review/`deliveries`/`verify`, the real-ffmpeg chain proof + wip triage, docs sync. |
 ```
 
-- [ ] **Step 2: `docs/build-status.md`** — add a Done entry naming what landed and
+- [x] **Step 2: `docs/build-status.md`** — add a Done entry naming what landed and
   the honest limits (§11's remaining bypasses), in this file's existing format.
 
-- [ ] **Step 3: `docs/fixes-backlog.md`** — flip #8, #11, #13, #15, #20, #6 and #16
+- [x] **Step 3: `docs/fixes-backlog.md`** — flip #8, #11, #13, #15, #20, #6 and #16
   to `✅ LANDED 2026-08-04` with a one-paragraph summary each and a pointer to the
   spec. In #11, retire the current-state alert: the tree is clean, the parked branches
   are deleted, their SHAs recorded in the design's §9. Leave #3, #12, #14, #19 alone —
   they are the editorial half, playbook priority 3.
 
-- [ ] **Step 4: `docs/cinematic-quality-playbook.md`** — mark §4 item 2 (governance
+- [x] **Step 4: `docs/cinematic-quality-playbook.md`** — mark §4 item 2 (governance
   hardening) landed with the date and the plan link, the way item 1 (hero re-ID) is
   already marked.
 
-- [ ] **Step 5: `skills/using-montage/SKILL.md`** — three edits:
+- [x] **Step 5: `skills/using-montage/SKILL.md`** — three edits:
 
   1. **Step 11 / CP3**: the run is not finished until `montage status` reports
      `next: null`. `reel-review` is now a **required** stage; running
@@ -1646,15 +1646,15 @@ git commit -m "test(provenance): real-ffmpeg proof that the attestation chain ho
      attestation and shown at CP3.* Also fix the stale closing line that says the
      cap-3 parallel fan-out is "not built here" — it landed 2026-07-18.
 
-- [ ] **Step 6: `skills/process-episode/SKILL.md` and `skills/edit-plan/SKILL.md`** —
+- [x] **Step 6: `skills/process-episode/SKILL.md` and `skills/edit-plan/SKILL.md`** —
   add the same gate line, plus for `edit-plan`: *never hand-edit `EDL.json`; it is
   stamped, and `edl_to_reel` refuses a stamped EDL whose contents no longer match.
   Editorial changes go in `selection.json` and re-run the build.*
 
-- [ ] **Step 7: `docs/pipeline-map.md`** — reflect that `reel-review` is a required
+- [x] **Step 7: `docs/pipeline-map.md`** — reflect that `reel-review` is a required
   stage and that `deliver` now emits an attestation sidecar.
 
-- [ ] **Step 8: Full suite + commit**
+- [x] **Step 8: Full suite + commit**
 
 ```bash
 .venv/bin/python -m pytest -q

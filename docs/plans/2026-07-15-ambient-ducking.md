@@ -45,7 +45,7 @@ Design: [docs/specs/2026-07-15-ambient-ducking-design.md](../specs/2026-07-15-am
 - Modify: `scripts/lib/models.py` (the `ReelManifest` dataclass — field list ~700-704, `__post_init__` ~706-725, `from_dict` ~731-750)
 - Test: `tests/lib/test_models.py` (append after `test_reel_manifest_rejects_non_dict_manifest_direct`, ~line 578; helper `_reel_dict` is at ~511)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -63,12 +63,12 @@ def test_reel_manifest_rejects_non_bool_ambient():
         m.ReelManifest.from_dict(_reel_dict(ambient="yes"))
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k ambient -v ; echo "EXIT: $?"`
 Expected: FAIL — `test_reel_manifest_ambient_defaults_true` errors with `AttributeError: 'ReelManifest' object has no attribute 'ambient'` (the field does not exist yet).
 
-- [ ] **Step 3: Add the field, guard, and from_dict wiring**
+- [x] **Step 3: Add the field, guard, and from_dict wiring**
 
 In `scripts/lib/models.py`, add the field to the `ReelManifest` dataclass right after the `music` field:
 
@@ -96,17 +96,17 @@ In `ReelManifest.from_dict`, add `ambient` to the returned constructor call:
                    music=d.get("music"), ambient=d.get("ambient", True))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k ambient -v ; echo "EXIT: $?"`
 Expected: PASS (3 passed).
 
-- [ ] **Step 5: Run the whole models suite (nothing regressed)**
+- [x] **Step 5: Run the whole models suite (nothing regressed)**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q ; echo "EXIT: $?"`
 Expected: PASS, EXIT 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -123,7 +123,7 @@ Builds one pcm wav per segment (real audio trimmed/padded to its episode dur, or
 - Modify: `scripts/mix.py` (add `from scripts.lib import assembly` to the imports at top; add `_build_ambient` after `_measure`, before `mix`)
 - Test: `tests/test_mix.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_mix.py`:
 
@@ -179,12 +179,12 @@ def test_build_ambient_mixed_returns_bed_when_any_has_audio(tmp_path, monkeypatc
     assert res is not None                            # one real audio stream → a bed (s1 = silence)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -v ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.mix' has no attribute '_build_ambient'` (and `assembly` not importable from `mix` yet).
 
-- [ ] **Step 3: Implement `_build_ambient`**
+- [x] **Step 3: Implement `_build_ambient`**
 
 In `scripts/mix.py`, add to the imports at top:
 
@@ -234,12 +234,12 @@ def _build_ambient(segments: list[tuple[str, float]], tmp_dir: str) -> str | Non
     return assembly.concat(beds, os.path.join(tmp_dir, "ambient.wav"))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -v ; echo "EXIT: $?"`
 Expected: PASS (3 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/mix.py tests/test_mix.py
@@ -256,7 +256,7 @@ Insert one filtergraph pass between the existing seek→`frag.wav` and measure�
 - Modify: `scripts/mix.py` (the `mix` function, signature at ~line 33 and body ~44-60)
 - Test: `tests/test_mix.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_mix.py`:
 
@@ -303,12 +303,12 @@ def test_mix_all_silent_bed_falls_back_to_music_only(tmp_path, monkeypatch):
     assert "sidechaincompress" not in joined                          # None → music-only
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -k "music_only or ambient or silent" -v ; echo "EXIT: $?"`
 Expected: FAIL — `test_mix_with_ambient_inserts_sidechain_and_pins_length` fails because `mix()` takes no `segments` argument yet (`TypeError: mix() got an unexpected keyword argument 'segments'`).
 
-- [ ] **Step 3: Extend `mix()`**
+- [x] **Step 3: Extend `mix()`**
 
 In `scripts/mix.py`, change the `mix` signature and body. New signature:
 
@@ -350,12 +350,12 @@ Keep the three guards unchanged. Then in the `with tempfile.TemporaryDirectory()
 
 (The only change to the final loudnorm pass is its input: `frag` → `norm_src`.)
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -v ; echo "EXIT: $?"`
 Expected: PASS (6 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/mix.py tests/test_mix.py
@@ -372,7 +372,7 @@ The stem hook gathers `(segment, target_dur)` from each episode manifest and pas
 - Modify: `scripts/build_reel.py:47-49` (the stem hook)
 - Test: `tests/lib/test_build_reel.py` (patch `_rm_music` ~170-173, `_wire_music` ~194-201, the inline mocks in `test_build_reel_music_delivers_after_full_reprocess_budget` ~248-261; add two new tests)
 
-- [ ] **Step 1: Patch the music-test fixtures for the new kwarg (they currently break)**
+- [x] **Step 1: Patch the music-test fixtures for the new kwarg (they currently break)**
 
 In `tests/lib/test_build_reel.py`, update `_rm_music` to carry real manifests:
 
@@ -403,7 +403,7 @@ Update the inline manifest + `mix.mix` mock in `test_build_reel_music_delivers_a
                         lambda mus, wd, dur, segments=None: (mixed.append(dur), "stem.m4a")[1])
 ```
 
-- [ ] **Step 2: Write the failing new tests**
+- [x] **Step 2: Write the failing new tests**
 
 Append to `tests/lib/test_build_reel.py`:
 
@@ -431,12 +431,12 @@ def test_build_reel_ambient_false_passes_no_segments(tmp_path, monkeypatch):
     assert got["segments"] is None            # ambient=False → pure-music stem
 ```
 
-- [ ] **Step 3: Run to verify the new tests fail**
+- [x] **Step 3: Run to verify the new tests fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py -k "segments or ambient_false" -v ; echo "EXIT: $?"`
 Expected: FAIL — `test_build_reel_passes_segments_when_ambient` fails: `got["segments"]` is `None` because build_reel does not pass `segments` yet.
 
-- [ ] **Step 4: Wire the stem hook**
+- [x] **Step 4: Wire the stem hook**
 
 In `scripts/build_reel.py`, replace the stem-build block (currently lines 47-49):
 
@@ -448,12 +448,12 @@ In `scripts/build_reel.py`, replace the stem-build block (currently lines 47-49)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
 ```
 
-- [ ] **Step 5: Run to verify all build_reel tests pass**
+- [x] **Step 5: Run to verify all build_reel tests pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py -q ; echo "EXIT: $?"`
 Expected: PASS, EXIT 0 (the patched music tests + the two new ones + all A.5 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/build_reel.py tests/lib/test_build_reel.py
@@ -470,7 +470,7 @@ Two integration proofs: the stem still hits −14 LUFS with a real audio bed, an
 - Create: `tests/integration/test_ambient.py`
 - Modify: `tests/integration/test_music_spine.py` (the `ReelEpisode(...)` manifests at ~61-62)
 
-- [ ] **Step 1: Write `test_ambient.py`**
+- [x] **Step 1: Write `test_ambient.py`**
 
 Create `tests/integration/test_ambient.py`:
 
@@ -545,12 +545,12 @@ def test_ambient_ducks_under_loud_music(tmp_path):
     assert loud < quiet * 0.9                        # the duck attenuates the ambient band
 ```
 
-- [ ] **Step 2: Run the ambient integration proofs**
+- [x] **Step 2: Run the ambient integration proofs**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_ambient.py -v ; echo "EXIT: $?"`
 Expected: PASS (2 passed), or SKIPPED if ffmpeg is unavailable. If it fails on the duck ratio, the sidechaincompress params in `mix` are the tuning surface — but with `threshold=0.03:ratio=4` and a 0.6-amplitude music key the 0.9 margin holds.
 
-- [ ] **Step 3: Point the build_reel golden at real segment manifests**
+- [x] **Step 3: Point the build_reel golden at real segment manifests**
 
 In `tests/integration/test_music_spine.py`, the `test_build_reel_delivers_reel_with_audio_stream` builds a `ReelManifest` with stub manifests (`manifest={"_": 0}`). With `ambient=True` (now the default) the stem hook reads `manifest["segment"]`/`["target_dur"]`, so give them real values (the reframed clips `ep0`/`ep1` are silent, so `_build_ambient` returns `None` → the stem stays music-only — this proves the default path survives real, audioless segments):
 
@@ -563,12 +563,12 @@ In `tests/integration/test_music_spine.py`, the `test_build_reel_delivers_reel_w
         target_dur=dur, variety_min=4, color_delta_max=40.0, music=str(music_json))
 ```
 
-- [ ] **Step 4: Run the music-spine golden (still delivers with audio)**
+- [x] **Step 4: Run the music-spine golden (still delivers with audio)**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_music_spine.py -v ; echo "EXIT: $?"`
 Expected: PASS (3 passed), or SKIPPED without ffmpeg. The delivered reel still carries an aac stem and the loudness gate is green — the ambient path returned `None` (silent clips) and fell through to the music-only stem.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_ambient.py tests/integration/test_music_spine.py
@@ -582,32 +582,32 @@ git commit -m "test: real-ffmpeg ambient proofs (-14 LUFS + ducking) + default-p
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `docs/specs/2026-07-11-music-spine-design.md`, `CLAUDE.md`
 
-- [ ] **Step 1: Run the full suite and capture the number**
+- [x] **Step 1: Run the full suite and capture the number**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS, EXIT 0. Note the `N passed` count for build-status.
 
-- [ ] **Step 2: Update `docs/build-status.md`**
+- [x] **Step 2: Update `docs/build-status.md`**
 
 Add a Done entry dated 2026-07-15 describing the ambient sub-slice (mix.segments + `_build_ambient`, `ReelManifest.ambient`, build_reel wiring, the two real-ffmpeg proofs), update the test count to the number from Step 1, and update the Next-action line (SFX whoosh is the remaining 5.12 piece).
 
-- [ ] **Step 3: Update `docs/pipeline-map.md`**
+- [x] **Step 3: Update `docs/pipeline-map.md`**
 
 - Row 5.12 (line ~28): change the note to `music-only mix ✅ + ambient ducking ✅ (nat-sound ducked under music, ReelManifest.ambient); SFX ❌`. Status stays `◐` (SFX remains).
 - The blocker table row 5.12 (line ~64): drop the stale `extract per-ep audio passthrough` blocker; change "Left to build" to `SFX whoosh (asset + transition placement)` with `Blocked by` = `none — extract preserves segment audio today`.
 - Tally line (~71): unchanged (`13 ✅ · 2 ◐ · 1 ❌`) — 5.12 is still ◐.
 - The "What's still missing" prose (~104): drop "ambient ducking" from the missing list; leave SFX.
 
-- [ ] **Step 4: Update the design specs**
+- [x] **Step 4: Update the design specs**
 
 - `docs/specs/2026-07-05-montage-skillset-design.md` §5.12 (the deferred blockquote at lines ~359-362): note that ambient ducking landed 2026-07-15 (source = preserved raw segments; `ReelManifest.ambient` default on); SFX whoosh remains the open piece.
 - `docs/specs/2026-07-11-music-spine-design.md` §5 (the "Music-only mix v1. Ambient ducking … deferred" note, ~line 49-51): mark ambient ducking landed 2026-07-15, SFX still deferred.
 
-- [ ] **Step 5: Update `CLAUDE.md` registry**
+- [x] **Step 5: Update `CLAUDE.md` registry**
 
 Add two rows to the Quick Reference table pointing at `docs/specs/2026-07-15-ambient-ducking-design.md` and `docs/plans/2026-07-15-ambient-ducking.md`, one-line descriptions matching the existing style (e.g. "§5.12 ambient sub-slice: duck each clip's preserved nat-sound under the music inside mix's stem — `mix(segments=)` + `_build_ambient` + `ReelManifest.ambient`; SFX deferred").
 
-- [ ] **Step 6: Verify the whole suite once more, then commit**
+- [x] **Step 6: Verify the whole suite once more, then commit**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS, EXIT 0.

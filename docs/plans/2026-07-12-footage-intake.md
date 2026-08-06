@@ -35,7 +35,7 @@
 - Modify: `scripts/extract.py`
 - Test: `tests/lib/test_assembly.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_assembly.py  (add)
@@ -48,11 +48,11 @@ def test_probe_duration_is_the_shared_helper():
     assert callable(assembly.probe_duration)
 ```
 
-- [ ] **Step 2: Run — expect fail** (`AttributeError: module 'scripts.lib.assembly' has no attribute 'probe_duration'`)
+- [x] **Step 2: Run — expect fail** (`AttributeError: module 'scripts.lib.assembly' has no attribute 'probe_duration'`)
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py::test_probe_duration_is_the_shared_helper -v`
 
-- [ ] **Step 3: Implement** — move the body into `assembly.py`:
+- [x] **Step 3: Implement** — move the body into `assembly.py`:
 
 ```python
 # scripts/lib/assembly.py  (add near the other probes)
@@ -76,11 +76,11 @@ from scripts.lib.assembly import probe_duration as _probe_dur   # keep the local
 
 (Delete the old `def _probe_dur(...)` body. `assembly` already imports `proc`.)
 
-- [ ] **Step 4: Run — expect pass**, and the whole extract suite still green:
+- [x] **Step 4: Run — expect pass**, and the whole extract suite still green:
 
 Run: `.venv/bin/python -m pytest tests/lib/test_assembly.py tests/lib/test_edl.py tests/integration/test_extract.py -q`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/assembly.py scripts/extract.py tests/lib/test_assembly.py
@@ -95,7 +95,7 @@ git commit -m "refactor: promote extract._probe_dur → assembly.probe_duration 
 - Create: `scripts/lib/footage.py`
 - Test: `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_footage.py
@@ -121,9 +121,9 @@ def test_window_rejects_bad(kw, msg):
         _win(**kw)
 ```
 
-- [ ] **Step 2: Run — expect fail** (`ModuleNotFoundError: scripts.lib.footage`)
+- [x] **Step 2: Run — expect fail** (`ModuleNotFoundError: scripts.lib.footage`)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # scripts/lib/footage.py
@@ -183,11 +183,11 @@ class FootageWindow:
                 "description": self.description, "score": self.score, "best": self.best}
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -q`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/footage.py tests/lib/test_footage.py
@@ -202,7 +202,7 @@ git commit -m "feat: footage.FootageWindow config-spec (5.2)"
 - Modify: `scripts/lib/footage.py`
 - Test: `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_footage.py  (add)
@@ -226,9 +226,9 @@ def test_clip_rejects_bad_res():
         FootageClip(source="a.mp4", dur=1.0, res=(0, 10), fps=30)
 ```
 
-- [ ] **Step 2: Run — expect fail** (`ImportError: cannot import name 'FootageClip'`)
+- [x] **Step 2: Run — expect fail** (`ImportError: cannot import name 'FootageClip'`)
 
-- [ ] **Step 3: Implement** (append to `footage.py`)
+- [x] **Step 3: Implement** (append to `footage.py`)
 
 ```python
 @dataclass
@@ -284,9 +284,9 @@ class FootageClip:
                 "windows": [w.to_dict() for w in self.windows]}
 ```
 
-- [ ] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_footage.py -q`)
+- [x] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_footage.py -q`)
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: footage.FootageClip config-spec (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: footage.FootageClip config-spec (5.2)"`)
 
 ---
 
@@ -294,7 +294,7 @@ class FootageClip:
 
 **Files:** Modify `scripts/lib/footage.py`; Test `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_footage.py  (add)
@@ -327,9 +327,9 @@ def test_to_markdown_renders_header_and_star():
     assert "| start | dur | shot | people | motion | shake | score | best | description |" in md
 ```
 
-- [ ] **Step 2: Run — expect fail** (`ImportError: cannot import name 'Footage'`)
+- [x] **Step 2: Run — expect fail** (`ImportError: cannot import name 'Footage'`)
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 @dataclass
@@ -387,9 +387,9 @@ class Footage:
         return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: footage.Footage + to_markdown/ranked_windows (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: footage.Footage + to_markdown/ranked_windows (5.2)"`)
 
 ---
 
@@ -397,7 +397,7 @@ class Footage:
 
 **Files:** Modify `scripts/lib/footage.py`; Test `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_footage.py  (add)
@@ -418,9 +418,9 @@ def test_castmember_rejects_bad(kw, msg):
         CastMember(**d)
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 @dataclass
@@ -483,9 +483,9 @@ class Cast:
         return {"members": [m.to_dict() for m in self.members]}
 ```
 
-- [ ] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_footage.py -q`)
+- [x] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_footage.py -q`)
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: footage.CastMember/Cast config-spec + cast.json round-trip (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: footage.CastMember/Cast config-spec + cast.json round-trip (5.2)"`)
 
 ---
 
@@ -493,7 +493,7 @@ class Cast:
 
 **Files:** Create `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py
@@ -522,9 +522,9 @@ def test_require_vidstab_ok_when_present(monkeypatch):
 
 > Note: pick the `medium` fixture so its area lands in `[MEDIUM_AREA, CLOSE_AREA)`. With `MEDIUM_AREA=0.08`, a `(…, 300, 300)` box on a `1000×1000` frame is `0.09` → medium. Adjust the test's box to `(500,500,300,300)`.
 
-- [ ] **Step 2: Run — expect fail** (`ModuleNotFoundError: scripts.intake`)
+- [x] **Step 2: Run — expect fail** (`ModuleNotFoundError: scripts.intake`)
 
-- [ ] **Step 3: Implement** — create `scripts/intake.py` with the constants + these two functions:
+- [x] **Step 3: Implement** — create `scripts/intake.py` with the constants + these two functions:
 
 ```python
 # scripts/intake.py
@@ -582,9 +582,9 @@ def _require_vidstab() -> None:
                          "run `bash setup.sh --with-vidstab`")
 ```
 
-- [ ] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
+- [x] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake constants + shot_type + vidstab preflight (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake constants + shot_type + vidstab preflight (5.2)"`)
 
 ---
 
@@ -592,7 +592,7 @@ def _require_vidstab() -> None:
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -618,9 +618,9 @@ def test_carve_short_clip_yields_one_window():
     assert spans == [(0.0, 0.8)]
 ```
 
-- [ ] **Step 2: Run — expect fail** (`AttributeError: … 'carve_windows'`)
+- [x] **Step 2: Run — expect fail** (`AttributeError: … 'carve_windows'`)
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def carve_windows(scene_cuts: list[float], timeline: list, dur: float) -> list[tuple[float, float]]:
@@ -659,9 +659,9 @@ def _split_span(a: float, b: float) -> list[tuple[float, float]]:
     return [(a + i * chunk, chunk) for i in range(n)]
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake.carve_windows — sub-scene carving (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake.carve_windows — sub-scene carving (5.2)"`)
 
 ---
 
@@ -669,7 +669,7 @@ def _split_span(a: float, b: float) -> list[tuple[float, float]]:
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -696,9 +696,9 @@ def test_describe():
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def _motion_fit(m: float) -> float:
@@ -731,9 +731,9 @@ def _describe(people: int, shot: str, motion: float) -> str:
     return f"{who}, {shot}, {dyn}"
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake scoring — present/motion/stability/dur blend (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake scoring — present/motion/stability/dur blend (5.2)"`)
 
 ---
 
@@ -741,7 +741,7 @@ def _describe(people: int, shot: str, motion: float) -> str:
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -767,9 +767,9 @@ def test_windowed_shake_averages_and_normalises():
     assert out == [5.0 / 1000]
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 _LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)")
@@ -816,9 +816,9 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, r
     return _windowed_shake(mags, windows, fps, res[0])
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake shake — vidstabdetect .trf parse + per-window aggregate (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake shake — vidstabdetect .trf parse + per-window aggregate (5.2)"`)
 
 ---
 
@@ -826,7 +826,7 @@ def shake_by_window(clip: str, windows: list[tuple[float, float]], fps: float, r
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test** (mirror `test_track.py`'s `_FakeBox`, add masks)
+- [x] **Step 1: Write the failing test** (mirror `test_track.py`'s `_FakeBox`, add masks)
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -850,9 +850,9 @@ def test_people_timeline_samples_and_counts(monkeypatch):
     # crop/mask retention runs only on real bytes (build_descriptor covers the pixel math).
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def _iter_seg(src: str, model_path: str = MODEL):
@@ -910,9 +910,9 @@ def _crop_and_mask(res, idx: int, box):
 
 > Scope: the mocked unit test pins the timeline (sampling cadence, people counts, primary-bbox threading). The crop/mask *pixel* path (`_crop_and_mask`: BGR→RGB, bbox slice, mask resize) is thin ffmpeg/ultralytics glue — left to the real golden (Task 13) and to `build_descriptor`'s direct pixel tests (Task 11); with `orig_img` absent the fakes retain nothing, which is correct.
 
-- [ ] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
+- [x] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake YOLO11-seg pass — people timeline + per-track crops (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake YOLO11-seg pass — people timeline + per-track crops (5.2)"`)
 
 ---
 
@@ -920,7 +920,7 @@ def _crop_and_mask(res, idx: int, box):
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -952,9 +952,9 @@ def test_cull_low_score_not_best():
     assert w.best is False           # below BEST_FLOOR even though unique
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def _phash_at(clip: str, t: float):
@@ -979,9 +979,9 @@ def cull(clips: list, phash_of) -> None:
             kept.append(h)
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake.cull — phash dedup + best marking (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake.cull — phash dedup + best marking (5.2)"`)
 
 ---
 
@@ -989,7 +989,7 @@ def cull(clips: list, phash_of) -> None:
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -1017,9 +1017,9 @@ def test_write_cast_writes_json(tmp_path):
     assert (tmp_path / "cast_crops" / "Lena_0.png").exists()
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def build_descriptor(crop_rgb, mask) -> list[float]:
@@ -1078,9 +1078,9 @@ def write_cast(named: list, out_dir: str):
     return cast
 ```
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake cast — seg-mask descriptor + surface_crops + write_cast (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake cast — seg-mask descriptor + surface_crops + write_cast (5.2)"`)
 
 ---
 
@@ -1088,7 +1088,7 @@ def write_cast(named: list, out_dir: str):
 
 **Files:** Modify `scripts/intake.py`; Test `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test** (everything CV mocked — no ffmpeg/YOLO)
+- [x] **Step 1: Write the failing test** (everything CV mocked — no ffmpeg/YOLO)
 
 ```python
 # tests/lib/test_intake.py  (add)
@@ -1115,9 +1115,9 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     assert any(w.best for w in result.clips[0].windows)  # cull marked best
 ```
 
-- [ ] **Step 2: Run — expect fail** (`AttributeError: … 'intake'`)
+- [x] **Step 2: Run — expect fail** (`AttributeError: … 'intake'`)
 
-- [ ] **Step 3: Implement** (append)
+- [x] **Step 3: Implement** (append)
 
 ```python
 def scene_bounds(src: str) -> list[float]:
@@ -1193,9 +1193,9 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
+- [x] **Step 4: Run — expect pass** (`.venv/bin/python -m pytest tests/lib/test_intake.py -q`)
 
-- [ ] **Step 5: Commit** (`git commit -m "feat: intake() driver + CLI — clips → FOOTAGE.json/.md (5.2)"`)
+- [x] **Step 5: Commit** (`git commit -m "feat: intake() driver + CLI — clips → FOOTAGE.json/.md (5.2)"`)
 
 ---
 
@@ -1203,7 +1203,7 @@ if __name__ == "__main__":
 
 **Files:** Create `tests/integration/test_intake.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 # tests/integration/test_intake.py
@@ -1255,12 +1255,12 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     assert "# Footage —" in result.to_markdown()
 ```
 
-- [ ] **Step 2: Run** — passes where vidstab is installed, else skips:
+- [x] **Step 2: Run** — passes where vidstab is installed, else skips:
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -v`
 Expected: PASS (or SKIP with the vidstab reason).
 
-- [ ] **Step 3: Commit** (`git commit -m "test: intake real-ffmpeg golden — wiring on real bytes, faked YOLO (5.2)"`)
+- [x] **Step 3: Commit** (`git commit -m "test: intake real-ffmpeg golden — wiring on real bytes, faked YOLO (5.2)"`)
 
 ---
 
@@ -1268,7 +1268,7 @@ Expected: PASS (or SKIP with the vidstab reason).
 
 **Files:** Create `SKILLS/footage-intake/SKILL.md`
 
-- [ ] **Step 1: Write the SKILL** (mirror `SKILLS/process-episode/SKILL.md`'s discipline: ask-before-proceeding, stop-and-report, never improvise). Content:
+- [x] **Step 1: Write the SKILL** (mirror `SKILLS/process-episode/SKILL.md`'s discipline: ask-before-proceeding, stop-and-report, never improvise). Content:
 
 ```markdown
 ---
@@ -1305,7 +1305,7 @@ music or judge mood. `cast.json` is produced here; wiring hero descriptors into
 episode manifests is a later step.
 ```
 
-- [ ] **Step 2: Commit** (`git commit -m "docs: footage-intake SKILL — interactive scan + cast naming (5.2)"`)
+- [x] **Step 2: Commit** (`git commit -m "docs: footage-intake SKILL — interactive scan + cast naming (5.2)"`)
 
 ---
 
@@ -1313,15 +1313,15 @@ episode manifests is a later step.
 
 **Files:** Modify `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md`
 
-- [ ] **Step 1** — `pipeline-map.md`: flip **5.2** `❌ → ✅` (`intake.py`: probe + scenedetect + YOLO-seg + vidstab + carve + score + cull → FOOTAGE.json/.md + cast.json). Update the tally (6 done) and the "Front-half authoring" roadmap bullet (SP2 done; remaining SP1b/SP3/SP4). Note cast.json now produced (hero-pin wiring still pending).
+- [x] **Step 1** — `pipeline-map.md`: flip **5.2** `❌ → ✅` (`intake.py`: probe + scenedetect + YOLO-seg + vidstab + carve + score + cull → FOOTAGE.json/.md + cast.json). Update the tally (6 done) and the "Front-half authoring" roadmap bullet (SP2 done; remaining SP1b/SP3/SP4). Note cast.json now produced (hero-pin wiring still pending).
 
-- [ ] **Step 2** — `build-status.md`: add a "**footage-intake (5.2) DONE**" entry (branch `feat/footage-intake`, contracts + intake.py + SKILL + golden, test count), and adjust "Next action" (SP1b / SP3 / router / cast-pin wiring).
+- [x] **Step 2** — `build-status.md`: add a "**footage-intake (5.2) DONE**" entry (branch `feat/footage-intake`, contracts + intake.py + SKILL + golden, test count), and adjust "Next action" (SP1b / SP3 / router / cast-pin wiring).
 
-- [ ] **Step 3** — `CLAUDE.md`: add registry rows for the design + plan under the Quick Reference table.
+- [x] **Step 3** — `CLAUDE.md`: add registry rows for the design + plan under the Quick Reference table.
 
-- [ ] **Step 4** — montage design `§5.2`: append a "**Built (2026-07-12, SP2)**" note (typed FOOTAGE.json + rendered FOOTAGE.md; vidstabdetect shake; cast.json; carve/score/cull as built). Keep spec ↔ plan in sync.
+- [x] **Step 4** — montage design `§5.2`: append a "**Built (2026-07-12, SP2)**" note (typed FOOTAGE.json + rendered FOOTAGE.md; vidstabdetect shake; cast.json; carve/score/cull as built). Keep spec ↔ plan in sync.
 
-- [ ] **Step 5** — run the full suite green, then commit:
+- [x] **Step 5** — run the full suite green, then commit:
 
 ```bash
 .venv/bin/python -m pytest -q

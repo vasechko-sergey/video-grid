@@ -42,7 +42,7 @@ Task order respects dependencies: **0** contract → **1** beats (B1 done) → *
 - Modify: `scripts/lib/models.py` (add `MusicSpec` after `ReelCheckSpec`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_models.py` (top-level, near the other spec tests; `MusicSpec` must be in the file's `from scripts.lib.models import ...`):
 
@@ -76,12 +76,12 @@ def test_musicspec_rejects_with_remedy(kw, msg):
         MusicSpec.from_dict(_music(**kw))
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_models.py -k musicspec -q`
 Expected: FAIL — `ImportError`/`NameError: MusicSpec`.
 
-- [ ] **Step 3: Implement `MusicSpec`**
+- [x] **Step 3: Implement `MusicSpec`**
 
 In `scripts/lib/models.py`, add after the `ReelCheckSpec` class:
 
@@ -143,12 +143,12 @@ class MusicSpec:
 
 (`Path`, `json`, `dataclass`, `field` are already imported at the top of `models.py`.)
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_models.py -k musicspec -q`
 Expected: PASS (10 cases: 1 round-trip + 9 rejects).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -163,7 +163,7 @@ git commit -m "$(printf 'feat: MusicSpec config-spec (MUSIC.json contract, Phase
 - Create: `scripts/beats.py`
 - Test: `tests/integration/test_beats.py`
 
-- [ ] **Step 1: Write the failing test** (real librosa, synthetic click track)
+- [x] **Step 1: Write the failing test** (real librosa, synthetic click track)
 
 Create `tests/integration/test_beats.py`:
 
@@ -205,12 +205,12 @@ def test_analyze_recovers_tempo_beats_and_energy(tmp_path):
     assert len(ms.energy) > 0 and ms.energy_hz > 0           # coarse RMS curve present
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/integration/test_beats.py -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.beats`.
 
-- [ ] **Step 3: Implement `scripts/beats.py`**
+- [x] **Step 3: Implement `scripts/beats.py`**
 
 ```python
 """music-and-mood (montage §5.5, lean B1): analyse a local track → MusicSpec
@@ -269,12 +269,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/integration/test_beats.py -q`
 Expected: PASS (librosa analyses the 8s click track in ~1–2s).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/beats.py tests/integration/test_beats.py
@@ -289,7 +289,7 @@ git commit -m "$(printf 'feat: beats.py — analyze track → MusicSpec (B1, rea
 - Modify: `scripts/lib/models.py` (`ReelCheckSpec`, new `_ADVISORY_CHECKS`, `ReelReport.overall`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_models.py` (`CheckResult`, `ReelReport`, `ReelCheckSpec` are already imported there):
 
@@ -313,12 +313,12 @@ def test_reelreport_overall_blocks_on_loudness_false():
     assert ReelReport(checks={"loudness": CheckResult("loudness", False, {"measured": -9.0})}).overall is False
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_models.py -k "audio_thresholds or advisory or loudness_false" -q`
 Expected: FAIL — `TypeError: unexpected keyword 'beat_tol'` / advisory test asserts `True` but gets `False`.
 
-- [ ] **Step 3: Implement the model changes**
+- [x] **Step 3: Implement the model changes**
 
 In `ReelCheckSpec`, add the three fields (after `color_delta_max`):
 
@@ -354,12 +354,12 @@ Replace `ReelReport.overall` with the advisory-aware form:
                    for n, c in self.checks.items() if n not in _ADVISORY_CHECKS)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_models.py -q`
 Expected: PASS (new cases green; existing `ReelReport`/`ReelCheckSpec` cases unaffected — a passing reel has no advisory `False` to skip).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -374,7 +374,7 @@ git commit -m "$(printf 'feat: ReelCheckSpec audio thresholds + advisory-aware o
 - Modify: `scripts/check_reel.py` (`run` signature/body; `_loudnorm_measure`, `_loudness_check`, `_beat_check` helpers; `MusicSpec` import)
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing tests** (pure — no ffmpeg; the helpers are extracted for exactly this)
+- [x] **Step 1: Write the failing tests** (pure — no ffmpeg; the helpers are extracted for exactly this)
 
 Add to `tests/lib/test_check_reel.py`:
 
@@ -408,12 +408,12 @@ def test_loudness_check_out_of_range_escalates_to_audio_mix():
     assert fail is not None and fail.check == "loudness" and fail.escalate_to == "audio-mix"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_check_reel.py -k "beat_check or loudness_check" -q`
 Expected: FAIL — `AttributeError: module 'scripts.check_reel' has no attribute '_beat_check'`.
 
-- [ ] **Step 3: Implement the helpers + wire `run`**
+- [x] **Step 3: Implement the helpers + wire `run`**
 
 In `scripts/check_reel.py`, extend the models import to include `MusicSpec`:
 
@@ -483,12 +483,12 @@ and change the `_NOT_IMPL` loop from an unconditional assign to `setdefault` so 
 
 (`cuts` is already in scope — `cuts = _boundaries(durations)` earlier in `run`. `re`, `proc` are already imported.)
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_check_reel.py -q`
 Expected: PASS (new helper tests green; existing check_reel tests unaffected — `music`/`audio` default `None`, so those checks fall through to the `setdefault` stub exactly as before).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -503,7 +503,7 @@ git commit -m "$(printf 'feat: check_reel loudness (hard) + beat (advisory) gate
 - Create: `scripts/mix.py`
 - Test: `tests/integration/test_music_spine.py`
 
-- [ ] **Step 1: Write the failing test** (real ffmpeg — the stem hits −14 LUFS)
+- [x] **Step 1: Write the failing test** (real ffmpeg — the stem hits −14 LUFS)
 
 Create `tests/integration/test_music_spine.py`:
 
@@ -542,12 +542,12 @@ def test_mix_hits_target_loudness(tmp_path):
     assert abs(measured - (-14.0)) <= 1.5          # two-pass loudnorm lands within ~1 LUFS; margin generous
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/integration/test_music_spine.py -k mix -q`
 Expected: FAIL — `ModuleNotFoundError: scripts.mix`.
 
-- [ ] **Step 3: Implement `scripts/mix.py`**
+- [x] **Step 3: Implement `scripts/mix.py`**
 
 ```python
 """audio-mix (montage §5.12, music-only B2): build the reel's audio stem from a
@@ -614,12 +614,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/integration/test_music_spine.py -k mix -q`
 Expected: PASS (measured integrated loudness within 1.5 LUFS of −14).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/mix.py tests/integration/test_music_spine.py
@@ -634,7 +634,7 @@ git commit -m "$(printf 'feat: mix.py — music-only audio stem, two-pass loudno
 - Modify: `scripts/deliver.py` (`deliver` signature/body)
 - Test: `tests/lib/test_deliver.py`
 
-- [ ] **Step 1: Write the failing tests** (mock `proc.run` — assert the command shape, no ffmpeg)
+- [x] **Step 1: Write the failing tests** (mock `proc.run` — assert the command shape, no ffmpeg)
 
 Add to `tests/lib/test_deliver.py` (create the file if absent, with `import subprocess`, `import pytest`, `from scripts import deliver`, `from scripts.lib.models import REEL_H264, ReelReport, CheckResult`):
 
@@ -665,12 +665,12 @@ def test_deliver_silent_when_no_audio(tmp_path, monkeypatch):
     assert "-an" in calls[0] and "1:a:0" not in calls[0]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/lib/test_deliver.py -k "muxes or silent" -q`
 Expected: FAIL — `TypeError: deliver() got an unexpected keyword argument 'audio'`.
 
-- [ ] **Step 3: Implement the mux**
+- [x] **Step 3: Implement the mux**
 
 In `scripts/deliver.py`, change the signature and the encode call:
 
@@ -698,12 +698,12 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     return out
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `pytest tests/lib/test_deliver.py -q`
 Expected: PASS (both new cases; existing deliver tests unaffected — `audio` defaults `None`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deliver.py tests/lib/test_deliver.py
@@ -718,7 +718,7 @@ git commit -m "$(printf 'feat: deliver muxes the audio stem (strip -an, map both
 - Modify: `scripts/lib/models.py` (`ReelManifest.music`), `scripts/build_reel.py`
 - Test: `tests/lib/test_models.py`, `tests/lib/test_build_reel.py`
 
-- [ ] **Step 1a: Write the failing test for `ReelManifest.music`**
+- [x] **Step 1a: Write the failing test for `ReelManifest.music`**
 
 Add to `tests/lib/test_models.py`:
 
@@ -732,7 +732,7 @@ def test_reelmanifest_accepts_music_path_and_defaults_none():
         ReelManifest.from_dict(dict(episodes=[ep], target_dur=10.0, music=""))
 ```
 
-- [ ] **Step 1b: Implement `ReelManifest.music`**
+- [x] **Step 1b: Implement `ReelManifest.music`**
 
 In `scripts/lib/models.py` `ReelManifest`, add the field (after `changelog`):
 
@@ -753,12 +753,12 @@ and add to the `from_dict` `return cls(...)` kwargs:
                    music=d.get("music"),
 ```
 
-- [ ] **Step 1c: Verify the manifest test**
+- [x] **Step 1c: Verify the manifest test**
 
 Run: `pytest tests/lib/test_models.py -k reelmanifest_accepts_music -q`
 Expected: PASS.
 
-- [ ] **Step 2: Write the failing driver tests**
+- [x] **Step 2: Write the failing driver tests**
 
 Add to `tests/lib/test_build_reel.py` (imports needed: `from scripts import build_reel`; `from scripts.lib.models import CheckResult, ReelReport, ReelFailure, ReelEpisode, ReelManifest, MusicSpec`; `from scripts.lib.reel_orchestration import ReelAction`; `from scripts.lib.assembly import StreamInfo`):
 
@@ -828,12 +828,12 @@ def test_build_reel_silent_path_unchanged_without_music(tmp_path, monkeypatch):
     assert mixed == [] and delivered == [None]           # no music → no mix, deliver stays silent (A.5)
 ```
 
-- [ ] **Step 3: Run to verify they fail**
+- [x] **Step 3: Run to verify they fail**
 
 Run: `pytest tests/lib/test_build_reel.py -k "mixes_once or loudness_fail or silent_path" -q`
 Expected: FAIL — `AttributeError: module 'scripts.build_reel' has no attribute 'mix'` / `MusicSpec`.
 
-- [ ] **Step 4: Implement the driver integration**
+- [x] **Step 4: Implement the driver integration**
 
 In `scripts/build_reel.py`, extend the imports:
 
@@ -894,12 +894,12 @@ Replace the body of `build_reel` (from the `clips = ...` line through the loop) 
             "finding": {"reason": "reel-cap-exhausted"}, "attempts": dict(attempts)}
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `pytest tests/lib/test_build_reel.py -q`
 Expected: PASS (new music-path cases + existing A.5 cases — the silent path is byte-for-byte the same when `music=None`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/models.py scripts/build_reel.py tests/lib/test_models.py tests/lib/test_build_reel.py
@@ -913,7 +913,7 @@ git commit -m "$(printf 'feat: build_reel mixes once after picture-pass, deliver
 **Files:**
 - Modify: `tests/integration/test_music_spine.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/integration/test_music_spine.py` (reuses `_tone_music` from Task 4; `sample_clip` is the shared fixture in `tests/conftest.py`):
 
@@ -955,21 +955,21 @@ def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
     assert "worst_dev" in res["report"]["checks"]["beat"]         # beat measured (advisory)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/integration/test_music_spine.py -k with_audio_stream -q`
 Expected: FAIL first for the right reason if any wiring is off; once Tasks 0–6 are in, this is the integration proof. (If it errors on `duration`, the `music_json` override already pins `duration=dur` and clips beats to the reel span.)
 
-- [ ] **Step 3: (No new implementation)**
+- [x] **Step 3: (No new implementation)**
 
 This task adds no production code — it is the end-to-end proof of Tasks 0–6. If it fails, fix the culprit task, do not special-case the test.
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 Run: `pytest -q` (and `pytest -q -m integration` to confirm the real-ffmpeg/librosa goldens)
 Expected: all green. Note the new total in the commit.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_music_spine.py
@@ -983,27 +983,27 @@ git commit -m "$(printf 'test: real-ffmpeg end-to-end — reel delivers with an 
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md`
 
-- [ ] **Step 1: `docs/build-status.md`** — add a "Music spine (Phase B · B1+B2) DONE (2026-07-11)" entry (beats-core → MUSIC.json; mix.py music-only stem; check_reel loudness hard / beat advisory; deliver mux; build_reel integration). Repoint the Next-action to **B3 (autonomous sourcing)** / **B4 (pacing)** with the deferred items listed (ambient/SFX, downbeats/sections/spectral/mood, safe_zones, music-less delivery). Update the test count to the new total from Task 7.
+- [x] **Step 1: `docs/build-status.md`** — add a "Music spine (Phase B · B1+B2) DONE (2026-07-11)" entry (beats-core → MUSIC.json; mix.py music-only stem; check_reel loudness hard / beat advisory; deliver mux; build_reel integration). Repoint the Next-action to **B3 (autonomous sourcing)** / **B4 (pacing)** with the deferred items listed (ambient/SFX, downbeats/sections/spectral/mood, safe_zones, music-less delivery). Update the test count to the new total from Task 7.
 
-- [ ] **Step 2: `docs/pipeline-map.md`** — status column: **5.5** `❌ → ◐` (lean beats-core built; mood-match/sourcing ❌), **5.12** `❌ → ◐` (music-only mix built; ambient ducking/SFX ❌), **5.13** — note `beat`/`loudness` now measured (loudness hard, beat advisory); `safe_zones` still ❌. Update "What produces a reel today" (a reel now delivers **with music**; loudness gated, beat reported). In the roadmap, change **Phase B — music spine** from `🔜` to `◐ B1+B2 done — beats-core + music-only mix + loudness/beat gates; remaining: B3 sourcing, B4 pacing (5.6), ambient/SFX`. Bump `_Last updated_`.
+- [x] **Step 2: `docs/pipeline-map.md`** — status column: **5.5** `❌ → ◐` (lean beats-core built; mood-match/sourcing ❌), **5.12** `❌ → ◐` (music-only mix built; ambient ducking/SFX ❌), **5.13** — note `beat`/`loudness` now measured (loudness hard, beat advisory); `safe_zones` still ❌. Update "What produces a reel today" (a reel now delivers **with music**; loudness gated, beat reported). In the roadmap, change **Phase B — music spine** from `🔜` to `◐ B1+B2 done — beats-core + music-only mix + loudness/beat gates; remaining: B3 sourcing, B4 pacing (5.6), ambient/SFX`. Bump `_Last updated_`.
 
-- [ ] **Step 3: `CLAUDE.md`** — add two registry rows after the Reel-retry-loop rows:
+- [x] **Step 3: `CLAUDE.md`** — add two registry rows after the Reel-retry-loop rows:
 
 ```markdown
 | Music spine design | [2026-07-11-music-spine-design.md](docs/specs/2026-07-11-music-spine-design.md) | Phase B · B1+B2: beats-core → lean MUSIC.json; music-only audio-mix; check_reel loudness (hard) + beat (advisory, non-blocking via `_ADVISORY_CHECKS`); deliver muxes the stem. |
 | Music spine plan | [2026-07-11-music-spine.md](docs/plans/2026-07-11-music-spine.md) | Tasks 0–8: MusicSpec, beats.py, gate thresholds, check_reel gates, mix.py, deliver mux, build_reel integration, real goldens. |
 ```
 
-- [ ] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — keep spec+plan in sync: add a "Built (2026-07-11, B1+B2)" note under §5.5 (lean subset: tempo/beats/energy; sourcing/mood deferred) and §5.12 (music-only; ambient/SFX deferred); update the §12/gate line that reads "beat/loudness/safe-zones report not-implemented" to "loudness hard, beat advisory (built 2026-07-11); safe-zones deferred".
+- [x] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md`** — keep spec+plan in sync: add a "Built (2026-07-11, B1+B2)" note under §5.5 (lean subset: tempo/beats/energy; sourcing/mood deferred) and §5.12 (music-only; ambient/SFX deferred); update the §12/gate line that reads "beat/loudness/safe-zones report not-implemented" to "loudness hard, beat advisory (built 2026-07-11); safe-zones deferred".
 
-- [ ] **Step 5: Commit the docs**
+- [x] **Step 5: Commit the docs**
 
 ```bash
 git add docs/build-status.md docs/pipeline-map.md CLAUDE.md docs/specs/2026-07-05-montage-skillset-design.md
 git commit -m "$(printf 'docs: sync build-status, pipeline-map, registry, design for the music spine (B1+B2)\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>')"
 ```
 
-- [ ] **Step 6: Final whole-slice review** — dispatch one reviewer over the whole diff (`main..feat/music-spine`) against this plan + the design spec. Verify: the two subtle rules (loudness rides the real `next_action` escalate via `audio-mix`; beat measured-but-excluded-from-`overall`); `music=None` leaves the A.5 silent path byte-for-byte; landmines clean (no video `-ss` regressions, `colorchannelmixer` untouched, even dims); no failed-reel-delivers path (loudness fail → stop_and_report, `deliver` unreachable). Fold any findings back and re-run `pytest -q`.
+- [x] **Step 6: Final whole-slice review** — dispatch one reviewer over the whole diff (`main..feat/music-spine`) against this plan + the design spec. Verify: the two subtle rules (loudness rides the real `next_action` escalate via `audio-mix`; beat measured-but-excluded-from-`overall`); `music=None` leaves the A.5 silent path byte-for-byte; landmines clean (no video `-ss` regressions, `colorchannelmixer` untouched, even dims); no failed-reel-delivers path (loudness fail → stop_and_report, `deliver` unreachable). Fold any findings back and re-run `pytest -q`.
 
 ---
 

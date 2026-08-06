@@ -36,7 +36,7 @@
 - Modify: `scripts/lib/geometry.py` (add after `marks_at_times`, ~line 140)
 - Test: `tests/lib/test_geometry.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_geometry.py`:
 
@@ -78,12 +78,12 @@ def test_extent_at_times_rejects_desync():
         geometry.extent_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py -k extent -q ; echo "EXIT: $?"`
 Expected: FAIL — `module 'scripts.lib.geometry' has no attribute 'extent_at_times'`.
 
-- [ ] **Step 3: Implement `extent_at_times`**
+- [x] **Step 3: Implement `extent_at_times`**
 
 Add to `scripts/lib/geometry.py` immediately after `marks_at_times`:
 
@@ -122,12 +122,12 @@ def extent_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta
     return extents
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_geometry.py -k extent -q ; echo "EXIT: $?"`
 Expected: PASS (3 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/geometry.py tests/lib/test_geometry.py
@@ -142,7 +142,7 @@ git commit -m "feat: geometry.extent_at_times projects the subject bbox corners"
 - Modify: `scripts/lib/models.py:626-647` (`ReelCheckSpec` fields + `__post_init__`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -163,12 +163,12 @@ def test_reelcheckspec_editorial_thresholds_fail_loud(kw, msg):
         m.ReelCheckSpec(target_dur=6.0, **kw)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k editorial_thresholds -q ; echo "EXIT: $?"`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'clip_tol'`.
 
-- [ ] **Step 3: Implement the fields + validation**
+- [x] **Step 3: Implement the fields + validation**
 
 In `scripts/lib/models.py`, add three fields to `ReelCheckSpec` after `loudness_tol` (line 633):
 
@@ -190,12 +190,12 @@ Append to `ReelCheckSpec.__post_init__` (after the `loudness_tol` check, line 64
             raise ValueError(f"ReelCheckSpec.layout_jump_max must be a positive number, got {self.layout_jump_max!r}")
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k "editorial_thresholds or reelcheckspec" -q ; echo "EXIT: $?"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -211,7 +211,7 @@ git commit -m "feat: ReelCheckSpec grows clip_tol/bar_symmetry_tol/layout_jump_m
 - Modify: `scripts/lib/safezones.py` (add `subject_extents` after `subject_marks`, ~line 68)
 - Test: `tests/lib/test_reel_final.py` (create), `tests/lib/test_safezones.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_reel_final.py`:
 
@@ -252,12 +252,12 @@ def test_subject_extents_samples_five_corner_boxes_across_the_episode():
     assert ext == [(0.45, 0.4, 0.55, 0.5)] * 5     # constant route → constant extents
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py tests/lib/test_safezones.py -k "key_action or subject_extents" -q ; echo "EXIT: $?"`
 Expected: FAIL — `No module named 'scripts.lib.reel_final'` / `safezones has no attribute 'subject_extents'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `scripts/lib/reel_final.py`:
 
@@ -311,12 +311,12 @@ Update the `safezones.py` import line (line 8) to also import `extent_at_times`:
 from scripts.lib.geometry import marks_at_times, extent_at_times
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py tests/lib/test_safezones.py -k "key_action or subject_extents" -q ; echo "EXIT: $?"`
 Expected: PASS (4 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/reel_final.py scripts/lib/safezones.py tests/lib/test_reel_final.py tests/lib/test_safezones.py
@@ -331,7 +331,7 @@ git commit -m "feat: reel_final.evaluate_key_action + safezones.subject_extents 
 - Modify: `scripts/lib/reel_final.py`
 - Test: `tests/lib/test_reel_final.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_reel_final.py`:
 
@@ -368,12 +368,12 @@ def test_pad_bars_flags_asymmetric_bars():
     assert passed is False and detail["issue"] == "asymmetric" and detail["worst_episode"] == 0
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py -k pad_bars -q ; echo "EXIT: $?"`
 Expected: FAIL — `module 'scripts.lib.reel_final' has no attribute 'evaluate_pad_bars'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `scripts/lib/reel_final.py`:
 
@@ -409,12 +409,12 @@ def evaluate_pad_bars(metas: list[PathMeta], bar_symmetry_tol: float) -> tuple[b
                    "out_dims": out, "advisory": True}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py -k pad_bars -q ; echo "EXIT: $?"`
 Expected: PASS (4 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/reel_final.py tests/lib/test_reel_final.py
@@ -429,7 +429,7 @@ git commit -m "feat: reel_final.evaluate_pad_bars (structural sidecar check, §5
 - Modify: `scripts/lib/reel_final.py`
 - Test: `tests/lib/test_reel_final.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_reel_final.py`:
 
@@ -452,12 +452,12 @@ def test_transitions_flags_a_fill_to_insert_jump():
     assert detail["advisory"] is True
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py -k transitions -q ; echo "EXIT: $?"`
 Expected: FAIL — `module 'scripts.lib.reel_final' has no attribute 'evaluate_transitions'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `scripts/lib/reel_final.py`:
 
@@ -489,12 +489,12 @@ def evaluate_transitions(metas: list[PathMeta], layout_jump_max: float) -> tuple
     return False, {"worst_cut": idx, "jump": round(jump, 4), "modes": modes, "advisory": True}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_reel_final.py -q ; echo "EXIT: $?"`
 Expected: PASS (all reel_final tests green).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/reel_final.py tests/lib/test_reel_final.py
@@ -509,7 +509,7 @@ git commit -m "feat: reel_final.evaluate_transitions (layout-jump proxy, §5.13)
 - Modify: `scripts/lib/models.py:755` (`_ADVISORY_CHECKS`)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/lib/test_models.py`:
 
@@ -522,12 +522,12 @@ def test_reelreport_overall_excludes_the_three_editorial_advisories():
     assert m.ReelReport(checks=checks).overall is True     # advisory Falses never block
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k three_editorial_advisories -q ; echo "EXIT: $?"`
 Expected: FAIL — `overall` is `False` (the three are not yet advisory).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/models.py` replace line 755:
 
@@ -535,12 +535,12 @@ In `scripts/lib/models.py` replace line 755:
 _ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions")   # measured + reported, non-blocking (design §5)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k "advisory" -q ; echo "EXIT: $?"`
 Expected: PASS (the new test + the existing `safe_zones` advisory test).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -555,7 +555,7 @@ git commit -m "feat: key_action/pad_bars/transitions join _ADVISORY_CHECKS"
 - Modify: `scripts/check_reel.py:16` (import), `:23-25` (`_UNCHECKED`), `:204-210` (the `geometry` block)
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_check_reel.py` (reuses the file's `_Stub` and `_write_geom`; adds a layout-writer):
 
@@ -609,12 +609,12 @@ def test_editorial_checks_not_checked_when_silent(tmp_path, monkeypatch):
         assert rep.checks[name].detail["status"] == "not-checked"
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py -k editorial -q ; echo "EXIT: $?"`
 Expected: FAIL — `KeyError: 'key_action'` (the checks aren't wired yet).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/check_reel.py` update the import (line 16):
 
@@ -655,12 +655,12 @@ Replace the `geometry` block (lines 204-210) — load the sidecars once, feed al
         checks["transitions"] = CheckResult("transitions", tr_pass, tr_detail)
 ```
 
-- [ ] **Step 4: Run to verify they pass + no regression**
+- [x] **Step 4: Run to verify they pass + no regression**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py tests/integration/test_safezones.py -q ; echo "EXIT: $?"`
 Expected: PASS — new editorial tests green, **existing `safe_zones` tests still green** (the refactor is behaviour-preserving).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_reel.py tests/lib/test_check_reel.py
@@ -674,26 +674,26 @@ git commit -m "feat: check_reel wires key_action/pad_bars/transitions (advisory,
 **Files:**
 - Modify: `docs/pipeline-map.md`, `docs/build-status.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md`
 
-- [ ] **Step 1: Full suite green**
+- [x] **Step 1: Full suite green**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS — the prior count (**1160 passed / 8 skipped**) + the ~14 new tests, exit 0. Record the new number.
 
-- [ ] **Step 2: Sync the docs**
+- [x] **Step 2: Sync the docs**
 
 - `docs/pipeline-map.md` — the 5.13 row and the "Editorial reel-final" roadmap bullet: mark `key action not clipped` / `pad bars clean` / `layout transitions not jarring` as **built (advisory)**; the stage **stays ◐** (agent review = Slice B, still open). Tally unchanged (**14 ✅ · 1 ◐ · 1 ❌**). Bump `_Last updated_`.
 - `docs/build-status.md` — add a bullet under the reel-final work naming the three advisory checks + `lib/reel_final.py` + `geometry.extent_at_times`; note Slice B (agent review) remains. Bump `_Last updated_` and correct the headline test count.
 - `CLAUDE.md` Quick Reference — two rows: this design + this plan (mirroring the safe-zones rows' phrasing).
 - `docs/specs/2026-07-05-montage-skillset-design.md` — line ~562 enumeration and §5.13 (line ~402-403): mark the three as built (advisory); the agent review is the only §5.13 item still open.
 
-- [ ] **Step 3: Commit the docs**
+- [x] **Step 3: Commit the docs**
 
 ```bash
 git add docs/pipeline-map.md docs/build-status.md CLAUDE.md docs/specs/2026-07-05-montage-skillset-design.md
 git commit -m "docs: §5.13 mechanical editorial trio landed (advisory); agent review still open"
 ```
 
-- [ ] **Step 4: Final whole-slice review**
+- [x] **Step 4: Final whole-slice review**
 
 Dispatch a fresh subagent (read-only + pytest; **no installers**) to review the whole branch diff `main..feat/reel-final-editorial` against the spec: spec-compliance (all three checks advisory, no `overall`/loop-2 change, no new inputs) then code-quality (the projection math, the DRY `subject_extents`/`subject_marks` pairing, the threshold validation). Address any blocking findings as follow-up commits (not `--amend`). Then STOP and report — do **not** merge (the user merges to local `main` and pushes himself).
 

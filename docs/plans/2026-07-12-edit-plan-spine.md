@@ -37,7 +37,7 @@
 - Modify: `scripts/lib/edl.py`
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_edl.py` (the `_ep` / `_edl` helpers already exist at the top of the file):
 
@@ -65,12 +65,12 @@ def test_edl_to_dict_round_trips():
     assert e.to_dict()["cap"] == 2 and e.to_dict()["music"] == "MUSIC.json"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edl.py -k "to_dict" -v`
 Expected: FAIL with `AttributeError: 'EDLEpisode' object has no attribute 'to_dict'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/lib/edl.py`, add a `to_dict` method to `EDLEpisode` (after `__post_init__`):
 
@@ -95,12 +95,12 @@ And a `to_dict` method to `EDL` (after `from_json`):
                 "music": self.music, "cap": self.cap, "target_dur": self.target_dur}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edl.py -k "to_dict" -v`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -125,7 +125,7 @@ Renders the ordered edit decision list to markdown (montage §5.7: "a map — wh
 - Modify: `scripts/lib/edl.py`
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_edl.py`:
 
@@ -152,12 +152,12 @@ def test_to_markdown_shows_motion_and_beat_when_set():
     assert "| 0 | b.mp4 | 1.00–4.00 (3.00s) | close | fill | center | phi | lateral:right | 2 | nose |" in md
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edl.py -k "to_markdown" -v`
 Expected: FAIL with `AttributeError: 'EDL' object has no attribute 'to_markdown'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/lib/edl.py`, add to `EDL` (after `to_dict`):
 
@@ -179,12 +179,12 @@ In `scripts/lib/edl.py`, add to `EDL` (after `to_dict`):
         return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edl.py -k "to_markdown" -v`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -212,7 +212,7 @@ EOF
 - Modify: `scripts/edl_to_reel.py` (call `preflight`; drop dead `_stop` + unused imports)
 - Test: `tests/lib/test_edl.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_edl.py` (imports `EDL`, `preflight` from `scripts.lib.edl`; `ProjectConfig` from `scripts.lib.project`). Extend the top-of-file import line to `from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict` and add `from scripts.lib.project import ProjectConfig`:
 
@@ -243,12 +243,12 @@ def test_preflight_stops_on_a_bad_layout_episode_naming_the_index():
     assert stop["finding"]["problems"]                                # non-empty problem list
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edl.py -k "preflight" -v`
 Expected: FAIL with `ImportError: cannot import name 'preflight'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `scripts/lib/edl.py`, extend the imports at the top (the `manifest` import currently pulls `DEFAULT_COLOR, LAYOUTS_SUPPORTED`):
 
@@ -289,12 +289,12 @@ def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
     return mds, None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edl.py -k "preflight" -v`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Rewire `edl_to_reel` to the shared preflight**
+- [x] **Step 5: Rewire `edl_to_reel` to the shared preflight**
 
 Replace the imports block in `scripts/edl_to_reel.py` (lines 8–16) with:
 
@@ -320,7 +320,7 @@ Delete the `_stop` helper (lines 19–20) entirely. Replace the `edl_to_reel` bo
 
 Leave steps 2–4 (extract / fan-out / build_reel) unchanged. The `seg_dir` and `out_dir` locals already exist above step 1.
 
-- [ ] **Step 6: Run the full `edl_to_reel` suite to verify no regression**
+- [x] **Step 6: Run the full `edl_to_reel` suite to verify no regression**
 
 Run: `pytest tests/lib/test_edl_to_reel.py -v`
 Expected: PASS (5 tests). In particular `test_bad_episode_preflights_before_any_ffmpeg` still returns `edl-invalid` / `episode_idx == 0` with `seen["segments"] == []` (preflight returns the stop before `extract_edl` is called).
@@ -328,7 +328,7 @@ Expected: PASS (5 tests). In particular `test_bad_episode_preflights_before_any_
 Run: `pytest tests/lib/test_edl.py -v`
 Expected: PASS (all — Tasks 0–2).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/edl.py scripts/edl_to_reel.py tests/lib/test_edl.py
@@ -357,7 +357,7 @@ The mechanical heart of 5.7: promote a scored window to an episode, copying the 
 - Create: `scripts/edit_plan.py`
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/lib/test_edit_plan.py`:
 
@@ -407,12 +407,12 @@ def test_window_to_episode_missing_required_composition_raises():
         edit_plan.window_to_episode(clip, clip.windows[0], grid="thirds")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edit_plan.py -k window_to_episode -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.edit_plan'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/edit_plan.py`:
 
@@ -455,12 +455,12 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, **editorial: obj
         raise ValueError(f"window_to_episode: unknown or missing editorial field — {ex}") from ex
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edit_plan.py -k window_to_episode -v`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -487,7 +487,7 @@ Assemble an `EDL` from a `selection.json` dict: resolve each window reference (s
 - Modify: `scripts/edit_plan.py`
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_edit_plan.py` (add `from scripts.lib.footage import Footage` to the imports and `from scripts.lib.edl import EDL`):
 
@@ -547,12 +547,12 @@ def test_build_edl_bad_window_type_raises():
         edit_plan.build_edl(_footage(), sel)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edit_plan.py -k build_edl -v`
 Expected: FAIL with `AttributeError: module 'scripts.edit_plan' has no attribute 'build_edl'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add to `scripts/edit_plan.py` (after `window_to_episode`):
 
@@ -592,12 +592,12 @@ def build_edl(footage: Footage, selection: dict) -> EDL:
                cap=cap if cap is not None else 3, target_dur=selection.get("target_dur"))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edit_plan.py -k build_edl -v`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -624,7 +624,7 @@ The one-call entry the SKILL/CLI drives: load inputs, build the EDL, preflight a
 - Modify: `scripts/edit_plan.py`
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/lib/test_edit_plan.py` (add `import json` and `from scripts.lib.edl import EDL`):
 
@@ -676,12 +676,12 @@ def test_write_edit_plan_corrupt_selection_raises(tmp_path):
                                   str(tmp_path / "project.json"), str(tmp_path / "out"))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/lib/test_edit_plan.py -k write_edit_plan -v`
 Expected: FAIL with `AttributeError: module 'scripts.edit_plan' has no attribute 'write_edit_plan'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add to `scripts/edit_plan.py` (after `build_edl`):
 
@@ -727,12 +727,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/lib/test_edit_plan.py -v`
 Expected: PASS (all — Tasks 3–5).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -758,7 +758,7 @@ Prove that an agent's `selection.json` ultimately yields a delivered reel: real 
 **Files:**
 - Create: `tests/integration/test_edit_plan.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `tests/integration/test_edit_plan.py`:
 
@@ -841,12 +841,12 @@ def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     assert "video" in codecs
 ```
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 Run: `pytest tests/integration/test_edit_plan.py -v`
 Expected: PASS (1 test; skips only if ffmpeg is absent, via the `sample_clip` fixture's own skip).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_edit_plan.py
@@ -873,12 +873,12 @@ The writing-plans-style edit-plan skill (montage §5.7): autonomous draft + a si
 - Create: `SKILLS/edit-plan/SKILL.md`
 - Reference (read, do not modify): `SKILLS/footage-intake/SKILL.md`
 
-- [ ] **Step 1: Read the sibling skill for house style**
+- [x] **Step 1: Read the sibling skill for house style**
 
 Run: `cat SKILLS/footage-intake/SKILL.md`
 Note the frontmatter shape (`name`, `description`), the script-invocation style (explicit args, run as a module), and the tone.
 
-- [ ] **Step 2: Write the skill**
+- [x] **Step 2: Write the skill**
 
 Create `SKILLS/edit-plan/SKILL.md`:
 
@@ -968,14 +968,14 @@ router) extracts each window, runs process-episode per episode, and builds the
 delivered reel — with music when `EDL.music` points at a `MUSIC.json`.
 ```
 
-- [ ] **Step 3: Sanity-check the skill references**
+- [x] **Step 3: Sanity-check the skill references**
 
 Run: `test -f references/editing-canon.md && echo OK`
 Expected: `OK` (the skill tells the agent to read it).
 Run: `python -m scripts.edit_plan build --help`
 Expected: the argparse help for `--footage/--selection/--project/--out-dir` (confirms the invocation in the skill is accurate).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add SKILLS/edit-plan/SKILL.md
@@ -1001,7 +1001,7 @@ Update the status docs and registry, then dispatch a final review over the whole
 **Files:**
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `docs/specs/2026-07-11-extract-spine-design.md`
 
-- [ ] **Step 1: Update `docs/pipeline-map.md`**
+- [x] **Step 1: Update `docs/pipeline-map.md`**
 
 In the "15 stages" table, change the 5.7 row's status `◐` → `✅` and its note to:
 
@@ -1011,11 +1011,11 @@ In the "15 stages" table, change the 5.7 row's status `◐` → `✅` and its no
 
 In the "Remaining work — blockers & critical path" table, change the 5.7 row to `✅` and set "Left to build" to `— (SP3, 2026-07-12)`; update the 5.1 router row's "Blocked by" to note 5.7 is now ✅. Update the tally (`7 ✅ · 5 ◐ · 3 ❌`) and the critical-path diagram (`5.7 edit-plan ✅`). Bump `_Last updated: 2026-07-12._` (unchanged date, but confirm).
 
-- [ ] **Step 2: Update `docs/build-status.md`**
+- [x] **Step 2: Update `docs/build-status.md`**
 
 Add a DONE entry for SP3 (mirror the SP2 entry's format): what shipped (`EDL.to_markdown`/`to_dict`/`preflight`, `edit_plan.py`, `edit-plan` SKILL, the SP3→SP1 golden), the commit range, and set the "next action" to the next front-half slice (SP1b assemble-draft or the full reel-brief). Flip stage 5.7 to ✅ wherever it is tracked.
 
-- [ ] **Step 3: Update `CLAUDE.md` registry**
+- [x] **Step 3: Update `CLAUDE.md` registry**
 
 Add a Quick Reference row for the edit-plan spine design + plan (mirror the extract-spine rows):
 
@@ -1024,20 +1024,20 @@ Add a Quick Reference row for the edit-plan spine design + plan (mirror the extr
 | Edit-plan spine plan | [2026-07-12-edit-plan-spine.md](docs/plans/2026-07-12-edit-plan-spine.md) | Tasks 0–8: EDL.to_markdown/to_dict, extract edl.preflight, edit_plan.py (window_to_episode/build_edl/write_edit_plan), edit-plan SKILL, real-ffmpeg SP3→SP1 golden, docs. |
 ```
 
-- [ ] **Step 4: Update the montage design spec §5.7 Built note**
+- [x] **Step 4: Update the montage design spec §5.7 Built note**
 
 In `docs/specs/2026-07-05-montage-skillset-design.md`, replace the §5.7 "Built (2026-07-11, SP1)" note's deferral sentence — the `EDL.md` render + interactive authoring are no longer deferred. Add a "Built (2026-07-12, SP3)" note: `scripts/edit_plan.py` + `SKILLS/edit-plan` author an `EDL.json` + `EDL.md` from `FOOTAGE.json` via an agent `selection.json` (selection = judgment; code projects windows by reference); `EDL.to_markdown` renders the map; `edl.preflight` (shared with `edl_to_reel`) gates before extract. Point at `docs/plans/2026-07-12-edit-plan-spine.md`.
 
-- [ ] **Step 5: Update the extract-spine spec's SP3 pointer**
+- [x] **Step 5: Update the extract-spine spec's SP3 pointer**
 
 In `docs/specs/2026-07-11-extract-spine-design.md` §7 (Non-goals), the line "`EDL.md` markdown render + interactive edit-plan authoring → **SP3**" now has a home — append `(built 2026-07-12, docs/specs/2026-07-12-edit-plan-spine-design.md)`.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `pytest -q; echo "EXIT: $?"`
 Expected: all green (unit + integration), `EXIT: 0`. (Do not pipe through `tail` — it masks the exit code.)
 
-- [ ] **Step 7: Commit the docs**
+- [x] **Step 7: Commit the docs**
 
 ```bash
 git add docs/ CLAUDE.md
@@ -1053,7 +1053,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 8: Final whole-slice review**
+- [x] **Step 8: Final whole-slice review**
 
 Dispatch a fresh code-review subagent (opus) over the whole branch diff `main..HEAD`. Focus: (a) no float transcription leaks — the only path from window start/dur to the EDL is `window_to_episode`; (b) `edl.preflight` behaviour is identical to the old inline loop (edl_to_reel's 5 tests green); (c) no import cycle from `edl → project`; (d) fail-loud with remedy on every raise; (e) `EDL.json` is always generated from `selection.json`, never hand-authored in the flow. Fold any legitimate finding, then the slice is ready to merge.
 

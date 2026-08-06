@@ -49,7 +49,7 @@ written during the first real montage run. Two of its hunks are *adopted* by thi
 - Create: `scripts/lib/gridfit.py`
 - Test: `tests/lib/test_gridfit.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_gridfit.py
@@ -116,12 +116,12 @@ def test_lines_at_refuses_a_bool_phase():
         gridfit.lines_at([0.0, 0.5], 2, True)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.gridfit'`
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 ```python
 # scripts/lib/gridfit.py
@@ -175,12 +175,12 @@ def lines_at(beats: Sequence[float], level_n: int, phase: int) -> list[float]:
     return seq[phase::level_n]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: PASS (10 tests — 7 behaviours + the three bool refusals)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/gridfit.py tests/lib/test_gridfit.py
@@ -195,7 +195,7 @@ git commit -m "feat: gridfit levels, lines and the half-beat allowance"
 - Modify: `scripts/lib/gridfit.py`
 - Test: `tests/lib/test_gridfit.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_gridfit.py`:
 
@@ -287,12 +287,12 @@ def test_fit_refuses_a_bad_allowance(bad):
         gridfit.fit_level([1.0, 1.0], [0.0, 2.0], [(-0.5, 0.5)] * 2, bad)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.gridfit' has no attribute 'fit_level'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/gridfit.py`:
 
@@ -387,12 +387,12 @@ def fit_level(durs, lines, bounds, allow: float) -> Fit:
                needs=tuple(needs), worst=worst, total=sum(devs), fits=worst <= FIT_EPS)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: PASS (21 tests in the file — Task 0's 10 plus these 11)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/gridfit.py tests/lib/test_gridfit.py
@@ -407,7 +407,7 @@ git commit -m "feat: gridfit.fit_level — the cumulative snap with two clamps"
 - Modify: `scripts/lib/gridfit.py`
 - Test: `tests/lib/test_gridfit.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_gridfit.py`:
 
@@ -477,12 +477,12 @@ def test_best_fit_refuses_an_empty_level_table():
         gridfit.best_fit([1.0, 1.0], _metronome(10), [(0.0, 0.0)] * 2, 0.1, levels=())
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.gridfit' has no attribute 'best_fit'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/gridfit.py`:
 
@@ -518,12 +518,12 @@ def best_fit(durs, beats, bounds, allow: float, levels=GRID_LEVELS):
     return least, tuple(per_level)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_gridfit.py -q`
 Expected: PASS (27 tests in the file)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/gridfit.py tests/lib/test_gridfit.py
@@ -538,7 +538,7 @@ git commit -m "feat: gridfit.best_fit — coarsest level that fits, rejections n
 - Modify: `scripts/lib/footage.py`
 - Test: `tests/lib/test_footage.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_footage.py`:
 
@@ -577,12 +577,12 @@ def test_room_after_refuses_a_bad_start(bad):
         clip.room_after(bad)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -q`
 Expected: FAIL — `AttributeError: 'FootageClip' object has no attribute 'room_after'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `FootageClip` in `scripts/lib/footage.py`, after `to_dict`:
 
@@ -606,12 +606,12 @@ Add to `FootageClip` in `scripts/lib/footage.py`, after `to_dict`:
         return float((min(after) if after else self.dur) - start)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/footage.py tests/lib/test_footage.py
@@ -626,7 +626,7 @@ git commit -m "feat: FootageClip.room_after — the shot's remaining room, one o
 - Modify: `scripts/lib/offset.py`
 - Test: `tests/lib/test_offset.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_offset.py`:
 
@@ -680,12 +680,12 @@ records a real bug: `# clamp: a 1e-9-slack gap start must not exceed latest`, `#
 Two land one indent deeper, which pushes them past 100 chars as trailing comments — move those onto
 their own line above the code they annotate rather than shortening them.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.offset' has no attribute 'best_offsets'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/offset.py`, replace the body of `best_offset` with a delegation and add
 `best_offsets` above it:
@@ -739,12 +739,12 @@ def best_offset(mix_energy: Sequence[float], mix_hz: float,
     return best_offsets(mix_energy, mix_hz, gaps, duration, track_dur, k=1)[0]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_offset.py tests/lib/test_beats.py -q`
 Expected: PASS — the existing `best_offset` tests still pass unchanged
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/offset.py tests/lib/test_offset.py
@@ -759,7 +759,7 @@ git commit -m "feat: offset.best_offsets — top-K window candidates for the fit
 - Modify: `scripts/lib/pacing.py`
 - Test: `tests/lib/test_pacing.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_pacing.py`:
 
@@ -808,12 +808,12 @@ def test_markdown_shows_the_line_and_deviation():
     assert "| – | – |" in md
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q`
 Expected: FAIL — `TypeError: Slot.__init__() got an unexpected keyword argument 'line'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/pacing.py`:
 
@@ -899,7 +899,7 @@ Replace `Spine.to_markdown` (lines 133–141) with:
         return "\n".join(lines) + "\n"
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q`
 Expected: FAIL on the *old* `build_spine` goldens (they construct `Slot`s without
@@ -909,7 +909,7 @@ being changed here; only the report's columns.
 
 Run again: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q` → PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/pacing.py tests/lib/test_pacing.py
@@ -924,7 +924,7 @@ git commit -m "feat: Slot carries the line it was fitted to and its deviation"
 - Modify: `scripts/lib/pacing.py`
 - Test: `tests/lib/test_pacing.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_pacing.py`:
 
@@ -980,12 +980,12 @@ def test_the_ladder_is_gone():
             "material now owns (design 2026-07-24 §5)")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.pacing' has no attribute 'fit_spine'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/pacing.py`:
 
@@ -1053,7 +1053,7 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
     return Spine(tuple(slots), total, float(tempo)), fit, rejected
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q`
 Expected: FAIL on the old `build_spine` tests, which no longer have a function to call.
@@ -1063,7 +1063,7 @@ Expected: FAIL on the old `build_spine` tests, which no longer have a function t
 
 Run again: `.venv/bin/python -m pytest tests/lib/test_pacing.py -q` → PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/pacing.py tests/lib/test_pacing.py
@@ -1085,7 +1085,7 @@ from the parked branch. Read them with:
 git show wip/montage-run-hardening:scripts/edit_plan.py > /tmp/parked_edit_plan.py
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edit_plan.py`:
 
@@ -1169,13 +1169,13 @@ def _ep(dur):
                       composition="center", grid="thirds")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -q`
 Expected: FAIL — `TypeError: window_to_episode() got an unexpected keyword argument
 'start_offset'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 1. Replace `window_to_episode` with the parked version (from `/tmp/parked_edit_plan.py`),
    which adds the `start_offset` parameter, its four refusals, and the docstring paragraph.
@@ -1242,14 +1242,14 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     rescue for an under-fill — the music is cut to the reel, not the reel to the music."""
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -q`
 Expected: FAIL on existing tests that assert the old re-timing (an episode truncated to a
 shorter slot). Update each: a fitted spine no longer shortens an episode, so those tests
 either assert the new refusal or use a slot within the allowance. Then PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -1264,7 +1264,7 @@ git commit -m "feat: edit_plan adopts start_offset; binding applies a fit, never
 - Create: `scripts/lib/anchors.py`
 - Test: `tests/lib/test_anchors.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_anchors.py
@@ -1312,12 +1312,12 @@ def test_anchors_refuse_a_threshold_outside_zero_one():
         anchors.anchors_from_curve([0.1, 0.9], hz=3.0, rel=1.5)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_anchors.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.anchors'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # scripts/lib/anchors.py
@@ -1368,12 +1368,12 @@ def anchors_from_curve(curve, hz: float = ANCHOR_HZ, min_gap: float = ANCHOR_MIN
     return [i / hz for i in sorted(kept)]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_anchors.py -q`
 Expected: PASS (7 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/anchors.py tests/lib/test_anchors.py
@@ -1388,7 +1388,7 @@ git commit -m "feat: anchors_from_curve — advisory action anchors, thinned by 
 - Modify: `scripts/lib/anchors.py`
 - Test: `tests/integration/test_anchors.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/integration/test_anchors.py
@@ -1430,13 +1430,13 @@ def test_measure_curve_spikes_where_the_picture_jumps(tmp_path):
     assert min(abs(t - 2.0) for t in got) < 0.5
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_anchors.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.lib.anchors' has no attribute
 'measure_curve'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `scripts/lib/anchors.py` (imports at top of the file):
 
@@ -1472,12 +1472,12 @@ def measure_curve(src: str, start: float, dur: float, hz: float = ANCHOR_HZ) -> 
             for i in range(n)]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_anchors.py -q`
 Expected: PASS (2 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/anchors.py tests/integration/test_anchors.py
@@ -1492,7 +1492,7 @@ git commit -m "feat: anchors.measure_curve — one frame-difference pass, -ss af
 - Modify: `scripts/pacing.py`
 - Test: `tests/lib/test_pacing_driver.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_pacing_driver.py
@@ -1575,12 +1575,12 @@ def test_an_edl_source_missing_from_footage_fails_loud(run_dir):
                             [str(run_dir / "MUSIC.json")], str(run_dir))
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing_driver.py -q`
 Expected: FAIL — `TypeError: build_pacing() takes ... positional arguments`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `scripts/pacing.py` entirely with:
 
@@ -1715,7 +1715,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing_driver.py -q`
 Expected: PASS (5 tests)
@@ -1724,7 +1724,7 @@ Then delete the obsolete driver tests: search `tests/` for `build_pacing(` calls
 old `(music_json, out_dir, spec_json)` signature and remove those tests — the stage no
 longer reads SPEC (the scenario owns the length now).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/pacing.py tests/lib/test_pacing_driver.py
@@ -1739,7 +1739,7 @@ git commit -m "feat: pacing driver fits the EDL's cuts, compares windows, report
 - Modify: `scripts/montage.py:37-57`
 - Test: `tests/lib/test_montage.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_montage.py`:
 
@@ -1761,12 +1761,12 @@ def test_a_run_with_footage_but_no_edl_asks_for_edit_plan_not_music(tmp_path):
     assert montage.next_action(str(tmp_path))["next"] == "edit-plan"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 Expected: FAIL — `assert 5 < 4`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/montage.py`, move the `edit-plan` Stage entry so it sits directly after
 `trend-scan`, leaving `music-and-mood` and `pacing` after it, and update `pacing`'s runner
@@ -1785,12 +1785,12 @@ string:
           "draft CLI (optional QA preview)", "edl"),
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -1806,7 +1806,7 @@ git commit -m "feat: the conveyor runs edit-plan before music and pacing"
   `skills/edit-plan/SKILL.md`
 - Test: `tests/test_skill_convention.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_skill_convention.py`:
 
@@ -1824,12 +1824,12 @@ def test_using_montage_orders_edit_plan_before_music():
     assert text.index("edit_plan build") < text.index("scripts.beats")
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -q`
 Expected: FAIL — `--edl` not in the pacing skill
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `skills/pacing/SKILL.md`, replace the procedure section with:
 
@@ -1875,12 +1875,12 @@ scene cut and never changes `dur`. Use it to start on the first manoeuvre when t
 report says that lands a better ending.
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add skills/ tests/test_skill_convention.py
@@ -1894,7 +1894,7 @@ git commit -m "docs: skills carry the scenario-first order and the two-pass fit"
 **Files:**
 - Create: `tests/integration/test_scenario_first.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/integration/test_scenario_first.py
@@ -1975,22 +1975,22 @@ def test_a_spine_from_another_edit_is_refused_not_applied(tmp_path):
                             selection, pacing=foreign)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_scenario_first.py -q`
 Expected: FAIL until Tasks 6, 7 and 10 are all in (run it last).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 No production code — this task is the proof. If it fails, the fault is in Tasks 6/7/10;
 fix there, not here.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_scenario_first.py -q`
 Expected: PASS (2 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_scenario_first.py
@@ -2005,7 +2005,7 @@ git commit -m "test: real-ffmpeg proof a ride survives the fit at its own length
 - Modify: `CLAUDE.md`, `docs/build-status.md`, `docs/pipeline-map.md`,
   `docs/specs/2026-07-14-pacing-design.md`
 
-- [ ] **Step 1: Run the mutation battery**
+- [x] **Step 1: Run the mutation battery**
 
 These are steps, not suggestions. For each, make the mutation, run the named test, confirm
 it FAILS, then revert.
@@ -2021,7 +2021,7 @@ it FAILS, then revert.
 | 7 | `measure_curve` puts `-ss` before `-i` | `tests/integration/test_anchors.py` — `proc.run`'s runtime `_seek_order` guard raises the §12 black-frames landmine. NOT `test_landmine_scan.py`: that AST scan matches banned filter/binary *literals*, so it cannot see a `-ss`/`-i` *reordering* (landmine-lint design §5 — the AST layer does not cover seek order; the runtime guard does). |
 | 8 | `anchors_from_curve` keeps the earlier of two close peaks | `test_two_spikes_closer_than_the_min_gap_collapse_to_the_stronger` |
 
-- [ ] **Step 1b: Correct the Task 2 golden's docstring**
+- [x] **Step 1b: Correct the Task 2 golden's docstring**
 
 `tests/lib/test_gridfit.py::test_best_fit_the_runs_own_reel_reaches_beat_but_not_phrase`
 says "the reason is a 0.076s-per-cut drift". Measurement (Task 2's review) shows the real
@@ -2034,7 +2034,7 @@ not only the verdict:
     assert phrase.needs == pytest.approx((0.204, 0.076, 0.076, 0.056, 0.366), abs=1e-3)
 ```
 
-- [ ] **Step 2: Sync the docs**
+- [x] **Step 2: Sync the docs**
 
 `CLAUDE.md` — add two registry rows after the pacing rows:
 
@@ -2060,12 +2060,12 @@ hunks.
 `docs/pipeline-map.md` — swap §5.5/§5.6 behind §5.7 in the stage list and note the
 two-pass edit-plan.
 
-- [ ] **Step 3: Run the whole suite**
+- [x] **Step 3: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all green. Record the exact counts in `docs/build-status.md`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CLAUDE.md docs/

@@ -665,7 +665,7 @@ git add docs CLAUDE.md
 git commit -m "docs: sync pacing/reel-retry/montage/status — Phase B tail closed"
 ```
 
-- [ ] **Step 6: Final whole-slice review**
+- [x] **Step 6: Final whole-slice review**
 
 Dispatch a fresh reviewer over `git diff main...HEAD` with the design as the requirement. It must verify, adversarially:
 1. **One-sidedness** — no path absorbs an over-length reel; `_shortfall` returns `None` for it and both edges escalate. A reel longer than its music fragment must never reach `mix`.

@@ -24,7 +24,7 @@ Run the suite without piping through `tail` (masks exit code): `.venv/bin/python
 - Create: `scripts/lib/spec.py`
 - Test: `tests/lib/test_spec.py`
 
-- [ ] **Step 1: Write the failing tests** (`tests/lib/test_spec.py`)
+- [x] **Step 1: Write the failing tests** (`tests/lib/test_spec.py`)
 
 ```python
 import pytest
@@ -124,12 +124,12 @@ def test_vocab_constants_are_the_allowed_sets():
     assert STYLE_LEANS == ("classic", "balanced", "trend")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_spec.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.spec'`.
 
-- [ ] **Step 3: Implement `scripts/lib/spec.py`** (config-spec core; `to_markdown` lands in Task 1)
+- [x] **Step 3: Implement `scripts/lib/spec.py`** (config-spec core; `to_markdown` lands in Task 1)
 
 ```python
 """Reel brief: the editorial SPEC atop project-init's machine subset (design
@@ -228,12 +228,12 @@ class Spec:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_spec.py -q ; echo "EXIT: $?"`
 Expected: PASS (16 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/spec.py tests/lib/test_spec.py
@@ -248,7 +248,7 @@ git commit -m "feat: Spec config-spec + validation (reel-brief 5.3)"
 - Modify: `scripts/lib/spec.py` (add method to `Spec`)
 - Test: `tests/lib/test_spec.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/lib/test_spec.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/lib/test_spec.py`)
 
 ```python
 def test_to_markdown_heading_and_gate_fields():
@@ -270,12 +270,12 @@ def test_to_markdown_singular_reel_and_empty_frees_dash():
     assert "**Ending:** –" in md
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_spec.py -k to_markdown -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: 'Spec' object has no attribute 'to_markdown'`.
 
-- [ ] **Step 3: Add `to_markdown` to `Spec`** (in `scripts/lib/spec.py`, after `write`)
+- [x] **Step 3: Add `to_markdown` to `Spec`** (in `scripts/lib/spec.py`, after `write`)
 
 ```python
     def to_markdown(self) -> str:
@@ -298,12 +298,12 @@ Expected: FAIL — `AttributeError: 'Spec' object has no attribute 'to_markdown'
         return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_spec.py -q ; echo "EXIT: $?"`
 Expected: PASS (18 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/spec.py tests/lib/test_spec.py
@@ -318,7 +318,7 @@ git commit -m "feat: Spec.to_markdown SPEC.md render (reel-brief 5.3)"
 - Create: `scripts/reel_brief.py`
 - Test: `tests/test_reel_brief.py`
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_reel_brief.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_reel_brief.py`)
 
 ```python
 import pytest
@@ -361,12 +361,12 @@ def test_write_reel_brief_emits_both_files(tmp_path):
     assert (tmp_path / "SPEC.md").read_text().startswith("# Reel brief —")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_brief.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.reel_brief'`.
 
-- [ ] **Step 3: Implement `scripts/reel_brief.py`** (driver half; CLI lands in Task 3)
+- [x] **Step 3: Implement `scripts/reel_brief.py`** (driver half; CLI lands in Task 3)
 
 ```python
 """Reel-brief writer (design docs/specs/2026-07-12-reel-brief-design.md, stage 5.3).
@@ -406,12 +406,12 @@ def write_reel_brief(spec: Spec, out_dir: str) -> dict:
     return {"status": "written", "spec": str(sj), "md": str(sm)}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_brief.py -q ; echo "EXIT: $?"`
 Expected: PASS (4 tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reel_brief.py tests/test_reel_brief.py
@@ -426,7 +426,7 @@ git commit -m "feat: reel_brief build_spec + write_reel_brief (5.3)"
 - Modify: `scripts/reel_brief.py` (add `main` + `__main__` guard)
 - Test: `tests/test_reel_brief.py` (append)
 
-- [ ] **Step 1: Write the failing test** (append to `tests/test_reel_brief.py`)
+- [x] **Step 1: Write the failing test** (append to `tests/test_reel_brief.py`)
 
 ```python
 import sys
@@ -449,12 +449,12 @@ def test_cli_build_writes_and_exits_0(tmp_path, monkeypatch, capsys):
     assert spec.cast == ("Anna", "Ben") and spec.length_s == 30.0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_reel_brief.py -k cli -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.reel_brief' has no attribute 'main'`.
 
-- [ ] **Step 3: Add the CLI** (append to `scripts/reel_brief.py`)
+- [x] **Step 3: Add the CLI** (append to `scripts/reel_brief.py`)
 
 ```python
 def main() -> None:
@@ -489,7 +489,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify it passes** (and the module runs end-to-end)
+- [x] **Step 4: Run to verify it passes** (and the module runs end-to-end)
 
 Run: `.venv/bin/python -m pytest tests/test_reel_brief.py -q ; echo "EXIT: $?"`
 Expected: PASS (5 tests), EXIT: 0.
@@ -497,7 +497,7 @@ Expected: PASS (5 tests), EXIT: 0.
 Smoke (optional): with a `project.json` present,
 `.venv/bin/python -m scripts.reel_brief build --project <dir>/project.json --length 30 --mood calm --hook "slow push" --out-dir <dir>` prints `{"status": "written", ...}`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/reel_brief.py tests/test_reel_brief.py
@@ -512,7 +512,7 @@ git commit -m "feat: reel_brief CLI build subcommand (5.3)"
 - Modify: `scripts/montage.py:42`
 - Test: `tests/lib/test_montage.py` (patch stale assertions + add optional case)
 
-- [ ] **Step 1: Patch the montage tests to the new expectation**
+- [x] **Step 1: Patch the montage tests to the new expectation**
 
 In `tests/lib/test_montage.py`, edit `test_v1_stages_kinds_and_flags` — change the deferred-set line and add reel-brief assertions:
 
@@ -554,12 +554,12 @@ def test_reel_brief_optional_absent_then_present(tmp_path):
     assert res2["next"] == "footage-intake"
 ```
 
-- [ ] **Step 2: Run to verify the patched tests fail against current code**
+- [x] **Step 2: Run to verify the patched tests fail against current code**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: FAIL — the deferred set still contains `reel-brief`; `test_reel_brief_optional_absent_then_present` sees `state == "skip"`.
 
-- [ ] **Step 3: Flip the stage in `scripts/montage.py`**
+- [x] **Step 3: Flip the stage in `scripts/montage.py`**
 
 Line 42 — replace:
 
@@ -573,12 +573,12 @@ with:
     Stage("reel-brief", "SPEC.json", "optional", "reel-brief SKILL -> reel_brief CLI", "spec"),
 ```
 
-- [ ] **Step 4: Run the montage suite**
+- [x] **Step 4: Run the montage suite**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: PASS (all montage tests), EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -595,7 +595,7 @@ git commit -m "feat: router treats reel-brief as optional, SPEC.json artifact (5
 
 No pytest (SKILLs are prose). The gate is the full-suite green check + the final review.
 
-- [ ] **Step 1: Write `SKILLS/reel-brief/SKILL.md`**
+- [x] **Step 1: Write `SKILLS/reel-brief/SKILL.md`**
 
 ```markdown
 ---
@@ -663,7 +663,7 @@ edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
 - You never hand-edit `SPEC.json`/`SPEC.md` — the CLI regenerates them from answers.
 ```
 
-- [ ] **Step 2: Wire `reel-brief` into `SKILLS/using-montage/SKILL.md`**
+- [x] **Step 2: Wire `reel-brief` into `SKILLS/using-montage/SKILL.md`**
 
 (a) Overview stage list — line 13, change
 `(project-init -> footage-intake -> [music] -> edit-plan -> edl_to_reel)` to
@@ -696,12 +696,12 @@ edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
   offer it; on a bare run, name it as skipped.
 ```
 
-- [ ] **Step 3: Verify the full suite still green** (no code changed, but confirm nothing references the old SKILL text in tests)
+- [x] **Step 3: Verify the full suite still green** (no code changed, but confirm nothing references the old SKILL text in tests)
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS (all), EXIT: 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add SKILLS/reel-brief/SKILL.md SKILLS/using-montage/SKILL.md
@@ -715,7 +715,7 @@ git commit -m "feat: reel-brief SKILL + using-montage wiring (5.3)"
 **Files:**
 - Modify: `docs/pipeline-map.md`, `docs/build-status.md`, `docs/specs/2026-07-05-montage-skillset-design.md`, `CLAUDE.md`
 
-- [ ] **Step 1: `docs/pipeline-map.md`** — flip 5.3 to built.
+- [x] **Step 1: `docs/pipeline-map.md`** — flip 5.3 to built.
 
 In the 15-stage table (row 5.3), change status `◐ → ✅` and the note to:
 `\`reel-brief\` SKILL → \`reel_brief\` CLI + typed \`Spec\` (\`scripts/lib/spec.py\`) writes \`SPEC.md\`+\`SPEC.json\` atop project-init's machine subset (5.3)`.
@@ -726,7 +726,7 @@ Update the tally line `**Tally:** 8 ✅ · 4 ◐ · 3 ❌.` → `**Tally:** 9 �
 
 In the critical-path prose and "Front-half authoring ◐" roadmap bullet, mark reel-brief done: the front half's remaining authoring is now SP1b (`draft.mp4`) + trend-scan (5.4); `SPEC.md` (5.3) is built (optional enricher).
 
-- [ ] **Step 2: `docs/build-status.md`** — append to the Done section (chronological, newest last):
+- [x] **Step 2: `docs/build-status.md`** — append to the Done section (chronological, newest last):
 
 ```markdown
 - **reel-brief (5.3, editorial spine) DONE (2026-07-12)** — `scripts/lib/spec.py`
@@ -739,7 +739,7 @@ In the critical-path prose and "Front-half authoring ◐" roadmap bullet, mark r
 
 Narrow the "Next action" pointer so it no longer lists reel-brief; the front-half's open items are SP1b draft + trend-scan (5.4) + music B3.
 
-- [ ] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`** — add a note under §5.3 (after the "Gate:" line, line ~216):
+- [x] **Step 3: `docs/specs/2026-07-05-montage-skillset-design.md`** — add a note under §5.3 (after the "Gate:" line, line ~216):
 
 ```markdown
 > **Built (2026-07-12):** `scripts/lib/spec.py` (`Spec` config-spec + `to_markdown`)
@@ -751,26 +751,26 @@ Narrow the "Next action" pointer so it no longer lists reel-brief; the front-hal
 > them yet. See `docs/plans/2026-07-12-reel-brief.md`.
 ```
 
-- [ ] **Step 4: `CLAUDE.md`** — add two registry rows to the Quick Reference table (after the Router entry-skill rows):
+- [x] **Step 4: `CLAUDE.md`** — add two registry rows to the Quick Reference table (after the Router entry-skill rows):
 
 ```markdown
 | Reel-brief spine design | [2026-07-12-reel-brief-design.md](docs/specs/2026-07-12-reel-brief-design.md) | Stage 5.3: editorial `SPEC.md`+`SPEC.json` atop project-init's machine subset; typed `Spec` config-spec (gate on mood/hook/length), thin `reel_brief.py` writer, one-question SKILL; router optional (enriches CP1). |
 | Reel-brief spine plan | [2026-07-12-reel-brief.md](docs/plans/2026-07-12-reel-brief.md) | Tasks 0–6: `Spec` + `to_markdown`, `build_spec`/`write_reel_brief` + CLI, router deferred→optional flip + test patch, `reel-brief` SKILL + using-montage wiring, docs. |
 ```
 
-- [ ] **Step 5: Full suite green**
+- [x] **Step 5: Full suite green**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: PASS (all prior + new spec/reel_brief/montage tests), EXIT: 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/pipeline-map.md docs/build-status.md docs/specs/2026-07-05-montage-skillset-design.md CLAUDE.md
 git commit -m "docs: sync pipeline-map/build-status/spec/registry for reel-brief (5.3)"
 ```
 
-- [ ] **Step 7: Final whole-slice review**
+- [x] **Step 7: Final whole-slice review**
 
 Dispatch a code reviewer over the whole slice (spec compliance vs `docs/specs/2026-07-12-reel-brief-design.md`, then code quality). Confirm: the gate is enforced in `__post_init__`; `build_spec` sources canvas only from the project; both files are written together; the router flip left the autonomous flow's `next` sequence unchanged; docs are in sync. Fix any findings in follow-up commits (not `--amend`).
 

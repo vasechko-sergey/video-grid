@@ -32,7 +32,7 @@ Two invariants every task must preserve (design §2, §4):
 - Modify: `scripts/lib/assembly.py`
 - Test: `tests/integration/test_assembly_proxy.py` (real-ffmpeg)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/integration/test_assembly_proxy.py
@@ -73,9 +73,9 @@ def test_frame_rgb_returns_original_resolution_array(tmp_path):
     assert isinstance(arr, np.ndarray) and arr.shape == (1080, 1920, 3)
 ```
 
-- [ ] **Step 2: Run → expect FAIL** (`AttributeError: make_proxy`). `.venv/bin/python -m pytest tests/integration/test_assembly_proxy.py -q`
+- [x] **Step 2: Run → expect FAIL** (`AttributeError: make_proxy`). `.venv/bin/python -m pytest tests/integration/test_assembly_proxy.py -q`
 
-- [ ] **Step 3: Implement in `scripts/lib/assembly.py`**
+- [x] **Step 3: Implement in `scripts/lib/assembly.py`**
 
 ```python
 def make_proxy(src: str, dst: str, long_side: int = 960) -> bool:
@@ -109,9 +109,9 @@ def frame_rgb(src: str, t: float) -> "np.ndarray":
 
 Add `import tempfile` / `from pathlib import Path` at the top if not present (check the existing imports first; `proc`, `ffbin`, `probe_stream` already live in this module).
 
-- [ ] **Step 4: Run → expect PASS.**
+- [x] **Step 4: Run → expect PASS.**
 
-- [ ] **Step 5: Commit** — `git add scripts/lib/assembly.py tests/integration/test_assembly_proxy.py && git commit -m "feat(intake): assembly.make_proxy + frame_rgb"`
+- [x] **Step 5: Commit** — `git add scripts/lib/assembly.py tests/integration/test_assembly_proxy.py && git commit -m "feat(intake): assembly.make_proxy + frame_rgb"`
 
 ---
 
@@ -121,7 +121,7 @@ Add `import tempfile` / `from pathlib import Path` at the top if not present (ch
 - Modify: `scripts/lib/intake_cache.py:29` (`CACHE_VERSION`), `:52` (`clip_key`), `store`/`load` signatures
 - Test: `tests/lib/test_intake_cache.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_clip_key_includes_proxy_long_side_and_v3(tmp_path):
@@ -134,9 +134,9 @@ def test_clip_key_includes_proxy_long_side_and_v3(tmp_path):
     assert k != k2                              # a scale change invalidates
 ```
 
-- [ ] **Step 2: Run → FAIL** (unexpected `proxy_long_side` kwarg / version 2).
+- [x] **Step 2: Run → FAIL** (unexpected `proxy_long_side` kwarg / version 2).
 
-- [ ] **Step 3: Implement** — bump the constant and extend the key:
+- [x] **Step 3: Implement** — bump the constant and extend the key:
 
 ```python
 CACHE_VERSION = 3   # v2→v3: analysis runs on a downscaled proxy (design 2026-08-01)
@@ -150,9 +150,9 @@ def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int) -> 
 
 Thread `proxy_long_side` through `store(...)` and `load(...)` (both call `clip_key`) — add the parameter and pass it. Update the docstring on line 24-28 to name the v2→v3 reason.
 
-- [ ] **Step 4: Run → PASS**, then run the whole cache suite: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py -q` (fix any call-site the signature change touches).
+- [x] **Step 4: Run → PASS**, then run the whole cache suite: `.venv/bin/python -m pytest tests/lib/test_intake_cache.py -q` (fix any call-site the signature change touches).
 
-- [ ] **Step 5: Commit** — `git commit -m "feat(intake): cache v3 keys the proxy scale"`
+- [x] **Step 5: Commit** — `git commit -m "feat(intake): cache v3 keys the proxy scale"`
 
 ---
 
@@ -162,7 +162,7 @@ Thread `proxy_long_side` through `store(...)` and `load(...)` (both call `clip_k
 - Modify: `scripts/lib/appearance.py`
 - Test: `tests/lib/test_appearance.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_crop_bbox_extracts_scaled_region():
@@ -182,9 +182,9 @@ def test_crop_bbox_scales_a_proxy_box_up_to_original():
     assert crop.shape == (40, 40, 3) and crop.mean() == 255
 ```
 
-- [ ] **Step 2: Run → FAIL.**
+- [x] **Step 2: Run → FAIL.**
 
-- [ ] **Step 3: Implement** — mirror `crop_and_mask`'s box math (appearance.py:78-81), scaling the box:
+- [x] **Step 3: Implement** — mirror `crop_and_mask`'s box math (appearance.py:78-81), scaling the box:
 
 ```python
 def crop_bbox(frame_rgb: "np.ndarray", box_xywh: tuple[float, float, float, float],
@@ -199,9 +199,9 @@ def crop_bbox(frame_rgb: "np.ndarray", box_xywh: tuple[float, float, float, floa
     return crop if crop.size else None
 ```
 
-- [ ] **Step 4: Run → PASS.**
+- [x] **Step 4: Run → PASS.**
 
-- [ ] **Step 5: Commit** — `git commit -m "feat(intake): appearance.crop_bbox for original-frame crops"`
+- [x] **Step 5: Commit** — `git commit -m "feat(intake): appearance.crop_bbox for original-frame crops"`
 
 ---
 
@@ -213,7 +213,7 @@ def crop_bbox(frame_rgb: "np.ndarray", box_xywh: tuple[float, float, float, floa
 
 The current loop calls `crop_and_mask` on the (soon-to-be-proxy) YOLO result. Change it to record `best: {tid: (conf, t, bbox_xywh)}` — the timestamp + proxy box of each track's highest-confidence detection — and drop the pixel crop here (Task 5 re-extracts from the original).
 
-- [ ] **Step 1: Write the failing test** (the repo monkeypatches `_iter_seg`):
+- [x] **Step 1: Write the failing test** (the repo monkeypatches `_iter_seg`):
 
 ```python
 def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
@@ -231,9 +231,9 @@ def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
     assert conf == 0.9 and abs(t - 1/30.0) < 1e-6 and box == (12,10,4,8)
 ```
 
-- [ ] **Step 2: Run → FAIL** (returns crop pixels, not refs).
+- [x] **Step 2: Run → FAIL** (returns crop pixels, not refs).
 
-- [ ] **Step 3: Implement** — rewrite the crop bookkeeping (keep the timeline sampling untouched):
+- [x] **Step 3: Implement** — rewrite the crop bookkeeping (keep the timeline sampling untouched):
 
 ```python
 def _people_timeline(src, fps, res, sample_fps=SAMPLE_FPS):
@@ -257,9 +257,9 @@ def _people_timeline(src, fps, res, sample_fps=SAMPLE_FPS):
 
 This removes the `crop_and_mask` call from `_people_timeline`; its import in intake.py may become unused (Task 5 decides — `crop_and_mask` is no longer called anywhere in intake once Task 5 lands; drop the import then).
 
-- [ ] **Step 4: Run → PASS.**
+- [x] **Step 4: Run → PASS.**
 
-- [ ] **Step 5: Commit** — `git commit -m "refactor(intake): _people_timeline yields best-crop refs"`
+- [x] **Step 5: Commit** — `git commit -m "refactor(intake): _people_timeline yields best-crop refs"`
 
 ---
 
@@ -269,7 +269,7 @@ This removes the `crop_and_mask` call from `_people_timeline`; its import in int
 - Modify: `scripts/intake.py` (`PROXY_LONG_SIDE` const near line 26; `_process_clip` at :275-301; measurement-width threading)
 - Test: `tests/lib/test_intake.py`
 
-- [ ] **Step 1: Write the failing test** (monkeypatch every collaborator so it is pure/fast):
+- [x] **Step 1: Write the failing test** (monkeypatch every collaborator so it is pure/fast):
 
 ```python
 def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_path):
@@ -308,9 +308,9 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     assert res.cast and len(res.cast[0].descriptor) == __import__("scripts.lib.footage", fromlist=["DESCRIPTOR_LEN"]).DESCRIPTOR_LEN
 ```
 
-- [ ] **Step 2: Run → FAIL.**
+- [x] **Step 2: Run → FAIL.**
 
-- [ ] **Step 3: Implement** — rewrite `_process_clip` (design §2/§4/§5). Add `PROXY_LONG_SIDE = 960` near the other constants.
+- [x] **Step 3: Implement** — rewrite `_process_clip` (design §2/§4/§5). Add `PROXY_LONG_SIDE = 960` near the other constants.
 
 ```python
 PROXY_LONG_SIDE = 960     # analysis proxy long side; matches YOLO imgsz (design 2026-08-01 §8)
@@ -361,11 +361,11 @@ def _cast_from_original(path, best, res, pres):
 
 Update imports: drop `crop_and_mask` (no longer used in intake), add `crop_bbox` to the `appearance` import (intake.py:22).
 
-- [ ] **Step 4: Run the intake unit suite → PASS.** `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
+- [x] **Step 4: Run the intake unit suite → PASS.** `.venv/bin/python -m pytest tests/lib/test_intake.py -q`
 
-- [ ] **Step 5: Thread `proxy_long_side` into the cache calls** in `intake()` (the `load`/`store` calls near intake.py:318-329): pass `PROXY_LONG_SIDE`. Run `tests/lib/test_intake_cache.py` + any intake driver test.
+- [x] **Step 5: Thread `proxy_long_side` into the cache calls** in `intake()` (the `load`/`store` calls near intake.py:318-329): pass `PROXY_LONG_SIDE`. Run `tests/lib/test_intake_cache.py` + any intake driver test.
 
-- [ ] **Step 6: Commit** — `git commit -m "feat(intake): analysis runs on a decode-once proxy; cast crops from original"`
+- [x] **Step 6: Commit** — `git commit -m "feat(intake): analysis runs on a decode-once proxy; cast crops from original"`
 
 ---
 
@@ -373,7 +373,7 @@ Update imports: drop `crop_and_mask` (no longer used in intake), add `crop_bbox`
 
 **Files:** Modify `scripts/lib/vidstab.py:17-27`
 
-- [ ] **Step 1:** Replace the `epzs` 2.2–4.4× estimate with the measured reality and the proxy note:
+- [x] **Step 1:** Replace the `epzs` 2.2–4.4× estimate with the measured reality and the proxy note:
 
 ```python
 # vidstabdetect's cost scales with pixel count AND shakiness's search window. On
@@ -388,9 +388,9 @@ SHAKE_TIMEOUT_REALTIME_MULTIPLE = 10.0
 
 Keep `SHAKE_TIMEOUT_REALTIME_MULTIPLE` and everything below unchanged.
 
-- [ ] **Step 2: Run** `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q` (comment-only; still green).
+- [x] **Step 2: Run** `.venv/bin/python -m pytest tests/lib/test_vidstab.py -q` (comment-only; still green).
 
-- [ ] **Step 3: Commit** — `git commit -m "docs(vidstab): correct the measured detect cost + proxy note"`
+- [x] **Step 3: Commit** — `git commit -m "docs(vidstab): correct the measured detect cost + proxy note"`
 
 ---
 
@@ -400,7 +400,7 @@ Keep `SHAKE_TIMEOUT_REALTIME_MULTIPLE` and everything below unchanged.
 - Create: `tests/integration/test_intake_proxy.py`
 - Modify: the existing intake integration golden (locate with `grep -rln "def .*intake" tests/integration`) — re-pin the FootageClip values the proxy path now produces.
 
-- [ ] **Step 1: Write the proof** — proxy intake on a real fixture, assert the shape holds and crops are original-res:
+- [x] **Step 1: Write the proof** — proxy intake on a real fixture, assert the shape holds and crops are original-res:
 
 ```python
 import numpy as np
@@ -423,13 +423,13 @@ def test_proxy_intake_produces_a_clip_and_original_res_crops(need_filter, sample
 
 (Use the repo's existing intake fixture — `sample_clip`/the footage golden fixture; mirror how `tests/integration/test_intake*.py` obtains its clip. If the fixture is <=960 long side, the proxy is skipped by design and the test still passes — assert the pipeline runs, not that a proxy file existed.)
 
-- [ ] **Step 2: Run → observe the produced FootageClip.** `.venv/bin/python -m pytest tests/integration/test_intake_proxy.py -q -s`
+- [x] **Step 2: Run → observe the produced FootageClip.** `.venv/bin/python -m pytest tests/integration/test_intake_proxy.py -q -s`
 
-- [ ] **Step 3: Re-pin the existing golden** — run the existing intake golden test, read the new values it produces (proxy-measured shake/motion/score), and paste them into the golden assertion. Document in the test that the re-pin is the proxy-basis change (design 2026-08-01), not a regression.
+- [x] **Step 3: Re-pin the existing golden** — run the existing intake golden test, read the new values it produces (proxy-measured shake/motion/score), and paste them into the golden assertion. Document in the test that the re-pin is the proxy-basis change (design 2026-08-01), not a regression.
 
-- [ ] **Step 4: Run the whole intake integration set → PASS.**
+- [x] **Step 4: Run the whole intake integration set → PASS.**
 
-- [ ] **Step 5: Commit** — `git commit -m "test(intake): real-ffmpeg proxy proof + golden re-pin"`
+- [x] **Step 5: Commit** — `git commit -m "test(intake): real-ffmpeg proxy proof + golden re-pin"`
 
 ---
 
@@ -437,11 +437,11 @@ def test_proxy_intake_produces_a_clip_and_original_res_crops(need_filter, sample
 
 **Files:** `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `skills/footage-intake/SKILL.md`
 
-- [ ] **Step 1:** `docs/build-status.md` — add the intake-analysis-proxy entry (what shipped: analysis on a 960 proxy, ~300× vidstab, crops from original, cache v3) + bump the last-updated stamp.
-- [ ] **Step 2:** `docs/pipeline-map.md` — one line on the 5.2 row: analysis runs on a decode-once proxy (2026-08-01); bump the stamp.
-- [ ] **Step 3:** `CLAUDE.md` Quick Reference — two rows (design + plan), one-line hooks.
-- [ ] **Step 4:** `skills/footage-intake/SKILL.md` — one sentence: the scan analyses a downscaled proxy; delivery uses the original (so 4K folders scan in seconds, not hours).
-- [ ] **Step 5: Full suite** — `.venv/bin/python -m pytest -q` (expect green; note skips). Then commit — `git commit -m "docs: intake analysis proxy — status, map, registry, skill"`
+- [x] **Step 1:** `docs/build-status.md` — add the intake-analysis-proxy entry (what shipped: analysis on a 960 proxy, ~300× vidstab, crops from original, cache v3) + bump the last-updated stamp.
+- [x] **Step 2:** `docs/pipeline-map.md` — one line on the 5.2 row: analysis runs on a decode-once proxy (2026-08-01); bump the stamp.
+- [x] **Step 3:** `CLAUDE.md` Quick Reference — two rows (design + plan), one-line hooks.
+- [x] **Step 4:** `skills/footage-intake/SKILL.md` — one sentence: the scan analyses a downscaled proxy; delivery uses the original (so 4K folders scan in seconds, not hours).
+- [x] **Step 5: Full suite** — `.venv/bin/python -m pytest -q` (expect green; note skips). Then commit — `git commit -m "docs: intake analysis proxy — status, map, registry, skill"`
 
 ---
 

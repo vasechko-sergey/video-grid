@@ -34,7 +34,7 @@ Reused unchanged (no edits): `scripts/{project_init,intake,beats,edit_plan,edl_t
 
 The frozen dataclass that describes one conveyor stage (validate-and-raise in `__post_init__`, per the fail-loud contract), plus the ordered v1 table as data.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_montage.py`:
 
@@ -88,12 +88,12 @@ def test_v1_stages_kinds_and_flags():
     assert by["deliver"].checkpoint == "final"
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.montage'` (EXIT: non-zero). (Do NOT pipe through `tail` — it masks the exit code.)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `scripts/montage.py`:
 
@@ -151,12 +151,12 @@ V1_STAGES: tuple[Stage, ...] = (
 )
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: 6 passed, EXIT: 0. (The `next_action`/CLI tests come in later tasks; only the Task-0 tests exist so far.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -174,7 +174,7 @@ git commit -m "feat: montage.py Stage config-spec + V1_STAGES table (router 5.1)
 
 Walk `V1_STAGES` over a run dir, mark each stage's state from artifact presence, return the ordered report + `next` + `delivered`. Per-artifact `done` (honest about a broken resume); optional never blocks; deferred always skips.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_montage.py`:
 
@@ -256,12 +256,12 @@ def test_out_dir_override(tmp_path):
     assert res["delivered"] is True
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -k "next_action or empty or deferred or project_only or music or edl_present or delivered or broken or out_dir" -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError`/`TypeError` on `next_action` (defined but empty) or the assertions fail. EXIT: non-zero.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/montage.py` (after `V1_STAGES`):
 
@@ -310,12 +310,12 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
     return {"stages": stages, "next": next_key, "delivered": delivered}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: 14 passed, EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -333,7 +333,7 @@ git commit -m "feat: montage.next_action stage-status inspector (router 5.1)" \
 
 A `status` subcommand that prints `next_action(...)` as JSON and exits 0 — a status query, not a gate. Tested by monkeypatching `sys.argv` and calling `main()` (the repo's CLI-test pattern, see `tests/lib/test_project.py`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_montage.py`:
 
@@ -364,12 +364,12 @@ def test_status_cli_out_dir_override(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["delivered"] is True
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -k status -q ; echo "EXIT: $?"`
 Expected: FAIL — `AttributeError: module 'scripts.montage' has no attribute 'main'`. EXIT: non-zero.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/montage.py`:
 
@@ -393,12 +393,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q ; echo "EXIT: $?"`
 Expected: 16 passed, EXIT: 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -415,7 +415,7 @@ git commit -m "feat: montage status CLI (router 5.1)" \
 
 The front-door skill. No code, no test — a skill doc, matching the house style of `SKILLS/edit-plan/SKILL.md` (frontmatter `name`/`description`, then Overview / When to Use / Process / Boundaries). It sequences the built stages, surfaces the three checkpoints, resumes from `montage status`, and names deferred stages on skip.
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 Create `SKILLS/using-montage/SKILL.md` verbatim:
 
@@ -521,12 +521,12 @@ aspect (project-init's own "ask, don't guess").
   processes episodes sequentially; parallelising it is a later slice.
 ```
 
-- [ ] **Step 2: Verify the frontmatter + suite**
+- [x] **Step 2: Verify the frontmatter + suite**
 
 Run: `head -3 SKILLS/using-montage/SKILL.md && .venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: the frontmatter `---` / `name: using-montage` lines print; the full suite is green (EXIT: 0) — no code changed, this confirms nothing broke.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SKILLS/using-montage/SKILL.md
@@ -546,7 +546,7 @@ git commit -m "feat: using-montage SKILL — the router conductor (5.1)" \
 
 Bring the always-loaded docs in step with the shipped router, add the registry rows, and run the final whole-slice review over `main..HEAD`.
 
-- [ ] **Step 1: `docs/pipeline-map.md` — flip 5.1**
+- [x] **Step 1: `docs/pipeline-map.md` — flip 5.1**
 
 In the "15 stages" table, change the 5.1 row Status `◐ → ✅` and its note to:
 
@@ -570,7 +570,7 @@ In "Critical path to autonomous v1", change the diagram + prose so the router is
 
 Replace the "Hard chain left: 5.1." paragraph with: **the entry-skill closes the autonomous v1 chain** — footage→EDL→reel now runs from one `using-montage` invocation; the only open 5.1 sub-item is the cap-3 **parallel** episode fan-out (a perf slice, `edl_to_reel` stays sequential today), not a v1 blocker.
 
-- [ ] **Step 2: `docs/build-status.md` — add the entry, narrow the next-action**
+- [x] **Step 2: `docs/build-status.md` — add the entry, narrow the next-action**
 
 Add a new bullet at the top of "Done" (mirroring the prior DONE entries' shape):
 
@@ -605,7 +605,7 @@ In "Next action", replace the `**router** — cap-3 fan-out …` bullet with:
 
 Also update the `_Last updated:_` date to `2026-07-12` if not already.
 
-- [ ] **Step 3: `CLAUDE.md` — registry rows**
+- [x] **Step 3: `CLAUDE.md` — registry rows**
 
 In the Quick Reference table, add two rows (next to the other spine rows):
 
@@ -614,7 +614,7 @@ In the Quick Reference table, add two rows (next to the other spine rows):
 | Router entry-skill plan | [2026-07-12-using-montage.md](docs/plans/2026-07-12-using-montage.md) | Tasks 0–4: `montage.py` (`Stage`/`V1_STAGES`/`next_action`/`status` CLI), `using-montage` SKILL, docs sync. |
 ```
 
-- [ ] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md` — §5.1 Built note**
+- [x] **Step 4: `docs/specs/2026-07-05-montage-skillset-design.md` — §5.1 Built note**
 
 Immediately after the §5.1 paragraph (the `**Natural-language overrides:**` line), insert:
 
@@ -628,7 +628,7 @@ Immediately after the §5.1 paragraph (the `**Natural-language overrides:**` lin
 > sequential. See `docs/plans/2026-07-12-using-montage.md`.
 ```
 
-- [ ] **Step 5: Verify the suite + commit the docs**
+- [x] **Step 5: Verify the suite + commit the docs**
 
 Run: `.venv/bin/python -m pytest -q ; echo "EXIT: $?"`
 Expected: full suite green (EXIT: 0) — the montage tests added (16) on top of the prior 548 → **564 passed, 1 skipped** (vidstab-gated).
@@ -640,7 +640,7 @@ git commit -m "docs: sync pipeline-map/build-status/registry for using-montage r
   -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: Final whole-slice review**
+- [x] **Step 6: Final whole-slice review**
 
 Dispatch a code-review subagent over the whole slice (`git diff main..HEAD`). Confirm the invariants: (a) `montage.py` is pure/deterministic (no ffmpeg/network); (b) `Stage` fails loud on bad `kind`/`checkpoint`; (c) `next_action`'s per-artifact `done` surfaces a broken resume honestly (the `test_broken_resume` case); (d) the SKILL names every deferred stage and never hand-edits a generated artifact; (e) no existing stage behaviour changed (reused-as-is files untouched). Fix any Important/Critical finding in a follow-up commit (not `--amend`), re-review, then the branch is ready to finish.
 
