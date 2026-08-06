@@ -48,12 +48,16 @@ DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x lib
 
 
 def carve_windows(scene_cuts: list[float],
-                  timeline: list[tuple[float, int, tuple[float, float, float, float] | None, list[int]]],
+                  timeline: list[tuple[float, int, tuple[float, float, float, float] | None, list[int],
+                                       dict[int, tuple[float, float, float, float]]]],
                   mags: list[float], fps: float, dur: float) -> list[tuple[float, float]]:
     """scene_cuts ∪ presence-transitions bound the raw spans; each span is carved on
     its activity curve by carve.units_for_span (design 2026-07-25-intake-activity-units
     §4). A span with people uses 2-D bbox displacement; a people-less span uses the
-    resampled vidstab magnitudes. A single sub-WIN_MIN shot stays one whole window;
+    resampled vidstab magnitudes. The subject curve is now identity-consistent (design
+    2026-08-06-intake-motion-scoring §3.3): it used to be built from the primary bbox's
+    centre, so in a crowd it tracked which person was largest and moved WINDOW
+    BOUNDARIES on that artifact. A single sub-WIN_MIN shot stays one whole window;
     a clip shredded into many too-short spans yields NO windows (empty is valid)."""
     bounds = {0.0, float(dur)}
     for t in scene_cuts:
@@ -73,8 +77,7 @@ def carve_windows(scene_cuts: list[float],
         samples = [row for row in timeline if a <= row[0] < b]
         times = [row[0] for row in samples] or [a]
         if any(row[1] > 0 for row in samples):
-            centers = [(row[2][0], row[2][1]) if row[2] is not None else None for row in samples]
-            curve = carve.subject_curve(centers)
+            curve = carve.subject_curve([row[4] for row in samples])
         else:
             curve = carve.camera_curve(mags, fps, times)
         spans.extend(carve.units_for_span(a, b, times, curve, WIN_MIN, WIN_MAX))
@@ -136,7 +139,11 @@ def _iter_seg(src: str, model_path: str = MODEL) -> Iterator[tuple[int, object]]
 def _people_timeline(src: str, fps: float, res: tuple[int, int],
                      sample_fps: float = SAMPLE_FPS) -> tuple[list, dict, dict]:
     """One seg pass → (timeline, best_by_track, presence_by_track).
-    timeline: [(t, people, primary_bbox, track_ids)] sampled at ~SAMPLE_FPS (primary = largest bbox).
+    timeline: [(t, people, primary_bbox, track_ids, boxes_by_tid)] sampled at ~SAMPLE_FPS.
+    primary = largest bbox (what shot size is measured from); boxes_by_tid = {tid: (cx,cy,w,h)}
+    for that sample, the only shape motion can be differenced on (design
+    2026-08-06-intake-motion-scoring §3.1). An untracked detection counts toward
+    `people` but cannot appear in boxes_by_tid — it has no identity to follow.
     best: {tid: (conf, t, bbox_xywh)} — timestamp + PROXY box of each track's
     highest-confidence detection (the cast pass re-crops that moment from the
     ORIGINAL, unmasked — design 2026-08-04 §4.1). presence: {tid: seconds on screen}
@@ -156,10 +163,12 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
             continue
         bbs = [tuple(float(v) for v in b.xywh[0]) for b in boxes]
         primary = max(bbs, key=lambda bb: bb[2] * bb[3]) if bbs else None
-        tids = sorted({int(b.id[0]) for b in boxes if getattr(b, "id", None) is not None})
+        by_tid = {int(b.id[0]): tuple(float(v) for v in b.xywh[0])
+                  for b in boxes if getattr(b, "id", None) is not None}
+        tids = sorted(by_tid)
         for tid in tids:
             seen[tid] = seen.get(tid, 0) + 1
-        timeline.append((i / fps, len(bbs), primary, tids))
+        timeline.append((i / fps, len(bbs), primary, tids, by_tid))
     presence = {tid: n * (step / fps) for tid, n in seen.items()}
     return timeline, best, presence
 

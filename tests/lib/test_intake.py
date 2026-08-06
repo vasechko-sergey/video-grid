@@ -21,8 +21,9 @@ def test_shot_type_buckets():
     assert footage.shot_type(0.0, 0.0) == "wide"
 
 
-def _line(n_from_to):   # helper: timeline [(t, people, bbox, track_ids)] at 1s steps
-    return [(float(t), n, (500, 500, 200, 300) if n else None, [1] if n else [])
+def _line(n_from_to):   # helper: timeline [(t, people, bbox, track_ids, boxes_by_tid)] at 1s steps
+    return [(float(t), n, (500, 500, 200, 300) if n else None, [1] if n else [],
+             {1: (500.0, 500.0, 200.0, 300.0)} if n else {})
             for t, n in n_from_to]
 
 
@@ -32,7 +33,8 @@ def test_carve_long_take_is_activity_units_not_equal_tiling():
     # plateau). Equal-interval tiling would emit N windows of ONE duration; activity
     # units vary — restoring _split_span would collapse the duration set to a single value.
     pos = [500, 500, 500, 800, 810, 815, 815, 815, 1115, 1125, 1130, 1130, 1130]
-    tl = [(float(t), 1, (pos[t], 500, 200, 300), [1]) for t in range(13)]
+    tl = [(float(t), 1, (pos[t], 500, 200, 300), [1], {1: (float(pos[t]), 500.0, 200.0, 300.0)})
+          for t in range(13)]
     spans = intake.carve_windows([], tl, [], 1.0, 12.0)
     assert spans                                                     # carved something
     assert all(intake.WIN_MIN <= d <= intake.WIN_MAX + 1e-6 for _, d in spans)
@@ -60,7 +62,7 @@ def test_carve_all_short_spans_yields_no_windows():
 def test_carve_peopleless_span_uses_camera_motion(monkeypatch):
     # no people the whole 8s take → the curve comes from vidstab mags; a mid-clip
     # camera surge (frame 4 at fps 1 → t=4) should anchor a unit that contains t=4
-    tl = [(float(t), 0, None, []) for t in range(9)]
+    tl = [(float(t), 0, None, [], {}) for t in range(9)]
     mags = [0, 0, 0, 1, 9, 1, 0, 0, 0]
     spans = intake.carve_windows([], tl, mags, 1.0, 8.0)
     # strict right bound: a subject-only regression → all-zero curve → flat (0.0, 4.0),
@@ -102,7 +104,7 @@ def test_process_clip_detects_shake_once_before_carving(monkeypatch):
     monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: False)   # analyse the original
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
-    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
+    tl = [(float(i), 1, (500, 500, 300, 300), [1], {1: (500.0, 500.0, 300.0, 300.0)}) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}, {}))
     seen = []
@@ -138,7 +140,7 @@ def test_people_timeline_samples_counts_and_track_ids(monkeypatch):
     frames = [_FakeRes([_FakeBox([300 + i * 40, 500, 200, 300], 1)]) for i in range(6)]
     monkeypatch.setattr(intake, "_iter_seg", lambda src, **k: iter(enumerate(frames)))
     tl, best, presence = intake._people_timeline("x.mp4", fps=6.0, res=(1920, 1080))
-    assert [n for _, n, _, _ in tl] == [1, 1, 1]        # one person each sampled frame
+    assert [n for _, n, _, _, _ in tl] == [1, 1, 1]     # one person each sampled frame
     assert tl[0][0] == 0.0 and abs(tl[1][0] - 2/6) < 1e-6
     assert tl[0][2][2] == 200                           # primary bbox width threaded through
     assert tl[0][3] == [1]                              # track id present at the sample
@@ -160,10 +162,30 @@ def test_people_timeline_records_best_crop_ref_per_track(monkeypatch):
     assert conf == 0.9 and abs(t - 1/30.0) < 1e-6 and box == (12,10,4,8)
 
 
+def test_people_timeline_row_carries_boxes_by_track_id(monkeypatch):
+    class _B:
+        def __init__(self, tid, xywh, conf=0.9):
+            self.id = [tid] if tid is not None else None
+            self.xywh = [xywh]
+            self.conf = [conf]
+
+    frames = [types.SimpleNamespace(boxes=[_B(1, (10, 20, 30, 40)),
+                                           _B(2, (50, 60, 70, 80)),
+                                           _B(None, (90, 90, 10, 10))])]
+    monkeypatch.setattr(intake, "_iter_seg", lambda s, model_path=intake.MODEL: enumerate(frames))
+    tl, _, _ = intake._people_timeline("x.mp4", fps=1.0, res=(1920, 1080), sample_fps=1.0)
+    t, people, primary, tids, by_tid = tl[0]
+    assert people == 3                       # the untracked detection still counts as a person
+    assert tids == [1, 2]                    # ...but cannot be differenced, so it is not in by_tid
+    assert by_tid == {1: (10.0, 20.0, 30.0, 40.0), 2: (50.0, 60.0, 70.0, 80.0)}
+    assert primary == (50.0, 60.0, 70.0, 80.0)      # largest area, unchanged
+
+
 def test_motion_is_2d():
     # a purely vertical slide registers now (x-only would have read 0)
     res = (1000, 1000)
-    samples = [(0.0, 1, (500, 100, 10, 10), [1]), (1.0, 1, (500, 300, 10, 10), [1])]
+    samples = [(0.0, 1, (500, 100, 10, 10), [1], {1: (500.0, 100.0, 10.0, 10.0)}),
+               (1.0, 1, (500, 300, 10, 10), [1], {1: (500.0, 300.0, 10.0, 10.0)})]
     assert intake._motion(samples, res) > 0.0
 
 
@@ -325,7 +347,7 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(intake.assembly, "probe_duration", lambda s: 8.0)
     monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: False)   # analyse the original (all readers stubbed)
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
-    tl = [(float(i), 1, (500, 500, 300, 300), [1]) for i in range(9)]
+    tl = [(float(i), 1, (500, 500, 300, 300), [1], {1: (500.0, 500.0, 300.0, 300.0)}) for i in range(9)]
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS: (tl, {}, {}))
     monkeypatch.setattr(intake.vidstab, "require", lambda: None)
@@ -351,7 +373,8 @@ def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
     monkeypatch.setattr(intake.assembly, "make_proxy", lambda *a, **k: True)   # 1920 > 960 → a proxy
     monkeypatch.setattr(intake.assembly, "frames_rgb", lambda s, times, fps: [orig for _ in times])
     monkeypatch.setattr(intake, "scene_bounds", lambda s: [])
-    tl = [(float(i), 1, (240, 270, 100, 200), [1]) for i in range(9)]           # proxy-space bboxes
+    tl = [(float(i), 1, (240, 270, 100, 200), [1], {1: (240.0, 270.0, 100.0, 200.0)})
+          for i in range(9)]                                                   # proxy-space bboxes
     monkeypatch.setattr(intake, "_people_timeline",
                         lambda s, fps, res, sample_fps=intake.SAMPLE_FPS:
                         (tl, {1: (0.9, 0.0, (240, 270, 100, 200))}, {1: 3.0}))  # best 3-tuple + presence
@@ -385,7 +408,8 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(intake, "scene_bounds", lambda src: calls["analysed"].append(("scene", src)) or [])
     def _tl(src, fps, res, sf):
         calls["analysed"].append(("yolo", src, res))       # res must be the PROXY dims
-        return ([(0.0, 1, (480, 270, 40, 80), [1])], {1: (0.9, 0.0, (480, 270, 40, 80))}, {1: 2.0})
+        return ([(0.0, 1, (480, 270, 40, 80), [1], {1: (480.0, 270.0, 40.0, 80.0)})],
+                {1: (0.9, 0.0, (480, 270, 40, 80))}, {1: 2.0})
     monkeypatch.setattr(intake, "_people_timeline", _tl)
     monkeypatch.setattr(vidstab, "require", lambda: None)
     monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
