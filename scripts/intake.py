@@ -26,10 +26,20 @@ from scripts.track import MODEL, ensure_model       # reuse the tracker's model 
 SAMPLE_FPS = 3.0
 PROXY_LONG_SIDE = 960                             # analysis runs on a proxy downscaled to this long side (design 2026-08-01)
 WIN_MIN, WIN_MAX, WIN_TARGET = 1.2, 4.0, 2.5      # seconds — the episode length band
-W_PRESENT, W_MOTION, W_STABLE, W_DUR = 0.40, 0.25, 0.25, 0.10
-MOTION_PEAK = 0.35                                # motion value scored highest (triangular)
-DEDUP_DIST = 8                                    # phash Hamming below which two windows are duplicates
-BEST_FLOOR = 0.50
+W_PRESENT, W_MOTION, W_STABLE = 0.44, 0.28, 0.28   # sum to 1. First cuts calibrated on ONE drone
+                                                   # shoot (design 2026-08-06-intake-motion-scoring
+                                                   # §8.1) — the SHAKY_CLIP precedent below.
+CLIP_POOL_MIN = 5        # a clip with fewer windows has no distribution to rank inside, so its
+                         # motion falls back to the pool. 10 of 99 clips in the tuning pool were
+                         # in that state; first cut (design §4.1).
+DYNAMIC_RANK = 0.5       # motion rank at or above which a window is DESCRIBED "dynamic". A rank,
+                         # not an absolute value, because every comparison here is pool-relative.
+DEDUP_DIST = 8                             # phash Hamming below which two windows are duplicates
+BEST_FLOOR = 0.50        # `score` is a PERCENTILE now (design §4.2), so this is the top-half cut,
+                         # not an absolute quality bar. The VALUE is deliberately unchanged: the
+                         # meaning change is the fix, and inventing a new number on one shoot is
+                         # what §8.1 warns against. As an absolute bar it passed 99.6% of a real
+                         # 1565-window pool — i.e. it was inert.
 SHAKY_CLIP = 0.02                                 # shake (fraction of frame width) above which a clip is shaky — tune on real footage.
                                                   # Its INPUT changed on 2026-07-20: the detect pass moved from the binary's default
                                                   # shakiness=5 to vidstab.DETECT_ARGS' 8, so recorded shake values shifted. The
@@ -85,33 +95,79 @@ def carve_windows(scene_cuts: list[float],
     return spans
 
 
-def _motion_fit(m: float) -> float:
-    """Triangular: 0 at static, 1 at MOTION_PEAK, decaying to 0 at chaotic (1.0)."""
-    if m <= MOTION_PEAK:
-        return m / MOTION_PEAK if MOTION_PEAK else 0.0
-    return max(0.0, (1.0 - m) / (1.0 - MOTION_PEAK))
+def _percentile_rank(values: list[float]) -> list[float]:
+    """Each value's position in its own pool, on [0, 1], aligned to the input order.
+    Ties share the mid-rank of their group, so equal inputs always get equal outputs
+    — the property that lets a structurally constant factor shift every window
+    equally instead of ordering them arbitrarily (design §4.2). A single value ranks
+    0.5: it is neither above nor below anything."""
+    n = len(values)
+    if n == 0:
+        return []
+    if n == 1:
+        return [0.5]
+    order = sorted(range(n), key=lambda i: values[i])
+    out = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        r = ((i + j) / 2) / (n - 1)
+        for k in range(i, j + 1):
+            out[order[k]] = r
+        i = j + 1
+    return out
 
 
-def _dur_fit(d: float) -> float:
-    """1 at WIN_TARGET, falling toward WIN_MIN / WIN_MAX, 0 outside the band."""
-    if d < WIN_MIN or d > WIN_MAX:
-        return 0.0
-    if d <= WIN_TARGET:
-        return (d - WIN_MIN) / (WIN_TARGET - WIN_MIN)
-    return (WIN_MAX - d) / (WIN_MAX - WIN_TARGET)
+def score_pool(clips: list) -> None:
+    """Fill every window's `score` and `description` from the WHOLE pool — Phase 2
+    (design 2026-08-06-intake-motion-scoring §4). Mutates in place, like cull.
+
+    Not computable in Phase 1, and that is the point: a per-clip worker cannot see
+    a pool, and the absolute blend it used to compute could not rank. Three of its
+    four terms were near-constant on real footage (`present` constant BY
+    CONSTRUCTION, `_dur_fit` an exact zero for the 76% of windows carve emits at
+    WIN_MIN, `stability` compressed 2-14x below its own divisor), leaving `score`
+    ~ 0.61 + 0.25*motion — and the motion term saturated (§1.1/§1.2).
+
+    Each factor is scaled on the scale its question deserves: `motion` by rank
+    WITHIN ITS OWN CLIP ("the active moment of this shot"), falling back to the pool
+    below CLIP_POOL_MIN windows; `shake` by rank across the pool (steadiness is a
+    camera property, so a within-clip comparison asks nothing); `present` absolutely,
+    its fraction already meaning what it says. The blend is then ranked across the
+    pool, so `score` IS a percentile — which makes a constant factor unable to
+    distort the ordering, restores BEST_FLOOR's meaning, and makes saturation
+    unrepresentable.
+
+    Deterministic in the order of `clips`, which intake() has already re-sorted into
+    `paths` order — so output stays byte-identical at any --jobs and cache mix
+    (intake-parallel §2)."""
+    windows = [w for c in clips for w in c.windows]
+    if not windows:
+        return
+    motion_fit = _percentile_rank([w.motion for w in windows])
+    at = 0
+    for c in clips:                      # a big enough clip ranks its own windows in place
+        n = len(c.windows)
+        if n >= CLIP_POOL_MIN:
+            motion_fit[at:at + n] = _percentile_rank([w.motion for w in c.windows])
+        at += n
+    stability = _percentile_rank([-w.shake for w in windows])
+    blend = [W_PRESENT * w.present + W_MOTION * m + W_STABLE * s
+             for w, m, s in zip(windows, motion_fit, stability)]
+    for w, sc, m in zip(windows, _percentile_rank(blend), motion_fit):
+        w.score = round(sc, 3)
+        w.description = _describe(w.people, w.shot_type, m)
 
 
-def score_window(present: float, motion: float, shake: float, dur: float) -> float:
-    """Blend the four factors → [0, 1]. Pure math; each factor is tested in isolation."""
-    stability = 1.0 - min(1.0, shake / SHAKY_CLIP)
-    s = (W_PRESENT * present + W_MOTION * _motion_fit(motion)
-         + W_STABLE * stability + W_DUR * _dur_fit(dur))
-    return float(min(1.0, max(0.0, s)))
-
-
-def _describe(people: int, shot: str, motion: float) -> str:
+def _describe(people: int, shot: str, motion_rank: float) -> str:
+    """The human line in FOOTAGE.md. `motion_rank` is the window's motion PERCENTILE
+    in its comparison pool, not a raw fraction — the dynamic/calm call is a
+    comparison, and every comparison in this design is pool-relative, so it cannot
+    be made by a per-clip worker (design §4.5)."""
     who = "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
-    dyn = "dynamic" if motion >= MOTION_PEAK else "calm"
+    dyn = "dynamic" if motion_rank >= DYNAMIC_RANK else "calm"
     return f"{who}, {shot}, {dyn}"
 
 
@@ -279,6 +335,9 @@ def scene_bounds(src: str) -> list[float]:
 
 
 def _build_window(span: tuple[float, float], timeline: list, shake: float, res: tuple[int, int]) -> footage.FootageWindow:
+    """Measurements only: `score` and `description` are pool-relative and belong to
+    Phase 2 (design 2026-08-06-intake-motion-scoring §4.5), so they keep their
+    defaults here."""
     a, d = span
     b = a + d
     samples = [row for row in timeline if a <= row[0] < b]
@@ -291,11 +350,9 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
     sw = (primary[2] / w) if primary is not None and w else 0.0
     sh = (primary[3] / h) if primary is not None and h else 0.0
     shot = footage.shot_type(sw, sh)
-    score = score_window(present, motion, shake, d)
     track_ids = sorted({tid for row in samples for tid in row[3]})
     return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
                                  people=people, motion=round(motion, 3), shake=round(shake, 4),
-                                 description=_describe(people, shot, motion), score=round(score, 3),
                                  track_ids=track_ids, subject_w=round(sw, 4),
                                  subject_h=round(sh, 4), present=round(present, 3))
 

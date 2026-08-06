@@ -70,30 +70,83 @@ def test_carve_peopleless_span_uses_camera_motion(monkeypatch):
     assert any(s <= 4.0 < s + d for s, d in spans)
 
 
-def test_score_rises_with_presence():
-    lo = intake.score_window(present=0.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
-    hi = intake.score_window(present=1.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
-    assert hi > lo
+def _w(motion, shake, present=1.0, dur=2.0, people=1):
+    return footage.FootageWindow(start=0.0, dur=dur, shot_type="wide", people=people,
+                                 motion=motion, shake=shake, present=present)
 
 
-def test_score_penalises_shake():
-    steady = intake.score_window(present=1.0, motion=0.35, shake=0.0, dur=intake.WIN_TARGET)
-    shaky = intake.score_window(present=1.0, motion=0.35, shake=intake.SHAKY_CLIP, dur=intake.WIN_TARGET)
-    assert steady > shaky
+def _clip(source, windows):
+    return footage.FootageClip(source=source, dur=60.0, res=(1920, 1080), fps=30.0,
+                               windows=windows)
 
 
-def test_motion_fit_peaks_in_the_middle():
-    assert intake._motion_fit(intake.MOTION_PEAK) > intake._motion_fit(0.0)
-    assert intake._motion_fit(intake.MOTION_PEAK) > intake._motion_fit(1.0)
+def test_percentile_rank_is_uniform_tie_aware_and_bounded():
+    assert intake._percentile_rank([]) == []
+    assert intake._percentile_rank([7.0]) == [0.5]
+    assert intake._percentile_rank([10.0, 0.0, 5.0]) == [1.0, 0.0, 0.5]
+    assert intake._percentile_rank([3.0, 3.0]) == [0.5, 0.5]      # a tie shares its mid-rank
 
 
-def test_dur_fit_peaks_at_target():
-    assert intake._dur_fit(intake.WIN_TARGET) > intake._dur_fit(intake.WIN_MIN + 0.01)
-    assert intake._dur_fit(intake.WIN_TARGET) > intake._dur_fit(intake.WIN_MAX - 0.01)
+def test_score_is_a_percentile_not_an_absolute_blend():
+    # five windows differing only in motion: their scores must span [0, 1] evenly.
+    # The old absolute blend put all five inside a 0.09-wide band above 0.61 (§1.1).
+    ws = [_w(motion=m, shake=0.001) for m in (0.01, 0.02, 0.03, 0.04, 0.05)]
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert [w.score for w in ws] == [0.0, 0.25, 0.5, 0.75, 1.0]
 
 
-def test_describe():
-    assert intake._describe(1, "medium", 0.5) == "1 person, medium, dynamic"
+def test_score_ignores_a_factor_that_is_constant_across_the_pool():
+    # present is constant BY CONSTRUCTION (carve splits on presence transitions,
+    # §1.1). Halving it for every window must not reorder anything.
+    a = [_w(motion=m, shake=0.001, present=1.0) for m in (0.01, 0.05, 0.03)]
+    b = [_w(motion=m, shake=0.001, present=0.5) for m in (0.01, 0.05, 0.03)]
+    intake.score_pool([_clip("a.mp4", a)])
+    intake.score_pool([_clip("b.mp4", b)])
+    assert [w.score for w in a] == [w.score for w in b]
+
+
+def test_motion_ranks_within_its_own_clip_when_the_clip_is_big_enough():
+    # calm clip and busy clip, CLIP_POOL_MIN windows each. The calm clip's best
+    # moment must outscore the busy clip's worst, which pool-wide ranking forbids.
+    calm = [_w(motion=m, shake=0.001) for m in (0.001, 0.002, 0.003, 0.004, 0.010)]
+    busy = [_w(motion=m, shake=0.001) for m in (0.020, 0.030, 0.040, 0.050, 0.060)]
+    intake.score_pool([_clip("calm.mp4", calm), _clip("busy.mp4", busy)])
+    assert calm[-1].score > busy[0].score
+
+
+def test_a_clip_below_clip_pool_min_falls_back_to_the_pool():
+    # 2 windows is no distribution; ranking them within the clip would hand the
+    # stronger one a flat 1.0 — tying the shoot's genuinely busiest window — no
+    # matter how weak it is against the rest of the shoot.
+    small = [_w(motion=0.001, shake=0.001), _w(motion=0.002, shake=0.001)]
+    big = [_w(motion=m, shake=0.001) for m in (0.10, 0.20, 0.30, 0.40, 0.50)]
+    intake.score_pool([_clip("small.mp4", small), _clip("big.mp4", big)])
+    assert small[1].score < big[-1].score         # pool-ranked, so it cannot tie the top
+    assert small[0].score != small[1].score       # ...but the two are still ordered
+
+
+def test_score_penalises_shake_across_the_pool():
+    ws = [_w(motion=0.02, shake=s) for s in (0.001, 0.009)]
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert ws[0].score > ws[1].score
+
+
+def test_score_pool_fills_description_from_the_motion_rank():
+    ws = [_w(motion=m, shake=0.001, people=p)
+          for m, p in ((0.001, 0), (0.002, 1), (0.003, 2), (0.004, 2), (0.900, 2))]
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert ws[0].description == "no people, wide, calm"
+    assert ws[1].description == "1 person, wide, calm"
+    assert ws[-1].description == "2 people, wide, dynamic"
+
+
+def test_score_pool_on_an_empty_pool_is_a_no_op():
+    intake.score_pool([])
+    intake.score_pool([_clip("a.mp4", [])])
+
+
+def test_describe_reads_a_rank_not_a_raw_motion():
+    assert intake._describe(1, "medium", 0.9) == "1 person, medium, dynamic"
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
 
 
