@@ -27,6 +27,12 @@ def track_displacements(prev: dict[int, tuple[float, float, float, float]],
     shared = prev.keys() & cur.keys()
     if not shared:
         return 0.0
+    # median() sorts its input internally, so the result is already order-invariant
+    # w.r.t. `shared`'s set-iteration order on its own — that's what actually carries
+    # determinism here. The sorted() below is defensive, not load-bearing: it guards
+    # against a later swap of the aggregator to something order-sensitive, so this
+    # call site doesn't quietly reopen the set-order landmine if median() is ever
+    # replaced.
     return float(median(hypot(cur[t][0] - prev[t][0], cur[t][1] - prev[t][1])
                         for t in sorted(shared)))
 

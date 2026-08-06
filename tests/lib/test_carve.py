@@ -41,6 +41,10 @@ def test_subject_curve_is_identity_consistent_and_zero_at_gaps():
 def test_subject_curve_edges():
     assert carve.subject_curve([]) == []
     assert carve.subject_curve([{1: (1.0, 1.0, 2.0, 2.0)}]) == [0.0]
+    # two samples sharing no id: the loop RUNS and must read the dict shape, so this
+    # reddens against the pre-change centre-tuple version (Global Constraint 8) —
+    # the two assertions above cannot, since len <= 1 never enters the loop.
+    assert carve.subject_curve([{1: (0.0, 0.0, 2.0, 2.0)}, {2: (9.0, 9.0, 2.0, 2.0)}]) == [0.0, 0.0]
 
 
 def test_camera_curve_samples_frame_magnitudes_at_times():
