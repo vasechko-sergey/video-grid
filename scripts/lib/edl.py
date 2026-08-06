@@ -18,6 +18,7 @@ from scripts.lib import provenance
 from scripts.lib.footage import Cast
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
+from scripts.lib.moodpreset import VarietyReport
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -157,6 +158,8 @@ class EDL:
     cast: str | None = None        # cast.json path; needed only when an episode pins a cast name
     cap: int = 3                   # build_reel reprocess cap
     target_dur: float | None = None
+    variety: VarietyReport | None = None   # design 2026-08-06 §9. None = never evaluated
+                                           # (a hand-authored EDL through the SP1 front door)
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
@@ -176,6 +179,9 @@ class EDL:
         if self.target_dur is not None and (isinstance(self.target_dur, bool)
                 or not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0):
             raise ValueError(f"EDL.target_dur must be a positive number or null, got {self.target_dur!r}")
+        if self.variety is not None and not isinstance(self.variety, VarietyReport):
+            raise ValueError(f"EDL.variety must be a VarietyReport or None, got "
+                             f"{type(self.variety).__name__} — re-run edit_plan build")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"EDL.provenance must be an object, got "
                              f"{type(self.provenance).__name__} — re-run edit_plan build "
@@ -205,6 +211,7 @@ class EDL:
         cap = d.get("cap")
         return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
                    cap=cap if cap is not None else 3, target_dur=d.get("target_dur"),
+                   variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -231,7 +238,8 @@ class EDL:
     def to_dict(self) -> dict:
         d = {"episodes": [e.to_dict() for e in self.episodes],
              "music": self.music, "cast": self.cast, "cap": self.cap,
-             "target_dur": self.target_dur}
+             "target_dur": self.target_dur,
+             "variety": self.variety.to_dict() if self.variety is not None else None}
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d
@@ -255,6 +263,18 @@ class EDL:
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
                          f"{e.composition} | {e.grid} | {motion} | {beat} | {e.processing_notes} |")
+        if self.variety is not None:
+            v = self.variety
+            lines += ["", f"## Variety — preset `{v.preset}`", "",
+                      "| shot | available | used |", "|------|----------:|-----:|"]
+            lines += [f"| {s} | {v.available[s]} | {v.used[s]} |" for s in v.available]
+            lines += ["", f"ASL {v.asl:.2f}s against the preset's "
+                          f"{v.asl_band[0]:.1f}–{v.asl_band[1]:.1f}s band "
+                          f"(reported, not enforced)."]
+            if v.gaps:
+                lines.append(f"**Unused sizes the footage offered:** {', '.join(v.gaps)}.")
+            if v.waiver:
+                lines.append(f"**Waiver:** {v.waiver}")
         return "\n".join(lines)
 
 

@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict
 from scripts.lib import manifest as manifest_lib
+from scripts.lib import moodpreset
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.manifest import DEFAULT_COLOR
 from scripts.lib.project import ProjectConfig
@@ -604,3 +605,36 @@ def test_a_rewritten_edl_restamps_rather_than_going_stale(tmp_path):
     e2.cap = 5                                     # a TOOL changing the EDL
     edl_mod.write_edl(e2, p)
     assert provenance.check(json.loads(p.read_text()))[0] == "intact"
+
+
+# --- mood-preset-variety Task 4: EDL.variety (design docs/specs/2026-08-06-mood-preset-variety-design.md §9)
+
+def test_edl_carries_a_variety_report_and_round_trips():
+    r = moodpreset.evaluate({"close": 11, "medium": 0, "wide": 40},
+                            {"close": 0, "medium": 0, "wide": 8}, 2.0,
+                            moodpreset.resolve("fun"), waiver="close windows are soft")
+    e = EDL(episodes=(_ep(),), variety=r)
+    back = EDL.from_dict(e.to_dict())
+    assert back.variety.to_dict() == r.to_dict()
+
+
+def test_edl_without_a_variety_report_round_trips_as_none():
+    # a hand-authored EDL through edl_to_reel's SP1 front door was never evaluated
+    e = EDL(episodes=(_ep(),))
+    assert e.to_dict()["variety"] is None
+    assert EDL.from_dict(e.to_dict()).variety is None
+
+
+def test_edl_refuses_a_variety_field_that_is_not_a_report():
+    with pytest.raises(ValueError, match="variety"):
+        EDL(episodes=(_ep(),), variety={"preset": "fun"})
+
+
+def test_markdown_prints_available_against_used_and_the_waiver():
+    r = moodpreset.evaluate({"close": 11, "medium": 0, "wide": 40},
+                            {"close": 0, "medium": 0, "wide": 8}, 2.0,
+                            moodpreset.resolve("fun"), waiver="close windows are soft")
+    md = EDL(episodes=(_ep(),), variety=r).to_markdown()
+    assert "## Variety" in md
+    assert "fun" in md and "close" in md and "11" in md
+    assert "close windows are soft" in md
