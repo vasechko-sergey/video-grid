@@ -92,11 +92,17 @@ say so rather than guessing a path.
    bare autonomous run, skip it and say so; `project.json` still anchors CP1.
 
 6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
-   `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). edit-plan runs
-   **before** music and pacing (steps 7-8): this first `edit_plan build` carries **no
-   `--pacing`**, so each cut keeps the length its footage gives it. **Checkpoint 2 —
-   EDL approval + curation:** show the user `EDL.md`. To swap or re-order an episode,
-   edit `selection.json` and re-run the build — never hand-edit `EDL.json`.
+   `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). Pass
+   `--spec <run>/SPEC.json` when reel-brief (step 5) ran — its mood picks the
+   shot-mix preset the variety gate holds the cut to; without one the build still
+   runs, against the `balanced` preset. A `variety-gap` stop routes back to
+   **edit-plan** like any other `stop_and_report` — add the named shot size or
+   state a `variety_waiver` in `selection.json`, never a loosened gate. edit-plan
+   runs **before** music and pacing (steps 7-8): this first `edit_plan build`
+   carries **no `--pacing`**, so each cut keeps the length its footage gives it.
+   **Checkpoint 2 — EDL approval + curation:** show the user `EDL.md`. To swap
+   or re-order an episode, edit `selection.json` and re-run the build — never
+   hand-edit `EDL.json`.
    **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
    assemble-draft step below), it is what the user approves at Checkpoint 2; on a
    run without it, `EDL.md` still anchors CP2. **Ask explicitly at this checkpoint

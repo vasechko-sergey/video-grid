@@ -583,12 +583,34 @@ level-ladder (phrase/2-bar/bar miss → half-bar fits); intake was rock-solid
 exercised (`window: [i,j]` ranges in `selection.json`). New problems and
 reinforcements:
 
-- **#19 — Shot-type variety + brief-fidelity (NEW, editorial).** Every shot in
-  the delivered reel is the same medium-wide side-on "surfer on a wave" — no
+- **#19 — Shot-type variety + brief-fidelity (NEW, editorial). ✅ LANDED
+  2026-08-06** — design `docs/specs/2026-08-06-mood-preset-variety-design.md`
+  + plan `docs/plans/2026-08-06-mood-preset-variety.md`. `edit_plan build` now
+  refuses a cut that takes *zero* of a shot size the mood's preset wants when
+  the footage offers three or more windows of it (reason `variety-gap`,
+  overridable only by a written `variety_waiver` in `selection.json`) — shot
+  size is judged in the cut's **delivered** frame (a 9:16 crop of a 16:9
+  source widens the discriminating net 3.16×), not the source-geometry tag
+  that could not discriminate on footage like this at all (the original
+  finding below). Four new `mood.py` anchors (`fun`/`playful`/`nostalgic`/
+  `adventure`) close the matching half of "brief-fidelity" too —
+  `"fun and playful"` matched no anchor before this slice and fell into the
+  blind drive-ranking fallback, so even the music ranking had been running
+  blind. **What this does NOT cover** (design §13): the gate proves *"you
+  used what was there,"* never *"the reel is varied"* — two close-ups of the
+  same person in the same pose satisfy it completely (§13.1), and footage
+  whose subject never exceeds ~2.5% of the source frame is legitimately
+  all-`wide` and the gate cannot fire at all (§13.2); a hand-authored
+  `EDL.json` driven straight through `edl_to_reel`'s SP1 front door is never
+  evaluated (§13.5); and the waiver is self-granted — the agent that cut it
+  monotonous is the agent that can write the reason away, so what the gate
+  buys is a recorded, surfaced decision, not an independent check (§13.6).
+  The preset numbers themselves (§13.7) are first-cut guesses, uncalibrated
+  against real footage. Original finding, for the record: every shot in the
+  delivered reel was the same medium-wide side-on "surfer on a wave" — no
   close-ups, no faces, none of the *"laughs and moments, personality-forward"*
-  the `fun and playful` brief asked for. Competent but monotonous action. The
-  selection/edit-plan should diversify shot types and check the cut against the
-  brief's mood/personality, not just fill length. Ties the north star and #3.
+  the `fun and playful` brief asked for. Competent but monotonous action.
+  Ties the north star and #3.
 - **#20 — Off-pipeline manual EDL editing (NEW, governance). ✅ LANDED
   2026-08-04** — design `docs/specs/2026-08-04-attested-run-design.md` §5.1 +
   plan `docs/plans/2026-08-04-attested-run.md`. `EDL.json` is now stamped by

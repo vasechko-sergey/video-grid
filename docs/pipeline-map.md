@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-08-05._
+_Last updated: 2026-08-06._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -21,7 +21,7 @@ _Last updated: 2026-08-05._
 | 5.4  | trend-scan | `TRENDS.md` | ❌ | trend cache (TTL 7–10d) | Front-half authoring |
 | 5.5  | music-and-mood | `MUSIC.json` | ✅ | beats-core (tempo/beat-grid/RMS energy) ✅ + start_offset intelligence (auto in-point: peak-energy window, vocal-pause start via opt-in demucs / librosa proxy) ✅ + mood-match (local: rank a folder vs SPEC.mood → MUSIC_SHORTLIST) ✅ + sourcing (free/any, network) ✅ | **Phase B — music spine** |
 | 5.6  | pacing | `PACING.md` | ✅ | pacing runs **after** edit-plan and FITS the existing cuts onto the coarsest grid level (beat/half-bar/bar/2-bar/phrase) within a ±half-beat allowance — the 2/4/8 ladder is gone (scenario-first pacing, 2026-07-24) | **Phase B — music spine** |
-| 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3); a `selection.json` episode may reference a window range `"window": [i, j]` to merge adjacent activity units into one episode (3b, 2026-07-26) | Front-half authoring |
+| 5.7  | edit-plan | `EDL.md` | ✅ | `EDL.json` typed contract + `to_manifest_dict` bridge ✅ (SP1); `EDL.md` render + `edit_plan.py` (selection→projection→EDL) + `edit-plan` SKILL ✅ (SP3); a `selection.json` episode may reference a window range `"window": [i, j]` to merge adjacent activity units into one episode (3b, 2026-07-26); a shot-size **variety gate** refuses a cut using zero of a delivered-frame shot size the mood's `SPEC`-resolved preset wants when the footage offers ≥3 (`variety-gap`, overridable only by a written `variety_waiver` — mood-preset-variety, 2026-08-06) | Front-half authoring |
 | 5.8  | extract | `segments/<ep>_raw.mp4` | ✅ | `extract_edl` loop + §5.8 length gate ✅ (SP1) | — |
 | 5.9  | assemble-draft | `draft.mp4` | ✅ | draft CLI + typed helpers (scripts/draft.py, scripts/lib/draft.py) — concat of raw segments, canvas-fit, processing_notes labels + music bed (SP1b, 5.9) | Front-half authoring |
 | 5.10 | **process-episode** 🔒 | `out/<ep>.mp4` | ✅ | track + reframe + storyboard + layouts, orchestrated (loop-1); reframe now applies a per-episode colour **actuator** — 7 grade knobs + an additive auto white-balance + the non-linear `tone` profile-transfer, composed by `color.grade_chain` and riding reframe's **one** encode (colour-as-a-stage, 2026-07-27; the design-§10 match-grade **conductor** — measures every episode's source at its window midpoint, computes one common reel tone target, and auto-authors `tone_src`/`tone_dst` on the episodes that deviate — landed 2026-07-30 as its own optional post-EDL stage, `match-grade`, run after pacing and before `edl_to_reel`: see [the match-grade conductor design](specs/2026-07-30-matchgrade-conductor-design.md)); the crop's savgol smoothing window is now specified in **seconds** and resolved per-clip against its own fps (`pathsmooth.window_frames`, 30fps→7 unchanged, 60fps→15), and an authored `lead` composition is honoured off the subject's own net travel even where `motion.classify` lands in its ambiguous zone, instead of silently rendering as `center` (path-quality cluster, 2026-07-29) | — |

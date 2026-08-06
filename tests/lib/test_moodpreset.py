@@ -87,6 +87,24 @@ def test_evaluate_ignores_a_size_the_preset_barely_wants():
     assert r.gaps == ()
 
 
+def test_evaluate_fires_exactly_at_the_want_floor_boundary():
+    # WANT_FLOOR (0.20) is inclusive: >= WANT_FLOOR, not > WANT_FLOOR. The nearby
+    # test_evaluate_ignores_a_size_the_preset_barely_wants only pins 0.10 — well below
+    # the floor — so the boundary value itself was unpinned until now.
+    at_floor = moodpreset.MoodPreset("at_floor", None,
+                                     {"close": 0.20, "medium": 0.40, "wide": 0.40}, (2.0, 4.0))
+    r = moodpreset.evaluate(_counts(close=20, wide=40), _counts(wide=8), 2.0, at_floor)
+    assert r.gaps == ("close",)
+
+
+def test_evaluate_is_silent_just_below_the_want_floor_boundary():
+    # the twin of the case above, one hundredth under the floor: no gap.
+    below_floor = moodpreset.MoodPreset("below_floor", None,
+                                        {"close": 0.19, "medium": 0.40, "wide": 0.41}, (2.0, 4.0))
+    r = moodpreset.evaluate(_counts(close=20, wide=40), _counts(wide=8), 2.0, below_floor)
+    assert r.gaps == ()
+
+
 def test_evaluate_does_not_flag_a_size_the_cut_already_uses():
     r = moodpreset.evaluate(_counts(close=11, wide=40), _counts(close=1, wide=8), 2.0,
                             moodpreset.resolve("fun"))

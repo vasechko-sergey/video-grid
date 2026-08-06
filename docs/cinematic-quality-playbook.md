@@ -169,9 +169,17 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    `build`/`strip` give the edit-plan agent its first look at actual pixels,
    wired as a **required** conveyor stage between footage-intake and
    edit-plan — it gates the sensor's presence, never proof that anyone
-   looked (design §9). Open: #19 shot variety + #3 per-episode QC (the
-   per-episode half of #12) + #14 editorial-rule memory, on top of the
-   **mood-preset spine (§3)**.
+   looked (design §9). The **mood-preset spine (§3) + #19 shot variety —
+   ✅ LANDED 2026-08-06** (design
+   `docs/specs/2026-08-06-mood-preset-variety-design.md` + plan
+   `docs/plans/2026-08-06-mood-preset-variety.md`): a typed `MoodPreset`
+   resolved from `SPEC.mood` (four new `mood.py` anchors close the
+   `"fun and playful"` no-match gap too) plus a **variety gate** in
+   `edit_plan build` that refuses a cut using zero of a shot size the
+   preset wants when the footage offers three or more, judged in the cut's
+   **delivered** frame — overridable only by a written waiver, never
+   silently. Open: #3 per-episode QC (the per-episode half of #12, now
+   with a preset to judge against) + #14 editorial-rule memory.
 4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep
    iteration affordable.
 5. **Polish** — #2 music phrase-out, #16 versioning, #4 setup.

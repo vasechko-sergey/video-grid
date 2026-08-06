@@ -31,9 +31,12 @@ from `FOOTAGE.json`.
   episodes inherit; used by the preflight.
 - **`references/editing-canon.md`** (required read) — thirds, headroom, lead room,
   the 180° rule, cut-on-action, contrast. Your editorial base.
-- **`SPEC.md` / `PACING.md` / `MUSIC.json`** (optional) — read as guidance when
-  present. Without `PACING.md`, leave `beat_slot` unset. Point `music` at a
-  `MUSIC.json` when one exists.
+- **`SPEC.md` / `SPEC.json`** (optional, from reel-brief) — its `mood` picks the
+  shot-mix preset the variety gate (step 2) holds the cut to. Without one, the
+  `balanced` preset applies — skipping the brief does not turn the gate off.
+- **`PACING.md` / `MUSIC.json`** (optional) — read as guidance when present.
+  Without `PACING.md`, leave `beat_slot` unset. Point `music` at a `MUSIC.json`
+  when one exists.
 
 `start_offset` (optional, per selection episode) moves the in-point later inside the SAME
 shot — the window grid is a scoring artifact, not an editorial one. It never crosses a
@@ -75,6 +78,20 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    The ranking is not the answer. The window score peaks at motion 0.35 and is
    zero at static, so a calm, personality-forward moment ranks below action
    even when it is the better cut. Pick from what the sheets show.
+
+   **Variety is an objective, not a preference.** The build refuses a cut that uses
+   *zero* of a shot size the mood's preset wants when the footage offers three or
+   more windows of it — the reason is `variety-gap` and it names candidate windows
+   by clip and index. Shot size is judged in the **delivered** frame, so a window
+   tagged `wide` in `FOOTAGE.md` may well be `medium` once the 9:16 crop is taken;
+   trust the refusal's numbers over the tag. If the cut is genuinely right as it
+   stands — every close window is soft, or the reel is deliberately one texture —
+   state why in `selection.json`:
+
+       {"episodes": [...], "variety_waiver": "every close window is out of focus"}
+
+   The reason is printed in `EDL.md` and stamped into `EDL.json`. A blank waiver is
+   refused.
 
    Dedup across sources so one clip doesn't dominate, fit the running sum to the
    target length, and order them **hook first**. For each episode assign:
@@ -135,13 +152,15 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
        python -m scripts.edit_plan build --footage FOOTAGE.json \
          --selection selection.json --project project.json --out-dir . \
-         [--cast cast.json]
+         [--cast cast.json] [--spec SPEC.json]
 
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
-   the registry the preflight resolves that name against. It projects each
+   the registry the preflight resolves that name against. Pass `--spec` when
+   `SPEC.json` exists — it selects the shot-mix preset the variety gate holds the
+   cut to; without it the gate still runs, against `balanced`. It projects each
    window, **preflights** the EDL against the project, and writes `EDL.json` +
-   `EDL.md`. On a `stop_and_report` (reason `edl-invalid`), fix the named
-   episode in `selection.json` and re-run — never hand-edit `EDL.json`
+   `EDL.md`. On a `stop_and_report` (reason `edl-invalid` or `variety-gap`), fix
+   the named episode in `selection.json` and re-run — never hand-edit `EDL.json`
    (`selection.json` is the source; the EDL is generated).
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and

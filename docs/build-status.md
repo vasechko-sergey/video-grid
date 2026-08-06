@@ -4,13 +4,113 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-05._
+_Last updated: 2026-08-06._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Mood presets + shot-size variety (cinematic-quality playbook P3 slice S2,
+  backlog #19) DONE (2026-08-06)** — plan
+  `docs/plans/2026-08-06-mood-preset-variety.md` + design
+  `docs/specs/2026-08-06-mood-preset-variety-design.md`, Tasks 0–7 (branch
+  `feat/mood-preset-variety`, commits `e96f035`..`16ef627` + this docs sync).
+  S1 (footage contact-sheet, 2026-08-05) gave the edit-plan agent its first
+  look at pixels; the 2026-08-03 real run still delivered a reel where every
+  shot was the same medium-wide side-on "surfer on a wave" — no close-ups,
+  no faces, none of the *"laughs and moments, personality-forward"* the
+  `fun and playful` brief asked for — because variety was nobody's
+  objective, mood was a music-search string nothing about the picture
+  consulted, and the shot-size tag bucketed on the primary person's bbox
+  area as a fraction of the **source** frame, where a surfer shot from the
+  beach occupies 1–2% of a 4K frame: every window tagged `wide`, so a target
+  distribution over shot sizes was unreachable by construction. This slice
+  closes all three. New pure `scripts/lib/moodpreset.py` (`MoodPreset`,
+  `PRESETS` — `fun`/`epic`/`moody`/`nostalgic`, hand-tuned first-cut numbers
+  — `BALANCED` fallback kept deliberately OUT of the nearest-neighbour
+  search so a mid-range vector cannot swallow every mood between the four
+  named ones, `resolve(mood_text)` reusing `mood.py`'s existing anchor
+  vocabulary, `VarietyReport`, `evaluate`) carries exactly the two fields
+  its one consumer reads: `shot_mix` (a distribution over
+  `footage.SHOT_TYPES`, deciding which under-use is refusable) and `asl`
+  (reported, never enforced — shot length is the footage's and pacing's to
+  set, not a reason to blame the editor). Four new `mood.py` anchors
+  (`fun`/`playful`/`nostalgic`/`adventure`) fix a second bug found along the
+  way: `"fun and playful"` matched no anchor before this slice and fell
+  into the blind drive-ranking fallback, so even the *music* ranking on the
+  real run had been running blind. `scripts/lib/footage.py`'s
+  `shot_type(subject_w, subject_h)` — moved out of `intake.py`, thresholds
+  unchanged — now has a `delivered_shot(subject_w, subject_h, res, aspect,
+  crop_scale=1.0)` sibling that reclassifies in the project's **delivered**
+  canvas: a 9:16 fill crop of a 3840×2160 source cuts width only, scaling
+  the subject's area fraction by `3840/1215 = 3.16×`, which moves the
+  `medium` boundary from 8% of the source frame to 2.5% — three times wider
+  a net, and the reason a distribution can exist at all where before there
+  was one bucket. `edit_plan build` (`aspect`/`preset` keyword-only,
+  keyword-absent ⇒ not evaluated, never a silent pass — the SP1 door for a
+  hand-authored selection with no project geometry) tallies `available`
+  (every window in the footage, in delivered geometry — never filtered to
+  `best`, since `best` is a threshold on a score that itself leans toward
+  motion, §1.1) against `used` (what the cut actually took) and calls
+  `moodpreset.evaluate`; `write_edit_plan` turns a gap into a
+  `stop_and_report` (reason `variety-gap`, never `edl-invalid`) naming the
+  preset, the unused size, and the top-3 candidate windows by score — unless
+  `selection.json` carries a `variety_waiver` (a blank one is refused: an
+  empty string is a bypass wearing the costume of a decision). The waiver
+  rides into `EDL.variety.waiver`, prints in `EDL.md`'s new `## Variety`
+  section, and lands inside the artifact `edl.write_edl` stamps, so the
+  exception is recorded where it cannot be quietly revised later. **The
+  `CACHE_VERSION` 6→7 cost, and why it was paid now:** `FootageWindow` gains
+  `subject_w`/`subject_h`/`present` — the primary-subject bbox and presence
+  fraction `_build_window` already computed as locals and then discarded.
+  Storing them forces every cached clip to miss and the next
+  `footage-intake` to re-scan the whole folder — paid once, and paid now
+  rather than twice, because the `_motion_fit` re-tune this design's §1.1
+  explicitly declines to do in this slice would have needed its own bump
+  later; after this slice it needs none, since `present`/`motion`/`shake`/
+  `dur` are all on disk and `score` becomes recomputable outside Phase 1
+  forever. A `FOOTAGE.json` written before this slice has no `present` key;
+  `FootageClip.from_dict` checks key *presence* (not value — `0.0` is a
+  legitimate measurement) and refuses it by name with a re-scan remedy,
+  rather than silently reconstructing a window that claims "no people
+  anywhere". **Honest limits, one sentence (design §13):** the gate proves
+  *"you used what was there,"* never *"the reel is varied"* — two close-ups
+  of the same pose satisfy it completely, it cannot fire at all on footage
+  whose subject never exceeds ~2.5% of the source frame, a hand-authored
+  `EDL.json` through `edl_to_reel`'s SP1 front door is never evaluated, and
+  the waiver is self-granted (a recorded decision, not an independent
+  check). **Mutation battery (Task 7, six checks — the design's five plus a
+  sixth `WANT_FLOOR`-boundary check the brief added on a Task-3 reviewer
+  finding):** four turned red exactly or more broadly than predicted
+  (`_available_census` filtered to `best`; `delivered_shot` replaced by the
+  source-geometry tag; the blank-waiver refusal dropped; `BALANCED` entering
+  the preset search). Two stayed **green** on their first predicted test —
+  both real coverage gaps, both closed with a new test in the same commit:
+  counting `available` by summed duration instead of by window slipped past
+  `test_build_edl_counts_both_censuses_in_delivered_geometry` because its
+  fixture's windows all carry `dur=1.0`, where "sum of seconds" and "count
+  of windows" are numerically identical (closed by
+  `test_available_census_counts_windows_not_seconds`, non-uniform
+  durations); and `WANT_FLOOR`'s `>=` loosened to `>` found no test pinning
+  the boundary exactly — the nearest case pins `0.10`, well below it (closed
+  by `test_evaluate_fires_exactly_at_the_want_floor_boundary` +
+  `test_evaluate_is_silent_just_below_the_want_floor_boundary`). Every
+  mutation was reverted; none was committed; `scripts/` carries no diff
+  beyond the two new regression tests. **2272 passed / 3 skipped** (whole
+  suite; the three skips are the pre-existing demucs/torchreid/iTunes-network
+  gaps this tree already carried, none new), no golden moved. **Deferred minors, not silently discarded** (per-task review
+  findings, cosmetic — none blocks): `intake_cache.py`'s `CACHE_VERSION`
+  6→7 note is a trailing comment rather than extending the running narrative
+  paragraph the four prior bumps used; `edl.py`'s `from_dict` reads
+  `if d.get("variety")`, so a hand-authored `"variety": {}` is swallowed as
+  `None` instead of failing loud (the machine path never emits an empty
+  report, so this is unreachable today); three test files place a
+  `from scripts.lib import X` mid-file rather than in the top import block,
+  each mirroring a pre-existing instance in the same file. **What's left of
+  P3** (S3's `_motion_fit` re-tune, the hero-conditioned re-scan, #14, #3)
+  is named in the Next-action head below.
 
 - **Footage contact-sheet (cinematic-quality playbook P3 slice S1, backlog
   #12 "look, don't guess" — the selection half) DONE (2026-08-05)** — plan
@@ -2242,14 +2342,34 @@ _Last updated: 2026-08-05._
 
 ## Next action
 
-- **Cinematic-quality P3 continues — S2+S3: mood presets + shot variety**
-  (backlog #19, synthesis `docs/cinematic-quality-playbook.md` §3/§4 priority
-  3) — S1 (footage contact-sheet, DONE 2026-08-05, see the Done entry above)
-  gave the edit-plan agent its first look at pixels; the next slice builds
-  the §3 mood-preset spine and makes shot-size variety a **selection
-  objective**, instead of leaving the agent to follow a ranking that is
-  biased toward action (§1.1 of the contact-sheet design). This is the
-  active critical path now — the north star (`docs/fixes-backlog.md`,
+- **Cinematic-quality P3 continues — what's left after S2** (synthesis
+  `docs/cinematic-quality-playbook.md` §3/§4 priority 3) — S1 (footage
+  contact-sheet, DONE 2026-08-05) gave the edit-plan agent its first look at
+  pixels; S2 (mood presets + shot-size variety, backlog #19, DONE
+  2026-08-06, see the Done entry above) gave the cut a mood and an
+  objective it can be held to — `edit_plan build` now refuses a cut that
+  takes zero of a shot size the mood's preset wants when the footage offers
+  three or more. What is left of P3:
+  - **S3 — the `_motion_fit` re-tune.** Deliberately NOT done in S2 (design
+    2026-08-06 §1.1): no real footage had been scored through a corrected
+    curve, so any new constant would have been invented. S2 paid the
+    `CACHE_VERSION` 6→7 cost that makes this free now — `present`, `motion`,
+    `shake`, and `dur` are all on disk, so `score` becomes recomputable
+    outside Phase 1 without another re-scan.
+  - **The hero-conditioned re-scan** (design 2026-08-06 §14) — after cast
+    naming, re-measure the windows holding a named hero cropped to their
+    *own* bbox (not the largest person's) plus face visibility. Its own
+    slice: face detection is a new model, a new download, a new
+    `verify_runtime` gate — the cheap full-pool census S2 needed does not
+    depend on it.
+  - **#14 — editorial-constraint memory across iterations** (needs design)
+    — a user-stated rule ("these two episodes must not repeat") must
+    persist and be enforced through every re-cut, not forgotten on the next
+    render.
+  - **#3 — per-episode QC in subagents** (needs design) — the preset (S2)
+    finally gives QC something concrete to judge; the judging stage itself
+    is a separate build.
+  This is the active critical path — the north star (`docs/fixes-backlog.md`,
   2026-08-03) reprioritized ahead of the front-half items below, which stay
   open but are no longer next. **OR**
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**

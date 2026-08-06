@@ -77,7 +77,7 @@ delivered-geometry variant that `edit_plan` will call. Design §6.
 - Consumes: `scripts.lib.geometry.crop_for(aspect, scale, src_w, src_h) -> (crop_w, crop_h)` — already exists.
 - Produces: `footage.SHOT_TYPES: tuple[str, str, str]`, `footage.CLOSE_AREA`, `footage.MEDIUM_AREA`, `footage.shot_type(subject_w: float, subject_h: float) -> str`, `footage.delivered_shot(subject_w: float, subject_h: float, res: tuple[int, int], aspect: tuple[int, int], crop_scale: float = 1.0) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_footage.py`:
 
@@ -109,12 +109,12 @@ def test_delivered_shot_without_people_is_wide_in_any_geometry():
     assert footage.delivered_shot(0.0, 0.0, (3840, 2160), (9, 16)) == "wide"
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -k "shot_type or delivered" -v`
 Expected: FAIL with `AttributeError: module 'scripts.lib.footage' has no attribute 'shot_type'`
 
-- [ ] **Step 3: Add the classifier to `scripts/lib/footage.py`**
+- [x] **Step 3: Add the classifier to `scripts/lib/footage.py`**
 
 Add `from scripts.lib import geometry` to the imports (`geometry.py` imports `models`
 only under `TYPE_CHECKING`, so there is no cycle), and insert after the `_num` helper:
@@ -152,12 +152,12 @@ def delivered_shot(subject_w: float, subject_h: float, res: tuple[int, int],
                      min(1.0, subject_h * res[1] / crop_h))
 ```
 
-- [ ] **Step 4: Run the new tests to verify they pass**
+- [x] **Step 4: Run the new tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -k "shot_type or delivered" -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Delete intake's copy and rewire its call site**
+- [x] **Step 5: Delete intake's copy and rewire its call site**
 
 In `scripts/intake.py`, delete the whole `def shot_type(bbox, res)` function (lines
 51–62) and the `CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08` constant line (line 40).
@@ -180,7 +180,7 @@ with
 (`pres`), so `sw`/`sh` are proxy-normalized fractions — which is exactly what the
 contract stores (design §5).
 
-- [ ] **Step 6: Update the moved-function test in `tests/lib/test_intake.py`**
+- [x] **Step 6: Update the moved-function test in `tests/lib/test_intake.py`**
 
 Search that file for `intake.shot_type` and rewrite each call onto the new signature —
 `intake.shot_type(bbox, res)` becomes `footage.shot_type(bw / w, bh / h)`. If a test
@@ -189,7 +189,7 @@ exercised the `None` bbox case, express it as `footage.shot_type(0.0, 0.0)`.
 Run: `.venv/bin/python -m pytest tests/lib/test_intake.py tests/lib/test_footage.py -q`
 Expected: PASS
 
-- [ ] **Step 7: Prove no copy of the classifier is left behind**
+- [x] **Step 7: Prove no copy of the classifier is left behind**
 
 Run: `grep -rn "def shot_type" scripts/`
 Expected: exactly one hit, `scripts/lib/footage.py`.
@@ -197,12 +197,12 @@ Expected: exactly one hit, `scripts/lib/footage.py`.
 Run: `grep -rn "CLOSE_AREA\|MEDIUM_AREA" scripts/`
 Expected: hits only in `scripts/lib/footage.py`.
 
-- [ ] **Step 8: Run the whole unit suite**
+- [x] **Step 8: Run the whole unit suite**
 
 Run: `.venv/bin/python -m pytest tests/lib -q`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/lib/footage.py scripts/intake.py tests/lib/test_footage.py tests/lib/test_intake.py
@@ -228,7 +228,7 @@ written before this change rather than reading it as "no people anywhere". Desig
 - Consumes: `footage.shot_type` from Task 0.
 - Produces: `FootageWindow.subject_w: float`, `.subject_h: float`, `.present: float` — all defaulting to `0.0`, all validated into `[0, 1]`, all in `to_dict()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_footage.py`:
 
@@ -260,12 +260,12 @@ def test_clip_from_dict_refuses_a_footage_json_written_before_the_shot_size_fiel
         footage.FootageClip.from_dict(legacy)
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -k "measurement or predates or three" -v`
 Expected: FAIL — `TypeError: FootageWindow.__init__() got an unexpected keyword argument 'subject_w'` and, for the legacy test, no exception raised.
 
-- [ ] **Step 3: Add the fields, the validation, and the `to_dict` keys**
+- [x] **Step 3: Add the fields, the validation, and the `to_dict` keys**
 
 In `scripts/lib/footage.py`, `FootageWindow` gains three fields after `track_ids`:
 
@@ -294,7 +294,7 @@ In `to_dict`, add to the returned dict:
                 "present": self.present,
 ```
 
-- [ ] **Step 4: Add the legacy-artifact refusal to `FootageClip.from_dict`**
+- [x] **Step 4: Add the legacy-artifact refusal to `FootageClip.from_dict`**
 
 In the `for k, w in enumerate(wins_in):` loop, immediately after the
 `if not isinstance(w, dict):` check and before `FootageWindow(**w)`:
@@ -311,12 +311,12 @@ In the `for k, w in enumerate(wins_in):` loop, immediately after the
 
 Checking key *presence*, not value, is the point: `0.0` is a legitimate measurement.
 
-- [ ] **Step 5: Run the new tests to verify they pass**
+- [x] **Step 5: Run the new tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_footage.py -k "measurement or predates or three" -v`
 Expected: PASS
 
-- [ ] **Step 6: Make intake store what it already computes**
+- [x] **Step 6: Make intake store what it already computes**
 
 In `scripts/intake.py`, `_build_window` — reuse the `sw`/`sh` locals Task 0 introduced
 and the existing `present` local, and pass all three to the constructor:
@@ -329,7 +329,7 @@ and the existing `present` local, and pass all three to the constructor:
                                  subject_h=round(sh, 4), present=round(present, 3))
 ```
 
-- [ ] **Step 7: Bump the cache version**
+- [x] **Step 7: Bump the cache version**
 
 In `scripts/lib/intake_cache.py`, change `CACHE_VERSION = 6` to `CACHE_VERSION = 7` and
 extend its comment with one line naming why:
@@ -339,7 +339,7 @@ CACHE_VERSION = 7   # 6→7 (2026-08-06): FootageWindow stores subject_w/subject
                     # measured in Phase 1 — a cached ClipResult cannot supply them.
 ```
 
-- [ ] **Step 8: Repair the hand-written window dicts in existing fixtures**
+- [x] **Step 8: Repair the hand-written window dicts in existing fixtures**
 
 Six sites build a `"windows": [{...}]` dict literal and will now hit the Step-4
 refusal. Add `"present": 1.0, "subject_w": 0.0, "subject_h": 0.0` to each window dict
@@ -353,7 +353,7 @@ those fixtures already declare — so the fixture stays internally consistent.
 
 Find them all with: `grep -rn '"shot_type"' tests/ | grep '"windows"\|"start"'`
 
-- [ ] **Step 9: Re-pin the intake goldens**
+- [x] **Step 9: Re-pin the intake goldens**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -v`
 Expected: FAIL — the whole-object `FootageClip` comparisons now differ, because the
@@ -372,13 +372,13 @@ stop and report rather than re-pinning around it.
 Re-run: `.venv/bin/python -m pytest tests/integration/test_intake.py -v`
 Expected: PASS
 
-- [ ] **Step 10: Run the whole suite**
+- [x] **Step 10: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS. Any other failure is a fixture that hand-writes a window dict — fix it
 the same way as Step 8.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add scripts/lib/footage.py scripts/intake.py scripts/lib/intake_cache.py tests/
@@ -401,7 +401,7 @@ vocabulary so there is no second lexicon to keep in sync.
 - Consumes: `mood.MoodVector`, `mood.mood_target(text) -> MoodVector | None`, `mood.distance(a, b) -> float`, `footage.SHOT_TYPES`.
 - Produces: `moodpreset.MoodPreset` (fields `name`, `anchor`, `shot_mix`, `asl`), `moodpreset.PRESETS: tuple[MoodPreset, ...]`, `moodpreset.BALANCED: MoodPreset`, `moodpreset.resolve(mood_text: str | None) -> MoodPreset`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_moodpreset.py`:
 
@@ -473,12 +473,12 @@ def test_the_real_brief_vocabulary_now_matches_an_anchor():
         assert token in mood.MOOD_ANCHORS
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py tests/lib/test_mood.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.moodpreset'`, and the mood test fails on the missing anchors.
 
-- [ ] **Step 3: Add the four anchors to `scripts/lib/mood.py`**
+- [x] **Step 3: Add the four anchors to `scripts/lib/mood.py`**
 
 Inside `MOOD_ANCHORS`, after the `"happy"/"joyful"/"upbeat"/"bright"` group:
 
@@ -487,7 +487,7 @@ Inside `MOOD_ANCHORS`, after the `"happy"/"joyful"/"upbeat"/"bright"` group:
     "adventure": MoodVector(0.80, 0.60, 0.65), "nostalgic": MoodVector(0.35, 0.45, 0.35),
 ```
 
-- [ ] **Step 4: Create `scripts/lib/moodpreset.py` with the type, the table, and `resolve`**
+- [x] **Step 4: Create `scripts/lib/moodpreset.py` with the type, the table, and `resolve`**
 
 ```python
 """Mood presets (design docs/specs/2026-08-06-mood-preset-variety-design.md §4) —
@@ -584,19 +584,19 @@ def resolve(mood_text: str | None) -> MoodPreset:
     return min(PRESETS, key=lambda p: mood.distance(p.anchor, target))
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py tests/lib/test_mood.py -q`
 Expected: PASS
 
-- [ ] **Step 6: Check the new anchors did not disturb the music ranking tests**
+- [x] **Step 6: Check the new anchors did not disturb the music ranking tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_mood_driver.py tests/lib/test_music_find_driver.py tests/integration/test_mood.py -q`
 Expected: PASS. If a test asserted that some string falls into the drive fallback and
 that string contains one of the four new tokens, the assertion is now wrong on
 purpose — update it and note the reason in the test's comment.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/moodpreset.py scripts/lib/mood.py tests/lib/test_moodpreset.py tests/lib/test_mood.py
@@ -618,7 +618,7 @@ import, so every branch is unit-testable on literals.
 - Consumes: `MoodPreset` from Task 2.
 - Produces: `moodpreset.MIN_AVAIL = 3`, `moodpreset.WANT_FLOOR = 0.20`, `moodpreset.VarietyReport` (fields `preset: str`, `available: dict[str, int]`, `used: dict[str, int]`, `asl: float`, `asl_band: tuple[float, float]`, `gaps: tuple[str, ...]`, `waiver: str | None`; property `ok: bool`; `to_dict()`/`from_dict()`), `moodpreset.evaluate(available, used, asl, preset, waiver=None) -> VarietyReport`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_moodpreset.py`:
 
@@ -689,12 +689,12 @@ def test_gaps_are_reported_in_shot_type_order():
     assert r.gaps == ("close", "medium")
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py -k "evaluate or waiver or report or gaps" -v`
 Expected: FAIL — `AttributeError: module 'scripts.lib.moodpreset' has no attribute 'evaluate'`
 
-- [ ] **Step 3: Add the constants, the report, and the evaluation**
+- [x] **Step 3: Add the constants, the report, and the evaluation**
 
 Append to `scripts/lib/moodpreset.py`:
 
@@ -783,12 +783,12 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
                          asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py -q`
 Expected: PASS (all tests in the file)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/moodpreset.py tests/lib/test_moodpreset.py
@@ -810,7 +810,7 @@ from the object and a report that stayed in the driver could not be printed.
 - Consumes: `moodpreset.VarietyReport` from Task 3.
 - Produces: `EDL.variety: VarietyReport | None = None`, serialized under the `"variety"` key; `EDL.to_markdown()` gains a `## Variety` section when `variety` is set.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py` (reuse whatever episode factory that file already
 defines; the snippet below assumes a local `_ep()` helper returning one valid
@@ -848,12 +848,12 @@ def test_markdown_prints_available_against_used_and_the_waiver():
     assert "close windows are soft" in md
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -k variety -v`
 Expected: FAIL — `TypeError: EDL.__init__() got an unexpected keyword argument 'variety'`
 
-- [ ] **Step 3: Add the field and its validation**
+- [x] **Step 3: Add the field and its validation**
 
 In `scripts/lib/edl.py`, import the type at the top —
 `from scripts.lib.moodpreset import VarietyReport` (`moodpreset` imports `mood` and
@@ -873,7 +873,7 @@ In `__post_init__`, after the `target_dur` check:
                              f"{type(self.variety).__name__} — re-run edit_plan build")
 ```
 
-- [ ] **Step 4: Serialize it**
+- [x] **Step 4: Serialize it**
 
 In `to_dict`, add to the base dict:
 
@@ -891,7 +891,7 @@ An `EDL.json` stamped before this slice has no `"variety"` key, so `d.get` retur
 `None` and its provenance digest — computed over the raw dict as written — still
 matches. No existing artifact is invalidated.
 
-- [ ] **Step 5: Render the section**
+- [x] **Step 5: Render the section**
 
 At the end of `to_markdown`, before `return "\n".join(lines)`:
 
@@ -913,18 +913,18 @@ At the end of `to_markdown`, before `return "\n".join(lines)`:
 Iterating `v.available` rather than `SHOT_TYPES` keeps the render honest to whatever
 the report actually holds; `VarietyReport.__post_init__` already guarantees the keys.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -q`
 Expected: PASS
 
-- [ ] **Step 7: Run every EDL consumer**
+- [x] **Step 7: Run every EDL consumer**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_match_grade.py tests/lib/test_matchgrade.py tests/lib/test_preflight.py tests/lib/test_draft.py -q`
 Expected: PASS. `to_dict` gained a key, so any test asserting a whole EDL dict needs
 the `"variety": None` entry added.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py tests/
@@ -946,7 +946,7 @@ policy and returns the same stop shape `preflight` already returns.
 - Consumes: `footage.delivered_shot`, `footage.SHOT_TYPES`, `moodpreset.resolve`, `moodpreset.evaluate`, `spec.Spec.from_json`, `ProjectConfig.canvas`.
 - Produces: `build_edl(footage, selection, pacing=None, cast=None, *, aspect=None, preset=None) -> EDL` (attaches `EDL.variety` when **both** `aspect` and `preset` are given); `write_edit_plan(footage_path, selection_path, project_path, out_dir, pacing_path=None, cast=None, spec=None) -> dict`; CLI flag `--spec`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edit_plan.py`. The helpers below build a footage set that
 offers close windows the selection ignores; adapt the construction to whatever
@@ -1031,12 +1031,12 @@ def test_write_edit_plan_without_a_spec_uses_balanced(tmp_path, ...):
 Replace each `...` and `fp`/`sp`/`pp` with the concrete `tmp_path` writes the file
 already uses for its other `write_edit_plan` tests — do not invent a new fixture style.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k "variety or census or waiver or spec" -v`
 Expected: FAIL — `TypeError: build_edl() got an unexpected keyword argument 'aspect'`
 
-- [ ] **Step 3: Add the census helpers to `scripts/edit_plan.py`**
+- [x] **Step 3: Add the census helpers to `scripts/edit_plan.py`**
 
 Extend the imports:
 
@@ -1075,7 +1075,7 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 ```
 
-- [ ] **Step 4: Measure inside `build_edl`**
+- [x] **Step 4: Measure inside `build_edl`**
 
 Change the signature and add the `used` tally inside the projection loop — the count
 has to happen there, because after projection an episode carries no window index and
@@ -1112,7 +1112,7 @@ caller either way.
 Extend the docstring with one paragraph naming the new keywords and stating that a
 missing `aspect`/`preset` means "not evaluated", not "passed".
 
-- [ ] **Step 5: Apply the policy in `write_edit_plan`**
+- [x] **Step 5: Apply the policy in `write_edit_plan`**
 
 New signature: `def write_edit_plan(footage_path, selection_path, project_path, out_dir, pacing_path=None, cast=None, spec=None) -> dict:`
 
@@ -1157,7 +1157,7 @@ The stop shape is `preflight`'s exactly, so `main()`'s `SystemExit(0 if status =
 "written" else 1)` already gives the right exit code, and nothing is written on a stop —
 the same "a bad EDL never lands as a half-valid artifact" rule the preflight follows.
 
-- [ ] **Step 6: Add the CLI flag**
+- [x] **Step 6: Add the CLI flag**
 
 In `main()`, beside `--cast`:
 
@@ -1168,19 +1168,19 @@ In `main()`, beside `--cast`:
 
 and thread it: `result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing, cast=a.cast, spec=a.spec)`.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -q`
 Expected: PASS
 
-- [ ] **Step 8: Run the whole unit suite**
+- [x] **Step 8: Run the whole unit suite**
 
 Run: `.venv/bin/python -m pytest tests/lib -q`
 Expected: PASS. Existing fixtures build all-`wide` windows (`subject_w`/`subject_h`
 default to `0.0`), so `available["close"]` is `0`, no gap can fire, and no existing
 test changes behaviour — confirm that is why they pass rather than assuming it.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -1202,7 +1202,7 @@ block survives the round trip into `EDL.json` and `EDL.md`.
 - Consumes: everything from Tasks 0–5.
 - Produces: no production code.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/integration/test_edit_plan.py`, following that file's existing
 fixture style (it already writes a `FOOTAGE.json`, a `selection.json` and a
@@ -1246,12 +1246,12 @@ Fill in `fp`/`sp`/`pp` with concrete `tmp_path` writes. The second test needs th
 preset to want `medium` at or above `WANT_FLOOR` — `balanced` wants `0.40`, so no
 `--spec` is needed.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_edit_plan.py -k variety -v`
 Expected: FAIL (the tests do not exist / the fixtures are unfinished)
 
-- [ ] **Step 3: Complete the fixtures until both tests pass**
+- [x] **Step 3: Complete the fixtures until both tests pass**
 
 No production code should be needed. If either test needs a production change to pass,
 stop: that is a design gap, and it belongs in a report rather than in an ad-hoc patch.
@@ -1259,7 +1259,7 @@ stop: that is a design gap, and it belongs in a report rather than in an ad-hoc 
 Run: `.venv/bin/python -m pytest tests/integration/test_edit_plan.py -v`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_edit_plan.py
@@ -1277,7 +1277,7 @@ Design §12 (the five mutation checks are steps, not suggestions) and §10.
 - Modify: `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/fixes-backlog.md`, `docs/cinematic-quality-playbook.md`
 - Test: no new file — this task proves the existing ones bite
 
-- [ ] **Step 1: Run the five mutation checks**
+- [x] **Step 1: Run the five mutation checks**
 
 Each mutation must turn at least one test **red**. Apply it, run the suite, record
 which test caught it, then revert. If a mutation stays green, the battery has found a
@@ -1289,12 +1289,12 @@ missing test — write it before moving on.
 4. In `_available_census`, count `w.dur` instead of `1` — expected red: the census assertion pinning `available["close"] == 3`.
 5. Add `BALANCED` to `PRESETS` — expected red: `test_balanced_is_never_a_match_target`, and at least one `resolve` case.
 
-- [ ] **Step 2: Record the battery in the plan**
+- [x] **Step 2: Record the battery in the plan**
 
 Append the five results to this file under a `## Mutation battery results` heading —
 mutation, the test that caught it, and (if any) the test written to close a gap.
 
-- [ ] **Step 3: Update `skills/edit-plan/SKILL.md`**
+- [x] **Step 3: Update `skills/edit-plan/SKILL.md`**
 
 Three edits:
 
@@ -1317,13 +1317,13 @@ Three edits:
 
 - **Procedure step 3:** add `[--spec SPEC.json]` to the build command and one line saying it selects the preset.
 
-- [ ] **Step 4: Update `skills/using-montage/SKILL.md`**
+- [x] **Step 4: Update `skills/using-montage/SKILL.md`**
 
 Where the router invokes the edit-plan build, add `--spec SPEC.json` when a brief
 exists, and one sentence: a `variety-gap` stop routes back to edit-plan like any other
 `stop_and_report`, never to a loosened gate.
 
-- [ ] **Step 5: Update the docs**
+- [x] **Step 5: Update the docs**
 
 - `docs/build-status.md`: a **Done** entry for this slice (what shipped, the `CACHE_VERSION` 6→7 cost and why it was paid now, the §13 honest limits in one sentence, the mutation battery result), and rewrite the **Next action** head so it names what is left of P3 — S3 (`_motion_fit` re-tune, now free), the hero-conditioned re-scan, #14 rule memory, #3 per-episode QC.
 - `docs/pipeline-map.md`: note the gate on the edit-plan (5.7) row.
@@ -1331,13 +1331,13 @@ exists, and one sentence: a `variety-gap` stop routes back to edit-plan like any
 - `docs/fixes-backlog.md`: mark **#19** landed with the design/plan paths, and state plainly what it does not cover (limits §13.1, §13.2, §13.5, §13.6).
 - `docs/cinematic-quality-playbook.md` §4: mark the mood-preset spine + #19 as landed under priority 3, leaving #3 and #14 open.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: PASS with no skips beyond the ones the tree already had (record the exact
 counts in the commit message).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/ docs/ CLAUDE.md
@@ -1351,3 +1351,28 @@ git commit -m "docs(mood-preset-variety): skills, registry, backlog #19, build s
 - **Spec coverage:** §4 → Task 2; §5 → Task 1; §6 → Task 0; §7 → Tasks 3 and 5; §8 → Tasks 3 and 5; §9 → Task 4; §10 → Tasks 5 and 7; §11 failure modes → Task 1 (legacy artifact), Task 2 (no-match log, broken table), Task 3 (`MIN_AVAIL`, blank waiver), Task 5 (no `SPEC.json`), Task 4 (`variety=None` for the SP1 door); §12 → Tasks 0–7; §13 honest limits → recorded in Task 7's docs; §14 deferrals → no task, by design.
 - **`Footage` with no windows at all** (§11): `_available_census` returns zeros, `evaluate` finds no gap, the report is still written. Covered by the existing all-`wide` fixtures continuing to pass in Task 5 Step 8 rather than by a dedicated test — if the reviewer wants it pinned explicitly, add `test_evaluate_on_empty_footage` beside the Task 3 cases.
 - **Type consistency:** `subject_w`/`subject_h`/`present` are used with those exact names in Tasks 0, 1, 5 and 6; `delivered_shot(subject_w, subject_h, res, aspect, crop_scale=1.0)` has one signature throughout; `VarietyReport` field names match between Tasks 3, 4 and 5; the reason string is `variety-gap` in Tasks 5, 6 and 7.
+
+---
+
+## Mutation battery results
+
+Run 2026-08-06, Task 7 Step 1. Protocol: apply the edit directly in the working tree,
+run the targeted tests, record what failed, `git checkout -- <file>` before the next
+mutation. Every mutation was reverted; none was committed. Six mutations run, not
+five — Task 7's brief adds a sixth (the `WANT_FLOOR` boundary) on the strength of a
+Task-3 reviewer finding that no shipped test pinned it exactly.
+
+| # | Mutation | Predicted catch | Actual result |
+|---|----------|------------------|----------------|
+| 1 | `_available_census`: filter to `if w.best` | "the census tests in `tests/lib/test_edit_plan.py`" | **RED**, as predicted, and wider: 6 tests failed — `test_build_edl_counts_both_censuses_in_delivered_geometry` plus `test_write_edit_plan_stops_on_a_variety_gap_and_names_candidates`, `test_write_edit_plan_passes_with_a_waiver`, `test_write_edit_plan_without_a_spec_uses_balanced` (all `tests/lib/test_edit_plan.py`), and both variety tests in `tests/integration/test_edit_plan.py`. None of the fixtures mark any window `best=True`, so the filter zeroes `available` entirely. |
+| 2 | `_available_census`/`_candidates`/`build_edl`: `delivered_shot(...)` → `w.shot_type` | `test_sp3_delivered_geometry_is_what_decides` | **RED**, exactly and only that test (73 others stayed green). Every other fixture's hand-set `shot_type` tag already agrees with what `delivered_shot` computes for its subject fractions — only this test's fixture is deliberately built so source and delivered geometry disagree, which is the one case the mutation can be caught by. |
+| 3 | `VarietyReport.__post_init__`: drop the blank-waiver refusal | `test_a_blank_waiver_is_refused` | **RED** — all 3 parametrized cases (`""`, `"   "`, `"\n"`), plus `test_build_edl_refuses_a_blank_waiver` in `tests/lib/test_edit_plan.py` as a bonus catch. |
+| 4 | `_available_census`: count `w.dur` instead of `1` | "the census assertion pinning `available["close"] == 3`" (`test_build_edl_counts_both_censuses_in_delivered_geometry`) | **The predicted test stayed GREEN.** `_varied_footage()`'s three close windows all carry `dur=1.0`, so `sum(dur) == count(windows) == 3.0`, and `evaluate` casts through `int()` before the assertion ever sees a fraction — counting seconds and counting windows are numerically indistinguishable on that fixture. The mutation was *not* silent overall — it turned two **integration** tests red as a side effect (`test_sp3_stops_on_a_variety_gap_then_passes_with_a_waiver`, `test_sp3_delivered_geometry_is_what_decides`: their `dur=0.5` fixtures truncate `int(1.5) = 1 < MIN_AVAIL`, so the gate stops firing) — but the one test whose whole job is to pin this census had a blind spot. **Closed:** added `test_available_census_counts_windows_not_seconds` to `tests/lib/test_edit_plan.py`, with three close windows at non-uniform durations 2.0/3.25/4.5s (`sum = 9.75`, `int() = 9`, window-count `= 3`) so the two strategies diverge; confirmed RED under the mutation, green without it. |
+| 5 | `PRESETS = PRESETS + (BALANCED,)` (BALANCED enters the nearest-neighbour search) | `test_balanced_is_never_a_match_target`, "and at least one `resolve` case" | **RED**, broadly — `test_balanced_is_never_a_match_target` (first assert: `BALANCED not in PRESETS`) plus all 4 `test_resolve_picks_the_nearest_named_preset` cases and 9 more cascading failures (14 total), because `mood.distance(None, target)` raises `AttributeError` the moment `min(PRESETS, ...)` evaluates `BALANCED.anchor` against any real target. |
+| 6 (added per Task 7 brief, not in the design's original five) | `evaluate`: `preset.shot_mix[s] >= WANT_FLOOR` → `> WANT_FLOOR` | Predicted to stay green (Task-3 reviewer finding) | **Confirmed GREEN** — all 100 tests in the three variety-relevant files passed with the mutation live; the nearest existing case (`test_evaluate_ignores_a_size_the_preset_barely_wants`) pins `0.10`, well below the floor, never the boundary itself. **Closed:** added `test_evaluate_fires_exactly_at_the_want_floor_boundary` (`shot_mix["close"] = 0.20` → gap fires) and its twin `test_evaluate_is_silent_just_below_the_want_floor_boundary` (`0.19` → no gap) to `tests/lib/test_moodpreset.py`; confirmed the first goes RED under the mutation, both green without it. |
+
+**Net finding:** the battery caught two real coverage gaps beyond the one it was sent
+to find (#6) — #4's dedicated census test was coincidentally correct only because
+every fixture window happens to carry `dur=1.0`. Both gaps are closed with new tests;
+no production code changed (every mutation was reverted, `git diff --stat scripts/`
+is empty at the end of this task).

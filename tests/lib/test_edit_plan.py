@@ -633,6 +633,27 @@ def test_build_edl_counts_both_censuses_in_delivered_geometry():
     assert edl.variety.gaps == ("close",)
 
 
+def test_available_census_counts_windows_not_seconds():
+    # design §7: "Counting is by window, not by duration". _varied_footage's windows
+    # are all dur=1.0, so summing durations and counting windows land on the same
+    # number there (3) and a duration-summing bug would slip past that fixture. Here
+    # the three close windows carry non-uniform, non-1.0 durations (2.0, 3.25, 4.5s,
+    # summing to 9.75) so the two counting strategies diverge: int(sum(dur)) == 9,
+    # count-of-windows == 3.
+    close = [FootageWindow(start=float(i) * 10, dur=2.0 + i * 1.25, shot_type="close",
+                           people=1, motion=0.2, shake=0.0, subject_w=0.8, subject_h=0.8,
+                           present=1.0) for i in range(3)]
+    wide = [FootageWindow(start=float(3 + i), dur=1.0, shot_type="wide", people=1,
+                          motion=0.3, shake=0.0, subject_w=0.02, subject_h=0.05,
+                          present=1.0) for i in range(6)]
+    clip = FootageClip(source="a.mp4", dur=100.0, res=(3840, 2160), fps=30.0,
+                       windows=close + wide)
+    footage = Footage(clips=[clip])
+    edl = edit_plan.build_edl(footage, _wide_only_selection(), aspect=(9, 16),
+                              preset=moodpreset.resolve("fun"))
+    assert edl.variety.available["close"] == 3
+
+
 def test_build_edl_skips_the_evaluation_without_an_aspect_or_preset():
     # the SP1 boundary: no project geometry, no report — not a silent pass
     edl = edit_plan.build_edl(_varied_footage(), _wide_only_selection())
