@@ -3,15 +3,44 @@ import pytest
 from scripts.lib import carve
 
 
-def test_subject_curve_is_2d_and_zero_at_gaps():
-    centers = [(0.0, 0.0), (3.0, 4.0), None, (0.0, 0.0)]
-    # sample 1: hypot(3,4)=5; sample 2: gap → 0; sample 3: prev is a gap → 0
-    assert carve.subject_curve(centers) == [0.0, 5.0, 0.0, 0.0]
+def test_track_displacements_ignores_a_largest_person_swap():
+    # two people, BOTH stationary; the one with the larger box changes between
+    # samples. Differencing the primary bbox reads this as a huge jump; measuring
+    # each track's own displacement reads it as zero (design §1.2/§3.2).
+    prev = {1: (100.0, 100.0, 50.0, 90.0), 2: (900.0, 100.0, 30.0, 60.0)}
+    cur = {1: (100.0, 100.0, 30.0, 60.0), 2: (900.0, 100.0, 50.0, 90.0)}
+    assert carve.track_displacements(prev, cur) == 0.0
+
+
+def test_track_displacements_measures_real_movement():
+    prev = {1: (100.0, 100.0, 50.0, 90.0)}
+    cur = {1: (103.0, 104.0, 50.0, 90.0)}
+    assert carve.track_displacements(prev, cur) == 5.0     # 3-4-5
+
+
+def test_track_displacements_medians_across_tracks():
+    # three tracks moving 1, 5 and 100 px: the median rejects the outlier
+    prev = {1: (0.0, 0.0, 2.0, 2.0), 2: (0.0, 0.0, 2.0, 2.0), 3: (0.0, 0.0, 2.0, 2.0)}
+    cur = {1: (1.0, 0.0, 2.0, 2.0), 2: (5.0, 0.0, 2.0, 2.0), 3: (100.0, 0.0, 2.0, 2.0)}
+    assert carve.track_displacements(prev, cur) == 5.0
+
+
+def test_track_displacements_without_a_shared_id_is_zero():
+    assert carve.track_displacements({1: (0.0, 0.0, 2.0, 2.0)}, {2: (99.0, 99.0, 2.0, 2.0)}) == 0.0
+    assert carve.track_displacements({}, {}) == 0.0
+
+
+def test_subject_curve_is_identity_consistent_and_zero_at_gaps():
+    boxes = [{1: (0.0, 0.0, 2.0, 2.0)},
+             {1: (3.0, 4.0, 2.0, 2.0)},
+             {},                                    # nobody this sample
+             {1: (3.0, 4.0, 2.0, 2.0)}]
+    assert carve.subject_curve(boxes) == [0.0, 5.0, 0.0, 0.0]
 
 
 def test_subject_curve_edges():
     assert carve.subject_curve([]) == []
-    assert carve.subject_curve([(1.0, 1.0)]) == [0.0]
+    assert carve.subject_curve([{1: (1.0, 1.0, 2.0, 2.0)}]) == [0.0]
 
 
 def test_camera_curve_samples_frame_magnitudes_at_times():

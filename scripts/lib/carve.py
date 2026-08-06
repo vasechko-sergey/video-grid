@@ -7,21 +7,41 @@ to the clip, so no absolute activity threshold is invented (§2) — there is no
 footage to tune one on.
 """
 from math import hypot
+from statistics import median
 
 
-def subject_curve(centers: list[tuple[float, float] | None]) -> list[float]:
-    """Per-sample 2-D displacement of the primary bbox centre, aligned to samples.
-    `centers[i]` is (cx, cy) or None (no person that sample). Index 0 has no prior,
-    and any sample bordering a gap, are 0.0. Returns RAW pixel displacement — peak
-    detection is scale-invariant, so no width normalisation is applied here (and the
-    subject/camera curves are never compared on one axis, §3)."""
-    if not centers:
+def track_displacements(prev: dict[int, tuple[float, float, float, float]],
+                        cur: dict[int, tuple[float, float, float, float]]) -> float:
+    """Median centre displacement across the track ids present in BOTH samples.
+
+    The identity-consistent alternative to differencing the primary bbox, whose
+    centre moves when the LARGEST person changes rather than when anyone moves — on
+    a real 1565-window pool that artifact saturated 19.8% of windows and was 90.3%
+    multi-person against 57.1% for the rest (design
+    2026-08-06-intake-motion-scoring §1.2). Boxes are (cx, cy, w, h) in
+    analysis-pixel space; the return is RAW pixels, like subject_curve.
+
+    Median, not mean: a residual ID switch perturbs one track, and the median of
+    the others absorbs it. No shared id returns 0.0 — an interval that cannot be
+    measured is not evidence of movement, the same rule presence gaps follow."""
+    shared = prev.keys() & cur.keys()
+    if not shared:
+        return 0.0
+    return float(median(hypot(cur[t][0] - prev[t][0], cur[t][1] - prev[t][1])
+                        for t in sorted(shared)))
+
+
+def subject_curve(boxes: list[dict[int, tuple[float, float, float, float]]]) -> list[float]:
+    """Per-sample identity-consistent 2-D displacement, aligned to samples.
+    `boxes[i]` maps track id → (cx, cy, w, h) for that sample; an empty dict is a
+    sample with no tracked person. Index 0 has no prior and is 0.0, as is any
+    sample sharing no track id with its predecessor. Returns RAW pixel displacement
+    — peak detection is scale-invariant, so no width normalisation is applied here
+    (and the subject/camera curves are never compared on one axis,
+    activity-units §3)."""
+    if not boxes:
         return []
-    out = [0.0]
-    for i in range(1, len(centers)):
-        c0, c1 = centers[i - 1], centers[i]
-        out.append(hypot(c1[0] - c0[0], c1[1] - c0[1]) if c0 is not None and c1 is not None else 0.0)
-    return out
+    return [0.0] + [track_displacements(boxes[i - 1], boxes[i]) for i in range(1, len(boxes))]
 
 
 def camera_curve(mags: list[float], fps: float, times: list[float]) -> list[float]:
