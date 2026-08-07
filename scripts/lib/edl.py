@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from scripts.lib import provenance
+from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
@@ -160,6 +161,9 @@ class EDL:
     target_dur: float | None = None
     variety: VarietyReport | None = None   # design 2026-08-06 §9. None = never evaluated
                                            # (a hand-authored EDL through the SP1 front door)
+    constraints: ConstraintReport | None = None   # design 2026-08-07 §8. None = never
+                                                  # evaluated (no CONSTRAINTS.json beside
+                                                  # project.json), never "passed"
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
@@ -182,6 +186,9 @@ class EDL:
         if self.variety is not None and not isinstance(self.variety, VarietyReport):
             raise ValueError(f"EDL.variety must be a VarietyReport or None, got "
                              f"{type(self.variety).__name__} — re-run edit_plan build")
+        if self.constraints is not None and not isinstance(self.constraints, ConstraintReport):
+            raise ValueError(f"EDL.constraints must be a ConstraintReport or None, got "
+                             f"{type(self.constraints).__name__} — re-run edit_plan build")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"EDL.provenance must be an object, got "
                              f"{type(self.provenance).__name__} — re-run edit_plan build "
@@ -212,6 +219,8 @@ class EDL:
         return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
                    cap=cap if cap is not None else 3, target_dur=d.get("target_dur"),
                    variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
+                   constraints=(ConstraintReport.from_dict(d["constraints"])
+                                if d.get("constraints") else None),
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -239,7 +248,8 @@ class EDL:
         d = {"episodes": [e.to_dict() for e in self.episodes],
              "music": self.music, "cast": self.cast, "cap": self.cap,
              "target_dur": self.target_dur,
-             "variety": self.variety.to_dict() if self.variety is not None else None}
+             "variety": self.variety.to_dict() if self.variety is not None else None,
+             "constraints": self.constraints.to_dict() if self.constraints is not None else None}
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d
@@ -275,6 +285,16 @@ class EDL:
                 lines.append(f"**Unused sizes the footage offered:** {', '.join(v.gaps)}.")
             if v.waiver:
                 lines.append(f"**Waiver:** {v.waiver}")
+        # Rendered only when rules exist: an empty rule list is worth nothing to a human
+        # reader, and EDL.json already distinguishes "no file" (null) from "no rules" ([]).
+        if self.constraints is not None and self.constraints.rules:
+            c = self.constraints
+            lines += ["", "## Editorial rules", ""]
+            lines += [f"- `{r.get('kind')}` — {r.get('stated')}" for r in c.rules]
+            if c.violations:
+                lines += [""] + [f"**Broken:** {v.message}" for v in c.violations]
+            else:
+                lines += ["", f"{len(c.rules)} checked, none broken."]
         return "\n".join(lines)
 
 

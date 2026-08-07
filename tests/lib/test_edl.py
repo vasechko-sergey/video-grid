@@ -2,6 +2,7 @@ import json
 
 import pytest
 from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict
+from scripts.lib.constraints import ConstraintReport, Violation
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import moodpreset
 from scripts.lib.footage import DESCRIPTOR_LEN
@@ -638,3 +639,49 @@ def test_markdown_prints_available_against_used_and_the_waiver():
     assert "## Variety" in md
     assert "fun" in md and "close" in md and "11" in md
     assert "close windows are soft" in md
+
+
+# --- editorial-constraints Task 3: EDL.constraints (design docs/specs/2026-08-07-editorial-constraints-design.md §8)
+
+def _report(ok=True):
+    rules = ({"kind": "no_repeat", "stated": "эпизоды не должны повторяться"},)
+    vio = () if ok else (Violation(rule_index=0, kind="no_repeat",
+                                   stated="эпизоды не должны повторяться",
+                                   message="episodes 0, 1 are all from A.mp4 [0.00s–10.00s]"),)
+    return ConstraintReport(rules=rules, violations=vio)
+
+
+def test_edl_carries_the_constraint_report_through_a_round_trip():
+    edl = EDL(episodes=(_ep(),), constraints=_report())
+    back = EDL.from_dict(edl.to_dict())
+    assert back.constraints == _report() and back.constraints.ok
+
+
+def test_edl_without_constraints_round_trips_as_none():
+    # None means NOT EVALUATED (no CONSTRAINTS.json), never "passed" — the SP1
+    # hand-authored front door lands here.
+    edl = EDL(episodes=(_ep(),))
+    assert edl.to_dict()["constraints"] is None
+    assert EDL.from_dict(edl.to_dict()).constraints is None
+
+
+def test_edl_rejects_a_non_report_constraints_value():
+    with pytest.raises(ValueError, match="ConstraintReport"):
+        EDL(episodes=(_ep(),), constraints={"rules": []})
+
+
+def test_markdown_lists_the_rules_and_says_they_held():
+    md = EDL(episodes=(_ep(),), constraints=_report()).to_markdown()
+    assert "## Editorial rules" in md
+    assert "эпизоды не должны повторяться" in md and "no_repeat" in md
+    assert "1 checked, none broken" in md
+
+
+def test_markdown_shows_a_broken_rule():
+    md = EDL(episodes=(_ep(),), constraints=_report(ok=False)).to_markdown()
+    assert "**Broken:**" in md and "episodes 0, 1" in md
+
+
+def test_markdown_omits_the_section_when_there_are_no_rules():
+    md = EDL(episodes=(_ep(),), constraints=ConstraintReport()).to_markdown()
+    assert "## Editorial rules" not in md
