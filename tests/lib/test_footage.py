@@ -450,6 +450,26 @@ def test_shot_at_on_a_cut_belongs_to_the_later_shot_like_room_after():
     assert clip.shot_at(10.0)[1] - 10.0 == clip.room_after(10.0)
 
 
+def test_shot_at_is_bit_identical_for_two_times_in_the_same_shot():
+    # Regression (whole-branch review, 2026-08-07): shot_at used to return
+    # (max(before), t + room_after(t)) — an end derived from the CALLER's own t,
+    # not from the shot's own boundary. In IEEE-754, t + (cut - t) is not
+    # bit-identical to cut in general, so two episodes inside the SAME shot at
+    # different (non-round) in-points could key differently and the no_repeat/
+    # exclude checks (which key on this pair) silently missed the repeat. These
+    # exact non-round numbers are the review's reproduction — ~6% of realistic
+    # (start, start, cut) triples reproduce it, including at 30/29.97/59.94fps.
+    # Every pre-existing shot_at fixture used round seconds (1.0/6.0/10.0/22.0),
+    # where the arithmetic happens to be exact, which is why it went unseen.
+    cut = 15.515515515515515
+    clip = FootageClip(source="A.mp4", dur=30.0, res=(1920, 1080), fps=29.97,
+                       scene_cuts=[cut])
+    t1, t2 = 6.606606606606607, 14.848181514848182
+    s1, s2 = clip.shot_at(t1), clip.shot_at(t2)
+    assert s1 == s2
+    assert s1[1] == cut
+
+
 def test_shot_at_refuses_a_time_outside_the_clip():
     clip = FootageClip(source="A.mp4", dur=20.0, res=(1920, 1080), fps=30.0)
     with pytest.raises(ValueError, match="past the end"):

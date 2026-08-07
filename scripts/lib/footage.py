@@ -219,6 +219,13 @@ class FootageClip:
         is the repeat a per-window comparison misses — carve deliberately emits
         overlapping candidate windows, so two indices routinely name one moment.
 
+        Both bounds are the surrounding CUT VALUES themselves (0.0 / the clip's own
+        `dur` when there is none on that side) — never a value derived from `t` — so
+        every `t` inside the same shot returns a bit-identical pair. That is the
+        property `no_repeat`/`exclude` actually depend on: two episodes placed at
+        different in-points inside one shot must key alike, or the repeat they form
+        would compare unequal and slip past the check silently.
+
         Shares room_after's boundary rule (`c > t`, so a `t` exactly ON a cut belongs
         to the shot that BEGINS there): the two must not disagree about where a shot
         ends, or an episode would be legal by one authority and a straddle by the
@@ -229,7 +236,9 @@ class FootageClip:
             raise ValueError(f"FootageClip.shot_at: t {t} is past the end of "
                              f"{self.source} ({self.dur}s)")
         before = [c for c in self.scene_cuts if c <= t]
-        return (float(max(before)) if before else 0.0, float(t + self.room_after(t)))
+        after = [c for c in self.scene_cuts if c > t]
+        return (float(max(before)) if before else 0.0,
+                float(min(after)) if after else float(self.dur))
 
 
 @dataclass
