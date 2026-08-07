@@ -515,6 +515,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
                 print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
     ok = [results[p] for p in paths if p in results]
     result = footage.Footage(clips=[r.clip for r in ok])
+    score_pool(result.clips)          # Phase 2: pool-relative score + description (design §4.5)
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
                 for r in ok for w, h in zip(r.clip.windows, r.phashes)}
     cull(result.clips, phash_of=lambda c, w: phash_by[(c.source, w.start, w.dur)])

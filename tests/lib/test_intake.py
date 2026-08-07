@@ -448,6 +448,13 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     assert result.clips[0].windows                       # carved ≥1 window
     assert any(w.best for w in result.clips[0].windows)  # cull marked best
     assert (out / "cast_candidates.json").exists()       # empty crops → empty manifest, still written
+    # Phase 2 ran: description is pool-derived, never a Phase-1 default
+    assert all(w.description for c in result.clips for w in c.windows)
+
+
+def test_cache_version_is_8_for_the_phase1_sensor_change():
+    from scripts.lib import intake_cache
+    assert intake_cache.CACHE_VERSION == 8
 
 
 def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):

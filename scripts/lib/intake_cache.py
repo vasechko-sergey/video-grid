@@ -36,8 +36,11 @@ from scripts.lib.footage import FootageClip
 # embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
 # result must miss. An all-or-nothing version beats a per-field logic hash nobody
 # can audit.
-CACHE_VERSION = 7   # 6→7 (2026-08-06): FootageWindow stores subject_w/subject_h/present,
-                    # measured in Phase 1 — a cached ClipResult cannot supply them.
+CACHE_VERSION = 8   # 7→8 (2026-08-06): the Phase-1 people timeline carries per-track boxes and
+                    # _motion measures a track's own displacement instead of the largest bbox's
+                    # centre — a cached v7 ClipResult cannot supply the new measurement, and its
+                    # window BOUNDARIES were carved on the contaminated curve too (design
+                    # 2026-08-06-intake-motion-scoring §1.2/§1.3).
 
 
 @dataclass

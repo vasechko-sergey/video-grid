@@ -132,11 +132,11 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v7(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v8(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960)
-    assert k["version"] == 7
+    assert k["version"] == 8
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280)
     assert k != k2                              # a scale change invalidates
@@ -169,9 +169,11 @@ def test_reid_model_is_part_of_the_key(tmp_path):
                    proxy_long_side=960, reid_model="osnet_x1_0") is None
 
 
-def test_cache_version_is_seven_for_the_shot_size_fields():
-    # shot-size fields (design 2026-08-06): FootageWindow stores subject_w/subject_h/
-    # present, measured in Phase 1 — a cached ClipResult (built under v6) cannot
-    # supply them → v6 must miss
+def test_cache_version_is_eight_for_the_track_consistent_motion_sensor():
+    # the Phase-1 sensor fix (design 2026-08-06-intake-motion-scoring §1.2/§1.3): the
+    # people timeline now carries per-track boxes and _motion measures a track's own
+    # displacement instead of the largest bbox's centre — a cached v7 ClipResult
+    # cannot supply the new measurement, and its window BOUNDARIES were carved on
+    # the contaminated curve too → v7 must miss
     from scripts.lib import intake_cache as ic
-    assert ic.CACHE_VERSION == 7
+    assert ic.CACHE_VERSION == 8
