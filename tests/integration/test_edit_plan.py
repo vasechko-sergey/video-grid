@@ -235,3 +235,55 @@ def test_sp3_delivered_geometry_is_what_decides(tmp_path):
     assert wide_canvas["status"] == "written"          # nothing but wide exists at 16:9
     tall = edit_plan.write_edit_plan(str(fp), str(sp), str(pp_9x16), str(tmp_path / "b"))
     assert tall["finding"]["reason"] == "variety-gap"  # the same windows read `medium`
+
+
+def _repeat_footage_json(tmp_path, source):
+    # One 20s clip with a cut at 10.0s. Windows 0 and 1 live in the SAME shot and do
+    # not overlap in time; window 2 is in the later shot.
+    windows = [
+        FootageWindow(start=1.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                      shake=0.0, subject_w=0.4, subject_h=0.5),
+        FootageWindow(start=6.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                      shake=0.0, subject_w=0.4, subject_h=0.5),
+        FootageWindow(start=12.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                      shake=0.0, subject_w=0.4, subject_h=0.5)]
+    f = Footage(clips=[FootageClip(source=source, dur=20.0, res=(1920, 1080), fps=30.0,
+                                   scene_cuts=[10.0], windows=windows)])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def test_sp3_refuses_a_repeat_the_user_forbade_and_records_the_rule_when_it_holds(tmp_path):
+    """A rule stated once, in a file nobody passes on the command line, still binds:
+    edit_plan finds CONSTRAINTS.json beside project.json, refuses the cut that breaks
+    it, writes nothing, and — once the cut is fixed — records the rule inside the
+    stamped EDL.json (design §6, §8)."""
+    source = "clip.mp4"
+    fp = _repeat_footage_json(tmp_path, source)
+    pp = _project_json(tmp_path)          # writes project.json into tmp_path
+    (tmp_path / "CONSTRAINTS.json").write_text(json.dumps(
+        {"rules": [{"kind": "no_repeat", "stated": "эпизоды не должны повторяться"}]}))
+    sp = tmp_path / "selection.json"
+    sp.write_text(json.dumps({"episodes": [
+        {"source": source, "window": w, "composition": "lead", "grid": "thirds"}
+        for w in (0, 1)]}))               # both from the shot [0, 10)
+
+    stop = edit_plan.write_edit_plan(str(fp), str(sp), str(pp), str(tmp_path))
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "constraint-violation"
+    assert not (tmp_path / "EDL.json").exists()
+
+    sp.write_text(json.dumps({"episodes": [
+        {"source": source, "window": w, "composition": "lead", "grid": "thirds"}
+        for w in (0, 2)]}))               # one from each shot
+    ok = edit_plan.write_edit_plan(str(fp), str(sp), str(pp), str(tmp_path))
+    assert ok["status"] == "written"
+
+    edl = EDL.from_json(tmp_path / "EDL.json")        # provenance check passes
+    assert edl.constraints.ok
+    # a TUPLE of dicts: to_dict writes a JSON list, and ConstraintReport.from_dict
+    # normalises it back with tuple(...) — the same round-trip shape `rules` has in memory
+    assert edl.constraints.rules == ({"kind": "no_repeat",
+                                      "stated": "эпизоды не должны повторяться"},)
+    assert "## Editorial rules" in (tmp_path / "EDL.md").read_text()
