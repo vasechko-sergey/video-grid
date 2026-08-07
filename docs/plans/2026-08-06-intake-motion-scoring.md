@@ -906,7 +906,9 @@ Items 2-6 were **pre-verified against a throwaway prototype of this plan's exact
 code and tests** (13/13 green; each mutation reddened exactly the named tests), so
 a green result on one of them means the implementation drifted from the plan, not
 that the mutation was a bad idea. Items 1, 7, 8 need the real `intake.py` and were
-not pre-verified; item 9 is a known blind spot by construction.
+not pre-verified; item 9 is an EQUIVALENT mutation, not a blind spot —
+`statistics.median` sorts its input internally, so no test could ever redden
+against it, and none should be expected to.
 
 - [ ] **1. Revert the sensor.** Make `_motion` difference `samples[i][2]` (the
   primary bbox) again. `test_motion_is_zero_when_only_the_largest_person_changes`
@@ -947,10 +949,14 @@ not pre-verified; item 9 is a known blind spot by construction.
   class of silent corruption the version exists to prevent.
 
 - [ ] **9. Make the rank order-dependent.** Replace `sorted(shared)` in
-  `track_displacements` with `shared`. No test will redden (a set of small ints
-  iterates in a stable order in practice) — record this as a **known blind spot**
-  rather than pretending it is covered, and keep the `sorted` for Global
-  Constraint 5.
+  `track_displacements` with `shared`. No test will redden — and none should:
+  `statistics.median` sorts its input internally (`data = sorted(data)` is its own
+  first line), so this is an **EQUIVALENT MUTATION**, not a blind spot in the
+  tests — there is no observable difference for any test to catch. The `sorted()`
+  at the call site is defensive, not load-bearing (see its own comment in
+  `scripts/lib/carve.py`), and stays for Global Constraint 5: it guards against a
+  later swap of the aggregator to something order-sensitive, so this call site
+  doesn't quietly reopen the set-order landmine if `median()` is ever replaced.
 
 ---
 

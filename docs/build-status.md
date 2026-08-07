@@ -128,8 +128,11 @@ _Last updated: 2026-08-07._
   d = json.load(open("FOOTAGE.json"))
   ws = [w for c in d["clips"] for w in c["windows"]]
   sat = sum(1 for w in ws if w["motion"] >= 0.999)
+  # baseline is 310/1565 (19.8%) at motion==1.0 exactly (design §1.2's own table);
+  # 321 is a DIFFERENT number — the motion >= 0.95 histogram bin, one step down
+  # from the ceiling, not this check's quantity.
   top = sorted(ws, key=lambda w: w["motion"], reverse=True)[:max(1, len(ws)//10)]
-  print("1. ceiling pile-up:", sat, "windows at motion=1.0 (was 321/1565)")
+  print("1. ceiling pile-up:", sat, "windows at motion=1.0 (was 310/1565, 19.8%)")
   print("2. crowd share in the top motion decile: %.1f%% vs pool %.1f%% (was 90.3 vs 57.1)"
         % (100*sum(1 for w in top if w["people"] >= 2)/len(top),
            100*sum(1 for w in ws if w["people"] >= 2)/len(ws)))

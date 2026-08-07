@@ -135,10 +135,18 @@ def test_score_penalises_shake_across_the_pool():
 def test_equal_motion_and_stability_weights_make_a_swapped_pair_tie():
     """W_MOTION == W_STABLE, so a window with (motion rank 1.0, stability rank 0.25) must score
     exactly as one with the pair SWAPPED — that equality IS the trade-off design §4.4 says the
-    weights set, and nothing else in the suite pins it. A swapped PAIR, not merely two blends
-    that are mathematically equal: _percentile_rank detects ties with exact ==, and
-    0.28*0.75 + 0.28*0.25 is not bit-equal to 0.28*1.0 + 0.28*0.0. Swapping reuses the same two
-    products in the opposite order, which two-operand IEEE-754 addition makes bit-identical."""
+    weights set, and nothing else in the suite pins it.
+
+    That equality is NOT free. score_pool's blend is the three-term left-associative sum
+    `(W_PRESENT*present + W_MOTION*m) + W_STABLE*s`, so swapping m and s RE-ASSOCIATES the sum
+    rather than merely commuting two operands, and re-association is not bit-equal in general:
+    on this fixture's own rank grid {0, .25, .5, .75, 1}, 6 of the 20 off-diagonal (m, s) pairs
+    break on swap (e.g. m=.25/s=.5 gives 0x1.4cccccccccccdp-1 against 0x1.4cccccccccccep-1 —
+    different bits, same real value 0.65). _percentile_rank ties on exact ==, so a broken pair
+    would land on adjacent ranks instead of sharing one. This fixture's pair, (1.0, 0.25), is
+    deliberately one that DOES survive re-association — checked by direct computation, not
+    assumed. Re-picking the fixture's shake values can land on a pair that breaks; whoever does
+    that must re-check bit-equality against the new pair, not assume it holds."""
     ws = [_w(motion=m, shake=s) for m, s in
           ((0.05, 0.007), (0.02, 0.001), (0.03, 0.005), (0.04, 0.003), (0.01, 0.009))]
     intake.score_pool([_clip("a.mp4", ws)])

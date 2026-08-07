@@ -23,8 +23,12 @@ re-tune was the fix.
 clips, 1565 windows, 1920×1080@60, one shoot (2026-06-23/25), people in almost
 every window. Every number in §1 is measured on it. It is a **v5-era artifact**:
 its windows predate `subject_w`/`subject_h`/`present`, so the `present` values in
-§1 are reconstructed by inverting `score_window` (all 1565 land inside [0,1],
-which is the arithmetic check that the inversion is sound).
+§1 are reconstructed by inverting `score_window`. "All 1565 land inside [0, 1]" is
+not literally the check that passes: the inversion runs on the already-rounded
+(3-4dp) `score`/`motion`/`dur`/`shake` fields the file stores, and that compounded
+rounding pushes 759/1565 (48.5%) slightly ABOVE 1.0 (max 1.0033) — rounding slack,
+not a sign the inversion is unsound. The check that DOES hold across all 1565:
+none land below 0 (min 0.001).
 
 Three findings, in ascending order of consequence.
 
@@ -60,10 +64,13 @@ luck of this shoot:
   minimum-length units; `_dur_fit` prefers `WIN_TARGET` = 2.5 s. Two subsystems
   with opposite preferences, and the carver wins because it runs first.
 - **`stability` is compressed, not absent.** The pool's shake spread is real —
-  p10 0.0014, p50 0.0030, p90 0.0069, p99 0.0114, max/median = 5.2× — but every
-  value sits 2–14× below the `SHAKY_CLIP = 0.02` divisor, so `1 − shake/0.02`
-  crushes the entire real range into the top ~20% of its output. The signal
-  exists; the absolute scale discards it.
+  p10 0.0014, p50 0.0030, p90 0.0069, p99 0.0114, max/median = 5.2× — and its
+  p10–p99 band sits 2–14× below the `SHAKY_CLIP = 0.02` divisor (2.6% of windows
+  sit closer than 2× below it, 11.1% farther than 14× below it — not literally
+  "every value"), so `1 − shake/0.02` compresses the realised range down to
+  [0.225, 0.995] — not confined to the top ~20% either. The signal exists; the
+  absolute scale still discards most of its resolution (confirmed independently:
+  stability contributes sd 0.029 against motion's 0.082 at near-equal weight).
 
 ### 1.2 `_motion` does not measure motion
 
@@ -226,8 +233,14 @@ One mechanism fixes three separate defects:
   among dedup survivors".
 - Saturation is unrepresentable. A rank has no ceiling.
 
-`cull`'s dedup ordering is unaffected: rank-normalisation is monotone, so the
-sort it performs is the same sort.
+`cull`'s dedup ordering is monotone in the UNROUNDED rank — but the stored `score`
+is `round(sc, 3)` (§4.5), and rounding is not injective: on the design's own
+1565-window tuning pool, the 1565 distinct ranks collapse onto 1001 possible 3dp
+values, and 72.1% of windows share their rounded score with at least one other
+(largest collision group: 2, so only adjacent-rank pairs can swap — §8.9). `cull`'s
+sort is stable, so a colliding pair falls back to input order rather than rank
+order; the ordering stays deterministic either way, just not always rank-exact
+past the rounding.
 
 ### 4.3 Duration leaves the quality score
 
@@ -309,7 +322,9 @@ Acceptance criteria, fixed in advance so the run cannot be read charitably after
 the fact:
 
 1. The ceiling spike is gone: no accumulation of windows at `motion` = 1.0 (was
-   321 windows, 20.5%).
+   310 windows, 19.8% — §1.2's own table. 321/20.5% is a DIFFERENT quantity, the
+   `motion >= 0.95` histogram bin one step down from the ceiling, not the ceiling
+   itself).
 2. The crowd asymmetry collapses: the share of windows with `people` ≥ 2 among the
    top motion decile approaches the pool share (was 90.3% vs 57.1%).
 3. `score` is approximately uniform on [0, 1] — a percentile's defining property,
@@ -350,7 +365,11 @@ single drone shoot with people in almost every frame. Percentile normalisation i
 the structural defence — it removes absolute constants from the ranking path — but
 `CLIP_POOL_MIN`, the surviving weights, and `BEST_FLOOR`'s new percentile value are
 first cuts calibrated on that one pool. The precedent is `SHAKY_CLIP` and
-`CLUSTER_COS`, both still first cuts for the same reason.
+`CLUSTER_COS`, both still first cuts for the same reason. `CLIP_POOL_MIN`'s failure
+mode is a STEP, not a gradient: a clip's 5th window moves its `motion_fit` from a
+narrow slice of the POOL's spread to the full [0, 1] of its OWN clip's spread in
+one step — worth up to `W_MOTION` (0.28) of the blend — and 10 of 99 clips in the
+tuning pool sit on the far side of that cliff (§4.1).
 
 **8.2 `score` stops being comparable across shoots.** Deliberate. A percentile
 answers "how does this window rank in this footage", and no consumer asks
@@ -359,9 +378,13 @@ this number, and nothing in the pipeline will notice it is unsayable.
 
 **8.3 `present` stays dead until someone shoots B-roll.** It is kept, not deleted,
 precisely because deleting a factor on the evidence of one people-saturated shoot
-is the overfit this design exists to avoid. On a shoot with landscape B-roll it
-discriminates and its weight starts mattering. Until then it contributes a
-constant.
+is the overfit this design exists to avoid. On a mixed shoot `present` does not
+merely "start mattering": at `W_PRESENT = 0.44`, a people-less window's blend caps
+at 0.56 (`W_MOTION + W_STABLE`, its best possible motion and stability) while a
+people-full window's blend floors at 0.44 (`W_PRESENT` alone, its worst) — so
+`best`, the top half of the pool, would skew almost entirely to people windows
+regardless of how those windows move or hold steady. Until B-roll exists, `present`
+contributes a constant and this asymmetry stays invisible.
 
 **8.4 A v7 `FOOTAGE.json` loads silently with the old meaning.** §5 adds no new
 required key, because the change is semantic and `from_dict` can only see shape.
@@ -411,9 +434,12 @@ quantised past that pool size.
 **8.10 `_percentile_rank` ties on BIT equality, not mathematical equality.** Its
 tie test is exact `==` (`values[order[j + 1]] == values[order[i]]`), so two blends
 that are mathematically equal but reached that value by different arithmetic paths
-can fail to compare equal: `0.28*0.75 + 0.28*0.25` is not guaranteed bit-identical
-to `0.28*1.0 + 0.28*0.0`, though both equal `0.28`. Such windows get adjacent ranks
-instead of sharing a mid-rank. This is still deterministic — the same inputs in the
+can fail to compare equal: with `present` fixed at 1.0, `W_PRESENT*present +
+W_MOTION*0.25 + W_STABLE*0.5` is `0x1.4cccccccccccdp-1`, while the same three
+numbers with the motion/stability ranks SWAPPED (`W_PRESENT*present + W_MOTION*0.5
++ W_STABLE*0.25`) is `0x1.4cccccccccccep-1` — one ULP apart, both equal to 0.65 as
+a real number. Such windows get adjacent ranks instead of sharing a mid-rank. This
+is still deterministic — the same inputs in the
 same order always produce the same output, so the cross-`--jobs` byte-identity
 invariant (`docs/specs/2026-07-25-intake-parallel-checkpoint-design.md`'s central
 invariant) does not break — but "equal inputs give equal ranks" (§4.2) holds only
@@ -422,19 +448,47 @@ for bit-identical floats, not for every pair a human would call equal.
 **8.11 The largest behavioural change has no real-bytes coverage.**
 Window-boundary movement (§3.3) and `score_pool` ranking ACROSS multiple windows
 are proven only by synthetic unit fixtures — never through the real ffmpeg decode
-path. This is structural, not an oversight to fix later: `tests/conftest.py`'s
-`sample_clip` is a 3 s clip with no scene cut, and `WIN_MAX` is 4.0 s, so
-`carve.units_for_span`'s `L <= win_max` branch makes exactly ONE window unavoidable
-for any real-bytes intake test built on it, whatever the activity curve does —
-both real-bytes integration goldens (§6.3) carry exactly one window per clip for
-this reason. A pre-existing fixture limitation, not something this slice
-introduced — but this slice's two central behavioural changes are exactly the ones
-it cannot reach.
+path. `tests/conftest.py`'s `sample_clip` is a 3 s clip with no scene cut, and
+`WIN_MAX` is 4.0 s, so `carve.units_for_span`'s `L <= win_max` branch makes exactly
+ONE window unavoidable for any real-bytes intake test built on it, whatever the
+activity curve does — both real-bytes integration goldens (§6.3) carry exactly one
+window per clip for this reason. This is a FIXTURE CHOICE, not a law: a
+`sample_clip` longer than `WIN_MAX` would make `L > win_max` and route a real-bytes
+test through the multi-window carving path, at the cost of a slower/bigger
+fixture. Nobody has made that trade yet (§9) — but this slice's two central
+behavioural changes are exactly the ones the current fixture cannot reach.
+
+**8.12 A genuine mid-window ID switch reads as a lull, not just a thinned
+sample.** `carve.track_displacements` returns `0.0` when two samples share no
+track id (§3.2), and `carve.subject_curve` feeds those zeros straight into the
+curve that decides WHERE WINDOW BOUNDARIES FALL (§3.3). Verified against the
+shipped code: a 4-sample window carrying constant 30 px/sample motion, with one
+mid-window ID switch (track 1 for samples 0-1, track 2 for samples 2-3, sharing no
+id across the switch), gives `subject_curve` `[0.0, 30.0, 0.0, 30.0]` instead of
+the true `[0.0, 30.0, 30.0, 30.0]` — a spurious local minimum at index 2, exactly
+where `carve._lead_in_unit` looks for a lull/settle boundary. `_motion`
+under-reports the same window by 33% (mean of `[30, 0, 30]` = 20 against the true
+mean of `[30, 30, 30]` = 30). ID churn correlates with crowding and occlusion —
+the same population the OLD sensor over-reported (90.3% multi-person at the
+ceiling, §1.2) — so this slice may have traded a positive crowd bias in the SCORE
+for a negative one in the BOUNDARIES, in both consumers of `track_displacements`.
+§6.2's four acceptance criteria cannot detect this: criterion 2 asks whether the
+crowd share in the top motion decile "approaches the pool share", and a crowd
+share pushed BELOW the pool share — this artifact's direction — reads as success,
+indistinguishable from a genuinely fixed sensor. §8.6 already records the
+shared-id thinning as a limit of the motion NUMBER; this item is about the
+BOUNDARIES, which §1.3 names as the more consequential of the two consumers.
 
 ---
 
 ## 9. Deferred
 
+- **A `sample_clip` fixture longer than `WIN_MAX`**, so a real-bytes intake test
+  can reach `carve.units_for_span`'s multi-window carving path and exercise
+  window-boundary movement and multi-window `score_pool` ranking on real
+  ffmpeg-decoded pixels (§8.11) — the highest-value item here, since it is the
+  only way a real-bytes test could ever catch the §8.12 ID-switch boundary
+  artifact.
 - **Re-tuning the surviving weights against editorial judgement** — needs a human
   ranking of real windows to fit against. Nothing here provides one.
 - **A semantic version marker on `FOOTAGE.json`** that would let `from_dict` refuse

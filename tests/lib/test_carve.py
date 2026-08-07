@@ -25,6 +25,18 @@ def test_track_displacements_medians_across_tracks():
     assert carve.track_displacements(prev, cur) == 5.0
 
 
+def test_track_displacements_interpolates_distinct_middle_values_on_even_count():
+    # two shared tracks moving DIFFERENT distances (5.0 and 10.0 px): an even
+    # count medians by averaging the two middle values, so this must be 7.5 —
+    # neither raw displacement. Every other even-count case in this file (e.g.
+    # test_subject_curve_is_identity_consistent_and_zero_at_gaps's single-track
+    # samples) has at most one shared id, so this interpolation path was
+    # otherwise unexercised.
+    prev = {1: (0.0, 0.0, 2.0, 2.0), 2: (0.0, 0.0, 2.0, 2.0)}
+    cur = {1: (3.0, 4.0, 2.0, 2.0), 2: (6.0, 8.0, 2.0, 2.0)}
+    assert carve.track_displacements(prev, cur) == 7.5     # mean of 5.0 (3-4-5) and 10.0 (6-8-10)
+
+
 def test_track_displacements_without_a_shared_id_is_zero():
     assert carve.track_displacements({1: (0.0, 0.0, 2.0, 2.0)}, {2: (99.0, 99.0, 2.0, 2.0)}) == 0.0
     assert carve.track_displacements({}, {}) == 0.0

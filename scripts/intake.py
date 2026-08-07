@@ -164,8 +164,11 @@ def score_pool(clips: list[footage.FootageClip]) -> None:
 def _describe(people: int, shot: str, motion_rank: float) -> str:
     """The human line in FOOTAGE.md. `motion_rank` is the window's motion PERCENTILE
     in its comparison pool, not a raw fraction — the dynamic/calm call is a
-    comparison, and every comparison in this design is pool-relative, so it cannot
-    be made by a per-clip worker (design §4.5)."""
+    comparison, and a comparison needs the pool assembled, so it cannot be made by
+    a per-clip worker (design §4.5). That pool is the whole intake pool only below
+    `CLIP_POOL_MIN` windows; at or above it, `motion_rank` is CLIP-relative (design
+    §8.8), not pool-relative — `_describe` does not need to know which, since
+    `score_pool` has already resolved the rank either way before calling here."""
     who = "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
     dyn = "dynamic" if motion_rank >= DYNAMIC_RANK else "calm"
     return f"{who}, {shot}, {dyn}"
