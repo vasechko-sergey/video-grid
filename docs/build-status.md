@@ -76,12 +76,35 @@ _Last updated: 2026-08-07._
   dropped `HERO_RULES` exclusion, `shot_at`'s cut-boundary side, the
   constraint-before-variety gate order, refuse-vs-log-and-continue, the
   singleton refusal, and the missing-file default — was caught by the
-  existing suite; no coverage hole, no new test needed. **2335 passed / 3
+  existing suite. That is a claim about the nine sites it probed, not about
+  the module: it found no hole *among them*, and — see the Follow-up below —
+  could not have found one outside them. **2335 passed / 3
   skipped**, full suite including integration, no
   golden moved (`EDL.to_dict()` gains a `"constraints": null` key, but no
   existing golden compares the whole dict against a literal). What remains
   of P3 — #3 per-episode QC and the hero-conditioned re-scan, both bigger
   slices needing their own design — is named in the Next-action head below.
+  - **Follow-up (2026-08-07, same day — whole-branch review) — `shot_at`'s
+    float-drift hole, outside the battery's nine sites.** `shot_at` returned
+    `(max(before), t + room_after(t))` — an end derived from the CALLER's own
+    `t`, not from the shot's own boundary. In IEEE-754, `t + (cut - t)` is not
+    bit-identical to `cut` in general, so two episodes inside the SAME shot at
+    different non-round in-points could key differently, and `no_repeat` /
+    `exclude` — which group and compare on that pair — silently missed the
+    repeat on roughly 6% of realistic `(start, start, cut)` triples, including
+    at 30/29.97/59.94fps. None of the battery's nine mutations encodes this
+    shape (its `shot_at` mutation flipped the boundary rule, `c > t` vs
+    `c >= t` — a discrete failure, not a float-precision one), and every
+    pre-existing `shot_at`/constraints fixture used round seconds
+    (1.0/6.0/10.0/22.0), where the arithmetic happens to be exact — so nothing
+    short of a dedicated non-round fixture could have caught it. Fixed the
+    same day: `shot_at` now returns the surrounding cut VALUES themselves,
+    never a value derived from `t`; three regression tests
+    (`test_footage.py::test_shot_at_is_bit_identical_for_two_times_in_the_same_shot`
+    plus two constraints-layer siblings) pin the non-round reproduction at
+    both layers; and the `_exclude` comment that had (wrongly) attributed the
+    old code's bit-identity to "same clip" now names the real reason — the
+    pair is built from the cut values, not from `t`.
 
 - **Intake motion sensor + pool-relative scoring (cinematic-quality playbook P3
   slice S3) DONE (2026-08-06)** — plan

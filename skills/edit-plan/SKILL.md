@@ -164,9 +164,14 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `SPEC.json` exists — it selects the shot-mix preset the variety gate holds the
    cut to; without it the gate still runs, against `balanced`. It projects each
    window, **preflights** the EDL against the project, and writes `EDL.json` +
-   `EDL.md`. On a `stop_and_report` (reason `edl-invalid` or `variety-gap`), fix
-   the named episode in `selection.json` and re-run — never hand-edit `EDL.json`
-   (`selection.json` is the source; the EDL is generated).
+   `EDL.md`. On a `stop_and_report`, fix and re-run — never hand-edit `EDL.json`
+   (`selection.json` is the source; the EDL is generated). Three reasons exist:
+   `edl-invalid` or `variety-gap` name the offending episode index — fix that
+   episode in `selection.json`. `constraint-violation` carries
+   `episode_idx: null` instead — the rule judges the whole cut, not one row, so
+   "the named episode" is not the fix; see Editorial rules below and either
+   revise `selection.json` to satisfy the rule or have the user change/delete
+   the rule in `CONSTRAINTS.json`.
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.

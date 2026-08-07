@@ -6,9 +6,10 @@ like `models.py`'s `TrackSpec`/`MusicSpec`. (Distinct from `manifest.py`'s soft
 `Manifest` gate, whose `validate()` returns problem strings and never raises.)
 The human-facing EDL.md render + interactive authoring are SP3;
 this module is what the mechanical extract spine reads. Imports the shared
-vocab from models + manifest, the resolve/config helpers from project, and the
-cast registry from footage — none of models/manifest/project/footage import
-edl, so no cycle.
+vocab from models + manifest, the resolve/config helpers from project, the
+cast registry from footage, and the two report types it carries —
+VarietyReport from moodpreset, ConstraintReport from constraints — none of
+models/manifest/project/footage/moodpreset/constraints import edl, so no cycle.
 """
 import json
 from dataclasses import dataclass, field

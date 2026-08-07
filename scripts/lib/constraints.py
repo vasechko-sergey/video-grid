@@ -19,7 +19,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib.footage import Footage
+from scripts.lib.footage import Footage, FootageClip
 
 KINDS = ("no_repeat", "open_with", "close_with", "exclude")
 
@@ -78,7 +78,7 @@ class Rule:
                     f"not the one being enforced")
         if self.hero is not None and not (isinstance(self.hero, str) and self.hero.strip()):
             raise ValueError(f"Rule.hero must be a non-empty cast name, got {self.hero!r}")
-        if self.source is not None and not (isinstance(self.source, str) and self.source):
+        if self.source is not None and not (isinstance(self.source, str) and self.source.strip()):
             raise ValueError(f"Rule.source must be a non-empty clip path, got {self.source!r}")
         if self.window is not None and (isinstance(self.window, bool)
                                         or not isinstance(self.window, int) or self.window < 0):
@@ -267,7 +267,7 @@ def _bookend(rule: Rule, placed: tuple[Placed, ...]) -> str | None:
             f"reorder the cut or re-pin that episode")
 
 
-def _exclude(rule: Rule, placed: tuple[Placed, ...], by_source: dict) -> str | None:
+def _exclude(rule: Rule, placed: tuple[Placed, ...], by_source: dict[str, FootageClip]) -> str | None:
     clip = by_source.get(rule.source)
     if clip is None:
         raise ValueError(
@@ -280,8 +280,13 @@ def _exclude(rule: Rule, placed: tuple[Placed, ...], by_source: dict) -> str | N
             raise ValueError(
                 f"CONSTRAINTS.json excludes {rule.source!r} window {rule.window}, but the clip "
                 f"has {len(clip.windows)} window(s) — fix or delete the stale rule")
-        # Both sides of the comparison below come from shot_at on the SAME clip, so the
-        # float pair is bit-identical, not merely close; no tolerance is needed or wanted.
+        # `banned` and a placed episode's `shot` are both built by shot_at — and
+        # shot_at returns the surrounding scene-cut VALUES themselves, never a value
+        # derived from `t` (footage.py's shot_at docstring). That, not "same clip",
+        # is why the comparison below needs no tolerance: any two times inside the
+        # SAME shot produce a bit-identical pair, even when those two calls pass
+        # different (non-round) `t`, which is exactly what happens here — `banned`
+        # is built from the window's start, `p.shot` from the episode's own start.
         banned = clip.shot_at(clip.windows[rule.window].start)
     hits = [i for i, p in enumerate(placed)
             if p.source == rule.source and (banned is None or p.shot == banned)]

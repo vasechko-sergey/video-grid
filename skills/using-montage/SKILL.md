@@ -124,7 +124,11 @@ say so rather than guessing a path.
    to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
    SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
    being told. A rule outside the four kinds cannot be stored: tell the user it will
-   not be enforced instead of leaving them to assume it is.
+   not be enforced instead of leaving them to assume it is. `EDL.json` already exists
+   at this checkpoint, so writing the rule down does not by itself re-judge the cut
+   already on disk — re-run `edit_plan build` (and on a paced run, `pacing` followed
+   by `edit_plan build --pacing`) so the rule binds the cut that already exists, not
+   only the next one.
 
    The scenario comes first and the music is fitted to it (design 2026-07-24). Run
    `edit_plan build` with NO `--pacing` to get the cuts at their material lengths, then
@@ -237,7 +241,11 @@ say so rather than guessing a path.
     to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
     SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
     being told. A rule outside the four kinds cannot be stored: tell the user it will
-    not be enforced instead of leaving them to assume it is.
+    not be enforced instead of leaving them to assume it is. `EDL.json` already exists
+    at this checkpoint, so writing the rule down does not by itself re-judge the cut
+    already on disk — re-run `edit_plan build` (and on a paced run, `pacing` followed
+    by `edit_plan build --pacing`) so the rule binds the cut that already exists, not
+    only the next one.
 
 ## Reading the brief (intent -> param)
 

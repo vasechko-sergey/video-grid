@@ -198,6 +198,64 @@ def test_a_stale_exclude_raises_instead_of_enforcing_nothing():
         evaluate(oob, (_placed("A.mp4", (0.0, 10.0)),), _footage())
 
 
+def test_no_repeat_fires_for_two_non_round_times_projected_from_shot_at():
+    # Regression (whole-branch review, 2026-08-07): shot_at used to derive its end
+    # from t + room_after(t), not from the shot's own boundary, so two different
+    # non-round t inside ONE shot could produce different tuples and this check
+    # would silently miss the repeat. The shot values below come from clip.shot_at
+    # itself — never hand-written — so this proves the projection agrees with
+    # itself, not merely that two equal literals compare equal.
+    cut = 15.515515515515515
+    clip = FootageClip(source="A.mp4", dur=30.0, res=(1920, 1080), fps=29.97,
+                       scene_cuts=[cut])
+    t1, t2 = 6.606606606606607, 14.848181514848182
+    footage = Footage(clips=[clip])
+    rules = Constraints.from_dict({"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
+    placed = (_placed("A.mp4", clip.shot_at(t1)), _placed("A.mp4", clip.shot_at(t2)))
+    rep = evaluate(rules, placed, footage)
+    assert not rep.ok
+    assert rep.violations[0].kind == "no_repeat"
+
+
+def test_exclude_fires_for_a_non_round_time_in_the_banned_windows_shot():
+    # Regression (whole-branch review, 2026-08-07), exclude side: `_exclude` bans
+    # clip.shot_at(windows[rule.window].start); the old bug meant a placed episode
+    # at a DIFFERENT non-round t inside that same shot compared unequal, so the
+    # ban silently missed window 1 even though it lives in the exact shot window 0
+    # names.
+    cut = 15.515515515515515
+    t1, t2 = 6.606606606606607, 14.848181514848182
+    clip = FootageClip(source="A.mp4", dur=30.0, res=(1920, 1080), fps=29.97,
+                       scene_cuts=[cut],
+                       windows=[FootageWindow(start=t1, dur=1.0, shot_type="wide",
+                                              people=1, motion=0.3, shake=0.0),
+                               FootageWindow(start=t2, dur=0.5, shot_type="wide",
+                                             people=1, motion=0.3, shake=0.0)])
+    footage = Footage(clips=[clip])
+    rules = Constraints.from_dict({"rules": [
+        {"kind": "exclude", "stated": "not that take", "source": "A.mp4", "window": 0}]})
+    placed = (_placed("A.mp4", clip.shot_at(clip.windows[1].start)),)
+    rep = evaluate(rules, placed, footage)
+    assert not rep.ok
+    assert rep.violations[0].kind == "exclude"
+
+
+def test_no_repeat_violation_is_a_whole_object_match():
+    # Design §9: the checks must assert the WHOLE ConstraintReport, not just `.ok`
+    # or a message substring. The message text below is copied from evaluate()'s
+    # actual output (verified by running the code), not invented.
+    rules = Constraints.from_dict({"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
+    placed = (_placed("A.mp4", (0.0, 10.0)), _placed("A.mp4", (0.0, 10.0)))
+    rep = evaluate(rules, placed, _footage())
+    assert rep == ConstraintReport(
+        rules=({"kind": "no_repeat", "stated": "no repeats"},),
+        violations=(Violation(
+            rule_index=0, kind="no_repeat", stated="no repeats",
+            message="episodes 0, 1 are all from A.mp4 [0.00s–10.00s] — one shot, "
+                    "several episodes. Reference a window from a different shot, "
+                    "or drop the repeat"),))
+
+
 def test_report_round_trips_through_dict():
     rules = Constraints.from_dict({"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
     rep = evaluate(rules, (_placed("A.mp4", (0.0, 10.0)), _placed("A.mp4", (0.0, 10.0))),
