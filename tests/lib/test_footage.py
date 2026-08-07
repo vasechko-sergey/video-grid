@@ -424,3 +424,35 @@ def test_clip_from_dict_refuses_a_footage_json_written_before_the_shot_size_fiel
                            "people": 0, "motion": 0.0, "shake": 0.0}]}
     with pytest.raises(ValueError, match="predates.*re-run footage-intake"):
         footage.FootageClip.from_dict(legacy)
+
+
+def test_shot_at_no_cuts_is_the_whole_clip():
+    clip = FootageClip(source="A.mp4", dur=20.0, res=(1920, 1080), fps=30.0, scene_cuts=[])
+    assert clip.shot_at(0.0) == (0.0, 20.0)
+    assert clip.shot_at(19.9) == (0.0, 20.0)
+
+
+def test_shot_at_returns_the_segment_between_the_surrounding_cuts():
+    clip = FootageClip(source="A.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       scene_cuts=[10.0, 22.0])
+    assert clip.shot_at(3.0) == (0.0, 10.0)
+    assert clip.shot_at(15.0) == (10.0, 22.0)
+    assert clip.shot_at(25.0) == (22.0, 30.0)
+
+
+def test_shot_at_on_a_cut_belongs_to_the_later_shot_like_room_after():
+    # room_after keeps `c > start`, so a start exactly ON a cut gets the room of the
+    # shot that BEGINS there. shot_at must agree, or the two authorities would place
+    # the same episode in different shots.
+    clip = FootageClip(source="A.mp4", dur=30.0, res=(1920, 1080), fps=30.0,
+                       scene_cuts=[10.0, 22.0])
+    assert clip.shot_at(10.0) == (10.0, 22.0)
+    assert clip.shot_at(10.0)[1] - 10.0 == clip.room_after(10.0)
+
+
+def test_shot_at_refuses_a_time_outside_the_clip():
+    clip = FootageClip(source="A.mp4", dur=20.0, res=(1920, 1080), fps=30.0)
+    with pytest.raises(ValueError, match="past the end"):
+        clip.shot_at(20.0)
+    with pytest.raises(ValueError, match=">= 0"):
+        clip.shot_at(-1.0)

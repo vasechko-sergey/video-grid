@@ -210,6 +210,27 @@ class FootageClip:
         after = [c for c in self.scene_cuts if c > start]
         return float((min(after) if after else self.dur) - start)
 
+    def shot_at(self, t: float) -> tuple[float, float]:
+        """The [start, end) of the uninterrupted shot containing `t`.
+
+        The identity unit editorial constraints key on (design
+        docs/specs/2026-08-07-editorial-constraints-design.md §2): two episodes carved
+        from ONE shot are the same moment even when their spans do not overlap, which
+        is the repeat a per-window comparison misses — carve deliberately emits
+        overlapping candidate windows, so two indices routinely name one moment.
+
+        Shares room_after's boundary rule (`c > t`, so a `t` exactly ON a cut belongs
+        to the shot that BEGINS there): the two must not disagree about where a shot
+        ends, or an episode would be legal by one authority and a straddle by the
+        other."""
+        if not (_num(t) and t >= 0):
+            raise ValueError(f"FootageClip.shot_at: t must be a number >= 0 seconds, got {t!r}")
+        if t >= self.dur:
+            raise ValueError(f"FootageClip.shot_at: t {t} is past the end of "
+                             f"{self.source} ({self.dur}s)")
+        before = [c for c in self.scene_cuts if c <= t]
+        return (float(max(before)) if before else 0.0, float(t + self.room_after(t)))
+
 
 @dataclass
 class Footage:
