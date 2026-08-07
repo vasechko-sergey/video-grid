@@ -541,6 +541,25 @@ def _fake_result(name):
                                               windows=[]), phashes=[], cast=[])
 
 
+def _scored_result(name):
+    """A fake ClipResult with windows whose motion differs BETWEEN clips — the pool
+    must have something to order for a percentile to be observable at all.
+
+    `_fake_result` above carries NO windows, which is why the three existing
+    byte-identity proofs cannot see a scoring bug: with nothing to rank, any
+    score_pool agrees with any other. 3 windows/clip is deliberately below
+    CLIP_POOL_MIN (5), so motion ranks across the WHOLE pool and clip a's score
+    genuinely depends on clip b's windows."""
+    from scripts.lib.footage import FootageClip, FootageWindow
+    base = 0.01 if name == "a.mp4" else 0.05
+    ws = [FootageWindow(start=float(i), dur=2.0, shot_type="wide", people=1,
+                        motion=base + i / 1000, shake=0.001, present=1.0)
+          for i in range(3)]
+    return intake.ClipResult(clip=FootageClip(source=name, dur=10.0, res=(100, 100),
+                                              fps=30.0, windows=ws),
+                             phashes=["0" * 16] * 3, cast=[])
+
+
 @pytest.mark.parametrize("bad", [0, -1, True, "3", 3.0])
 def test_jobs_validation_rejects(tmp_path, bad):
     root = _two_clip_root(tmp_path)
@@ -612,6 +631,27 @@ def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
     _sh.rmtree(out / ".intake_cache" / "b.mp4")        # invalidate just b
     intake.intake(str(root), str(out))
     assert submitted == ["b.mp4"]                       # only the miss reruns
+
+
+def test_output_is_byte_identical_across_a_cache_mix(monkeypatch, tmp_path):
+    """score is a percentile over the WHOLE pool, so every window's number depends
+    on every other window's. A resume that ranked only the clips it re-scanned
+    would differ here — and would pass the all-cold and all-cached proofs above,
+    which is why this arm exists (design 2026-08-06-intake-motion-scoring §4.5)."""
+    import shutil
+    root = _two_clip_root(tmp_path); out = tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
+                        _scored_result(intake.Path(path).name))
+    intake.intake(str(root), str(out))
+    cold = (out / "FOOTAGE.json").read_text()
+    # load-bearing: without it a score_pool writing ONE number everywhere would
+    # satisfy the byte-identity check below and prove nothing.
+    assert len({json.loads(cold)["clips"][0]["windows"][i]["score"] for i in range(3)}) > 1
+    shutil.rmtree(out / ".intake_cache" / "b.mp4")     # a stays cached, b re-scans
+    intake.intake(str(root), str(out))
+    assert (out / "FOOTAGE.json").read_text() == cold
 
 
 def test_fresh_bypasses_the_cache(monkeypatch, tmp_path):
