@@ -93,9 +93,10 @@ _Last updated: 2026-08-07._
     `exclude` — which group and compare on that pair — silently missed the
     repeat on roughly 6% of realistic `(start, start, cut)` triples, including
     at 30/29.97/59.94fps. None of the battery's nine mutations encodes this
-    shape (its `shot_at` mutation flipped the boundary rule, `c > t` vs
-    `c >= t` — a discrete failure, not a float-precision one), and every
-    pre-existing `shot_at`/constraints fixture used round seconds
+    shape (its `shot_at` mutation used `c < t` in place of `c <= t` — a
+    discrete boundary-classification failure, testing which shot a cut-exact
+    `t` belongs to, not this float-precision one), and every pre-existing
+    `shot_at`/constraints fixture used round seconds
     (1.0/6.0/10.0/22.0), where the arithmetic happens to be exact — so nothing
     short of a dedicated non-round fixture could have caught it. Fixed the
     same day: `shot_at` now returns the surrounding cut VALUES themselves,
