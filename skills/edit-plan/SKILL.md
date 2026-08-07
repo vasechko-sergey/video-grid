@@ -75,9 +75,12 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
 2. **Author `selection.json`.** Pick the best windows (they are already ranked).
 
-   The ranking is not the answer. The window score peaks at motion 0.35 and is
-   zero at static, so a calm, personality-forward moment ranks below action
-   even when it is the better cut. Pick from what the sheets show.
+   The ranking is not the answer. `score` is a **percentile within this shoot**
+   (design 2026-08-06-intake-motion-scoring §4.2) — 0.9 means "ranks above 90% of
+   the windows scanned here", never "is 90% good". It cannot be compared against
+   another shoot's numbers, and it says nothing about whether the moment serves
+   YOUR cut. `best` marks the top half that also survived phash dedup. Look at the
+   contact sheets.
 
    **Variety is an objective, not a preference.** The build refuses a cut that uses
    *zero* of a shot size the mood's preset wants when the footage offers three or

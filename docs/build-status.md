@@ -4,13 +4,149 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-06._
+_Last updated: 2026-08-07._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Intake motion sensor + pool-relative scoring (cinematic-quality playbook P3
+  slice S3) DONE (2026-08-06)** — plan
+  `docs/plans/2026-08-06-intake-motion-scoring.md` + design
+  `docs/specs/2026-08-06-intake-motion-scoring-design.md`, Tasks 0–6 (branch
+  `feat/intake-motion-scoring`, commits `96cc121`..`3581e22` + this docs sync).
+  **Not the `_motion_fit` re-tune S2 deferred and paid a `CACHE_VERSION` 6→7 to
+  make free** — that re-tune's premise was that the *constant* needed a better
+  fit; scoring a real 99-clip/1565-window DJI tuning set falsified it. Three of
+  `score_window`'s four terms turned out to be near-constant (`present` = 1.0 on
+  1563/1565 windows BY CONSTRUCTION — carve already splits on presence
+  transitions; `_dur_fit` an exact zero on the 76% of windows carve emits at
+  `WIN_MIN`; `stability` compressed 2–14× below its own `SHAKY_CLIP` divisor),
+  leaving `score ≈ 0.61 + 0.25·_motion_fit` — one narrow band, `BEST_FLOOR`
+  passed 99.6% of windows, and `best` carried no scoring signal at all, just the
+  phash-dedup flag. Worse, `_motion` itself was wrong (design §1.2): it
+  differenced the centroid of the LARGEST bbox between samples, so in a crowd
+  "largest" swapping from one person to another read as movement. That
+  saturated 310/1565 windows (19.8%) at the `MOTION_GAIN` ceiling — a decaying
+  decile histogram (355…28) with an unexplainable spike at the clip point — and
+  the saturated population was 90.3% multi-person against 57.1% for the rest.
+  `carve.subject_curve` built its activity curve from the same contaminated
+  primary-bbox centres, so the artifact also decided **where window boundaries
+  fall**, not only how they score. This slice fixes the sensor, not the
+  constant. **Phase 1:** the people timeline's row grows `boxes_by_tid` (`{tid:
+  (cx,cy,w,h)}` per sample); new `carve.track_displacements(prev, cur)` takes
+  the MEDIAN centre displacement across track ids present in both samples (the
+  median, not the mean, so one residual ID switch inside a crowd cannot swing
+  the result the way it would swing an average) and returns `0.0` on no shared
+  id, the same rule presence gaps already followed; `subject_curve` and
+  `intake._motion` both switch onto it, so window boundaries move (§3.3, the
+  slice's largest behavioural change) and `_motion` is finally identity-
+  consistent. `MOTION_GAIN` is deleted outright, not re-fit — a rank has no
+  ceiling to saturate and no scale to invent — so `FootageWindow.motion` reads
+  ~10× smaller than before (it is the measurement, not measurement × display
+  gain). **Phase 2:** new `score_pool(clips)` (called in `intake()` between
+  `Footage` assembly and `cull`, replacing `_build_window`'s old per-window
+  `score_window` call) scales each factor on the scale its question deserves —
+  `motion` by percentile WITHIN its own clip (falling back to the pool below
+  `CLIP_POOL_MIN = 5` windows, since a smaller clip has no distribution to rank
+  inside), `shake` by percentile across the whole pool (steadiness is a camera
+  property, so a within-clip comparison asks nothing), `present` unchanged and
+  absolute — then rank-normalises the weighted blend itself, so
+  `FootageWindow.score` **is** a percentile. New `_percentile_rank` (tie-aware:
+  equal inputs share the mid-rank of their group, so a structurally constant
+  factor like `present` shifts every window equally and cannot reorder the
+  pool). One mechanism now fixes three defects at once: a constant factor can't
+  distort the order, `BEST_FLOOR` becomes a real top-half cut instead of an
+  inert 99.6%-pass bar, and saturation is unrepresentable (a rank has no
+  ceiling). `_describe`'s dynamic/calm word moves to Phase 2 too, reading the
+  motion rank instead of a raw fraction. `W_PRESENT`/`W_MOTION`/`W_STABLE` =
+  0.44/0.28/0.28 and `BEST_FLOOR` = 0.50 (value unchanged — the MEANING change
+  is the fix); all first cuts calibrated on the one tuning pool, named as such
+  at their definitions (the `SHAKY_CLIP`/`CLUSTER_COS` precedent). **`CACHE_VERSION`
+  7→8** — Phase 1's timeline and `_motion` both change, so a cached v7
+  `ClipResult` cannot supply the new measurement; **the next `footage-intake`
+  run re-scans every clip in the folder, from scratch, with no partial resume
+  possible against the old cache.** **The determinism re-proof
+  (`test_output_is_byte_identical_across_a_cache_mix`):** the three pre-existing
+  byte-identity proofs all compare an all-cold run against an all-cached run: none
+  covered a MIX, and a mix is exactly where a pool-relative score can silently
+  diverge — an implementation that ranked only the freshly-rescanned clips would
+  pass all three existing proofs and still write different percentiles on a
+  resume. The new test builds a real mix (one clip cached, one re-scanned) against
+  a fixture whose motion differs BETWEEN clips (there must be something for a
+  percentile to order) and asserts byte-identical `FOOTAGE.json`. **Goldens
+  re-pinned, diff read, no fourth cause found:** both `tests/integration/
+  test_intake.py` whole-object goldens moved on exactly the two expected axes —
+  `motion` 0.625→0.062 (MOTION_GAIN deleted: the fixture's 6px/frame slide at
+  SAMPLE_FPS 3 over a 30fps clip is 60px between samples, 60/960 = 0.0625, and
+  the derivation is now spelled out in the test comment) and `score` 0.861→0.5
+  (a single-window pool: `_percentile_rank` returns exactly `[0.5]` for n==1 —
+  "neither above nor below anything" — so a singleton-clip fixture cannot pin an
+  ordering; the real ordering proof lives in `tests/lib/test_intake.py`'s
+  `score_pool` tests). **Honest limits (design §8, 11 items — four added by this
+  docs-sync task after a review pass on the shipped design found them
+  understated):** first cuts on one shoot/one camera (§8.1); `score` is not
+  comparable across shoots, by design (§8.2); `present` stays dead until B-roll
+  exists to discriminate against (§8.3); a v7 `FOOTAGE.json` loads silently with
+  old-meaning numbers in new-meaning columns, since the change is semantic and
+  `from_dict` only sees shape (§8.4); the sensor fix is verified on aggregate
+  statistics, not hand-labelled ground truth (§8.5); a genuine mid-window
+  ByteTrack ID switch (not just a largest-box swap) still thins the shared-id
+  set, unlike route stitching which does not apply to an intake timeline (§8.6);
+  nothing here proves the ranking is editorially right, only that a measurement
+  artifact is gone (§8.7); the "dynamic" word in `FOOTAGE.md` is CLIP-relative,
+  not pool-relative, so a completely static clip still calls roughly half its
+  own windows "dynamic" (§8.8, new); `round(score, 3)` quantises the percentile
+  above roughly 1000 windows in a pool — deterministic, not silently wrong, but
+  silently coarser (§8.9, new); `_percentile_rank` ties on bit equality, not
+  mathematical equality, so `0.28*0.75 + 0.28*0.25` need not tie with
+  `0.28*1.0 + 0.28*0.0` even though both equal `0.28` (§8.10, new); and the
+  slice's largest behavioural change — window-boundary movement and
+  multi-window `score_pool` ranking — has NO real-bytes proof, structurally:
+  `tests/conftest.py`'s `sample_clip` is 3 s with no scene cut and `WIN_MAX` is
+  4.0 s, so `carve.units_for_span`'s `L <= win_max` branch makes exactly one
+  window unavoidable whatever the activity curve does (§8.11, new; a
+  pre-existing fixture limit, not introduced by this slice). **This docs-sync
+  task (Task 6) also corrected six statements that were false or misleading in
+  already-shipped files**, carried over from the Task 5 review: the design §4.3
+  sentence and the plan's Self-review note both claimed `WIN_TARGET` "stays" —
+  it was in fact deleted as a review finding before Task 4 began, and only
+  `WIN_MIN`/`WIN_MAX` remain as carve's band; the two real-bytes goldens'
+  comments explained `score`/`description` as structurally forced on a
+  singleton pool but did not name that `best` is forced too (`BEST_FLOOR` ==
+  0.50 == a singleton's only possible score); and a function-local `import
+  shutil` (banned by `docs/coding-standards.md`) moved to
+  `tests/lib/test_intake.py`'s top, which also let a second, pre-existing local
+  `import shutil as _sh` two tests above it come out. **Acceptance snippet
+  (design §6.2), a documented one-off, not a new production script:**
+
+  ```bash
+  .venv/bin/python - <<'PY'
+  import json, statistics as st
+  d = json.load(open("FOOTAGE.json"))
+  ws = [w for c in d["clips"] for w in c["windows"]]
+  sat = sum(1 for w in ws if w["motion"] >= 0.999)
+  top = sorted(ws, key=lambda w: w["motion"], reverse=True)[:max(1, len(ws)//10)]
+  print("1. ceiling pile-up:", sat, "windows at motion=1.0 (was 321/1565)")
+  print("2. crowd share in the top motion decile: %.1f%% vs pool %.1f%% (was 90.3 vs 57.1)"
+        % (100*sum(1 for w in top if w["people"] >= 2)/len(top),
+           100*sum(1 for w in ws if w["people"] >= 2)/len(ws)))
+  print("3. score quartiles (want ~0.25/0.50/0.75):",
+        [round(st.quantiles([w["score"] for w in ws], n=4)[i], 3) for i in range(3)])
+  print("4. best share: %.1f%% of all windows (was 77.6%%)"
+        % (100*sum(1 for w in ws if w["best"])/len(ws)))
+  PY
+  ```
+
+  Run this against the `FOOTAGE.json` the next real `footage-intake` scan writes
+  (the `CACHE_VERSION` bump forces that scan to be a full one) — it has not been
+  run against real footage yet, so the four criteria are unverified against
+  reality until then; §8.5 already records that even a clean pass proves the
+  signature is gone, not that the numbers are right. **2286 passed / 3 skipped**
+  (full suite, before and after this docs-sync task — it changed comments,
+  docstrings, and prose only, no production code path).
 
 - **Mood presets + shot-size variety (cinematic-quality playbook P3 slice S2,
   backlog #19) DONE (2026-08-06)** — plan
@@ -2342,33 +2478,38 @@ _Last updated: 2026-08-06._
 
 ## Next action
 
-- **Cinematic-quality P3 continues — what's left after S2** (synthesis
+- **Cinematic-quality P3 continues — what's left after S3** (synthesis
   `docs/cinematic-quality-playbook.md` §3/§4 priority 3) — S1 (footage
   contact-sheet, DONE 2026-08-05) gave the edit-plan agent its first look at
-  pixels; S2 (mood presets + shot-size variety, backlog #19, DONE
-  2026-08-06, see the Done entry above) gave the cut a mood and an
-  objective it can be held to — `edit_plan build` now refuses a cut that
-  takes zero of a shot size the mood's preset wants when the footage offers
-  three or more. What is left of P3:
-  - **S3 — the `_motion_fit` re-tune.** Deliberately NOT done in S2 (design
-    2026-08-06 §1.1): no real footage had been scored through a corrected
-    curve, so any new constant would have been invented. S2 paid the
-    `CACHE_VERSION` 6→7 cost that makes this free now — `present`, `motion`,
-    `shake`, and `dur` are all on disk, so `score` becomes recomputable
-    outside Phase 1 without another re-scan.
-  - **The hero-conditioned re-scan** (design 2026-08-06 §14) — after cast
+  pixels; S2 (mood presets + shot-size variety, backlog #19, DONE 2026-08-06)
+  gave the cut a mood and an objective it can be held to — `edit_plan build`
+  now refuses a cut that takes zero of a shot size the mood's preset wants
+  when the footage offers three or more. **S3 is now also DONE (intake motion
+  sensor + pool-relative scoring, 2026-08-06, see the Done entry above)** —
+  and it was **not** the `_motion_fit` re-tune this section, and S2's own
+  design §14, predicted it would be. Scoring a real tuning pool falsified
+  that premise: the sensor itself was wrong (`_motion` differenced the
+  largest bbox's centre, so a crowd's person-swap read as movement — design
+  2026-08-06-intake-motion-scoring §1.2), not merely the constant weighing
+  it. `score` is now a pool-relative percentile from a new Phase-2
+  `score_pool`, `motion` lost its 10× display gain, and window boundaries
+  moved with the corrected activity curve. What is left of P3:
+  - **The hero-conditioned re-scan** (S2 design
+    `docs/specs/2026-08-06-mood-preset-variety-design.md` §14) — after cast
     naming, re-measure the windows holding a named hero cropped to their
     *own* bbox (not the largest person's) plus face visibility. Its own
     slice: face detection is a new model, a new download, a new
-    `verify_runtime` gate — the cheap full-pool census S2 needed does not
-    depend on it.
+    `verify_runtime` gate. S3's per-track median displacement already stops
+    a largest-person SWAP from reading as motion, but it still measures
+    whichever tracks are present, not one named hero — a different, narrower
+    question this item still answers.
   - **#14 — editorial-constraint memory across iterations** (needs design)
     — a user-stated rule ("these two episodes must not repeat") must
     persist and be enforced through every re-cut, not forgotten on the next
     render.
   - **#3 — per-episode QC in subagents** (needs design) — the preset (S2)
-    finally gives QC something concrete to judge; the judging stage itself
-    is a separate build.
+    plus a real ranking (S3) finally give QC something concrete to judge;
+    the judging stage itself is a separate build.
   This is the active critical path — the north star (`docs/fixes-backlog.md`,
   2026-08-03) reprioritized ahead of the front-half items below, which stay
   open but are no longer next. **OR**

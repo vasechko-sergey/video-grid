@@ -43,8 +43,12 @@ are later stages.
    shot-type, people, motion, shake, score, and a `★` on the best moments), plus
    — from the same single YOLO-seg pass — candidate hero crops under
    `<out_dir>/cast_crops/candidate_*.png` and a `<out_dir>/cast_candidates.json`
-   manifest (`id, source, conf, presence, crop, descriptor`). Skim `FOOTAGE.md`:
-   confirm every clip is logged and the starred windows look like real moments.
+   manifest (`id, source, conf, presence, crop, descriptor`). `score` is a
+   **percentile within this footage set** (design 2026-08-06-intake-motion-scoring
+   §4.2), never an absolute quality bar and never comparable to another shoot's
+   numbers; `motion` is the window's raw mean per-sample subject displacement as a
+   fraction of frame width, no display gain applied. Skim `FOOTAGE.md`: confirm
+   every clip is logged and the starred windows look like real moments.
 
    Windows are **activity units**, not equal-length tiles: each is an activity
    peak plus its lead-in (windows may overlap a neighbor, never a fixed-size

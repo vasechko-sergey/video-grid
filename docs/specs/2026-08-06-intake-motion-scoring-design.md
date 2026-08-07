@@ -237,8 +237,9 @@ Length is not intake's question. `pacing` fits cut lengths to the music
 window outside the band exists to score. What `_dur_fit` adds on top is a
 preference for 2.5 s that the carver contradicts 76% of the time.
 
-`W_DUR` and `_dur_fit` are deleted. `WIN_MIN`/`WIN_TARGET`/`WIN_MAX` stay — they
-are carve's parameters and remain in use.
+`W_DUR` and `_dur_fit` are deleted. `WIN_TARGET` goes with them — `_dur_fit` was
+its only consumer. `WIN_MIN`/`WIN_MAX` stay: `carve_windows` passes exactly those
+two to `carve.units_for_span` as the band it enforces structurally.
 
 ### 4.4 Weights after the change
 
@@ -388,6 +389,47 @@ intake timeline.
 artifact and a set of terms that could not rank. Whether the resulting order
 matches what a human editor would pick is unmeasured, and S1's contact sheets exist
 precisely because that question is answered by looking, not by a number.
+
+**8.8 The "dynamic" word is CLIP-relative, not pool-relative.** `_describe`
+receives the motion RANK that `score_pool` already resolved for that window — for
+a clip at or above `CLIP_POOL_MIN` that rank is the percentile *within that clip*
+(§4.1), not across the pool. §4.5's "every comparison in this design is now
+pool-relative" is imprecise on this one point. Consequence: a completely static
+clip still has roughly half its windows labelled "dynamic" in `FOOTAGE.md` —
+`_percentile_rank` spreads whatever noise floor a calm clip has across the full
+[0, 1] range, and `DYNAMIC_RANK = 0.5` cuts that range in half regardless of the
+clip's absolute stillness.
+
+**8.9 `round(score, 3)` quantises the percentile.** On the design's own
+1565-window tuning pool, adjacent ranks are `1/1564 ≈ 0.00064` apart — finer than
+three decimal places. `score_pool`'s `round(sc, 3)` (§4.5) buckets that continuum
+into ~1001 possible values, so above roughly 1000 windows in a pool, distinct
+ranks collapse onto the same displayed score. `cull`'s sort is stable, so nothing
+non-deterministic follows from it — but the percentile itself is silently
+quantised past that pool size.
+
+**8.10 `_percentile_rank` ties on BIT equality, not mathematical equality.** Its
+tie test is exact `==` (`values[order[j + 1]] == values[order[i]]`), so two blends
+that are mathematically equal but reached that value by different arithmetic paths
+can fail to compare equal: `0.28*0.75 + 0.28*0.25` is not guaranteed bit-identical
+to `0.28*1.0 + 0.28*0.0`, though both equal `0.28`. Such windows get adjacent ranks
+instead of sharing a mid-rank. This is still deterministic — the same inputs in the
+same order always produce the same output, so the cross-`--jobs` byte-identity
+invariant (`docs/specs/2026-07-25-intake-parallel-checkpoint-design.md`'s central
+invariant) does not break — but "equal inputs give equal ranks" (§4.2) holds only
+for bit-identical floats, not for every pair a human would call equal.
+
+**8.11 The largest behavioural change has no real-bytes coverage.**
+Window-boundary movement (§3.3) and `score_pool` ranking ACROSS multiple windows
+are proven only by synthetic unit fixtures — never through the real ffmpeg decode
+path. This is structural, not an oversight to fix later: `tests/conftest.py`'s
+`sample_clip` is a 3 s clip with no scene cut, and `WIN_MAX` is 4.0 s, so
+`carve.units_for_span`'s `L <= win_max` branch makes exactly ONE window unavoidable
+for any real-bytes intake test built on it, whatever the activity curve does —
+both real-bytes integration goldens (§6.3) carry exactly one window per clip for
+this reason. A pre-existing fixture limitation, not something this slice
+introduced — but this slice's two central behavioural changes are exactly the ones
+it cannot reach.
 
 ---
 

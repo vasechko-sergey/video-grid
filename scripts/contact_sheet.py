@@ -54,10 +54,11 @@ def _markdown(footage: Footage, n_cells: int, written: list[tuple[Path, str, str
         f"({n_best} best), {n_cells} shown ({scope})",
         "",
         "Cells run in timeline order — clip, then window index. ★ marks intake's",
-        "`best` (a dedup survivor scoring >= 0.50). It is a fact to weigh,",
-        "**not a ranking to follow**: the window score peaks at motion 0.35 and",
-        "is zero at static, so calm, personality-forward moments rank below",
-        "action even when they are the better cut.",
+        "`best` (a dedup survivor in the top half of this shoot's ranking). It is a",
+        "fact to weigh, **not a ranking to follow**: `score` is a percentile within",
+        "THIS shoot (design 2026-08-06-intake-motion-scoring §4.2), never an absolute",
+        "quality bar, so a calm, personality-forward moment can rank below action",
+        "even when it is the better cut.",
         "",
     ]
     for path, first, last in written:

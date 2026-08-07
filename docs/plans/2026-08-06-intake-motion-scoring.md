@@ -958,8 +958,12 @@ not pre-verified; item 9 is a known blind spot by construction.
 
 - The plan deletes four constants and one public function (`score_window`). Task 6
   step 5 is the machine check that nothing still references them.
-- `WIN_MIN`/`WIN_TARGET`/`WIN_MAX` are **not** deleted. `WIN_TARGET` loses its only
-  scoring consumer but stays as carve's band parameter — check before removing it.
+- `WIN_MIN`/`WIN_MAX` are **not** deleted — they stay as carve's band parameters;
+  `carve_windows` passes exactly those two to `carve.units_for_span`. `WIN_TARGET`
+  loses its only consumer when `_dur_fit` is deleted (Task 3) and, unlike this note
+  originally predicted, was itself deleted as a review finding before Task 4 began
+  — it has no other reader. Correction landed in Task 6 alongside the design's
+  matching §4.3 fix.
 - `SHAKY_CLIP` is **not** deleted. `_dur_fit`'s removal does not touch it; it still
   decides `FootageClip.shaky`, which is a different question from ranking.
 - Task 5 is the one with real judgement in it. If a golden fails for a fourth

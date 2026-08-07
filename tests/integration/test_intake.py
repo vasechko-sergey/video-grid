@@ -88,6 +88,11 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     #     ordering proof lives in tests/lib/test_intake.py's score_pool tests.
     #   "dynamic" survives, but on a new footing: motion RANK 0.5 >= DYNAMIC_RANK 0.5,
     #     not a high absolute fraction.
+    #   best=True is forced the same way, and is worth naming explicitly: BEST_FLOOR is
+    #     exactly 0.50 and cull's rule is `(not dup) and score >= BEST_FLOOR` — the pool's
+    #     one window is never a dup (kept starts empty) and scores exactly 0.5, so best
+    #     is True here regardless of what the window actually shows. A singleton pool
+    #     cannot exercise cull's dedup/floor logic any more than it can exercise ordering.
     assert result.clips[0] == footage.FootageClip(
         source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
         scene_cuts=[],
@@ -119,7 +124,10 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     # percentile). shake is what this test is FOR and it did not move: the same 0.0077
     # scores 0.5 here as 0.0 does above, because a percentile over a single window
     # cannot see shake at all — the shake-vs-score coupling is proved by the pool tests,
-    # this one proves the .trf parse.
+    # this one proves the .trf parse. best=True is forced too, same as the fixture
+    # above: BEST_FLOOR == 0.50 == this pool's only score, so cull marks it best on
+    # this shake value exactly as it would on any other — this test cannot exercise
+    # BEST_FLOOR as a real cut either.
     assert result.clips[0] == footage.FootageClip(
         source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
         scene_cuts=[],

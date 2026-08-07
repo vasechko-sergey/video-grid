@@ -1,4 +1,5 @@
 import json
+import shutil
 import threading
 import types
 import numpy as np
@@ -627,8 +628,7 @@ def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
     intake.intake(str(root), str(out))                 # second run: both cached
     assert submitted == []                             # nothing re-submitted
     submitted.clear()
-    import shutil as _sh
-    _sh.rmtree(out / ".intake_cache" / "b.mp4")        # invalidate just b
+    shutil.rmtree(out / ".intake_cache" / "b.mp4")     # invalidate just b
     intake.intake(str(root), str(out))
     assert submitted == ["b.mp4"]                       # only the miss reruns
 
@@ -638,7 +638,6 @@ def test_output_is_byte_identical_across_a_cache_mix(monkeypatch, tmp_path):
     on every other window's. A resume that ranked only the clips it re-scanned
     would differ here — and would pass the all-cold and all-cached proofs above,
     which is why this arm exists (design 2026-08-06-intake-motion-scoring §4.5)."""
-    import shutil
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "_process_clip",

@@ -260,7 +260,11 @@ class Footage:
     def to_markdown(self) -> str:
         wins = [w for c in self.clips for w in c.windows]
         n_best = sum(1 for w in wins if w.best)
-        lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)", ""]
+        lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)", "",
+                 "`score` is a percentile within THIS footage set (design "
+                 "2026-08-06-intake-motion-scoring §4.2) — never an absolute quality bar, and "
+                 "never comparable to another shoot's numbers. `motion` is mean per-sample "
+                 "subject displacement as a fraction of frame width.", ""]
         for c in self.clips:
             flag = " · shaky" if c.shaky else ""
             lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")

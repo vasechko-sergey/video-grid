@@ -178,8 +178,21 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    `edit_plan build` that refuses a cut using zero of a shot size the
    preset wants when the footage offers three or more, judged in the cut's
    **delivered** frame — overridable only by a written waiver, never
-   silently. Open: #3 per-episode QC (the per-episode half of #12, now
-   with a preset to judge against) + #14 editorial-rule memory.
+   silently. The **intake motion sensor + pool-relative scoring —
+   ✅ LANDED 2026-08-06** (design
+   `docs/specs/2026-08-06-intake-motion-scoring-design.md` + plan
+   `docs/plans/2026-08-06-intake-motion-scoring.md`): **not** the
+   `_motion_fit` re-tune this priority once expected to need — the sensor
+   itself was wrong (design §1.2: differencing the largest bbox's centre
+   measured which person was largest in a crowd, not who moved, and
+   saturated a fifth of a real 1565-window pool at the gain ceiling).
+   Motion is now identity-consistent per track id and `score` is a
+   pool-relative percentile (`score_pool`), so ranking and `best` finally
+   mean something on real footage instead of a near-constant band. Open:
+   #3 per-episode QC (the per-episode half of #12, now with a preset AND
+   a real ranking to judge against), #14 editorial-rule memory, and the
+   hero-conditioned re-scan (re-measure a named hero's own bbox instead of
+   the largest person's; its own slice, blocked on a face detector).
 4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep
    iteration affordable.
 5. **Polish** — #2 music phrase-out, #16 versioning, #4 setup.
