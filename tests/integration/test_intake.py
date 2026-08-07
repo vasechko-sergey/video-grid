@@ -76,11 +76,12 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
     #
     # motion/score/description re-pinned by 2026-08-06-intake-motion-scoring. Neither
     # number is magic — both fall out of the fixture:
-    #   motion 0.062: _fake_frames slides track 1 by 6 px/frame in PROXY space; at
+    #   motion 0.0625: _fake_frames slides track 1 by 6 px/frame in PROXY space; at
     #     SAMPLE_FPS=3.0 on a 30 fps clip that is 10 frames = 60 px between samples,
-    #     60/960 = 0.0625 → 0.062. It read 0.625 before because MOTION_GAIN multiplied
-    #     the fraction by 10; the gain is deleted, so the reported number IS the
-    #     measurement now (§3.3).
+    #     60/960 = 0.0625, stored exactly at the 4dp precision `_build_window` now
+    #     rounds to. It read 0.625 before because MOTION_GAIN multiplied the fraction
+    #     by 10; the gain is deleted, so the reported number IS the measurement now
+    #     (§3.3).
     #   score 0.5: score is a percentile over the whole pool (§3.4), and this pool holds
     #     exactly ONE window — _percentile_rank returns 0.5 for n==1, "neither above nor
     #     below anything". So the 0.861 this used to pin was an absolute blend that no
@@ -97,7 +98,7 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
         source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
         scene_cuts=[],
         windows=[footage.FootageWindow(
-            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.062,
+            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.0625,
             shake=0.0, description="1 person, wide, dynamic", score=0.5,
             best=True, track_ids=[1], subject_w=0.1042, subject_h=0.2778,
             present=1.0)])
@@ -119,7 +120,7 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
     # ascii .trf → shake 0.0077 (a small fraction of frame width, below SHAKY_CLIP
     # 0.02 → shaky=False). Values re-pinned for the 960 analysis proxy (design
     # 2026-08-01); shake shifts vs the raw 1920 pass because detect ran on the proxy.
-    # motion 0.062 / score 0.5 re-pinned by 2026-08-06-intake-motion-scoring — same two
+    # motion 0.0625 / score 0.5 re-pinned by 2026-08-06-intake-motion-scoring — same two
     # causes as the fixture above (MOTION_GAIN deleted; score is a one-window pool's
     # percentile). shake is what this test is FOR and it did not move: the same 0.0077
     # scores 0.5 here as 0.0 does above, because a percentile over a single window
@@ -132,7 +133,7 @@ def test_intake_real_vidstab_shake(monkeypatch, tmp_path, sample_clip):
         source="clip.mp4", dur=3.0, res=(1920, 1080), fps=30.0, shaky=False,
         scene_cuts=[],
         windows=[footage.FootageWindow(
-            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.062,
+            start=0.0, dur=3.0, shot_type="wide", people=1, motion=0.0625,
             shake=0.0077, description="1 person, wide, dynamic", score=0.5,
             best=True, track_ids=[1], subject_w=0.1042, subject_h=0.2778,
             present=1.0)])

@@ -352,7 +352,11 @@ def _build_window(span: tuple[float, float], timeline: list, shake: float, res: 
     shot = footage.shot_type(sw, sh)
     track_ids = sorted({tid for row in samples for tid in row[3]})
     return footage.FootageWindow(start=round(a, 3), dur=round(d, 3), shot_type=shot,
-                                 people=people, motion=round(motion, 3), shake=round(shake, 4),
+                                 people=people,
+                                 # 4dp, matching shake: the 3dp store dated from the deleted MOTION_GAIN
+                                 # era when motion spanned [0, 1]; widening it again later costs another
+                                 # CACHE_VERSION bump + full re-scan, since motion is Phase-1 output.
+                                 motion=round(motion, 4), shake=round(shake, 4),
                                  track_ids=track_ids, subject_w=round(sw, 4),
                                  subject_h=round(sh, 4), present=round(present, 3))
 
