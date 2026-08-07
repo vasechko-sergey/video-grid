@@ -165,13 +165,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    cut to; without it the gate still runs, against `balanced`. It projects each
    window, **preflights** the EDL against the project, and writes `EDL.json` +
    `EDL.md`. On a `stop_and_report`, fix and re-run — never hand-edit `EDL.json`
-   (`selection.json` is the source; the EDL is generated). Three reasons exist:
-   `edl-invalid` or `variety-gap` name the offending episode index — fix that
-   episode in `selection.json`. `constraint-violation` carries
-   `episode_idx: null` instead — the rule judges the whole cut, not one row, so
-   "the named episode" is not the fix; see Editorial rules below and either
-   revise `selection.json` to satisfy the rule or have the user change/delete
-   the rule in `CONSTRAINTS.json`.
+   (`selection.json` is the source; the EDL is generated). Three reasons exist.
+   `edl-invalid` names the offending episode index for a per-episode failure —
+   fix that episode in `selection.json` — but carries `episode_idx: null`
+   instead when the failure is `EDL.cast` itself (an unreadable registry, no
+   one episode to blame). `variety-gap` and `constraint-violation` are always
+   `episode_idx: null` too: both judge the whole cut, not one row, so "the
+   named episode" is never the fix — `variety-gap`'s remedy is in step 2
+   above; `constraint-violation`'s is in Editorial rules below (revise
+   `selection.json` to satisfy the rule, or have the user change/delete it in
+   `CONSTRAINTS.json`).
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.
@@ -209,9 +212,9 @@ out loud instead of inventing a field: it cannot be stored, so it cannot be enfo
 
 ## Gate
 
-Every episode has a source + window + shot-type. A preflight `stop_and_report` is
-surfaced verbatim (episode index + problems), never worked around. When
-`PACING.md` exists, every episode also carries a `beat_slot`.
+Every episode has a source + window + shot-type. A preflight `stop_and_report`
+is surfaced verbatim, never worked around. When `PACING.md` exists, every
+episode also carries a `beat_slot`.
 
 **You may not disable, lower, or downgrade any quality gate.** A gate that
 blocks is routed back to its stage's skill, never loosened to pass. Never
