@@ -1,7 +1,8 @@
 import json
 
 import pytest
-from scripts.lib.constraints import Constraints, Rule
+from scripts.lib.constraints import ConstraintReport, Constraints, Placed, Rule, Violation, evaluate
+from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 
 def test_rule_round_trips_only_the_fields_its_kind_owns():
@@ -99,10 +100,6 @@ def test_empty_rule_list_is_legal(tmp_path):
     p = tmp_path / "CONSTRAINTS.json"
     p.write_text(json.dumps({"rules": []}))
     assert Constraints.from_json(str(p)).rules == ()
-
-
-from scripts.lib.constraints import ConstraintReport, Placed, Violation, evaluate
-from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 
 def _footage():
