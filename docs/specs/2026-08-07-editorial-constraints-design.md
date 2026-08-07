@@ -155,8 +155,9 @@ The projection lives in `edit_plan`, which holds both halves (the clip, for
 The same split the variety gate uses, for the same reason: **`build_edl`
 measures, `write_edit_plan` refuses.**
 
-- `build_edl(..., constraints: Constraints | None = None)` — keyword-only,
-  beside `aspect`/`preset`. Evaluates after the episodes are final (pacing
+- `build_edl(..., rules: Constraints | None = None)` — keyword-only, beside
+  `aspect`/`preset` (named `rules`, since `EDL.constraints` is the report it
+  produces). Evaluates after the episodes are final (pacing
   binding changes `dur`, which none of the four rules read) and attaches the
   report to the EDL. It never refuses: a caller building an EDL in memory still
   gets the finding.

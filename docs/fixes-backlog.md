@@ -497,7 +497,26 @@ a "delivered" reel (or must re-enter the gate). The worker cannot self-exempt
 
 ## 14. Editorial-constraint memory across iterations
 
-**Status:** NEEDS DESIGN. Related to #3.
+**Status:** ✅ LANDED 2026-08-07 — design
+`docs/specs/2026-08-07-editorial-constraints-design.md` + plan
+`docs/plans/2026-08-07-editorial-constraints.md`. A user-stated rule now has a
+home, `CONSTRAINTS.json` beside `project.json`, discovered by convention (no
+flag) and enforced by `edit_plan build` on every re-cut without being told
+again. **What is enforced:** exactly four kinds — `no_repeat` (no two episodes
+share one shot, the scene-cut segment `FootageClip.shot_at` resolves — so two
+windows of one drone pass repeat even when their spans do not overlap, the
+case this finding's second quote describes), `open_with`/`close_with` (the
+first/last episode must pin that cast name, closing this finding's first
+quote), `exclude` (bans a shot or a whole clip). A broken rule stops
+`write_edit_plan` before the variety gate with `reason:
+"constraint-violation"` and writes nothing; there is no waiver. **What is
+NOT enforced:** anything outside those four shapes — a rule like "don't put
+two drone shots back to back" cannot be written down at all, so it stays in
+chat and is forgotten exactly as before this fix; `edl_to_reel`'s
+hand-authored `EDL.json` front door (the SP1 door by design) never passes
+through this gate; and `no_repeat` catches one shot used twice, never two
+different shots that merely look alike (visual similarity is a separate,
+deferred sensor). #3 (per-episode QC) stays open and separate.
 
 **Finding:** the agent broke explicit user rules that held across iterations —
 reused the same passes the user said were already in a prior reel, and broke the

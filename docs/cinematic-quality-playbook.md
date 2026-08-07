@@ -188,9 +188,17 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    saturated a fifth of a real 1565-window pool at the gain ceiling).
    Motion is now identity-consistent per track id and `score` is a
    pool-relative percentile (`score_pool`), so ranking and `best` finally
-   mean something on real footage instead of a near-constant band. Open:
-   #3 per-episode QC (the per-episode half of #12, now with a preset AND
-   a real ranking to judge against), #14 editorial-rule memory, and the
+   mean something on real footage instead of a near-constant band. The
+   **editorial-constraint memory (#14) — ✅ LANDED 2026-08-07** (design
+   `docs/specs/2026-08-07-editorial-constraints-design.md` + plan
+   `docs/plans/2026-08-07-editorial-constraints.md`): the two rules the
+   2026-08-03 run broke out loud — a bookend and a no-repeat — now live in
+   `CONSTRAINTS.json` beside `project.json` and bind every `edit_plan build`
+   without a flag; a broken rule stops the cut with no waiver. Closed
+   vocabulary, four kinds only — a rule outside them still has nowhere to
+   live, and a hand-authored `EDL.json` through `edl_to_reel`'s SP1 door
+   still never sees the gate. Open: #3 per-episode QC (the per-episode half
+   of #12, now with a preset AND a real ranking to judge against), and the
    hero-conditioned re-scan (re-measure a named hero's own bbox instead of
    the largest person's; its own slice, blocked on a face detector).
 4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep

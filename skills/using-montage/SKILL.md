@@ -64,6 +64,13 @@ say so rather than guessing a path.
    When reel-brief runs, its SPEC.md is the fuller CP1 artifact; without it, the
    resolved {canvas, delivery} is the CP1 surface.
 
+   When the user states an editorial rule that must hold across re-cuts ("one hero
+   opens, the other closes", "no repeated episodes", "don't use that take"), append it
+   to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
+   SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
+   being told. A rule outside the four kinds cannot be stored: tell the user it will
+   not be enforced instead of leaving them to assume it is.
+
 3. **footage-intake** — if `next`. Invoke the **footage-intake** skill (it scans ->
    `FOOTAGE.json`/`FOOTAGE.md` and, when people matter, runs the interactive
    cast-naming -> `cast.json`). Point its out-dir at `<run>`.
@@ -111,6 +118,13 @@ say so rather than guessing a path.
    title can actually be timed. Name what you are skipping on "no" (e.g. "no
    titles — the reel will carry no on-screen text") rather than silently passing
    over the optional stages below.
+
+   When the user states an editorial rule that must hold across re-cuts ("one hero
+   opens, the other closes", "no repeated episodes", "don't use that take"), append it
+   to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
+   SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
+   being told. A rule outside the four kinds cannot be stored: tell the user it will
+   not be enforced instead of leaving them to assume it is.
 
    The scenario comes first and the music is fitted to it (design 2026-07-24). Run
    `edit_plan build` with NO `--pacing` to get the cuts at their material lengths, then
@@ -217,6 +231,13 @@ say so rather than guessing a path.
     `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run>`
     reports `next: null`; on a bare autonomous run reel-review still runs, judging
     against the `EDL`.
+
+    When the user states an editorial rule that must hold across re-cuts ("one hero
+    opens, the other closes", "no repeated episodes", "don't use that take"), append it
+    to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
+    SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
+    being told. A rule outside the four kinds cannot be stored: tell the user it will
+    not be enforced instead of leaving them to assume it is.
 
 ## Reading the brief (intent -> param)
 

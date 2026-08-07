@@ -12,6 +12,77 @@ _Last updated: 2026-08-07._
 
 ## Done
 
+- **Editorial-constraint memory (fixes-backlog #14, the last CHEAP item of
+  cinematic-quality playbook P3 — design §0) DONE (2026-08-07)** — plan
+  `docs/plans/2026-08-07-editorial-constraints.md` + design
+  `docs/specs/2026-08-07-editorial-constraints-design.md`, Tasks 0–6 (branch
+  `feat/editorial-constraints`, commits `9dd2b84`..`546ef4c` + this docs
+  sync). The 2026-08-03 real run broke two rules the user had stated out
+  loud — a bookend (*"one hero opens, the other closes"*) and a no-repeat
+  rule — and both were mechanically checkable over an EDL; neither was
+  checked, because neither was written anywhere a checker could reach. This
+  slice gives a stated rule a home: `CONSTRAINTS.json`, discovered BY
+  CONVENTION beside `project.json` — there is no flag to forget, so a
+  present file binds every later `edit_plan build`, which is what makes the
+  rule survive a re-cut. **The vocabulary is four CLOSED kinds and only
+  four:** `no_repeat` (no two episodes share one shot), `open_with` /
+  `close_with` (the first / last episode must pin a cast name), `exclude`
+  (bans a shot, or a whole clip). An unknown `kind` is a load-time refusal,
+  never a stored-but-unenforced note — so a rule that does not fit one of
+  the four ("don't put two drone shots back to back") cannot be written
+  down at all: it stays in chat and is forgotten, exactly as before this
+  slice, and the skills now say so out loud instead of inventing a field.
+  The identity unit is the SHOT, not the window or the time span: new
+  `FootageClip.shot_at(t)` returns the scene-cut segment containing `t`,
+  sharing `room_after`'s `c > t` boundary rule so the two authorities never
+  disagree about where a shot ends; `no_repeat` groups episodes on
+  `(source, shot)` and `exclude` compares against the same shot bounds, so
+  two windows carved from one drone pass are a repeat even when their spans
+  do not overlap — the case the real run actually produced (a per-window or
+  per-interval comparison would have missed it). New pure
+  `scripts/lib/constraints.py` (`Rule`/`Constraints`/`Placed`/`Violation`/
+  `ConstraintReport`/`evaluate`) stays import-clean of `edl.py` (`edl.py`
+  imports `ConstraintReport` to carry it, so the dependency runs one way);
+  `edit_plan._placed` projects each episode, and a `hero` reaches the
+  projection only as a cast NAME — a bbox, a track id, or a `HERO_RULES`
+  string like `"largest"` projects to `None`, which a bookend rule reads as
+  *unsatisfied*, never satisfied. `build_edl(rules=)` only measures — a
+  missing `rules` (no file) leaves `EDL.constraints` `None`, read as "not
+  evaluated," never "passed"; `write_edit_plan` is the one that refuses,
+  with reason `constraint-violation`, **before** the variety gate (a
+  human's stated rule outranks a preset's inference) and before preflight,
+  writing nothing. **There is no waiver** — the variety gate's waiver is
+  legitimate because that rule is the machine's own guess; this one is the
+  user's sentence, and a waivable path here would reproduce the exact
+  2026-08-03 failure with a paper trail. The report rides in
+  `EDL.json`/`EDL.md` (`EDL.constraints`; the `## Editorial rules` section
+  renders only when a rule file was present and non-empty), so a later
+  reader sees which rules bound the cut without reconstructing the session.
+  **Honest limits (design §10):** `edl_to_reel`'s hand-authored `EDL.json`
+  front door — the SP1 door by design — never sees this gate, so a
+  hand-built EDL bypasses every rule here; deleting `CONSTRAINTS.json`
+  passes everything, because the invariant is *no silent bypass*, not *no
+  bypass* (an agent with a shell can always delete a file — what it cannot
+  do is skip the gate while the file is there); `no_repeat` catches one
+  shot used twice, never two different shots that merely look alike (a
+  second pass of the same beach, cut identically, reads as a different shot
+  — visual similarity is a different sensor, deferred, §11); and a bookend
+  rule needs cast-name pins on the edge episodes, so a project with no
+  `cast.json` can satisfy it only by failing loud — not merely leaving it
+  unchecked, but making it unusable there. **Mutation battery (Task 6, 9
+  mutations across 8 sites):** every one — the `_no_repeat` shot-identity
+  key mutated both directions (coarsened to source-only, narrowed to
+  per-occurrence), `_bookend`'s unpinned-edge pass-through, `_placed`'s
+  dropped `HERO_RULES` exclusion, `shot_at`'s cut-boundary side, the
+  constraint-before-variety gate order, refuse-vs-log-and-continue, the
+  singleton refusal, and the missing-file default — was caught by the
+  existing suite; no coverage hole, no new test needed. **2335 passed / 3
+  skipped**, full suite including integration, no
+  golden moved (`EDL.to_dict()` gains a `"constraints": null` key, but no
+  existing golden compares the whole dict against a literal). What remains
+  of P3 — #3 per-episode QC and the hero-conditioned re-scan, both bigger
+  slices needing their own design — is named in the Next-action head below.
+
 - **Intake motion sensor + pool-relative scoring (cinematic-quality playbook P3
   slice S3) DONE (2026-08-06)** — plan
   `docs/plans/2026-08-06-intake-motion-scoring.md` + design
@@ -2496,7 +2567,10 @@ _Last updated: 2026-08-07._
   2026-08-06-intake-motion-scoring §1.2), not merely the constant weighing
   it. `score` is now a pool-relative percentile from a new Phase-2
   `score_pool`, `motion` lost its 10× display gain, and window boundaries
-  moved with the corrected activity curve. What is left of P3:
+  moved with the corrected activity curve. **#14 (editorial-constraint
+  memory) is now also DONE (2026-08-07, see the Done entry above)** — a
+  stated rule now has a home (`CONSTRAINTS.json`) and a gate
+  (`write_edit_plan`) that binds it to every re-cut. What is left of P3:
   - **The hero-conditioned re-scan** (S2 design
     `docs/specs/2026-08-06-mood-preset-variety-design.md` §14) — after cast
     naming, re-measure the windows holding a named hero cropped to their
@@ -2506,10 +2580,6 @@ _Last updated: 2026-08-07._
     a largest-person SWAP from reading as motion, but it still measures
     whichever tracks are present, not one named hero — a different, narrower
     question this item still answers.
-  - **#14 — editorial-constraint memory across iterations** (needs design)
-    — a user-stated rule ("these two episodes must not repeat") must
-    persist and be enforced through every re-cut, not forgotten on the next
-    render.
   - **#3 — per-episode QC in subagents** (needs design) — the preset (S2)
     plus a real ranking (S3) finally give QC something concrete to judge;
     the judging stage itself is a separate build.

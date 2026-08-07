@@ -171,6 +171,37 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.
 
+## Editorial rules the user stated (CONSTRAINTS.json)
+
+`edit_plan build` reads `CONSTRAINTS.json` from the folder holding `project.json`.
+There is no flag: if the file is there, its rules bind this cut and every re-cut.
+A broken rule stops the build with `"reason": "constraint-violation"` and writes
+nothing. **There is no waiver** — the rule is the user's, so only the user changes
+or deletes it. Report the refusal verbatim and fix the cut.
+
+When the user states an editorial rule, write it down immediately, in their own
+words:
+
+```json
+{"rules": [
+  {"kind": "no_repeat", "stated": "эпизоды не должны повторяться"},
+  {"kind": "open_with", "hero": "Serge", "stated": "дрон-сцена с Сержем открывает"},
+  {"kind": "close_with", "hero": "Anna", "stated": "вторая дрон-сцена закрывает"},
+  {"kind": "exclude", "source": "clips/DJI_0042.MP4", "window": 7, "stated": "этот дубль не брать"}
+]}
+```
+
+- `no_repeat` — no two episodes from one shot (a scene-cut segment). Two windows of
+  the same drone pass are a repeat even when their spans do not overlap.
+- `open_with` / `close_with` — the first / last episode must pin that cast name.
+  A bbox, a track id, or `"largest"` does NOT satisfy it: those name a tracking
+  target, not a person. Pin the name.
+- `exclude` — with `window`, bans that window's whole shot; without it, the clip.
+
+Only these four kinds exist, and an unknown `kind` is refused at load. If the user
+states a rule that does not fit — "don't put two drone shots back to back" — say so
+out loud instead of inventing a field: it cannot be stored, so it cannot be enforced.
+
 ## Gate
 
 Every episode has a source + window + shot-type. A preflight `stop_and_report` is
