@@ -18,8 +18,10 @@ import sys
 from pathlib import Path
 
 from scripts.lib import gridfit, moodpreset
+from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
+from scripts.lib.models import HERO_RULES
 from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
@@ -241,9 +243,21 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 
 
+def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
+    """Project one episode onto what an editorial rule can judge (design §4).
+
+    A hero reaches the projection only when it is a cast NAME: a str that is not one
+    of models.HERO_RULES. A bbox tuple, a track id, and "largest" all name a tracking
+    target rather than a person, so they project to None — which a bookend rule reads
+    as unsatisfied, never as satisfied."""
+    hero = ep.hero if isinstance(ep.hero, str) and ep.hero not in HERO_RULES else None
+    return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero)
+
+
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None, *, aspect: tuple[int, int] | None = None,
-              preset: MoodPreset | None = None) -> EDL:
+              preset: MoodPreset | None = None,
+              rules: Constraints | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -267,12 +281,21 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     "not evaluated", never as "passed" — the SP1 boundary for a hand-authored selection with
     no project geometry. build_edl only MEASURES here; it never refuses on a gap — that
     policy lives one level up, in write_edit_plan, so the report reaches the caller either
-    way."""
+    way.
+
+    `rules` (design 2026-08-07, keyword-only) are the project's editorial constraints.
+    When supplied, every episode is projected onto a `Placed` as it is resolved and
+    constraints.evaluate compares the cut against the rules into the returned
+    EDL.constraints. Absent rules leave EDL.constraints None, which reads as "not
+    evaluated", never as "passed". As with variety, build_edl only MEASURES; the
+    refusal lives one level up in write_edit_plan, so a caller building an EDL in
+    memory still gets the finding."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
     by_source = {c.source: c for c in footage.clips}
     episodes: list[EDLEpisode] = []
+    placed: list[Placed] = []
     used = {s: 0 for s in SHOT_TYPES}
     for k, sel in enumerate(eps_in):
         if not isinstance(sel, dict):
@@ -292,7 +315,9 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         fw = _resolve_window(clip, window, source, k)
         if aspect is not None:
             used[delivered_shot(fw.subject_w, fw.subject_h, clip.res, aspect)] += 1
-        episodes.append(window_to_episode(clip, fw, start_offset=start_offset, **ed))
+        ep = window_to_episode(clip, fw, start_offset=start_offset, **ed)
+        episodes.append(ep)
+        placed.append(_placed(clip, ep))
     target = selection.get("target_dur")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
@@ -303,8 +328,13 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         asl = (sum(e.dur for e in episodes) / len(episodes)) if episodes else 0.0
         variety = moodpreset.evaluate(_available_census(footage, aspect), used, asl,
                                       preset, waiver=selection.get("variety_waiver"))
+    # After pacing: binding rewrites `dur` only, which none of the four rule kinds
+    # reads — but evaluating the FINAL episode list keeps the report describing the
+    # EDL that is actually written.
+    cons = check_constraints(rules, tuple(placed), footage) if rules is not None else None
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
-               cap=cap if cap is not None else 3, target_dur=target, variety=variety)
+               cap=cap if cap is not None else 3, target_dur=target, variety=variety,
+               constraints=cons)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
@@ -322,20 +352,40 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     and unwaived stops here too, before preflight, with its own reason
     `variety-gap` (never `edl-invalid`, so the two failure classes stay
     attributable without parsing prose). Returns {"status": "written", ...} or a
-    stop_and_report — from the variety gate or from preflight — verbatim."""
+    stop_and_report — from the variety gate or from preflight — verbatim.
+
+    Editorial constraints (design 2026-08-07) are found BY CONVENTION beside
+    project.json as CONSTRAINTS.json — there is no flag to forget. Absent means no
+    rules; present means enforced on every invocation, which is what makes a stated
+    rule survive a re-cut. A broken rule stops here with its own reason
+    `constraint-violation`, before the variety gate and before preflight, and there is
+    no waiver: the rule is the user's, not the agent's to overrule."""
     footage = Footage.from_json(footage_path)
     try:
         selection = json.loads(Path(selection_path).read_text())
     except json.JSONDecodeError as e:
         raise ValueError(f"{selection_path} is not valid JSON ({e}) — fix the selection syntax") from e
     cfg = ProjectConfig.from_json(project_path)
+    rules_path = Path(project_path).parent / "CONSTRAINTS.json"
+    rules = Constraints.from_json(rules_path) if rules_path.exists() else None
+    if rules is not None:
+        _log(f"constraints: {len(rules.rules)} editorial rule(s) from {rules_path}")
     preset = moodpreset.resolve(Spec.from_json(spec).mood if spec else None)
     if preset.name == "balanced":
         _log(f"variety: no SPEC mood matched a preset — using the 'balanced' shot mix "
              f"{preset.shot_mix} (a skipped brief must not disable the gate)")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
-                    aspect=tuple(cfg.canvas), preset=preset)
+                    aspect=tuple(cfg.canvas), preset=preset, rules=rules)
+    c = edl.constraints
+    if c is not None and not c.ok:
+        # The user's own stated rule outranks the preset's inference, so its finding is
+        # the one the caller sees. No waiver exists by design: the only way past is the
+        # user editing or deleting the rule (design §5).
+        return {"status": "stop_and_report",
+                "finding": {"reason": "constraint-violation", "episode_idx": None,
+                            "problems": [f"{v.stated} ({v.kind}): {v.message}"
+                                         for v in c.violations]}}
     v = edl.variety
     _log("variety: preset {} — footage offers {}".format(
         v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES)))

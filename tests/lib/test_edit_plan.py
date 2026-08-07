@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts import edit_plan
 from scripts.lib import provenance
+from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
@@ -701,3 +702,126 @@ def test_write_edit_plan_without_a_spec_uses_balanced(tmp_path):
     result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
     assert result["finding"]["reason"] == "variety-gap"
     assert "balanced" in " ".join(result["finding"]["problems"])
+
+
+def _cut_footage():
+    # One clip, a cut at 10.0. Windows 0 and 1 sit in the SAME shot [0, 10) without
+    # overlapping; window 2 is in the later shot [10, 20).
+    return Footage(clips=[_clip(source="A.mp4", dur=20.0, scene_cuts=[10.0], windows=[
+        FootageWindow(start=1.0, dur=2.0, shot_type="wide", people=1, motion=0.3, shake=0.0),
+        FootageWindow(start=6.0, dur=2.0, shot_type="wide", people=1, motion=0.3, shake=0.0),
+        FootageWindow(start=12.0, dur=2.0, shot_type="close", people=1, motion=0.3,
+                      shake=0.0)])])
+
+
+def _two_from_one_shot():
+    return {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "A.mp4", "window": 1, "composition": "lead", "grid": "thirds"}]}
+
+
+def _no_repeat_rules():
+    return Constraints.from_dict({"rules": [
+        {"kind": "no_repeat", "stated": "эпизоды не должны повторяться"}]})
+
+
+def test_build_edl_without_rules_leaves_constraints_unevaluated():
+    edl = edit_plan.build_edl(_cut_footage(), _two_from_one_shot())
+    assert edl.constraints is None
+
+
+def test_build_edl_measures_a_repeat_but_does_not_refuse():
+    edl = edit_plan.build_edl(_cut_footage(), _two_from_one_shot(), rules=_no_repeat_rules())
+    assert edl.constraints is not None and not edl.constraints.ok
+    assert edl.constraints.violations[0].kind == "no_repeat"
+
+
+def test_build_edl_passes_two_episodes_from_different_shots():
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "A.mp4", "window": 2, "composition": "lead", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(_cut_footage(), sel, rules=_no_repeat_rules())
+    assert edl.constraints.ok
+
+
+def test_a_rule_pin_does_not_satisfy_a_bookend():
+    # "largest" is a HERO_RULES tracking target, not a person — it must project to
+    # None, so the bookend rule refuses instead of being fooled by the string.
+    rules = Constraints.from_dict({"rules": [
+        {"kind": "open_with", "stated": "Serge opens", "hero": "Serge"}]})
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead",
+                         "grid": "thirds", "hero": "largest"}]}
+    edl = edit_plan.build_edl(_cut_footage(), sel, rules=rules)
+    assert not edl.constraints.ok and "pins no cast name" in edl.constraints.violations[0].message
+
+
+def test_a_cast_name_pin_satisfies_a_bookend():
+    rules = Constraints.from_dict({"rules": [
+        {"kind": "open_with", "stated": "Serge opens", "hero": "Serge"}]})
+    sel = {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead",
+                         "grid": "thirds", "hero": "Serge"}]}
+    assert edit_plan.build_edl(_cut_footage(), sel, rules=rules).constraints.ok
+
+
+def _write_rules(tmp_path, rules_dict):
+    (tmp_path / "CONSTRAINTS.json").write_text(json.dumps(rules_dict))
+
+
+def test_write_edit_plan_finds_the_rule_file_beside_project_json_and_refuses(tmp_path):
+    fj, sj, pj = _write_inputs(tmp_path, _two_from_one_shot(), footage=_cut_footage())
+    _write_rules(tmp_path, {"rules": [{"kind": "no_repeat",
+                                       "stated": "эпизоды не должны повторяться"}]})
+    out = tmp_path / "out"
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(out))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "constraint-violation"
+    assert "эпизоды не должны повторяться" in res["finding"]["problems"][0]
+    assert not (out / "EDL.json").exists() and not (out / "EDL.md").exists()
+
+
+def test_write_edit_plan_without_a_rule_file_writes_and_leaves_constraints_null(tmp_path):
+    fj, sj, pj = _write_inputs(tmp_path, _two_from_one_shot(), footage=_cut_footage())
+    out = tmp_path / "out"
+    assert edit_plan.write_edit_plan(fj, sj, pj, str(out))["status"] == "written"
+    assert json.loads((out / "EDL.json").read_text())["constraints"] is None
+
+
+def test_write_edit_plan_records_the_rules_that_held(tmp_path):
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "A.mp4", "window": 2, "composition": "lead", "grid": "thirds"}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel, footage=_cut_footage())
+    _write_rules(tmp_path, {"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
+    out = tmp_path / "out"
+    assert edit_plan.write_edit_plan(fj, sj, pj, str(out))["status"] == "written"
+    edl = EDL.from_json(str(out / "EDL.json"))
+    assert edl.constraints.ok and edl.constraints.rules[0]["stated"] == "no repeats"
+    assert "## Editorial rules" in (out / "EDL.md").read_text()
+
+
+def test_a_broken_rule_outranks_a_variety_gap(tmp_path):
+    # Both gates would fire on this cut (one shot twice, and it takes no close
+    # window while the footage offers three). The USER's rule is the reported one.
+    close = [FootageWindow(start=float(12 + i), dur=0.5, shot_type="close", people=1,
+                           motion=0.3, shake=0.0, subject_w=0.8, subject_h=0.8)
+             for i in range(3)]
+    wide = [FootageWindow(start=1.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                          shake=0.0, subject_w=0.02, subject_h=0.05),
+            FootageWindow(start=6.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                          shake=0.0, subject_w=0.02, subject_h=0.05)]
+    footage = Footage(clips=[_clip(source="A.mp4", dur=20.0, res=(3840, 2160),
+                                   scene_cuts=[10.0], windows=wide + close)])
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "A.mp4", "window": 1, "composition": "lead", "grid": "thirds"}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel, footage=footage)
+    _write_rules(tmp_path, {"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(tmp_path / "out"))
+    assert res["finding"]["reason"] == "constraint-violation"
+
+
+def test_write_edit_plan_propagates_a_corrupt_rule_file(tmp_path):
+    fj, sj, pj = _write_inputs(tmp_path, _two_from_one_shot(), footage=_cut_footage())
+    (tmp_path / "CONSTRAINTS.json").write_text("{ not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        edit_plan.write_edit_plan(fj, sj, pj, str(tmp_path / "out"))
