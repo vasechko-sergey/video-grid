@@ -502,6 +502,73 @@ class PanSpec:
         return cls(start=d["from"], end=d["to"])
 
 
+@dataclass
+class ZoomSpec:
+    """A subject-anchored push-in / pull-out (design 2026-08-08).
+
+    `start`/`end` are fractions of the layout's crop WIDTH: 1.0 is the crop the
+    layout resolved, 0.7 a 1.43x push-in. DIRECTION IS THE SIGN of `end - start`
+    — no direction vocabulary, for the same reason PanSpec has none (a second
+    spelling of what the numbers already say).
+
+    Both ends are in (0, 1]. Above 1.0 the rect would need pixels the layout's
+    crop does not contain, so the base crop would have to grow — silently
+    changing the composition the layout resolved. At or below 0.0 it is not a
+    rectangle.
+
+    Unlike a pan, a zoom is NOT a generated path: the rect's position still
+    comes from the tracked route through the same composition rule, at the width
+    in force at that sample. That is what keeps every check_episode check
+    applicable (design §1).
+
+    WIRE NAMES `from`/`to`, exactly as PanSpec and for the same reason: `from`
+    is a Python keyword and cannot be a field name. from_dict/to_dict carry the
+    mapping, and it lives in exactly one place.
+    """
+    start: float
+    end: float
+
+    def __post_init__(self) -> None:
+        for name, v in (("start", self.start), ("end", self.end)):
+            # bool BEFORE int: isinstance(True, int) is True, so {"from": true}
+            # would otherwise silently mean 1.0
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"ZoomSpec.{name} must be a number in (0.0, 1.0] — a fraction of the "
+                    f"layout's crop width, where 1.0 is the whole crop and 0.7 a 1.43x "
+                    f"push-in; got {v!r}")
+            # NO float(): json.loads builds ints of any size and float() raises
+            # OverflowError — not ValueError — on one past float range, which would
+            # escape manifest.validate()'s soft gate as a crash. Same landmine PanSpec
+            # documents. int-vs-float comparison is exact and rejects NaN too.
+            if not 0.0 < v <= 1.0:
+                raise ValueError(
+                    f"ZoomSpec.{name} must be within (0.0, 1.0] — above 1.0 the rect would "
+                    f"need pixels the layout's crop does not contain, and at or below 0.0 it "
+                    f"is not a rectangle; got {v!r}")
+        if self.start == self.end:
+            raise ValueError(
+                f"ZoomSpec start and end are both {self.start!r} — a zoom that does not move "
+                "is not a zoom, it is a smaller crop. Set the layout's `crop_scale` for a "
+                "tighter framing, or give the zoom an extent")
+
+    def to_dict(self) -> dict:
+        return {"from": self.start, "to": self.end}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ZoomSpec":
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"ZoomSpec.from_dict: expected an object with 'from' and 'to' fractions, "
+                f"got {type(d).__name__} — write zoom as {{\"from\": 1.0, \"to\": 0.7}}")
+        missing = [k for k in ("from", "to") if k not in d]
+        if missing:
+            raise ValueError(
+                f"ZoomSpec.from_dict: missing {', '.join(missing)} — a zoom needs both "
+                f"'from' and 'to' fractions of the layout's crop width, got {sorted(d)}")
+        return cls(start=d["from"], end=d["to"])
+
+
 LAYOUT_MODES = ("fill", "fit", "insert")
 BACKGROUNDS = ("blur", "solid")
 

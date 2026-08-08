@@ -3,7 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
-from scripts.lib.models import LayoutSpec, PanSpec, ReelCheckSpec
+from scripts.lib.models import LayoutSpec, PanSpec, ReelCheckSpec, ZoomSpec
 
 
 def test_routepoint_roundtrip():
@@ -1472,3 +1472,42 @@ def test_reel_episode_to_dict_is_the_from_dict_shape():
                        path="p.json", meta="m.json")
     assert ep.to_dict() == {"manifest": {"segment": "a.mp4"}, "clip": "c.mp4",
                             "route": None, "path": "p.json", "meta": "m.json"}
+
+
+# --- ZoomSpec (design 2026-08-08): subject-anchored push-in/pull-out, not a
+# generated path — a fraction of the layout's crop WIDTH, (0.0, 1.0] ---
+
+def test_zoom_spec_round_trips_through_its_wire_names():
+    z = ZoomSpec(start=1.0, end=0.7)
+    assert z.to_dict() == {"from": 1.0, "to": 0.7}
+    assert ZoomSpec.from_dict({"from": 1.0, "to": 0.7}) == z
+
+
+def test_zoom_spec_refuses_a_fraction_above_one():
+    with pytest.raises(ValueError, match=r"within \(0\.0, 1\.0\]"):
+        ZoomSpec(start=1.2, end=0.7)
+
+
+def test_zoom_spec_refuses_a_fraction_at_or_below_zero():
+    with pytest.raises(ValueError, match=r"within \(0\.0, 1\.0\]"):
+        ZoomSpec(start=1.0, end=0.0)
+
+
+def test_zoom_spec_refuses_a_bool_before_it_can_read_as_one():
+    with pytest.raises(ValueError, match="must be a number"):
+        ZoomSpec(start=True, end=0.7)
+
+
+def test_zoom_spec_refuses_a_zoom_that_does_not_move():
+    with pytest.raises(ValueError, match="not a zoom"):
+        ZoomSpec(start=0.8, end=0.8)
+
+
+def test_zoom_spec_from_dict_refuses_a_non_object():
+    with pytest.raises(ValueError, match="expected an object"):
+        ZoomSpec.from_dict([1.0, 0.7])
+
+
+def test_zoom_spec_from_dict_names_every_missing_key():
+    with pytest.raises(ValueError, match="missing from, to"):
+        ZoomSpec.from_dict({})
