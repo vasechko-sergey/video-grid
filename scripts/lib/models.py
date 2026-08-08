@@ -1061,6 +1061,14 @@ class ReelEpisode:
     path: str = ""
     meta: str = ""
 
+    def to_dict(self) -> dict:
+        """The shape from_dict reads back. `manifest` is emitted INLINE even when it
+        was loaded from a path (_load_manifest accepts both): a reel manifest that
+        names a file is only as reproducible as that file, and phase 2 may run after
+        the scratch dir is gone."""
+        return {"manifest": dict(self.manifest), "clip": self.clip,
+                "route": self.route, "path": self.path, "meta": self.meta}
+
 
 @dataclass
 class ReelManifest:
@@ -1158,3 +1166,14 @@ class ReelManifest:
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelManifest":
         return cls.from_dict(json.loads(Path(path).read_text()))
+
+    def to_dict(self) -> dict:
+        return {"episodes": [e.to_dict() for e in self.episodes],
+                "target_dur": self.target_dur, "variety_min": self.variety_min,
+                "color_delta_max": self.color_delta_max, "cap": self.cap,
+                "changelog": self.changelog, "music": self.music,
+                "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
+                "provenance": dict(self.provenance)}
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))

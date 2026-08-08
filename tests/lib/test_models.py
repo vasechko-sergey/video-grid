@@ -1448,3 +1448,27 @@ def test_reel_manifest_from_dict_reads_a_provenance_key():
     # test_reel_manifest_platform_default_and_set uses for `platform`).
     rm = m.ReelManifest.from_dict(_reel_dict(provenance={"a": 1}))
     assert rm.provenance == {"a": 1}
+
+
+def test_reel_manifest_round_trips_through_json(tmp_path):
+    rm = m.ReelManifest(
+        episodes=[m.ReelEpisode(manifest={"segment": "a.mp4", "target_dur": 2.0},
+                                clip="ep0.mp4", route="r0.json",
+                                path="p0.json", meta="m0.json"),
+                  m.ReelEpisode(manifest={"segment": "b.mp4", "target_dur": 3.0},
+                                clip="ep1.mp4", route=None, path="p1.json", meta="m1.json")],
+        target_dur=5.0, cap=2, changelog="first cut", music=None,
+        platform="tiktok", provenance={"edl": {"state": "intact"}})
+    p = tmp_path / "EPISODES.json"
+    rm.write(p)
+    back = m.ReelManifest.from_json(p)
+    assert back.to_dict() == rm.to_dict()
+    assert back.episodes[1].route is None          # a pan's absent route survives as null
+    assert back.provenance == {"edl": {"state": "intact"}}
+
+
+def test_reel_episode_to_dict_is_the_from_dict_shape():
+    ep = m.ReelEpisode(manifest={"segment": "a.mp4"}, clip="c.mp4", route=None,
+                       path="p.json", meta="m.json")
+    assert ep.to_dict() == {"manifest": {"segment": "a.mp4"}, "clip": "c.mp4",
+                            "route": None, "path": "p.json", "meta": "m.json"}
