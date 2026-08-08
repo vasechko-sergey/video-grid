@@ -65,8 +65,18 @@ V1_STAGES: tuple[Stage, ...] = (
           "draft CLI (optional QA preview)", "edl"),
     Stage("titles", "TITLES.json", "optional",
           "titles SKILL -> titles build CLI (optional on-screen text)", "final"),
+    Stage("episodes", "EPISODES.json", "required",
+          "edl_to_reel --stop-after-episodes (renders every episode, then stops at the "
+          "QC seam)", None, in_out=True),
+    # required, not optional (design 2026-08-08 §1): a reel assembled over an episode
+    # nobody judged is exactly what the 2026-08-03 run shipped. The stage gates the
+    # artifact's presence and its digest binding — never proof that anyone looked (§12).
+    Stage("episode-qc", "EPISODE_QC.json", "required",
+          "episode-qc SKILL -> episode_qc pack, one judge per episode (cap 3), "
+          "episode_qc build", None, in_out=True),
     Stage("deliver", "REEL_v*.*", "required",
-          "edl_to_reel CLI", "final", in_out=True),
+          "edl_to_reel --from-episodes (gates on EPISODE_QC.json, then assembles)",
+          "final", in_out=True),
     # required, not optional (design §8): the reviewer stage was skipped outright on
     # the 2026-08-03 run because `next` never pointed at it, and a gate that costs
     # nothing to skip is not a gate.

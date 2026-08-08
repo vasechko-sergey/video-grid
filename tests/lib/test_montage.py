@@ -34,7 +34,7 @@ def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "contact-sheet", "reel-brief", "trend-scan",
         "edit-plan", "music-and-mood", "pacing", "match-grade", "assemble-draft", "titles",
-        "deliver", "reel-review"]
+        "episodes", "episode-qc", "deliver", "reel-review"]
 
 
 def test_v1_stages_kinds_and_flags():
@@ -155,11 +155,11 @@ def test_assemble_draft_optional_absent_then_present(tmp_path):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
     assert _state(res, "assemble-draft") == "optional"   # absent optional never blocks
-    assert res["next"] == "deliver"                       # next unaffected by an optional stage
+    assert res["next"] == "episodes"                      # next unaffected by an optional stage
     _touch(tmp_path, "draft.mp4")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "assemble-draft") == "done"
-    assert res2["next"] == "deliver"
+    assert res2["next"] == "episodes"
 
 
 def test_titles_optional_absent_then_present(tmp_path):
@@ -167,11 +167,11 @@ def test_titles_optional_absent_then_present(tmp_path):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
     assert _state(res, "titles") == "optional"   # absent optional never blocks
-    assert res["next"] == "deliver"
+    assert res["next"] == "episodes"
     _touch(tmp_path, "TITLES.json")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "titles") == "done"
-    assert res2["next"] == "deliver"
+    assert res2["next"] == "episodes"
 
 
 def test_reel_review_required_absent_then_present(tmp_path):
@@ -180,6 +180,8 @@ def test_reel_review_required_absent_then_present(tmp_path):
         _touch(tmp_path, n)
     out = tmp_path / "out"
     out.mkdir()
+    _touch(out, "EPISODES.json")      # episode-qc's two upstream required stages
+    _touch(out, "EPISODE_QC.json")
     (out / "REEL_v1.mp4").write_text("x")
     res = next_action(str(tmp_path))
     assert res["delivered"] is True and res["next"] == "reel-review"
@@ -190,11 +192,13 @@ def test_reel_review_required_absent_then_present(tmp_path):
     assert res2["next"] is None                    # nothing required outstanding now
 
 
-def test_edl_present_next_is_deliver(tmp_path):
+def test_edl_present_next_is_episodes(tmp_path):
+    # the EDL alone no longer reaches deliver directly (design 2026-08-08 §9): the
+    # episode render + QC gate are required stages sitting between edit-plan and deliver
     for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         _touch(tmp_path, n)
     res = next_action(str(tmp_path))
-    assert res["next"] == "deliver"
+    assert res["next"] == "episodes"
     assert res["delivered"] is False
 
 
@@ -203,6 +207,8 @@ def test_delivered_when_reel_in_out(tmp_path):
         _touch(tmp_path, n)
     out = tmp_path / "out"
     out.mkdir()
+    _touch(out, "EPISODES.json")      # episode-qc's two upstream required stages
+    _touch(out, "EPISODE_QC.json")
     (out / "REEL_v1.mp4").write_text("x")
     res = next_action(str(tmp_path))
     assert res["next"] == "reel-review"   # deliver is done; reel-review is required and next
@@ -287,6 +293,8 @@ def test_reel_review_is_next_after_delivery(tmp_path):
     out.mkdir(parents=True)
     for name in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
         (run / name).write_text("{}")
+    for name in ("EPISODES.json", "EPISODE_QC.json"):
+        (out / name).write_text("{}")
     (out / "REEL_v1.mp4").write_text("x")
     got = montage.next_action(str(run))
     assert got["delivered"] is True
@@ -299,6 +307,8 @@ def test_a_run_is_only_finished_when_the_review_exists(tmp_path):
     out.mkdir(parents=True)
     for name in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json", "REVIEW.json"):
         (run / name).write_text("{}")
+    for name in ("EPISODES.json", "EPISODE_QC.json"):
+        (out / name).write_text("{}")
     (out / "REEL_v1.mp4").write_text("x")
     assert montage.next_action(str(run))["next"] is None
 
@@ -387,3 +397,21 @@ def test_no_footage_still_asks_for_intake_first(tmp_path):
     _touch(tmp_path, "project.json")
     _touch(tmp_path, "SHEETS.md")
     assert next_action(str(tmp_path))["next"] == "footage-intake"
+
+
+# ---- episode-qc stage split (design 2026-08-08-episode-qc-design.md §9) ----
+
+def test_the_qc_stage_sits_between_the_episodes_and_the_reel():
+    keys = [s.key for s in montage.V1_STAGES]
+    assert keys.index("episodes") < keys.index("episode-qc") < keys.index("deliver")
+    assert all(s.kind == "required" for s in montage.V1_STAGES
+               if s.key in ("episodes", "episode-qc"))
+
+
+def test_next_points_at_the_qc_stage_once_the_episodes_exist(tmp_path):
+    """A run with rendered episodes and no verdicts is NOT ready to deliver."""
+    for n in ("project.json", "FOOTAGE.json", "SHEETS.md", "EDL.json"):
+        _touch(tmp_path, n)               # touch the artifacts the earlier stages need
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "EPISODES.json").write_text("{}")
+    assert next_action(str(tmp_path))["next"] == "episode-qc"
