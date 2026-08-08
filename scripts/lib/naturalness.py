@@ -26,9 +26,12 @@ FLAT_SPREAD = 40.0    # p95-p5 luma below this reads flat
 def _frame_stats(f: np.ndarray) -> dict:
     """One frame's numbers. Reductions only — no float copy of the whole frame is
     materialized, so a 4K frame costs its own bytes and not eight times them."""
-    if not (isinstance(f, np.ndarray) and f.ndim == 3 and f.shape[2] == 3):
-        raise ValueError(f"naturalness: each frame must be an HxWx3 RGB array, got "
-                         f"{getattr(f, 'shape', type(f).__name__)}")
+    ok = isinstance(f, np.ndarray) and f.ndim == 3 and f.shape[2] == 3 and f.dtype == np.uint8
+    if not ok:
+        got = f"shape={f.shape}, dtype={f.dtype}" if isinstance(f, np.ndarray) else type(f).__name__
+        raise ValueError(f"naturalness: each frame must be an HxWx3 uint8 RGB array, got "
+                         f"{got} — sample frames with assembly.frames_rgb (HxWx3 uint8 RGB) "
+                         f"before calling")
     px = f.reshape(-1, 3)
     means = [float(px[:, c].mean()) for c in range(3)]
     hi = [float((px[:, c] >= CLIP_HIGH).mean()) for c in range(3)]
