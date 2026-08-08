@@ -13,6 +13,14 @@ def test_zoom_max_rate_is_half_a_crop_width_per_second():
     assert zoom.ZOOM_MAX_RATE == 0.5
 
 
+def test_zoom_max_upscale_is_one_and_a_half():
+    # Pins the exact ceiling named in the interface (zoom.ZOOM_MAX_UPSCALE: float).
+    # Measured, not arbitrary (design §6/§10): refusing every upsample caps a 9:16
+    # crop of a 16:9 4K source at a 1.125x push-in, so a silent drift here would
+    # silently re-impose that cap or loosen it further with no test noticing.
+    assert zoom.ZOOM_MAX_UPSCALE == 1.5
+
+
 def test_scales_interpolate_linearly_over_the_routes_own_span():
     s = zoom.scales(ZoomSpec(start=1.0, end=0.6), [2.0, 2.5, 3.0])
     assert s == pytest.approx([1.0, 0.8, 0.6])
@@ -143,19 +151,41 @@ def test_validate_accepts_a_zoom_exactly_at_the_rate_ceiling():
                          dur=1.0) is None
 
 
-def test_validate_refuses_a_push_in_past_the_delivery_width():
-    with pytest.raises(ValueError, match="upsample"):
-        zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1080, dur=4.0)
+def test_validate_refuses_a_push_in_past_the_upscale_ceiling():
+    # crop_w=2000, end=0.3 -> tightest=600px against a 1080px delivery is a 1.8x
+    # upsample — past ZOOM_MAX_UPSCALE (1.5x), so this must still refuse under
+    # the bounded allowance, not just under the old (unbounded) rule.
+    with pytest.raises(ValueError, match="upsampling"):
+        zoom.validate(ZoomSpec(start=1.0, end=0.3), crop_w=2000, out_w=1080, dur=4.0)
+
+
+def test_validate_accepts_a_push_in_that_upsamples_within_the_ceiling():
+    # The SAME numbers as the old (pre-scope-change) refusing case: crop_w=2000,
+    # end=0.4 -> tightest=800px against 1080px is a 1.35x upsample. Refusing ANY
+    # upsample made this illegal; the measured ruling (design §6) is that 1.35x
+    # must be legal because it is below the 1.5x ceiling — a 9:16 crop of a 16:9
+    # 4K source only reaches 1.125x, so a stricter line would cap the flagship
+    # format below visibility.
+    assert zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1080,
+                         dur=4.0) is None
 
 
 def test_validate_accepts_a_zoom_that_stays_above_the_delivery_width():
+    # No upsampling at all (tightest 1200 > out_w 1080, ratio 0.9x) — legal under
+    # either rule, kept distinct from the "upsamples but within the ceiling" case
+    # above since it exercises a different branch (tightest is nowhere near
+    # `floor` here, so a bug in `floor`'s arithmetic could still slip past this
+    # one alone).
     assert zoom.validate(ZoomSpec(start=1.0, end=0.6), crop_w=2000, out_w=1080,
                          dur=4.0) is None
 
 
-def test_validate_accepts_a_zoom_that_exactly_meets_the_delivery_width():
-    # tightest == out_w exactly (1000 == 1000). The refusal is `tightest < out_w`;
-    # a mutant tightening that to `<=` would only be caught right at this boundary —
-    # the "refuses" test sits below it and the "accepts" test above sits above it.
-    assert zoom.validate(ZoomSpec(start=1.0, end=0.5), crop_w=2000, out_w=1000,
+def test_validate_accepts_a_zoom_exactly_at_the_upscale_ceiling():
+    # tightest == floor exactly: crop_w=2000, end=0.4 -> tightest=800; out_w=1200
+    # -> floor = 1200 / 1.5 = 800.0 exactly (a 1.5x upsample, right at the
+    # ceiling). The refusal is `tightest < floor`; a mutant tightening that to
+    # `<=` would refuse exactly this input and nothing else here would catch it —
+    # the "refuses" test sits well below this boundary (600 vs 720) and the
+    # "within the ceiling" test sits well above it (800 vs 720, a different floor).
+    assert zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1200,
                          dur=4.0) is None

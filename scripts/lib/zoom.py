@@ -14,6 +14,12 @@ ZOOM_MAX_RATE = 0.5   # crop-width fractions per second. FIRST CUT, uncalibrated
                       # turns 0.7 into 0.07 — not to police taste, exactly as PanSpec's speed
                       # cap does for a whip pan.
 
+ZOOM_MAX_UPSCALE = 1.5   # how far past 1:1 a push-in may resample. NOT zero, and the reason is
+                         # measured: a 9:16 crop of a 16:9 4K source is 1215px wide against a
+                         # 1080px delivery, so refusing every upsample would cap the reel format
+                         # this engine exists for at 1.125x — below visibility (design §6). Also
+                         # a FIRST CUT: nobody has judged a 1.5x push-in on real graded footage.
+
 
 def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
     """Refuse a zoom this episode cannot carry (design §6, refusals 4-6).
@@ -35,11 +41,13 @@ def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
             "move. Narrow the from->to span, give the episode a longer duration, or check "
             "for a mistyped fraction")
     tightest = int(crop_w / (1.0 / min(spec.start, spec.end)))
-    if tightest < out_w:
+    floor = out_w / ZOOM_MAX_UPSCALE
+    if tightest < floor:
         raise ValueError(
-            f"zoom {spec.start}->{spec.end} tightens the {crop_w}px crop to {tightest}px, "
-            f"below the {out_w}px delivery width — the reel would ship upsampled pixels "
-            "that were never resolved. Zoom less far, or deliver narrower")
+            f"zoom {spec.start}->{spec.end} tightens the {crop_w}px crop to {tightest}px "
+            f"against a {out_w}px delivery — {out_w / tightest:.2f}x upsampling, past the "
+            f"{ZOOM_MAX_UPSCALE}x this engine will ship. Past it the reel carries magnified "
+            "pixels that were never resolved. Zoom less far, or deliver narrower")
 
 
 def scales(spec: ZoomSpec, times: list[float]) -> list[float]:
