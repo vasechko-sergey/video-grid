@@ -6,7 +6,7 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-08-07._
+_Last updated: 2026-08-08._
 
 **Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
 
@@ -28,7 +28,7 @@ _Last updated: 2026-08-07._
 | 5.11 | episode-postcheck (gate) | — | ✅ | `check_episode` — mechanical gates + an **advisory** colour-fidelity check (subject hue drift source-vs-graded, `passed=None`, out of `overall`; 2026-07-27); the `jitter` gate is now **route-aware** — it discounts the subject's own backtrack (box-filtered over the route's own cadence, `_route_window`) before scoring the crop, and grades an authored `lead` against the same net-travel direction reframe used (path-quality cluster, 2026-07-29) | — |
 | 5.12 | audio-mix | `out/audio` | ✅ | music-only mix ✅ + ambient ducking ✅ + SFX whoosh ✅ (synth whoosh on major transitions, `ReelManifest.sfx`); §5.12 complete | **Phase B — music spine** |
 | 5.13 | reel-final-check (gate) | review | ✅ | **Mechanical half ✅ (complete)** — `check_reel`: black/length/colour/variety + loudness (hard), beat + `safe_zones` + `key_action` + `pad_bars` + `transitions` (all advisory — route-geometry/PathMeta checks; the last three landed 2026-07-17). Editorial half ✅ (2026-07-18) — reel-review SKILL dispatches a fresh reviewer subagent → typed REVIEW.json (Finding/Review), human-gated at CP3; **required, not optional, since 2026-08-04** — `montage.py`'s stage table flips `reel-review` to `kind="required"`, so a run is finished when `next_action`'s `next` is `null`, not merely when `delivered` is true (design [2026-08-04-attested-run-design.md](specs/2026-08-04-attested-run-design.md) §8). | Phase B (audio) + Editorial |
-| 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate; since 2026-08-04 also **binds** the `ReelReport` to the master it ships (refuses an unbound or mismatched digest — closes fixes-backlog #13) and writes a `REEL_v{n}.attest.json` provenance sidecar beside the encode (both engine stamps, the master/report/reel digests, the EDL's state, every loosened check threshold); `montage status`/`montage verify` read it back (see [the attested-run design](specs/2026-08-04-attested-run-design.md)). | — |
+| 5.14 | **deliver** | `out/REEL_*.mp4` | ✅ | `deliver.py` — one encode, versioned, hard gate; since 2026-08-04 also **binds** the `ReelReport` to the master it ships (refuses an unbound or mismatched digest — closes fixes-backlog #13) and writes a `REEL_v{n}.attest.json` provenance sidecar beside the encode (both engine stamps, the master/report/reel digests, the EDL's state, every loosened check threshold); `montage status`/`montage verify` read it back (see [the attested-run design](specs/2026-08-04-attested-run-design.md)). **Since 2026-08-08 the router's single `deliver` step is three required stages**, not one: `episodes` (`edl_to_reel --stop-after-episodes` renders every episode, writes `EPISODES.json`, stops), `episode-qc` (one fresh judge subagent per episode, cap 3, judges the delivered clip's composition/colour/impression/path/hero off a frame strip + storyboard + the new `lib/naturalness.py` colour sensor; `episode_qc build` stamps every verdict with the clip's own sha256, never the judge's claim), and `deliver` itself (`edl_to_reel --from-episodes` gates on `EPISODE_QC.json` beside it — incomplete/stale/blocking all refuse before any ffmpeg — then assembles). A reel is never assembled over an episode nobody judged; a reprocessed episode still ships judged one render out of date (design §8) — `build_reel` names it in `reprocessed`, and the attestation's `episode_qc` block records it. See [the episode-qc design](specs/2026-08-08-episode-qc-design.md). | — |
 | 5.15 | ffmpeg-recipes (reference) | — | ✅ | recipes docs | — |
 | 5.16 | titles (optional) | `TITLES.json` | ✅ | agent-authored hook/caption/ending text (`titles.py`/`fonts.py` name-resolve); **renders at deliver** — no titled intermediate; titles now render **motion** — `fade` alpha ramps, `reveal="word"`/`"stair"` (one drawtext per step, each baked at its FINAL x from measured PIL font metrics — never a naive per-word re-centre) — and **colour** (`color`/`scale`/`line_spacing`), and lay out against the **platform's own safe zone** (`y_exprs(platform)` reads `safe_zone_for`, the same table `check_reel` judges the subject against, replacing a frozen generic-zone constant that disagreed with it); `deliver`/`build_reel` thread `platform` through (titles-animations, 2026-07-29) | — |
 
@@ -73,7 +73,7 @@ status table above.
 | 5.11 | episode-postcheck | ✅ | — | — | — |
 | 5.12 | audio-mix | ✅ | — (2026-07-15) | — | richer mix |
 | 5.13 | reel-final-check | ✅ | — (2026-07-18) | none · (soft) 5.4 for the "trend flavor" criterion | tighter gate |
-| 5.14 | deliver | ✅ | — | — | — |
+| 5.14 | deliver | ✅ | — (now three required router stages: episodes → episode-qc → deliver, 2026-08-08) | — | — |
 | 5.15 | ffmpeg-recipes | ✅ | — | — | — |
 | 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
 | — | cast → hero-pin | ✅ | — (2026-07-16) | none — **5.2 cast.json ✅** | §6.1a layer 3 (continuity re-match) |

@@ -151,7 +151,36 @@ extend/trim the last episode to reach a phrase line. Separate subsystem from #1
 
 ## 3. Per-episode rendering and quality control in subagents
 
-**Status:** NEEDS DESIGN (feedback captured 2026-08-03; not yet triaged).
+**Status:** ✅ LANDED 2026-08-08 — plan `docs/plans/2026-08-08-episode-qc.md` +
+design `docs/specs/2026-08-08-episode-qc-design.md`. Per-episode **quality
+control** now sits between the per-episode render and reel assembly:
+`edl_to_reel` splits into `--stop-after-episodes` (render every episode,
+write `EPISODES.json`, stop) and `--from-episodes` (gate on an
+`EPISODE_QC.json` found beside it, by convention, then assemble). One fresh
+judge subagent per episode (cap 3, the new `episode-qc` SKILL) reads a frame
+strip off the DELIVERED clip, the storyboard, the mechanical `report.json`,
+and a new colour-naturalness sensor (`lib/naturalness.py` — blown
+highlights, crushed blacks, colour cast, oversaturation, flatness), then
+writes findings against five axes: composition, colour, impression, path,
+and **hero** (is the followed subject the intended one). `episode_qc build`
+validates the findings into a typed `ReelQC` and stamps `clip_digest`
+itself, from the file on disk — never from the judge's claim — so a
+re-rendered episode invalidates its own verdict. The pure gate refuses
+incomplete, then stale, then blocking, in that order, before a single
+ffmpeg call runs, and carries no waiver field anywhere on this path
+(governance #8). **The half that did NOT land: episode RENDERING still
+runs as a Python `ThreadPoolExecutor` fan-out, not a subagent** — design §2
+considered and rejected replacing the pool with an agentic fan-out, because
+the router would then own the middle of the driver and the reproducible
+one-command SP1 run (a hand-authored `EDL.json` straight to a delivered
+reel) would stop existing. The feedback below asked for rendering in a
+subagent; that half was answered with a reasoned no, not a silent drop. See
+the Done entry in `build-status.md` for the full mechanism, the design §8
+hole (`build_reel`'s retry loop still reprocesses a culprit episode AFTER
+its verdict, so a re-rendered episode ships judged one render out of date —
+named on the delivery's attestation, not prevented), and the design §12
+honest limits (the gate proves the artifact's presence and its digest
+binding, never that anyone actually looked).
 
 **Feedback (as given):**
 - Episode **rendering** must run in a subagent.

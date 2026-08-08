@@ -81,7 +81,7 @@ Phase 1 has to write one, so close the asymmetry first.
 - Modify: `scripts/lib/models.py` (`ReelEpisode` ~1043, `ReelManifest` ~1065)
 - Test: `tests/lib/test_models.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_reel_manifest_round_trips_through_json(tmp_path):
@@ -108,12 +108,12 @@ def test_reel_episode_to_dict_is_the_from_dict_shape():
                             "route": None, "path": "p.json", "meta": "m.json"}
 ```
 
-- [ ] **Step 2: Run it, expect failure**
+- [x] **Step 2: Run it, expect failure**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_manifest_round -x -q`
 Expected: `AttributeError: 'ReelManifest' object has no attribute 'write'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `ReelEpisode` (it is `@dataclass(frozen=True)` — add the method, change no fields):
 
@@ -142,12 +142,12 @@ In `ReelManifest`:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
 ```
 
-- [ ] **Step 4: Green**
+- [x] **Step 4: Green**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py && git commit -m "feat(models): ReelManifest.to_dict/write closes the read-without-write asymmetry"
@@ -161,7 +161,7 @@ git add scripts/lib/models.py tests/lib/test_models.py && git commit -m "feat(mo
 - Create: `scripts/lib/episode_qc.py`
 - Test: `tests/lib/test_episode_qc.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """The per-episode QC contract (design docs/specs/2026-08-08-episode-qc-design.md §4)."""
@@ -234,11 +234,11 @@ def test_duplicate_indices_are_refused():
                          EpisodeVerdict(idx=0, clip="b.mp4", clip_digest="cd")))
 ```
 
-- [ ] **Step 2: Run, expect ModuleNotFoundError**
+- [x] **Step 2: Run, expect ModuleNotFoundError**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_episode_qc.py -x -q`
 
-- [ ] **Step 3: Implement `scripts/lib/episode_qc.py`**
+- [x] **Step 3: Implement `scripts/lib/episode_qc.py`**
 
 ```python
 """Per-episode QC verdicts (design docs/specs/2026-08-08-episode-qc-design.md §4) —
@@ -430,7 +430,7 @@ class ReelQC:
         return "\n".join(lines).rstrip() + "\n"
 ```
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_episode_qc.py -q`
 
@@ -446,7 +446,7 @@ git add scripts/lib/episode_qc.py tests/lib/test_episode_qc.py && git commit -m 
 - Modify: `scripts/lib/episode_qc.py`
 - Test: `tests/lib/test_episode_qc.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from scripts.lib.episode_qc import gate     # add to the existing import line
@@ -488,11 +488,11 @@ def test_a_blocking_finding_stops_the_reel():
     assert problems == ["episode 1: [blocking] composition — ep0 @1.2s, head clipped"]
 ```
 
-- [ ] **Step 2: Run, expect ImportError**
+- [x] **Step 2: Run, expect ImportError**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_episode_qc.py -k gate -x -q`
 
-- [ ] **Step 3: Implement (append to `scripts/lib/episode_qc.py`)**
+- [x] **Step 3: Implement (append to `scripts/lib/episode_qc.py`)**
 
 ```python
 def _short(digest: str) -> str:
@@ -529,7 +529,7 @@ def gate(qc: ReelQC, digests: dict) -> tuple:
     return None, []
 ```
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_episode_qc.py -q`
 
@@ -545,7 +545,7 @@ git add scripts/lib/episode_qc.py tests/lib/test_episode_qc.py && git commit -m 
 - Create: `scripts/lib/naturalness.py`
 - Test: `tests/lib/test_naturalness.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """The colour-naturalness sensor (design docs/specs/2026-08-08-episode-qc-design.md §5)."""
@@ -603,11 +603,11 @@ def test_no_frames_is_refused():
         naturalness.measure([])
 ```
 
-- [ ] **Step 2: Run, expect ModuleNotFoundError**
+- [x] **Step 2: Run, expect ModuleNotFoundError**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_naturalness.py -x -q`
 
-- [ ] **Step 3: Implement `scripts/lib/naturalness.py`**
+- [x] **Step 3: Implement `scripts/lib/naturalness.py`**
 
 ```python
 """Colour-naturalness measurement (design docs/specs/2026-08-08-episode-qc-design.md §5).
@@ -689,7 +689,7 @@ def evaluate(stats: dict) -> dict:
             "flat": stats["contrast"] < FLAT_SPREAD}
 ```
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_naturalness.py -q`
 
@@ -705,7 +705,7 @@ git add scripts/lib/naturalness.py tests/lib/test_naturalness.py && git commit -
 - Create: `scripts/episode_qc.py`
 - Test: `tests/test_episode_qc.py`
 
-- [ ] **Step 1: Write the failing tests** (unit level — `pack`'s ffmpeg half is proved in Task 8)
+- [x] **Step 1: Write the failing tests** (unit level — `pack`'s ffmpeg half is proved in Task 8)
 
 ```python
 """episode_qc driver — validation and stamping (design §6/§7)."""
@@ -786,11 +786,11 @@ def test_pack_refuses_an_episode_with_no_sidecar_path(tmp_path):
         episode_qc.pack(str(ep_path), str(tmp_path / "qc"))
 ```
 
-- [ ] **Step 2: Run, expect ModuleNotFoundError**
+- [x] **Step 2: Run, expect ModuleNotFoundError**
 
 Run: `.venv/bin/python -m pytest tests/test_episode_qc.py -x -q`
 
-- [ ] **Step 3: Implement `scripts/episode_qc.py`**
+- [x] **Step 3: Implement `scripts/episode_qc.py`**
 
 ```python
 """Per-episode QC driver (design docs/specs/2026-08-08-episode-qc-design.md §6/§7).
@@ -947,7 +947,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/test_episode_qc.py -q`
 
@@ -964,7 +964,7 @@ git add scripts/episode_qc.py tests/test_episode_qc.py && git commit -m "feat(ep
   `scripts/build_reel.py`
 - Test: `tests/lib/test_build_reel.py`, `tests/test_deliver.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_build_reel.py — with the module's existing fake-driver style
@@ -994,9 +994,9 @@ def test_an_unjudged_delivery_says_so(tmp_path, ...):
     assert json.loads(...)["episode_qc"] == {"state": "absent"}
 ```
 
-- [ ] **Step 2: Run, expect failures (`KeyError: 'reprocessed'`, missing attestation key)**
+- [x] **Step 2: Run, expect failures (`KeyError: 'reprocessed'`, missing attestation key)**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `provenance.Attestation` — one new field, defaulted, so old sidecars stay readable and
 `PROV_V` does not move:
@@ -1047,7 +1047,7 @@ and at the deliver arm, before calling `deliver.deliver`:
                     "reprocessed": sorted(reprocessed)}
 ```
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_build_reel.py tests/test_deliver.py -q`
 
@@ -1063,7 +1063,7 @@ git add scripts/lib/provenance.py scripts/deliver.py scripts/build_reel.py tests
 - Modify: `scripts/edl_to_reel.py`
 - Test: `tests/lib/test_edl_to_reel.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_phase_two_refuses_a_reel_with_no_qc_artifact(tmp_path):
@@ -1099,9 +1099,9 @@ def test_the_single_command_path_records_that_nothing_judged_it(tmp_path, monkey
     assert seen["episode_qc"] == {"state": "absent"}
 ```
 
-- [ ] **Step 2: Run, expect `AttributeError: module has no attribute 'assemble_reel'`**
+- [x] **Step 2: Run, expect `AttributeError: module has no attribute 'assemble_reel'`**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Refactor `edl_to_reel` into a shared builder plus three entry points. The existing body
 from `edl = EDL.from_json(edl_path)` down to the `rm.provenance = {...}` assignment
@@ -1224,7 +1224,7 @@ Keep `--work-dir` and `--out-dir` required for both paths (`--out-dir` is unused
 phase 2 — it derives the dir from `--from-episodes` — so *drop* it from the phase-2
 call rather than pass a second, possibly different, directory).
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py -q`
 
@@ -1240,7 +1240,7 @@ git add scripts/edl_to_reel.py tests/lib/test_edl_to_reel.py && git commit -m "f
 - Modify: `scripts/montage.py` (`V1_STAGES` ~line 68)
 - Test: `tests/lib/test_montage.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_the_qc_stage_sits_between_the_episodes_and_the_reel():
@@ -1258,9 +1258,9 @@ def test_next_points_at_the_qc_stage_once_the_episodes_exist(tmp_path):
     assert montage.status(str(tmp_path))["next"] == "episode-qc"
 ```
 
-- [ ] **Step 2: Run, expect failure**
+- [x] **Step 2: Run, expect failure**
 
-- [ ] **Step 3: Implement** — replace the single `deliver` row with three:
+- [x] **Step 3: Implement** — replace the single `deliver` row with three:
 
 ```python
     Stage("episodes", "EPISODES.json", "required",
@@ -1280,7 +1280,7 @@ def test_next_points_at_the_qc_stage_once_the_episodes_exist(tmp_path):
 `montage.status` keys the delivered flag off `st.key == "deliver"`, which still exists —
 no change there.
 
-- [ ] **Step 4: Green + commit**
+- [x] **Step 4: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -q`
 
@@ -1295,7 +1295,7 @@ git add scripts/montage.py tests/lib/test_montage.py && git commit -m "feat(epis
 **Files:**
 - Create: `tests/integration/test_episode_qc.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 """The QC gate against real pixels (design docs/specs/2026-08-08-episode-qc-design.md §11).
@@ -1416,14 +1416,14 @@ def test_an_unjudged_reel_never_reaches_assembly(tmp_path, sample_clip):
     assert res["finding"]["reason"] == "episode-qc-missing"
 ```
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_episode_qc.py -q`
 Expected: PASS (5 tests). If `assemble_reel` cannot deliver because the two synthetic
 clips fail a *reel* gate, use the x-offsets from `tests/integration/test_reel_backhalf.py`
 (645 / 1045) exactly — they are the pair already proven to pass variety and colour.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_episode_qc.py && git commit -m "test(episode-qc): the gate against real pixels"
@@ -1438,7 +1438,7 @@ git add tests/integration/test_episode_qc.py && git commit -m "test(episode-qc):
 - Modify: `skills/using-montage/SKILL.md`, `skills/process-episode/SKILL.md`,
   `tests/test_skill_convention.py`
 
-- [ ] **Step 1: Write `skills/episode-qc/SKILL.md`**
+- [x] **Step 1: Write `skills/episode-qc/SKILL.md`**
 
 Requirements the suite enforces (`tests/test_skill_convention.py`): the description
 leads with `Conveyor stage`; every pipeline command goes through `"$VG" scripts.X`;
@@ -1467,7 +1467,7 @@ Boundaries to state explicitly:
   diligent judge from a lazy one (§12) — say so, so nobody reads the green tick as
   proof.
 
-- [ ] **Step 2: Write `skills/episode-qc/episode-reviewer.md`**
+- [x] **Step 2: Write `skills/episode-qc/episode-reviewer.md`**
 
 The dispatch template, modelled on `skills/reel-review/reel-reviewer.md`. It must:
 - name the five axes and what each one is about (§4);
@@ -1485,7 +1485,7 @@ The dispatch template, modelled on `skills/reel-review/reel-reviewer.md`. It mus
 - require the output shape `{"summary": str, "reviewer": str, "findings": [...]}`
   written to the packet's own `findings.json`.
 
-- [ ] **Step 3: Wire `using-montage`**
+- [x] **Step 3: Wire `using-montage`**
 
 Replace step 12's single `edl_to_reel` call with the three stages, keeping the existing
 `<run>` layout:
@@ -1503,7 +1503,7 @@ State that the QC stage is **required** and that a blocking verdict stops the ru
 with the routed finding — it is not one of the three checkpoints, and the human is not
 asked to approve a clean pass.
 
-- [ ] **Step 4: Correct `process-episode`**
+- [x] **Step 4: Correct `process-episode`**
 
 Its "Editorial gate" section describes a per-episode judgment that the conveyor never
 performs — `edl_to_reel` calls the orchestrator as a Python function. Rewrite the
@@ -1512,7 +1512,7 @@ router-driven run the per-episode judgment is the `episode-qc` stage, which judg
 delivered clip before the reel is assembled. Keep the `stabilize` and degraded-route
 guidance unchanged.
 
-- [ ] **Step 5: Green + commit**
+- [x] **Step 5: Green + commit**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py tests/test_plugin_manifests.py -q`
 
@@ -1529,7 +1529,7 @@ git add skills tests/test_skill_convention.py && git commit -m "feat(episode-qc)
   (#3 status), `CLAUDE.md` (registry rows), `docs/plans/2026-08-08-episode-qc.md`
   (tick the boxes)
 
-- [ ] **Step 1: Run the mutation battery**
+- [x] **Step 1: Run the mutation battery**
 
 Each mutation is applied to the production source, the named tests are run, the source
 is reverted. A mutation that survives is a **coverage hole to close in this task**, not
@@ -1549,12 +1549,12 @@ a note for later.
 | 10 | `naturalness.measure` pools pixels across frames instead of averaging | `test_frames_are_averaged_not_concatenated` |
 | 11 | the `episode-qc` Stage kind flips to `optional` | `test_the_qc_stage_sits_between_the_episodes_and_the_reel` |
 
-- [ ] **Step 2: Full suite**
+- [x] **Step 2: Full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: everything green, no test skipped that was not skipped before this branch.
 
-- [ ] **Step 3: Docs**
+- [x] **Step 3: Docs**
 
 - `docs/build-status.md`: a Done entry (what landed, the §8 hole in plain words, the
   §12 limits, and what the mutation battery did and did not probe), and rewrite the
@@ -1566,7 +1566,7 @@ Expected: everything green, no test skipped that was not skipped before this bra
 - `CLAUDE.md`: two registry rows (design + plan), in the established one-line style.
 - Tick every `- [ ]` in this plan.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A && git commit -m "docs(episode-qc): status, pipeline map, backlog, registry"

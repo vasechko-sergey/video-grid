@@ -4,13 +4,103 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-07._
+_Last updated: 2026-08-08._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Per-episode QC gate before reel assembly (fixes-backlog #3, the per-episode
+  half of #12, cinematic-quality playbook P3) DONE (2026-08-08)** — plan
+  `docs/plans/2026-08-08-episode-qc.md` + design
+  `docs/specs/2026-08-08-episode-qc-design.md`, Tasks 0–10 (branch
+  `feat/episode-qc`, commits `15e773d`..`d5aa4e8` + this docs sync). The
+  2026-08-03 real run shipped episodes nobody had looked at: `edl_to_reel`
+  calls `process_episode.process_episode` as a **Python function** inside a
+  `ThreadPoolExecutor`, never a subagent, so the editorial gate
+  `skills/process-episode/SKILL.md` describes was dead text on every
+  conveyor run — it fires only when a human drives one episode by hand. This
+  slice puts a new gate where the render actually happens, not where the old
+  skill text imagined it. `edl_to_reel` splits into two phases around that
+  seam: `--stop-after-episodes` renders every episode and writes
+  `EPISODES.json`, a serialized `ReelManifest` (`ReelEpisode`/`ReelManifest`
+  finally gain `to_dict`/`write`, Task 0 — closing an asymmetry where
+  `build_reel`'s CLI could read a manifest that nothing in the codebase could
+  write); `--from-episodes` gates on `EPISODE_QC.json` found **beside it, by
+  convention** (no flag to forget — the editorial-constraints slice's own
+  reasoning) before `build_reel` runs at all. One fresh judge subagent per
+  episode (cap 3, the new `episode-qc` SKILL) reads an evidence packet — a
+  frame strip off the DELIVERED clip, the storyboard, `check_episode`'s
+  mechanical `report.json`, and a new colour-naturalness sensor
+  (`lib/naturalness.py`: blown highlights / crushed blacks / colour cast /
+  oversaturation / flatness, averaged per frame, never pooled, so one bad
+  frame in a long episode can't read as a blown episode) — and writes
+  findings against five axes: `composition`, `colour`, `impression`, `path`,
+  and `hero` (*is the followed subject the intended one* — its own axis
+  because a beautifully composed, naturally graded, smoothly tracked episode
+  that follows a stranger must still fail). `episode_qc build` validates
+  every judge's raw findings into a typed `ReelQC`
+  (`EpisodeVerdict.verdict` is a **computed** property — `revise` iff any
+  `blocking` finding — never a stored field a hand-edited artifact could lie
+  through) and stamps `clip_digest` **itself**, from the file on disk,
+  overwriting whatever the judge's file claimed — the producer/consumer
+  split that turns "this episode was judged" into "**this render** was
+  judged." The pure gate (`episode_qc.gate`) refuses in a fixed order —
+  incomplete (some episode has no verdict, or a verdict names an episode the
+  reel doesn't have), then stale (a verdict's digest no longer matches the
+  clip on disk), then blocking (a judged verdict carries a `blocking`
+  finding) — before a single ffmpeg call, writing nothing. No waiver field
+  exists anywhere on this path (governance #8): a subagent proposes
+  findings, never the gate's inputs. `montage.V1_STAGES`' single `deliver`
+  row becomes three required stages — `episodes` → `episode-qc` →
+  `deliver` — so a run cannot resume past an episode nobody judged.
+  **The hole this shape carries (design §8), stated plainly:** `build_reel`'s
+  loop-2 reprocesses a culprit episode (colour convergence, and for a
+  stabilized episode a full re-track) AFTER the QC gate has already run — a
+  verdict on that episode is stale the moment its clip is rebuilt, and this
+  slice does not close that. Forbidding the auto-reprocess would close it,
+  and was rejected (design §2) because it would also kill the colour-
+  convergence loop Phase A.5 exists for. What lands instead: `build_reel`
+  reports every episode it reprocessed (`result["reprocessed"]`, accumulated
+  across every round, not just the last), and the delivery's attestation
+  carries an `episode_qc` block (`state: "judged"|"absent"`, the per-episode
+  `judged` digests, and `reprocessed_after`) — so a re-rendered-post-verdict
+  episode is at least **named**, never silently reshipped as "judged" without
+  qualification. The single-command `edl_to_reel` (the hand-authored SP1
+  front door) still ships with `episode_qc: {"state": "absent"}` — unjudged,
+  and honestly says so; no silent bypass, not no bypass. **§12 honest
+  limits, carried here rather than left in the design alone:** the stage
+  gates the artifact's PRESENCE and its digest BINDING, never proof that
+  anyone looked — an empty findings list is indistinguishable from a
+  diligent judge's; the sensor's advisory flags rest on threshold constants
+  that are first cuts, never run against real graded footage; a pan episode
+  has no route and no marker, so its `hero` axis is reported not-judgeable,
+  never passed; QC is per-episode and blind to adjacency (still
+  reel-review's question); and an agent with a shell can re-run the judge
+  until it comes back green — `reviewer` is a record, not a prohibition.
+  **Mutation battery (Task 10, 11 rows): all eleven held** — no coverage
+  hole to close. It probed the gate's three-reason precedence and each
+  reason's own predicate (a missing verdict, blocking checked before stale,
+  the digest comparison defeated), the digest producer/consumer split
+  (`build_qc` ignoring the judge's own claimed digest), the fail-loud
+  missing-`findings.json` refusal, the computed-not-stored `verdict`
+  property, `assemble_reel` actually gating before `build_reel` runs, the
+  single-shot path's honest `absent` state, the reprocessed accounting
+  (whose accumulation across rounds is separately pinned by
+  `test_reprocessed_accumulates_across_rounds_for_different_episodes`), the
+  sensor's per-frame averaging (vs. a pixel-pooling regression), and the
+  router stage's `required` kind. **It did not and cannot probe** whether a
+  judge actually looked before writing an empty findings list (§12's own
+  limit — no code predicate distinguishes diligence from a rubber stamp),
+  the sensor's threshold VALUES (only its aggregation logic was mutated),
+  or the `episode-qc` SKILL's dispatch behavior (cap-3 concurrency, one
+  packet per judge) — that lives in prose dispatched to subagents, not in a
+  function the battery can call. **2403 passed / 3 skipped**, full suite
+  including integration (the same three skips as the pre-branch baseline of
+  2339 passed / 3 skipped — demucs / torchreid / no-network iTunes smoke;
+  none newly skipped), no golden moved.
 
 - **Editorial-constraint memory (fixes-backlog #14, the last CHEAP item of
   cinematic-quality playbook P3 — design §0) DONE (2026-08-07)** — plan
@@ -2594,7 +2684,15 @@ _Last updated: 2026-08-07._
   moved with the corrected activity curve. **#14 (editorial-constraint
   memory) is now also DONE (2026-08-07, see the Done entry above)** — a
   stated rule now has a home (`CONSTRAINTS.json`) and a gate
-  (`write_edit_plan`) that binds it to every re-cut. What is left of P3:
+  (`write_edit_plan`) that binds it to every re-cut. **#3 (per-episode QC in
+  subagents) is now also DONE (2026-08-08, see the Done entry above)** — a
+  fresh judge subagent per episode reads a frame strip off the delivered
+  clip, the storyboard, and a new colour-naturalness sensor, and writes
+  findings against five axes (composition/colour/impression/path/hero); the
+  pure gate refuses an incomplete, stale, or blocking verdict before
+  `build_reel` ever runs, and the judge cannot write the digest that binds
+  its verdict to the bytes it judged (governance #8, no waiver). **After
+  this slice, only one item of P3 is still open:**
   - **The hero-conditioned re-scan** (S2 design
     `docs/specs/2026-08-06-mood-preset-variety-design.md` §14) — after cast
     naming, re-measure the windows holding a named hero cropped to their
@@ -2604,9 +2702,6 @@ _Last updated: 2026-08-07._
     a largest-person SWAP from reading as motion, but it still measures
     whichever tracks are present, not one named hero — a different, narrower
     question this item still answers.
-  - **#3 — per-episode QC in subagents** (needs design) — the preset (S2)
-    plus a real ranking (S3) finally give QC something concrete to judge;
-    the judging stage itself is a separate build.
   This is the active critical path — the north star (`docs/fixes-backlog.md`,
   2026-08-03) reprioritized ahead of the front-half items below, which stay
   open but are no longer next. **OR**
