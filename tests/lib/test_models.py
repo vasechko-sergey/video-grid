@@ -1493,9 +1493,45 @@ def test_zoom_spec_refuses_a_fraction_at_or_below_zero():
         ZoomSpec(start=1.0, end=0.0)
 
 
-def test_zoom_spec_refuses_a_bool_before_it_can_read_as_one():
-    with pytest.raises(ValueError, match="must be a number"):
-        ZoomSpec(start=True, end=0.7)
+@pytest.mark.parametrize("bad", [10**400, -(10**400)])
+def test_zoom_spec_refuses_an_int_too_large_for_a_float(bad):
+    # json.loads builds ints of any size, and float() raises OverflowError — NOT
+    # ValueError — on one past float range. The manifest gate catches only
+    # ValueError, so an OverflowError here would escape it as a crash. The range
+    # comparison in ZoomSpec.__post_init__ is therefore done without float() —
+    # same landmine PanSpec documents (test_panspec_refuses_an_int_too_large_for_a_float).
+    with pytest.raises(ValueError) as e:
+        ZoomSpec(start=bad, end=0.5)
+    assert "(0.0, 1.0]" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_zoom_spec_refuses_a_non_finite_fraction(bad):
+    # json.loads accepts bare NaN/Infinity. NaN fails every comparison, so the
+    # `not 0.0 < v <= 1.0` form rejects it for free — pin that it does.
+    with pytest.raises(ValueError) as e:
+        ZoomSpec(start=bad, end=0.5)
+    assert "(0.0, 1.0]" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", [True, False])
+def test_zoom_spec_refuses_a_bool_before_it_can_read_as_one(bad):
+    # isinstance(True, int) is True in Python — {"from": true} must not silently
+    # mean 1.0. False is tested too: False == 0 would ALSO fail ZoomSpec's own
+    # range check (0.0 is excluded), but that would raise the wrong message —
+    # this pins that the bool guard fires first, not the range guard.
+    with pytest.raises(ValueError) as e:
+        ZoomSpec(start=bad, end=0.7)
+    msg = str(e.value)
+    assert "ZoomSpec.start" in msg and "must be a number" in msg and repr(bad) in msg
+
+
+@pytest.mark.parametrize("bad", ["0.7", None, [0.7]])
+def test_zoom_spec_refuses_a_non_number(bad):
+    with pytest.raises(ValueError) as e:
+        ZoomSpec(start=bad, end=0.5)
+    msg = str(e.value)
+    assert "ZoomSpec.start" in msg and "(0.0, 1.0]" in msg and repr(bad) in msg
 
 
 def test_zoom_spec_refuses_a_zoom_that_does_not_move():

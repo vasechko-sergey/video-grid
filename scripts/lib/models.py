@@ -502,7 +502,7 @@ class PanSpec:
         return cls(start=d["from"], end=d["to"])
 
 
-@dataclass
+@dataclass(frozen=True)
 class ZoomSpec:
     """A subject-anchored push-in / pull-out (design 2026-08-08).
 
