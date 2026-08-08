@@ -3,8 +3,11 @@ import threading
 import pytest
 from pathlib import Path
 from scripts import edl_to_reel
+from scripts.lib import provenance
 from scripts.lib.edl import EDL, write_edl
+from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.footage import DESCRIPTOR_LEN
+from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
 
 
@@ -616,3 +619,80 @@ def test_an_explicit_changelog_wins(tmp_path, monkeypatch):
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"), changelog="regraded ep1")
     assert seen["rm"].changelog == "regraded ep1"
+
+
+# --- Task 6: the two-phase edl_to_reel and the gate -------------------------------
+
+def _manifest(tmp_path, n=2):
+    """A ReelManifest whose clips are REAL files on disk: assemble_reel hashes each
+    one (provenance.digest_file) to run the gate, so a fixture that only fakes the
+    path would crash every digest-dependent test on a missing file instead of
+    exercising the gate itself."""
+    eps = []
+    for i in range(n):
+        clip = tmp_path / f"ep{i}.mp4"
+        clip.write_bytes(f"clip-{i}".encode())
+        eps.append(ReelEpisode(manifest={"segment": f"s{i}.mp4"}, clip=str(clip),
+                               route=f"r{i}.json"))
+    return ReelManifest(episodes=eps, target_dur=4.0)
+
+
+def _blocking_finding():
+    return EpisodeFinding(axis="composition", severity="blocking",
+                          evidence="ep0 @1.2s, head clipped", route="reprocess",
+                          suggestion="raise the crop by 6% of frame height")
+
+
+def _qc(rm, findings_by_idx=None):
+    """A ReelQC bound to rm's REAL clip bytes: clip_digest is computed the same way
+    episode_qc.build stamps it (provenance.digest_file off the file on disk), so the
+    gate reads these verdicts as judging THIS reel's clips, not stale ones."""
+    findings_by_idx = findings_by_idx or {}
+    verdicts = [EpisodeVerdict(idx=i, clip=ep.clip, clip_digest=provenance.digest_file(ep.clip),
+                               findings=tuple(findings_by_idx.get(i, ())))
+                for i, ep in enumerate(rm.episodes)]
+    return ReelQC(episodes=tuple(verdicts))
+
+
+def test_phase_two_refuses_a_reel_with_no_qc_artifact(tmp_path):
+    rm = _manifest(tmp_path)                     # this file's existing helper style
+    rm.write(tmp_path / "EPISODES.json")
+    res = edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "episode-qc-missing"
+
+
+def test_phase_two_refuses_a_blocking_verdict_before_any_ffmpeg(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda *a, **k: called.append(1))
+    rm = _manifest(tmp_path)
+    rm.write(tmp_path / "EPISODES.json")
+    _qc(rm, {0: (_blocking_finding(),)}).write(tmp_path / "EPISODE_QC.json")
+    res = edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "episode-qc-blocking"
+    assert called == []                          # nothing was assembled
+
+
+def test_phase_two_passes_the_qc_state_into_the_run_provenance(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda rm, *a, **k: seen.update(rm.provenance) or {"status": "delivered"})
+    rm = _manifest(tmp_path)
+    rm.write(tmp_path / "EPISODES.json")
+    _qc(rm).write(tmp_path / "EPISODE_QC.json")                       # clean QC — no findings
+    edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert seen["episode_qc"]["state"] == "judged"
+    assert set(seen["episode_qc"]["judged"]) == {"0", "1"}
+
+
+def test_the_single_command_path_records_that_nothing_judged_it(tmp_path, monkeypatch):
+    """The SP1 hand-authored front door still ships unjudged — and says so (design §10)."""
+    seen = {}
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda rm, *a, **k: seen.update(rm.provenance) or {"status": "delivered"})
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["episode_qc"] == {"state": "absent"}

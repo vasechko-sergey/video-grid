@@ -12,8 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import hero as hero_lib, provenance, reid
+from scripts.lib import episode_qc as qc_lib, hero as hero_lib, provenance, reid
 from scripts.lib.edl import EDL, preflight
+from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
 from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
@@ -21,12 +22,13 @@ from scripts.lib.project import ProjectConfig
 DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
 
 
-def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
-                work_dir: str, out_dir: str, *, music: str | None = None,
-                titles: str | None = None, jobs: int = DEFAULT_JOBS,
-                color_delta_max: float | None = None, changelog: str = "") -> dict:
-    """Drive EDL.json → a delivered REEL_v1.mp4, or a machine-readable stop-and-report
-    for a pipeline finding (invalid EDL, a failed episode, or a build_reel stop).
+def _build_manifest(edl_path: str, project_path: str, footage_root: str,
+                    work_dir: str, out_dir: str, *, music: str | None = None,
+                    jobs: int = DEFAULT_JOBS, color_delta_max: float | None = None,
+                    changelog: str = "") -> tuple[ReelManifest | None, dict | None]:
+    """Everything up to the ReelManifest: preflight, extract, the loop-1 fan-out, the
+    run provenance. Returns (rm, None) or (None, stop_and_report).
+
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
     raise ValueError instead (a hard setup error, not an editorial finding to route).
 
@@ -63,7 +65,7 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     # 1. resolve + preflight every episode — fail in ms, before any ffmpeg
     mds, stop = preflight(edl, cfg, seg_dir, out_dir)
     if stop:
-        return stop
+        return None, stop
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
     extract.extract_edl(edl, footage_root, seg_dir)
@@ -109,9 +111,9 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
             e.add_note(f"raised while processing episode {i} (segment {md['segment']})")
             raise
         if res.get("status") != "mechanical_pass":
-            return {"status": "stop_and_report",
-                    "finding": {"reason": "episode-failed", "episode_idx": i,
-                                "sub_status": res.get("status")}, "sub": res}
+            return None, {"status": "stop_and_report",
+                          "finding": {"reason": "episode-failed", "episode_idx": i,
+                                      "sub_status": res.get("status")}, "sub": res}
         epdir = str(Path(work_dir) / f"ep{i}")
         # A pan episode has no route.json — process_episode wrote none, deliberately.
         # Naming a path that was never written would be a lie the reel manifest then
@@ -146,14 +148,80 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                              "state": "intact" if edl.provenance.get("self") else "unstamped"},
                      "engine_at_start": started,
                      "overrides": provenance.spec_overrides(rm.check_spec)}
+    return rm, None
+
+
+def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
+                work_dir: str, out_dir: str, *, music: str | None = None,
+                titles: str | None = None, jobs: int = DEFAULT_JOBS,
+                color_delta_max: float | None = None, changelog: str = "") -> dict:
+    """The SP1 front door: a hand-authored EDL.json -> a delivered REEL_v1.mp4 in one
+    command. No per-episode QC runs on this path — the delivery's attestation records
+    `episode_qc: absent` so an unjudged reel is DISTINGUISHABLE from a judged one, which
+    is the honest half of the gate (design §10): no silent bypass, not no bypass."""
+    rm, stop = _build_manifest(edl_path, project_path, footage_root, work_dir, out_dir,
+                               music=music, jobs=jobs, color_delta_max=color_delta_max,
+                               changelog=changelog)
+    if stop:
+        return stop
+    rm.provenance["episode_qc"] = {"state": "absent"}
+    return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
+
+
+def process_episodes(edl_path: str, project_path: str, footage_root: str,
+                     work_dir: str, out_dir: str, *, music: str | None = None,
+                     jobs: int = DEFAULT_JOBS, color_delta_max: float | None = None,
+                     changelog: str = "") -> dict:
+    """Phase 1: render every episode, then STOP. Writes EPISODES.json (a serialized
+    ReelManifest) beside the ep{i}.mp4 it describes, so the verdicts and the judged
+    clips cannot be separated (design §3)."""
+    rm, stop = _build_manifest(edl_path, project_path, footage_root, work_dir, out_dir,
+                               music=music, jobs=jobs, color_delta_max=color_delta_max,
+                               changelog=changelog)
+    if stop:
+        return stop
+    p = Path(out_dir) / "EPISODES.json"
+    rm.write(p)
+    return {"status": "episodes_ready", "episodes": str(p), "count": len(rm.episodes),
+            "clips": [e.clip for e in rm.episodes]}
+
+
+def assemble_reel(episodes_path: str, work_dir: str, *, titles: str | None = None) -> dict:
+    """Phase 2: the QC gate, then build_reel. The out dir is EPISODES.json's own
+    directory — one fewer flag to point at the wrong place, and the gate's artifact is
+    found there BY CONVENTION (design §3/§7).
+
+    Every refusal below happens before a single ffmpeg call and writes nothing."""
+    rm = ReelManifest.from_json(episodes_path)
+    out_dir = str(Path(episodes_path).parent)
+    qc_path = Path(out_dir) / "EPISODE_QC.json"
+    if not qc_path.exists():
+        return {"status": "stop_and_report",
+                "finding": {"reason": "episode-qc-missing", "episode_idx": None,
+                            "problems": [
+                                f"no EPISODE_QC.json beside {episodes_path} — every episode "
+                                f"must be judged before the reel is assembled: run "
+                                f"`episode_qc pack`, dispatch the episode-qc judges, then "
+                                f"`episode_qc build`"]}}
+    qc = ReelQC.from_json(qc_path)
+    digests = {i: provenance.digest_file(ep.clip) for i, ep in enumerate(rm.episodes)}
+    reason, problems = qc_lib.gate(qc, digests)
+    if reason:
+        return {"status": "stop_and_report",
+                "finding": {"reason": reason, "episode_idx": None, "problems": problems}}
+    prov = dict(rm.provenance)
+    prov["episode_qc"] = {"state": "judged",
+                          "judged": {str(i): d for i, d in sorted(digests.items())}}
+    rm.provenance = prov
     return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="drive a hand-authored EDL.json → delivered REEL_v1.mp4")
-    ap.add_argument("edl", help="path to an EDL.json (design docs/specs/2026-07-11-extract-spine-design.md)")
-    ap.add_argument("--project", required=True, help="project.json — episodes inherit its canvas/delivery")
-    ap.add_argument("--footage-root", required=True, help="dir the EDL 'source' paths resolve against")
+    ap.add_argument("edl", nargs="?", default=None,
+                    help="path to an EDL.json (omit with --from-episodes)")
+    ap.add_argument("--project", default=None, help="project.json — episodes inherit canvas/delivery")
+    ap.add_argument("--footage-root", default=None, help="dir the EDL 'source' paths resolve against")
     ap.add_argument("--work-dir", required=True, help="scratch for segments / per-episode / reel master")
     ap.add_argument("--out-dir", required=True, help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4")
     ap.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
@@ -168,12 +236,31 @@ def main() -> None:
     ap.add_argument("--changelog", default="",
                     help="version-log note for this delivery — the REASON for the version "
                          "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'")
+    phase = ap.add_mutually_exclusive_group()
+    phase.add_argument("--stop-after-episodes", action="store_true",
+                       help="render every episode, write EPISODES.json, and stop — the "
+                            "seam the per-episode QC gate sits in (design 2026-08-08)")
+    phase.add_argument("--from-episodes", default=None,
+                       help="an EPISODES.json from --stop-after-episodes: gate on "
+                            "EPISODE_QC.json beside it, then assemble and deliver")
     a = ap.parse_args()
-    result = edl_to_reel(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
-                         music=a.music, titles=a.titles, jobs=a.jobs,
-                         color_delta_max=a.color_delta_max, changelog=a.changelog)
+    if a.from_episodes:
+        if a.edl or a.project or a.footage_root:
+            ap.error("--from-episodes resumes a run whose episodes are already rendered; "
+                     "the EDL / --project / --footage-root are not read again")
+        result = assemble_reel(a.from_episodes, a.work_dir, titles=a.titles)
+    else:
+        missing = [n for n, v in (("edl", a.edl), ("--project", a.project),
+                                  ("--footage-root", a.footage_root)) if not v]
+        if missing:
+            ap.error(f"missing {', '.join(missing)} — required unless --from-episodes is given")
+        fn = process_episodes if a.stop_after_episodes else edl_to_reel
+        kw = {} if a.stop_after_episodes else {"titles": a.titles}
+        result = fn(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
+                    music=a.music, jobs=a.jobs, color_delta_max=a.color_delta_max,
+                    changelog=a.changelog, **kw)
     print(json.dumps(result, indent=2))
-    raise SystemExit(0 if result["status"] == "delivered" else 1)
+    raise SystemExit(0 if result["status"] in ("delivered", "episodes_ready") else 1)
 
 
 if __name__ == "__main__":
