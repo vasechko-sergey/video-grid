@@ -52,6 +52,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                          f"stem longer than its fragment); re-pick the fragment "
                          f"(beats --auto-start --duration {rm.target_dur:.0f}) or lower the target")
     attempts: dict[int, int] = {}
+    reprocessed: set[int] = set()          # design §8: which clips left the gate behind
     cc: dict[int, tuple[float, float, float]] = {}
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
     audio: str | None = None
@@ -84,10 +85,20 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
+            # design §8: loop-2 re-renders culprits AFTER the QC gate ran, so a verdict on a
+            # reprocessed episode is one render out of date the moment it is rebuilt. That
+            # cannot be undone here, but it must not be hidden either — merge the set of
+            # touched episodes into whatever episode_qc state edl_to_reel already assembled
+            # (possibly nothing) so the attestation names exactly which ones.
+            prov = dict(rm.provenance)
+            qc = dict(prov.get("episode_qc") or {})
+            qc["reprocessed_after"] = sorted(reprocessed)
+            prov["episode_qc"] = qc
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   audio=audio, titles=titles, platform=rm.platform,
-                                  run_provenance=rm.provenance)
-            return {"status": "delivered", "output": out, "report": report.to_dict()}
+                                  run_provenance=prov)
+            return {"status": "delivered", "output": out, "report": report.to_dict(),
+                    "reprocessed": sorted(reprocessed)}
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,
                     "report": report.to_dict(), "attempts": dict(attempts)}
@@ -122,6 +133,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                         "sub": res, "attempts": dict(attempts)}
             clips[item.idx] = res["clip"]
             attempts[item.idx] = attempts.get(item.idx, 0) + 1
+            reprocessed.add(item.idx)
             need_assemble = True
     return {"status": "stop_and_report",             # defensive: next_action escalates a capped reel first
             "finding": {"reason": "reel-cap-exhausted"}, "attempts": dict(attempts)}

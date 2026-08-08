@@ -130,6 +130,7 @@ class Attestation:
     engine_at_deliver: dict = field(default_factory=dict)
     edl: dict = field(default_factory=dict)
     overrides: list = field(default_factory=list)
+    episode_qc: dict = field(default_factory=dict)   # §10: "judged" + digests, or "absent"
     delivered_at: str = ""
     v: int = PROV_V
 
@@ -138,7 +139,8 @@ class Attestation:
                 "master_digest": self.master_digest, "report_digest": self.report_digest,
                 "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
                 "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
-                "overrides": list(self.overrides), "delivered_at": self.delivered_at}
+                "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
+                "delivered_at": self.delivered_at}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Attestation":
@@ -151,6 +153,7 @@ class Attestation:
                    engine_at_start=d.get("engine_at_start") or {},
                    engine_at_deliver=d.get("engine_at_deliver") or {},
                    edl=d.get("edl") or {}, overrides=d.get("overrides") or [],
+                   episode_qc=d.get("episode_qc") or {},
                    delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V))
 
     def write(self, path: str | Path) -> None:

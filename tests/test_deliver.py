@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from scripts import deliver as deliver_mod
@@ -76,3 +77,28 @@ def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch):
     cmd = calls[0]
     assert "-vf" in cmd and "drawtext=" in cmd[cmd.index("-vf") + 1]
     assert cmd.count("-map") == 2 and "copy" in cmd   # mux path: -vf + -map + -c:a copy together
+
+
+def test_the_attestation_carries_the_qc_state(tmp_path, monkeypatch):
+    # design §10: the attestation records which clip digests were judged and which
+    # episodes build_reel re-rendered after the verdict (design §8) — both threaded
+    # through run_provenance["episode_qc"] verbatim into the sidecar.
+    _capture(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path), "note", rep, run_provenance={
+        "engine_at_start": {}, "edl": {}, "overrides": [],
+        "episode_qc": {"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]}})
+    att = json.loads(provenance.attest_path(out).read_text())
+    assert att["episode_qc"] == {"state": "judged", "judged": {"0": "aa"},
+                                 "reprocessed_after": [1]}
+
+
+def test_an_unjudged_delivery_says_so(tmp_path, monkeypatch):
+    # design §10: edl_to_reel with neither two-phase flag is still the SP1 front door
+    # for a hand-authored EDL, and it ships a reel no judge saw — the attestation makes
+    # that distinguishable rather than silently looking like a judged one.
+    _capture(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path), "note", rep,
+                              run_provenance={"episode_qc": {"state": "absent"}})
+    assert json.loads(provenance.attest_path(out).read_text())["episode_qc"] == {"state": "absent"}

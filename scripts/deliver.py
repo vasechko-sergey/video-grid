@@ -67,7 +67,8 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     producer, which always stamps), a mismatched one means the master was re-made after
     the check or assembled outside the pipeline. `run_provenance` carries what only the
     driver knows (the run's start stamp, the EDL's digest and state, the loosened
-    thresholds) into the `REEL_v{n}.attest.json` sidecar this writes."""
+    thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
+    writes."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
@@ -125,6 +126,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         engine_at_start=rp.get("engine_at_start") or {},
         engine_at_deliver=provenance.engine_stamp(),
         edl=rp.get("edl") or {}, overrides=rp.get("overrides") or [],
+        episode_qc=rp.get("episode_qc") or {},
         delivered_at=datetime.now().isoformat(timespec="seconds"),
     ).write(provenance.attest_path(out))
     return out

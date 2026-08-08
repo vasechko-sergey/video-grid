@@ -98,6 +98,17 @@ def test_color_fail_then_pass_reprocesses_then_delivers(monkeypatch, tmp_path):
     assert seen["reprocess"][0]["route"] == "r1.json"     # frozen route reused
 
 
+def test_a_delivered_reel_reports_which_episodes_were_reprocessed(monkeypatch, tmp_path):
+    """build_reel's loop-2 re-renders culprits AFTER the QC gate ran, so which ones
+    it touched has to leave the loop (design §8) — a verdict on ep1 is one render out
+    of date the moment ep1 is rebuilt."""
+    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    _wire(monkeypatch, reports)
+    result = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert result["status"] == "delivered"
+    assert result["reprocessed"] == [1]
+
+
 def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(monkeypatch, tmp_path):
     # Twin of test_color_fail_then_pass_reprocesses_then_delivers, but ep1 stabilizes.
     # process_episode refuses stabilize + a supplied route (design 2026-07-20 §1), so
@@ -470,8 +481,11 @@ def test_build_reel_music_delivers_after_full_budget_plus_a_length_retime(tmp_pa
 
 def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monkeypatch):
     # Task 4: edl_to_reel assembles rm.provenance (the run's start-engine stamp, the EDL's
-    # digest/state, the loosened-threshold diff); build_reel must carry it to deliver
-    # UNCHANGED — deliver is what writes the REEL_v{n}.attest.json sidecar from it.
+    # digest/state, the loosened-threshold diff); build_reel must carry it to deliver,
+    # merging in episode_qc.reprocessed_after (Task 5, design §8) rather than replacing
+    # it — deliver is what writes the REEL_v{n}.attest.json sidecar from it. No reprocess
+    # happened here, so reprocessed_after is empty, but the key is always present: the
+    # attestation must say "none were re-rendered", not stay silent on the question.
     seen = {}
     _wire(monkeypatch, [_pass()])
     monkeypatch.setattr(build_reel.deliver, "deliver",
@@ -479,4 +493,5 @@ def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monke
     rm = _rm()
     rm.provenance = {"edl": {"state": "intact"}}
     build_reel.build_reel(rm, str(tmp_path / "o"), str(tmp_path / "w"))
-    assert seen["run_provenance"] == {"edl": {"state": "intact"}}
+    assert seen["run_provenance"] == {"edl": {"state": "intact"},
+                                      "episode_qc": {"reprocessed_after": []}}
