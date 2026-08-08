@@ -244,6 +244,9 @@ say so rather than guessing a path.
       --work-dir <run>/work [--titles <run>/TITLES.json]
     ```
 
+    No `--out-dir` here — phase 2 takes none and refuses one if given: it
+    derives its delivery dir from `EPISODES.json`'s OWN path and always
+    delivers beside it, so do not re-add the flag by analogy with phase 1.
     Gates on `<run>/out/EPISODE_QC.json` beside `EPISODES.json` (missing /
     incomplete / stale / blocking all refuse before a single ffmpeg call —
     episode-qc having just run should make this a formality, not a surprise),

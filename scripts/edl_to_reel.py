@@ -223,7 +223,10 @@ def main() -> None:
     ap.add_argument("--project", default=None, help="project.json — episodes inherit canvas/delivery")
     ap.add_argument("--footage-root", default=None, help="dir the EDL 'source' paths resolve against")
     ap.add_argument("--work-dir", required=True, help="scratch for segments / per-episode / reel master")
-    ap.add_argument("--out-dir", required=True, help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4")
+    ap.add_argument("--out-dir", default=None,
+                    help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4 — required unless "
+                         "--from-episodes, which refuses it: phase 2 derives its out dir "
+                         "from the EPISODES.json path instead (design §3)")
     ap.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the reel (§5.16)")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
@@ -245,13 +248,16 @@ def main() -> None:
                             "EPISODE_QC.json beside it, then assemble and deliver")
     a = ap.parse_args()
     if a.from_episodes:
-        if a.edl or a.project or a.footage_root:
+        if a.edl or a.project or a.footage_root or a.out_dir:
             ap.error("--from-episodes resumes a run whose episodes are already rendered; "
-                     "the EDL / --project / --footage-root are not read again")
+                     "the EDL / --project / --footage-root are not read again, and "
+                     "--out-dir is not read at all — phase 2 delivers beside EPISODES.json "
+                     "(design §3), so passing it here would silently point at nowhere")
         result = assemble_reel(a.from_episodes, a.work_dir, titles=a.titles)
     else:
         missing = [n for n, v in (("edl", a.edl), ("--project", a.project),
-                                  ("--footage-root", a.footage_root)) if not v]
+                                  ("--footage-root", a.footage_root),
+                                  ("--out-dir", a.out_dir)) if not v]
         if missing:
             ap.error(f"missing {', '.join(missing)} — required unless --from-episodes is given")
         fn = process_episodes if a.stop_after_episodes else edl_to_reel

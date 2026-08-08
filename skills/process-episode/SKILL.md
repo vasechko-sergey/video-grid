@@ -29,7 +29,7 @@ digraph process_episode {
     "Return needs_input finding" [shape=box];
     "Return stop_and_report finding" [shape=box];
     "Return escalate finding" [shape=box];
-    "Editorial gate: read the storyboard" [shape=box];
+    "Editorial gate: read the storyboard (hand-driven only — dead in a router-driven run)" [shape=box];
     "Reads well AND right person?" [shape=diamond];
     "Return stop_and_report (editorial)" [shape=box];
     "Self-review, then return DONE + clip + report" [shape=doublecircle];
@@ -41,8 +41,8 @@ digraph process_episode {
     "status?" -> "Return needs_input finding" [label="needs_input"];
     "status?" -> "Return stop_and_report finding" [label="stop_and_report"];
     "status?" -> "Return escalate finding" [label="escalate"];
-    "status?" -> "Editorial gate: read the storyboard" [label="mechanical_pass"];
-    "Editorial gate: read the storyboard" -> "Reads well AND right person?";
+    "status?" -> "Editorial gate: read the storyboard (hand-driven only — dead in a router-driven run)" [label="mechanical_pass"];
+    "Editorial gate: read the storyboard (hand-driven only — dead in a router-driven run)" -> "Reads well AND right person?";
     "Reads well AND right person?" -> "Return stop_and_report (editorial)" [label="no"];
     "Reads well AND right person?" -> "Self-review, then return DONE + clip + report" [label="yes"];
 }

@@ -502,19 +502,19 @@ def _no_dispatch(monkeypatch):
 
 
 def test_cli_stop_after_episodes_and_from_episodes_are_mutually_exclusive(monkeypatch, tmp_path):
-    # Deliberately NO edl/--project/--footage-root here — the realistic resume shape
-    # (--from-episodes never re-reads the front half, per its own help text). With
-    # them present the independent "--from-episodes resumes a run..." refusal fires
-    # on its own and this test would pass even with the mutex deleted, because
-    # a.stop_after_episodes is read NOWHERE except inside the else arm's ternary —
-    # ungrouping the two flags would then silently let --stop-after-episodes be
-    # ignored and fall through to a real assemble_reel dispatch.
+    # Deliberately NO edl/--project/--footage-root/--out-dir here — the realistic
+    # resume shape (--from-episodes never re-reads the front half, per its own help
+    # text, and does not take an out dir at all). With any of them present the
+    # independent "--from-episodes resumes a run..." refusal fires on its own and
+    # this test would pass even with the mutex deleted, because a.stop_after_episodes
+    # is read NOWHERE except inside the else arm's ternary — ungrouping the two flags
+    # would then silently let --stop-after-episodes be ignored and fall through to a
+    # real assemble_reel dispatch.
     called = _no_dispatch(monkeypatch)
     monkeypatch.setattr(sys, "argv", ["edl_to_reel",
                                       "--stop-after-episodes",
                                       "--from-episodes", str(tmp_path / "EPISODES.json"),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out")])
+                                      "--work-dir", str(tmp_path / "w")])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 2            # argparse's own mutually_exclusive_group, not ap.error
@@ -524,12 +524,13 @@ def test_cli_stop_after_episodes_and_from_episodes_are_mutually_exclusive(monkey
 def test_cli_from_episodes_refuses_a_positional_edl(monkeypatch, tmp_path):
     # Isolates the `a.edl` operand of the "resumes a run..." refusal's `or` — a
     # bug that dropped this operand (or wrote `and` instead) would only surface
-    # when exactly this combination, alone, is given.
+    # when exactly this combination, alone, is given. No --out-dir here either:
+    # it is its own operand now (see test_cli_from_episodes_refuses_an_out_dir_flag)
+    # and including it would stop this test from isolating `a.edl` alone.
     called = _no_dispatch(monkeypatch)
     monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
                                       "--from-episodes", str(tmp_path / "EPISODES.json"),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out")])
+                                      "--work-dir", str(tmp_path / "w")])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 2
@@ -541,8 +542,7 @@ def test_cli_from_episodes_refuses_a_project_flag(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["edl_to_reel",
                                       "--from-episodes", str(tmp_path / "EPISODES.json"),
                                       "--project", _project(tmp_path),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out")])
+                                      "--work-dir", str(tmp_path / "w")])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 2
@@ -554,6 +554,21 @@ def test_cli_from_episodes_refuses_a_footage_root_flag(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["edl_to_reel",
                                       "--from-episodes", str(tmp_path / "EPISODES.json"),
                                       "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_an_out_dir_flag(monkeypatch, tmp_path):
+    # Isolates the `a.out_dir` operand — phase 2 derives its out dir from the
+    # EPISODES.json path (design §3) and never reads --out-dir, so accepting it
+    # silently here would let a caller point it at the wrong place with no
+    # complaint while the reel actually lands beside EPISODES.json regardless.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
                                       "--work-dir", str(tmp_path / "w"),
                                       "--out-dir", str(tmp_path / "out")])
     with pytest.raises(SystemExit) as ei:
@@ -602,7 +617,26 @@ def test_cli_requires_footage_root_without_from_episodes(monkeypatch, tmp_path):
     assert called == []
 
 
+def test_cli_requires_out_dir_without_from_episodes(monkeypatch, tmp_path):
+    # --out-dir dropped its argparse required=True (it must NOT be required on the
+    # --from-episodes path), so this is now the only thing enforcing it on the
+    # non-resume paths — the "missing" list in main()'s else arm, same as
+    # edl/--project/--footage-root above.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
 def test_cli_from_episodes_dispatches_to_assemble_reel(monkeypatch, tmp_path):
+    # No --out-dir: this IS the realistic invocation (phase 2 takes none — design §3),
+    # and it must dispatch and exit 0 without it. The refusal when --out-dir IS given
+    # is test_cli_from_episodes_refuses_an_out_dir_flag, above.
     seen = {}
 
     def fake_assemble_reel(episodes_path, work_dir, *, titles=None):
@@ -614,14 +648,13 @@ def test_cli_from_episodes_dispatches_to_assemble_reel(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["edl_to_reel",
                                       "--from-episodes", str(tmp_path / "EPISODES.json"),
                                       "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out"),
                                       "--titles", "TITLES.json"])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 0
     assert seen["episodes_path"] == str(tmp_path / "EPISODES.json")
     assert seen["work_dir"] == str(tmp_path / "w")
-    assert seen["titles"] == "TITLES.json"       # --out-dir is NOT threaded to phase 2 (unused there)
+    assert seen["titles"] == "TITLES.json"
 
 
 def test_cli_stop_after_episodes_dispatches_to_process_episodes_without_titles(monkeypatch, tmp_path):
