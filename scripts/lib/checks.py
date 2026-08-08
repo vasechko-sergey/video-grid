@@ -1,24 +1,31 @@
 """Pure numeric checks over route + crop path (spec §9)."""
 
 
-def on_line(route: list[dict[str, float]], path: list[int], crop_w: int,
+def on_line(route: list[dict[str, float]], path: list[int], crop_ws: list[int],
             target_frac: float, tol: float = 0.05) -> dict:
-    if len(route) != len(path):
+    """How often the subject sat on its composition line.
+
+    `crop_ws` is a WIDTH PER SAMPLE, not a scalar: under a zoom the rect the
+    subject is judged inside changes while the rule placing it does not (design
+    2026-08-08 §5). A constant rect passes [crop_w] * len(path) and scores
+    exactly as it did before.
+    """
+    if len(route) != len(path) or len(crop_ws) != len(path):
         raise ValueError(
-            f"route/path length mismatch: {len(route)} vs {len(path)} — "
-            "route and crop path must be parallel arrays from the same reframe run")
+            f"route/path/crop_ws must be parallel arrays from the same reframe run: "
+            f"{len(route)} vs {len(path)} vs {len(crop_ws)}")
     ok = 0
-    for pt, cx in zip(route, path):
-        frac = (pt["x"] - cx) / crop_w
+    for pt, cx, cw in zip(route, path, crop_ws):
+        frac = (pt["x"] - cx) / cw
         if abs(frac - target_frac) <= tol:
             ok += 1
     ratio = ok / max(1, len(route))
     return {"pass": ratio >= 0.9, "ratio": ratio}
 
 
-def centered(route: list[dict[str, float]], path: list[int], crop_w: int,
+def centered(route: list[dict[str, float]], path: list[int], crop_ws: list[int],
              tol: float = 0.05) -> dict:
-    return on_line(route, path, crop_w, target_frac=0.5, tol=tol)
+    return on_line(route, path, crop_ws, target_frac=0.5, tol=tol)
 
 
 def continuity(route: list[dict[str, float]], src_w: int, max_step_frac: float = 0.04) -> dict:
@@ -46,7 +53,7 @@ def _moving_average(xs: list[float], window: int) -> list[float]:
 
 def jitter(path: list[int], direction: str, max_reversal: float,
            route: list[dict[str, float]] | None = None,
-           route_window: int = 1) -> dict:
+           route_window: int = 1, crop_ws: list[int] | None = None) -> dict:
     """Crop-centre reversal against the direction of travel — the §9 "rounding
     flicker" guard.
 
@@ -77,19 +84,31 @@ def jitter(path: list[int], direction: str, max_reversal: float,
     4.00 and failed. Filtering the route over ~0.08s inverts both verdicts to match
     what is on screen. 1 (the default) is the historical frame-to-frame behaviour;
     check_episode derives the real window from the route's own cadence.
+
+    With `crop_ws` the reversals are measured on the rect's CENTRE (x + w/2)
+    rather than its left edge. For a constant width that is the same series
+    shifted by a constant, so every existing verdict is unchanged to the bit;
+    under a zoom it is the honest one, because a push-in marches the left edge
+    inward even over a motionless subject (design 2026-08-08 §5).
     """
     if direction not in ("left", "right"):
         raise ValueError(f"jitter: direction must be 'left' or 'right', got {direction!r}")
     if isinstance(route_window, bool) or not isinstance(route_window, int) or route_window < 1:
         raise ValueError(f"jitter: route_window must be an integer >= 1 frame, "
                          f"got {route_window!r}")
+    if crop_ws is not None and len(crop_ws) != len(path):
+        raise ValueError(
+            f"jitter: crop_ws must be parallel to the path — got {len(crop_ws)} widths "
+            f"for {len(path)} samples")
+    centres = ([x + w / 2 for x, w in zip(path, crop_ws)] if crop_ws is not None
+               else [float(x) for x in path])
     sign = 1 if direction == "right" else -1
     worst = 0.0
     reversals = 0
     use_route = bool(route) and len(route) >= len(path)
     rx = _moving_average([p["x"] for p in route], route_window) if use_route else []
-    for i in range(1, len(path)):
-        step = (path[i] - path[i - 1]) * sign      # forward = positive
+    for i in range(1, len(centres)):
+        step = (centres[i] - centres[i - 1]) * sign      # forward = positive
         if use_route:
             subj = (rx[i] - rx[i - 1]) * sign
             step -= min(0.0, subj)                 # forgive only the subject's own backtrack

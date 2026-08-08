@@ -140,6 +140,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
     meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
     crop_w = meta.crop_w
+    crop_ws = [meta.crop_w] * len(path)
     src_w, src_h = meta.src_dims
     # The sidecar is authoritative about provenance — reframe wrote it. A caller
     # that also hands over a route under a pan is redundant, not wrong, so the
@@ -192,12 +193,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
                                         {"status": "editorial-only",
                                          "reason": "no horizontal freedom"})
     elif spec.composition == "center":
-        d = checks_mod.centered(route, path, crop_w)
+        d = checks_mod.centered(route, path, crop_ws)
         checks["centered"] = CheckResult("centered", d["pass"], {k: v for k, v in d.items() if k != "pass"})
     elif spec.composition == "lead":
         left, right = geometry.grid_lines(spec.grid)
         tf = left if direction == "right" else right
-        d = checks_mod.on_line(route, path, crop_w, tf)
+        d = checks_mod.on_line(route, path, crop_ws, tf)
         checks["on_line"] = CheckResult("on_line", d["pass"], {k: v for k, v in d.items() if k != "pass"})
     elif spec.composition == "break":
         # spec §6.2: break is tracked but relaxed — editorial only, no numeric fail
@@ -209,7 +210,8 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     # the historical vacuum-judged behaviour; a tracked one gets the subject's own
     # counter-motion discounted (see checks.jitter).
     dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005),
-                           route=route or None, route_window=_route_window(route))
+                           route=route or None, route_window=_route_window(route),
+                           crop_ws=crop_ws)
     checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
     if meta.pan:
         # checks.continuity([]) returns pass=True — its zip never iterates — so the

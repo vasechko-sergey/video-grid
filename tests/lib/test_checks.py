@@ -6,14 +6,14 @@ def test_on_line_pass_when_subject_on_third():
     # crop_w=600, subject sits at left third (0.333) each frame
     route = [dict(x=200 + 0.333 * 600) for _ in range(30)]  # x = 400
     path = [200] * 30   # crop_x=200 → subject_frac = (400-200)/600 = 0.333
-    res = ck.on_line(route, path, crop_w=600, target_frac=1/3, tol=0.05)
+    res = ck.on_line(route, path, crop_ws=[600] * 30, target_frac=1/3, tol=0.05)
     assert res["pass"] is True
     assert res["ratio"] == 1.0
 
 def test_on_line_fail_when_off():
     route = [dict(x=560) for _ in range(30)]   # frac = (560-200)/600 = 0.6
     path = [200] * 30
-    res = ck.on_line(route, path, crop_w=600, target_frac=1/3, tol=0.05)
+    res = ck.on_line(route, path, crop_ws=[600] * 30, target_frac=1/3, tol=0.05)
     assert res["pass"] is False
 
 def test_jitter_flags_reversal():
@@ -44,8 +44,8 @@ def test_continuity_pass_smooth():
 def test_on_line_rejects_length_mismatch():
     route = [dict(x=400)] * 10
     path = [200] * 9
-    with pytest.raises(ValueError, match="length mismatch"):
-        ck.on_line(route, path, crop_w=600, target_frac=1/3)
+    with pytest.raises(ValueError, match="parallel arrays"):
+        ck.on_line(route, path, crop_ws=[600] * 9, target_frac=1/3)
 
 def test_jitter_rejects_invalid_direction():
     with pytest.raises(ValueError, match="direction"):
@@ -135,3 +135,47 @@ def test_jitter_falls_back_to_vacuum_when_route_is_shorter_than_path():
 def test_jitter_empty_route_is_the_historical_vacuum_behaviour():
     path = [100, 110, 90, 130, 100]
     assert ck.jitter(path, "right", 10, route=[]) == ck.jitter(path, "right", 10)
+
+
+def test_on_line_scores_each_sample_against_its_own_width():
+    route = [{"x": 500.0}, {"x": 500.0}]
+    # rect 1: left 200, width 900 -> frac 0.333; rect 2: left 350, width 450 -> frac 0.333
+    assert ck.on_line(route, [200, 350], [900, 450], target_frac=1 / 3)["pass"] is True
+    # against a single constant width the second sample would score 0.167 and fail
+    assert ck.on_line(route, [200, 350], [900, 900], target_frac=1 / 3)["pass"] is False
+
+
+def test_on_line_refuses_a_width_list_that_is_not_parallel():
+    with pytest.raises(ValueError, match="parallel arrays"):
+        ck.on_line([{"x": 1.0}, {"x": 2.0}], [0, 0], [10], target_frac=0.5)
+
+
+def test_jitter_on_a_constant_width_is_identical_with_and_without_widths():
+    path = [0, 10, 8, 20]
+    a = ck.jitter(path, "right", max_reversal=5.0)
+    b = ck.jitter(path, "right", max_reversal=5.0, crop_ws=[100] * 4)
+    assert a == b
+
+
+def test_jitter_ignores_the_inward_drift_a_push_in_creates():
+    # a static subject under a push-in: the LEFT EDGE marches right while the rect's
+    # CENTRE stays put, so measuring the edge would report travel that is not there
+    ws = [1000, 900, 800, 700]
+    path = [0, 50, 100, 150]                      # centre is 500 at every sample
+    d = ck.jitter(path, "right", max_reversal=1.0, crop_ws=ws)
+    assert d == {"pass": True, "worst_reversal": 0.0, "reversals": 0}
+
+
+def test_jitter_ignores_the_inward_drift_regardless_of_stated_direction():
+    # same push-in, opposite stated direction. This is the discriminating half the
+    # "right" sibling above cannot be: there, the bare edge already marches forward
+    # in the stated direction, so dropping the width term (or mis-signing it, or
+    # under-weighting it) still scores worst_reversal 0.0 by coincidence — only a
+    # coefficient bigger than 1/2 (e.g. the full width instead of half) is caught.
+    # Here the bare edge marches AGAINST "left", so any coefficient other than
+    # exactly 1/2 turns the motionless centre into a run of reversals. The two
+    # tests together pin the formula to x + w/2; neither alone does.
+    ws = [1000, 900, 800, 700]
+    path = [0, 50, 100, 150]                      # centre is 500 at every sample
+    d = ck.jitter(path, "left", max_reversal=1.0, crop_ws=ws)
+    assert d == {"pass": True, "worst_reversal": 0.0, "reversals": 0}
