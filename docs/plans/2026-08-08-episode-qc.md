@@ -854,6 +854,9 @@ def _evidence(ep, i: int, clip_stats: dict) -> dict:
 def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
     """Write one evidence directory per episode under out_dir. Returns a status dict."""
     rm = ReelManifest.from_json(episodes_path)
+    for i, ep in enumerate(rm.episodes):
+        _epdir(ep, i)          # every sidecar checked BEFORE any decode: a packet run that
+                               # cannot finish must fail in ms, not after N episodes of ffmpeg
     packets = []
     for i, ep in enumerate(rm.episodes):
         d = Path(out_dir) / f"ep{i}"
