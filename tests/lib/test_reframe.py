@@ -1,6 +1,8 @@
 import pytest
 
 from scripts import reframe
+from scripts.lib import layout
+from scripts.lib.models import Delivery, LayoutSpec
 
 
 def _diagonal_route(n=60, x0=855.0, x1=1434.0):
@@ -120,3 +122,29 @@ def test_compute_path_lead_places_each_sample_at_its_own_width():
                                 ("lateral", "right"), max_step=1e9, crop_ws=[900, 300])
     # lead+right targets the LEFT third line: x - crop_w/3 → 1000-300=700, 1000-100=900
     assert path == [700, 900]
+
+
+def test_xexpr_emits_the_variable_it_is_given():
+    e = reframe._xexpr([0, 100], [0.0, 1.0], var="it")
+    assert "it" in e and "(t-" not in e
+
+
+def test_filter_args_inserts_the_zoompan_between_crop_and_scale():
+    # Delivery.mode has no "1080" — native/short_edge/long_edge/exact only (models.py
+    # __post_init__). The assertions below only check filter-string ORDER, not the
+    # resolved layout's numbers, so "native" (the placeholder used the same way
+    # throughout test_layout.py/test_models.py) resolves a valid fast-path layout.
+    rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
+                        Delivery("native"))
+    args = reframe._filter_args(rl, "0", 0, "", 30.0, 3.0,
+                                zoom_args="zoompan=z='1':x='0':y='0':d=1:s=8x8:fps=30")
+    chain = args[1]
+    assert chain.index("crop=") < chain.index("zoompan=") < chain.index("scale=")
+
+
+def test_filter_args_without_a_zoom_is_unchanged():
+    rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
+                        Delivery("native"))
+    assert (reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)
+            == reframe._filter_args(rl, "0", 0, "", 30.0, 3.0, zoom_args=""))
+    assert "zoompan" not in reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)[1]

@@ -183,7 +183,11 @@ def _simplify(path: list[int], times: list[float], eps: float = 2.0,
     return knots
 
 
-def _xexpr(path: list[int], times: list[float]) -> str:
+def _xexpr(path: list[int], times: list[float], var: str = "t") -> str:
+    # `var` is the ffmpeg time variable to emit against: `t` for the crop filter,
+    # `it` for zoompan, which has no `t`. Same clock either way — crop does not
+    # touch timestamps — which is what keeps the base rect and the zoom window
+    # from drifting apart (design 2026-08-08 §3.4).
     # piecewise-LINEAR x(t) over simplified knots: lerp inside each segment
     knots = _simplify(path, times)
     if len(knots) == 1:
@@ -191,8 +195,8 @@ def _xexpr(path: list[int], times: list[float]) -> str:
     expr = f"{knots[-1][1]:.1f}"
     for (t0, x0), (t1, x1) in zip(knots[-2::-1], knots[:0:-1]):
         slope = (x1 - x0) / max(1e-9, t1 - t0)
-        seg = f"({x0:.1f}+({slope:.3f})*(t-{t0:.4f}))"
-        expr = f"if(lt(t,{t1:.4f}),{seg},{expr})"
+        seg = f"({x0:.1f}+({slope:.3f})*({var}-{t0:.4f}))"
+        expr = f"if(lt({var},{t1:.4f}),{seg},{expr})"
     return expr
 
 
@@ -344,7 +348,7 @@ def verify_tone(frag: str) -> None:
 
 
 def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int, grade: str,
-                 fps: float, dur: float) -> list[str]:
+                 fps: float, dur: float, zoom_args: str = "") -> list[str]:
     """The ffmpeg filter arguments for one layout.
 
     fill takes the fast path: one -vf chain, byte-identical to what this script
@@ -361,10 +365,18 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int, grade: str,
     It is "" at every knob's default, which is exactly what keeps the fast path
     byte-identical to before colour-as-a-stage. reframe owns the trailing
     fps/format tail, appended after `grade` either way.
+
+    `zoom_args` is a complete `zoompan=...` filter or "". It sits between the
+    crop and the scale in BOTH branches: the crop cuts the widest rect the move
+    needs and zoompan cuts the shrinking rect inside it. Its `s` equals the crop
+    it consumes, which is forced rather than chosen — zoompan clamps z below 1 to
+    1 silently, so an output smaller than its input would render no zoom at all
+    (design 2026-08-08 §3.3).
     """
     tail = f"{grade},fps={fps:.6g},format=yuv420p"
+    zp = f"{zoom_args}," if zoom_args else ""     # "" keeps the fast path byte-identical
     if rl.fast_path:
-        return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},"
+        return ["-vf", (f"crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},{zp}"
                         f"scale={rl.out_w}:{rl.out_h},{tail}")]
     rx, ry, rw, rh = rl.rect_px          # the CONTENT rect; the border sits outside it
     b = rl.border_px
@@ -373,7 +385,8 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int, grade: str,
     pad = f",pad={ow}:{oh}:{b}:{b}:{rl.border_color}" if b else ""
     return ["-filter_complex",
             (f"{bg_chain}"
-             f"{fg_src}crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},scale={rw}:{rh}{pad}[fg];"
+             f"{fg_src}crop={rl.crop_w}:{rl.crop_h}:x='{xexpr}':y={cy},{zp}"
+             f"scale={rw}:{rh}{pad}[fg];"
              f"[bg][fg]overlay={ox}:{oy}{ov_opts},{tail}")]
 
 
