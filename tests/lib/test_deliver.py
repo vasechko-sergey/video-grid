@@ -200,7 +200,10 @@ def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
                           run_provenance={"engine_at_start": {"sha": "aaa", "dirty": False},
                                           "edl": {"digest": "e", "state": "intact"},
                                           "overrides": [{"field": "color_delta_max",
-                                                         "value": 20.0, "default": 12.0}]})
+                                                         "value": 20.0, "default": 12.0}],
+                                          "episode_qc": {"state": "judged",
+                                                         "judged": {"0": "aa"},
+                                                         "reprocessed_after": [1]}})
     att = provenance.Attestation.from_json(provenance.attest_path(out))
     assert att.reel == "REEL_v1.mp4"
     assert att.master_digest == rep.master_digest
@@ -210,6 +213,8 @@ def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
     assert att.engine_at_deliver["sha"] == provenance.engine_stamp()["sha"]
     assert att.edl == {"digest": "e", "state": "intact"}
     assert att.overrides == [{"field": "color_delta_max", "value": 20.0, "default": 12.0}]
+    # design §8/§10: which clips were judged and which left the gate behind, verbatim
+    assert att.episode_qc == {"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]}
     assert att.delivered_at                                     # non-empty ISO stamp
     assert provenance.verify_delivery(out, rehash=True)["state"] == "attested"
 
@@ -220,6 +225,18 @@ def test_deliver_attests_without_run_provenance(tmp_path, monkeypatch):
     master, rep = _bound(tmp_path)
     out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep)
     assert provenance.attest_path(out).exists()
+
+
+def test_an_unjudged_delivery_says_so(tmp_path, monkeypatch):
+    # design §10: edl_to_reel with neither two-phase flag is still the SP1 front door
+    # for a hand-authored EDL, and it ships a reel no judge saw — the attestation makes
+    # that distinguishable rather than silently looking like a judged one.
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                          run_provenance={"episode_qc": {"state": "absent"}})
+    att = provenance.Attestation.from_json(provenance.attest_path(out))
+    assert att.episode_qc == {"state": "absent"}
 
 
 def test_the_failed_reel_gate_still_fires_before_any_hashing(tmp_path, monkeypatch):

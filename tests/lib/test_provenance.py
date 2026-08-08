@@ -106,10 +106,13 @@ def test_attestation_round_trips_through_json(tmp_path):
              engine_at_deliver={"sha": "aaa", "dirty": False},
              edl={"digest": "e", "state": "intact"},
              overrides=[{"field": "color_delta_max", "value": 20.0, "default": 12.0}],
+             episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]},
              delivered_at="2026-08-04T10:00:00")
     p = tmp_path / "REEL_v1.attest.json"
     a.write(p)
-    assert provenance.Attestation.from_json(p).to_dict() == a.to_dict()
+    back = provenance.Attestation.from_json(p)
+    assert back.to_dict() == a.to_dict()
+    assert back.episode_qc == {"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]}
 
 
 def test_verify_delivery_without_a_sidecar_is_unattested(tmp_path):

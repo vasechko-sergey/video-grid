@@ -109,6 +109,28 @@ def test_a_delivered_reel_reports_which_episodes_were_reprocessed(monkeypatch, t
     assert result["reprocessed"] == [1]
 
 
+def test_reprocessed_accumulates_across_rounds_for_different_episodes(monkeypatch, tmp_path):
+    # design §8: the attestation's claim is about the WHOLE run, not the last round —
+    # ep0 reprocessed in round 0 and ep2 reprocessed in round 1 (a DIFFERENT episode)
+    # must BOTH survive into the final sorted list, not just the most recent culprit.
+    round0 = ReelReport(
+        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
+        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", 0,
+                                  {"target": [120.0, 120.0, 120.0], "culprit_mean": [150.0, 120.0, 120.0]})],
+        episode_count=3)
+    round1 = ReelReport(
+        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
+        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", 2,
+                                  {"target": [120.0, 120.0, 120.0], "culprit_mean": [150.0, 120.0, 120.0]})],
+        episode_count=3)
+    round2 = ReelReport(checks={"length": CheckResult("length", True, {})}, episode_count=3)
+    seen = _wire(monkeypatch, [round0, round1, round2])
+    result = build_reel.build_reel(_rm(n=3), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert result["status"] == "delivered"
+    assert result["reprocessed"] == [0, 2]
+    assert len(seen["reprocess"]) == 2       # one reprocess call per round, different episodes
+
+
 def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(monkeypatch, tmp_path):
     # Twin of test_color_fail_then_pass_reprocesses_then_delivers, but ep1 stabilizes.
     # process_episode refuses stabilize + a supplied route (design 2026-07-20 §1), so
