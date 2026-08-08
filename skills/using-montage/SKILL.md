@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
+description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → [match-grade] → [assemble-draft] → [titles] → edl_to_reel episodes → episode-qc → edl_to_reel deliver → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
 ---
 
 # using-montage (stage 5.1)
@@ -208,22 +208,57 @@ say so rather than guessing a path.
     `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
     the text.
 
-12. **edl_to_reel.** `"$VG" scripts.edl_to_reel <run>/EDL.json
-    --project <run>/project.json --footage-root <footage_root>
-    --work-dir <run>/work --out-dir <run>/out [--music <run>/MUSIC.json]
-    [--titles <run>/TITLES.json]`. This runs
-    the whole back half (extract -> process-episode ×N -> assemble -> check_reel ->
-    deliver). When `TITLES.json` is passed, `deliver` burns its drawtext chain into
-    the ONE encode it already runs — no second pass; `deliver` also writes a
-    `REEL_v{n}.attest.json` sidecar beside the encode (design 2026-08-04). **Checkpoint
-    3 — final review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
-    titles were authored) `TITLES.md` alongside them. Before presenting the reel as
-    final, run `"$VG" scripts.montage verify --run-dir <run>` and show its result — a
-    delivery whose state is not `attested` (most notably `unattested`: no
-    `REEL_v{n}.attest.json`, meaning the file did not come out of `deliver`) must be
-    named plainly as such, never presented as a finished reel. A `stop_and_report` (a
-    failed gate) is surfaced verbatim — never fixed forward; route it to the culprit
-    stage's skill.
+12. **episodes (edl_to_reel, phase 1).**
+
+    ```bash
+    "$VG" scripts.edl_to_reel <run>/EDL.json --project <run>/project.json \
+      --footage-root <footage_root> --work-dir <run>/work --out-dir <run>/out \
+      [--music <run>/MUSIC.json] --stop-after-episodes
+    ```
+
+    Runs extract -> process-episode ×N, then **stops** — no reel is assembled
+    yet. Writes `<run>/out/EPISODES.json` (a serialized `ReelManifest`) beside
+    the `ep{i}.mp4` clips it names. A `stop_and_report` here (an episode
+    failed its own mechanical gate) is surfaced verbatim — never fixed
+    forward; route it to the culprit stage's skill.
+
+13. **episode-qc (required, not a checkpoint).** Invoke the **episode-qc**
+    skill — it packs one evidence directory per episode from
+    `<run>/out/EPISODES.json`, dispatches one fresh judge subagent per
+    episode (at most 3 concurrently) against composition/colour/impression/
+    path/hero, then validates their findings into `<run>/out/EPISODE_QC.json`
+    + `.md`, stamping each verdict's clip digest itself. This stage is
+    **required** — a reel is never assembled over an episode nobody judged —
+    but it is **not** one of the three §4.1 checkpoints: a clean verdict
+    passes straight through with no approval asked, and only a blocking
+    finding stops the run, here, with the routed finding surfaced (the same
+    `stop_and_report` shape every other stage stop already has). There is no
+    waiver — a blocking finding is fixed by re-running the finding's routed
+    stage (`reprocess` / `edit-plan` / `match-grade`), then episode-qc runs
+    again from its own step 1 (a re-render makes the old verdict stale).
+
+14. **deliver (edl_to_reel, phase 2).**
+
+    ```bash
+    "$VG" scripts.edl_to_reel --from-episodes <run>/out/EPISODES.json \
+      --work-dir <run>/work [--titles <run>/TITLES.json]
+    ```
+
+    Gates on `<run>/out/EPISODE_QC.json` beside `EPISODES.json` (missing /
+    incomplete / stale / blocking all refuse before a single ffmpeg call —
+    episode-qc having just run should make this a formality, not a surprise),
+    then runs assemble -> check_reel -> deliver. When `TITLES.json` is
+    passed, `deliver` burns its drawtext chain into the ONE encode it already
+    runs — no second pass; `deliver` also writes a `REEL_v{n}.attest.json`
+    sidecar beside the encode (design 2026-08-04). **Checkpoint 3 — final
+    review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
+    titles were authored) `TITLES.md` alongside them. Before presenting the
+    reel as final, run `"$VG" scripts.montage verify --run-dir <run>` and
+    show its result — a delivery whose state is not `attested` (most notably
+    `unattested`: no `REEL_v{n}.attest.json`, meaning the file did not come
+    out of `deliver`) must be named plainly as such, never presented as a
+    finished reel. A `stop_and_report` (a failed gate) is surfaced verbatim —
+    never fixed forward; route it to the culprit stage's skill.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
     that judges the reel against `SPEC` (idea/mood/hook/ending/spine) and writes
@@ -269,6 +304,16 @@ aspect (project-init's own "ask, don't guess").
   gates (§4.1); everything else is a machine gate inside the sub-stages. CP3's
   review has two mechanisms: check_reel (mechanical) and the reel-review skill
   (editorial, §5.13 Slice B).
+- **episode-qc (step 13) is required but is not a checkpoint.** It sits
+  between the per-episode render and delivery, judges every episode's OWN
+  clip (never the assembled reel, never against another episode), and only
+  interrupts the run on a blocking finding — a clean verdict passes through
+  with no approval asked. There is no waiver (design §7): a blocking finding
+  is fixed by re-running the finding's routed stage, never by lowering the
+  gate or re-judging in place until it passes. The stage proves the
+  artifact's presence and its digest binding to the exact rendered bytes —
+  never that a judge truly looked (design §12); say so when you report a
+  clean verdict.
 - **Deferred stages are named, not skipped silently:** trend-scan (5.4) is not
   built; say so when you pass over it. reel-brief (`SPEC.md`, 5.3) is optional —
   offer it; on a bare run, name it as skipped. assemble-draft (`draft.mp4`, 5.9)
@@ -301,8 +346,12 @@ aspect (project-init's own "ask, don't guess").
   `--color-delta-max` exists for a reel that deliberately cuts between scenes of
   different exposure, with the measured delta in hand — never to silence a grade
   that is genuinely wrong — and every use of it is recorded in the delivery's
-  attestation and shown at CP3.
+  attestation and shown at CP3. `episode-qc` carries no override at all (§7) —
+  not even a measured one.
 - **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
   2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
-  (`jobs`, default 3, the measured knee) inside its own loop; you invoke
-  `edl_to_reel` once per run and never drive the fan-out yourself.
+  (`jobs`, default 3, the measured knee) inside its own loop; you never drive
+  that fan-out yourself. Since the per-episode QC gate (design 2026-08-08),
+  you invoke `edl_to_reel` **twice** per run, not once — `--stop-after-episodes`
+  (step 12) to render, then `--from-episodes` (step 14) to assemble and
+  deliver, with the episode-qc skill (step 13) required in between.

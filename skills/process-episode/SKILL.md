@@ -76,7 +76,23 @@ When the orchestrator returns `stop_and_report`, the tracker's reality contradic
 
 ## Editorial gate (the half the orchestrator cannot do)
 
-On `mechanical_pass`, open the returned storyboard (`result["storyboard"]`) and judge, at the episode's declared intent (not a global rule):
+**This gate is real only when you are driving ONE episode by hand** —
+debugging, a one-off re-render, anything outside the conveyor. A
+router-driven run never reaches it: `edl_to_reel` calls
+`process_episode.process_episode` as a bare Python function inside its
+thread pool, not through this SKILL and not through any subagent — nothing
+in a conveyor run reads the storyboard at this point (design
+docs/specs/2026-08-08-episode-qc-design.md §0). The per-episode judgment for
+a conveyor run is a separate, later stage: **`episode-qc`**, which packs an
+evidence directory per already-delivered clip (this same storyboard, plus a
+frame strip of the shipped pixels and a colour-naturalness reading) and
+dispatches a fresh judge against it, one per episode, after every episode is
+rendered and before the reel is assembled — see the `episode-qc` SKILL. If
+you are looking for where the conveyor judges an episode, it is not here.
+
+When you ARE driving one episode by hand, on `mechanical_pass` open the
+returned storyboard (`result["storyboard"]`) and judge, at the episode's
+declared intent (not a global rule):
 - **Right person** — the followed subject is the intended hero across the sampled frames (the marker, §6.1a layer 4), not a bystander the tracker latched onto.
 - **Reads well** — the framing serves the shot; lead room is on the correct side for a `lead`; nothing important is clipped.
 

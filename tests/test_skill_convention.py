@@ -10,9 +10,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SKILLS = REPO / "skills"
-# the 6 skills that issue pipeline commands (design §2.5)
+# the 7 skills that issue pipeline commands (design §2.5; episode-qc added 2026-08-08)
 RUNNERS = {"using-montage", "music-source", "music-match", "pacing",
-           "process-episode", "project-init"}
+           "process-episode", "project-init", "episode-qc"}
 # every skill description leads with one of these role tags (2026-08-01): the lead
 # says HOW you reach the skill, not a design §5.x stage number (run order != §5.x,
 # and two skills have no number — the number limped, so it is gone from descriptions).
