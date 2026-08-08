@@ -54,7 +54,7 @@ def _judge(packets, i, severity=None):
 
 @pytest.mark.integration
 def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
-    p, rm = _episodes_json(tmp_path, sample_clip)
+    p, _ = _episodes_json(tmp_path, sample_clip)
     res = episode_qc.pack(str(p), str(tmp_path / "qc"))
     assert res["episodes"] == 2
     ev = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())
@@ -77,7 +77,9 @@ def test_a_clean_run_delivers_and_the_attestation_names_the_judged_bytes(tmp_pat
     assert res["status"] == "delivered"
     att = json.loads(Path(str(provenance.attest_path(res["output"]))).read_text())
     assert att["episode_qc"]["state"] == "judged"
-    assert att["episode_qc"]["judged"]["0"] == provenance.digest_file(rm.episodes[0].clip)
+    assert att["episode_qc"]["judged"] == {
+        "0": provenance.digest_file(rm.episodes[0].clip),
+        "1": provenance.digest_file(rm.episodes[1].clip)}
     assert att["episode_qc"]["reprocessed_after"] == []
 
 
