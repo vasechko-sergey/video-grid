@@ -1,4 +1,5 @@
 import json
+import sys
 import threading
 import pytest
 from pathlib import Path
@@ -476,6 +477,203 @@ def test_cli_color_delta_max_defaults_to_none(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         edl_to_reel.main()
     assert seen_kw["color_delta_max"] is None        # unset CLI flag -> ReelCheckSpec's own default
+
+
+# --- Task 6 fix round 1: the two-phase CLI dispatch itself -----------------------
+#
+# Everything above patches edl_to_reel.edl_to_reel and only ever exercises the
+# no-flags branch of main(). None of it touches --stop-after-episodes,
+# --from-episodes, the mutual-exclusion group, or either manual `ap.error` — and
+# once the router lands, this CLI is production's ONLY way to reach
+# process_episodes/assemble_reel. A wiring bug here (say --from-episodes falling
+# through to edl_to_reel) would silently defeat a gate whose entire stated purpose
+# is that it cannot be skipped silently, and nothing above would notice.
+
+def _no_dispatch(monkeypatch):
+    """Patch all three phase entry points to record whether main() called ANY of
+    them, so a refusal test proves argparse/ap.error fired BEFORE any dispatch —
+    not merely that main() eventually raised SystemExit for some reason."""
+    called = []
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", lambda *a, **k: called.append("edl_to_reel"))
+    monkeypatch.setattr(edl_to_reel, "process_episodes",
+                        lambda *a, **k: called.append("process_episodes"))
+    monkeypatch.setattr(edl_to_reel, "assemble_reel", lambda *a, **k: called.append("assemble_reel"))
+    return called
+
+
+def test_cli_stop_after_episodes_and_from_episodes_are_mutually_exclusive(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--stop-after-episodes",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2            # argparse's own mutually_exclusive_group, not ap.error
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_positional_edl(monkeypatch, tmp_path):
+    # Isolates the `a.edl` operand of the "resumes a run..." refusal's `or` — a
+    # bug that dropped this operand (or wrote `and` instead) would only surface
+    # when exactly this combination, alone, is given.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_project_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_footage_root_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_requires_edl_without_from_episodes(monkeypatch, tmp_path):
+    # Isolates the `edl` entry of the "required unless --from-episodes" check —
+    # --project and --footage-root are both present, so only a missing `edl`
+    # can be what trips this.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_requires_project_without_from_episodes(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_requires_footage_root_without_from_episodes(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_dispatches_to_assemble_reel(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_assemble_reel(episodes_path, work_dir, *, titles=None):
+        seen["episodes_path"] = episodes_path
+        seen["work_dir"] = work_dir
+        seen["titles"] = titles
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "assemble_reel", fake_assemble_reel)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--titles", "TITLES.json"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen["episodes_path"] == str(tmp_path / "EPISODES.json")
+    assert seen["work_dir"] == str(tmp_path / "w")
+    assert seen["titles"] == "TITLES.json"       # --out-dir is NOT threaded to phase 2 (unused there)
+
+
+def test_cli_stop_after_episodes_dispatches_to_process_episodes_without_titles(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_process_episodes(edl_path, project_path, footage_root, work_dir, out_dir, *,
+                              music=None, jobs=edl_to_reel.DEFAULT_JOBS,
+                              color_delta_max=None, changelog=""):
+        # NO titles= parameter at all: if main() leaked titles= through on the
+        # --stop-after-episodes arm (the real difference between the two dispatch
+        # kwargs the coordinator flagged), Python raises TypeError right here,
+        # before this body ever runs — the assertion never gets a chance to lie.
+        seen["called"] = "process_episodes"
+        seen["out_dir"] = out_dir
+        return {"status": "episodes_ready", "episodes": "x", "count": 1, "clips": []}
+    monkeypatch.setattr(edl_to_reel, "process_episodes", fake_process_episodes)
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel",
+                        lambda *a, **k: seen.setdefault("wrong_fn", "edl_to_reel"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--stop-after-episodes",
+                                      "--titles", "TITLES.json"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen["called"] == "process_episodes"
+    assert "wrong_fn" not in seen                # edl_to_reel (the default arm) was NOT called
+    assert seen["out_dir"] == str(tmp_path / "out")
+
+
+def test_cli_default_dispatches_to_edl_to_reel_with_titles(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_edl_to_reel(edl_path, project_path, footage_root, work_dir, out_dir, *,
+                         music=None, titles=None, jobs=edl_to_reel.DEFAULT_JOBS,
+                         color_delta_max=None, changelog=""):
+        seen["called"] = "edl_to_reel"
+        seen["titles"] = titles
+        return {"status": "delivered", "output": "REEL_v1.mp4"}
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_edl_to_reel)
+    monkeypatch.setattr(edl_to_reel, "process_episodes",
+                        lambda *a, **k: seen.setdefault("wrong_fn", "process_episodes"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--titles", "TITLES.json"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen["called"] == "edl_to_reel"
+    assert "wrong_fn" not in seen                # process_episodes (the stop-after arm) was NOT called
+    assert seen["titles"] == "TITLES.json"
 
 
 def test_a_routable_finding_at_a_lower_index_beats_a_raise_above_it(monkeypatch, tmp_path):
