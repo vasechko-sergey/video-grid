@@ -102,3 +102,58 @@ def test_a_blocking_finding_stops_the_reel():
     reason, problems = gate(qc, {0: "aa", 1: "bb"})
     assert reason == "episode-qc-blocking"
     assert problems == ["episode 1: [blocking] composition — ep0 @1.2s, head clipped"]
+
+
+def test_a_verdict_rejects_empty_clip_digest():
+    with pytest.raises(ValueError, match="clip_digest"):
+        EpisodeVerdict(idx=0, clip="ep0.mp4", clip_digest="")
+
+
+def test_a_verdict_rejects_none_clip_digest():
+    with pytest.raises(ValueError, match="clip_digest"):
+        EpisodeVerdict(idx=0, clip="ep0.mp4", clip_digest=None)
+
+
+def test_a_verdict_from_dict_missing_clip_digest_is_refused():
+    with pytest.raises(ValueError, match="clip_digest"):
+        EpisodeVerdict.from_dict({"idx": 0, "clip": "ep0.mp4"})
+
+
+def test_a_verdict_rejects_negative_idx():
+    with pytest.raises(ValueError, match="idx"):
+        EpisodeVerdict(idx=-1, clip="ep0.mp4", clip_digest="ab")
+
+
+def test_a_verdict_rejects_bool_idx():
+    # isinstance(True, int) is True in Python — without an explicit bool guard this
+    # would silently pass as episode index 1.
+    with pytest.raises(ValueError, match="idx"):
+        EpisodeVerdict(idx=True, clip="ep0.mp4", clip_digest="ab")
+
+
+def test_a_verdict_rejects_raw_dict_findings():
+    with pytest.raises(ValueError, match="findings"):
+        EpisodeVerdict(idx=0, clip="ep0.mp4", clip_digest="ab",
+                        findings=[{"axis": "composition"}])
+
+
+def test_a_finding_from_dict_non_dict_raises_clean():
+    with pytest.raises(ValueError, match="EpisodeFinding.from_dict"):
+        EpisodeFinding.from_dict(["not", "a", "dict"])
+
+
+def test_a_verdict_from_dict_non_dict_raises_clean():
+    with pytest.raises(ValueError, match="EpisodeVerdict.from_dict"):
+        EpisodeVerdict.from_dict(["not", "a", "dict"])
+
+
+def test_reel_qc_from_dict_non_dict_raises_clean():
+    with pytest.raises(ValueError, match="ReelQC.from_dict"):
+        ReelQC.from_dict(["not", "a", "dict"])
+
+
+def test_reel_qc_from_json_corrupt_raises(tmp_path):
+    p = tmp_path / "EPISODE_QC.json"
+    p.write_text("{not json")
+    with pytest.raises(ValueError, match="re-run episode_qc build"):
+        ReelQC.from_json(p)
