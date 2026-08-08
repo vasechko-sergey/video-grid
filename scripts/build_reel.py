@@ -92,6 +92,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # (possibly nothing) so the attestation names exactly which ones.
             prov = dict(rm.provenance)
             qc = dict(prov.get("episode_qc") or {})
+            # A manifest can reach here with no episode_qc block at all — build_reel's own
+            # CLI reads an EPISODES.json directly, the same state-less bypass the
+            # single-command edl_to_reel path closes by stamping "absent" (design §10/§12).
+            # setdefault, not assignment: assemble_reel's two-phase path already stamped
+            # "judged" before calling here, and that must survive the merge unclobbered.
+            qc.setdefault("state", "absent")
             qc["reprocessed_after"] = sorted(reprocessed)
             prov["episode_qc"] = qc
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,

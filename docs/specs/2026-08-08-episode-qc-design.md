@@ -341,6 +341,15 @@ front door for a hand-authored EDL, and it ships a reel no judge saw. The
 attestation makes such a reel *distinguishable* — `montage verify` can say it — but
 it does not forbid it. No silent bypass; bypass exists.
 
+A third door bypasses the gate even more directly than the single-command one:
+`EPISODES.json` **is** a `ReelManifest`, so `scripts/build_reel.py`'s own CLI —
+`build_reel <run>/out/EPISODES.json --out-dir <run>/out --work-dir w` — loads it and
+delivers straight through, with no gate at all, whatever flag `edl_to_reel` was
+given. A manifest reaching `build_reel` this way carries no `episode_qc` block at
+all (phase 1 writes none), so the merge stamps it `state: "absent"` too — the same
+honest word the single-command path uses, not a silent `{"reprocessed_after": []}`
+that names neither state.
+
 ## 11. What proves it
 
 - **Real-ffmpeg end to end.** A two-episode EDL through phase 1 → `EPISODES.json`
@@ -365,7 +374,10 @@ it does not forbid it. No silent bypass; bypass exists.
   back green.** The artifact records `reviewer`; that is a record, not a
   prohibition.
 - **A reprocessed episode ships judged one render out of date** (§8).
-- **The single-command `edl_to_reel` ships with no QC at all** (§10).
+- **The single-command `edl_to_reel` ships with no QC at all** (§10) — and neither
+  does `build_reel`'s own CLI, run directly against the same `EPISODES.json` shape
+  phase 2 gates. Both name themselves honestly on the record (`episode_qc.state`),
+  neither is prevented.
 - **The sensor's thresholds are uncalibrated first cuts** (§5). They have never
   been run against real graded footage.
 - **QC is per-episode and blind to neighbours.** "Does this cut work next to the

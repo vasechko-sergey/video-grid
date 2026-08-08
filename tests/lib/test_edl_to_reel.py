@@ -577,6 +577,82 @@ def test_cli_from_episodes_refuses_an_out_dir_flag(monkeypatch, tmp_path):
     assert called == []
 
 
+# --- Final review fix: the four phase-1-only flags --from-episodes silently dropped ---
+#
+# Before this fix only edl/--project/--footage-root/--out-dir were refused on
+# --from-episodes; --music/--jobs/--color-delta-max/--changelog were parsed and simply
+# never passed to assemble_reel — accepted, and silently discarded, exactly the class
+# the mutex/out-dir refusals above exist to prevent for the other four flags.
+
+def test_cli_from_episodes_refuses_a_music_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--music", "MUSIC.json"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_jobs_flag(monkeypatch, tmp_path):
+    # --jobs defaults to None on the CLI now (resolved to DEFAULT_JOBS only in the
+    # non-resume arm) precisely so this refusal can tell "not given" from "given the
+    # default value" — see test_cli_jobs_defaults_to_the_knee below for the other half.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--jobs", "2"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_color_delta_max_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--color-delta-max", "20.0"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_episodes_refuses_a_changelog_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--changelog", "regraded ep1"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_refuses_titles_combined_with_stop_after_episodes(monkeypatch, tmp_path):
+    # Titles are burned in at delivery (phase 2) — process_episodes (phase 1) has no
+    # titles parameter at all, so --titles here used to be silently discarded (the
+    # skill invited exactly this combination by an ambiguous cross-reference).
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--stop-after-episodes",
+                                      "--titles", "TITLES.json"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
 def test_cli_requires_edl_without_from_episodes(monkeypatch, tmp_path):
     # Isolates the `edl` entry of the "required unless --from-episodes" check —
     # --project and --footage-root are both present, so only a missing `edl`
@@ -658,6 +734,10 @@ def test_cli_from_episodes_dispatches_to_assemble_reel(monkeypatch, tmp_path):
 
 
 def test_cli_stop_after_episodes_dispatches_to_process_episodes_without_titles(monkeypatch, tmp_path):
+    # No --titles on this argv at all: combining it with --stop-after-episodes is now
+    # its own refusal (test_cli_refuses_titles_combined_with_stop_after_episodes) —
+    # this test isolates the OTHER half, that process_episodes is dispatched with no
+    # titles kwarg when the CLI simply never carried one.
     seen = {}
 
     def fake_process_episodes(edl_path, project_path, footage_root, work_dir, out_dir, *,
@@ -678,8 +758,7 @@ def test_cli_stop_after_episodes_dispatches_to_process_episodes_without_titles(m
                                       "--footage-root", str(tmp_path),
                                       "--work-dir", str(tmp_path / "w"),
                                       "--out-dir", str(tmp_path / "out"),
-                                      "--stop-after-episodes",
-                                      "--titles", "TITLES.json"])
+                                      "--stop-after-episodes"])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 0
@@ -932,3 +1011,99 @@ def test_the_single_command_path_records_that_nothing_judged_it(tmp_path, monkey
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"))
     assert seen["episode_qc"] == {"state": "absent"}
+
+
+# --- Final review fix: #11's engine-drift guard now covers phase 2 too --------------
+#
+# _build_manifest (phase 1) already refused a straddling engine change; assemble_reel
+# (phase 2) checked nothing. On the router's default path, N judge subagents (plus any
+# fix round they trigger) sit between the two phases — exactly where the engine moves.
+
+def test_phase_two_refuses_when_the_engine_drifted_since_phase_one(tmp_path, monkeypatch):
+    rm = _manifest(tmp_path)
+    rm.provenance = {"engine_at_start": {"sha": "aaaaaaa", "dirty": False}}
+    rm.write(tmp_path / "EPISODES.json")
+    _qc(rm).write(tmp_path / "EPISODE_QC.json")
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    with pytest.raises(ValueError, match="must not straddle an engine change"):
+        edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+
+
+def test_phase_two_does_not_stop_on_an_unknown_engine_stamp(tmp_path, monkeypatch):
+    # Mirror image: an UNKNOWN stamp (here, engine_at_start — a run started before this
+    # existed, or a box where git could not answer) cannot prove drift and must never
+    # stop the run, exactly as the sibling guard in phase 1 (design §7).
+    seen = []
+    rm = _manifest(tmp_path)
+    rm.provenance = {"engine_at_start": {"sha": "", "dirty": None}}
+    rm.write(tmp_path / "EPISODES.json")
+    _qc(rm).write(tmp_path / "EPISODE_QC.json")
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda *a, **k: seen.append(1) or {"status": "delivered"})
+    res = edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    assert seen == [1]
+
+
+def test_phase_two_with_no_recorded_engine_at_start_never_stops(tmp_path, monkeypatch):
+    # A manifest with no provenance at all (rm.provenance left at its {} default) — the
+    # "absent" twin of the unknown-stamp case; same non-stopping guarantee.
+    seen = []
+    rm = _manifest(tmp_path)
+    rm.write(tmp_path / "EPISODES.json")
+    _qc(rm).write(tmp_path / "EPISODE_QC.json")
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "bbbbbbb", "dirty": False})
+    monkeypatch.setattr(edl_to_reel.build_reel, "build_reel",
+                        lambda *a, **k: seen.append(1) or {"status": "delivered"})
+    res = edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    assert seen == [1]
+
+
+# --- Final review fix: a cleaned-out out dir stops with a routed finding -----------
+
+def test_phase_two_refuses_when_a_clip_is_gone_instead_of_crashing(tmp_path):
+    # A cleaned out dir that kept EPISODES.json but lost the ep{i}.mp4 clips it names
+    # used to crash provenance.digest_file with a bare FileNotFoundError traceback.
+    rm = _manifest(tmp_path)
+    rm.write(tmp_path / "EPISODES.json")
+    Path(rm.episodes[0].clip).unlink()
+    res = edl_to_reel.assemble_reel(str(tmp_path / "EPISODES.json"), str(tmp_path / "work"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "episode-clips-missing"
+    assert "episode 0" in res["finding"]["problems"][0]
+
+
+# --- Final review fix: phase 1's real body was only ever exercised through a fake --
+
+def test_process_episodes_real_body_writes_episodes_json_into_the_out_dir(monkeypatch, tmp_path):
+    # Everywhere else in this file, process_episodes is either the subject via a
+    # monkeypatched process_episode.process_episode (the per-episode worker, faked by
+    # _wire) or is itself monkeypatched out entirely (the CLI dispatch tests). This is
+    # the one test that calls the REAL edl_to_reel.process_episodes end to end: it pins
+    # that EPISODES.json lands IN the out dir — the location assemble_reel's
+    # by-convention EPISODE_QC.json discovery rests on — and that the real returned
+    # status is the "episodes_ready" the CLI's exit-0 set names, not a fake's string.
+    seen = _wire(monkeypatch)
+    captured = {}
+    real_write = ReelManifest.write
+
+    def spy_write(self, path):
+        captured["rm"] = self
+        real_write(self, path)
+    monkeypatch.setattr(ReelManifest, "write", spy_write)
+    out_dir = tmp_path / "out"
+    res = edl_to_reel.process_episodes(_edl_file(tmp_path), _project(tmp_path),
+                                       str(tmp_path), str(tmp_path / "w"), str(out_dir))
+    assert res["status"] == "episodes_ready"          # the real string, not a fake's
+    assert res["episodes"] == str(out_dir / "EPISODES.json")
+    assert res["count"] == 2
+    assert res["clips"] == [e.clip for e in captured["rm"].episodes]
+    written = out_dir / "EPISODES.json"
+    assert written.exists()                            # landed IN the out dir
+    assert ReelManifest.from_json(written).to_dict() == captured["rm"].to_dict()
+    assert seen["build"] == []                         # phase 1 never calls build_reel

@@ -164,3 +164,56 @@ def test_verify_delivery_on_corrupt_json_is_unattested(tmp_path):
     provenance.attest_path(reel).write_text("{not json")
     got = provenance.verify_delivery(reel)
     assert got["state"] == "unattested" and "unreadable" in got["detail"]
+
+
+def test_verify_delivery_without_a_sidecar_reports_episode_qc_unknown(tmp_path):
+    # No sidecar at all -> no QC record to report either way — design §10's
+    # vocabulary has no fourth word for "nothing was delivered here".
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"hand-made")
+    assert provenance.verify_delivery(reel)["episode_qc"] == "unknown"
+
+
+def test_verify_delivery_reports_a_judged_episode_qc_state(tmp_path):
+    # design §10/§7: montage verify must be able to tell a judged reel from an
+    # unjudged one — the whole point of the two-phase gate is lost if the record it
+    # writes cannot be read back.
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"one")
+    _att(reel_digest=provenance.digest_file(reel),
+         episode_qc={"state": "judged", "judged": {"0": "aa"}}).write(
+        provenance.attest_path(reel))
+    assert provenance.verify_delivery(reel)["episode_qc"] == "judged"
+
+
+def test_verify_delivery_reports_an_absent_episode_qc_state(tmp_path):
+    # the single-command edl_to_reel path (and build_reel's own CLI bypass) stamp
+    # "absent" rather than staying silent on the question (design §10).
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"one")
+    _att(reel_digest=provenance.digest_file(reel),
+         episode_qc={"state": "absent"}).write(provenance.attest_path(reel))
+    assert provenance.verify_delivery(reel)["episode_qc"] == "absent"
+
+
+def test_verify_delivery_reports_unknown_for_an_old_sidecar_with_no_episode_qc_key(tmp_path):
+    # A sidecar written before this field existed — the raw JSON carries no
+    # "episode_qc" key at all, not even an empty one. Attestation.from_dict defaults
+    # it to {}, so this must read as "unknown", the same as a producer bug that wrote
+    # a state-less block (neither "judged" nor "absent" — see the build_reel CLI fix).
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"one")
+    stale = _att(reel_digest=provenance.digest_file(reel)).to_dict()
+    del stale["episode_qc"]
+    provenance.attest_path(reel).write_text(json.dumps(stale))
+    assert provenance.verify_delivery(reel)["episode_qc"] == "unknown"
+
+
+def test_verify_delivery_reports_unknown_for_a_state_less_episode_qc_block(tmp_path):
+    # The exact shape the build_reel-CLI-bypass bug produced before its fix:
+    # {"reprocessed_after": [...]} with no "state" key — neither word, so "unknown".
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"one")
+    _att(reel_digest=provenance.digest_file(reel),
+         episode_qc={"reprocessed_after": []}).write(provenance.attest_path(reel))
+    assert provenance.verify_delivery(reel)["episode_qc"] == "unknown"

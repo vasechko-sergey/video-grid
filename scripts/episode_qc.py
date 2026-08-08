@@ -40,11 +40,16 @@ def _evidence(ep, i: int, clip_stats: dict) -> dict:
     against a global rule (design §6)."""
     d = _epdir(ep, i)
     m = ep.manifest
+    storyboard = d / "storyboard.jpg"
     out: dict = {
         "idx": i, "clip": ep.clip,
         "intent": {k: m.get(k) for k in ("composition", "grid", "hero", "target_dur",
                                          "layout", "pan", "stabilize", "canvas")},
-        "storyboard": str(d / "storyboard.jpg"),
+        # Absent is reported as absent, never as a path that resolves to nothing — the
+        # same rule the loop below applies to the other three sidecars, and the one the
+        # `hero` axis stands on (design §6): a judge must be able to tell "there was no
+        # storyboard" from "there was one".
+        "storyboard": str(storyboard) if storyboard.exists() else None,
         "naturalness": clip_stats,
     }
     for name, key in (("report.json", "checks"), ("route.meta.json", "track"),

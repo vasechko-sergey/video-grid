@@ -22,6 +22,28 @@ from scripts.lib.project import ProjectConfig
 DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
 
 
+def _refuse_on_engine_drift(started: dict, now: dict) -> None:
+    """#11 — a montage run must not straddle an engine change: if the code has moved
+    since `started` was stamped, the stages already finished were produced by different
+    code and this reel would be a chimera of two engines. An UNKNOWN stamp on either
+    side cannot prove drift and never stops the run (design §7); neither does an absent
+    one, which is a run started before this existed.
+
+    Shared by phase 1 (`_build_manifest`, against project.json's own stamp) and phase 2
+    (`assemble_reel`, against the SAME stamp carried across the EPISODES.json round-trip
+    as `rm.provenance["engine_at_start"]`) — without this, the split leaves the whole
+    delivery half of a run uncovered, which is exactly where the router's N-judge QC
+    gate gives the engine time to move (review fix)."""
+    if started.get("sha") and now.get("sha") and started != now:
+        raise ValueError(
+            f"the engine changed since this run started (project.json records "
+            f"{started['sha']} {'dirty' if started.get('dirty') else 'clean'}, now "
+            f"{now['sha']} {'dirty' if now.get('dirty') else 'clean'}) — a montage run must "
+            f"not straddle an engine change, because the stages already finished were "
+            f"produced by different code. Start a fresh run dir, or re-run project_init "
+            f"against the current engine to re-baseline")
+
+
 def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                     work_dir: str, out_dir: str, *, music: str | None = None,
                     jobs: int = DEFAULT_JOBS, color_delta_max: float | None = None,
@@ -44,21 +66,12 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                          f"memory-constrained box, raise it only with a GPU)")
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
-    # #11 — a montage run must not straddle an engine change. project.json records the
-    # engine at run START; if the code has moved since, the stages already finished were
-    # produced by different code and this reel would be a chimera of two engines. An
-    # UNKNOWN stamp on either side cannot prove drift and never stops the run (design §7);
-    # neither does an absent one, which is a run started before this existed.
+    # #11 — a montage run must not straddle an engine change; see _refuse_on_engine_drift.
+    # `started` is also threaded into rm.provenance below (engine_at_start) — the value
+    # phase 2's own guard re-checks against, once the split carries it across the
+    # EPISODES.json round-trip.
     started = cfg.provenance.get("engine") or {}
-    now = provenance.engine_stamp()
-    if started.get("sha") and now.get("sha") and started != now:
-        raise ValueError(
-            f"the engine changed since this run started (project.json records "
-            f"{started['sha']} {'dirty' if started.get('dirty') else 'clean'}, now "
-            f"{now['sha']} {'dirty' if now.get('dirty') else 'clean'}) — a montage run must "
-            f"not straddle an engine change, because the stages already finished were "
-            f"produced by different code. Start a fresh run dir, or re-run project_init "
-            f"against the current engine to re-baseline")
+    _refuse_on_engine_drift(started, provenance.engine_stamp())
     seg_dir = str(Path(work_dir) / "segments")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
@@ -193,7 +206,25 @@ def assemble_reel(episodes_path: str, work_dir: str, *, titles: str | None = Non
 
     Every refusal below happens before a single ffmpeg call and writes nothing."""
     rm = ReelManifest.from_json(episodes_path)
+    # #11, extended to the delivery half (review fix): the router's default path splits
+    # phase 1 and phase 2 with N judge subagents (plus any fix round they trigger) in
+    # between — exactly where the engine can move. rm.provenance["engine_at_start"]
+    # survives the EPISODES.json round-trip (ReelManifest.to_dict/from_dict carry
+    # provenance), so the same guard _build_manifest applies at phase 1 start applies here.
+    _refuse_on_engine_drift(rm.provenance.get("engine_at_start") or {}, provenance.engine_stamp())
     out_dir = str(Path(episodes_path).parent)
+    # A cleaned-but-not-fully-cleaned out dir — EPISODES.json kept, the ep{i}.mp4 clips it
+    # names gone — must stop with a routed finding, not a bare FileNotFoundError traceback
+    # out of provenance.digest_file below (review fix).
+    gone = [i for i, ep in enumerate(rm.episodes) if not Path(ep.clip).exists()]
+    if gone:
+        return {"status": "stop_and_report",
+                "finding": {"reason": "episode-clips-missing", "episode_idx": None,
+                            "problems": [
+                                f"episode {i}'s clip is gone ({rm.episodes[i].clip}) — the "
+                                f"out dir was cleaned while EPISODES.json was left behind; "
+                                f"re-run phase 1 (edl_to_reel --stop-after-episodes) before "
+                                f"assembling" for i in gone]}}
     qc_path = Path(out_dir) / "EPISODE_QC.json"
     if not qc_path.exists():
         return {"status": "stop_and_report",
@@ -227,18 +258,26 @@ def main() -> None:
                     help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4 — required unless "
                          "--from-episodes, which refuses it: phase 2 derives its out dir "
                          "from the EPISODES.json path instead (design §3)")
-    ap.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
-    ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the reel (§5.16)")
-    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+    ap.add_argument("--music", default=None,
+                    help="MUSIC.json path; overrides the EDL's music field — phase-1-only; "
+                         "refused with --from-episodes (already baked into EPISODES.json)")
+    ap.add_argument("--titles", default=None,
+                    help="TITLES.json — burn on-screen text into the reel (§5.16); refused "
+                         "with --stop-after-episodes (titles are burned in at delivery, not "
+                         "the per-episode render)")
+    ap.add_argument("--jobs", type=int, default=None,
                     help=f"episodes to process concurrently (default {DEFAULT_JOBS} — the "
-                         f"measured knee; lower on a memory-constrained box)")
+                         f"measured knee; lower on a memory-constrained box); refused with "
+                         f"--from-episodes (phase 2 renders nothing)")
     ap.add_argument("--color-delta-max", type=float,
                     help="across-cut mean-RGB ceiling (default 12.0). Raise ONLY for a reel "
                          "that deliberately cuts between scenes of different exposure "
-                         "(open water -> bright beach), with the measured delta in hand")
+                         "(open water -> bright beach), with the measured delta in hand; "
+                         "refused with --from-episodes (already baked into EPISODES.json)")
     ap.add_argument("--changelog", default="",
                     help="version-log note for this delivery — the REASON for the version "
-                         "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'")
+                         "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'; "
+                         "refused with --from-episodes (already baked into EPISODES.json)")
     phase = ap.add_mutually_exclusive_group()
     phase.add_argument("--stop-after-episodes", action="store_true",
                        help="render every episode, write EPISODES.json, and stop — the "
@@ -248,11 +287,14 @@ def main() -> None:
                             "EPISODE_QC.json beside it, then assemble and deliver")
     a = ap.parse_args()
     if a.from_episodes:
-        if a.edl or a.project or a.footage_root or a.out_dir:
+        if (a.edl or a.project or a.footage_root or a.out_dir or a.music
+                or a.jobs is not None or a.color_delta_max is not None or a.changelog):
             ap.error("--from-episodes resumes a run whose episodes are already rendered; "
-                     "the EDL / --project / --footage-root are not read again, and "
-                     "--out-dir is not read at all — phase 2 delivers beside EPISODES.json "
-                     "(design §3), so passing it here would silently point at nowhere")
+                     "the EDL / --project / --footage-root are not read again, --out-dir "
+                     "is not read at all — phase 2 delivers beside EPISODES.json (design "
+                     "§3) — and --music / --jobs / --color-delta-max / --changelog only "
+                     "affect phase-1 rendering, already baked into EPISODES.json, so "
+                     "passing any of them here would silently be discarded")
         result = assemble_reel(a.from_episodes, a.work_dir, titles=a.titles)
     else:
         missing = [n for n, v in (("edl", a.edl), ("--project", a.project),
@@ -260,10 +302,16 @@ def main() -> None:
                                   ("--out-dir", a.out_dir)) if not v]
         if missing:
             ap.error(f"missing {', '.join(missing)} — required unless --from-episodes is given")
+        if a.stop_after_episodes and a.titles:
+            ap.error("--titles has no effect with --stop-after-episodes: titles are burned "
+                     "into the ONE encode at delivery (phase 2), and process_episodes (phase "
+                     "1) takes no titles parameter at all — pass --titles to the "
+                     "--from-episodes invocation instead")
+        jobs = a.jobs if a.jobs is not None else DEFAULT_JOBS
         fn = process_episodes if a.stop_after_episodes else edl_to_reel
         kw = {} if a.stop_after_episodes else {"titles": a.titles}
         result = fn(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
-                    music=a.music, jobs=a.jobs, color_delta_max=a.color_delta_max,
+                    music=a.music, jobs=jobs, color_delta_max=a.color_delta_max,
                     changelog=a.changelog, **kw)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] in ("delivered", "episodes_ready") else 1)

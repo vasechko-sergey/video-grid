@@ -508,6 +508,11 @@ def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monke
     # it — deliver is what writes the REEL_v{n}.attest.json sidecar from it. No reprocess
     # happened here, so reprocessed_after is empty, but the key is always present: the
     # attestation must say "none were re-rendered", not stay silent on the question.
+    #
+    # rm.provenance carries no "episode_qc" block at all here — the exact shape
+    # build_reel's own CLI produces when run directly against an EPISODES.json (the
+    # third bypass, design §10/§12 review fix): the merge must stamp state "absent"
+    # rather than leave a block with neither "judged" nor "absent".
     seen = {}
     _wire(monkeypatch, [_pass()])
     monkeypatch.setattr(build_reel.deliver, "deliver",
@@ -516,4 +521,19 @@ def test_build_reel_threads_the_manifest_provenance_into_deliver(tmp_path, monke
     rm.provenance = {"edl": {"state": "intact"}}
     build_reel.build_reel(rm, str(tmp_path / "o"), str(tmp_path / "w"))
     assert seen["run_provenance"] == {"edl": {"state": "intact"},
-                                      "episode_qc": {"reprocessed_after": []}}
+                                      "episode_qc": {"state": "absent", "reprocessed_after": []}}
+
+
+def test_build_reel_does_not_clobber_an_already_judged_qc_state(tmp_path, monkeypatch):
+    # The two-phase gate (assemble_reel) stamps episode_qc.state="judged" onto
+    # rm.provenance BEFORE calling build_reel — the setdefault added for the state-less
+    # bypass above must not overwrite that with "absent".
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    rm = _rm()
+    rm.provenance = {"episode_qc": {"state": "judged", "judged": {"0": "aa", "1": "bb"}}}
+    build_reel.build_reel(rm, str(tmp_path / "o"), str(tmp_path / "w"))
+    assert seen["run_provenance"]["episode_qc"] == {
+        "state": "judged", "judged": {"0": "aa", "1": "bb"}, "reprocessed_after": []}

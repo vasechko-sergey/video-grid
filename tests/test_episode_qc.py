@@ -74,3 +74,28 @@ def test_pack_refuses_an_episode_with_no_sidecar_path(tmp_path):
     rm.write(ep_path)
     with pytest.raises(ValueError, match="no path sidecar"):
         episode_qc.pack(str(ep_path), str(tmp_path / "qc"))
+
+
+def _episode_with_scratch(tmp_path):
+    d = tmp_path / "ep0"
+    d.mkdir()
+    ep = ReelEpisode(manifest={"segment": "s.mp4"}, clip=str(tmp_path / "ep0.mp4"),
+                     path=str(d / "path.json"), meta=str(d / "path.meta.json"))
+    return ep, d
+
+
+def test_evidence_reports_a_missing_storyboard_as_none(tmp_path):
+    # The storyboard is the evidence the `hero` axis stands on (design §6) — a judge
+    # must be able to tell "there was no storyboard" from "there was one", the same
+    # distinction _evidence already draws for report.json/route.meta.json/path.meta.json.
+    ep, _ = _episode_with_scratch(tmp_path)
+    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}})
+    assert ev["storyboard"] is None
+    assert ev["checks"] is None and ev["track"] is None and ev["geometry"] is None
+
+
+def test_evidence_reports_an_existing_storyboard_path(tmp_path):
+    ep, d = _episode_with_scratch(tmp_path)
+    (d / "storyboard.jpg").write_bytes(b"x")
+    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}})
+    assert ev["storyboard"] == str(d / "storyboard.jpg")

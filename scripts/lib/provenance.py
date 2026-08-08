@@ -168,13 +168,27 @@ class Attestation:
                              f"corrupt; re-deliver the reel") from e
 
 
+def _episode_qc_state(att: "Attestation") -> str:
+    """Returns judged / absent / unknown — the design §10 vocabulary, derived rather
+    than trusted verbatim: an old sidecar predating this field, or one whose block
+    holds neither word (a producer bug — see build_reel's own-CLI bypass), must read
+    as unknown, never silently as whichever of the two real states looks closer."""
+    state = att.episode_qc.get("state")
+    return state if state in ("judged", "absent") else "unknown"
+
+
 def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     """One delivered file's state. rehash=False (montage status, called constantly)
     reads the sidecar only; rehash=True (montage verify, run once at CP3) re-hashes
-    the shipped file to prove it is the one that was delivered."""
+    the shipped file to prove it is the one that was delivered.
+
+    `episode_qc` in the returned dict answers design §10's promise that a judged reel
+    is distinguishable from an unjudged one — "judged" / "absent" / "unknown" (no
+    sidecar at all, or one predating the field, both read as "unknown": there is no
+    QC record to report either way)."""
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
-                 "engine_drift": False,
+                 "engine_drift": False, "episode_qc": "unknown",
                  "detail": "no attestation sidecar — this file was not produced by deliver()"}
     ap = attest_path(p)
     if not ap.exists():
@@ -186,7 +200,8 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
         return out
     a, b = att.engine_at_start, att.engine_at_deliver
     out.update(overall=att.overall, overrides=list(att.overrides),
-               engine_drift=bool(a.get("sha") and b.get("sha") and a != b), detail="")
+               engine_drift=bool(a.get("sha") and b.get("sha") and a != b),
+               episode_qc=_episode_qc_state(att), detail="")
     if not att.overall:
         return {**out, "state": "failed-gate",
                 "detail": "the attestation records a reel that did not pass check_reel"}

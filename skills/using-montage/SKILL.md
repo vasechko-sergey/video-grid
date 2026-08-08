@@ -205,8 +205,11 @@ say so rather than guessing a path.
     `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
     skips it and says so. **`TITLES.md` is reviewed together with the near-final
     reel at Checkpoint 3** — not standalone. When it exists, pass it to
-    `edl_to_reel` next (`--titles <run>/TITLES.json`) so the reel actually renders
-    the text.
+    `edl_to_reel`'s **deliver** invocation at step 14 (`--from-episodes ... --titles
+    <run>/TITLES.json`) so the reel actually renders the text — never to step 12's
+    `--stop-after-episodes` invocation, which takes no titles parameter at all and
+    refuses the combination outright (titles are burned into the ONE encode at
+    delivery, not the per-episode render).
 
 12. **episodes (edl_to_reel, phase 1).**
 
@@ -253,14 +256,26 @@ say so rather than guessing a path.
     then runs assemble -> check_reel -> deliver. When `TITLES.json` is
     passed, `deliver` burns its drawtext chain into the ONE encode it already
     runs — no second pass; `deliver` also writes a `REEL_v{n}.attest.json`
-    sidecar beside the encode (design 2026-08-04). **Checkpoint 3 — final
+    sidecar beside the encode (design 2026-08-04). When the delivered result
+    carries a non-empty `reprocessed` list (design §8 — `build_reel`'s own
+    retry loop re-rendered those episode indices AFTER episode-qc judged
+    them, chasing a colour or length fix), name those episodes at Checkpoint
+    3 as judged one render out of date, and offer to re-run the
+    **episode-qc** skill on exactly those episodes before calling the reel
+    final. **Checkpoint 3 — final
     review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
     titles were authored) `TITLES.md` alongside them. Before presenting the
     reel as final, run `"$VG" scripts.montage verify --run-dir <run>` and
     show its result — a delivery whose state is not `attested` (most notably
     `unattested`: no `REEL_v{n}.attest.json`, meaning the file did not come
     out of `deliver`) must be named plainly as such, never presented as a
-    finished reel. A `stop_and_report` (a failed gate) is surfaced verbatim —
+    finished reel. Its `episode_qc` field needs the same treatment when it
+    is not `judged` (`absent`: shipped via the single-command `edl_to_reel`
+    or `build_reel`'s own CLI, neither of which this router uses; `unknown`:
+    an old sidecar predating the field) — a reel this router delivered
+    itself should always read `judged`, so anything else means an unjudged
+    reel is about to be called final and must be named plainly, not passed
+    over. A `stop_and_report` (a failed gate) is surfaced verbatim —
     never fixed forward; route it to the culprit stage's skill.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent

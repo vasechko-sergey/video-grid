@@ -320,7 +320,7 @@ def test_status_reports_an_unattested_delivery(tmp_path):
     (out / "REEL_v1.mp4").write_bytes(b"hand-concatenated")
     got = montage.next_action(str(run))["deliveries"]
     assert got == [{"file": "REEL_v1.mp4", "state": "unattested", "overall": None,
-                    "overrides": [], "engine_drift": False,
+                    "overrides": [], "engine_drift": False, "episode_qc": "unknown",
                     "detail": "no attestation sidecar — this file was not produced by deliver()"}]
 
 
