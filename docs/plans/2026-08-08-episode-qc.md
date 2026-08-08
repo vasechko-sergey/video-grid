@@ -1220,9 +1220,18 @@ front-half arguments, so the positional and its friends become conditional:
     raise SystemExit(0 if result["status"] in ("delivered", "episodes_ready") else 1)
 ```
 
-Keep `--work-dir` and `--out-dir` required for both paths (`--out-dir` is unused by
-phase 2 — it derives the dir from `--from-episodes` — so *drop* it from the phase-2
-call rather than pass a second, possibly different, directory).
+Keep `--work-dir` required for both paths. **`--out-dir` belongs to the phases that
+write into it, and only those.** Phase 2 derives its out dir from `--from-episodes`
+(design §3), so it must neither require the flag nor accept it: join `--out-dir` to
+`main()`'s "required unless `--from-episodes`" check, and refuse it alongside
+`edl`/`--project`/`--footage-root` when `--from-episodes` is given. A flag phase 2
+silently ignores would let `--out-dir /elsewhere` deliver next to `EPISODES.json`
+without a word — the misdirection this slice exists to remove.
+
+*(This paragraph originally said to keep `--out-dir` required for both paths AND drop
+it from the phase-2 call. Both cannot hold: argparse enforces `required=True` before
+`main()` branches, so the documented phase-2 command exited 2 on every run. Task 9's
+review caught it in the shipped skill; the correction landed in the same fix.)*
 
 - [x] **Step 4: Green + commit**
 
