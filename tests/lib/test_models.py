@@ -3,7 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
-from scripts.lib.models import LayoutSpec, PanSpec, ReelCheckSpec, ZoomSpec
+from scripts.lib.models import LayoutSpec, PanSpec, PathMeta, ReelCheckSpec, ZoomSpec
 
 
 def test_routepoint_roundtrip():
@@ -1547,3 +1547,76 @@ def test_zoom_spec_from_dict_refuses_a_non_object():
 def test_zoom_spec_from_dict_names_every_missing_key():
     with pytest.raises(ValueError, match="missing from, to"):
         ZoomSpec.from_dict({})
+
+
+# --- PathMeta zoom arrays (design 2026-08-08 §4): the per-route-sample rect a
+# subject-anchored zoom actually cut, so a downstream check reads it instead of
+# re-deriving it from one constant rect ---
+
+def _meta_kwargs(**over):
+    base = dict(mode="fill", crop_w=1080, crop_h=1920, crop_y=0,
+                src_dims=(3840, 2160), canvas=(1080, 1920), out_dims=(1080, 1920),
+                rect_px=(0, 0, 1080, 1920), freedom=2760)
+    base.update(over)
+    return base
+
+
+def test_path_meta_without_a_zoom_is_not_zoomed_and_writes_no_zoom_keys():
+    pm = PathMeta(**_meta_kwargs())
+    assert pm.zoomed is False
+    assert pm.to_dict() == {
+        "mode": "fill", "crop_w": 1080, "crop_h": 1920, "crop_y": 0,
+        "src_dims": [3840, 2160], "canvas": [1080, 1920], "out_dims": [1080, 1920],
+        "rect_px": [0, 0, 1080, 1920], "freedom": 2760, "background": "blur",
+        "pan": False, "stabilized": False}
+
+
+def test_path_meta_round_trips_the_zoom_arrays():
+    pm = PathMeta(**_meta_kwargs(crop_ws=[1080, 900], crop_hs=[1920, 1600],
+                                 crop_ys=[0, 160]))
+    assert pm.zoomed is True
+    d = pm.to_dict()
+    assert d["crop_ws"] == [1080, 900] and d["crop_hs"] == [1920, 1600]
+    assert d["crop_ys"] == [0, 160]
+    assert PathMeta.from_dict(d) == pm
+
+
+def test_path_meta_refuses_a_partial_set_of_zoom_arrays():
+    with pytest.raises(ValueError, match="all-or-nothing"):
+        PathMeta(**_meta_kwargs(crop_ws=[1080, 900]))
+
+
+def test_path_meta_refuses_zoom_arrays_of_different_lengths():
+    with pytest.raises(ValueError, match="same length"):
+        PathMeta(**_meta_kwargs(crop_ws=[1080, 900], crop_hs=[1920],
+                                crop_ys=[0, 160]))
+
+
+def test_path_meta_refuses_empty_zoom_arrays():
+    with pytest.raises(ValueError, match="at least one sample"):
+        PathMeta(**_meta_kwargs(crop_ws=[], crop_hs=[], crop_ys=[]))
+
+
+def test_path_meta_accepts_a_single_sample_zoom():
+    # the guard's own wording is "at least one sample" — a lone sample is a
+    # legitimate zoom (e.g. a one-sample route), not a synonym for empty. No
+    # test above ever passes fewer than 2 samples, so a tightening to "at
+    # least two" would pass the whole battery above and only break here.
+    pm = PathMeta(**_meta_kwargs(crop_ws=[900], crop_hs=[1600], crop_ys=[160]))
+    assert pm.zoomed is True
+    assert pm.to_dict()["crop_ws"] == [900]
+
+
+def test_path_meta_from_dict_wraps_a_partial_zoom_sidecar_as_an_integrity_failure():
+    # A hand-edited or truncated sidecar with 2-of-3 zoom keys is a from_dict
+    # INTEGRITY failure (RuntimeError), not the construction-contract ValueError
+    # __post_init__ raises directly — from_dict's own `except (TypeError,
+    # ValueError)` wraps it, same as any other unusable field (e.g. crop_w="abc").
+    # A test that only calls PathMeta(...) directly, as every test above does,
+    # would never see this wrapping and could not catch it regressing to a bare
+    # ValueError leaking out of from_dict.
+    d = PathMeta(**_meta_kwargs(crop_ws=[1080, 900], crop_hs=[1920, 1600],
+                                crop_ys=[0, 160])).to_dict()
+    del d["crop_ys"]
+    with pytest.raises(RuntimeError, match="unusable field"):
+        PathMeta.from_dict(d)

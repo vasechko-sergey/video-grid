@@ -130,6 +130,11 @@ class CropPath:
         return len(self.xs)
 
 
+def _int_list(v: object) -> list[int] | None:
+    """A sidecar's optional parallel int array, or None when the key is absent."""
+    return None if v is None else [int(x) for x in v]
+
+
 @dataclass
 class PathMeta:
     """What reframe ACTUALLY cut and where it put it — written beside path.json,
@@ -150,6 +155,13 @@ class PathMeta:
     already vidstab-corrected, which is what makes the route it cut them by
     trustworthy — that pairing is the load-bearing claim of design 2026-07-20 §1,
     and a reader of the sidecar has no other way to check it.
+
+    `crop_ws`/`crop_hs`/`crop_ys` are the ZOOM record (design 2026-08-08 §4).
+    They are None for a constant rect — which is every episode without a zoom,
+    and which keeps this sidecar byte-identical to the one written before zoom
+    existed. There is deliberately NO `zoom` bool beside them: a bit would have
+    to agree with the arrays, and two representations of one fact are a
+    contradiction surface. `zoomed` is a property instead, so it cannot disagree.
     """
     mode: str
     crop_w: int
@@ -164,14 +176,48 @@ class PathMeta:
     pan: bool = False      # True ⇒ the path was GENERATED, not observed (design 2026-07-19 §5)
     stabilized: bool = False   # True ⇒ reframe's `src` was a vidstab pre-stage output, not the
                                # raw segment (design 2026-07-20 §6.2)
+    crop_ws: list[int] | None = None    # per-route-sample effective crop width under a zoom
+    crop_hs: list[int] | None = None    # ... height
+    crop_ys: list[int] | None = None    # ... top edge (the rect keeps the base rect's centre)
+
+    def __post_init__(self) -> None:
+        arrays = {"crop_ws": self.crop_ws, "crop_hs": self.crop_hs, "crop_ys": self.crop_ys}
+        given = sorted(n for n, v in arrays.items() if v is not None)
+        if not given:
+            return
+        if len(given) != 3:
+            raise ValueError(
+                f"PathMeta: the zoom arrays are all-or-nothing — got {given} and not the "
+                f"rest. A zoomed rect varies width, height and top edge together; re-run "
+                f"reframe to regenerate path.meta.json")
+        if len({len(v) for v in arrays.values()}) != 1:
+            raise ValueError(
+                f"PathMeta: the zoom arrays must be the same length — got "
+                f"{ {n: len(v) for n, v in arrays.items()} }. They are parallel to the route, "
+                f"so a mismatch means the sidecar was hand-edited; re-run reframe")
+        if not self.crop_ws:
+            raise ValueError(
+                "PathMeta: the zoom arrays hold at least one sample or are all None — an "
+                "empty array claims a zoom with no rect. Re-run reframe")
+
+    @property
+    def zoomed(self) -> bool:
+        """True ⇒ the rect varied over the episode and the arrays record it."""
+        return self.crop_ws is not None
 
     def to_dict(self) -> dict:
-        return {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
-                "crop_y": self.crop_y, "src_dims": list(self.src_dims),
-                "canvas": list(self.canvas), "out_dims": list(self.out_dims),
-                "rect_px": list(self.rect_px), "freedom": self.freedom,
-                "background": self.background, "pan": self.pan,
-                "stabilized": self.stabilized}
+        d = {"mode": self.mode, "crop_w": self.crop_w, "crop_h": self.crop_h,
+             "crop_y": self.crop_y, "src_dims": list(self.src_dims),
+             "canvas": list(self.canvas), "out_dims": list(self.out_dims),
+             "rect_px": list(self.rect_px), "freedom": self.freedom,
+             "background": self.background, "pan": self.pan,
+             "stabilized": self.stabilized}
+        if self.zoomed:
+            # emitted ONLY when zoomed: an unzoomed sidecar stays byte-identical to
+            # every one written before this slice, which is what protects the goldens
+            d.update({"crop_ws": list(self.crop_ws), "crop_hs": list(self.crop_hs),
+                      "crop_ys": list(self.crop_ys)})
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "PathMeta":
@@ -204,7 +250,13 @@ class PathMeta:
                        # written before the stabilize slice has no `stabilized` key,
                        # and its absence honestly means the source was raw —
                        # stabilization was refused upstream until then.
-                       stabilized=d.get("stabilized", False))
+                       stabilized=d.get("stabilized", False),
+                       # Fourth exemption, same reasoning: a sidecar written before the
+                       # zoom slice has no crop_ws/crop_hs/crop_ys keys, and their absence
+                       # honestly means a constant rect — zoom did not exist as a source yet.
+                       crop_ws=_int_list(d.get("crop_ws")),
+                       crop_hs=_int_list(d.get("crop_hs")),
+                       crop_ys=_int_list(d.get("crop_ys")))
         except KeyError as e:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
