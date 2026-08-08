@@ -502,14 +502,19 @@ def _no_dispatch(monkeypatch):
 
 
 def test_cli_stop_after_episodes_and_from_episodes_are_mutually_exclusive(monkeypatch, tmp_path):
+    # Deliberately NO edl/--project/--footage-root here — the realistic resume shape
+    # (--from-episodes never re-reads the front half, per its own help text). With
+    # them present the independent "--from-episodes resumes a run..." refusal fires
+    # on its own and this test would pass even with the mutex deleted, because
+    # a.stop_after_episodes is read NOWHERE except inside the else arm's ternary —
+    # ungrouping the two flags would then silently let --stop-after-episodes be
+    # ignored and fall through to a real assemble_reel dispatch.
     called = _no_dispatch(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
-                                      "--project", _project(tmp_path),
-                                      "--footage-root", str(tmp_path),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out"),
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
                                       "--stop-after-episodes",
-                                      "--from-episodes", str(tmp_path / "EPISODES.json")])
+                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out")])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 2            # argparse's own mutually_exclusive_group, not ap.error
