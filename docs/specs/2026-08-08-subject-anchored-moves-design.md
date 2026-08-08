@@ -337,9 +337,25 @@ All fail loud, at the earliest layer that can see the contradiction.
 5. `abs(end - start) / dur > ZOOM_MAX_RATE` — the whip-zoom guard, the analogue
    of the pan design's speed cap, and for the same reason: to catch the absurd
    (a typo turning a push-in into a lurch), not to police taste.
-6. `W0 * min(start, end) < out_w` — a push-in past the delivery's own width
-   upsamples: the reel would ship magnified pixels that were never resolved.
-   This is a real quality gate, not a style rule.
+6. `int(W0 / (1/min(start, end))) < out_w / ZOOM_MAX_UPSCALE` — the push-in
+   upsamples past a bounded allowance. A push-in below the delivery's own width
+   ships magnified pixels that were never resolved, so this is a real quality
+   gate; but refusing ANY upsample was measured to make the feature useless on
+   the flagship path, and the correction is recorded here rather than hidden:
+
+   | canvas / delivery | crop width | out width | max push-in |
+   |---|---|---|---|
+   | 9:16, native | 1215 | 1214 | 1.001× |
+   | 9:16, 1080x1920 | 1215 | 1080 | 1.125× |
+   | 16:9, 1920x1080 | 3840 | 1920 | 2.000× |
+
+   A 9:16 crop of a 16:9 4K source is already at the delivery's resolution — it
+   takes the full 2160 height and only 1215 of width — so a zero-upsample rule
+   caps the reel format this engine exists for at 1.125×, below the threshold of
+   visibility. `ZOOM_MAX_UPSCALE = 1.5` names how far past 1:1 a push-in may
+   resample: on 9:16 that allows ~1.69×, so a `1.0 → 0.7` push-in ships pixels
+   resampled about 1.3× at its tightest instant. Uncalibrated first cut, like
+   every other threshold in this design (§10).
 7. `pan` on a window with `present > PAN_PRESENCE_MAX` (§2.1), and `pan` with a
    hero pin or cast name (§2.2).
 
@@ -426,9 +442,14 @@ runtime expression, not a literal — so trap 4's detector is the pixel proof in
   self-contradicting case (§2.2). Running the tracker on every pan episode
   would close it fully and was rejected: pan exists precisely so a scenery shot
   does not pay for a YOLO pass.
-- **`PAN_PRESENCE_MAX` and `ZOOM_MAX_RATE` are first cuts.** Neither has been
-  calibrated against a real shoot. `PAN_PRESENCE_MAX = 0.10` is a judgement
-  about what "incidental" means, not a measurement.
+- **`PAN_PRESENCE_MAX`, `ZOOM_MAX_RATE` and `ZOOM_MAX_UPSCALE` are first cuts.**
+  None has been calibrated against a real shoot. `PAN_PRESENCE_MAX = 0.10` is a
+  judgement about what "incidental" means, not a measurement.
+  `ZOOM_MAX_UPSCALE = 1.5` is the sharper admission: it is the point at which
+  this design stops refusing upsampled pixels and starts permitting them, chosen
+  because the alternative measured out at 1.125× on the reel format the engine
+  exists for (§6). Nobody has looked at a 1.5× push-in on real graded footage and
+  said it holds up.
 - **Recorded and rendered rects can differ by up to a pixel.** `w_i` is
   `int(W0/z_i)`, computed in Python; ffmpeg performs the same division in its
   own doubles. Defining `w_i` from `z` (§3.2) removes the systematic part of the

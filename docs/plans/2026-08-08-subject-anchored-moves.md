@@ -468,13 +468,15 @@ def test_validate_refuses_a_whip_zoom():
         zoom.validate(ZoomSpec(start=1.0, end=0.2), crop_w=2000, out_w=1080, dur=0.5)
 
 
-def test_validate_refuses_a_push_in_past_the_delivery_width():
-    with pytest.raises(ValueError, match="upsample"):
-        zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1080, dur=4.0)
+def test_validate_refuses_a_push_in_past_the_upscale_allowance():
+    # tightest 600px against a 1080px delivery is 1.8x, past the 1.5x ceiling
+    with pytest.raises(ValueError, match="upsampling"):
+        zoom.validate(ZoomSpec(start=1.0, end=0.3), crop_w=2000, out_w=1080, dur=4.0)
 
 
-def test_validate_accepts_a_zoom_that_stays_above_the_delivery_width():
-    assert zoom.validate(ZoomSpec(start=1.0, end=0.6), crop_w=2000, out_w=1080,
+def test_validate_accepts_a_push_in_inside_the_upscale_allowance():
+    # tightest 800px against a 1080px delivery is 1.35x — upsampling, but inside the ceiling
+    assert zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1080,
                          dur=4.0) is None
 ```
 
@@ -497,10 +499,15 @@ reframe owns the ffmpeg strings, the sidecar and the route.
 from scripts.lib import geometry as g
 from scripts.lib.models import ZoomSpec
 
-ZOOM_MAX_RATE = 0.5   # crop-width fractions per second. FIRST CUT, uncalibrated against any
-                      # real shoot (design §10). It exists to catch the absurd — a typo that
-                      # turns 0.7 into 0.07 — not to police taste, exactly as PanSpec's speed
-                      # cap does for a whip pan.
+ZOOM_MAX_RATE = 0.5      # crop-width fractions per second. FIRST CUT, uncalibrated against any
+                         # real shoot (design §10). It exists to catch the absurd — a typo that
+                         # turns 0.7 into 0.07 — not to police taste, exactly as PanSpec's speed
+                         # cap does for a whip pan.
+ZOOM_MAX_UPSCALE = 1.5   # how far past 1:1 a push-in may resample. NOT zero, and the reason is
+                         # measured: a 9:16 crop of a 16:9 4K source is 1215px wide against a
+                         # 1080px delivery, so refusing every upsample would cap the reel format
+                         # this engine exists for at 1.125x — below visibility (design §6). Also
+                         # a FIRST CUT: nobody has judged a 1.5x push-in on real graded footage.
 
 
 def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
@@ -523,11 +530,13 @@ def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
             "move. Narrow the from->to span, give the episode a longer duration, or check "
             "for a mistyped fraction")
     tightest = int(crop_w / (1.0 / min(spec.start, spec.end)))
-    if tightest < out_w:
+    floor = out_w / ZOOM_MAX_UPSCALE
+    if tightest < floor:
         raise ValueError(
-            f"zoom {spec.start}->{spec.end} tightens the {crop_w}px crop to {tightest}px, "
-            f"below the {out_w}px delivery width — the reel would ship upsampled pixels "
-            "that were never resolved. Zoom less far, or deliver narrower")
+            f"zoom {spec.start}->{spec.end} tightens the {crop_w}px crop to {tightest}px "
+            f"against a {out_w}px delivery — {out_w / tightest:.2f}x upsampling, past the "
+            f"{ZOOM_MAX_UPSCALE}x this engine will ship. Past it the reel carries magnified "
+            "pixels that were never resolved. Zoom less far, or deliver narrower")
 
 
 def scales(spec: ZoomSpec, times: list[float]) -> list[float]:
@@ -723,7 +732,7 @@ def test_xexpr_emits_the_variable_it_is_given():
 
 def test_filter_args_inserts_the_zoompan_between_crop_and_scale():
     rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
-                        Delivery(mode="1080"))
+                        Delivery("long_edge", 1920))
     args = reframe._filter_args(rl, "0", 0, "", 30.0, 3.0,
                                 zoom_args="zoompan=z='1':x='0':y='0':d=1:s=8x8:fps=30")
     chain = args[1]
@@ -732,7 +741,7 @@ def test_filter_args_inserts_the_zoompan_between_crop_and_scale():
 
 def test_filter_args_without_a_zoom_is_unchanged():
     rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
-                        Delivery(mode="1080"))
+                        Delivery("long_edge", 1920))
     assert (reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)
             == reframe._filter_args(rl, "0", 0, "", 30.0, 3.0, zoom_args=""))
     assert "zoompan" not in reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)[1]
@@ -854,7 +863,7 @@ Append to `tests/lib/test_reframe.py`. These drive `reframe()` through a stubbed
 ```python
 def test_reframe_refuses_a_zoom_together_with_a_pan():
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
-                       color_means=(105, 122, 137), delivery=Delivery(mode="1080"),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
                        layout=LayoutSpec(mode="fill"), pan=PanSpec(start=0.0, end=1.0),
                        zoom=ZoomSpec(start=1.0, end=0.7))
     with pytest.raises(ValueError, match="zoom and pan"):
@@ -870,13 +879,13 @@ def test_reframe_emits_a_zoompan_with_every_default_overridden(tmp_path, monkeyp
         {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
         {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
-                       color_means=(105, 122, 137), delivery=Delivery(mode="1080"),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
                        layout=LayoutSpec(mode="fill"), zoom=ZoomSpec(start=1.0, end=0.7))
     reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"),
                     str(tmp_path / "path.json"))
     chain = [a for a in cmds[0] if "zoompan=" in a][0]
     rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
-                        Delivery(mode="1080"))
+                        Delivery("long_edge", 1920))
     # every default overridden, and `s` is the CROP it consumes — not the delivery,
     # which would drive z below 1 and render nothing (design §3.3)
     assert ":d=1:" in chain and ":fps=30" in chain
@@ -892,7 +901,7 @@ def test_reframe_writes_the_rect_arrays_into_the_sidecar(tmp_path, monkeypatch):
         {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
-                       color_means=(105, 122, 137), delivery=Delivery(mode="1080"),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
                        layout=LayoutSpec(mode="fill"), zoom=ZoomSpec(start=1.0, end=0.7))
     reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"), str(path_out))
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
@@ -911,7 +920,7 @@ def test_reframe_without_a_zoom_writes_no_arrays(tmp_path, monkeypatch):
         {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
-                       color_means=(105, 122, 137), delivery=Delivery(mode="1080"),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
                        layout=LayoutSpec(mode="fill"))
     reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"), str(path_out))
     assert "crop_ws" not in json.loads(path_out.with_suffix(".meta.json").read_text())
@@ -1874,8 +1883,11 @@ def _route(tmp_path):
 
 
 def _spec(**over):
+    # long_edge=240 (not native) on purpose: `zoom.validate` refuses a push-in that
+    # upsamples past ZOOM_MAX_UPSCALE, and a native delivery makes the crop and the
+    # output the same width, leaving no room at all (design 2026-08-08 §6).
     base = dict(composition="center", grid="thirds", canvas=(640, 480),
-                color_means=(105, 122, 137), delivery=Delivery(mode="native"),
+                color_means=(105, 122, 137), delivery=Delivery("long_edge", 240),
                 layout=LayoutSpec(mode="fill"))
     base.update(over)
     return ReframeSpec(**base)
