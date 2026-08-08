@@ -31,6 +31,17 @@ def test_scales_refuses_a_non_increasing_time_span():
         zoom.scales(ZoomSpec(start=1.0, end=0.6), [2.0, 2.0])
 
 
+def test_scales_grow_for_a_pull_out():
+    # Every test above is a push-in (end < start): scale only ever shrinks. A
+    # pull-out (end > start) is half the feature and exercises the same
+    # interpolation in the opposite direction — an implementation that silently
+    # assumed start > end (e.g. always subtracting the smaller from the larger)
+    # would get this backwards while every push-in test kept passing.
+    s = zoom.scales(ZoomSpec(start=0.6, end=1.0), [0.0, 1.0])
+    assert s == pytest.approx([0.6, 1.0])
+    assert s[1] > s[0]
+
+
 def test_rects_shrink_from_the_full_crop_and_keep_its_centre():
     ws, hs, ys = zoom.rects(ZoomSpec(start=1.0, end=0.5), crop_w=1000, crop_h=2000,
                             crop_y=80, src_h=2160, times=[0.0, 1.0])
@@ -48,11 +59,38 @@ def test_rects_clamp_the_top_edge_into_the_source():
 
 
 def test_rects_are_derived_from_z_so_they_match_what_ffmpeg_cuts():
-    # s = 0.7 -> z = 1/0.7 = 1.428571...; int(1000/z) is 700, and int(1000*0.7) is 699
-    # on this arithmetic. The record must follow z, not s (design 3.2).
-    ws, _, _ = zoom.rects(ZoomSpec(start=0.7, end=0.5), crop_w=1000, crop_h=2000,
-                          crop_y=0, src_h=2160, times=[0.0, 1.0])
-    assert ws[0] == int(1000 / (1 / 0.7))
+    # s = 0.7 -> z = 1/0.7 = 1.428571...; crop_w=1001/crop_h=2001 are chosen because
+    # this is where the two formulations actually disagree: int(1001/z) is 700 but
+    # round(1001*0.7) is 701, and int(2001/z) is 1400 but round(2001*0.7) is 1401
+    # (measured — Python's `1001*0.7` is 700.6999999999999, `2001*0.7` is
+    # 1400.7). A crop of 1000/2000 does NOT discriminate: every formulation
+    # agrees on 700/1400 there (`1000*0.7` is exactly `700.0`), which is why an
+    # earlier version of this test using those numbers passed against a
+    # `round(crop_w * s)` mutant of `rects` — it asserted a value both
+    # formulations produce. The record must follow z, not s (design 3.2), and
+    # the same z-vs-s gap applies to height, not only width.
+    ws, hs, _ = zoom.rects(ZoomSpec(start=0.7, end=0.5), crop_w=1001, crop_h=2001,
+                           crop_y=0, src_h=2160, times=[0.0, 1.0])
+    assert ws[0] == int(1001 / (1 / 0.7))
+    assert hs[0] == int(2001 / (1 / 0.7))
+
+
+def test_rects_grow_for_a_pull_out_and_z_never_drops_below_one():
+    # ffmpeg's zoompan silently CLAMPS z below 1 to 1 (design §3.3 — measured:
+    # z=0.5 renders byte-identical to z=1) — a push-in never reaches z < 1 since
+    # s <= 1.0 there too, but a PULL-OUT is exactly the direction a bug (e.g.
+    # z = s instead of z = 1/s) would produce it, and the render would then
+    # silently do nothing instead of failing loud. ZoomSpec bounds both ends to
+    # (0, 1], so z = 1/s >= 1.0 always; this pins that invariant against the
+    # actual rect record, not just against the arithmetic in isolation.
+    spec = ZoomSpec(start=0.6, end=1.0)
+    ws, hs, _ = zoom.rects(spec, crop_w=1000, crop_h=2000, crop_y=0, src_h=2160,
+                           times=[0.0, 1.0])
+    assert ws == [600, 1000]
+    assert hs == [1200, 2000]
+    assert ws[1] > ws[0] and hs[1] > hs[0]
+    for s in zoom.scales(spec, [0.0, 1.0]):
+        assert 1.0 / s >= 1.0
 
 
 def test_z_expr_evaluates_to_one_over_the_scale_at_both_ends():
@@ -71,6 +109,20 @@ def test_z_expr_refuses_a_non_increasing_time_span():
     # scales), and no test above ever calls it with t0 == t1 or t1 < t0.
     with pytest.raises(ValueError, match="t1 > t0"):
         zoom.z_expr(ZoomSpec(start=1.0, end=0.5), t0=2.0, t1=2.0)
+
+
+def test_z_expr_handles_a_pull_out():
+    # The two z_expr tests above only ever push in (end < start, z rising from 1.0).
+    # A pull-out (end > start) must still evaluate correctly, and — the same
+    # zoompan clamp concern as the rects pull-out test above — every z along it
+    # must stay >= 1.0, shrinking TOWARD 1 rather than below it.
+    e = zoom.z_expr(ZoomSpec(start=0.6, end=1.0), t0=0.0, t1=2.0)
+    z0 = eval(e.replace("it", "0.0"))
+    z1 = eval(e.replace("it", "2.0"))
+    assert z0 == pytest.approx(1 / 0.6, abs=1e-4)
+    assert z1 == pytest.approx(1.0, abs=1e-4)
+    assert z0 >= 1.0 and z1 >= 1.0
+    assert z1 < z0
 
 
 def test_validate_refuses_a_zoom_with_no_duration():
