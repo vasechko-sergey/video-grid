@@ -2,7 +2,7 @@
 import json
 import pytest
 
-from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
+from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC, gate
 
 
 def _finding(**over) -> dict:
@@ -66,3 +66,39 @@ def test_duplicate_indices_are_refused():
     with pytest.raises(ValueError, match="twice"):
         ReelQC(episodes=(EpisodeVerdict(idx=0, clip="a.mp4", clip_digest="ab"),
                          EpisodeVerdict(idx=0, clip="b.mp4", clip_digest="cd")))
+
+
+def _verdict(idx, digest, severity=None):
+    fs = () if severity is None else (EpisodeFinding.from_dict(_finding(severity=severity)),)
+    return EpisodeVerdict(idx=idx, clip=f"ep{idx}.mp4", clip_digest=digest, findings=fs)
+
+
+def test_a_fully_judged_reel_passes_the_gate():
+    qc = ReelQC(episodes=(_verdict(0, "aa"), _verdict(1, "bb", "minor")))
+    assert gate(qc, {0: "aa", 1: "bb"}) == (None, [])
+
+
+def test_an_unjudged_episode_stops_the_reel():
+    reason, problems = gate(ReelQC(episodes=(_verdict(0, "aa"),)), {0: "aa", 1: "bb"})
+    assert reason == "episode-qc-incomplete"
+    assert problems == ["episode 1 has no verdict"]
+
+
+def test_a_verdict_for_an_episode_the_reel_does_not_have_stops_it():
+    reason, problems = gate(ReelQC(episodes=(_verdict(0, "aa"), _verdict(4, "zz"))), {0: "aa"})
+    assert reason == "episode-qc-incomplete"
+    assert problems == ["verdict for episode 4, which this reel does not have"]
+
+
+def test_a_moved_digest_stops_the_reel_before_any_blocking_finding():
+    qc = ReelQC(episodes=(_verdict(0, "aa", "blocking"), _verdict(1, "OLD")))
+    reason, problems = gate(qc, {0: "aa", 1: "NEW"})
+    assert reason == "episode-qc-stale"          # staleness outranks the blocking finding
+    assert problems == ["episode 1 was judged as OLD… but ep1.mp4 now hashes to NEW…"]
+
+
+def test_a_blocking_finding_stops_the_reel():
+    qc = ReelQC(episodes=(_verdict(0, "aa"), _verdict(1, "bb", "blocking")))
+    reason, problems = gate(qc, {0: "aa", 1: "bb"})
+    assert reason == "episode-qc-blocking"
+    assert problems == ["episode 1: [blocking] composition — ep0 @1.2s, head clipped"]

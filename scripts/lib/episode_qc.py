@@ -4,7 +4,7 @@ gate phase 2 refuses on. The per-episode twin of lib/review.py, deliberately the
 shape so the two read alike. No ffmpeg, no IO beyond JSON round-trip: judgment is the
 agent's, validation is this module's."""
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 QC_AXES = ("composition", "colour", "impression", "path", "hero")
@@ -16,6 +16,11 @@ QC_CONFIDENCE = ("high", "medium", "low")
 # means the run was never judged; a stale one means the verdicts describe other bytes,
 # so their blocking-ness is not about THIS reel; only last does a verdict about these
 # very bytes get to speak.
+#
+# Three, not the four §7's table lists: `episode-qc-missing` (no EPISODE_QC.json at all,
+# so there is no ReelQC to construct) is not missing from here — it belongs to the
+# caller, which stats the file before it has anything to hand this pure gate. Do not
+# "complete" this tuple; there is nothing for a fourth entry to gate over.
 QC_STOPS = ("episode-qc-incomplete", "episode-qc-stale", "episode-qc-blocking")
 
 
@@ -185,3 +190,37 @@ class ReelQC:
                 lines.append(f"  - **Fix:** {f.suggestion}")
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
+
+
+def _short(digest: str) -> str:
+    return f"{digest[:12]}…"
+
+
+def gate(qc: ReelQC, digests: dict) -> tuple:
+    """(reason, problems) — reason is None iff the reel may be assembled.
+
+    `digests` maps EVERY episode index in the reel to the sha256 of its clip NOW, so
+    this stays pure: the caller owns the filesystem, this owns the decision. The
+    missing-artifact case has no ReelQC to pass and is therefore the caller's
+    (design §7).
+
+    The three reasons are applied in QC_STOPS order and the FIRST one wins: an
+    incomplete artifact means the run was never judged; a stale one means the
+    verdicts are about other bytes, so their blocking-ness is not about this reel."""
+    by_idx = qc.by_idx
+    missing = [f"episode {i} has no verdict" for i in sorted(digests) if i not in by_idx]
+    extra = [f"verdict for episode {i}, which this reel does not have"
+             for i in sorted(by_idx) if i not in digests]
+    if missing or extra:
+        return QC_STOPS[0], missing + extra
+    stale = [f"episode {i} was judged as {_short(by_idx[i].clip_digest)} but "
+             f"{by_idx[i].clip} now hashes to {_short(digests[i])}"
+             for i in sorted(digests) if by_idx[i].clip_digest != digests[i]]
+    if stale:
+        return QC_STOPS[1], stale
+    blocking = [f"episode {i}: [{f.severity}] {f.axis} — {f.evidence}"
+                for i in sorted(by_idx) for f in by_idx[i].findings
+                if f.severity == "blocking"]
+    if blocking:
+        return QC_STOPS[2], blocking
+    return None, []
