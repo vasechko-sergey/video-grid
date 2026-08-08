@@ -13,9 +13,16 @@ from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
                  canvas: tuple[int, int], src: tuple[int, int],
                  motion: tuple[str, str | None], max_step: float,
-                 crop_w: int, smooth_window: int = pathsmooth.DEFAULT_WINDOW) -> list[int]:
-    # crop_w comes from the resolved layout — the caller already cut it; deriving
-    # it from `canvas` here would be right only while every layout is `fill`.
+                 crop_ws: list[int], smooth_window: int = pathsmooth.DEFAULT_WINDOW) -> list[int]:
+    # crop_ws comes from the resolved layout — the caller already cut it; deriving it
+    # from `canvas` here would be right only while every layout is `fill`. It is a LIST
+    # (one width per route sample), not a scalar, because a zoom varies the rect while
+    # the composition rule that places it does not change (design 2026-08-08 §3.2). A
+    # constant rect passes [crop_w] * len(route) and behaves exactly as before.
+    if len(crop_ws) != len(route):
+        raise ValueError(
+            f"compute_path: crop_ws must be parallel to the route — got {len(crop_ws)} "
+            f"widths for {len(route)} samples")
     kind, direction = motion if motion[0] == "lateral" else (motion[0], "right")
     if composition == "lead" and kind != "lateral" and len(route) >= 2:
         # motion.classify refuses to call a shot lateral when the subject ALSO grows
@@ -38,16 +45,16 @@ def compute_path(route: list[dict[str, float]], composition: str, grid: str,
         # center / head-on / static: aim crop centre at subject, no lead.
         # break (spec §6.2): tracked but relaxed — v1 center-tracks; extreme
         # framing is editorial territory, checks are editorial-only.
-        raw = [g.clamp(round(pt["x"] - crop_w / 2), 0, src[0] - crop_w)
-               for pt in route]
+        raw = [g.clamp(round(pt["x"] - cw / 2), 0, src[0] - cw)
+               for pt, cw in zip(route, crop_ws)]
     else:
-        raw = [g.crop_x(pt["x"], composition, direction, grid, crop_w, src[0])
-               for pt in route]
+        raw = [g.crop_x(pt["x"], composition, direction, grid, cw, src[0])
+               for pt, cw in zip(route, crop_ws)]
     smoothed = pathsmooth.smooth(raw, max_step=max_step, window=smooth_window)
     # clamp AFTER smoothing: savgol overshoots on ramps and can leave the frame.
     # At zero freedom (crop_w == src_w) this clamps to a constant 0 — a
     # whole-frame layout has nowhere to travel, and needs no special case.
-    return [int(g.clamp(round(x), 0, src[0] - crop_w)) for x in smoothed]
+    return [int(g.clamp(round(x), 0, src[0] - cw)) for x, cw in zip(smoothed, crop_ws)]
 
 
 def generate_pan_path(pan: PanSpec, freedom: int, fps: float, dur: float,
@@ -426,7 +433,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
         motion = classify(route_dicts, src_w, src_h)
         path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
                             (src_w, src_h), motion, max_step=spec.max_speed / fps,
-                            crop_w=rl.crop_w,
+                            crop_ws=[rl.crop_w] * len(route_dicts),
                             smooth_window=pathsmooth.window_frames(
                                 spec.smooth_window_s, fps))
         times = [p.t for p in route]

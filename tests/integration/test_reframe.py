@@ -26,7 +26,8 @@ def test_compute_path_lead_right():
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="lead", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25, crop_w=607)
+                                motion=("lateral", "right"), max_step=25,
+                                crop_ws=[607] * len(route))
     assert len(path) == 20
     assert path[-1] >= path[0]                  # crop follows subject right
     assert all(0 <= x <= 1920 - 607 for x in path)
@@ -103,7 +104,8 @@ def test_compute_path_break_center_tracks():
     route = [dict(t=i/30, x=300 + i*40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="break", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25, crop_w=607)
+                                motion=("lateral", "right"), max_step=25,
+                                crop_ws=[607] * len(route))
     assert len(path) == 20
     assert all(0 <= x <= 1920 - 607 for x in path)
 
@@ -112,7 +114,8 @@ def test_compute_path_unknown_composition_fails_loud():
     with pytest.raises(ValueError, match="unknown composition"):
         reframe.compute_path(route, composition="Lead", grid="thirds",
                              canvas=(9, 16), src=(1920, 1080),
-                             motion=("lateral", "right"), max_step=25, crop_w=607)
+                             motion=("lateral", "right"), max_step=25,
+                             crop_ws=[607] * len(route))
 
 @pytest.mark.integration
 def test_reframe_non_916_canvas_even_dims(sample_clip, tmp_path):
@@ -511,7 +514,8 @@ def test_compute_path_takes_crop_w_from_the_caller():
     route = [dict(t=i / 30, x=960.0, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="lead", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25, crop_w=960)
+                                motion=("lateral", "right"), max_step=25,
+                                crop_ws=[960] * len(route))
     assert path == [640] * 20
     assert all(0 <= x <= 1920 - 960 for x in path)
 
@@ -521,7 +525,8 @@ def test_compute_path_at_zero_freedom_is_constant_zero():
     route = [dict(t=i / 30, x=300 + i * 40, y=500, w=140, h=320) for i in range(20)]
     path = reframe.compute_path(route, composition="break", grid="thirds",
                                 canvas=(9, 16), src=(1920, 1080),
-                                motion=("lateral", "right"), max_step=25, crop_w=1920)
+                                motion=("lateral", "right"), max_step=25,
+                                crop_ws=[1920] * len(route))
     assert path == [0] * 20
 
 

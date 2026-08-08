@@ -1,3 +1,8 @@
+import pytest
+
+from scripts import reframe
+
+
 def _diagonal_route(n=60, x0=855.0, x1=1434.0):
     """The measured shape of a surfer riding ACROSS and TOWARD a beach-side telephoto:
     dx is 30% of frame width (lateral needs 15%) AND the box grows 3.1x (head-on needs
@@ -15,9 +20,9 @@ def test_authored_lead_is_honoured_when_the_shot_classifies_static():
     from scripts.reframe import compute_path
     route = _diagonal_route()
     lead = compute_path(route, "lead", "thirds", (9, 16), (1920, 1080),
-                        ("static", None), max_step=12.5, crop_w=497)
+                        ("static", None), max_step=12.5, crop_ws=[497] * len(route))
     centred = compute_path(route, "center", "thirds", (9, 16), (1920, 1080),
-                           ("static", None), max_step=12.5, crop_w=497)
+                           ("static", None), max_step=12.5, crop_ws=[497] * len(route))
     assert lead != centred
     mid = len(route) // 2
     assert abs((route[mid]["x"] - lead[mid]) / 497 - 1 / 3) < 0.02
@@ -29,9 +34,9 @@ def test_authored_lead_takes_its_direction_from_the_route():
     left = _diagonal_route(x0=1434.0, x1=855.0)
     mid = len(right) // 2
     pr = compute_path(right, "lead", "thirds", (9, 16), (1920, 1080),
-                      ("static", None), max_step=12.5, crop_w=497)
+                      ("static", None), max_step=12.5, crop_ws=[497] * len(right))
     pl = compute_path(left, "lead", "thirds", (9, 16), (1920, 1080),
-                      ("static", None), max_step=12.5, crop_w=497)
+                      ("static", None), max_step=12.5, crop_ws=[497] * len(left))
     assert abs((right[mid]["x"] - pr[mid]) / 497 - 1 / 3) < 0.02   # travelling right
     assert abs((left[mid]["x"] - pl[mid]) / 497 - 2 / 3) < 0.02    # travelling left
 
@@ -40,9 +45,9 @@ def test_break_and_center_still_ignore_the_direction_rescue():
     from scripts.reframe import compute_path
     route = _diagonal_route()
     a = compute_path(route, "break", "thirds", (9, 16), (1920, 1080),
-                     ("static", None), max_step=12.5, crop_w=497)
+                     ("static", None), max_step=12.5, crop_ws=[497] * len(route))
     b = compute_path(route, "center", "thirds", (9, 16), (1920, 1080),
-                     ("static", None), max_step=12.5, crop_w=497)
+                     ("static", None), max_step=12.5, crop_ws=[497] * len(route))
     assert a == b
 
 
@@ -53,9 +58,11 @@ def test_smooth_window_reaches_the_smoother():
     route = [dict(t=i / 60, x=900 + (30 if i % 2 else -30), y=500, w=140, h=320)
              for i in range(40)]
     tight = compute_path(route, "center", "thirds", (9, 16), (1920, 1080),
-                         ("static", None), max_step=99, crop_w=497, smooth_window=5)
+                         ("static", None), max_step=99, crop_ws=[497] * len(route),
+                         smooth_window=5)
     wide = compute_path(route, "center", "thirds", (9, 16), (1920, 1080),
-                        ("static", None), max_step=99, crop_w=497, smooth_window=21)
+                        ("static", None), max_step=99, crop_ws=[497] * len(route),
+                        smooth_window=21)
     assert tight != wide
 
 
@@ -67,7 +74,49 @@ def test_authored_lead_on_a_degenerate_route_falls_back_to_centre():
     from scripts.reframe import compute_path
     one = [dict(t=0.0, x=900.0, y=300.0, w=140.0, h=320.0)]
     lead = compute_path(one, "lead", "thirds", (9, 16), (1920, 1080),
-                        ("static", None), max_step=12.5, crop_w=497)
+                        ("static", None), max_step=12.5, crop_ws=[497])
     centred = compute_path(one, "center", "thirds", (9, 16), (1920, 1080),
-                           ("static", None), max_step=12.5, crop_w=497)
+                           ("static", None), max_step=12.5, crop_ws=[497])
     assert lead == centred
+
+
+def test_compute_path_places_each_sample_at_its_own_width():
+    route = [{"t": 0.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0},
+             {"t": 1.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0}]
+    wide = reframe.compute_path(route, "center", "thirds", (1080, 1920), (3840, 2160),
+                                ("static", None), max_step=1e9, crop_ws=[800, 400])
+    # a centred crop puts the subject mid-rect: 1000 - 800/2 = 600, then 1000 - 400/2 = 800
+    assert wide == [600, 800]
+
+
+def test_compute_path_refuses_a_width_list_that_is_not_parallel_to_the_route():
+    route = [{"t": 0.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0},
+             {"t": 1.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0}]
+    with pytest.raises(ValueError, match="parallel"):
+        reframe.compute_path(route, "center", "thirds", (1080, 1920), (3840, 2160),
+                             ("static", None), max_step=1e9, crop_ws=[800])
+
+
+def test_compute_path_refuses_more_widths_than_route_samples():
+    # the guard is a length INEQUALITY (!=), not "too few": a too-SHORT list is
+    # pinned above. If the guard ever weakened to `<`, a too-LONG crop_ws would
+    # slip through silently (zip just drops the extra tail) — this pins the
+    # other direction so that mutant can't hide.
+    route = [{"t": 0.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0},
+             {"t": 1.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0}]
+    with pytest.raises(ValueError, match="parallel"):
+        reframe.compute_path(route, "center", "thirds", (1080, 1920), (3840, 2160),
+                             ("static", None), max_step=1e9, crop_ws=[800, 400, 200])
+
+
+def test_compute_path_lead_places_each_sample_at_its_own_width():
+    # the brief's own new test only exercises the center/break clamp branch
+    # (g.clamp); `lead` under lateral motion runs the OTHER line (g.crop_x),
+    # which zips route against crop_ws separately — nothing else pins that
+    # branch varying by width too, not just a constant repeated one.
+    route = [{"t": 0.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0},
+             {"t": 1.0, "x": 1000.0, "y": 500.0, "w": 100.0, "h": 200.0}]
+    path = reframe.compute_path(route, "lead", "thirds", (1080, 1920), (3840, 2160),
+                                ("lateral", "right"), max_step=1e9, crop_ws=[900, 300])
+    # lead+right targets the LEFT third line: x - crop_w/3 → 1000-300=700, 1000-100=900
+    assert path == [700, 900]
