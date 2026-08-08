@@ -160,8 +160,12 @@ class ReelQC:
     def ok(self) -> bool: ...
     def to_markdown(self) -> str: ...
 
-def gate(qc: ReelQC, episodes: list[ReelEpisode], digests: dict[int, str]) -> list[str]:
-    """Pure. Every problem that must stop phase 2, as human-readable strings."""
+def gate(qc: ReelQC, digests: dict) -> tuple:
+    """Pure. (reason, problems) — reason is None iff the reel may be assembled.
+
+    `digests` maps EVERY episode index in the reel to its clip's sha256 NOW: the caller
+    owns the filesystem, this owns the decision. The missing-artifact case has no ReelQC
+    to pass, which is why QC_STOPS names three reasons where §7's table lists four."""
 ```
 
 `verdict` is a computed property, never a stored field — the `Review.verdict`
