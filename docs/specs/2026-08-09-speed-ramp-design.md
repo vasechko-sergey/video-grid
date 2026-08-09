@@ -86,6 +86,10 @@ invertible in closed form — which §6 needs, because `_bind_pacing` has to sol
 truncated by the window edge, that inversion would be numeric, and the refusal
 message when it failed would be unexplainable.
 
+This holds of the *approximation* too, not merely of the exact integral, but only
+because §3.2 anchors the knots to the region. Evenly spaced knots satisfy the
+mathematics and break the arithmetic.
+
 **`_bounds` gets a defined shrink floor.** Pacing may move an out-point inward;
 it must not move it inside the ramp region. The headroom is
 `dur − (at + hold/2 + ease)`, well-defined only under this rule.
@@ -115,34 +119,66 @@ filters, so the whole thing is one `proc.run` argv the landmine lint can read.
 — so it is emitted as a **piecewise-linear knot expression**, the same nested
 `if(lt(…),…)` shape `reframe._xexpr` already uses for the zoom's crop path.
 
-### 3.2 The knot count is measured, not guessed
+### 3.2 The knots are anchored to the region, not spread evenly
 
-Reconstruction error of the piecewise-linear `O` against a 4000-step integral,
-for the reference spec `{at: 2.0, factor: 0.4, ease: 0.5, hold: 1.0}` over a 4.0s
-window at 30fps (analytic `out_dur` 6.0811s, extra 2.0811s):
+The obvious scheme — `N` evenly spaced knots across `[0, dur]` — is wrong in a way
+that matters, and measurement caught it while this design's own plan was being
+written. Evenly spaced knots move relative to the eases as `dur` changes, so the
+approximated `ramp_extra` **drifts with the window length**: 2.0812s at
+`dur=3.5` against 2.0779s at `dur=6.0` for the reference spec, a 3.3 ms spread,
+and up to 124 ms on a shorter ease. §2's whole argument is that the extra is
+constant in `dur`; an approximation that quietly breaks it would make
+`_bind_pacing`'s subtraction wrong by exactly that drift.
 
-| knots | worst \|O_lin − O_exact\| | in frames @30 | expression length |
-|------:|--------------------------:|--------------:|------------------:|
-| 8     | 169.86 ms                 | 5.096         | 408 chars         |
-| 16    | 51.94 ms                  | 1.558         | 808 chars         |
-| **32**| **16.14 ms**              | **0.484**     | **1608 chars**    |
-| 64    | 6.23 ms                   | 0.187         | 3208 chars        |
+So knots are placed **by structure instead**:
 
-`RAMP_KNOTS = 32` — the first row under half a frame. 64 halves the error again
-but doubles an already long `-vf` argument for a residual that `fps=`'s own frame
-quantization swallows.
+| segment | knots | why |
+|---|---|---|
+| `[0, region start]` | one interval | speed is exactly 1, so `1/s` is constant and the trapezoid is exact |
+| the ease-in | `RAMP_EASE_KNOTS` subdivisions | the only curved part |
+| the plateau | one interval | `1/s` is exactly `1/factor` |
+| the ease-out | `RAMP_EASE_KNOTS` subdivisions | the other curved part |
+| `[region end, dur]` | one interval | speed 1 again |
 
-Rendered with 32 knots, real ffmpeg produced **6.067s against the analytic
-6.081s** — 0.43 frames, entirely accounted for by the 0.484-frame knot
-approximation above. The error is understood, not merely small.
+Zero-width segments are dropped (a `hold` of 0, or a region flush with an edge).
+
+Two things fall out. **`ramp_extra` becomes exactly independent of `dur`** —
+bit-identical across `dur ∈ {3.5, 4.0, 6.0, 9.0}`, because every knot's position
+is fixed by the spec alone. And the accuracy improves by twelve orders of
+magnitude: worst error against an independent Simpson integration drops from
+5.3 ms (uniform) to **1.8e-15 s**.
+
+The accuracy is not luck. `RAMP_EASE_KNOTS = 16` converges to machine precision
+because the integrand's derivative vanishes at both ends of each ease — which is
+precisely the property the cosine was chosen for editorially, so the speed has no
+visible corner where the ramp starts or stops. Under Euler–Maclaurin that same
+property kills every correction term and the trapezoid rule converges
+exponentially rather than as `O(h²)`. Measured: the value stops moving between 8
+and 16 subdivisions (Δ = 1.4e-10) and is pure float noise thereafter.
+
+The reference spec yields **36 knots and a 1758-character expression** — the same
+order as the zoom's crop-path expression.
+
+### 3.2.1 What the render still costs
+
+Rendered for real, the reference spec produced **6.0667s against an analytic
+6.0811s**. That 14.5 ms is *not* knot error — with anchored knots there is
+effectively none. It is frame quantization and nothing else: 6.0811s × 30fps is
+182.43 frames, and `fps=` emitted 182. A frame is atomic, so the residual is
+always under one frame by construction.
 
 ### 3.3 Record and render read the SAME knots
 
-`play_dur()` must not integrate finely while the render approximates coarsely:
-that would put a ~16 ms lie in every EDL. One `knots()` function serves both —
-`ramp_extra` reads its last value, the filter expression reads all of them. Record
-and render then agree by construction. This is the "record, don't re-derive"
-principle the zoom slice established for `PathMeta.crop_ws`.
+One `knots()` function serves both — `ramp_extra` reads its last value, the filter
+expression reads all of them — so the recorded length and the rendered one cannot
+drift apart. The "record, don't re-derive" principle the zoom slice established
+for `PathMeta.crop_ws`.
+
+With §3.2's anchored placement the two agree to machine precision anyway, so this
+is no longer what stands between the EDL and a lie. It is what keeps it that way:
+change `RAMP_EASE_KNOTS`, move a knot, swap the quadrature — and the record
+follows the render automatically, instead of the two being separately correct
+until one of them is edited.
 
 ### 3.4 Measured against the parked approach
 
@@ -312,17 +348,28 @@ states the quantity the filter uses, and the SKILL documents the translation.
    own parser treats a bare comma as a filter separator: the knot expression's
    first `if(lt(T,…))` splits the chain and ffmpeg reports `No such filter:
    '0.125000)'`. Measured while building this design.
-2. **`drawbox`'s `x`/`y` do not re-evaluate per frame** on the baseline ffmpeg
-   (there is no `eval` option to enable it), so a `t`-dependent box silently
-   renders nothing at all — not a box at t=0, *nothing*. Only relevant to test
-   fixtures, but it cost a debugging round here and will cost one again.
-3. **`setpts` remaps timestamps; it does not resample.** Without a following
+2. **`setpts` remaps timestamps; it does not resample.** Without a following
    `fps=`, the output is a variable-frame-rate stream that concat and the
    uniformity check will not accept. The pair is mandatory.
+
+**Already in the registry, re-confirmed here:** `drawbox`'s `x`/`y` are inert —
+`tests/conftest.py` records that on the baseline ffmpeg the `t` variable reads as
+INT32_MAX, so a `t`-dependent box never appears at all. The measurement work for
+this design walked into it again before finding that note. `overlay`'s position
+expressions DO evaluate per frame, which is how the existing `sample_clip`
+fixture moves anything.
 
 ---
 
 ## 11. Proofs
+
+**The proofs need their own fixture.** The shared `sample_clip` is 30 fps, and
+§5's `MIN_RAMP_FPS = 24.0` therefore admits only `factor ≥ 0.8` on it — a 1.25×
+slowdown, too shallow to separate from measurement noise. The ramp tests build a
+small **60 fps** clip (a box moved by `overlay`, per the landmine above), where
+`factor = 0.4` is legal and the effect is unambiguous. This is a constraint the
+judder gate imposes on its own test suite, and it is worth stating rather than
+discovering.
 
 - **Length.** A real-ffmpeg render of the reference spec lands within one frame
   of `play_dur()`, and `play_dur()` is computed from the same knots the filter
@@ -357,10 +404,11 @@ silence sized to the episode's length, so the ambient bed stays in sync by
 construction — but that episode contributes silence. Recorded in
 `processing_notes`, not left to be discovered.
 
-**Record and render can differ by up to one frame.** `fps=` quantizes; the knot
-expression carries a further 0.484-frame worst-case error at `RAMP_KNOTS = 32`.
-Both are below the length gate's ±0.5s band by three orders of magnitude, but the
-EDL's number is not bit-exact against the file.
+**Record and render differ by under one frame.** `fps=` cannot emit a fraction of
+a frame, so a `play_dur()` of 6.0811s at 30fps renders as 182 frames = 6.0667s.
+That is the entire discrepancy — the knot expression itself contributes nothing
+measurable (§3.2). Three orders of magnitude under the length gate's ±0.5s band,
+but the EDL's number is not bit-exact against the file.
 
 **The ramp costs a second encode generation.** crf 8 keeps it near-lossless for
 the tight-crop case that motivated it (§3.5), but it is still a re-encode that a
