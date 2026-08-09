@@ -471,9 +471,9 @@ design's corrected §9 for both SHAs and the branch state.
 
 ## 12. "Look, don't guess" — examine real frames before deciding footage content
 
-**Status:** ◐ PARTIALLY LANDED 2026-08-05 (the selection half) — design
+**Status:** ✅ LANDED — both halves. **Selection half 2026-08-05** (design
 `docs/specs/2026-08-05-footage-contact-sheet-design.md` + plan
-`docs/plans/2026-08-05-footage-contact-sheet.md`. `contact_sheet build` is now
+`docs/plans/2026-08-05-footage-contact-sheet.md`): `contact_sheet build` is now
 a **required** stage between footage-intake and edit-plan: a run cannot reach
 the cut without a `SHEETS.md` on disk, covering every window of every clip
 that decoded — a clip that fails outright is named under **Not sheeted**
@@ -481,13 +481,22 @@ instead, its windows shown nowhere (design §7), and a build where every
 candidate window failed to decode raises rather than writing a `SHEETS.md`
 that looks like a normal, if thin, success. `contact_sheet strip` answers the
 timing/identity questions a single frame cannot. The edit-plan skill reads
-both. **What this does NOT do** (design §9): it gates the PRESENCE of the
-artifact, not its use, and presence is not a guarantee every window got
-shown — no mechanism can prove an agent looked at an image it was handed,
-and #12 stays **partially** landed on that account. The remaining half is
-the per-episode QC agent (#3), which judges rendered frames rather than
-merely producing them; #19 (shot variety) and #14 (editorial-rule memory)
-stay open too.
+both. **Per-episode half 2026-08-08** (design
+`docs/specs/2026-08-08-episode-qc-design.md` + plan
+`docs/plans/2026-08-08-episode-qc.md`): #3's judge subagent reads a frame strip
+off the *delivered* clip and writes findings against five axes — the half that
+judges rendered frames rather than merely producing them. #19 (shot variety,
+2026-08-06) and #14 (editorial-rule memory, 2026-08-07) landed alongside.
+
+**What neither half does** (contact-sheet design §9; episode-QC design §12) —
+an architectural limit, not a pending work item: both gate the PRESENCE of an
+artifact, never proof that anyone looked. No mechanism can prove an agent
+examined an image it was handed. The episode-QC gate narrows this as far as the
+shape allows — it stamps `clip_digest` from disk rather than from the judge's
+claim, so a verdict is at least bound to the bytes it names — but a judge that
+writes a plausible finding without opening the strip passes both gates. The
+nearest remaining mechanical strengthening is #10's 3-frame probe asserting
+**effect visibility** in pixels (which #18 asks for), not another presence gate.
 
 **Finding:** the agent repeatedly described footage it had not actually looked at
 — hero identity and slow-mo peak timing — and the user had to correct it: *"ты

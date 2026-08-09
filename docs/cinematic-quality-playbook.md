@@ -197,13 +197,36 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    without a flag; a broken rule stops the cut with no waiver. Closed
    vocabulary, four kinds only — a rule outside them still has nowhere to
    live, and a hand-authored `EDL.json` through `edl_to_reel`'s SP1 door
-   still never sees the gate. Open: #3 per-episode QC (the per-episode half
-   of #12, now with a preset AND a real ranking to judge against), and the
-   hero-conditioned re-scan (re-measure a named hero's own bbox instead of
-   the largest person's; its own slice, blocked on a face detector).
-4. **Cinematic effects done right** — #7/#9/#17/#18, with #10 cheap-preview to keep
-   iteration affordable.
-5. **Polish** — #2 music phrase-out, #16 versioning, #4 setup.
+   still never sees the gate. The **per-episode QC gate (#3) — ✅ LANDED
+   2026-08-08** (design `docs/specs/2026-08-08-episode-qc-design.md` + plan
+   `docs/plans/2026-08-08-episode-qc.md`): `edl_to_reel` splits at a
+   `--stop-after-episodes` / `--from-episodes` seam, and one fresh judge per
+   episode reads a delivered-clip frame strip, the storyboard, `report.json`
+   and a new colour-naturalness sensor, writing findings on five axes; the pure
+   gate refuses incomplete → stale → blocking before any ffmpeg, with no
+   waiver. That closes the per-episode half of #12 as well. **Only one item of
+   priority 3 is still open:** the hero-conditioned re-scan (re-measure a named
+   hero's own bbox instead of the largest person's, plus face visibility; its
+   own slice, blocked on a face detector — a new model, a new download, a new
+   `verify_runtime` gate).
+4. **Cinematic effects done right** — the active priority. **#17 frame-moving
+   effects ✅ LANDED 2026-08-08** (design
+   `docs/specs/2026-08-08-subject-anchored-moves-design.md` + plan
+   `docs/plans/2026-08-08-subject-anchored-moves.md`): a `zoom` rides the
+   tracked route through the same composition rule as any crop so every
+   `check_episode` check applies to it, and a `pan`'s route-less path is now
+   refused over any window intake MEASURED as holding people. Still open:
+   **#7** speed ramp (length-aware, parked WIP on `wip/montage-run-patches` is
+   its only copy), **#9** effects library + mood palettes, the rest of **#18**
+   (look filters, `highlight_red`'s missing visibility proof, `outline-bold`),
+   and **#10** cheap 3-frame preview to keep iteration affordable — which is
+   also the mechanism #18 wants for asserting an effect is visible in pixels.
+   **#5** (the authoring skill must enumerate every knob) trails these: it
+   documents whatever surface #7/#9 land.
+5. **Polish** — #2 music phrase-out (still NEEDS INVESTIGATION; #16 versioning
+   and #4 setup both ✅ LANDED 2026-08-04), plus the minor run bugs: a stray
+   empty `out/title_1.txt` and length figures that do not reconcile (fitted
+   spine 27.7s vs `target_dur` 30.317s vs a rebuilt reel at 34.05s).
 
 Rationale: identity and trust are foundational; editorial intelligence + mood presets
 are where the "generic → cinematic" jump actually happens; effects are the visible
