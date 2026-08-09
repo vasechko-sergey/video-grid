@@ -685,3 +685,64 @@ def test_markdown_shows_a_broken_rule():
 def test_markdown_omits_the_section_when_there_are_no_rules():
     md = EDL(episodes=(_ep(),), constraints=ConstraintReport()).to_markdown()
     assert "## Editorial rules" not in md
+
+
+# --- subject-anchored-moves Task 9: EDLEpisode.zoom + the manifest-dict bridge
+# (design docs/specs/2026-08-08-subject-anchored-moves-design.md §7) ---
+
+def test_edl_episode_carries_a_zoom():
+    e = _ep(zoom={"from": 1.0, "to": 0.7})
+    assert e.zoom == {"from": 1.0, "to": 0.7}
+
+
+def test_edl_episode_defaults_to_no_zoom():
+    # zoom must round-trip and render exactly as before when absent (task brief)
+    assert _ep().zoom is None
+
+
+def test_edl_episode_round_trips_a_zoom():
+    # EDLEpisode has no from_dict of its own (see test_edl_episode_round_trips_the_background_colour
+    # above) — round-trip through the constructor, same as every other field here.
+    e = _ep(zoom={"from": 1.0, "to": 0.7})
+    assert e.to_dict()["zoom"] == {"from": 1.0, "to": 0.7}
+    assert EDLEpisode(**e.to_dict()) == e
+
+
+def test_edl_markdown_names_the_zoom_beside_the_motion():
+    # NOTE: the task brief's snippet passed EDL(..., canvas=..., delivery=...), but
+    # EDL has neither field (only episodes/music/cast/cap/target_dur/variety/
+    # constraints/provenance — see the dataclass above); those two arguments would
+    # raise TypeError. Dropped them, matching test_edl_markdown_renders_a_pan_in_the_motion_column's
+    # shape exactly (motion column keyed off the real header, not a hardcoded index).
+    md = EDL(episodes=(_ep(zoom={"from": 1.0, "to": 0.7}),)).to_markdown()
+    assert _motion_cell(md, "| 0 |") == "zoom 1.0→0.7"
+
+
+def test_edl_markdown_shows_both_a_motion_and_its_zoom():
+    # catches the `motion == "–" else f"{motion} · {zm}"` else-branch going untested —
+    # without this, only the "zoom alone" arm would ever be exercised.
+    md = EDL(episodes=(_ep(motion="static", zoom={"from": 1.0, "to": 0.7}),)).to_markdown()
+    assert _motion_cell(md, "| 0 |") == "static · zoom 1.0→0.7"
+
+
+def test_manifest_dict_carries_the_zoom_through():
+    # NOTE: the task brief's snippet called to_manifest_dict(ep, canvas=..., delivery=...,
+    # segment=..., out_path=..., target_dur=...) — none of canvas/delivery/target_dur are
+    # parameters of the real function (`to_manifest_dict(ep, segment, out_path, cast=None)`,
+    # see the import at the top of this file and test_to_manifest_dict_carries_the_pan_across
+    # above for the established call shape). Matched the real signature; kept the assertion.
+    md = to_manifest_dict(_ep(zoom={"from": 1.0, "to": 0.7}), "seg.mp4", "out.mp4")
+    assert md["zoom"] == {"from": 1.0, "to": 0.7}
+
+
+def test_to_manifest_dict_omits_an_absent_zoom():
+    # the established idiom (see test_to_manifest_dict_omits_an_absent_pan): omit rather
+    # than carry an explicit null, so Manifest.from_dict falls to its own None default.
+    assert "zoom" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+
+
+def test_to_manifest_dict_carries_an_empty_zoom_across():
+    # `is not None`, not truthiness (see test_to_manifest_dict_carries_an_empty_pan_across):
+    # an empty dict is FALSY, so `if ep.zoom:` would silently drop a malformed zoom and the
+    # manifest gate would never see it to report the problem.
+    assert to_manifest_dict(_ep(zoom={}), "seg.mp4", "out.mp4")["zoom"] == {}

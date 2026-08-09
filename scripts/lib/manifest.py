@@ -17,10 +17,11 @@ from scripts.lib import hero as hero_lib   # aliased: this module already has a 
                                            # site unambiguous.
 from scripts.lib import vidstab
 from scripts.lib.footage import Cast
-from scripts.lib.models import COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec, PanSpec
+from scripts.lib.models import (COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, LayoutSpec,
+                                PanSpec, ZoomSpec)
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
-OPTIONAL = ("layout", "motion", "pan", "hero", "cast", "color_means", "white_balance",
+OPTIONAL = ("layout", "motion", "pan", "zoom", "hero", "cast", "color_means", "white_balance",
             "black_point", "highlight", "tone_src", "tone_dst", "saturation", "shadow_red",
             "mid_blue", "dip",
             "stabilize", "model",
@@ -45,6 +46,9 @@ class Manifest:
                                      # (design 2026-07-19). Kept as the raw wire dict here
                                      # and built into a PanSpec by process_episode, exactly
                                      # as layout fields are built into a LayoutSpec.
+    zoom: dict | None = None         # {"from": f, "to": f} — a SUBJECT-ANCHORED push-in
+                                     # (design 2026-08-08). Raw wire dict here, built into a
+                                     # ZoomSpec by process_episode, exactly as `pan` is.
     hero: tuple | str | int | None = None
     cast: str = ""                       # cast.json path — a cast-name hero needs the registry,
                                          # and the manifest is a self-contained brief (§14.4)
@@ -113,7 +117,7 @@ class Manifest:
             composition=d["composition"], grid=d["grid"],
             canvas=tuple(d["canvas"]), target_dur=float(d["target_dur"]),
             layout=layout if layout is not None else "fill", motion=d.get("motion"),
-            pan=d.get("pan"),
+            pan=d.get("pan"), zoom=d.get("zoom"),
             hero=hero, cast=d.get("cast") or "",
             color_means=tuple(cm) if cm is not None else DEFAULT_COLOR,
             white_balance=float(d.get("white_balance") or 0.0),
@@ -245,6 +249,24 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
                 "a hero pin cannot be combined with a pan: the pin says 'follow this "
                 f"person' and the pan says 'follow nobody'. Drop `hero` ({m.hero!r}) to "
                 "keep the pan, or drop `pan` to track the hero")
+    if m.pan is not None and (m.hero is not None or m.cast):
+        problems.append(
+            "pan with a hero pin: a pan declares the shot has no subject to follow — it "
+            "turns off framing, continuity and colour-fidelity — and a pin names one. Drop "
+            "the pan and let the tracked route place the crop, or drop the pin "
+            "(design 2026-08-08 §2.2)")
+    if m.zoom is not None:
+        if m.pan is not None:
+            problems.append(
+                "zoom and pan on one episode: a zoom anchors the rect to a tracked subject "
+                "and a pan declares there is none. Keep one")
+        # ZoomSpec is the HARD backstop; here it is the soft gate's oracle — the same
+        # PanSpec/LayoutSpec pattern used above. One constructor for validation and for
+        # the shell's real build, so the two cannot drift apart.
+        try:
+            ZoomSpec.from_dict(m.zoom)
+        except ValueError as e:
+            problems.append(str(e))
     if m.model not in MODELS:
         problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
     try:

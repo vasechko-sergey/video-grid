@@ -465,3 +465,67 @@ def test_manifest_colour_defaults_identity():
     m = mf.Manifest.from_dict(_ok_dict())
     assert (m.white_balance, m.black_point, m.saturation, m.dip) == (0.0, 0.0, 1.0, 0.0)
     assert m.tone_src is None
+
+
+# --- subject-anchored-moves Task 9: Manifest carries `zoom`, and the gate
+# refuses zoom+pan and pan+hero/cast (design 2026-08-08 §2.2/§6.3/§6.7) ---
+
+def test_manifest_carries_a_zoom():
+    # catches from_dict dropping the `zoom=d.get("zoom")` wire-up, and catches
+    # validate() misusing ZoomSpec as its oracle (e.g. an inverted bound) and
+    # flagging a well-formed zoom as a problem.
+    m = mf.Manifest.from_dict(_base(zoom={"from": 1.0, "to": 0.7}))
+    assert m.zoom == {"from": 1.0, "to": 0.7}
+    assert mf.validate(m) == []
+
+
+def test_manifest_defaults_to_no_zoom():
+    # catches a wrong dataclass default (e.g. {} instead of None) — the brief's
+    # own requirement that a zoom-less episode rides through unchanged.
+    assert mf.Manifest.from_dict(_base()).zoom is None
+
+
+def test_manifest_refuses_a_zoom_beside_a_pan():
+    # catches a missing/dropped `if m.pan is not None:` arm inside the
+    # `if m.zoom is not None:` block.
+    m = mf.Manifest.from_dict(_base(composition="center",
+                                    pan={"from": 0.0, "to": 1.0},
+                                    zoom={"from": 1.0, "to": 0.7}))
+    assert any("zoom and pan" in p for p in mf.validate(m))
+
+
+def test_manifest_uses_zoomspec_as_its_oracle():
+    # catches validate() constructing ZoomSpec wrong (e.g. swapped args, or the
+    # try/except missing entirely) — 1.2 is outside ZoomSpec's (0.0, 1.0] bound.
+    m = mf.Manifest.from_dict(_base(zoom={"from": 1.2, "to": 0.7}))
+    assert any("within (0.0, 1.0]" in p for p in mf.validate(m))
+
+
+def test_manifest_refuses_a_pan_beside_a_hero_pin():
+    # a well-formed 4-number seed bbox (not a malformed pin) isolates this
+    # refusal from hero.resolve's own "not a seed bbox" problem — catches the
+    # new top-level `m.hero is not None or m.cast` check going missing.
+    m = mf.Manifest.from_dict(_base(composition="center",
+                                    pan={"from": 0.0, "to": 1.0},
+                                    hero=(900.0, 500.0, 120.0, 300.0)))
+    assert any("declares the shot has no subject" in p for p in mf.validate(m))
+
+
+def test_manifest_refuses_a_pan_beside_a_cast_name():
+    # a cast-name hero (string pin + registry path) — the OTHER pin flavour
+    # design §2.2 names explicitly, distinct from the bbox pin above.
+    m = mf.Manifest.from_dict(_base(composition="center",
+                                    pan={"from": 0.0, "to": 1.0},
+                                    hero="Sergei", cast="cast.json"))
+    assert any("declares the shot has no subject" in p for p in mf.validate(m))
+
+
+def test_manifest_refuses_a_pan_beside_a_bare_cast_path():
+    # `cast` alone, with NO hero pin at all: the two tests above both set
+    # `hero` to a non-None value too, so neither would notice `or m.cast`
+    # being dropped from the condition. This isolates that half of the OR —
+    # per the task's own note, "either one present should trip the pan refusal".
+    m = mf.Manifest.from_dict(_base(composition="center",
+                                    pan={"from": 0.0, "to": 1.0},
+                                    cast="cast.json"))
+    assert any("declares the shot has no subject" in p for p in mf.validate(m))

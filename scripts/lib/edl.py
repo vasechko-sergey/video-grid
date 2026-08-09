@@ -50,6 +50,10 @@ class EDLEpisode:
                               # 2026-07-19). NOT validated here: like `hero` and the
                               # layout params, its one home is the manifest gate
                               # reached via preflight, which uses PanSpec as its oracle.
+    zoom: dict | None = None  # {"from": f, "to": f} — a SUBJECT-ANCHORED push-in/pull-out
+                              # (design 2026-08-08). NOT validated here: like `pan`, its one
+                              # home is the manifest gate reached via preflight, which uses
+                              # ZoomSpec as its oracle.
     stabilize: bool = False   # run the vidstab pre-stage before tracking (design
                               # 2026-07-20). EXPLICIT by design and never inferred:
                               # a wade-in shot is handheld in moving water and so is
@@ -138,6 +142,7 @@ class EDLEpisode:
                 "rect": _j(self.rect), "background": self.background,
                 "background_color": self.background_color, "border_px": self.border_px,
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
+                "zoom": self.zoom,
                 "stabilize": self.stabilize,
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
@@ -270,6 +275,9 @@ class EDL:
                 # they describe different things and can both be present
                 pan = f"pan {e.pan.get('from')}→{e.pan.get('to')}"
                 motion = pan if motion == "–" else f"{motion} · {pan}"
+            if e.zoom is not None:
+                zm = f"zoom {e.zoom.get('from')}→{e.zoom.get('to')}"
+                motion = zm if motion == "–" else f"{motion} · {zm}"
             beat = str(e.beat_slot) if e.beat_slot is not None else "–"
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
@@ -350,6 +358,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["motion"] = ep.motion
     if ep.pan is not None:
         md["pan"] = ep.pan
+    if ep.zoom is not None:
+        md["zoom"] = ep.zoom
     if ep.stabilize:
         md["stabilize"] = True
     if ep.hero is not None:
