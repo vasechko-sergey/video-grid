@@ -24,9 +24,15 @@ ZOOM_MAX_UPSCALE = 1.5   # how far past 1:1 a push-in may resample. NOT zero, an
 def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
     """Refuse a zoom this episode cannot carry (design §6, refusals 4-6).
 
-    The three refusals that need the EPISODE's numbers and so cannot live on
-    ZoomSpec itself: it validates its own two fractions, this validates them
-    against a duration, a crop and a delivery width.
+    The refusals that need the EPISODE's numbers and so cannot live on ZoomSpec
+    itself: it validates its own two fractions, this validates them against a
+    duration, a crop and a delivery width. `ValueError` is the ONLY exception
+    this may raise for any `ZoomSpec` and any non-negative crop_w/out_w/dur —
+    a crop that tightens to zero (or fewer) pixels is refused on its own,
+    BEFORE the upsample-ratio message below ever divides by it, because a rect
+    with no width is a different defect from one that is merely resampled too
+    far, and blurring the two into one message would mean either skipping the
+    ratio or dividing by zero.
     """
     if dur <= 0:
         raise ValueError(
@@ -41,6 +47,11 @@ def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
             "move. Narrow the from->to span, give the episode a longer duration, or check "
             "for a mistyped fraction")
     tightest = int(crop_w / (1.0 / min(spec.start, spec.end)))
+    if tightest <= 0:
+        raise ValueError(
+            f"zoom {spec.start}->{spec.end} tightens the {crop_w}px crop to {tightest}px — "
+            "that is not a rectangle. Zoom less far, use a wider base crop, or check for "
+            "a mistyped fraction")
     floor = out_w / ZOOM_MAX_UPSCALE
     if tightest < floor:
         raise ValueError(

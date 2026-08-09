@@ -189,3 +189,16 @@ def test_validate_accepts_a_zoom_exactly_at_the_upscale_ceiling():
     # "within the ceiling" test sits well above it (800 vs 720, a different floor).
     assert zoom.validate(ZoomSpec(start=1.0, end=0.4), crop_w=2000, out_w=1200,
                          dur=4.0) is None
+
+
+def test_validate_refuses_a_crop_that_tightens_to_zero_pixels():
+    # A plausible authoring typo (an extra zero in the `to` fraction) on a narrow
+    # crop tightens to 0px. The whip-rate check does not catch it first: rate is
+    # abs(0.02-1.0)/2.0 = 0.49, just under the 0.5 ceiling. Before the fix, the
+    # upsample-ratio message computed `out_w / tightest` and crashed with a bare
+    # ZeroDivisionError instead of raising the ValueError this function promises
+    # for every input — ValueError is the ONLY exception `validate` may ever
+    # raise, and a rect with no width is refused as its own defect, not folded
+    # into the upsample-ratio message that would have to divide by it.
+    with pytest.raises(ValueError, match="not a rectangle"):
+        zoom.validate(ZoomSpec(start=1.0, end=0.02), crop_w=40, out_w=1080, dur=2.0)
