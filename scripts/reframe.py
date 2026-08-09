@@ -4,10 +4,11 @@ from pathlib import Path
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, ffbin, proc
 from scripts.lib import layout as layout_lib
+from scripts.lib import zoom as zoom_lib
 from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify, travel_direction as classify_direction
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
-                                PathMeta, LayoutSpec, BACKGROUNDS, PanSpec)
+                                PathMeta, LayoutSpec, BACKGROUNDS, PanSpec, ZoomSpec)
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
@@ -396,8 +397,8 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/layout/max_speed/color_correct/pan. src/route_path/out/path_out stay explicit
-    per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
+    delivery/layout/max_speed/color_correct/pan/zoom. src/route_path/out/path_out stay
+    explicit per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
     independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
     optional per-channel factor the reel retry loop composes onto the grade to pull one
     episode toward the reel median (None = base grade only). Stabilization is a
@@ -420,11 +421,24 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
     sidecar — what was actually cut, for check_episode/storyboard to read back instead
     of re-deriving the crop from the canvas (silently wrong under a non-fill layout).
+
+    A zoom and a pan cannot coexist on one episode — checked FIRST, before any ffmpeg
+    call, so a manifest authoring mistake fails on the cheap check, not partway
+    through a probe/encode of a src that may not even be reachable yet (design
+    2026-08-08 §5): a zoom anchors the rect to the tracked route, a pan generates a
+    path with none to anchor to.
     """
+    if spec.pan is not None and spec.zoom is not None:
+        raise ValueError(
+            "zoom and pan on one episode: a zoom anchors the rect to a tracked subject "
+            "and a pan declares there is none. Keep the zoom (and let the route place "
+            "the crop), or keep the pan and drop the zoom")
     # NEVER assume dims/fps: real footage is 4K/60. `dur` bounds a solid filler's
     # synthesized background so the render is exactly as long as the source (§4).
     src_w, src_h, fps, dur = _probe(src)
     rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
+    crop_ws = crop_hs = crop_ys = None    # only a zoom fills these; None stays None under a
+                                          # pan and under a plain tracked route (no zoom)
     if spec.pan is not None:
         # A GENERATED path: no route is read, and none is written. See
         # generate_pan_path for why it is neither smoothed nor rate-limited.
@@ -444,14 +458,20 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
                 "check route.meta.json (ambiguous? wrong seed pin?) before reframing")
         route_dicts = [p.to_dict() for p in route]        # compute_path/classify still take dicts
         motion = classify(route_dicts, src_w, src_h)
-        path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
-                            (src_w, src_h), motion, max_step=spec.max_speed / fps,
-                            crop_ws=[rl.crop_w] * len(route_dicts),
-                            smooth_window=pathsmooth.window_frames(
-                                spec.smooth_window_s, fps))
         times = [p.t for p in route]
         mean_y = sum(p.y for p in route) / len(route)
         cy = g.crop_y(mean_y, rl.crop_h, src_h)
+        if spec.zoom is None:
+            crop_ws = [rl.crop_w] * len(route)
+        else:
+            zoom_lib.validate(spec.zoom, rl.crop_w, rl.out_w, dur)
+            crop_ws, crop_hs, crop_ys = zoom_lib.rects(
+                spec.zoom, rl.crop_w, rl.crop_h, cy, src_h, times)
+        path = compute_path(route_dicts, spec.composition, spec.grid, spec.canvas,
+                            (src_w, src_h), motion, max_step=spec.max_speed / fps,
+                            crop_ws=crop_ws,
+                            smooth_window=pathsmooth.window_frames(
+                                spec.smooth_window_s, fps))
     CropPath(path).to_json(path_out)
 
     gains = color.gains_for_means(spec.color_means)
@@ -466,7 +486,26 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
                               shadow_red=spec.shadow_red, mid_blue=spec.mid_blue,
                               saturation=spec.saturation, highlight=spec.highlight,
                               dip=spec.dip, dur=dur)
-    xexpr = _xexpr(path, times)
+    zoom_args = ""
+    base_xs = path                     # the crop filter's x — the desired rect without a zoom
+    if spec.zoom is not None:
+        # The base crop is the WIDEST rect (both ends <= 1.0), centred on the rect the
+        # composition chose, so the shrinking rect always sits inside it. Proof: if the
+        # left clamp bites then x + w/2 - W0/2 < 0, hence x + w < W0/2 + w/2 <= W0; the
+        # right edge is symmetric (design 2026-08-08 §3.3).
+        base_xs = [int(g.clamp(round(x + w / 2 - rl.crop_w / 2), 0, src_w - rl.crop_w))
+                   for x, w in zip(path, crop_ws)]
+        xx = [x - a for x, a in zip(path, base_xs)]
+        yy = [y - cy for y in crop_ys]
+        # EVERY zoompan default is overridden, and all three are silent-corruption
+        # landmines: s defaults to hd720 (resizes the episode), fps to 25 (resamples a
+        # 60fps clip) and d to 90 (holds each frame 90 output frames). See design §8 —
+        # lint.check_argv machine-checks this line.
+        zoom_args = (f"zoompan=z='{zoom_lib.z_expr(spec.zoom, times[0], times[-1])}'"
+                     f":x='{_xexpr(xx, times, var='it')}'"
+                     f":y='{_xexpr(yy, times, var='it')}'"
+                     f":d=1:s={rl.crop_w}x{rl.crop_h}:fps={fps:.6g}")
+    xexpr = _xexpr(base_xs, times)
     # `-t` pins the render to the source's length, and is the ONLY thing that does
     # (design §4). `color=:d=` alone leaves the overlay's output timebase mismatched
     # with the tail's `fps` filter: a 90-frame 3s clip came out 46080 frames / 1536s.
@@ -479,7 +518,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     # can forget it. That decision is pinned by a test — see
     # test_reframe_bounds_every_layout_to_the_source_length.
     cmd = [ffbin.ffmpeg(), "-y", "-i", src,
-           *_filter_args(rl, xexpr, cy, grade, fps, dur),
+           *_filter_args(rl, xexpr, cy, grade, fps, dur, zoom_args=zoom_args),
            "-t", f"{dur:.6f}",
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)
@@ -487,7 +526,10 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
              src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
              rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background,
-             pan=spec.pan is not None, stabilized=stabilized
+             pan=spec.pan is not None, stabilized=stabilized,
+             crop_ws=crop_ws if spec.zoom is not None else None,
+             crop_hs=crop_hs if spec.zoom is not None else None,
+             crop_ys=crop_ys if spec.zoom is not None else None,
              ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 

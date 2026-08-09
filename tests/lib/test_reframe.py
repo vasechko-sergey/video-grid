@@ -1,8 +1,10 @@
+import json
+
 import pytest
 
 from scripts import reframe
 from scripts.lib import layout
-from scripts.lib.models import Delivery, LayoutSpec
+from scripts.lib.models import Delivery, LayoutSpec, PanSpec, PathMeta, ReframeSpec, ZoomSpec
 
 
 def _diagonal_route(n=60, x0=855.0, x1=1434.0):
@@ -142,9 +144,100 @@ def test_filter_args_inserts_the_zoompan_between_crop_and_scale():
     assert chain.index("crop=") < chain.index("zoompan=") < chain.index("scale=")
 
 
+def test_filter_args_inserts_the_zoompan_between_crop_and_scale_in_the_composite_branch():
+    # The fast-path test above only pins the order inside `fill`'s single -vf chain.
+    # A non-fill layout takes the OTHER branch (-filter_complex: a background chain,
+    # an overlay, and the crop/zoompan/scale composed around them) — nothing else
+    # in the suite would catch zoom_args landing in the wrong spot there, or being
+    # dropped from that arm entirely while the fast path kept working.
+    #
+    # background="solid" on purpose: the default "blur" filler ALSO emits its own
+    # "crop=" and "scale=" (scale the cover, then crop and boxblur it — see
+    # _background_args), and `str.index` finds the FIRST match. On this exact
+    # layout the blur background's crop/scale even land on the SAME pixel numbers
+    # as the foreground's, so a naive index-order assertion would pass or fail by
+    # accident rather than by checking the chain this test is actually about.
+    # solid's bg_chain is a bare `color=...`, with neither substring, so the one
+    # "crop=" and one "scale=" left in the chain can only be the foreground's.
+    rl = layout.resolve(LayoutSpec(mode="fit", background="solid"), (1080, 1920),
+                        (3840, 2160), Delivery("long_edge", 1920))
+    assert not rl.fast_path                       # confirms this exercises the OTHER branch
+    args = reframe._filter_args(rl, "0", 0, "", 30.0, 3.0,
+                                zoom_args="zoompan=z='1':x='0':y='0':d=1:s=8x8:fps=30")
+    assert args[0] == "-filter_complex"
+    chain = args[1]
+    assert chain.count("crop=") == 1 and chain.count("scale=") == 1
+    assert chain.index("crop=") < chain.index("zoompan=") < chain.index("scale=")
+
+
 def test_filter_args_without_a_zoom_is_unchanged():
     rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
                         Delivery("native"))
     assert (reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)
             == reframe._filter_args(rl, "0", 0, "", 30.0, 3.0, zoom_args=""))
     assert "zoompan" not in reframe._filter_args(rl, "0", 0, "", 30.0, 3.0)[1]
+
+
+def test_reframe_refuses_a_zoom_together_with_a_pan():
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
+                       layout=LayoutSpec(mode="fill"), pan=PanSpec(start=0.0, end=1.0),
+                       zoom=ZoomSpec(start=1.0, end=0.7))
+    with pytest.raises(ValueError, match="zoom and pan"):
+        reframe.reframe(spec, "src.mp4", None, "out.mp4", "path.json")
+
+
+def test_reframe_emits_a_zoompan_with_every_default_overridden(tmp_path, monkeypatch):
+    cmds = []
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: cmds.append(cmd))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([
+        {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
+        {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
+                       layout=LayoutSpec(mode="fill"), zoom=ZoomSpec(start=1.0, end=0.7))
+    reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"),
+                    str(tmp_path / "path.json"))
+    chain = [a for a in cmds[0] if "zoompan=" in a][0]
+    rl = layout.resolve(LayoutSpec(mode="fill"), (1080, 1920), (3840, 2160),
+                        Delivery("long_edge", 1920))
+    # every default overridden, and `s` is the CROP it consumes — not the delivery,
+    # which would drive z below 1 and render nothing (design §3.3)
+    assert ":d=1:" in chain and ":fps=30" in chain
+    assert f":s={rl.crop_w}x{rl.crop_h}" in chain
+
+
+def test_reframe_writes_the_rect_arrays_into_the_sidecar(tmp_path, monkeypatch):
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: None)
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([
+        {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
+        {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
+    path_out = tmp_path / "path.json"
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
+                       layout=LayoutSpec(mode="fill"), zoom=ZoomSpec(start=1.0, end=0.7))
+    reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"), str(path_out))
+    meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    assert meta.zoomed is True
+    assert meta.crop_ws[0] == meta.crop_w          # starts at the full crop
+    assert meta.crop_ws[-1] < meta.crop_w          # and ends tighter
+    assert len(meta.crop_ws) == 2
+
+
+def test_reframe_without_a_zoom_writes_no_arrays(tmp_path, monkeypatch):
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: None)
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    route = tmp_path / "route.json"
+    route.write_text(json.dumps([
+        {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
+        {"t": 2.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0}]))
+    path_out = tmp_path / "path.json"
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                       color_means=(105, 122, 137), delivery=Delivery("long_edge", 1920),
+                       layout=LayoutSpec(mode="fill"))
+    reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"), str(path_out))
+    assert "crop_ws" not in json.loads(path_out.with_suffix(".meta.json").read_text())

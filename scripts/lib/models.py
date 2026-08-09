@@ -769,6 +769,10 @@ class ReframeSpec:
     tone_src: "tuple[float, float, float] | None" = None
     tone_dst: "tuple[float, float, float] | None" = None
     pan: "PanSpec | None" = None
+    zoom: "ZoomSpec | None" = None   # a subject-anchored push-in/pull-out (design
+                                     # 2026-08-08). Requires a route: unlike `pan` it does
+                                     # not replace the observation, it rescales the rect the
+                                     # observation places.
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
@@ -836,6 +840,11 @@ class ReframeSpec:
                 f"ReframeSpec.pan must be a PanSpec or None, got {type(self.pan).__name__} — "
                 "build it with PanSpec.from_dict({'from': …, 'to': …}); a pan replaces the "
                 "tracked route as the source of the crop's x(t)")
+        if self.zoom is not None and not isinstance(self.zoom, ZoomSpec):
+            raise ValueError(
+                f"ReframeSpec.zoom must be a ZoomSpec or None, got {type(self.zoom).__name__} — "
+                "build it with ZoomSpec.from_dict({'from': …, 'to': …}); a zoom rescales the "
+                "rect the tracked route places, it does not replace it")
 
 
 @dataclass

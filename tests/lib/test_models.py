@@ -1281,6 +1281,32 @@ def test_reframespec_refuses_a_pan_that_is_not_a_panspec(bad):
     assert "ReframeSpec.pan" in msg and "PanSpec" in msg
 
 
+# --- ReframeSpec.zoom (design 2026-08-08 §5.1): rescales the rect the route places ---
+
+def test_reframespec_defaults_to_no_zoom():
+    spec = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                         color_means=(105, 122, 137), delivery=m.Delivery("native"))
+    assert spec.zoom is None
+
+
+def test_reframespec_carries_a_zoomspec():
+    z = ZoomSpec(start=1.0, end=0.7)          # off-default values on purpose
+    spec = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                         color_means=(105, 122, 137), delivery=m.Delivery("native"), zoom=z)
+    assert spec.zoom == z
+
+
+@pytest.mark.parametrize("bad", [{"from": 1.0, "to": 0.7}, (1.0, 0.7), "1->0.7", 0.5])
+def test_reframespec_refuses_a_zoom_that_is_not_a_zoomspec(bad):
+    # the dict form is the WIRE shape; the spec takes the constructed type, so a
+    # caller that forgot ZoomSpec.from_dict fails here rather than at render time
+    with pytest.raises(ValueError) as e:
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                     color_means=(105, 122, 137), delivery=m.Delivery("native"), zoom=bad)
+    msg = str(e.value)
+    assert "ReframeSpec.zoom" in msg and "ZoomSpec" in msg
+
+
 # --- PathMeta.pan (design 2026-07-19 §2.1): the provenance bit ---
 
 _META_KW = dict(mode="fill", crop_w=405, crop_h=720, crop_y=0, src_dims=(1280, 720),
