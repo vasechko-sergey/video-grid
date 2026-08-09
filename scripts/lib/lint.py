@@ -178,17 +178,43 @@ def _seek_order(cmd: list[str]) -> list[str]:
 
 
 def _element(text: str, start: int) -> str:
-    """The filtergraph element beginning at `start` — up to the next separator.
+    """The filtergraph element beginning at `start` — up to the next separator
+    OUTSIDE a quoted option value.
 
     §4.3 asks about EACH source's own bound. Testing the whole argument lets a
     `d=` belonging to a neighbour (`afade=...:d=0.5`) exempt an unbounded source
     sitting beside it.
+
+    Quote-blind found a live false positive, not a hypothetical one:
+    reframe._xexpr emits a moving x=/y= as ffmpeg's `if(lt(it,T),then,else)`
+    whenever a path has two or more knots — always, in practice, since the
+    Douglas-Peucker simplifier keeps both endpoints. That `if(...)`'s own
+    commas sit one syntax level down, inside the `'...'`-quoted option value,
+    and a scan that treats every `,`/`;`/`[` alike stops there — discarding the
+    REAL `:d=1:s=...:fps=...` that follows and reporting a fully correct
+    zoompan as missing all three. Because proc.run's guard is always-on, that
+    refused every real zoom render before ffmpeg ever ran (measured: all four
+    tests/integration/test_zoom.py proofs failed on this ValueError, not on
+    pixels).
+
+    Tracked with a toggle, not a real parser: this repo's own emitters never
+    put an apostrophe inside a quoted value (an ffmpeg eval expression has none
+    of its own), so "flip on every `'`" is exact for every string this module
+    sees today, not a heuristic that merely happens to hold. A separator before
+    the first quote, or after the last one closes, behaves exactly as before —
+    so this is a strict widening of what counts as "inside an element", never a
+    narrowing, and every existing caller (_unbounded_source included) keeps
+    its prior verdict on every quote-free argument.
     """
     end = len(text)
-    for sep in _GRAPH_SEPS:
-        i = text.find(sep, start)
-        if i != -1:
-            end = min(end, i)
+    in_quote = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if c == "'":
+            in_quote = not in_quote
+        elif not in_quote and c in _GRAPH_SEPS:
+            end = i
+            break
     return text[start:end]
 
 

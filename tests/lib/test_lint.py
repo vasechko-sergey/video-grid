@@ -1,5 +1,6 @@
 import pytest
 
+from scripts import reframe
 from scripts.lib import lint
 
 
@@ -511,6 +512,78 @@ def test_a_neighbouring_filters_fps_does_not_exempt_a_zoompan_missing_its_own():
                            "zoompan=z='1':x='0':y='0':d=1:s=100x200,"
                            "fps=30", "o.mp4"])
     assert any("omits fps=" in m for m in out)
+
+
+# --- _element is quote-aware ---------------------------------------------------
+# A CRITICAL fix, found independently by two reviewers: reframe._xexpr emits a
+# moving x=/y= as `if(lt(it,T),then,else)` whenever a path has two or more knots
+# — always, in practice, since the Douglas-Peucker simplifier keeps both
+# endpoints. That `if(...)`'s own commas sit INSIDE the quoted x=/y= value, one
+# syntax level below the graph separators _element used to bound on blindly. The
+# old scan stopped at the first one, discarded the real `:d=1:s=...:fps=...`
+# that followed, and reported a fully correct zoompan as missing all three —
+# and because proc.run's guard is always-on, that refused every real zoom
+# render before ffmpeg ever ran. All four tests/integration/test_zoom.py proofs
+# failed on exactly this ValueError before the fix below (see task-12-report.md
+# for the measured before/after). Built from the real emitter (reframe._xexpr),
+# not a hand-written stand-in, so a future change to its shape is what these
+# track — the sanity assertions below exist so a change that removes the comma
+# from _xexpr's output does not leave this section silently vacuous.
+
+def _real_xexpr() -> str:
+    """The exact shape that triggered the bug: a 5-knot path, so `_simplify`
+    cannot collapse it to a single point and `_xexpr` must emit nested
+    `if(lt(it,T),...)` calls — multiple commas, multiple quote-nesting levels."""
+    return reframe._xexpr([100, 100, 250, 400, 400], [0.0, 0.5, 1.0, 1.5, 2.0], var="it")
+
+
+def test_a_multi_knot_xexpr_zoompan_with_every_default_set_is_clean():
+    expr = _real_xexpr()
+    assert expr.count(",") >= 2, "fixture no longer exercises the quoted-comma shape"
+    cmd = ["ffmpeg", "-i", "a.mp4", "-vf",
+           f"zoompan=z='1.2':x='{expr}':y='{expr}':d=1:s=100x200:fps=30,scale=50:100",
+           "o.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_multi_knot_xexpr_zoompan_missing_one_default_is_still_flagged():
+    """The fix must not turn the check off: a quote-aware bound still has to SEE
+    a genuinely absent key sitting past the real `if(...)` expression, not just
+    stop looking once it steps outside a quote. Pinned on the EXACT clause
+    (`"omits s= ("`, not a bare `"s="`) because the remedy text names all three
+    defaults regardless of which is actually missing — a bare substring would
+    pass just as well under the pre-fix bug, which over-reported all three."""
+    expr = _real_xexpr()
+    cmd = ["ffmpeg", "-i", "a.mp4", "-vf",
+           f"zoompan=z='1.2':x='{expr}':y='{expr}':d=1:fps=30", "o.mp4"]
+    out = lint.check_argv(cmd)
+    assert len(out) == 1
+    assert "omits s= (" in out[0]
+
+
+def test_a_quoted_comma_does_not_truncate_a_sources_own_bound():
+    """The same fix, pinned on _unbounded_source's OWN guarantee: a quoted value
+    holding a raw comma must not stop the scan before a real d= that follows it.
+    No production source embeds a quoted expression today (color=/testsrc=/etc.
+    take bare key=value params only) — defensive breadth, the same shape as
+    test_a_synth_source_after_a_comma_is_seen beside it — but the scan must not
+    go blind the day one does, and the pre-fix code demonstrably did: dropping
+    back to a raw `text.find(sep, start)` per separator reproduces a reported
+    violation on this exact clean command."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+           "color=c=black:s=64x64:note='a,b':d=2", "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
+def test_a_quoted_comma_does_not_hide_a_genuinely_unbounded_source():
+    """The complement: quote-awareness widens what _element INCLUDES in an
+    element, and this proves it does not also widen what counts as a bound —
+    a source with a quoted comma and no d=/duration= anywhere must still be
+    reported, exactly as an unquoted one would be."""
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+           "color=c=black:s=64x64:note='a,b'", "out.mp4"]
+    msgs = lint.check_argv(cmd)
+    assert len(msgs) == 1 and "color=" in msgs[0]
 
 
 # --- every real call site in the tree must lint clean -------------------------
