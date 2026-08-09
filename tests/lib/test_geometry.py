@@ -2,6 +2,7 @@ import math
 import pytest
 from scripts.lib import geometry
 from scripts.lib import geometry as g
+from scripts.lib.models import RoutePoint, CropPath, PathMeta
 
 def test_crop_size_9x16_from_1080p():
     # 9:16 crop out of a 1920x1080 source: full height, width = int(1080*9/16)
@@ -177,3 +178,39 @@ def test_extent_at_times_rejects_desync():
     meta = PathMeta("fill", 1000, 2000, 0, (1000, 2000), (1000, 2000), (1000, 2000), (0, 0, 1000, 2000), 0)
     with pytest.raises(ValueError, match="parallel arrays"):
         geometry.extent_at_times([RoutePoint(0.0, 1.0, 1.0, 1.0, 1.0)], CropPath([0, 0]), meta, [0.0])
+
+
+def _zoom_meta(**over):
+    base = dict(mode="fill", crop_w=1000, crop_h=2000, crop_y=0,
+                src_dims=(4000, 2000), canvas=(1000, 2000), out_dims=(1000, 2000),
+                rect_px=(0, 0, 1000, 2000), freedom=3000,
+                crop_ws=[1000, 500], crop_hs=[2000, 1000], crop_ys=[0, 500])
+    base.update(over)
+    return PathMeta(**base)
+
+
+def test_marks_use_the_recorded_width_at_that_time():
+    route = [RoutePoint(t=0.0, x=500.0, y=1000.0, w=100.0, h=200.0),
+             RoutePoint(t=1.0, x=500.0, y=1000.0, w=100.0, h=200.0)]
+    path = CropPath([0, 250])
+    fx, _ = geometry.marks_at_times(route, path, _zoom_meta(), [1.0])[0]
+    # tight rect: (500 - 250) / 500 = 0.5 of the output, not (500 - 250) / 1000 = 0.25
+    assert fx == pytest.approx(0.5)
+
+
+def test_extents_use_the_recorded_rect_at_that_time():
+    route = [RoutePoint(t=0.0, x=500.0, y=1000.0, w=100.0, h=200.0),
+             RoutePoint(t=1.0, x=500.0, y=1000.0, w=100.0, h=200.0)]
+    path = CropPath([0, 250])
+    fx0, fy0, fx1, fy1 = geometry.extent_at_times(route, path, _zoom_meta(), [1.0])[0]
+    assert fx1 - fx0 == pytest.approx(100 / 500)      # bbox width over the TIGHT rect
+    assert fy1 - fy0 == pytest.approx(200 / 1000)
+
+
+def test_an_unzoomed_meta_still_uses_its_scalars():
+    route = [RoutePoint(t=0.0, x=500.0, y=1000.0, w=100.0, h=200.0),
+             RoutePoint(t=1.0, x=500.0, y=1000.0, w=100.0, h=200.0)]
+    path = CropPath([0, 250])
+    meta = _zoom_meta(crop_ws=None, crop_hs=None, crop_ys=None)
+    fx, _ = geometry.marks_at_times(route, path, meta, [1.0])[0]
+    assert fx == pytest.approx(0.25)

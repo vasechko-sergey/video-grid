@@ -109,6 +109,22 @@ def _interp(ts: list[float], xs: list[float], t: float) -> float:
     return xs[-1]
 
 
+def _rect_at(meta: "PathMeta", ts: list[float], t: float) -> tuple[float, float, float]:
+    """The (crop_w, crop_h, crop_y) in force at time `t`.
+
+    The scalars for a constant rect; the sidecar's parallel arrays, interpolated
+    on the route's own timestamps, under a zoom. Every consumer that divides by a
+    crop dimension goes through here, which is why fixing these two helpers also
+    fixes safezones, key_action, the storyboard's marks and check_reel's geometry
+    section without any of them learning that zoom exists (design 2026-08-08 §5).
+    """
+    if meta.crop_ws is None:
+        return float(meta.crop_w), float(meta.crop_h), float(meta.crop_y)
+    return (_interp(ts, [float(v) for v in meta.crop_ws], t),
+            _interp(ts, [float(v) for v in meta.crop_hs], t),
+            _interp(ts, [float(v) for v in meta.crop_ys], t))
+
+
 def marks_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta",
                    times: list[float]) -> list[tuple[float, float]]:
     """(fx, fy) subject fractions in the OUTPUT frame at each sample TIME.
@@ -133,8 +149,9 @@ def marks_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta"
         x = _interp(ts, xs, t)
         y = _interp(ts, ys, t)
         cx = _interp(ts, cxs, t)
-        fx = (rx + rw * (x - cx) / meta.crop_w) / out_w
-        fy = (ry + rh * (y - meta.crop_y) / meta.crop_h) / out_h
+        cw, ch, cyy = _rect_at(meta, ts, t)
+        fx = (rx + rw * (x - cx) / cw) / out_w
+        fy = (ry + rh * (y - cyy) / ch) / out_h
         marks.append((fx, fy))
     return marks
 
@@ -165,9 +182,10 @@ def extent_at_times(route: "list[RoutePoint]", path: "CropPath", meta: "PathMeta
         w = _interp(ts, ws, t)
         h = _interp(ts, hs, t)
         cx = _interp(ts, cxs, t)
-        fx0 = (rx + rw * ((x - w / 2) - cx) / meta.crop_w) / out_w
-        fx1 = (rx + rw * ((x + w / 2) - cx) / meta.crop_w) / out_w
-        fy0 = (ry + rh * ((y - h / 2) - meta.crop_y) / meta.crop_h) / out_h
-        fy1 = (ry + rh * ((y + h / 2) - meta.crop_y) / meta.crop_h) / out_h
+        cw, ch, cyy = _rect_at(meta, ts, t)
+        fx0 = (rx + rw * ((x - w / 2) - cx) / cw) / out_w
+        fx1 = (rx + rw * ((x + w / 2) - cx) / cw) / out_w
+        fy0 = (ry + rh * ((y - h / 2) - cyy) / ch) / out_h
+        fy1 = (ry + rh * ((y + h / 2) - cyy) / ch) / out_h
         extents.append((fx0, fy0, fx1, fy1))
     return extents
