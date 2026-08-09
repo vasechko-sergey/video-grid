@@ -1049,3 +1049,63 @@ def test_a_frozen_route_with_keyframes_is_refused(monkeypatch, tmp_path):
     assert result["attempt"] == 0
     joined = " ".join(result["problems"]).lower()
     assert "--route" in joined and "--keyframes" in joined
+
+
+# --- process_episode builds and preflights the ZoomSpec (design 2026-08-08, Task 10):
+# unlike a pan, a zoom still needs a tracked route (it anchors the rect to the tracked
+# subject, design §1), so its own preflight must run before tracking too, not only before
+# the encode — mirrors the pan preflight above, one layer simpler (zoom.validate needs no
+# path generation). ---
+
+
+def test_a_bad_zoom_comes_back_as_needs_input(sample_clip, tmp_path, monkeypatch):
+    # A >20x upsample (crop_w=303 tightened to 15px against a 302px delivery) is past the
+    # measured 1.5x ceiling zoom.validate refuses. What this pins is the ORDERING, not just
+    # the outcome: build_route is stubbed to fail the test if it is ever called, so this
+    # goes red under either plausible regression —
+    #   1. the preflight call is deleted outright: the zoom is then silently threaded into
+    #      ReframeSpec with nothing to stop it, tracking runs (tripping the stub) and the
+    #      episode either renders wrong or dies on reframe's OWN internal zoom_lib.validate
+    #      (reframe.py line ~467) as an uncaught ValueError instead of a clean status dict;
+    #   2. the preflight call survives but is moved past tracking (e.g. into the retry loop,
+    #      "after the encode" instead of before it) — same stub trip, even though the final
+    #      status would still come back needs_input.
+    # A pan needs no such stub (it never tracks, valid or not); a zoom does, which is
+    # exactly the cost this preflight exists to avoid paying for a doomed one.
+    monkeypatch.setattr(track, "build_route",
+                        lambda *a, **k: pytest.fail(
+                            "an impossible zoom must be refused before tracking runs"))
+    md = {"segment": str(sample_clip), "out_path": str(tmp_path / "o.mp4"),
+          "composition": "center", "grid": "thirds", "canvas": [9, 16],
+          "target_dur": 2.0, "layout": "fill", "crop_scale": 0.5,
+          "zoom": {"from": 1.0, "to": 0.05}}
+    res = pe.process_episode(md, str(tmp_path / "p"))
+    assert res["status"] == "needs_input"
+    assert res["attempt"] == 0
+    assert any("upsampling" in p for p in res["problems"])
+
+
+def test_a_valid_zoom_reaches_the_reframe_spec(monkeypatch, tmp_path):
+    # The complement of the refusal test above, same shape as
+    # test_the_manifests_filler_reaches_the_reframe_spec: validate() structurally cannot
+    # catch a drop here (it never builds a ReframeSpec to compare against), so a
+    # regression that builds `zoom` and preflights it correctly but forgets `zoom=zoom` in
+    # the ReframeSpec(...) call would pass every gate clean and silently render every
+    # authored zoom as a plain, unmoving crop. Silent corruption, not a raise — needs its
+    # own pin. from=1.0/to=0.7 is comfortably inside every zoom.validate ceiling at this
+    # manifest's resolved layout (crop_w=607, out_w=606 — see the direct computation this
+    # test's numbers were checked against), so it must reach mechanical_pass.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(_manifest(tmp_path, zoom={"from": 1.0, "to": 0.7}),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_spec"].zoom == models.ZoomSpec(start=1.0, end=0.7)
+
+
+def test_no_zoom_still_defaults_to_none(monkeypatch, tmp_path):
+    # The regression half: an episode that never mentions `zoom` must reach ReframeSpec
+    # with zoom=None, exactly as before this slice — the whole existing suite already
+    # relies on this implicitly, but pins it explicitly beside the two tests above.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert calls["reframe_spec"].zoom is None

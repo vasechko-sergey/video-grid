@@ -17,11 +17,15 @@ from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
+from scripts.lib import zoom as zoom_lib   # aliased: this task introduces a local `zoom`
+                                           # variable below, and a bare `import zoom` would
+                                           # be shadowed by it — same reason hero_lib is
+                                           # aliased above.
 from scripts.lib import flow, keyframes, reid, vidstab
 from scripts.lib.footage import Cast
 from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpec,
                                 Delivery, LayoutSpec, route_from_json, CropPath, PathMeta,
-                                PanSpec)
+                                PanSpec, ZoomSpec)
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -127,6 +131,10 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # the layout. validate() already proved it constructs.
     pan = PanSpec.from_dict(m.pan) if m.pan is not None else None
 
+    # the zoom is editorial intent, not a retry parameter — build it once, beside the pan,
+    # so the ladder below can never mutate it
+    zoom = ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None
+
     # 0b. pan preflight. Like the layout above, the HARD engine gate needs numbers
     # validate() cannot see: freedom and the implied px/s both depend on the probed
     # source. Resolving here turns them back into needs_input rather than letting a
@@ -136,6 +144,19 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         try:
             reframe.generate_pan_path(pan, rl.freedom, _fps, _dur,
                                       orch.DEFAULT_PARAMS["max_speed"])
+        except ValueError as e:
+            return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
+
+    # zoom preflight — mirrors the pan preflight just above, one layer simpler (zoom
+    # validation needs no path generation). The HARD engine gate needs numbers only
+    # reframe has — the resolved layout's crop/delivery widths and the probed duration —
+    # so run it here, before any encode. Unlike a pan, a zoom still needs a tracked route
+    # (design §1), so "before any encode" must also mean before tracking starts below:
+    # letting a doomed zoom reach the tracker would cost a real YOLO/optical-flow pass for
+    # nothing.
+    if zoom is not None:
+        try:
+            zoom_lib.validate(zoom, rl.crop_w, rl.out_w, _dur)
         except ValueError as e:
             return {"status": "needs_input", "problems": [str(e)], "attempt": 0}
 
@@ -338,7 +359,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                             white_balance=m.white_balance, black_point=m.black_point,
                             highlight=m.highlight, saturation=m.saturation,
                             shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
-                            tone_src=m.tone_src, tone_dst=m.tone_dst, pan=pan)
+                            tone_src=m.tone_src, tone_dst=m.tone_dst, pan=pan, zoom=zoom)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
                                                   stabilized=m.stabilize))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
