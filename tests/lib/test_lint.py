@@ -455,6 +455,64 @@ def test_each_drawtext_in_a_chain_needs_its_own_font():
     assert "text='b'" in msgs[0]
 
 
+# --- the zoompan defaults check ------------------------------------------------
+# design 2026-08-08 §8: zoompan's three defaults (s=hd720, fps=25, d=90) each
+# corrupt SILENTLY. See scripts/lib/lint.py's _zoompan_defaults docstring for the
+# fourth trap (a sub-1 `z` clamped to 1) that no argv scan can reach.
+
+def test_zoompan_without_an_explicit_size_is_flagged():
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                           "zoompan=z='1.2':x='0':y='0':d=1:fps=30", "o.mp4"])
+    assert any("s=" in m for m in out)
+
+
+def test_zoompan_without_an_explicit_fps_is_flagged():
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                           "zoompan=z='1.2':x='0':y='0':d=1:s=100x200", "o.mp4"])
+    assert any("fps=" in m for m in out)
+
+
+def test_zoompan_without_an_explicit_d_is_flagged():
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                           "zoompan=z='1.2':x='0':y='0':s=100x200:fps=30", "o.mp4"])
+    assert any("d=" in m for m in out)
+
+
+def test_a_fully_specified_zoompan_is_clean():
+    assert lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                            "crop=100:200:x='0':y=0,"
+                            "zoompan=z='1.2':x='0':y='0':d=1:s=100x200:fps=30,"
+                            "scale=50:100", "o.mp4"]) == []
+
+
+def test_each_zoompan_in_a_chain_is_judged_on_its_own_segment():
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                           "zoompan=z='1':x='0':y='0':d=1:s=10x20:fps=30,"
+                           "zoompan=z='1':x='0':y='0':d=1:fps=30", "o.mp4"])
+    assert len(out) == 1 and "#2 of 2" in out[0]
+
+
+def test_a_neighbouring_filters_fps_does_not_exempt_a_zoompan_missing_its_own():
+    """The remedy text in EVERY message this check emits names all three
+    defaults verbatim ("s=hd720, fps=25 and d=90"), so a bare `"fps=" in m`
+    substring check is satisfied by any zoompan-defaults message at all — it
+    cannot alone prove fps= was the omission actually detected. What pins that
+    is `"omits fps="` below, which only appears when fps= lands in `missing`.
+
+    The real target is the one-line regression this fixture is built to catch:
+    dropping the `_element(seg, 0)` bound and testing `"fps=" in seg` against
+    the raw, unbounded split segment instead. `fps` is also a genuine ffmpeg
+    filter (`-vf fps=30` sets the output rate), so a neighbour spelled exactly
+    that way is a realistic chain, not a contrived one — and without the bound,
+    that neighbour's own `fps=30` would satisfy the zoompan's missing key,
+    leaving `out` empty here instead of reporting the omission.
+    """
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-vf",
+                           "zoompan=z='1':x='0':y='0':d=1:s=100x200,"
+                           "fps=30", "o.mp4"])
+    assert any("omits fps=" in m for m in out)
+
+
 # --- every real call site in the tree must lint clean -------------------------
 # Design §4.2's table, as executable fixtures. If a future edit to the predicate
 # starts firing on production code, THIS is what goes red — before the guard has

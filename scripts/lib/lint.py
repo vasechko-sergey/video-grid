@@ -251,9 +251,57 @@ def _drawtext_font(cmd: list[str]) -> list[str]:
     return out
 
 
+_ZOOMPAN_REQUIRED = ("s=", "fps=", "d=")
+
+# `s=` cannot be a bare substring test: `fps=` ENDS in the same two characters,
+# so `"s=" in body` reads a fully-specified `fps=30` as also satisfying `s=` and
+# never reports a genuinely missing size — the exact hd720 silent-resize this
+# check exists to catch, defeated by the one option an author is least likely to
+# ALSO drop. The contains-a-shorter-token trap this module's header already
+# warns about, found empirically the first time these tests ran rather than
+# reasoned in advance (see the two now-red-then-fixed cases in test_lint.py).
+# Anchored the same way _BOUND_RE is: a negative lookbehind for a word
+# character, so a match must START a `:`-delimited option rather than land
+# inside one — sufficient here because zoompan's own vocabulary (z/x/y/d/s/fps)
+# has exactly one such collision, and this is it.
+_ZOOMPAN_RE = {k: re.compile(r"(?<![A-Za-z0-9_])" + re.escape(k))
+    for k in _ZOOMPAN_REQUIRED}
+
+
+def _zoompan_defaults(cmd: list[str]) -> list[str]:
+    """§12: zoompan's three defaults each corrupt SILENTLY (design 2026-08-08 §8).
+
+    `s` defaults to hd720 — the episode is resized to 1280x720. `fps` defaults to
+    25 — a 60fps clip is resampled. `d` defaults to 90 — every input frame is held
+    for 90 output frames. None of the three errors; all three ship wrong pixels.
+
+    Split on the filter name so EACH zoompan is judged on its own segment, and
+    bound that segment at the next graph separator so a neighbour's `fps=` cannot
+    exempt it — the same two rules _drawtext_font and _unbounded_source follow.
+
+    What this CANNOT check is the fourth trap: zoompan clamps a `z` below 1 to 1
+    byte-identically, and z is a runtime expression, not a literal. Its detector
+    is the pixel proof in tests/integration/test_zoom.py.
+    """
+    out: list[str] = []
+    for a in cmd:
+        segs = a.split("zoompan=")[1:]
+        for n, seg in enumerate(segs, 1):
+            body = _element(seg, 0)
+            missing = [k for k in _ZOOMPAN_REQUIRED if not _ZOOMPAN_RE[k].search(body)]
+            if missing:
+                out.append(
+                    f"zoompan #{n} of {len(segs)} omits {', '.join(missing)} (segment: "
+                    f"{('zoompan=' + seg)[:48]!r}) in {a!r} — design §12: zoompan's "
+                    "defaults are s=hd720, fps=25 and d=90, each of which silently "
+                    "resizes, resamples or stalls the episode. Pass all three explicitly.")
+    return out
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
-    for check in (_banned_filters, _seek_order, _unbounded_source, _drawtext_font):
+    for check in (_banned_filters, _seek_order, _unbounded_source, _drawtext_font,
+                  _zoompan_defaults):
         out.extend(check(cmd))
     return out
