@@ -32,6 +32,12 @@ def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
+PAN_PRESENCE_MAX = 0.10   # fraction of a window's samples holding >= 1 person. Above this a
+                          # `pan` is refused: a pan DECLARES the shot has no subject, and that
+                          # declaration turns off three of check_episode's checks (design
+                          # 2026-08-08 §2). FIRST CUT, uncalibrated — it encodes a judgement
+                          # about what "incidental" means, not a measurement.
+
 _BACK_EDGE_TOL = 1e-6      # a realized total within this of the spine target "fills the spine"
 
 
@@ -54,6 +60,11 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
     (and then from the spine), so an offset can never silently lengthen an episode.
     Crossing a scene cut is refused: the in-point would land in a different shot than
     the one the window scored, so its shot_type/description would describe other footage.
+
+    A `pan` is refused over a window intake measured as holding people
+    (PAN_PRESENCE_MAX) — this is the one site that sees both the requested
+    editorial fields and the measured window, which is why the gate lives here
+    and not in EDLEpisode or the manifest (design 2026-08-08 §2.1).
     """
     if isinstance(start_offset, bool) or not isinstance(start_offset, (int, float)):
         raise ValueError(f"window_to_episode: start_offset must be a number of seconds, "
@@ -80,6 +91,14 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
             f"{start:.2f}s in {clip.source} — the episode would cross a scene cut or run "
             f"past the clip. Pick an earlier in-point (a smaller start_offset) or a "
             f"shorter window")
+    if editorial.get("pan") is not None and window.present > PAN_PRESENCE_MAX:
+        raise ValueError(
+            f"window_to_episode: this window holds people in {window.present:.0%} of its "
+            f"samples, above the {PAN_PRESENCE_MAX:.0%} a `pan` may be authored over — a pan "
+            "declares the shot has no subject to follow, and on that declaration "
+            "check_episode reports framing editorial-only, continuity not-checked and "
+            "colour-fidelity not-checked. Drop the `pan` and let the tracked route place the "
+            "crop, or reference a window intake measured as empty")
     defaults = {"shot_type": window.shot_type, "processing_notes": window.description}
     try:
         return EDLEpisode(source=clip.source, start=start, dur=window.dur,
@@ -114,6 +133,10 @@ def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
     start = min(w.start for w in wins)
     end = max(w.start + w.dur for w in wins)
     tids = sorted({t for w in wins for t in w.track_ids})
+    # the busiest sample in the span, not window i's: a span that starts empty and fills
+    # with people would otherwise report the empty window's presence and slip the pan gate
+    # past a shot full of subjects (design 2026-08-08 §2.3)
+    present = max(w.present for w in wins)
     room = clip.room_after(start)
     if end - start > room + _MERGE_TOL:
         inside = [c for c in clip.scene_cuts if start < c < end]
@@ -128,7 +151,7 @@ def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
             f"{clip.source} ({clip.dur:.2f}s) — the last window extends beyond the clip; re-run "
             f"footage-intake to regenerate FOOTAGE.json")
     return dataclasses.replace(clip.windows[i], start=start,
-                               dur=min(end - start, room), track_ids=tids)
+                               dur=min(end - start, room), track_ids=tids, present=present)
 
 
 def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> FootageWindow:

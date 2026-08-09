@@ -16,6 +16,13 @@ def _clip(**kw):
     return FootageClip(**d)
 
 
+def _window(**kw):
+    d = dict(start=2.1, dur=4.0, shot_type="close", people=1, motion=0.4, shake=0.01,
+             description="lena nose")
+    d.update(kw)
+    return FootageWindow(**d)
+
+
 def _merge_clip(**kw):
     d = dict(source="M.mp4", dur=30.0, res=(1920, 1080), fps=30.0, scene_cuts=[],
              windows=[
@@ -825,3 +832,31 @@ def test_write_edit_plan_propagates_a_corrupt_rule_file(tmp_path):
     (tmp_path / "CONSTRAINTS.json").write_text("{ not json")
     with pytest.raises(ValueError, match="not valid JSON"):
         edit_plan.write_edit_plan(fj, sj, pj, str(tmp_path / "out"))
+
+
+def test_window_to_episode_refuses_a_pan_over_a_window_holding_people():
+    clip = _clip(windows=[_window(present=0.8)])
+    with pytest.raises(ValueError, match="holds people in 80%"):
+        edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
+                                    grid="thirds", pan={"from": 0.0, "to": 1.0})
+
+
+def test_window_to_episode_allows_a_pan_over_an_empty_window():
+    clip = _clip(windows=[_window(present=0.0)])
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
+                                     grid="thirds", pan={"from": 0.0, "to": 1.0})
+    assert ep.pan == {"from": 0.0, "to": 1.0}
+
+
+def test_window_to_episode_leaves_a_people_bearing_window_alone_without_a_pan():
+    clip = _clip(windows=[_window(present=0.8)])
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
+                                     grid="thirds")
+    assert ep.pan is None
+
+
+def test_merged_window_reports_the_busiest_presence_in_the_span():
+    clip = _clip(windows=[_window(present=0.0, start=0.0, dur=2.0),
+                          _window(present=0.9, start=2.0, dur=2.0)])
+    merged = edit_plan._merge_windows(clip, 0, 1)
+    assert merged.present == 0.9
