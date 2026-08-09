@@ -589,8 +589,27 @@ version log is unreadable. Small, self-contained fix.
 
 ## 17. Frame-moving effects stay subject-anchored and inside QC
 
-**Status:** NEEDS DESIGN. Related to #2, #3, #9; supersedes the earlier
-"generated-path escapes QC" framing.
+**Status:** ✅ LANDED 2026-08-08 — design
+`docs/specs/2026-08-08-subject-anchored-moves-design.md` + plan
+`docs/plans/2026-08-08-subject-anchored-moves.md`. A `zoom` push-in/pull-out
+now rides the tracked route through the SAME composition rule that places any
+crop — every route sample's rect comes from `geometry.crop_x`, only the width
+shrinks or grows — so `framing`/`continuity`/`color_fidelity` all apply to it
+exactly as to any tracked episode; the crop is cut by inserting a `zoompan`
+between the existing `crop` and `scale`, and `PathMeta` records the per-sample
+rect it actually cut (`crop_ws`/`crop_hs`/`crop_ys`). `pan` no longer escapes
+QC on the author's word: `edit_plan.window_to_episode` refuses one over any
+window intake MEASURED as holding people (`FootageWindow.present >
+PAN_PRESENCE_MAX = 0.10`), and the hand-authored `edl_to_reel` door — which
+never sees that measurement — refuses the weaker self-contradiction instead
+(a `pan` beside a hero pin or cast name). Route-less generation stays
+legitimate for pure scenery, now MEASURED rather than merely asserted. See the
+Done entry in `build-status.md` for the measured numbers (the push-in proof's
+24px→39px magnification), the two landmine-lint defects this slice found in
+its own safety net, and the design §10 honest limits (an uncalibrated
+`PAN_PRESENCE_MAX`/`ZOOM_MAX_RATE`/`ZOOM_MAX_UPSCALE`, a ≤1px
+record-vs-render residual, presence as a people-only proxy, the gate proves
+the premise never the taste).
 
 **Finding + rule (user-stated):** a **zoom** (push-in / pull-out) and a **pan**
 must not be blind route-less crop animations — when there is a hero they must be
@@ -606,7 +625,22 @@ effect and reframes existing `pan`.
 
 ## 18. Cinematic effects were born as live patches — land them properly, and verify they show
 
-**Status:** NEEDS DESIGN. Related to #5, #7, #9, #10.
+**Status:** ◐ PARTIALLY LANDED 2026-08-08 (the frame-moving half only) —
+the `zoom` in/out this finding names is now a first-class, TDD'd knob
+(backlog #17 above, design
+`docs/specs/2026-08-08-subject-anchored-moves-design.md` + plan
+`docs/plans/2026-08-08-subject-anchored-moves.md`), subject-anchored and
+inside every check, with its own visibility proof (design §9: a real-ffmpeg
+measurement of the subject's on-screen width actually growing, not an
+assumption that a correct-looking argv rendered correct pixels — exactly the
+"is it actually visible on the frame" check this finding asks every effect to
+carry). **Still open, unchanged by this slice:** the speed `ramp` (#7,
+first-class + length-aware — the parked `wip/montage-run-patches` branch
+remains its only surviving copy), the look filters
+(`vignette`/`grain`/`fade`/LUTs, #9), the `highlight_red` colour primitive
+(landed quietly inside colour-as-a-stage but never given its own visibility
+proof), and the `outline-bold` title style — none of these has the TDD +
+visibility-proof treatment this finding asks for yet.
 
 **Finding:** the run grew a real effects wishlist by patching the engine live:
 speed `ramp` (slow-mo), a `highlight_red` colour primitive (pink surf foam),

@@ -12,6 +12,125 @@ _Last updated: 2026-08-08._
 
 ## Done
 
+- **Subject-anchored frame moves (fixes-backlog #17, and the frame-moving half
+  of #18 — cinematic-quality playbook priority 4, its first slice) DONE
+  (2026-08-08)** — plan `docs/plans/2026-08-08-subject-anchored-moves.md` +
+  design `docs/specs/2026-08-08-subject-anchored-moves-design.md`, Tasks 0–13
+  (branch `feat/subject-anchored-moves`, commits `8a668f0`..`0d50db4` + this
+  docs sync). The 2026-08-03 real run shipped ep5 as a `pan`, and its
+  `report.json` read `framing: editorial-only`, `continuity: not-checked`,
+  `color_fidelity: not-checked` — three of `check_episode`'s checks turned off
+  on the AUTHOR's word alone, over a shot with a surfer in it. Each arm is
+  individually correct (you cannot judge composition against a subject never
+  observed); the defect was that nothing ever established the premise they
+  rest on. This slice closes that on both applications design §1 names.
+  **Half A — `pan` stops being an escape hatch.**
+  `edit_plan.window_to_episode` refuses a `pan` when `window.present >
+  PAN_PRESENCE_MAX` (0.10) — a MEASURED fact from intake's own YOLO pass, not
+  a claim; `_merge_windows`, found while reading for this, reported a merged
+  span's FIRST window's presence rather than the busiest one in the span (a
+  span starting empty and filling with people would have slipped the gate),
+  fixed alongside. The hand-authored `edl_to_reel` door, which never sees
+  `FOOTAGE.json`, keeps the weaker check that needs none: `manifest.validate`
+  and `edl.preflight` refuse a `pan` beside a hero pin or cast name outright
+  — a self-contradiction readable from the EDL alone. **Half B — `zoom`.** A
+  `ZoomSpec` push-in/pull-out is not a generated path like `pan`: at every
+  route sample the crop's rect is chosen by the SAME `geometry.crop_x`
+  composition rule that places every tracked episode's crop — only the width
+  in force at that sample shrinks or grows — so the subject sits on its
+  composition line throughout the move and framing/continuity/color_fidelity
+  all apply exactly as they do to any tracked episode. The shrinking rect is
+  cut by a `zoompan` inserted between the existing `crop` and `scale`, `z` in
+  CLOSED FORM (`1/s(t)`, never the knot-simplifying `_xexpr` builder — a
+  two-knot linear approximation of a hyperbola is 6.6% wrong at the midpoint
+  of a 1.0→0.6 push-in) and `s` forced to the CROP's own dimensions, never
+  the delivery's (zoompan clamps `z` below 1 to 1 byte-identically, so an `s`
+  smaller than the crop would silently render nothing). `PathMeta` gains
+  three optional parallel arrays (`crop_ws`/`crop_hs`/`crop_ys`, plus a
+  `zoomed` PROPERTY rather than a redundant bool that could disagree with
+  them) recording the per-sample rect ffmpeg actually cut; the two geometry
+  chokepoints (`marks_at_times`/`extent_at_times`) and
+  `checks.on_line`/`centered`/`jitter` read that record instead of three
+  scalars, which is why fixing two functions also fixes `safezones`,
+  `key_action`, the storyboard's marks and `check_reel`'s geometry section
+  without any of them learning a zoom exists. **The measured numbers — the
+  evidence this renders real pixels, not a plausible-looking argv:** the
+  push-in proof (`ZoomSpec(1.0→0.6)` over a marked synthetic clip) measured
+  the subject's on-screen width grow 24px → 39px, a ratio of 1.625 against
+  1.6667 expected (2.5% deviation, inside the proof's 12% tolerance — encode
+  edge-softening + integer rounding account for the gap). The upscale
+  headroom table that forced `ZOOM_MAX_UPSCALE = 1.5` (refusing every
+  upsample was measured to cap the reel format this engine exists for below
+  visibility): 9:16 native delivery, 1215px crop vs 1214px out — 1.001×; 9:16
+  at 1080x1920 — 1.125×; 16:9 at 1920x1080 — 2.000×. **Two defects this slice
+  found in its OWN safety net, and did not hide.** First (Task 13's real-pixel
+  proof, fixed in `0d50db4`): `lint._element` was quote-blind — it bounded a
+  filtergraph element at the first RAW `,`/`;`/`[`, and `reframe._xexpr`
+  emits zoompan's `x=`/`y=` as `if(lt(it,T),then,else)` whenever a path has
+  two or more knots (always, in practice — Douglas-Peucker keeps both
+  endpoints), so the element was cut off INSIDE the quoted expression,
+  discarding the real `:d=1:s=...:fps=...` that followed it. `check_argv`
+  then reported a fully correct zoompan as missing all three defaults, and
+  because `proc.run`'s guard is always-on, it refused every real zoom render
+  before ffmpeg ever ran — invisible to every unit test (the lint fixtures
+  used a literal `x='0'`; the reframe zoompan test monkeypatched `proc.run`
+  past the guard) and surfaced only by the real-ffmpeg proof, which failed on
+  a `ValueError` from the lint guard, never on a pixel. Second (found
+  writing Task 12's own check, fixed in the same commit `c053263` that added
+  it): the fifth landmine check's own `"s=" in body` test was ALWAYS true
+  whenever `fps=` was present, because the string `"fps="` ends in the same
+  two characters `"s="` — it would have silently failed to detect the exact
+  hd720 landmine it exists to catch, on any zoompan that remembered `fps=`
+  but forgot `s=`. Both are now anchored (a word-boundary regex per
+  required key; a quote-aware element bound), and neither was hypothetical —
+  the first refused every one of the four real-pixel proofs the moment they
+  first ran. **The honest limits, from design §10, in full.** The
+  hand-authored `edl_to_reel` door never runs the tracker on a `pan` episode
+  (deliberate — a scenery shot should not pay for a YOLO pass it does not
+  need), so it never sees the MEASURED gate, only the self-contradiction one.
+  `PAN_PRESENCE_MAX` (0.10), `ZOOM_MAX_RATE` (0.5 crop-widths/s) and
+  `ZOOM_MAX_UPSCALE` (1.5×) are uncalibrated first cuts — nobody has judged a
+  1.5× push-in on real graded footage — and `ZOOM_MAX_UPSCALE` is the
+  sharpest admission of the three: the exact point where this design stops
+  refusing upsampled pixels and starts permitting them. The recorded and
+  rendered rects can differ by up to a pixel (`w_i = int(W0/z_i)` in
+  Python's doubles vs ffmpeg's own division in its own doubles). A zoom
+  costs a second resample (region → crop size → canvas, where an unzoomed
+  episode resamples once). Presence is a people-only proxy — a dog, a car or
+  a drone reads as subject-less and may still be panned, the same gap
+  intake's whole people-first model already carries. And the gate proves the
+  PREMISE, never the taste: it establishes a panned shot held no people; it
+  says nothing about whether the pan was a good move, which stays
+  episode-QC's and CP3's question. **Mutation battery (Task 14, 14 rows): 9/14
+  caught exactly as named; 3/14 caught by a different test than the row named
+  (a stale mapping, not a hole — see below); 2/14 genuine holes, found and
+  closed with new tests.** `zoom.rects`'s `int(crop_w/z)` vs `int(crop_w*s)` mutant
+  survives the existing test's chosen numbers (1001×0.7 and 1001/(1/0.7) land
+  on the SAME double under Python's rounding — the test's own comment already
+  flags this for a `round()` mutant but not an `int()` one); a second pair
+  (650/1300) that disagrees even under truncation closes it. `reframe`'s
+  containment-centring line (`base_xs`) had no test anywhere in the suite
+  catching its removal — the width-ratio proof (design §9 proof 1) only ever
+  checked magnification, never position, though §9 itself asks for both ("its
+  normalized x stayed on the composition line"); closed with a position proof
+  predicted from the SAME sidecar the render writes, not a flat centre line
+  (the test route's coarse 1Hz sampling legitimately lags the target under
+  `max_speed` rate-limiting even on correct code). Three further rows are
+  each caught, but by a different test than the one named, for three
+  different reasons: the `s=`-set-to-the-delivery row's named pixel proof
+  can't discriminate on a zero-freedom fixture (the crop and the delivery
+  cancel algebraically) but a lib-level string assertion on the emitted
+  argv does; the `d=1`-drop row's named test builds its own literal argv and
+  never calls into `reframe.py` at all, so it can't see the mutation, while a
+  sibling lib test (a real string check) and every real-pixel zoom proof (via
+  `proc.run`'s always-on guard) both do; and the jitter edge-vs-centre row's
+  named test happens to pick numbers where the "right"-direction edge
+  matches the correct centre's answer by coincidence, while its very next
+  sibling test — written for exactly this — does not. **2534 passed, 3
+  skipped**, full suite (pre-slice baseline: 2423 passed, 3 skipped) — the
+  same three environment skips as always (demucs, torchreid, no-network
+  iTunes), none new, no golden moved.
+
 - **Per-episode QC gate before reel assembly (fixes-backlog #3, the per-episode
   half of #12, cinematic-quality playbook P3) DONE (2026-08-08)** — plan
   `docs/plans/2026-08-08-episode-qc.md` + design
@@ -2705,6 +2824,20 @@ _Last updated: 2026-08-08._
   This is the active critical path — the north star (`docs/fixes-backlog.md`,
   2026-08-03) reprioritized ahead of the front-half items below, which stay
   open but are no longer next. **OR**
+- **Cinematic-quality playbook priority 4 has started** — subject-anchored
+  moves (fixes-backlog #17, DONE 2026-08-08, see the Done entry above) is P4's
+  first slice, and it also closed the frame-moving half of #18: a `zoom` now
+  rides the tracked route through the SAME composition rule every check
+  already judges, and a `pan` is refused over any window intake measured as
+  holding people. What remains of P4 (`docs/cinematic-quality-playbook.md`
+  §4): **#7** the speed ramp (first-class, length-aware — the parked
+  `wip/montage-run-patches` branch is still its only surviving copy); **#9**
+  the cinematic effects library + mood-oriented palettes; **#10** the cheap
+  3-frame preview to converge a grade/effect before a full re-encode; and the
+  rest of **#18** — the speed ramp and the look filters
+  (vignette/grain/fade/LUTs) that were born as live patches during the
+  2026-08-03 run and still need landing as first-class, TDD'd knobs with a
+  visibility check, not left parked. **OR**
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
   (`TRENDS.md` cache, §5.4 — low-priority/YAGNI) — the only front-half stage
   left now that SP1b (assemble-draft, DONE 2026-07-13) has shipped; once it's

@@ -70,6 +70,51 @@ def test_a_push_in_really_magnifies_the_subject(tmp_path, marked_clip):
     assert last / first == pytest.approx(1 / 0.6, rel=0.12)
 
 
+def _white_centre_frac(clip, t):
+    """Fractional x (0..1) of the white square's CENTRE in the output frame at t —
+    the position half of design §9 proof 1 ("its normalized x stayed on the
+    composition line at start, middle and end"), which the width-only assertion
+    above does not check."""
+    png = f"{clip}.{t}.c.png"
+    proc.run([ffbin.ffmpeg(), "-y", "-i", str(clip), "-ss", f"{t:.3f}",
+              "-frames:v", "1", png])
+    im = Image.open(png).convert("L")
+    cols = [x for x in range(im.width)
+            if max(im.crop((x, 0, x + 1, im.height)).getdata()) > 200]
+    return ((min(cols) + max(cols)) / 2 / im.width) if cols else None
+
+
+def test_a_push_in_keeps_the_subject_on_its_recorded_composition_line(tmp_path, marked_clip):
+    """The other half of design §9 proof 1, not covered by the width-ratio test above:
+    the subject's normalized x must stay on the composition line the RECORD says it
+    is on, not just have the right on-screen size. Without reframe's containment
+    centring (`base_xs`), the crop filter's x tracks the TIGHT rect's own composition
+    math directly while still cutting the WIDE base rect — on a zero-freedom layout
+    like this fixture's, ffmpeg's own crop clamp silently absorbs that, but the
+    zoompan offset built from it (xx = path - base_xs) collapses to a constant 0, so
+    the extracted window's left edge stays fixed instead of re-centring, and the
+    subject drifts toward the frame edge as the window narrows — invisible to a check
+    that only measures width.
+
+    Predicted from path.json/PathMeta.crop_ws — the SAME sidecar the render wrote —
+    rather than a flat 0.5: this fixture's route is only 3 samples across 2s, so
+    max_speed's per-sample rate limit legitimately lags the tight rect's own
+    centring target even on correct code (measured: the subject drifts from frac 0.50
+    to 0.70 over the clip). What must hold is that the RENDERED pixels match what
+    reframe RECORDED it cut, at the route's own sample times."""
+    path_out = tmp_path / "path.json"
+    out = tmp_path / "zoomed.mp4"
+    reframe.reframe(_spec(zoom=ZoomSpec(start=1.0, end=0.6)), str(marked_clip),
+                    str(_route(tmp_path)), str(out), str(path_out))
+    path = CropPath.from_json(path_out).xs
+    meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    # _route()'s samples are at t=0.0/1.0/2.0, so path[i]/meta.crop_ws[i] apply at
+    # those times; sampled a hair inside each end, as the width tests above do.
+    for i, t in enumerate((0.05, 1.0, 1.95)):
+        expected = (320 - path[i]) / meta.crop_ws[i]
+        assert _white_centre_frac(out, t) == pytest.approx(expected, abs=0.05)
+
+
 def test_the_recorded_widths_match_the_rendered_rect(tmp_path, marked_clip):
     path_out = tmp_path / "path.json"
     out = tmp_path / "zoomed.mp4"

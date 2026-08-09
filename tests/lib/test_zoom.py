@@ -83,6 +83,20 @@ def test_rects_are_derived_from_z_so_they_match_what_ffmpeg_cuts():
     assert hs[0] == int(2001 / (1 / 0.7))
 
 
+def test_rects_are_derived_from_z_even_where_truncation_alone_would_agree():
+    # The gap above needs ROUND to show up: 1001*0.7 and 1001/(1/0.7) are the SAME
+    # double (700.6999999999999), so int() of either is 700 and an `int(crop_w * s)`
+    # mutant of `rects` — not the `round(...)` one the test above targets — survives
+    # it untouched (measured: also true of the 1000/2000 pair the docstring above
+    # already rejected). The coincidence is not universal: crop_w=650/crop_h=1300 at
+    # s=0.7 gives int(650*0.7)=454 against int(650/(1/0.7))=455 — a real 9:16-ish
+    # crop width where the two formulations disagree even under plain truncation.
+    ws, hs, _ = zoom.rects(ZoomSpec(start=0.7, end=0.5), crop_w=650, crop_h=1300,
+                           crop_y=0, src_h=2160, times=[0.0, 1.0])
+    assert ws[0] == int(650 / (1 / 0.7))
+    assert hs[0] == int(1300 / (1 / 0.7))
+
+
 def test_rects_grow_for_a_pull_out_and_z_never_drops_below_one():
     # ffmpeg's zoompan silently CLAMPS z below 1 to 1 (design §3.3 — measured:
     # z=0.5 renders byte-identical to z=1) — a push-in never reaches z < 1 since

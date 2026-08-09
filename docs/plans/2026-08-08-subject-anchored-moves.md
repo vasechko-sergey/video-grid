@@ -1771,8 +1771,27 @@ Expected: FAIL — `check_argv` returns `[]` for all of them.
 
 - [ ] **Step 3: Add the check**
 
+**CORRECTION (found and fixed in commit `c053263`, before this plan's own
+Step 4 ever ran):** the literal code below — `k not in body` — is a bug, not
+a draft simplification, and this plan is corrected here so the next reader
+does not copy it. `"s=" in body` is ALWAYS true whenever `fps=` is present,
+because the string `"fps="` ends in the same two characters `"s="` — the
+check would have silently failed to detect a missing `s=` (the hd720
+silent-resize it exists to catch) on any zoompan that remembered `fps=` but
+forgot `s=`. The fix anchors each key the same way `_BOUND_RE` already does:
+a negative lookbehind for a word character, so a match must START a
+`:`-delimited option rather than land inside one.
+
 ```python
 _ZOOMPAN_REQUIRED = ("s=", "fps=", "d=")
+
+# `s=` cannot be a bare substring test — see the correction above. Anchored the
+# same way _BOUND_RE is: a negative lookbehind for a word character, so a match
+# must START a `:`-delimited option rather than land inside one — sufficient
+# here because zoompan's own vocabulary (z/x/y/d/s/fps) has exactly one such
+# collision, and this is it.
+_ZOOMPAN_RE = {k: re.compile(r"(?<![A-Za-z0-9_])" + re.escape(k))
+    for k in _ZOOMPAN_REQUIRED}
 
 
 def _zoompan_defaults(cmd: list[str]) -> list[str]:
@@ -1795,7 +1814,7 @@ def _zoompan_defaults(cmd: list[str]) -> list[str]:
         segs = a.split("zoompan=")[1:]
         for n, seg in enumerate(segs, 1):
             body = _element(seg, 0)
-            missing = [k for k in _ZOOMPAN_REQUIRED if k not in body]
+            missing = [k for k in _ZOOMPAN_REQUIRED if not _ZOOMPAN_RE[k].search(body)]
             if missing:
                 out.append(
                     f"zoompan #{n} of {len(segs)} omits {', '.join(missing)} (segment: "
@@ -1814,9 +1833,15 @@ and add it to the tuple:
 
 - [ ] **Step 4: Run the tests, then the whole suite's argv guard**
 
-Run: `.venv/bin/python -m pytest tests/lib/test_lint.py tests/lib/test_landmine_scan.py -q`
-Expected: PASS — including the scan that runs the predicate over every argv the
-suite issues, which is what proves Task 5's zoompan satisfies it.
+Run: `.venv/bin/python -m pytest tests/lib/test_lint.py -q`
+Expected: PASS. **CORRECTION:** the brief this step was drafted from also named
+`tests/lib/test_landmine_scan.py` here, as "the scan that runs the predicate
+over every argv the suite issues" — that description is wrong. That file is a
+pure AST scan for banned filter LITERALS (design 2026-07-20); it never calls
+`check_argv` and has no bearing on this check. `tests/lib/test_lint.py` alone
+covers `_zoompan_defaults`, including `test_a_fully_specified_zoompan_is_clean`
+and `test_each_zoompan_in_a_chain_is_judged_on_its_own_segment`, which is what
+proves Task 5's zoompan satisfies it.
 
 - [ ] **Step 5: Commit**
 

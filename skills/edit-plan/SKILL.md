@@ -116,17 +116,39 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      re-run), and a pin that matches nobody in the episode's segment is a
      `hero-unmatched` stop-and-report at process-episode time — never a silent
      fallback to intent scoring.
+   - `zoom` (optional) — `{"from": 1.0, "to": 0.7}`, a **subject-anchored**
+     push-in/pull-out: two fractions of the layout's crop WIDTH (`1.0` the
+     whole crop, `0.7` a 1.43x push-in; direction is the sign of `to - from`,
+     same convention as `pan`). Unlike `pan` it does NOT replace the tracked
+     route — the rect's position still comes from the SAME composition rule
+     as any tracked episode, only its width shrinks or grows, which is what
+     keeps every `check_episode` check (framing/continuity/colour-fidelity)
+     applying to it in full, exactly as it does to a still crop. It therefore
+     **needs a tracked subject** — there is no route to ride without one —
+     and `zoom` together with `pan` on one episode is refused (one anchors to
+     a subject, the other declares there is none). Both fractions must be in
+     `(0, 1]`; a push-in tightened past `ZOOM_MAX_UPSCALE` (1.5x, an
+     unresolved-upsample ceiling) or faster than `ZOOM_MAX_RATE` (0.5
+     crop-widths/second, a whip-zoom guard) is refused, not silently clamped.
    - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
      camera move: two fractions of the crop's horizontal freedom (`0.0` hard
      left, `1.0` hard right; direction is the sign of `to - from`). It replaces
      tracked motion for the episode — no route is read, no hero is followed.
-     The gate enforces two constraints: `composition` must be `center` (a pan
-     positions the crop by its own law, so `lead`/`break`'s subject-relative
-     framing has nothing to consult — a preflight `edl-invalid` names the
-     conflict), and no `hero` pin may be set alongside it (the pin says
-     "follow this person", the pan says "follow nobody"). `motion` may still
-     be set — it describes the *subject*, the pan describes the *camera*, and
-     the canonical pan is `motion: static` with a moving frame, both at once.
+     May be authored **only over a window `FOOTAGE.md`/`SHEETS.md` show as
+     empty of people** — intake's own measured `present` fraction, not your
+     read of the frame. `edit_plan build` refuses a `pan` over a window
+     holding people (`FootageWindow.present` above `PAN_PRESENCE_MAX`, 10% of
+     samples): a route-less move turns off framing/continuity/colour-fidelity,
+     which is only legitimate for a shot with no subject to check in the
+     first place — not an editorial choice `pan` gets to make on your word.
+     The gate enforces two further constraints: `composition` must be
+     `center` (a pan positions the crop by its own law, so `lead`/`break`'s
+     subject-relative framing has nothing to consult — a preflight
+     `edl-invalid` names the conflict), and no `hero` pin may be set alongside
+     it (the pin says "follow this person", the pan says "follow nobody").
+     `motion` may still be set — it describes the *subject*, the pan describes
+     the *camera*, and the canonical pan is `motion: static` with a moving
+     frame, both at once.
    - `processing_notes` — a short note for the draft labels (optional)
    - **colour** (all optional, per episode; every episode carries an identity-default
      grade, so omit these unless a clip needs correcting): `white_balance` ∈ `[0, 1]`
