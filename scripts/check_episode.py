@@ -140,7 +140,9 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
     meta = PathMeta.from_json(Path(path_path).with_suffix(".meta.json"))
     crop_w = meta.crop_w
-    crop_ws = [meta.crop_w] * len(path)
+    # One width per sample: the scalars for a constant rect, the sidecar's record under a
+    # zoom. Built once here so every check below is handed the same series (design §5).
+    crop_ws = meta.crop_ws or [meta.crop_w] * len(path)
     src_w, src_h = meta.src_dims
     # The sidecar is authoritative about provenance — reframe wrote it. A caller
     # that also hands over a route under a pan is redundant, not wrong, so the
@@ -186,9 +188,11 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
         checks["framing"] = CheckResult("framing", None,
                                         {"status": "editorial-only",
                                          "reason": "generated path — no tracked subject"})
-    elif meta.freedom == 0:
+    elif meta.freedom == 0 and not meta.zoomed:
         # the crop is as wide as the source: nobody controls composition, so it
-        # can neither be failed nor silently passed (design 2026-07-10 §6)
+        # can neither be failed nor silently passed (design 2026-07-10 §6). A ZOOM
+        # is the exception: a push-in creates the freedom the layout did not have,
+        # so the composition it produces is real and gets judged (design 2026-08-08 §5).
         checks["framing"] = CheckResult("framing", None,
                                         {"status": "editorial-only",
                                          "reason": "no horizontal freedom"})

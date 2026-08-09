@@ -225,3 +225,57 @@ def test_route_window_floors_at_one_for_a_sparse_route():
     # because checks.jitter rejects route_window < 1 and would otherwise crash.
     sparse = [{"t": i * 4 / 19, "x": 100.0, "y": 0.0} for i in range(20)]
     assert ce._route_window(sparse) == 1
+
+
+@pytest.mark.integration
+def test_a_zoomed_episode_is_judged_on_composition_not_excused(tmp_path, sample_clip):
+    """A zero-freedom layout that would normally report editorial-only: under a
+    zoom the push-in creates the freedom the layout lacked, so composition is
+    judged for real — against the sidecar's PER-SAMPLE crop widths, not the
+    scalar crop_w. Sample 0 sits dead-centre at width 640 (320/640 = 0.5);
+    sample 1 sits dead-centre too, but only at the NARROWED width the zoom
+    actually cut (240/480 = 0.5) — collapsed to the scalar 640 it reads
+    240/640 = 0.375, a quarter-tolerance off, so ratio drops from 1.0 to 0.5 and
+    `centered` flips from pass to fail. That makes this one test catch both a
+    dropped `and not meta.zoomed` (no `centered` key at all) and a dropped
+    `meta.crop_ws or` (a `centered` key with the wrong ratio)."""
+    route = [{"t": 0.0, "x": 320.0, "y": 240.0, "w": 60.0, "h": 120.0},
+             {"t": 1.0, "x": 320.0, "y": 240.0, "w": 60.0, "h": 120.0}]
+    rp = tmp_path / "route.json"
+    rp.write_text(json.dumps(route))
+    pp = tmp_path / "path.json"
+    pp.write_text(json.dumps([0, 80]))
+    PathMeta(mode="fill", crop_w=640, crop_h=480, crop_y=0, src_dims=(640, 480),
+             canvas=(640, 480), out_dims=(640, 480), rect_px=(0, 0, 640, 480),
+             freedom=0, crop_ws=[640, 480], crop_hs=[480, 360], crop_ys=[0, 60]
+             ).write(pp.with_suffix(".meta.json"))
+    rep = check_episode.run(str(sample_clip), str(rp), str(pp),
+                            CheckSpec(composition="center", grid="thirds", target_dur=1.0),
+                            str(tmp_path / "report.json"))
+    assert "centered" in rep.checks
+    assert rep.checks["centered"].passed is True
+    assert rep.checks["centered"].detail == {"ratio": 1.0}
+
+
+@pytest.mark.integration
+def test_an_unzoomed_zero_freedom_episode_is_still_editorial_only(tmp_path, sample_clip):
+    """Project constraint: an unzoomed episode's report is unchanged. crop_ws is
+    None here, so `meta.crop_ws or [...]` falls through to the historical scalar
+    list either way — this fixture cannot (and need not) discriminate that line.
+    What it pins is the OTHER half: the freedom==0 arm still fires when there is
+    no zoom to except it, so a route that would otherwise flip the check on
+    (path holds it at zero offset throughout — no freedom exercised) still
+    reports editorial-only, not a numeric composition verdict."""
+    route = [{"t": 0.0, "x": 320.0, "y": 240.0, "w": 60.0, "h": 120.0},
+             {"t": 1.0, "x": 320.0, "y": 240.0, "w": 60.0, "h": 120.0}]
+    rp = tmp_path / "route.json"
+    rp.write_text(json.dumps(route))
+    pp = tmp_path / "path.json"
+    pp.write_text(json.dumps([0, 0]))
+    PathMeta(mode="fill", crop_w=640, crop_h=480, crop_y=0, src_dims=(640, 480),
+             canvas=(640, 480), out_dims=(640, 480), rect_px=(0, 0, 640, 480),
+             freedom=0).write(pp.with_suffix(".meta.json"))
+    rep = check_episode.run(str(sample_clip), str(rp), str(pp),
+                            CheckSpec(composition="center", grid="thirds", target_dur=1.0),
+                            str(tmp_path / "report.json"))
+    assert rep.checks["framing"].detail["reason"] == "no horizontal freedom"
