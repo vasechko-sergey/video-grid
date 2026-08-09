@@ -16,8 +16,9 @@ _Last updated: 2026-08-08._
   of #18 — cinematic-quality playbook priority 4, its first slice) DONE
   (2026-08-08)** — plan `docs/plans/2026-08-08-subject-anchored-moves.md` +
   design `docs/specs/2026-08-08-subject-anchored-moves-design.md`, Tasks 0–14
-  (branch `feat/subject-anchored-moves`, commits `8a668f0`..`0d50db4` + this
-  docs sync). The 2026-08-03 real run shipped ep5 as a `pan`, and its
+  (branch `feat/subject-anchored-moves`, commits `8a668f0`..`5497c7a` — the
+  battery + this docs sync are `36ae135`, the final review's fix wave
+  `5497c7a`). The 2026-08-03 real run shipped ep5 as a `pan`, and its
   `report.json` read `framing: editorial-only`, `continuity: not-checked`,
   `color_fidelity: not-checked` — three of `check_episode`'s checks turned off
   on the AUTHOR's word alone, over a shot with a surfer in it. Each arm is
