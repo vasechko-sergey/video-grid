@@ -205,6 +205,25 @@ def _element(text: str, start: int) -> str:
     so this is a strict widening of what counts as "inside an element", never a
     narrowing, and every existing caller (_unbounded_source included) keeps
     its prior verdict on every quote-free argument.
+
+    An ODD apostrophe count — an unbalanced quote, or one nested inside a
+    double-quoted span this toggle cannot see — is the one shape the toggle
+    cannot resolve: `in_quote` latches True and never releases, so the loop
+    above never finds a separator and would return everything to end of
+    string. That is a silent MISS, not the false positive this function was
+    fixed to remove: it swallows every later separator, so a neighbouring
+    filter's own s=/fps=/d= would satisfy an element that never set any of
+    them (design 2026-07-20 §5 — a gap this primitive exists to write down,
+    not ship quietly). Dormant today (no producer here emits a quote at all,
+    let alone an unbalanced one), parked at review, and closed here: below,
+    an unclosed quote falls BACK to the pre-fix quote-blind bound rather than
+    trusting a scan that ran off the end. That can still cut inside a
+    legitimately quoted value — the original bug — but that failure is a
+    false positive (a body too short to satisfy a real key), and this module
+    widens toward false positives everywhere else it faces this same choice
+    (see SYNTH_SOURCES / _VIDEO_COPY_RE above); it is a known, previously-
+    shipped quantity, not a new code path, and it needs no change to either
+    caller's signature.
     """
     end = len(text)
     in_quote = False
@@ -215,6 +234,13 @@ def _element(text: str, start: int) -> str:
         elif not in_quote and c in _GRAPH_SEPS:
             end = i
             break
+    if in_quote:
+        naive_end = len(text)
+        for sep in _GRAPH_SEPS:
+            i = text.find(sep, start)
+            if i != -1:
+                naive_end = min(naive_end, i)
+        return text[start:naive_end]
     return text[start:end]
 
 

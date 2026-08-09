@@ -437,8 +437,11 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     # synthesized background so the render is exactly as long as the source (§4).
     src_w, src_h, fps, dur = _probe(src)
     rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
-    crop_ws = crop_hs = crop_ys = None    # only a zoom fills these; None stays None under a
-                                          # pan and under a plain tracked route (no zoom)
+    crop_ws = crop_hs = crop_ys = None    # only a zoom fills all three. Under a pan (no route
+                                          # to sample) all three stay None; under a plain
+                                          # tracked route (no zoom) crop_hs/crop_ys stay None
+                                          # but crop_ws is reassigned just below to a constant-
+                                          # width series — it does NOT stay None there
     if spec.pan is not None:
         # A GENERATED path: no route is read, and none is written. See
         # generate_pan_path for why it is neither smoothed nor rate-limited.

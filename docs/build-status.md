@@ -15,7 +15,7 @@ _Last updated: 2026-08-08._
 - **Subject-anchored frame moves (fixes-backlog #17, and the frame-moving half
   of #18 — cinematic-quality playbook priority 4, its first slice) DONE
   (2026-08-08)** — plan `docs/plans/2026-08-08-subject-anchored-moves.md` +
-  design `docs/specs/2026-08-08-subject-anchored-moves-design.md`, Tasks 0–13
+  design `docs/specs/2026-08-08-subject-anchored-moves-design.md`, Tasks 0–14
   (branch `feat/subject-anchored-moves`, commits `8a668f0`..`0d50db4` + this
   docs sync). The 2026-08-03 real run shipped ep5 as a `pan`, and its
   `report.json` read `framing: editorial-only`, `continuity: not-checked`,
@@ -84,7 +84,27 @@ _Last updated: 2026-08-08._
   but forgot `s=`. Both are now anchored (a word-boundary regex per
   required key; a quote-aware element bound), and neither was hypothetical —
   the first refused every one of the four real-pixel proofs the moment they
-  first ran. **The honest limits, from design §10, in full.** The
+  first ran. **A third, found in the whole-branch review that followed and
+  closed in the same pass:** the quote-aware toggle itself latches
+  `in_quote=True` for good on an ODD apostrophe count (an unbalanced quote),
+  so it never finds a way out and returns everything to end-of-string as
+  "the element" — the OPPOSITE failure from the first, a silent MISS that
+  lets a neighbouring filter's own `s=`/`fps=`/`d=` satisfy an element that
+  never set any of them. Dormant (no producer here emits a quote today, let
+  alone an unbalanced one) but unenforced, so it was parked rather than
+  shipped blind; closed by falling `_element` back to the pre-fix quote-blind
+  bound the instant a quote fails to close — the same false-positive-over-
+  miss preference this module already commits to everywhere else it faces
+  this choice. **Design §11 defers four widenings, none built here:** a
+  scenery zoom (Ken Burns) over a subject-less shot — legitimate, deliberately
+  excluded so narrowing the generated branch and widening it don't happen in
+  the same breath; a vertical component (the zoom holds the frame's vertical
+  centre; a tilt needs the route's own y and a headroom rule that does not
+  exist yet); easing (`s(t)` is linear, as `PanSpec`'s travel already is —
+  belongs with the speed-ramp slice, #7); and re-scoping `pan` as a special
+  case of `zoom` (both are now "a rect path over time", tempting but premature
+  until the scenery zoom above exists to unify with). **The honest limits,
+  from design §10, in full.** The
   hand-authored `edl_to_reel` door never runs the tracker on a `pan` episode
   (deliberate — a scenery shot should not pay for a YOLO pass it does not
   need), so it never sees the MEASURED gate, only the self-contradiction one.

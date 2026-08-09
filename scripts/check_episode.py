@@ -213,6 +213,13 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     # route is [] under a pan (there is no observation), so a generated path keeps
     # the historical vacuum-judged behaviour; a tracked one gets the subject's own
     # counter-motion discounted (see checks.jitter).
+    #
+    # max_reversal scales off crop_w, the BASE (widest) crop — not the per-sample
+    # crop_ws in force at each instant. Under a zoom this is a fixed tolerance
+    # measured against a shrinking rect: at a 0.6 push-in the tightest sample is
+    # judged 1/0.6 = 1.67x more generously than the wide end. Not scaled to
+    # crop_ws[i] here — undecided whether jitter tolerance should track the zoom
+    # or stay anchored to the layout's own crop; noted, not fixed.
     dj = checks_mod.jitter(path, direction, max_reversal=max(2.0, crop_w * 0.005),
                            route=route or None, route_window=_route_window(route),
                            crop_ws=crop_ws)

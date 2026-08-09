@@ -245,16 +245,20 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
                 "by its own law without consulting any subject. Set composition to 'center' "
                 "(read as 'no framing rule'), or drop the pan")
         if m.hero is not None:
+            # This alone is design §2.2's "pan with a hero pin OR CAST NAME" refusal:
+            # `hero` carries every pin flavour (bbox, track id, cast-name string), so
+            # "cast name" is already `m.hero is not None`, whatever it holds. A prior
+            # version of this gate ALSO fired on bare `m.cast` — the reel-level
+            # cast.json PATH that edl.to_manifest_dict (edl.py) stamps onto every
+            # episode once an EDL declares a registry, present whether or not THIS
+            # episode names a hero — which refused every scenery pan in such an EDL
+            # with a message naming a pin that did not exist. Found in the final
+            # whole-branch review; removed rather than widened, since this arm was
+            # always sufficient and the other one was never correct.
             problems.append(
                 "a hero pin cannot be combined with a pan: the pin says 'follow this "
                 f"person' and the pan says 'follow nobody'. Drop `hero` ({m.hero!r}) to "
                 "keep the pan, or drop `pan` to track the hero")
-    if m.pan is not None and (m.hero is not None or m.cast):
-        problems.append(
-            "pan with a hero pin: a pan declares the shot has no subject to follow — it "
-            "turns off framing, continuity and colour-fidelity — and a pin names one. Drop "
-            "the pan and let the tracked route place the crop, or drop the pin "
-            "(design 2026-08-08 §2.2)")
     if m.zoom is not None:
         if m.pan is not None:
             problems.append(

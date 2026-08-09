@@ -33,6 +33,13 @@ def validate(spec: ZoomSpec, crop_w: int, out_w: int, dur: float) -> None:
     with no width is a different defect from one that is merely resampled too
     far, and blurring the two into one message would mean either skipping the
     ratio or dividing by zero.
+
+    The ZOOM_MAX_RATE check is an APPROXIMATION: `dur` is the episode's probed
+    CLIP duration, but `scales()` (below) interpolates the same start/end span
+    over the ROUTE's own `times[0]..times[-1]`, which a short window can realize
+    as less time than `dur`. A route shorter than the clip therefore renders at
+    a rate ABOVE the one checked here — this validates the spec against the
+    clip, not against the exact span it will travel over.
     """
     if dur <= 0:
         raise ValueError(

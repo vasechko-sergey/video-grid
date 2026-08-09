@@ -586,6 +586,29 @@ def test_a_quoted_comma_does_not_hide_a_genuinely_unbounded_source():
     assert len(msgs) == 1 and "color=" in msgs[0]
 
 
+def test_an_unclosed_quote_falls_back_to_the_quote_blind_bound():
+    """The residual the quote-aware fix left behind (parked at review, closed
+    here): an ODD apostrophe count — here, a dropped closing quote on z= —
+    latches in_quote=True for the rest of the scan, so an un-hardened _element
+    would return EVERYTHING to end-of-string as "the element". That swallows
+    the comma before the next, unrelated filter and reads ITS s=/fps=/d= as
+    satisfying THIS zoompan's requirement — a silent MISS, even though this
+    zoompan's own params set none of the three. `junk=` is not a real ffmpeg
+    filter; it stands in for "any neighbour with its own s=/fps=/d=", the same
+    role `note=` plays in the quoted-comma tests above.
+
+    Reproduced directly against the pre-fallback code before this test was
+    written (commenting out the `if in_quote:` branch reverts check_argv(cmd)
+    to [] — the exact miss) and reverted with an editor edit, per the no-
+    git-checkout rule this slice's own ledger exists to enforce.
+    """
+    cmd = ["ffmpeg", "-i", "a.mp4", "-vf",
+           "zoompan=z='1.2:x=0:y=0,junk=s=99x99:fps=99:d=99", "o.mp4"]
+    out = lint.check_argv(cmd)
+    assert len(out) == 1
+    assert "omits s=, fps=, d=" in out[0]
+
+
 # --- every real call site in the tree must lint clean -------------------------
 # Design §4.2's table, as executable fixtures. If a future edit to the predicate
 # starts firing on production code, THIS is what goes red — before the guard has

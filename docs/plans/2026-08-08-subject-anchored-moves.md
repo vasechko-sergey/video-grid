@@ -1997,8 +1997,11 @@ git commit -m "test(zoom): real-ffmpeg proof the rect shrank and the record matc
 - [ ] **Step 1: Run the mutation battery**
 
 Each row breaks one production line, runs the named test, confirms it FAILS,
-then reverts with `git checkout -- <file>`. A row that passes with the mutation
-in place is a hole: fix the test before continuing.
+then reverts the mutation with an editor edit — never `git checkout -- <file>`,
+which discards the file's entire uncommitted state, not just the mutation (this
+slice's own ledger records an agent losing uncommitted work to exactly that
+command). A row that passes with the mutation in place is a hole: fix the test
+before continuing.
 
 | # | Mutation | Must fail |
 |---|---|---|

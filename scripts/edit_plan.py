@@ -119,8 +119,11 @@ def _merge_windows(clip: FootageClip, i: int, j: int) -> FootageWindow:
     footage between them (design 2026-07-26-edit-plan-span-merge §3, "turn -> drive -> turn").
 
     The merged window inherits window i's shot_type/description as the projection seed (an
-    editorial override still wins in window_to_episode) and unions the track_ids across the
-    range. It refuses a range whose envelope straddles a scene cut — that would splice two
+    editorial override still wins in window_to_episode), unions the track_ids across the
+    range, and MAX-aggregates `present` across the range too (design 2026-08-08 §2.3) — the
+    busiest window's presence, not window i's, so a span that opens empty and fills with
+    people cannot slip window_to_episode's pan gate on the strength of its own opening window.
+    It refuses a range whose envelope straddles a scene cut — that would splice two
     shots into one episode; `room_after` is the single geometric authority (the same rule
     window_to_episode applies), naming the offending cut for a span-specific remedy. Crossing
     a presence transition inside one shot is allowed (scene_cuts holds only real cuts, and

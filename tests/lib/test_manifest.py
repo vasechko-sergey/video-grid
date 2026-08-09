@@ -504,28 +504,38 @@ def test_manifest_uses_zoomspec_as_its_oracle():
 def test_manifest_refuses_a_pan_beside_a_hero_pin():
     # a well-formed 4-number seed bbox (not a malformed pin) isolates this
     # refusal from hero.resolve's own "not a seed bbox" problem — catches the
-    # new top-level `m.hero is not None or m.cast` check going missing.
+    # pre-existing `if m.hero is not None:` arm (nested inside `if m.pan is not
+    # None:`) going missing. This IS design §2.2's refusal: `hero` carries
+    # every pin flavour, bbox included.
     m = mf.Manifest.from_dict(_base(composition="center",
                                     pan={"from": 0.0, "to": 1.0},
                                     hero=(900.0, 500.0, 120.0, 300.0)))
-    assert any("declares the shot has no subject" in p for p in mf.validate(m))
+    assert any("hero pin cannot be combined with a pan" in p for p in mf.validate(m))
 
 
 def test_manifest_refuses_a_pan_beside_a_cast_name():
     # a cast-name hero (string pin + registry path) — the OTHER pin flavour
-    # design §2.2 names explicitly, distinct from the bbox pin above.
+    # design §2.2 names explicitly, distinct from the bbox pin above. Same
+    # `m.hero is not None` arm: a NAME is a hero pin too, whatever its
+    # representation — no separate check is needed for it.
     m = mf.Manifest.from_dict(_base(composition="center",
                                     pan={"from": 0.0, "to": 1.0},
                                     hero="Sergei", cast="cast.json"))
-    assert any("declares the shot has no subject" in p for p in mf.validate(m))
+    assert any("hero pin cannot be combined with a pan" in p for p in mf.validate(m))
 
 
-def test_manifest_refuses_a_pan_beside_a_bare_cast_path():
-    # `cast` alone, with NO hero pin at all: the two tests above both set
-    # `hero` to a non-None value too, so neither would notice `or m.cast`
-    # being dropped from the condition. This isolates that half of the OR —
-    # per the task's own note, "either one present should trip the pan refusal".
+def test_manifest_accepts_a_pan_beside_a_bare_cast_path():
+    # `cast` alone, with NO hero pin: must be ACCEPTED. `cast` is the reel-level
+    # cast.json PATH — edl.to_manifest_dict (edl.py) stamps it onto EVERY
+    # episode once an EDL declares a registry, whether or not that episode
+    # names a hero — not "a cast name" in design §2.2's sense. A prior version
+    # of this gate read `m.hero is not None or m.cast`, which refused every
+    # scenery pan the moment its EDL merely HAD a registry, with a message
+    # naming a pin that did not exist. Found in the final whole-branch review;
+    # this is the regression it closes. Same base as test_manifest_carries_a_pan
+    # (already proven clean below), `cast` added as the only new field, so this
+    # isolates exactly that field's effect.
     m = mf.Manifest.from_dict(_base(composition="center",
                                     pan={"from": 0.0, "to": 1.0},
                                     cast="cast.json"))
-    assert any("declares the shot has no subject" in p for p in mf.validate(m))
+    assert mf.validate(m) == []
