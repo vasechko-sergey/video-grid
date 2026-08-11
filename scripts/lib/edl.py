@@ -16,10 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from scripts.lib import provenance
+from scripts.lib import ramp as ramp_mod
 from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
-from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS
+from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
@@ -54,6 +55,15 @@ class EDLEpisode:
                               # (design 2026-08-08). NOT validated here: like `pan`, its one
                               # home is the manifest gate reached via preflight, which uses
                               # ZoomSpec as its oracle.
+    ramp: dict | None = None  # {"at": s, "factor": f, "ease": s, "hold": s} — a speed
+                              # ramp eased around one moment (design 2026-08-09).
+                              # UNLIKE `pan`/`zoom`/`hero` this IS validated here, and
+                              # deliberately: those three are validated once at the
+                              # manifest gate reached via preflight, but the region-
+                              # fits-the-window rule needs `dur`, which only this class
+                              # has, and play_dur() must be safe to call from anywhere.
+                              # RampSpec covers the four numbers; ramp.validate_window
+                              # covers the window.
     stabilize: bool = False   # run the vidstab pre-stage before tracking (design
                               # 2026-07-20). EXPLICIT by design and never inferred:
                               # a wade-in shot is handheld in moving water and so is
@@ -114,6 +124,10 @@ class EDLEpisode:
             raise ValueError(f"EDLEpisode.motion {self.motion!r} unknown — expected one of {MOTIONS} or null")
         if not isinstance(self.stabilize, bool):
             raise ValueError(f"EDLEpisode.stabilize must be true or false, got {self.stabilize!r}")
+        if self.ramp is not None:
+            ramp_mod.validate_window(
+                RampSpec.from_dict(self.ramp), self.dur,
+                f"EDLEpisode {self.source} @{self.start:.2f}s")
         if self.beat_slot is not None and (isinstance(self.beat_slot, bool) or not isinstance(self.beat_slot, int)):
             raise ValueError(f"EDLEpisode.beat_slot must be an int index or null, got {self.beat_slot!r}")
         if not (isinstance(self.color_means, (tuple, list)) and len(self.color_means) == 3
@@ -143,7 +157,7 @@ class EDLEpisode:
                 "background_color": self.background_color, "border_px": self.border_px,
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
                 "zoom": self.zoom,
-                "stabilize": self.stabilize,
+                "stabilize": self.stabilize, "ramp": self.ramp,
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
                 "black_point": self.black_point, "highlight": self.highlight,
@@ -153,6 +167,18 @@ class EDLEpisode:
                    if self.tone_src is not None else {}),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
                 "beat_slot": self.beat_slot}
+
+    def play_dur(self) -> float:
+        """How long this episode PLAYS, against `dur`'s how much SOURCE it consumes.
+
+        Equal without a ramp — which is why the codebase managed with one word for
+        both until now. The truthful authority for the beat-grid fit, the pacing
+        binding, the per-episode length check and the reel length gate (design §1,
+        §6). Anything measuring screen time calls this; anything measuring footage
+        consumed keeps reading `dur`."""
+        if self.ramp is None:
+            return self.dur
+        return self.dur + ramp_mod.ramp_extra(RampSpec.from_dict(self.ramp), self.dur)
 
 
 @dataclass
@@ -261,7 +287,7 @@ class EDL:
         return d
 
     def to_markdown(self) -> str:
-        total = sum(e.dur for e in self.episodes)
+        total = sum(e.play_dur() for e in self.episodes)
         head = f"# Edit plan — {len(self.episodes)} episodes, {total:.1f}s"
         if self.target_dur is not None:
             head += f" · target {self.target_dur:.1f}s"
@@ -280,8 +306,12 @@ class EDL:
                 motion = zm if motion == "–" else f"{motion} · {zm}"
             beat = str(e.beat_slot) if e.beat_slot is not None else "–"
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
+            notes = e.processing_notes
+            if e.ramp is not None:
+                notes = (f"⏱ ramp x{1 / e.ramp['factor']:.1f} @{e.ramp['at']:.1f}s "
+                         f"(plays {e.play_dur():.2f}s) · {notes}").rstrip(" ·")
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
-                         f"{e.composition} | {e.grid} | {motion} | {beat} | {e.processing_notes} |")
+                         f"{e.composition} | {e.grid} | {motion} | {beat} | {notes} |")
         if self.variety is not None:
             v = self.variety
             lines += ["", f"## Variety — preset `{v.preset}`", "",

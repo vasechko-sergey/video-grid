@@ -8,6 +8,8 @@ from scripts.lib import moodpreset
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.manifest import DEFAULT_COLOR
 from scripts.lib.project import ProjectConfig
+from scripts.lib import ramp
+from scripts.lib.models import RampSpec
 
 
 def _ep(**kw):
@@ -746,3 +748,92 @@ def test_to_manifest_dict_carries_an_empty_zoom_across():
     # an empty dict is FALSY, so `if ep.zoom:` would silently drop a malformed zoom and the
     # manifest gate would never see it to report the problem.
     assert to_manifest_dict(_ep(zoom={}), "seg.mp4", "out.mp4")["zoom"] == {}
+
+
+# --- speed-ramp Task 2: EDLEpisode.ramp + play_dur() (design docs/specs/2026-08-09-speed-ramp-design.md §2/§6) ---
+# NOTE: the task brief's literal `_ep` helper reuses a name this file already binds — the
+# module-level `_ep` near the top (~59 existing call sites, e.g. test_minimal_episode_defaults
+# asserts `_ep().start == 1.0` and `_ep().dur == 2.0`). Python resolves a bare global name at
+# CALL time, not at def time, so a second top-level `def _ep` appended here would silently
+# repoint every earlier call site at the new defaults too — breaking tests far above this
+# line, not extending them. The shapes also genuinely differ, not just the literal values:
+# several tests below construct `_ep()` / `_ep(ramp=RAMP)` with no explicit `dur` and need
+# `dur == 4.0` for RAMP's region (at=2.0, hold=1.0, ease=0.5 -> region 1.0-3.0s) to fit
+# inside the window at all — the existing `_ep`'s dur=2.0 default would raise at
+# construction instead of building the fixture the test goes on to exercise. Added a
+# separate, distinctly-named `_ramp_ep` instead; the original `_ep` and every test above are
+# untouched.
+#
+# The brief's literal also has two bugs, fixed here: `composition="thirds"` — "thirds" is a
+# GRIDS member (models.GRIDS), not a COMPOSITIONS member (models.COMPOSITIONS is
+# ("lead", "center", "break")) — would raise EDLEpisode's own composition check on every
+# call; swapped to "lead". And `edl.EDLEpisode(...)` / `edl.EDL(...)` — this file binds no
+# `edl` module alias anywhere (it imports names directly, `from scripts.lib.edl import EDL,
+# EDLEpisode, preflight, to_manifest_dict`), the same discrepancy this file's own earlier
+# NOTEs already document at the same pattern (see test_edl_episode_round_trips_the_background_colour
+# and test_edl_cast_round_trips above); swapped to the unqualified names used everywhere else.
+
+def _ramp_ep(**kw):
+    base = dict(source="a.mp4", start=0.0, dur=4.0, shot_type="medium",
+                composition="lead", grid="thirds")
+    return EDLEpisode(**{**base, **kw})
+
+
+RAMP = {"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}
+
+
+def test_play_dur_equals_dur_without_a_ramp():
+    ep = _ramp_ep()
+    assert ep.play_dur() == ep.dur == 4.0
+
+
+def test_play_dur_adds_the_ramps_time():
+    ep = _ramp_ep(ramp=RAMP)
+    assert ep.play_dur() > ep.dur
+    assert ep.play_dur() == pytest.approx(4.0 + ramp.ramp_extra(
+        RampSpec.from_dict(RAMP), 4.0))
+
+
+def test_a_ramp_round_trips_through_to_dict():
+    assert _ramp_ep(ramp=RAMP).to_dict()["ramp"] == RAMP
+
+
+def test_no_ramp_serializes_as_null():
+    assert _ramp_ep().to_dict()["ramp"] is None
+
+
+def test_an_episode_refuses_a_ramp_running_past_its_window():
+    # region ends at 3.0s; the window is only 2.5s
+    with pytest.raises(ValueError, match="ends 0.50s past"):
+        _ramp_ep(dur=2.5, ramp=RAMP)
+
+
+def test_an_episode_refuses_a_ramp_starting_before_its_window():
+    with pytest.raises(ValueError, match="starts 0.30s before"):
+        _ramp_ep(ramp={"at": 0.5, "factor": 0.5, "ease": 0.5, "hold": 0.6})
+
+
+def test_an_episode_refuses_a_malformed_ramp_object():
+    with pytest.raises(ValueError, match="missing ease, hold"):
+        _ramp_ep(ramp={"at": 2.0, "factor": 0.4})
+
+
+def test_shrinking_a_ramped_episode_into_its_region_raises_on_replace():
+    # dataclasses.replace re-runs __post_init__, so the pacing binding cannot
+    # quietly cut a window down into a ramp it no longer contains.
+    import dataclasses
+    ep = _ramp_ep(ramp=RAMP)
+    with pytest.raises(ValueError, match="ends 1.00s past"):
+        dataclasses.replace(ep, dur=2.0)
+
+
+def test_the_markdown_total_counts_played_time_not_source_time():
+    e = EDL(episodes=[_ramp_ep(ramp=RAMP)])
+    played = e.episodes[0].play_dur()
+    assert f"{played:.1f}s" in e.to_markdown()
+    assert "4.0s" not in e.to_markdown().splitlines()[0]
+
+
+def test_the_markdown_row_reports_the_ramp_and_its_played_length():
+    row = EDL(episodes=[_ramp_ep(ramp=RAMP)]).to_markdown()
+    assert "ramp x2.5" in row and "@2.0s" in row
