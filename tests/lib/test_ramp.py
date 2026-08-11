@@ -157,6 +157,42 @@ def test_validate_window_refuses_a_region_running_past_the_window():
         ramp.validate_window(SPEC, 2.5, "ep0")   # region ends 3.0, window 2.5
 
 
+def test_retime_issues_one_setpts_fps_pass_through_proc_run(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ramp.proc, "run", lambda cmd, **kw: seen.append(cmd))
+    monkeypatch.setattr(ramp.ffbin, "ffmpeg", lambda: "/bin/ffmpeg")
+    ramp.retime("in.mp4", "out.mp4", SPEC, DUR, 60.0)
+    assert len(seen) == 1, "a retime is ONE ffmpeg pass"
+    cmd = seen[0]
+    vf = cmd[cmd.index("-vf") + 1]
+    # single-quoted: the expression's own commas must not split the filter chain
+    assert vf.startswith("setpts='(") and "')/TB'," in vf.replace(")/TB',", "')/TB',")
+    assert vf.endswith(",fps=60"), "setpts alone yields VFR — fps= is mandatory"
+    assert "-an" in cmd, "slowed audio is pitch garbage; the segment goes silent"
+    assert "-ss" not in cmd
+
+
+def test_retime_refuses_before_spending_an_encode(monkeypatch):
+    monkeypatch.setattr(ramp.proc, "run",
+                        lambda *a, **k: pytest.fail("refused specs must not encode"))
+    monkeypatch.setattr(ramp.ffbin, "ffmpeg", lambda: "/bin/ffmpeg")
+    with pytest.raises(ValueError, match="unique frames per second"):
+        ramp.retime("in.mp4", "out.mp4",
+                    RampSpec(at=1.0, factor=0.5, ease=0.3, hold=0.2), 3.0, 30.0)
+
+
+def test_the_retime_argv_passes_the_landmine_lint():
+    # lint._element must not be fooled by the commas inside the quoted setpts
+    # expression — the same quote-blindness that once refused every real zoom
+    # render (design 2026-08-08 as-built).
+    from scripts.lib import lint
+    expr = ramp.setpts_expr(SPEC, DUR)
+    cmd = ["/bin/ffmpeg", "-y", "-v", "error", "-i", "in.mp4",
+           "-vf", f"setpts='({expr})/TB',fps=60", "-c:v", "libx264",
+           "-crf", "8", "-preset", "medium", "-pix_fmt", "yuv420p", "-an", "out.mp4"]
+    assert lint.check_argv(cmd) == []
+
+
 def _eval_expr(expr: str, t: float) -> float:
     """Evaluate one of ffmpeg's `if(lt(T,a),b,c)` expressions in Python, for tests.
 

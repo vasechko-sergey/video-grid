@@ -2,9 +2,10 @@
 import argparse
 from pathlib import Path
 
-from scripts.lib import assembly, ffbin, proc
+from scripts.lib import assembly, ffbin, proc, ramp
 from scripts.lib.assembly import probe_duration as _probe_dur   # keep the local name its callers use
 from scripts.lib.edl import EDL
+from scripts.lib.models import RampSpec
 
 _LEN_EPS = 0.05    # seconds of slack beyond one frame — a re-encoded window lands ±1 frame
 
@@ -42,6 +43,21 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str) -> list[str]:
                 f"EDL episode {i} segment is {probed:.3f}s — shorter than its {ep.dur}s window "
                 f"(source {src!r} start={ep.start}); the window runs past the clip. Trim the window "
                 "or fix the in-point.")
+        if ep.ramp is not None:
+            # A PRE-STAGE writing a file, exactly like vidstab.stabilize and for
+            # the same reason (design §4): the route must be measured on the
+            # pixels that ship. A route tracked on un-retimed time and applied to
+            # retimed pixels would place the crop at the wrong moment, and
+            # check_episode would confirm the framing — path and route would
+            # agree with each other while only the pixels disagreed.
+            #
+            # It replaces ep{i}_raw.mp4 IN PLACE because draft.py and the reel
+            # manifest built by preflight both reference that exact name; a ramp
+            # written beside it would simply be ignored, leaving reframe the
+            # un-ramped cut.
+            ramped = str(Path(seg_dir) / f"ep{i}_ramped.mp4")
+            ramp.retime(out, ramped, RampSpec.from_dict(ep.ramp), ep.dur, fps)
+            Path(ramped).replace(out)
         segments.append(out)
     return segments
 

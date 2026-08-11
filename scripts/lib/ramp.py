@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 
+from scripts.lib import ffbin, proc
 from scripts.lib.models import RampSpec
 
 RAMP_EASE_KNOTS = 16  # subdivisions per EASE. Not per window: the knots are anchored to
@@ -38,6 +39,11 @@ MIN_RAMP_FPS = 24.0  # unique frames per second the plateau must keep. Slowing
                      # A convention, not a measurement against this engine's footage
                      # (design §12) — the constant here most likely to want revisiting.
 
+_CRF = 8            # near-lossless intermediate. NOT a default worth relaxing: a held
+                    # slow-mo frame is later ENLARGED by a tight hero crop in reframe,
+                    # which magnifies intermediate compression into visible whitewater
+                    # macroblocks. crf 18 was measured too lossy for that
+                    # second-generation crop.
 _WINDOW_TOL = 1e-9  # s of float slack when comparing the region against the window
 _FPS_TOL = 1e-6     # so 60.0 * 0.4 == 24.0 passes rather than losing to a float hair
 
@@ -180,3 +186,31 @@ def setpts_expr(spec: RampSpec, dur: float) -> str:
         expr = (f"if(lt(T,{ts[i + 1]:.6f}),"
                 f"{o[i]:.6f}+{slope:.6f}*(T-{ts[i]:.6f}),{expr})")
     return expr
+
+
+def retime(src: str, dst: str, spec: RampSpec, dur: float, fps: float,
+           crf: int = _CRF) -> str:
+    """Retime `src` into `dst` by `spec`, in ONE ffmpeg pass.
+
+    `setpts` moves each frame's timestamp through O(T); `fps=` re-quantizes to the
+    source's own constant rate, duplicating frames wherever the stream was
+    stretched. Both are ordinary filters, so the whole retime is one argv that
+    proc.run's landmine guard can read — which is the reason this is not the
+    decode/encode frame pipe the parked WIP used (design §0, §3.4).
+
+    Video only. A slowed audio track is pitch garbage, so the segment goes silent;
+    mix._build_ambient already substitutes anullsrc sized to the episode's length,
+    so the ambient bed stays in sync by construction (design §12).
+
+    The judder gate runs BEFORE the encode: a refusal should cost nothing."""
+    require_playable(spec, fps, f"retime {src}")
+    expr = setpts_expr(spec, dur)
+    # The expression contains commas. In argv form there is no shell to strip
+    # quotes, and ffmpeg reads a bare comma as a filter separator — unquoted, the
+    # first if(lt(T,...)) splits the chain and ffmpeg reports "No such filter"
+    # (design §10). ffmpeg's own parser strips these single quotes.
+    vf = f"setpts='({expr})/TB',fps={fps:.6g}"
+    proc.run([ffbin.ffmpeg(), "-y", "-v", "error", "-i", src, "-vf", vf,
+              "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
+              "-pix_fmt", "yuv420p", "-an", dst])
+    return dst
