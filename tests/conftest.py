@@ -24,6 +24,31 @@ def sample_clip(tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="session")
+def ramp_clip(tmp_path_factory):
+    """2s 640x360 60fps clip: a white box sliding left→right on a dark field.
+
+    60 fps on purpose — MIN_RAMP_FPS = 24.0 admits only factor >= 0.8 on the 30fps
+    sample_clip, too shallow a ramp to measure against noise.
+
+    Uses overlay, not drawbox: drawbox's x/y expressions are inert under this
+    ffmpeg (the `t` var reads as INT32_MAX), so a moving drawbox never appears at
+    all — see sample_clip's note.
+    """
+    try:
+        binary = ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
+    out = tmp_path_factory.mktemp("media") / "ramp.mp4"
+    bg = "color=c=0x202020:s=640x360:d=2:r=60"
+    box = "color=c=white:s=40x80:d=2:r=60"
+    proc.run(
+        [binary, "-y", "-f", "lavfi", "-i", bg, "-f", "lavfi", "-i", box,
+         "-filter_complex", "[0][1]overlay=x='60+t*250':y=140",
+         "-t", "2", "-pix_fmt", "yuv420p", str(out)])
+    return out
+
+
 @pytest.fixture
 def need_filter():
     """Skip unless the RESOLVED ffmpeg carries `name`.
