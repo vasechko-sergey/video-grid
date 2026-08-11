@@ -117,7 +117,7 @@ Expected: FAIL, `AttributeError: module 'scripts.lib.models' has no attribute 'R
 Insert into `scripts/lib/models.py` immediately after `ZoomSpec.from_dict` and before `LAYOUT_MODES = ("fill", "fit", "insert")`:
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class RampSpec:
     """A speed ramp: playback eases down to a slow plateau around one moment and
     back up (design 2026-08-09). The pro "hit the drop in slow-mo" move, rather
@@ -149,12 +149,12 @@ class RampSpec:
     hold: float
 
     def __post_init__(self) -> None:
-        bounds = (("at", self.at, 0.0, None, "seconds from the WINDOW start"),
-                  ("factor", self.factor, None, None, "minimum speed in (0, 1]; "
+        bounds = (("at", self.at, "seconds from the WINDOW start"),
+                  ("factor", self.factor, "minimum speed in (0, 1]; "
                    "0.4 is 2.5x slower"),
-                  ("ease", self.ease, None, None, "seconds of cosine ramp EACH side"),
-                  ("hold", self.hold, 0.0, None, "plateau seconds at `factor`"))
-        for name, v, _lo, _hi, meaning in bounds:
+                  ("ease", self.ease, "seconds of cosine ramp EACH side"),
+                  ("hold", self.hold, "plateau seconds at `factor`"))
+        for name, v, meaning in bounds:
             # bool BEFORE int: isinstance(True, int) is True, so {"factor": true}
             # would otherwise silently mean 1.0
             if isinstance(v, bool) or not isinstance(v, (int, float)):
