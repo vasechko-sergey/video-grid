@@ -5,11 +5,55 @@ import json
 import pytest
 
 from scripts import pacing as driver
+from scripts.lib.edl import EDL, EDLEpisode
+from scripts.lib.footage import Footage, FootageClip
 
 
 def _write(path, obj):
     path.write_text(json.dumps(obj))
     return str(path)
+
+
+def _edl(eps):
+    return EDL(episodes=tuple(eps))
+
+
+def _footage_obj(room):
+    return Footage(clips=[FootageClip(source="a.mp4", dur=room, res=(1920, 1080), fps=30.0)])
+
+
+def _write_edl(tmp_path, eps):
+    return _write(tmp_path / "EDL.json", _edl(eps).to_dict())
+
+
+def _footage(tmp_path):
+    return _write(tmp_path / "FOOTAGE.json",
+                  {"clips": [{"source": "a.mp4", "dur": 30.0, "res": [1920, 1080], "fps": 30.0,
+                              "shaky": False, "scene_cuts": [], "windows": []}]})
+
+
+def _music(tmp_path):
+    beats = [i * 0.5 for i in range(40)]
+    return _write(tmp_path / "MUSIC.json",
+                  {"track": "t.mp3", "start_offset": 0.0, "duration": 20.0, "tempo": 120.0,
+                   "beats": beats, "energy": [0.5] * 20, "energy_hz": 1.0})
+
+
+def _ramped_episode(dur, factor):
+    # region = [at - hold/2 - ease, at + hold/2 + ease]; at=dur/2, hold=1.0, ease=0.5
+    # centers the region in the window with 1.0s of head/tail room to spare.
+    return EDLEpisode(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                      composition="lead", grid="thirds",
+                      ramp={"at": dur / 2, "factor": factor, "ease": 0.5, "hold": 1.0})
+
+
+def _plain_episode(dur):
+    return EDLEpisode(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                      composition="lead", grid="thirds")
+
+
+class _Stop(Exception):
+    pass
 
 
 @pytest.fixture
@@ -112,3 +156,43 @@ def test_off_grid_report_logs_a_remedy_and_lists_each_level_once(tmp_path, capsy
     # Each of the 5 GRID_LEVELS appears exactly once in the fit table (rows carry "beats |").
     rows = [ln for ln in md.splitlines() if ln.startswith("| ") and "beats |" in ln]
     assert len(rows) == 5
+
+
+def test_the_fitter_receives_played_lengths_not_source_windows(monkeypatch, tmp_path):
+    seen = {}
+
+    def spy(durs, beats, energy, hz, tempo, bounds):
+        seen["durs"] = list(durs)
+        raise _Stop()
+
+    monkeypatch.setattr(driver.pacing, "fit_spine", spy)
+    ep = _ramped_episode(dur=4.0, factor=0.4)
+    with pytest.raises(_Stop):
+        driver.build_pacing(_write_edl(tmp_path, [ep]), _footage(tmp_path),
+                            [_music(tmp_path)], str(tmp_path))
+    assert seen["durs"] == [pytest.approx(ep.play_dur())]
+    assert seen["durs"] != [4.0], "fitting the source window puts every later cut off-beat"
+
+
+def test_the_shrink_bound_stops_at_the_ramp_region(tmp_path):
+    # window 4.0s, region [1.0, 3.0] -> only 1.0s of tail may be trimmed, even
+    # though half the window (2.0s) and the allowance might both be larger.
+    ep = _ramped_episode(dur=4.0, factor=0.4)
+    lo, _hi = driver._bounds(_edl([ep]), _footage_obj(room=10.0), allow=2.0)[0]
+    assert lo == pytest.approx(-1.0)
+
+
+def test_the_shrink_bound_is_unchanged_without_a_ramp(tmp_path):
+    ep = _plain_episode(dur=4.0)
+    lo, _hi = driver._bounds(_edl([ep]), _footage_obj(room=10.0), allow=2.0)[0]
+    assert lo == pytest.approx(-2.0)     # min(allow, dur/2) as before
+
+
+def test_the_extend_bound_is_unchanged_by_a_ramp(tmp_path):
+    # Outside the region the speed is exactly 1, so extending the played length by
+    # d costs d of source — `room - dur` is already right in source seconds.
+    ramped = _ramped_episode(dur=4.0, factor=0.4)
+    plain = _plain_episode(dur=4.0)
+    _lo_r, hi_r = driver._bounds(_edl([ramped]), _footage_obj(room=4.5), allow=2.0)[0]
+    _lo_p, hi_p = driver._bounds(_edl([plain]), _footage_obj(room=4.5), allow=2.0)[0]
+    assert hi_r == pytest.approx(hi_p) == pytest.approx(0.5)

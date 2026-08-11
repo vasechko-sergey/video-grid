@@ -10,10 +10,10 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import anchors, gridfit, pacing
+from scripts.lib import anchors, gridfit, pacing, ramp as ramp_mod
 from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage
-from scripts.lib.models import MusicSpec
+from scripts.lib.models import MusicSpec, RampSpec
 
 
 def _log(msg: str) -> None:
@@ -32,7 +32,16 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
             raise ValueError(f"pacing: EDL episode {i} references {ep.source!r}, which is "
                              f"not in FOOTAGE.json — have {sorted(by_source)}")
         room = clip.room_after(ep.start)
-        out.append((-min(allow, ep.dur / 2.0), min(allow, max(0.0, room - ep.dur))))
+        # Outward: the speed is exactly 1 outside the ramp region, so extending the
+        # PLAYED length by d costs d of source — `room - ep.dur` is already the
+        # right bound in source seconds and needs no conversion.
+        #
+        # Inward is the asymmetric direction. The window may not shrink into the
+        # ramp region: a cut landing while the shot is still slowed is the artefact
+        # ramp.validate_window exists to refuse (design §2, §6).
+        spec = None if ep.ramp is None else RampSpec.from_dict(ep.ramp)
+        shrink = min(allow, ep.dur / 2.0, ramp_mod.tail_room(spec, ep.dur))
+        out.append((-shrink, min(allow, max(0.0, room - ep.dur))))
     return out
 
 
@@ -71,7 +80,10 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
                          "needs a beat grid (a silent reel skips this stage entirely)")
     edl = EDL.from_json(edl_json)
     footage = Footage.from_json(footage_json)
-    durs = [ep.dur for ep in edl.episodes]
+    # PLAYED lengths, not source windows: the grid is fitted to what the viewer
+    # watches. Reading `dur` here is what let a ramped episode drift every later
+    # cut off its musical line (design §6).
+    durs = [ep.play_dur() for ep in edl.episodes]
     best = None
     for path in music_jsons:
         m = MusicSpec.from_json(path)
