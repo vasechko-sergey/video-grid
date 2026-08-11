@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 from scripts import edl_to_reel
 from scripts.lib import provenance
-from scripts.lib.edl import EDL, write_edl
+from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.models import ReelEpisode, ReelManifest
@@ -1107,3 +1107,63 @@ def test_process_episodes_real_body_writes_episodes_json_into_the_out_dir(monkey
     assert written.exists()                            # landed IN the out dir
     assert ReelManifest.from_json(written).to_dict() == captured["rm"].to_dict()
     assert seen["build"] == []                         # phase 1 never calls build_reel
+
+
+# --- speed-ramp Task 6: the reel target reads played time
+# (design docs/specs/2026-08-09-speed-ramp-design.md §6) ---
+
+def _ramped_episode(dur=4.0, factor=0.4, **kw):
+    """An EDLEpisode with a speed ramp centered in its window — same region shape
+    as test_edl.py's RAMP (ease=0.5, hold=1.0), scaled to any dur >= 2.0 — plus the
+    crop_scale=0.8 this module's own fixtures use (see _edl_file's default episode
+    and test_preflight_resolves_all_episodes_clean's note above) so a 'lead'
+    composition on a 'fill' layout has horizontal freedom and preflight, called
+    inside _build_manifest, resolves it clean instead of stopping."""
+    base = dict(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                composition="lead", grid="thirds", crop_scale=0.8,
+                ramp={"at": dur / 2.0, "factor": factor, "ease": 0.5, "hold": 1.0})
+    return EDLEpisode(**{**base, **kw})
+
+
+def _plain_episode(dur=2.0, **kw):
+    """The unramped twin of _ramped_episode, same preflight-clean shape."""
+    base = dict(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                composition="lead", grid="thirds", crop_scale=0.8)
+    return EDLEpisode(**{**base, **kw})
+
+
+def _manifest_for(monkeypatch, tmp_path, eps, **edl_kw):
+    """Write the EDL/project this module's driver tests already build (_edl_file /
+    _project), stub the extract + per-episode fan-out the same way _wire does for
+    every edl_to_reel() test above, then call _build_manifest DIRECTLY — never
+    edl_to_reel.edl_to_reel, which would go on to render a whole reel. The target
+    arithmetic under test runs inside _build_manifest, after both stubs."""
+    _wire(monkeypatch)
+    edl_path = _edl_file(tmp_path, episodes=[e.to_dict() for e in eps], **edl_kw)
+    rm, stop = edl_to_reel._build_manifest(edl_path, _project(tmp_path), str(tmp_path),
+                                           str(tmp_path / "w"), str(tmp_path / "out"))
+    assert stop is None, stop
+    return rm
+
+
+def test_the_reel_target_sums_played_lengths(monkeypatch, tmp_path):
+    eps = [_ramped_episode(dur=4.0, factor=0.4), _plain_episode(dur=3.0)]
+    want = eps[0].play_dur() + 3.0
+    rm = _manifest_for(monkeypatch, tmp_path, eps)
+    assert rm.target_dur == pytest.approx(want)
+
+
+def test_an_explicit_edl_target_still_wins(monkeypatch, tmp_path):
+    eps = [_ramped_episode(dur=4.0, factor=0.4)]
+    rm = _manifest_for(monkeypatch, tmp_path, eps, target_dur=12.0)
+    assert rm.target_dur == 12.0
+
+
+def test_an_unramped_reel_target_is_unchanged_from_before_the_ramp_slice(monkeypatch, tmp_path):
+    # Global constraint: play_dur() == dur without a ramp, so an all-unramped EDL's
+    # summed target must still be the plain sum of dur — numerically identical to
+    # what this line computed before the ramp slice landed, asserted explicitly
+    # rather than left as an unstated side effect of the ramped tests above.
+    eps = [_plain_episode(dur=2.0), _plain_episode(dur=3.0)]
+    rm = _manifest_for(monkeypatch, tmp_path, eps)
+    assert rm.target_dur == pytest.approx(5.0)

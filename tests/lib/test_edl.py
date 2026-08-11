@@ -837,3 +837,31 @@ def test_the_markdown_total_counts_played_time_not_source_time():
 def test_the_markdown_row_reports_the_ramp_and_its_played_length():
     row = EDL(episodes=[_ramp_ep(ramp=RAMP)]).to_markdown()
     assert "ramp x2.5" in row and "@2.0s" in row
+
+
+# --- speed-ramp Task 6: to_manifest_dict's target_dur reads played time
+# (design docs/specs/2026-08-09-speed-ramp-design.md §6) ---
+# NOTE: the task brief's literal snippet used `_ep(ramp=RAMP)`, but this file's
+# module-level `_ep` (top of file) defaults dur=2.0, and RAMP's region is 1.0-3.0s
+# (at=2.0, hold=1.0, ease=0.5) — it needs dur >= 3.0 to fit inside the window at
+# all, so `_ep(ramp=RAMP)` raises at construction (the same class of defect
+# Task 2's section note above already documents, and the parent brief for this
+# task flagged the same fix in advance). `_ramp_ep` (dur=4.0 default) is this
+# file's fixture built for exactly this ramp; swapped to it, reusing the existing
+# helper rather than redefining `_ep`.
+
+def test_the_episode_manifest_target_is_the_played_length():
+    # process_episode's per-episode length check measures the RETIMED segment,
+    # which is play_dur long. Handing it `dur` would fail every ramped episode.
+    ep = _ramp_ep(ramp=RAMP)
+    md = to_manifest_dict(ep, "seg.mp4", "out.mp4")
+    assert md["target_dur"] == pytest.approx(ep.play_dur())
+    assert md["target_dur"] != ep.dur
+
+
+def test_the_manifest_target_is_unchanged_for_an_unramped_episode():
+    # Global constraint: play_dur() == dur without a ramp, so this slice must not
+    # move target_dur for the (overwhelmingly common) unramped case — asserted
+    # explicitly here, not merely true as a side effect of the ramped test above.
+    ep = _ramp_ep()
+    assert to_manifest_dict(ep, "seg.mp4", "out.mp4")["target_dur"] == ep.dur

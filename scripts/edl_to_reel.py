@@ -141,7 +141,11 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
             meta=str(Path(epdir) / "path.meta.json")))
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
-    target = edl.target_dur if edl.target_dur is not None else sum(ep.dur for ep in edl.episodes)
+    # PLAYED lengths: check_reel measures the master's real duration against this
+    # number, and a ramped episode contributes more screen time than its source
+    # window (design §6).
+    target = (edl.target_dur if edl.target_dur is not None
+              else sum(ep.play_dur() for ep in edl.episodes))
     extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}
     # #16: this argument is the version-log NOTE, not the log's path. Passing
     # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's

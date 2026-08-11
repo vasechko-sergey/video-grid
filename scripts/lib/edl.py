@@ -367,8 +367,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     hero resolves per episode while the manifest itself stays a self-contained
     brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""
     default rather than the dict carrying an explicit null."""
+    # target_dur is the PLAYED length (design §6), not the source window: process_episode's
+    # per-episode length check measures the RETIMED segment on disk (extract's pre-stage
+    # already ran ramp.retime on it — see Task 3), and that segment is play_dur() long.
+    # Equal to ep.dur without a ramp, so this is a no-op for every unramped episode.
     md: dict = {
-        "segment": segment, "out_path": out_path, "target_dur": ep.dur,
+        "segment": segment, "out_path": out_path, "target_dur": ep.play_dur(),
         "composition": ep.composition, "grid": ep.grid, "layout": ep.layout,
         "crop_scale": ep.crop_scale, "background": ep.background,
         "background_color": ep.background_color,
