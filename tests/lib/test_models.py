@@ -1646,3 +1646,53 @@ def test_path_meta_from_dict_wraps_a_partial_zoom_sidecar_as_an_integrity_failur
     del d["crop_ys"]
     with pytest.raises(RuntimeError, match="unusable field"):
         PathMeta.from_dict(d)
+
+
+def test_rampspec_round_trips_through_the_wire_form():
+    d = {"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}
+    assert m.RampSpec.from_dict(d).to_dict() == d
+
+
+def test_rampspec_holds_its_four_numbers():
+    s = m.RampSpec(at=2.0, factor=0.4, ease=0.5, hold=1.0)
+    assert (s.at, s.factor, s.ease, s.hold) == (2.0, 0.4, 0.5, 1.0)
+
+
+def test_rampspec_accepts_a_zero_hold_pure_vee():
+    assert m.RampSpec(at=1.0, factor=0.5, ease=0.4, hold=0.0).hold == 0.0
+
+
+def test_rampspec_accepts_factor_one_as_a_no_op_ramp():
+    # factor 1.0 is degenerate but well-formed: extra becomes 0.0. Refusing it
+    # here would make `factor` the only field whose legal range excludes its
+    # own identity value, and ramp_extra already reports 0.0 truthfully.
+    assert m.RampSpec(at=1.0, factor=1.0, ease=0.3, hold=0.0).factor == 1.0
+
+
+@pytest.mark.parametrize("field,value", [
+    ("at", -0.1), ("factor", 0.0), ("factor", 1.1), ("ease", 0.0),
+    ("ease", -0.5), ("hold", -0.1),
+])
+def test_rampspec_refuses_out_of_range(field, value):
+    kw = {"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0, field: value}
+    with pytest.raises(ValueError, match=f"RampSpec.{field}"):
+        m.RampSpec(**kw)
+
+
+@pytest.mark.parametrize("field", ["at", "factor", "ease", "hold"])
+def test_rampspec_refuses_a_bool_before_int(field):
+    # isinstance(True, int) is True — without the bool check first, {"factor": true}
+    # would silently mean 1.0.
+    kw = {"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0, field: True}
+    with pytest.raises(ValueError, match=f"RampSpec.{field}"):
+        m.RampSpec(**kw)
+
+
+def test_rampspec_refuses_a_non_object():
+    with pytest.raises(ValueError, match="expected an object"):
+        m.RampSpec.from_dict([2.0, 0.4, 0.5, 1.0])
+
+
+def test_rampspec_names_every_missing_key_at_once():
+    with pytest.raises(ValueError, match="missing ease, hold"):
+        m.RampSpec.from_dict({"at": 2.0, "factor": 0.4})

@@ -621,6 +621,91 @@ class ZoomSpec:
         return cls(start=d["from"], end=d["to"])
 
 
+@dataclass
+class RampSpec:
+    """A speed ramp: playback eases down to a slow plateau around one moment and
+    back up (design 2026-08-09). The pro "hit the drop in slow-mo" move, rather
+    than slowing a whole shot.
+
+    All four numbers are seconds or a plain multiplier, and all times are
+    relative to the EPISODE WINDOW's start, not the clip's:
+
+      at     — the plateau's centre
+      factor — minimum speed; 0.4 means 2.5x slower. A literal multiplier for the
+               same reason ZoomSpec took literal from/to: the wire format states
+               the quantity the filter uses, and the SKILL documents the reading.
+      ease   — the cosine ramp-in and ramp-out, seconds EACH side
+      hold   — the plateau's own length at `factor`
+
+    The region [at - hold/2 - ease, at + hold/2 + ease] must lie inside the
+    window, but THAT rule is not checked here — it needs the window length, which
+    only EDLEpisode has. See ramp.validate_window, called from
+    EDLEpisode.__post_init__. This spec validates only what is checkable from the
+    four numbers alone.
+
+    factor > 1 (speed-UP) is deliberately out of range: the whole design rests on
+    s <= 1 meaning frames are only ever DUPLICATED, never dropped, so no motion is
+    lost. Dropping motion needs a different argument and is deferred (design §13).
+    """
+    at: float
+    factor: float
+    ease: float
+    hold: float
+
+    def __post_init__(self) -> None:
+        bounds = (("at", self.at, 0.0, None, "seconds from the WINDOW start"),
+                  ("factor", self.factor, None, None, "minimum speed in (0, 1]; "
+                   "0.4 is 2.5x slower"),
+                  ("ease", self.ease, None, None, "seconds of cosine ramp EACH side"),
+                  ("hold", self.hold, 0.0, None, "plateau seconds at `factor`"))
+        for name, v, _lo, _hi, meaning in bounds:
+            # bool BEFORE int: isinstance(True, int) is True, so {"factor": true}
+            # would otherwise silently mean 1.0
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"RampSpec.{name} must be a number — {meaning}; got {v!r}")
+        # NO float(): json.loads builds ints of any size and float() raises
+        # OverflowError, not ValueError, escaping the soft manifest gate as a
+        # crash. Direct comparison is exact and rejects NaN too. Same landmine
+        # ZoomSpec and PanSpec document.
+        if not self.at >= 0.0:
+            raise ValueError(
+                f"RampSpec.at must be >= 0 — it is seconds from the WINDOW start, "
+                f"not the clip's; got {self.at!r}")
+        if not 0.0 < self.factor <= 1.0:
+            raise ValueError(
+                f"RampSpec.factor must be within (0.0, 1.0] — the plateau's minimum "
+                f"speed, where 0.4 is 2.5x slower and 1.0 is no slowdown. Above 1.0 "
+                f"would be a speed-UP, which DROPS frames rather than duplicating "
+                f"them and is a different feature; got {self.factor!r}")
+        if not self.ease > 0.0:
+            raise ValueError(
+                f"RampSpec.ease must be > 0 — an instant change of speed is a jump "
+                f"cut, not a ramp. Give it at least a few frames; got {self.ease!r}")
+        if not self.hold >= 0.0:
+            raise ValueError(
+                f"RampSpec.hold must be >= 0 — the plateau's length; 0 is a pure "
+                f"V-shape that touches `factor` for one instant; got {self.hold!r}")
+
+    def to_dict(self) -> dict:
+        return {"at": self.at, "factor": self.factor,
+                "ease": self.ease, "hold": self.hold}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "RampSpec":
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"RampSpec.from_dict: expected an object with at/factor/ease/hold, "
+                f"got {type(d).__name__} — write ramp as "
+                f'{{"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}}')
+        missing = [k for k in ("at", "factor", "ease", "hold") if k not in d]
+        if missing:
+            raise ValueError(
+                f"RampSpec.from_dict: missing {', '.join(missing)} — a ramp needs "
+                f"all four of at/factor/ease/hold, got {sorted(d)}")
+        return cls(at=d["at"], factor=d["factor"], ease=d["ease"], hold=d["hold"])
+
+
 LAYOUT_MODES = ("fill", "fit", "insert")
 BACKGROUNDS = ("blur", "solid")
 
