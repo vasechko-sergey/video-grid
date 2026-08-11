@@ -17,11 +17,11 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import gridfit, moodpreset
+from scripts.lib import gridfit, moodpreset, ramp as ramp_mod
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
-from scripts.lib.models import HERO_RULES
+from scripts.lib.models import HERO_RULES, RampSpec
 from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
@@ -99,6 +99,13 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
             "check_episode reports framing editorial-only, continuity not-checked and "
             "colour-fidelity not-checked. Drop the `pan` and let the tracked route place the "
             "crop, or reference a window intake measured as empty")
+    if editorial.get("ramp") is not None:
+        # The early half of the judder gate (design §5): FOOTAGE already knows this
+        # clip's frame rate, so a ramp that would stutter is refused before the
+        # pipeline spends anything. The extract pre-stage repeats the check against
+        # the PROBED rate, which is what a hand-authored EDL meets instead.
+        ramp_mod.require_playable(RampSpec.from_dict(editorial["ramp"]), clip.fps,
+                                  f"{clip.source} window at {start:.2f}s")
     defaults = {"shot_type": window.shot_type, "processing_notes": window.description}
     try:
         return EDLEpisode(source=clip.source, start=start, dur=window.dur,
@@ -198,13 +205,22 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     bound = []
     for i in range(n):
         slot, ep = spine.slots[i], episodes[i]
-        if abs(slot.dur - ep.dur) > allow:
+        # PLAYED time on both sides: the spine was fitted to play_dur (pacing.py),
+        # so comparing the source window would refuse a correct fit on any ramped
+        # episode by exactly the ramp's added time.
+        played = ep.play_dur()
+        if abs(slot.dur - played) > allow:
             raise ValueError(
-                f"pacing: slot {i} is {slot.dur:.2f}s against a {ep.dur:.2f}s episode — "
+                f"pacing: slot {i} is {slot.dur:.2f}s against a {played:.2f}s episode — "
                 f"further apart than the {allow:.2f}s snap allows, so this PACING.json "
                 f"was fitted to a different edit. Re-run pacing against the current "
                 f"EDL.json before binding")
-        bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
+        # Assign the SOURCE window that plays for slot.dur. ramp_extra is constant
+        # in dur while the region stays enclosed (design §2), so this is exact
+        # rather than a solve — and dataclasses.replace re-runs __post_init__, so a
+        # shrink that ate into the region raises instead of passing quietly.
+        extra = played - ep.dur
+        bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur - extra))
     if len(episodes) > len(spine.slots):
         _log(f"pacing: {len(episodes)} episodes exceed the {len(spine.slots)}-slot spine "
              f"— the {len(episodes) - len(spine.slots)} tail episode(s) keep beat_slot=None; "
@@ -224,10 +240,10 @@ def _back_edge_target(episodes: list, spine: Spine) -> float:
     delivers — the montage §4.1 pacing-gate back-edge — so the reel's length gate passes by
     construction instead of escalating a whole pipeline later. An over-flow keeps the
     fragment length, so the excess escalates at the reel gate rather than reaching mix,
-    which refuses a stem longer than its fragment (§2). `realized` sums EVERY bound episode,
-    including an over-flow tail left at beat_slot=None — the reel is as long as everything
-    in it. Both directions log; neither is silent."""
-    realized = sum(e.dur for e in episodes)
+    which refuses a stem longer than its fragment (§2). `realized` sums EVERY bound episode's
+    PLAYED length, including an over-flow tail left at beat_slot=None — the reel is as long as
+    everything in it. Both directions log; neither is silent."""
+    realized = sum(e.play_dur() for e in episodes)
     if realized < spine.target_dur - _BACK_EDGE_TOL:
         _log(f"pacing back-edge: the bound footage realizes {realized:.2f}s of the "
              f"{spine.target_dur:.2f}s spine — re-timing the reel target to {realized:.2f}s; "

@@ -860,3 +860,91 @@ def test_merged_window_reports_the_busiest_presence_in_the_span():
                           _window(present=0.9, start=2.0, dur=2.0)])
     merged = edit_plan._merge_windows(clip, 0, 1)
     assert merged.present == 0.9
+
+
+# --- speed ramp: bind/target/gate read PLAYED time (design 2026-08-09) ---------------
+
+
+def _ramped_episode(dur, factor):
+    """_ep's own shape (source/shot_type), plus a ramp whose region [0.6s, 1.4s] sits
+    well inside any `dur` this slice's tests use, so validate_window never fights the
+    fixture regardless of `factor`."""
+    return EDLEpisode(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
+                      composition="lead", grid="thirds",
+                      ramp={"at": 1.0, "factor": factor, "ease": 0.3, "hold": 0.2})
+
+
+def _plain_episode(dur):
+    """An unramped EDLEpisode — _ep's own shape, named for parity with _ramped_episode
+    so a test reads which kind of fixture it is building."""
+    return _ep(dur)
+
+
+def _spine(durs, tempo, target=None):
+    """A Spine whose slots carry `durs` back to back, hook first — Spine.__post_init__'s
+    own contiguity/hook-first rules, which pacing.py's real fitter always satisfies, so a
+    hand-built spine for these binding tests must too. `target` defaults to sum(durs),
+    the only value __post_init__ accepts without an explicit target of its own."""
+    slots, start = [], 0.0
+    for i, d in enumerate(durs):
+        slots.append(Slot(i, start, d, 0.5, "hook" if i == 0 else "release"))
+        start += d
+    return Spine(tuple(slots), target if target is not None else sum(durs), tempo)
+
+
+def test_the_binding_guard_compares_the_played_length():
+    # A ramped 4.0s window plays measurably longer than 4.0s. Against a slot sized to
+    # ITS PLAYED length it must BIND; comparing the source window (dur) would see a gap
+    # past the snap allowance and refuse a correct fit.
+    ep = _ramped_episode(dur=4.0, factor=0.4)
+    slot_dur = ep.play_dur()
+    bound = edit_plan._bind_pacing([ep], _spine([slot_dur], tempo=120.0))
+    assert bound[0].beat_slot == 0
+
+
+def test_binding_sets_the_source_window_the_slot_implies():
+    # The episode must PLAY for slot.dur, so its SOURCE window is slot.dur minus
+    # the ramp's added time — one subtraction, exact because the enclosed region
+    # makes ramp_extra constant in dur (design §2).
+    ep = _ramped_episode(dur=4.0, factor=0.4)
+    extra = ep.play_dur() - ep.dur
+    slot_dur = ep.play_dur() + 0.10
+    bound = edit_plan._bind_pacing([ep], _spine([slot_dur], tempo=120.0))
+    assert bound[0].dur == pytest.approx(slot_dur - extra)
+    assert bound[0].play_dur() == pytest.approx(slot_dur)
+
+
+def test_binding_an_unramped_episode_is_unchanged():
+    ep = _plain_episode(dur=4.0)
+    bound = edit_plan._bind_pacing([ep], _spine([4.1], tempo=120.0))
+    assert bound[0].dur == pytest.approx(4.1)
+
+
+def test_the_guard_still_refuses_a_spine_fitted_to_a_different_edit():
+    ep = _ramped_episode(dur=4.0, factor=0.4)
+    with pytest.raises(ValueError, match="fitted to a different edit"):
+        edit_plan._bind_pacing([ep], _spine([2.0], tempo=120.0))
+
+
+def test_the_back_edge_target_sums_played_time():
+    eps = [_ramped_episode(dur=4.0, factor=0.4), _plain_episode(dur=3.0)]
+    want = eps[0].play_dur() + 3.0
+    got = edit_plan._back_edge_target(eps, _spine([99.0], tempo=120.0, target=99.0))
+    assert got == pytest.approx(want)
+
+
+def test_window_to_episode_refuses_a_juddering_ramp_early():
+    # FOOTAGE knows the clip's fps, so the refusal costs no encode at all.
+    clip = _clip(fps=30.0)
+    with pytest.raises(ValueError, match="unique frames per second"):
+        edit_plan.window_to_episode(
+            clip, clip.windows[0], composition="lead", grid="thirds",
+            ramp={"at": 1.0, "factor": 0.4, "ease": 0.3, "hold": 0.2})
+
+
+def test_window_to_episode_accepts_a_ramp_the_clip_can_carry():
+    clip = _clip(fps=60.0)
+    ep = edit_plan.window_to_episode(
+        clip, clip.windows[0], composition="lead", grid="thirds",
+        ramp={"at": 1.0, "factor": 0.4, "ease": 0.3, "hold": 0.2})
+    assert ep.ramp == {"at": 1.0, "factor": 0.4, "ease": 0.3, "hold": 0.2}
