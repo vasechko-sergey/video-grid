@@ -9,10 +9,10 @@ import json
 from pathlib import Path
 
 from scripts import extract, mix
-from scripts.lib import assembly, ffbin, proc
+from scripts.lib import assembly, ffbin, geometry, proc
 from scripts.lib.draft import label_text, resolve_font, segment_filter
 from scripts.lib.edl import EDL
-from scripts.lib.models import MusicSpec
+from scripts.lib.models import Delivery, MusicSpec
 from scripts.lib.project import ProjectConfig
 
 
@@ -35,12 +35,25 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
     ensure_drawtext()
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
-    dims = cfg.canvas
     fontfile = resolve_font(font)
     work = Path(work_dir)
     seg_dir = str(work / "segments")
     segments = extract.extract_edl(edl, footage_root, seg_dir)
-    fps = assembly.probe_stream(segments[0]).fps
+    probe = assembly.probe_stream(segments[0])
+    fps = probe.fps
+    # cfg.canvas is an ASPECT (PURPOSE_CANVAS maps reel -> (9, 16)), never pixels.
+    # Spending it directly rendered an 8x16 draft (design 2026-08-12 §1.3): scale=9:16
+    # force_divisible_by=2 rounds the 9 down to 8. Resolve real pixels the way the
+    # rest of the engine does it (lib/layout.py:62): fit the aspect into the first
+    # segment's own probed size (geometry.crop_for is the same don't-upscale fit
+    # layout.resolve uses for a native canvas), THEN hand that real magnitude to
+    # Delivery. native is the trap — it has no size of its own, so Delivery.dims()
+    # just evens whatever crop it is given; feeding it the bare (9, 16) aspect
+    # would silently reproduce this exact bug one call deeper.
+    crop_w, crop_h = geometry.crop_for(cfg.canvas, 1.0, probe.w, probe.h)
+    canvas_w = float(crop_w)
+    canvas_h = canvas_w * cfg.canvas[1] / cfg.canvas[0]
+    dims = Delivery.from_spec(cfg.delivery).dims(canvas_w, canvas_h)
 
     labels_dir, burn_dir = work / "labels", work / "burned"
     labels_dir.mkdir(parents=True, exist_ok=True)
