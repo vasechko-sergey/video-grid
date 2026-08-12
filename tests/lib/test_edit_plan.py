@@ -662,6 +662,25 @@ def test_available_census_counts_windows_not_seconds():
     assert edl.variety.available["close"] == 3
 
 
+def test_variety_asl_reads_played_time_not_source_time():
+    # Final-review finding (the eighth length consumer, design §6): a ramped episode's
+    # `dur` is how much SOURCE it consumes, not how long it PLAYS — summing `dur` for
+    # ASL under-reports exactly the episodes a ramp was authored on. One 4.0s wide
+    # window with a ramp (region [1.0, 3.0], well inside it) at fps=60 so the judder
+    # gate at edit_plan.window_to_episode's ramp check does not itself refuse.
+    clip = FootageClip(source="a.mp4", dur=20.0, res=(3840, 2160), fps=60.0, windows=[
+        FootageWindow(start=0.0, dur=4.0, shot_type="wide", people=1, motion=0.3,
+                     shake=0.0, subject_w=0.02, subject_h=0.05, present=1.0)])
+    footage = Footage(clips=[clip])
+    sel = {"episodes": [{"source": "a.mp4", "window": 0, "composition": "center",
+                         "grid": "thirds",
+                         "ramp": {"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}}]}
+    edl = edit_plan.build_edl(footage, sel, aspect=(9, 16), preset=moodpreset.resolve("fun"))
+    played = edl.episodes[0].play_dur()
+    assert played > edl.episodes[0].dur, "fixture sanity: the ramp must actually add time"
+    assert edl.variety.asl == pytest.approx(played)
+
+
 def test_build_edl_skips_the_evaluation_without_an_aspect_or_preset():
     # the SP1 boundary: no project geometry, no report — not a silent pass
     edl = edit_plan.build_edl(_varied_footage(), _wide_only_selection())

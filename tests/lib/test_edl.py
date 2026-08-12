@@ -839,6 +839,14 @@ def test_the_markdown_row_reports_the_ramp_and_its_played_length():
     assert "ramp x2.5" in row and "@2.0s" in row
 
 
+def test_the_markdown_row_records_the_dropped_audio_mechanically():
+    # design §12: a ramped segment loses its natural sound entirely (slowed audio is
+    # pitch garbage). That fact must be MECHANICAL — produced by the tool on every
+    # ramped row — not aspirational prose asking the author to remember to say so.
+    row = EDL(episodes=[_ramp_ep(ramp=RAMP)]).to_markdown()
+    assert "silent" in row
+
+
 # --- speed-ramp Task 6: to_manifest_dict's target_dur reads played time
 # (design docs/specs/2026-08-09-speed-ramp-design.md §6) ---
 # NOTE: the task brief's literal snippet used `_ep(ramp=RAMP)`, but this file's

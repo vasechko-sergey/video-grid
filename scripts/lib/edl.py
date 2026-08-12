@@ -308,8 +308,12 @@ class EDL:
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
             notes = e.processing_notes
             if e.ramp is not None:
+                # "silent" is mechanical, not aspirational (design §12): slowed audio
+                # is pitch garbage, so extract's retime pre-stage always drops the
+                # track (ramp.retime's `-an`) — this row must say so itself rather
+                # than depend on whoever authored `processing_notes` remembering to.
                 notes = (f"⏱ ramp x{1 / e.ramp['factor']:.1f} @{e.ramp['at']:.1f}s "
-                         f"(plays {e.play_dur():.2f}s) · {notes}").rstrip(" ·")
+                         f"(plays {e.play_dur():.2f}s, silent) · {notes}").rstrip(" ·")
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
                          f"{e.composition} | {e.grid} | {motion} | {beat} | {notes} |")
         if self.variety is not None:

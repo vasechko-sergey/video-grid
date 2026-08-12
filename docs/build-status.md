@@ -94,18 +94,24 @@ _Last updated: 2026-08-09._
   any encode is spent; and again in the extract pre-stage against the
   PROBED rate, catching a hand-authored EDL that skipped the first gate.
   `factor` is a literal multiplier (`0.4` = 2.5× slower), so the floor is
-  `24 / fps` — 0.4 on 60fps footage, 0.8 on 30fps. **Seven length sites
-  converted (design §6), each reconfirmed at its shipped location:**
-  `pacing.build_pacing`'s `durs` (`pacing.py:86`), `pacing._bounds`'s inward
-  shrink floor (`pacing.py:43`, via the new `ramp.tail_room`),
+  `24 / fps` — 0.4 on 60fps footage, 0.8 on 30fps. **Eight length sites
+  converted (design §6), each reconfirmed at its shipped location — seven
+  found while designing this slice, an eighth by its final whole-branch
+  review:** `pacing.build_pacing`'s `durs` (`pacing.py:86`), `pacing._bounds`'s
+  inward shrink floor (`pacing.py:43`, via the new `ramp.tail_room`),
   `edit_plan._bind_pacing`'s guard (`edit_plan.py:211`) and its assignment
   (`edit_plan.py:222–223`, `dur = slot.dur − ramp_extra` — exact, because
   §2's enclosure makes `ramp_extra` constant), `edit_plan._back_edge_target`
   (`edit_plan.py:246`), `edl.to_manifest_dict`'s `target_dur` (`edl.py:375`),
-  and `edl_to_reel`'s reel target sum (`edl_to_reel.py:148`) — plus
-  `EDL.to_markdown`'s total and a `⏱ ramp x2.5 @2.0s (plays 6.08s)`-shaped row
-  annotation. Every one now reads `play_dur()`, not `dur`, wherever it means
-  screen time. **End to end (Task 8, real ffmpeg through a faked
+  `edl_to_reel`'s reel target sum (`edl_to_reel.py:148`), and
+  `edit_plan.build_edl`'s ASL average (`edit_plan.py:370`, `sum(e.dur) /
+  len(episodes)` → `sum(e.play_dur()) / len(episodes)` — the review's find:
+  `moodpreset.py` only ever REPORTS `asl` against a band, never enforces it,
+  so the miscount was mechanically harmless but still falsified "every length
+  consumer reads `play_dur()`") — plus `EDL.to_markdown`'s total and a
+  `⏱ ramp x2.5 @2.0s (plays 6.08s, silent)`-shaped row annotation. Every one
+  now reads `play_dur()`, not `dur`, wherever it means screen time.
+  **End to end (Task 8, real ffmpeg through a faked
   `process_episode` middle — see the honest-record note below):** `dur=2.0s`,
   analytic `play_dur()=3.0406s`, delivered master measured at **3.033s** —
   within 8ms of the played length (frame quantization, same story as above)
@@ -195,8 +201,19 @@ _Last updated: 2026-08-09._
   on its own evidence. **2614 passed / 3 skipped**, full suite (re-run
   during this docs-sync task) — the same three pre-existing environment
   skips (demucs, torchreid, no-network iTunes), none new, no golden fixture
-  moved; an unramped run stays byte-identical by construction
-  (`test_an_unramped_extract_is_unchanged_by_this_slice`).
+  moved; an unramped run's argv and segment bytes stay identical by
+  construction (`test_an_unramped_extract_is_unchanged_by_this_slice`) — NOT
+  `EDL.json` itself, which now carries a `"ramp": null` key on every episode
+  (the same precedent as `pan`/`zoom`/`stabilize`), harmless to provenance
+  because `digest_obj` hashes the dict as loaded. **`ramp.retime` writes with
+  no post-condition (design §12, recorded not fixed).** Unlike
+  `vidstab.stabilize`, which probes its own output and refuses a geometry
+  change or a >2-frame duration drift, `ramp.retime` verifies nothing it
+  wrote — a wrong retime surfaces only downstream, at `check_reel`'s ±0.5s
+  reel-length gate, and is attributed to the REEL rather than the episode
+  that actually caused it. Not implemented here; a probe-and-refuse
+  post-condition is new behaviour and needs its own evidence, the way
+  vidstab's did.
 
 - **Subject-anchored frame moves (fixes-backlog #17, and the frame-moving half
   of #18 — cinematic-quality playbook priority 4, its first slice) DONE

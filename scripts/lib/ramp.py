@@ -160,12 +160,29 @@ def require_playable(spec: RampSpec, fps: float, where: str) -> None:
     """Refuse a ramp that would render as stutter (design §5). No waiver."""
     unique = fps * spec.factor
     if unique < MIN_RAMP_FPS - _FPS_TOL:
+        mf = max_factor(fps)
+        if mf > 1.0:
+            # fps itself is already at or under MIN_RAMP_FPS, so even factor=1.0 (no
+            # slowdown at all — the upper end of RampSpec's own domain) would still
+            # leave `fps` unique frames per second, under the floor. Naming "the
+            # slowest factor this clip supports" here would print a number rounded to
+            # ~1 by `:.3g` (max_factor is 1.001, not 1) and send the author in a
+            # circle: raise the very factor that was just refused. No legal factor
+            # (factor <= 1) can ever clear a floor that sits above 1x speed.
+            raise ValueError(
+                f"{where}: ramp factor {spec.factor:g} on a {fps:g} fps source leaves "
+                f"{unique:.1f} unique frames per second on the plateau, under the "
+                f"{MIN_RAMP_FPS:g} fps floor. Slowing DUPLICATES frames — it cannot "
+                f"create detail that was never shot. This source is already at or "
+                f"under the floor at NORMAL speed ({fps:g} fps < {MIN_RAMP_FPS:g} fps) "
+                f"— it cannot carry any ramp at all, not even factor 1.0; a ramp needs "
+                f"footage shot at a higher frame rate")
         raise ValueError(
             f"{where}: ramp factor {spec.factor:g} on a {fps:g} fps source leaves "
             f"{unique:.1f} unique frames per second on the plateau, under the "
             f"{MIN_RAMP_FPS:g} fps floor. Slowing DUPLICATES frames — it cannot create "
             f"detail that was never shot — so this renders as visible stutter. The "
-            f"slowest this clip supports is factor {max_factor(fps):.3g}; a deeper ramp "
+            f"slowest this clip supports is factor {mf:.3g}; a deeper ramp "
             f"needs footage shot at a higher frame rate")
 
 

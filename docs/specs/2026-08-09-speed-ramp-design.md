@@ -25,7 +25,7 @@ leaves the beat-grid fitter, the pacing binding guard, the back-edge target and
 `edl_to_reel`'s reel target all reading `ep.dur`. So the grid is fitted to the
 length of the *source window* while the reel plays a different length: every cut
 after the first ramp drifts off its musical line, silently. §6 enumerates all
-seven readers.
+eight readers.
 
 **Its renderer bypasses the engine's own safety net.** `apply_ramp` opens a
 decoder `Popen` and an encoder `Popen` and pumps raw RGB frames between them in
@@ -142,11 +142,12 @@ So knots are placed **by structure instead**:
 
 Zero-width segments are dropped (a `hold` of 0, or a region flush with an edge).
 
-Two things fall out. **`ramp_extra` becomes exactly independent of `dur`** —
-bit-identical across `dur ∈ {3.5, 4.0, 6.0, 9.0}`, because every knot's position
-is fixed by the spec alone. And the accuracy improves by twelve orders of
-magnitude: worst error against an independent Simpson integration drops from
-5.3 ms (uniform) to **1.8e-15 s**.
+Two things fall out. **`ramp_extra` becomes independent of `dur` to within float
+precision (~1e-15)** — bit-identical across `dur ∈ {3.5, 4.0, 6.0, 9.0}`, because
+every knot's position is fixed by the spec alone, though not literally exact at
+any `dur`: float cancellation drifts it ~3.6e-15 s by `dur=100`. And the accuracy
+improves by twelve orders of magnitude: worst error against an independent
+Simpson integration drops from 5.3 ms (uniform) to **1.8e-15 s**.
 
 The accuracy is not luck. `RAMP_EASE_KNOTS = 16` converges to machine precision
 because the integrand's derivative vanishes at both ends of each ease — which is
@@ -254,7 +255,7 @@ honest judder. Deferred, not rejected forever (§13).
 
 ---
 
-## 6. The seven places length leaks
+## 6. The eight places length leaks
 
 | # | site | reads today | must read |
 |---|------|-------------|-----------|
@@ -265,6 +266,7 @@ honest judder. Deferred, not rejected forever (§13).
 | 5 | `edit_plan._back_edge_target` (`edit_plan.py:230`) | `sum(e.dur)` | `sum(e.play_dur())` |
 | 6 | `edl.to_manifest_dict` (`edl.py:341`) | `ep.dur` | `ep.play_dur()` |
 | 7 | `edl_to_reel` reel target (`edl_to_reel.py:144`) | `sum(ep.dur)` | `sum(ep.play_dur())` |
+| 8 | `edit_plan.build_edl` ASL average (`edit_plan.py:370`) | `sum(e.dur) / len(episodes)` | `sum(e.play_dur()) / len(episodes)` |
 
 Plus `EDL.to_markdown`: the header total, and a ramp annotation in the row.
 
@@ -281,6 +283,14 @@ constant for this episode, so the source window that plays for `slot.dur` is
 **On #7.** `check_reel`'s length gate compares the measured master duration
 against `ReelCheckSpec.target_dur`, which `edl_to_reel` computes from the EDL. Fix
 the sum and the gate is correct; the gate itself needs no change.
+
+**On #8.** Not in the original seven — found by the final whole-branch review,
+after Tasks 0–10 had already landed, not anticipated while this design was being
+written. Average shot length is SCREEN time; summing `dur` under-reports exactly
+the episodes a ramp was authored on. `moodpreset.py` only ever REPORTS `asl`
+against a band (never enforces it), so the miscount was mechanically harmless —
+but it falsified this table's own claim that every length consumer had been
+converted.
 
 ---
 
@@ -375,11 +385,13 @@ discovering.
   of `play_dur()`, and `play_dur()` is computed from the same knots the filter
   used.
 - **Visibility — backlog #18's demand.** Mean `|frame − prev|` over decoded gray
-  frames, the way `lib/anchors` already measures motion. Measured on the
-  reference spec: normal band 3.275, plateau band 1.483, **ratio 0.453 against a
-  `factor` of 0.40**. The residual is the ease shoulders bleeding into the
-  measured band plus frame-duplication quantization. The test asserts the ratio
-  tracks `factor`, not that the argv looked correct.
+  frames, the way `lib/anchors` already measures motion. Measured on the shipped
+  fixture (`at=1.0, factor=0.4, ease=0.25, hold=0.5` on the 60fps `ramp_clip`,
+  `tests/integration/test_ramp.py::test_the_ramp_actually_slows_the_picture`):
+  normal band 0.657, plateau band 0.257, **ratio 0.391 against a `factor` of
+  0.40**. The residual is the ease shoulders bleeding into the measured band
+  plus frame-duplication quantization. The test asserts the ratio tracks
+  `factor`, not that the argv looked correct.
 - **Length propagation.** An end-to-end SP3→SP1 run with a ramped episode:
   `PACING.md` fits the grid to the played lengths, and the reel's measured
   duration matches the EDL's `play_dur()` sum.
@@ -413,6 +425,16 @@ but the EDL's number is not bit-exact against the file.
 **The ramp costs a second encode generation.** crf 8 keeps it near-lossless for
 the tight-crop case that motivated it (§3.5), but it is still a re-encode that a
 non-ramped episode does not pay.
+
+**`ramp.retime` writes with no post-condition.** Unlike `vidstab.stabilize`,
+which probes its own output and refuses a geometry change or a duration drift
+past 2 frames, `ramp.retime` verifies nothing about what it wrote. A wrong
+retime — a knot bug, an fps mismatch, a bad expression — surfaces only
+downstream, at `check_reel`'s ±0.5s reel-length gate, and is then attributed to
+the REEL rather than to the episode that actually caused it. Not implemented
+here: a probe-and-refuse post-condition is new behaviour and needs its own
+evidence, the way vidstab's did — recorded as a gap, not fixed as a
+side-effect of a review.
 
 **`MIN_RAMP_FPS = 24.0` is a convention, not a measurement.** It is the film
 frame rate, chosen because it is the standard below which duplication reads as

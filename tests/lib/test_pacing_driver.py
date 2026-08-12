@@ -188,6 +188,25 @@ def test_the_shrink_bound_is_unchanged_without_a_ramp(tmp_path):
     assert lo == pytest.approx(-2.0)     # min(allow, dur/2) as before
 
 
+def test_the_shrink_bound_never_empties_the_interval_at_a_flush_ramp_edge(tmp_path):
+    # Final-review finding: at=0.8, factor=0.5, ease=0.3, hold=0.6 puts the ramp
+    # region's tail EXACTLY at the window's own end (0.8 + 0.3 + 0.3 == 1.4 == dur) —
+    # so ramp.tail_room's subtraction rounds to a float hair NEGATIVE (-2.22e-16)
+    # instead of the mathematical 0.0. And a window flush with its shot's end (room
+    # == dur, the ordinary case for a clip's LAST window) makes `hi` exactly 0.0 too.
+    # Unfloored, `shrink` goes negative and `lo` turns POSITIVE — bounds[0] ==
+    # (2.22e-16, 0.0), an EMPTY interval gridfit.fit_level refuses as "a caller bug",
+    # even though this is an entirely ordinary decimal-authored ramp on a legal EDL.
+    # The exact reproducer from the review (room=dur=1.4 matches FootageClip(dur=1.4)
+    # with ep.start=0.0 and no scene cuts, since room_after then returns dur - start).
+    ep = EDLEpisode(source="a.mp4", start=0.0, dur=1.4, shot_type="wide",
+                    composition="lead", grid="thirds",
+                    ramp={"at": 0.8, "factor": 0.5, "ease": 0.3, "hold": 0.6})
+    lo, hi = driver._bounds(_edl([ep]), _footage_obj(room=1.4), allow=2.0)[0]
+    assert lo <= hi, f"empty interval ({lo!r}, {hi!r}) — gridfit.fit_level would refuse it"
+    assert lo == pytest.approx(0.0, abs=1e-9)
+
+
 def test_the_extend_bound_is_unchanged_by_a_ramp(tmp_path):
     # Outside the region the speed is exactly 1, so extending the played length by
     # d costs d of source — `room - dur` is already right in source seconds.

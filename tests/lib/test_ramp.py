@@ -162,6 +162,25 @@ def test_require_playable_refuses_below_the_floor_and_names_the_remedy():
     assert "ep0" in msg and "15.0 unique frames" in msg and "0.8" in msg
 
 
+def test_require_playable_at_23976fps_names_the_source_not_a_bogus_factor():
+    # At 23.976 fps, max_factor is 1.001 (24.0 / 23.976...), which `:.3g` prints as
+    # "1" — before this fix the refusal named "the slowest this clip supports is
+    # factor 1", sending the author in a circle: factor 1.0 is RampSpec's own
+    # ceiling, and a factor=1.0 "ramp" (literally a no-op) is exactly what gets
+    # refused here too, since even normal speed on this source already sits under
+    # the floor. The honest message says the SOURCE cannot carry any ramp at all.
+    fps = 24000 / 1001   # the standard 23.976 fps rate
+    assert ramp.max_factor(fps) > 1.0   # fixture sanity: no legal factor (<= 1) clears it
+    spec = RampSpec(at=1.0, factor=1.0, ease=0.3, hold=0.2)   # the mildest possible "ramp"
+    with pytest.raises(ValueError) as ei:
+        ramp.require_playable(spec, fps, "ep0")
+    msg = str(ei.value)
+    assert "ep0" in msg
+    assert "cannot carry any ramp" in msg
+    assert "slowest this clip supports is factor" not in msg, (
+        "must not recommend a factor that was itself just refused")
+
+
 def test_validate_window_accepts_a_region_flush_with_both_edges():
     ramp.validate_window(RampSpec(at=2.0, factor=0.5, ease=1.0, hold=2.0),
                          4.0, "ep0")   # region exactly [0.0, 4.0]

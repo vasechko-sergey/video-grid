@@ -54,7 +54,11 @@ def test_the_rendered_length_matches_the_recorded_one(ramp_clip, tmp_path):
     ramp.retime(str(ramp_clip), dst, SPEC, DUR, FPS)
     want = DUR + ramp.ramp_extra(SPEC, DUR)
     got = assembly.probe_duration(dst)
-    assert got == pytest.approx(want, abs=2.0 / FPS), (
+    # One frame (design §12: "record and render differ by under one frame" — `fps=`
+    # cannot emit a fractional frame), not two: the measured residual is 0.0076s
+    # against a 0.0167s frame at 60fps, so a one-frame band still passes with margin
+    # while catching a genuine ~1-frame regression the old two-frame band could not.
+    assert got == pytest.approx(want, abs=1.0 / FPS), (
         f"recorded {want:.4f}s against a rendered {got:.4f}s — record and render "
         f"read the same knots, so they may differ only by fps= quantization")
 
@@ -324,3 +328,6 @@ def test_the_edl_markdown_reports_the_ramp(ramp_clip, tmp_path):
     assert plan["status"] == "written", plan
     md = (tmp_path / "EDL.md").read_text()
     assert "ramp x2.5" in md and "plays" in md
+    # The audio drop must be MECHANICAL (design §12) — produced by the tool itself on
+    # every ramped row, not left to whoever authors processing_notes to remember.
+    assert "silent" in md

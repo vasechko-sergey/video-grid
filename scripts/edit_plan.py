@@ -65,6 +65,12 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
     (PAN_PRESENCE_MAX) — this is the one site that sees both the requested
     editorial fields and the measured window, which is why the gate lives here
     and not in EDLEpisode or the manifest (design 2026-08-08 §2.1).
+
+    A `ramp` is gated here too, against `clip.fps` — the early half of the judder
+    gate (design 2026-08-09 §5): FOOTAGE already knows this clip's frame rate, so a
+    ramp that would stutter is refused before the pipeline spends anything on it.
+    The extract pre-stage repeats the check against the PROBED rate, which is what
+    a hand-authored EDL meets instead of this one.
     """
     if isinstance(start_offset, bool) or not isinstance(start_offset, (int, float)):
         raise ValueError(f"window_to_episode: start_offset must be a number of seconds, "
@@ -191,7 +197,9 @@ _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episo
 
 
 def _bind_pacing(episodes: list, spine: Spine) -> list:
-    """Apply a FITTED spine: episode i takes slot i's duration and `beat_slot=i`.
+    """Apply a FITTED spine: episode i's `play_dur()` — the PLAYED length, literally
+    true only of `play_dur()` once an episode may carry a ramp — takes slot i's
+    duration, and the episode gets `beat_slot=i`.
 
     The spine was fitted TO these episodes (scripts/pacing.py reads the same EDL), so a
     slot may differ from its episode only by the snap the fit was allowed — half a beat.
@@ -367,7 +375,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     cap = selection.get("cap")
     variety = None
     if aspect is not None and preset is not None:
-        asl = (sum(e.dur for e in episodes) / len(episodes)) if episodes else 0.0
+        asl = (sum(e.play_dur() for e in episodes) / len(episodes)) if episodes else 0.0
         variety = moodpreset.evaluate(_available_census(footage, aspect), used, asl,
                                       preset, waiver=selection.get("variety_waiver"))
     # After pacing: binding rewrites `dur` only, which none of the four rule kinds

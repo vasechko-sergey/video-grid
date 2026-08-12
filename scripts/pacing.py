@@ -23,7 +23,12 @@ def _log(msg: str) -> None:
 def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float]]:
     """Per-episode (lo, hi) the snap may move an out-point by. `hi` is whichever is
     smaller: the allowance, or the room the episode's own shot still has after it ends.
-    `lo` is the allowance, floored so the episode cannot vanish."""
+    `lo` is the allowance, floored so the episode cannot vanish, and — for a ramped
+    episode — further capped by `ramp.tail_room` so the snap cannot shrink the window
+    into the still-slowed ramp region; that cap is itself floored at 0.0, because a
+    window whose end sits exactly at the region's own end makes `tail_room` a float
+    hair negative (rounding, not a real overhang already refused at validation), which
+    would otherwise turn `lo` POSITIVE and hand gridfit.fit_level an empty interval."""
     by_source = {c.source: c for c in footage.clips}
     out = []
     for i, ep in enumerate(edl.episodes):
@@ -38,9 +43,13 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
         #
         # Inward is the asymmetric direction. The window may not shrink into the
         # ramp region: a cut landing while the shot is still slowed is the artefact
-        # ramp.validate_window exists to refuse (design §2, §6).
+        # ramp.validate_window exists to refuse (design §2, §6). Floored at 0.0: a
+        # window flush with the ramp region's own end (validate_window already
+        # guarantees tail_room >= 0 up to float slop) can make tail_room a hair
+        # negative, which would otherwise make `lo` positive and empty the interval
+        # against a `hi` of 0.0 — exactly the case of a ramp on a clip's LAST window.
         spec = None if ep.ramp is None else RampSpec.from_dict(ep.ramp)
-        shrink = min(allow, ep.dur / 2.0, ramp_mod.tail_room(spec, ep.dur))
+        shrink = max(0.0, min(allow, ep.dur / 2.0, ramp_mod.tail_room(spec, ep.dur)))
         out.append((-shrink, min(allow, max(0.0, room - ep.dur))))
     return out
 
