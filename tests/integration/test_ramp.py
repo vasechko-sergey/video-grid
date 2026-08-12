@@ -210,7 +210,7 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path, m
 # optical flow (design 2026-07-21), and the flow-derived route is too jittery for
 # check_episode's on_line/continuity gates: process_episode's retry loop exhausts and
 # edl_to_reel returns stop_and_report with fail_reasons ['on_line', 'continuity'] instead of
-# delivering. tests/lib/test_tracking_ladder.py::test_empty_yolo_route_falls_to_optical_flow
+# delivering. tests/integration/test_tracking_ladder.py::test_empty_yolo_route_falls_to_optical_flow
 # documents the same fallback on the sibling sample_clip fixture. That failure is a correct,
 # orthogonal finding about composition on synthetic footage — not a length bug — so faking
 # process_episode's mechanical middle (real YOLO/flow/reframe/check_episode never run) is what
