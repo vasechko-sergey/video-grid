@@ -1,6 +1,6 @@
 # Housekeeping + backlog Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix the four deferrals that fell out of every queue (three of them live
 defects), correct three stale doc pointers, and stand up `docs/backlog.md` as the
@@ -51,7 +51,7 @@ Context: `Spec.platform` is written by `reel_brief` and read by nobody that buil
 a reel. `ReelManifest.platform` (`models.py:1300`) is therefore always `""`, so
 `check_reel`'s safe-zone section and `titles.y_exprs` both take the generic table.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_edl_platform_round_trips_and_defaults_empty():
@@ -94,7 +94,7 @@ def test_edl_to_reel_passes_the_edl_platform_to_the_reel_manifest(...):
     assert captured_rm.platform == "tiktok"
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_edl.py -k platform -v
@@ -103,7 +103,7 @@ def test_edl_to_reel_passes_the_edl_platform_to_the_reel_manifest(...):
 Expected: `TypeError: __init__() got an unexpected keyword argument 'platform'`
 or a `KeyError`, not an assertion mismatch.
 
-- [ ] **Step 3: Add the field**
+- [x] **Step 3: Add the field**
 
 In `scripts/lib/edl.py`, on the `EDL` dataclass beside `cap`/`target_dur`:
 
@@ -135,7 +135,7 @@ method already uses for reel-level facts (`cap`, `music`) — one line, e.g.
 not a fact worth printing and an always-present line would move every existing
 golden markdown.
 
-- [ ] **Step 4: Thread it through `edit_plan`**
+- [x] **Step 4: Thread it through `edit_plan`**
 
 `build_edl` already receives `preset` derived from the spec. Add a keyword-only
 `platform: str = ""` parameter and pass it into the `EDL(...)` it returns
@@ -150,11 +150,11 @@ for the preset — reuse that same object rather than reading the file twice:
                     platform=sp.platform if sp else "")
 ```
 
-- [ ] **Step 5: Spend it in `edl_to_reel`**
+- [x] **Step 5: Spend it in `edl_to_reel`**
 
 At the `ReelManifest(...)` construction (~line 154) add `platform=edl.platform`.
 
-- [ ] **Step 6: Run the tests, then the touched suites**
+- [x] **Step 6: Run the tests, then the touched suites**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_edit_plan.py tests/lib/test_edl_to_reel.py -q
@@ -162,7 +162,7 @@ At the `ReelManifest(...)` construction (~line 154) add `platform=edl.platform`.
 
 Expected: PASS, and no previously-passing test changes behaviour.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "fix(edl): carry the brief's platform to the reel
@@ -190,7 +190,7 @@ it on `jitter` and halves it on a lag, flooring the lag branch at
 `DEFAULT_PARAMS["smooth_window_s"]` (0.25). An authored 0.6 would be walked to
 0.25 by the first lag retry, discarding the instruction. See design §1.2.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_edl.py
@@ -232,7 +232,7 @@ Use whatever bound `EDLEpisode`'s band should be: mirror `ReframeSpec`'s own
 `0 < v <= 2.0` exactly, so a value the EDL accepts can never be one `ReframeSpec`
 rejects.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_edl.py -k smooth -v
@@ -240,7 +240,7 @@ rejects.
 
 Expected: unexpected-keyword / KeyError, not an assertion mismatch.
 
-- [ ] **Step 3: The EDL field**
+- [x] **Step 3: The EDL field**
 
 ```python
     smooth_window_s: float | None = None   # savgol span in SECONDS over the tracked hero
@@ -276,12 +276,12 @@ In `to_manifest_dict`, add it to the **conditional** group beside `motion`/`pan`
         md["smooth_window_s"] = ep.smooth_window_s
 ```
 
-- [ ] **Step 4: The manifest field**
+- [x] **Step 4: The manifest field**
 
 `Manifest.smooth_window_s: float | None = None`, validated with the identical
 band and message shape. Place it beside the other reframe-tuning fields.
 
-- [ ] **Step 5: The ladder gains a floor**
+- [x] **Step 5: The ladder gains a floor**
 
 ```python
 def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str],
@@ -300,20 +300,20 @@ asked for a window keeps today's exact ladder. In the lag branch:
 The `jitter` branch is unchanged: widening past an authored value is the ladder
 doing its job, and `SMOOTH_WINDOW_S_MAX` still caps it.
 
-- [ ] **Step 6: `process_episode` seeds and floors**
+- [x] **Step 6: `process_episode` seeds and floors**
 
 Where the starting `params` dict is built, override the seed when the manifest
 authored one, and pass the same value as `floor` at every
 `adjust_reframe_params` call site in that module. Read the surrounding code
 first — do not guess the variable names.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_manifest.py tests/lib/test_orchestration.py tests/lib/test_process_episode.py -q
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A && git commit -m "feat(edl): authorable smooth_window_s, floored against the retry ladder
@@ -338,7 +338,7 @@ Measured on real bytes, the draft comes out **8×16** (`force_divisible_by=2`
 rounds 9 down). The existing unit test hand-passes `(1080, 1920)`, so it exercises
 the string builder with a value the caller never supplies.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The proof must reach pixels — a test that asserts on a hand-supplied argument
 cannot fail on a caller that supplies the wrong one. Extend the existing
@@ -356,11 +356,11 @@ against what `Delivery` resolves for it rather than hardcoding — but assert
 **real numbers from the file**, and make sure the expectation is at least
 `>= 100` on both axes so the postage-stamp failure can never pass.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Expected: `draft rendered 8x16`.
 
-- [ ] **Step 3: Resolve delivery pixels**
+- [x] **Step 3: Resolve delivery pixels**
 
 Replace `dims = cfg.canvas` with the same resolution the rest of the engine uses
 — `Delivery.from_spec(cfg.delivery).dims(...)` against the canvas aspect. Read
@@ -377,13 +377,13 @@ If `Delivery.dims` cannot produce pixels from an aspect alone for a `native`
 delivery, derive them from the first segment's probed dimensions the way the
 engine does, and say so in the comment. Report what you found either way.
 
-- [ ] **Step 4: Run the test, then the draft suites**
+- [x] **Step 4: Run the test, then the draft suites**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_draft.py tests/integration/test_draft.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "fix(draft): render delivery pixels, not the canvas aspect
@@ -405,7 +405,7 @@ Context: `reel_count` is validated as `>= 1`, rendered into `SPEC.md` ("3 reels"
 and consumed by nothing. reel-brief §7 and reel-review §7 both park multi-reel as
 future work. A brief asking for three reels silently produces one.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_reel_count_above_one_is_refused_with_the_remedy():
@@ -420,9 +420,9 @@ def test_reel_count_one_is_the_supported_value():
 Match the module's own construction style for a valid `Spec` — read a neighbouring
 test rather than assuming the required fields.
 
-- [ ] **Step 2: Run it and watch it fail** (no exception raised).
+- [x] **Step 2: Run it and watch it fail** (no exception raised).
 
-- [ ] **Step 3: Extend the refusal**
+- [x] **Step 3: Extend the refusal**
 
 ```python
         if isinstance(self.reel_count, bool) or not isinstance(self.reel_count, int) or self.reel_count < 1:
@@ -435,7 +435,7 @@ test rather than assuming the required fields.
                 "contract for the day fan-out lands (design 2026-08-12 §1.4)")
 ```
 
-- [ ] **Step 4: Grep for callers that would now break**
+- [x] **Step 4: Grep for callers that would now break**
 
 ```bash
 grep -rn "reel_count" scripts/ tests/ skills/
@@ -445,7 +445,7 @@ grep -rn "reel_count" scripts/ tests/ skills/
 loud rather than mislead. If any test constructs a `Spec` with `reel_count > 1`,
 update it to assert the refusal. Report anything you changed.
 
-- [ ] **Step 5: Run the suites and commit**
+- [x] **Step 5: Run the suites and commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_spec.py tests/lib/test_reel_brief.py -q
@@ -471,21 +471,21 @@ asking for three reels now stops with the remedy instead of shipping one."
 
 Documentation only. No code, no tests.
 
-- [ ] **Step 1: reel-back-half §9 — the phase that never existed**
+- [x] **Step 1: reel-back-half §9 — the phase that never existed**
 
 "**Secondary-aspect re-reframe on deliver** — Phase F." There is no Phase F; the
 only "slice F" in this repo is colour-as-a-stage, which is unrelated. Rewrite to
 say the item is deferred with **no phase assigned**, and point at
 `docs/backlog.md` (Task 5 creates it) as where it is now queued.
 
-- [ ] **Step 2: footage-intake §8 — the blocker that is gone**
+- [x] **Step 2: footage-intake §8 — the blocker that is gone**
 
 "**Sharpness/blur metric** — deferred (would add cv2)". `scripts/lib/flow.py`
 imports cv2 today (tracking-ladder, 2026-07-21). Rewrite so the stated reason is
 true: cv2 is available, so the cost is the measurement work and a `CACHE_VERSION`
 bump, not a new dependency. Do not change the verdict — it stays deferred.
 
-- [ ] **Step 3: build-status — layer 3 against track-stitch**
+- [x] **Step 3: build-status — layer 3 against track-stitch**
 
 Every layer-3 entry is written as if track-stitch had not landed. Track-stitch
 (2026-07-28) addresses the same failure — a mid-episode hero ID switch — by a
@@ -496,7 +496,7 @@ stitch now covers the occlusion-and-re-acquisition case, and (b) that whether a
 real remainder is left has **not been re-assessed**. Do not claim it is closed
 and do not claim it is untouched — say precisely what is known.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A && git commit -m "docs: correct three stale deferral pointers
@@ -521,13 +521,13 @@ track-stitch had not shipped."
 This task is written by the controller, not dispatched: it is the output of an
 audit of all 28 `§Deferred` sections that lives in the controller's context.
 
-- [ ] **Step 1:** Write `docs/backlog.md` — every open item as a row with
+- [x] **Step 1:** Write `docs/backlog.md` — every open item as a row with
   status / priority / size / source, per design §3.
-- [ ] **Step 2:** Add the rule from design §4 to `development-workflow.md`'s
+- [x] **Step 2:** Add the rule from design §4 to `development-workflow.md`'s
   slice-completion checklist, and to the docs-sync step every plan ends with.
-- [ ] **Step 3:** Point the four other documents at the queue; delete no content.
-- [ ] **Step 4:** Register the new doc in `CLAUDE.md`'s Quick Reference table.
-- [ ] **Step 5:** Full suite, then commit.
+- [x] **Step 3:** Point the four other documents at the queue; delete no content.
+- [x] **Step 4:** Register the new doc in `CLAUDE.md`'s Quick Reference table.
+- [x] **Step 5:** Full suite, then commit.
 
 ---
 

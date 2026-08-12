@@ -65,8 +65,11 @@ as "a real gap", absent from `edl.py` and `manifest.py` today.
 pass-through: it is a **retry-ladder knob**. `orchestration.adjust_reframe_params`
 widens it on `jitter` and halves it on a lag, and the lag branch floors at
 `DEFAULT_PARAMS["smooth_window_s"]` (0.25). An authored 0.6 would therefore be
-walked back to 0.25 by the first lag retry — the author's instruction discarded
-silently, which is precisely the failure mode this repo refuses elsewhere.
+halved to 0.3 by the first lag retry and floored at 0.25 by the second — the
+author's instruction discarded silently, which is precisely the failure mode this
+repo refuses elsewhere. (An earlier draft of this section said 0.25 was reached on
+the *first* retry; the review of Task 1 caught the arithmetic. The defect is the
+same, it just takes two attempts to bottom out.)
 
 So `adjust_reframe_params` gains `floor: float | None = None`; `None` keeps
 today's exact behaviour, and `process_episode` passes the authored seed when the
@@ -93,11 +96,27 @@ rarely run, so nobody looked at the output.
 Named in speed-ramp §9 as a correct fix present on the parked branch and not
 ported. No owner since.
 
-**Fix.** Resolve delivery pixels the way the rest of the engine does —
-`Delivery.from_spec(cfg.delivery).dims(...)` against the canvas aspect — and add
-the test that would have caught it: run `build_draft` and `ffprobe` the real
-output dimensions. A test that asserts on a hand-supplied argument cannot fail on
-a caller that supplies the wrong one.
+**Fix.** Resolve delivery pixels the way the rest of the engine does, and add the
+test that would have caught it: run `build_draft` and `ffprobe` the real output
+dimensions. A test that asserts on a hand-supplied argument cannot fail on a
+caller that supplies the wrong one.
+
+**As built, and why it differs from what this section first proposed.** The
+obvious fix — `Delivery.from_spec(cfg.delivery).dims(*cfg.canvas)` — reproduces
+the identical bug one call deeper. `Delivery.dims` for `native` is exactly
+`(even(w), even(h))`: it has no size of its own, it only evens what it is handed,
+so feeding it `(9, 16)` returns `(8, 16)` again — and `native` is the default
+quality. The landed fix fits the canvas aspect into the first extracted segment's
+own probed pixels via `geometry.crop_for`, the same primitive `layout.resolve`
+uses, and resolves *that* real magnitude through `Delivery`. Measured end to end:
+8×16 before, 606×1078 after, for a 1920×1080 source at a 9:16 canvas.
+
+**The fixture lied too.** The integration test had hand-written
+`canvas: [1080, 1920]` — literal pixels wearing an aspect's name — which is why a
+"real-ffmpeg golden" watched an 8×16 file go by for weeks. Its equality assertion
+against `(1080, 1920)` passed only because those pixels happened to match the
+aspect. So this defect was protected by two tests supplying the value the caller
+never supplies, not one. The fixture now carries the real `PURPOSE_CANVAS` value.
 
 ### 1.4 `Spec.reel_count` is accepted and ignored — P1
 

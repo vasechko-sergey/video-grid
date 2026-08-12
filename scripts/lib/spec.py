@@ -108,6 +108,10 @@ class Spec:
 
     def to_markdown(self) -> str:
         w, h = self.canvas
+        # The plural arm is unreachable today and deliberately kept: __post_init__ refuses
+        # reel_count > 1 (multi-reel fan-out is not built), and every construction path —
+        # __init__, from_dict, from_json, dataclasses.replace — runs it. It becomes live
+        # again the day fan-out lands, which is the same day the refusal comes out.
         reels = f"{self.reel_count} reel" + ("s" if self.reel_count != 1 else "")
         cast = ", ".join(self.cast) if self.cast else "–"
         lines = [

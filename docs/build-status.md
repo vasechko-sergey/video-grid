@@ -4,13 +4,47 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-09._
+_Last updated: 2026-08-12._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Housekeeping — the four orphaned deferrals, and a backlog that is a queue
+  DONE (2026-08-12)** — plan `docs/plans/2026-08-12-housekeeping-backlog.md` +
+  design `docs/specs/2026-08-12-housekeeping-backlog-design.md`. An audit of all
+  28 design `§Deferred` sections against the code found **four items that had
+  left every list**, three of them shipping as live defects. (1) `Spec.platform`
+  was written by `reel_brief` and read by nothing that builds a reel, so
+  `ReelManifest.platform` stayed `""` and both consumers — `check_reel`'s
+  safe-zone section and `titles.y_exprs` — silently judged and typeset against
+  the generic table; `EDL.platform` now carries it from `edit_plan --spec` to
+  `edl_to_reel`. (2) `EDLEpisode.smooth_window_s` could not be authored though
+  `ReframeSpec` had the field — deferred by colour-stage §11 and rediscovered by
+  speed-ramp §9 as an accident three weeks later; it is authorable now, and
+  because it is a **retry-ladder knob**, `adjust_reframe_params` gained a `floor`
+  so a lag retry can no longer halve an authored 0.6 back toward the 0.25 default
+  and discard the instruction. (3) `draft.py` rendered an **8×16-pixel** video: it
+  spent `ProjectConfig.canvas`, an *aspect* tuple, as pixels. Two tests protected
+  it — the unit test hand-passed the right pixels, and the integration fixture
+  hand-wrote `canvas: [1080, 1920]`, literal pixels wearing an aspect's name,
+  whose equality assertion passed only by coincidence. Both fixed; the proof now
+  probes the real output file (8×16 → 606×1078). The obvious one-line fix was a
+  trap: `Delivery.dims` for `native` is exactly `(even(w), even(h))`, so it would
+  have returned `(8, 16)` one call deeper. (4) `Spec.reel_count > 1` was accepted,
+  printed as "3 reels" and produced one; it refuses now, keeping the field for the
+  day fan-out lands. Three stale pointers corrected in the same pass — a "Phase F"
+  that never existed, a cv2 blocker that disappeared when the tracking ladder
+  landed, and three layer-3 entries written as though track-stitch had not
+  shipped. **The root cause was structural**, and is what the slice actually
+  fixes: four documents recorded deferrals and none of them was a *queue*.
+  `docs/backlog.md` is now the single place holding priority and status, and
+  `development-workflow.md` carries the rule that a slice is not finished until
+  its design's `§Deferred` has rows there. Honest limit (design §6): nothing
+  machine-checks that rule, and four orphans is a lower bound — the sweep matched
+  deferral-shaped headings, so one phrased mid-paragraph elsewhere was not found.
 
 - **Speed ramp — slow-mo as a first-class, length-aware EDL knob (fixes-backlog
   #7, and the speed half of #18 — cinematic-quality playbook priority 4, its
@@ -3137,6 +3171,11 @@ entry above); reprocess is sequential, not parallel; and the loop has no
 resumability / Phase A.5 retry-state persistence.
 
 ## Deferred / open
+
+> **The queue lives in [backlog.md](backlog.md) since 2026-08-12** — one file,
+> every open item, with a priority, a status and a size. This section is kept for
+> the history in its entries; when it and the queue disagree about what happens
+> next, the queue is right. Anything newly deferred goes there, not here.
 
 - ~~vidstab-capable ffmpeg (`bash setup.sh --with-vidstab`)~~ — **the flag is
   gone and vidstab is baseline since 2026-07-20** (see the ffmpeg-baseline entry

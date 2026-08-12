@@ -10,6 +10,11 @@ feature-deferral log (that lives in [build-status.md](build-status.md) under
 at minimum match what a tool like **CapCut** can do. Weigh each item below against
 "does this move the output toward pro-grade?".
 
+**Priority and status live in [backlog.md](backlog.md)**, the single queue, since
+2026-08-12 — this file stays the *detail store*, where each finding keeps its full
+write-up and the queue's rows link back in. A per-item status line here is a
+convenience, not the authority.
+
 **Synthesis:** [cinematic-quality-playbook.md](cinematic-quality-playbook.md) groups
 these items with researched editing craft and the session verdict into one working
 doc (the "why" + priority + the mood-preset idea). That is the doc we develop from;

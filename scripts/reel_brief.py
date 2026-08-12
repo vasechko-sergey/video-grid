@@ -43,7 +43,9 @@ def main() -> None:
     b.add_argument("--length", type=float, required=True, help="target reel length, seconds")
     b.add_argument("--mood", required=True, help="the reel's mood (gate)")
     b.add_argument("--hook", required=True, help="the opening hook intent (gate)")
-    b.add_argument("--reel-count", type=int, default=1, help="how many reels (default 1)")
+    b.add_argument("--reel-count", type=int, default=1,
+                   help="how many reels (default 1). Anything above 1 is REFUSED — "
+                        "multi-reel fan-out is not built; run the conveyor once per reel")
     b.add_argument("--music", default="auto", help="track name / 'auto' / 'none'")
     b.add_argument("--music-mode", default="free", help="local / free (default) / any")
     b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")

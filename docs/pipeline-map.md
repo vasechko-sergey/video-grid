@@ -136,6 +136,9 @@ advisory pass/False computed from the per-episode route geometry, or
 
 ## Phase roadmap
 
+Phase-level shape only. For what happens next, in order, see the queue:
+[backlog.md](backlog.md).
+
 ### Done
 
 - [x] **Core engine** — track → reframe → storyboard → check; golden fixture on real footage.

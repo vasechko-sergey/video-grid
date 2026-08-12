@@ -88,6 +88,24 @@ New work follows the superpowers pipeline — one subsystem per cycle:
 
 Spec and plan are kept **in sync** — if they drift, fix both, not one.
 
+### Closing a slice — the deferral rule
+
+**A slice is not finished until every item in its design's `§Deferred` has a row
+in [backlog.md](./backlog.md).** The slice's own docs-sync task carries this;
+write the rows there, with a priority, a status and a size.
+
+This exists because on 2026-08-12 an audit of all 28 design deferral sections
+found four items that had left every list, three of them shipping as live
+defects. Every document recorded them — designs, build-status, the fixes backlog,
+the pipeline map — and none of them was a *queue*, so an item escaped a design's
+deferred list only when a human happened to re-read that design. One deferral
+(`smooth_window_s`) was written down twice and rediscovered by accident three
+weeks later.
+
+Nothing machine-checks this rule; a lint that matched prose deferrals to rows
+would be guessing at both ends. It is a convention that survives only by being on
+this checklist.
+
 ## Branches & Commits
 
 - Branch per slice: `feat/<slice>` for features, `chore/<...>` / `docs/<...>` for

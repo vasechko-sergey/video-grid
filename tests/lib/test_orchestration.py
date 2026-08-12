@@ -321,6 +321,9 @@ def test_floor_does_not_affect_the_jitter_branch():
     # `floor` only walls off the LAG branch's halving — the jitter branch's widening
     # is explicitly UNCHANGED by an authored floor (adjust_reframe_params' docstring):
     # SMOOTH_WINDOW_S_MAX still caps it, floor or no floor.
-    with_floor = orch.adjust_reframe_params({"smooth_window_s": 0.3}, ["jitter"], floor=0.6)
-    without_floor = orch.adjust_reframe_params({"smooth_window_s": 0.3}, ["jitter"])
-    assert with_floor["smooth_window_s"] == without_floor["smooth_window_s"] == 0.6
+    # 0.1, deliberately: it doubles to 0.2, well clear of the 0.6 floor under test. A
+    # start of 0.3 would double to exactly 0.6, and a mutation that leaked `floor` into
+    # this branch as another max() would then produce 0.6 either way and pass unseen.
+    with_floor = orch.adjust_reframe_params({"smooth_window_s": 0.1}, ["jitter"], floor=0.6)
+    without_floor = orch.adjust_reframe_params({"smooth_window_s": 0.1}, ["jitter"])
+    assert with_floor["smooth_window_s"] == without_floor["smooth_window_s"] == 0.2
