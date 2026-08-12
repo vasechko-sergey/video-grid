@@ -147,12 +147,26 @@ cross-platform `setup.sh` and `bin/vg` — macOS/Homebrew is a stated project bo
 | Face recognition for hero identity | Excluded by the montage design: faces are small, wet and turned away in this footage |
 | A `verify_runtime --fix` that runs `setup.sh` | Rejected on principle — no autonomous system mutation (verify-runtime §4) |
 | A signed rather than merely digested attestation | Pointless against a local adversary who holds the key (attested-run §12) |
-| Per-episode attestation | The reel is the delivered unit; episodes are intermediates (attested-run §12) |
+| A per-episode `.attest.json` **sidecar** | Per-episode *binding* already exists and this row is not it — see the note below |
 | Spotify `audio-features` for mood | Deprecated for new apps since Nov 2024 (sourcing §13) |
 | A 4th "dynamism" mood axis | YAGNI — three axes already order the shortlist (mood-match §9) |
 | The analysis proxy for delivery-time track/reframe | They run on short *original* segments; the proxy would cost fidelity for nothing (analysis-proxy §11) |
 | Reducing the proxy's fps | Measured to break vidstab's inter-frame motion (analysis-proxy §8) |
 | Re-tuning `_motion_fit` | Superseded — P3 slice S3 replaced the sensor and `score_window` outright rather than re-tuning them |
+
+**Note on "per-episode attestation".** attested-run §12 deferred it on 2026-08-04
+with the reason *"the reel is the delivered unit; episodes are intermediates"* —
+true when written, and half-false four days later. episode-qc (2026-08-08) landed
+`EpisodeVerdict.clip_digest`: the sha256 of each judged clip, **computed by
+`episode_qc build` from the file on disk rather than taken from the judge's
+claim**, a staleness gate that refuses when a verdict's digest no longer matches
+the rendered clip, and an `episode_qc` block carried into the reel's
+`REEL_v{n}.attest.json`. So an episode *is* bound to the pixels it was judged on.
+What is still absent is only a separate attestation sidecar per clip, which buys
+little on top of that — hence the row stays a won't-do, but under a reason that
+is currently true. This one was caught by a reader of this queue on the day it
+was written, which is the second stale-reason deferral the housekeeping audit
+turned up after the three it set out to fix.
 
 ---
 

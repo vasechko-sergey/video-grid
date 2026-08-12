@@ -208,6 +208,19 @@ re-reframe, the sharpness metric and layer 3 all get rows, not code.
 - **The audit that produced the rows is a snapshot.** It swept `docs/specs/*.md`
   for deferral-shaped headings; a deferral phrased mid-paragraph in some other
   section was not found. Four orphans is a lower bound.
+- **The second failure mode is at least as common as the first, and harder to
+  sweep for.** This slice set out to find deferrals that had left every list, and
+  found four. It also found three whose *reason* had quietly expired while the
+  row itself sat in plain sight — a phase that was never created, a dependency
+  that arrived in an unrelated slice, and an entry describing a world in which
+  track-stitch had not shipped. A fourth surfaced within hours of `backlog.md`
+  being written, from a reader noticing that "per-episode attestation" in the
+  won't-do list sounded like the per-episode QC that had shipped four days after
+  that deferral was written; per-episode digest binding does exist, and only the
+  sidecar does not. A missing row can be found by grepping. An expired reason can
+  only be found by someone who knows what has since landed reading the sentence
+  again — which is an argument for the queue being short and re-read often, not
+  for a better sweep.
 - **`draft.py` gets a real-output test, the other three do not need one** —
   `platform` and `smooth_window_s` are contract plumbing whose absence a unit test
   catches, and `reel_count`'s fix is a refusal. Only the draft failed *because* its
