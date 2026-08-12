@@ -2159,9 +2159,14 @@ _Last updated: 2026-08-09._
   rung all execute for real. **§6.1a layer 3** (descriptor continuity
   re-match — intra-episode ID-switch repair) is a separate mechanism this
   slice does not build, but it is now **unblocked**: it needed the cast
-  wiring, and the wiring has landed. **960 passed / 8 skipped** (936 at the
-  slice's landing, +12 from the first three review fixes, +12 more from
-  completing that review above).
+  wiring, and the wiring has landed. **Correction (2026-08-12):**
+  track-stitch (2026-07-28, see the Done entry above) has since landed
+  against that same mid-episode ID-switch failure by a different
+  mechanism — geometric overlap-vs-gap evidence and median-based
+  joinability across track-id segments, not descriptor continuity. Whether
+  it subsumes layer 3 or leaves a real remainder has not been re-assessed.
+  **960 passed / 8 skipped** (936 at the slice's landing, +12 from the
+  first three review fixes, +12 more from completing that review above).
 
 - **reel-final editorial checks (§5.13 Slice A) DONE (2026-07-17)** — plan
   `docs/plans/2026-07-17-reel-final-editorial-checks.md` + design
@@ -2854,6 +2859,12 @@ _Last updated: 2026-08-09._
     route is smooth by construction and clears continuity).
   - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
     repair) is unchanged by this slice and stays its own slice.
+    **Correction (2026-08-12):** track-stitch (2026-07-28) has since landed
+    against that same mid-episode ID-switch failure by a different
+    mechanism — geometric overlap-vs-gap evidence and median-based
+    joinability across track-id segments, not descriptor continuity.
+    Whether it subsumes layer 3 or leaves a real remainder has not been
+    re-assessed.
   - **Follow-up (2026-07-21) — `--keyframes` answer-channel refusals.** The
     whole-slice review found the manual channel silently dropped its marks under
     two edge cases; a third of the same class turned up beside them. All three now
@@ -3137,11 +3148,16 @@ resumability / Phase A.5 retry-state persistence.
   landed 2026-07-20 too** (see the Done entry above): a pre-stage in
   `process_episode`, never a filter in `reframe`'s chain.
 - §6.1a layer 3 (descriptor continuity re-match — mid-episode ID-switch
-  repair) is now **unblocked**: the cast wiring it needed landed with cast →
-  hero-pin (2026-07-16, see Done above). A different mechanism (per-frame
-  descriptor jump + x-teleport + area jump ⇒ split the route, re-match the
-  pieces) against a different failure mode than this slice fixed; the design
-  assigns it to the process-episode plan as the natural follow-on.
+  repair) was **unblocked** by cast → hero-pin (2026-07-16, see Done
+  above): the cast wiring it needed had landed. As originally specified —
+  a per-frame descriptor jump + x-teleport + area jump ⇒ split the route,
+  re-match the pieces — it targets the same failure mode as a mid-episode
+  hero ID switch on occlusion. **Track-stitch (2026-07-28, see Done
+  above)** has since landed against that failure by a different
+  mechanism: geometric overlap-vs-gap evidence and median-based
+  joinability across track-id segments, not descriptor continuity.
+  Whether stitch subsumes layer 3 or leaves a real remainder has not been
+  re-assessed.
 - ~~cap-3 parallel fan-out remains deferred~~ — **landed 2026-07-18** (see the Done
   entry). `build_reel`'s loop-2 reprocess batch stays sequential by decision, not
   by oversight: batches are typically one or two culprits, so the fan-out's 1.70×

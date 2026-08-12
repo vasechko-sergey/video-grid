@@ -339,8 +339,12 @@ factor's *mechanics* against a mocked timeline.
   extended); 5.2's own scope stayed just *producing* `cast.json`.
 - **Trend-scan** — 5.4.
 - **Vocal-aware in-points / demucs** — §5.8 optional upgrade.
-- **Sharpness/blur metric** — deferred (would add cv2); shake covers stability
-  for v1.
+- **Sharpness/blur metric** — deferred; cv2 is no longer the blocker
+  (`scripts/lib/flow.py` has imported it since the tracking-ladder slice,
+  2026-07-21) — the remaining cost is the measurement work itself plus an
+  intake `CACHE_VERSION` bump (currently `8`; a bump invalidates every
+  cached clip, forcing a full re-scan), not a new dependency. Shake still
+  covers stability for v1.
 
 ---
 

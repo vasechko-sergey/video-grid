@@ -253,7 +253,8 @@ discipline of the engine-hardening and layouts plans.
   safe-margin table; lands with the editorial reel-final-check or a later phase.
   **Built 2026-07-16** as an advisory route-geometry check — see
   `docs/specs/2026-07-16-safe-zones-design.md`.
-- **Secondary-aspect re-reframe on deliver** — Phase F.
+- **Secondary-aspect re-reframe on deliver** — deferred, no phase assigned;
+  queued in [docs/backlog.md](../backlog.md).
 - **Resumability** (skip a stage when its artifact + input hash is unchanged) —
   the router's job (montage §11).
 - **The retry loop itself** — Phase A.5 (§6), the immediate next slice.
