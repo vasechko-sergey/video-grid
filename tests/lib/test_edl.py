@@ -221,6 +221,21 @@ def test_edl_to_dict_round_trips():
     assert e.to_dict()["cap"] == 2 and e.to_dict()["music"] == "MUSIC.json"
 
 
+# --- housekeeping Task 0: EDL.platform (design 2026-08-12 §1.1) ---
+
+def test_edl_platform_round_trips_and_defaults_empty():
+    e = _edl()                                   # the module's existing EDL helper
+    assert e.platform == ""
+    d = e.to_dict()
+    assert d["platform"] == ""
+    assert EDL.from_dict({**d, "platform": "tiktok"}).platform == "tiktok"
+
+
+def test_edl_platform_must_be_a_string():
+    with pytest.raises(ValueError, match="platform"):
+        EDL.from_dict({**_edl().to_dict(), "platform": 9})
+
+
 def test_edl_null_cap_defaults_to_three():
     e = _edl(cap=None)
     assert e.cap == 3
@@ -277,6 +292,17 @@ def test_to_markdown_header_omits_target_when_unset():
     md = _edl().to_markdown()         # target_dur None
     assert md.startswith("# Edit plan — 2 episodes, 4.0s\n")
     assert "target" not in md.splitlines()[0]
+
+
+def test_to_markdown_shows_platform_when_set():
+    md = EDL.from_dict({**_edl().to_dict(), "platform": "tiktok"}).to_markdown()
+    assert "- **Platform:** tiktok" in md
+
+
+def test_to_markdown_omits_platform_when_unset():
+    # an unset platform is not a fact worth printing, and an always-present line
+    # would move every existing golden markdown (design 2026-08-12 §1.1)
+    assert "Platform" not in _edl().to_markdown()
 
 
 def test_to_markdown_shows_motion_and_beat_when_set():

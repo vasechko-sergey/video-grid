@@ -6,6 +6,7 @@ from scripts.lib import provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
+from scripts.lib.spec import Spec
 
 
 def _clip(**kw):
@@ -728,6 +729,44 @@ def test_write_edit_plan_without_a_spec_uses_balanced(tmp_path):
     result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
     assert result["finding"]["reason"] == "variety-gap"
     assert "balanced" in " ".join(result["finding"]["problems"])
+
+
+# --- housekeeping Task 0: SPEC.platform -> EDL.platform (design 2026-08-12 §1.1) ---
+# No SPEC.json fixture helper existed in this module before this task — Spec requires
+# canvas/length_s/mood/hook (scripts/lib/spec.py). mood="unspecified" matches no
+# scripts.lib.mood.MOOD_ANCHORS token, so moodpreset.resolve falls to BALANCED here
+# exactly as it does on the no-spec path above — keeping the variety gate identical
+# between the two tests below so only the platform assertion is in play.
+
+def _write_spec(tmp_path, **kw):
+    base = dict(canvas=(1080, 1920), length_s=30.0, mood="unspecified", hook="hook")
+    base.update(kw)
+    p = tmp_path / "SPEC.json"
+    Spec(**base).write(p)
+    return str(p)
+
+
+def _plain_selection():
+    return {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds", "crop_scale": 0.8},
+        {"source": "B.mp4", "window": 0, "composition": "center", "grid": "phi"}]}
+
+
+def test_write_edit_plan_carries_spec_platform_into_the_edl(tmp_path):
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    spec_path = _write_spec(tmp_path, platform="tiktok")
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert result["status"] == "written"
+    edl = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert edl.platform == "tiktok"
+
+
+def test_write_edit_plan_without_spec_leaves_platform_empty(tmp_path):
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["status"] == "written"
+    edl = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert edl.platform == ""
 
 
 def _cut_footage():

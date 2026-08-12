@@ -190,6 +190,14 @@ class EDL:
     music: str | None = None       # MUSIC.json path; None → a silent reel (Phase A.5 path)
     cast: str | None = None        # cast.json path; needed only when an episode pins a cast name
     cap: int = 3                   # build_reel reprocess cap
+    platform: str = ""             # UI safe-zone table key (§5.13) — "" = the generic
+                                   # zone. Copied from Spec.platform by edit_plan and
+                                   # spent by edl_to_reel on ReelManifest.platform, which
+                                   # check_reel's safe-zone section and titles.y_exprs
+                                   # both read. It lives on the EDL rather than on a CLI
+                                   # flag because the EDL is the attested artifact: the
+                                   # platform a reel was checked against is recorded with
+                                   # the cut (design 2026-08-12 §1.1).
     target_dur: float | None = None
     variety: VarietyReport | None = None   # design 2026-08-06 §9. None = never evaluated
                                            # (a hand-authored EDL through the SP1 front door)
@@ -212,6 +220,9 @@ class EDL:
             raise ValueError("EDL.music must be a MUSIC.json path or null, got an empty/non-str value")
         if self.cast is not None and not (isinstance(self.cast, str) and self.cast):
             raise ValueError("EDL.cast must be a cast.json path or null, got an empty/non-str value")
+        if not isinstance(self.platform, str):
+            raise ValueError(f"EDL.platform must be a string label (e.g. 'tiktok') or "
+                             f"'' for the generic safe zone, got {self.platform!r}")
         if self.target_dur is not None and (isinstance(self.target_dur, bool)
                 or not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0):
             raise ValueError(f"EDL.target_dur must be a positive number or null, got {self.target_dur!r}")
@@ -249,7 +260,8 @@ class EDL:
                 raise ValueError(f"EDL.from_dict: episodes[{k}] has a missing or unknown field — {ex}") from ex
         cap = d.get("cap")
         return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
-                   cap=cap if cap is not None else 3, target_dur=d.get("target_dur"),
+                   cap=cap if cap is not None else 3, platform=d.get("platform", ""),
+                   target_dur=d.get("target_dur"),
                    variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
                    constraints=(ConstraintReport.from_dict(d["constraints"])
                                 if d.get("constraints") else None),
@@ -279,7 +291,7 @@ class EDL:
     def to_dict(self) -> dict:
         d = {"episodes": [e.to_dict() for e in self.episodes],
              "music": self.music, "cast": self.cast, "cap": self.cap,
-             "target_dur": self.target_dur,
+             "platform": self.platform, "target_dur": self.target_dur,
              "variety": self.variety.to_dict() if self.variety is not None else None,
              "constraints": self.constraints.to_dict() if self.constraints is not None else None}
         if self.provenance:
@@ -291,7 +303,12 @@ class EDL:
         head = f"# Edit plan — {len(self.episodes)} episodes, {total:.1f}s"
         if self.target_dur is not None:
             head += f" · target {self.target_dur:.1f}s"
-        lines = [head, "",
+        lines = [head]
+        # Only when set: an unset platform is not a fact worth printing, and an
+        # always-present line would move every existing golden markdown (§1.1).
+        if self.platform:
+            lines.append(f"- **Platform:** {self.platform}")
+        lines += ["",
                  "| # | source | window | shot | layout | comp | grid | motion | beat | notes |",
                  "|---|--------|--------|------|--------|------|------|--------|:----:|-------|"]
         for i, e in enumerate(self.episodes):

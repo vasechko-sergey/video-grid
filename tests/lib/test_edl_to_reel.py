@@ -130,6 +130,20 @@ def test_edl_music_and_target_override_reach_the_reel_manifest(monkeypatch, tmp_
     assert rm.target_dur == 9.0 and rm.cap == 2
 
 
+def test_edl_to_reel_passes_the_edl_platform_to_the_reel_manifest(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path, platform="tiktok"), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].platform == "tiktok"
+
+
+def test_edl_to_reel_leaves_the_reel_manifest_platform_empty_by_default(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].platform == ""
+
+
 def test_color_delta_max_override_reaches_the_reel_manifest(monkeypatch, tmp_path):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),

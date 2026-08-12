@@ -307,7 +307,7 @@ def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None, *, aspect: tuple[int, int] | None = None,
               preset: MoodPreset | None = None,
-              rules: Constraints | None = None) -> EDL:
+              rules: Constraints | None = None, platform: str = "") -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -339,7 +339,11 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     EDL.constraints. Absent rules leave EDL.constraints None, which reads as "not
     evaluated", never as "passed". As with variety, build_edl only MEASURES; the
     refusal lives one level up in write_edit_plan, so a caller building an EDL in
-    memory still gets the finding."""
+    memory still gets the finding.
+
+    `platform` (design 2026-08-12 §1.1, keyword-only) rides straight onto EDL.platform —
+    build_edl does not resolve it from anything, write_edit_plan already reads SPEC.platform
+    for the caller. A bare "" (the default) means the generic safe zone, same as omitting it."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -383,8 +387,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     # EDL that is actually written.
     cons = check_constraints(rules, tuple(placed), footage) if rules is not None else None
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
-               cap=cap if cap is not None else 3, target_dur=target, variety=variety,
-               constraints=cons)
+               cap=cap if cap is not None else 3, platform=platform, target_dur=target,
+               variety=variety, constraints=cons)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
@@ -396,9 +400,12 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     episode pins a cast name (§6.1a); preflight below loads the registry and reports
     an unresolved name as part of its normal stop_and_report, not a raise. `spec` is
     SPEC.json (§5.3, optional) — its mood resolves the shot-mix preset the variety
-    gate (design 2026-08-06) holds the cut to; without one the gate still runs
-    against the `balanced` preset, since skipping the optional brief must not
-    disable a quality gate. A cut that leaves an available, wanted shot size unused
+    gate (design 2026-08-06) holds the cut to, and its platform (design 2026-08-12
+    §1.1) rides onto EDL.platform, the UI safe-zone table key edl_to_reel later spends
+    on ReelManifest.platform; without a spec the gate still runs against the `balanced`
+    preset and the EDL's platform stays "" (the generic zone), since skipping the
+    optional brief must not disable a quality gate or silently pick a platform. A cut
+    that leaves an available, wanted shot size unused
     and unwaived stops here too, before preflight, with its own reason
     `variety-gap` (never `edl-invalid`, so the two failure classes stay
     attributable without parsing prose). Returns {"status": "written", ...} or a
@@ -420,13 +427,15 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     rules = Constraints.from_json(rules_path) if rules_path.exists() else None
     if rules is not None:
         _log(f"constraints: {len(rules.rules)} editorial rule(s) from {rules_path}")
-    preset = moodpreset.resolve(Spec.from_json(spec).mood if spec else None)
+    sp = Spec.from_json(spec) if spec else None
+    preset = moodpreset.resolve(sp.mood if sp else None)
     if preset.name == "balanced":
         _log(f"variety: no SPEC mood matched a preset — using the 'balanced' shot mix "
              f"{preset.shot_mix} (a skipped brief must not disable the gate)")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
-                    aspect=tuple(cfg.canvas), preset=preset, rules=rules)
+                    aspect=tuple(cfg.canvas), preset=preset, rules=rules,
+                    platform=sp.platform if sp else "")
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is
