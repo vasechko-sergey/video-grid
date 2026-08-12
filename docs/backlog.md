@@ -28,6 +28,16 @@ never *scheduled*. See
 Priorities are one person's judgement on one day. P2 and below will not survive
 contact with the next real run — they are a starting order, not a measurement.
 
+**P0 is empty.** The four live defects the 2026-08-12 audit found are fixed (last
+section). A P0 row means something ships wrong today, so an empty P0 is the
+normal state and a populated one interrupts whatever is in P1.
+
+**Three items span buckets** rather than sitting in one, and each says so where
+it appears: **#9** (cinematic look) is split P1/P2/P3; the **episode-QC loop** is
+P2 for the re-judge and P3 for the auto-route; and **reel length** is P2 for the
+diagnosis and P3 for the enforcement. Do not close any of the three on its first
+row alone.
+
 ---
 
 ## P1 — next
@@ -42,16 +52,16 @@ contact with the next real run — they are a starting order, not a measurement.
 | | Item | Size | Source |
 |---|------|------|--------|
 | ○ | **The authoring skill documents every knob it has** — `edit-plan` should enumerate the full set in one place: layout / composition / grid / motion / pan / zoom / ramp / stabilize / smooth_window_s + the colour grade. Verify each against `models.ReframeSpec` first: a named-but-missing tool (curves, shadows) is a build-or-not decision, not a doc gap. | S | [#5](fixes-backlog.md#5-the-authoring-skill-must-document-every-modification-tool-it-has) |
-| ○ | **Cheap 3-frame probe** — render three frames with a new grade, measure, iterate; pay the full episode re-encode only once it converges. The 2026-08-03 run spent ~29 full re-encodes. Generalizes to effect *visibility*, not just colour. | M | [#10](fixes-backlog.md#10-cheap-3-frame-preview-to-converge-the-colour-grade-before-a-full-episode-re-render) |
+| ○ | **Cheap 3-frame probe** — render three frames with a new grade, measure, iterate; pay the full episode re-encode only once it converges. The 2026-08-03 run spent ~29 full re-encodes. Generalizes to effect *visibility*, not just colour — but it is a **run-time convergence loop**, not the same thing as the P1 row's per-effect visibility proofs, which are one-off measurements in the test suite. #18 asks for both; neither substitutes for the other. | M | [#10](fixes-backlog.md#10-cheap-3-frame-preview-to-converge-the-colour-grade-before-a-full-episode-re-render) |
 | ○ | **Mood → grade** — bias `match_grade`'s common target by the brief's mood instead of taking the source median alone. This is the "§10 mood LUT" colour-as-a-stage deferred; the *look* half lands with #9 above, this is the grade half. | M | colour-stage §11, matchgrade §8 |
 | ○ | **Re-assess §6.1a layer 3 against track-stitch** — both address a mid-episode hero ID switch, by different mechanisms (descriptor continuity vs geometric overlap-vs-gap). Decide whether a real remainder exists before building anything. | S | cast-hero-pin §11 |
 | ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. | S | hero-reid §11, cast-hero-pin §11 |
-| ○ | **Re-judge a reprocessed episode** — `build_reel`'s retry loop reprocesses an episode *after* its QC verdict, so it ships judged one render out of date. Recorded today (`reprocessed`, the attestation's `episode_qc` block), not prevented. Closes episode-qc §8. | M | episode-qc §13 |
+| ○ | **Close the episode-QC loop** — two halves of one loop, both episode-qc §13, and the P3 list holds the other one. **This half:** `build_reel`'s retry reprocesses an episode *after* its QC verdict, so it ships judged one render out of date (recorded as `reprocessed` in the attestation, not prevented) — closes episode-qc §8. **The other half, in P3:** auto-routing a *blocking* finding back into a re-render. Do the re-judge first; routing findings into renders that are then never re-judged makes the hole bigger. | M | episode-qc §13 |
 | ○ | **Surface the active editorial constraints in `montage status`** — a human should see which rules bind a re-cut without opening `CONSTRAINTS.json`. | S | constraints §11 |
 | ○ | **Auto-place a ramp's `at` from the action anchors** — `lib/anchors` already computes the curve the author is eyeballing. | S | speed-ramp §13 |
 | ○ | **A `sample_clip` fixture longer than `WIN_MAX`** — the 3s no-scene-cut fixture can only ever carve one window, which is why the pool-relative scoring and window-boundary changes have no real-bytes proof. A testing gap that blocks proofs, not a feature. | S | intake-motion-scoring §9 |
 | ○ | **LICENSE + its `plugin.json` field** — the repo has none, and the plugin manifest omits the field. A distribution blocker, cheap to close. | S | plugin-packaging §6 |
-| ○ | **The length figures do not reconcile** — the 2026-08-03 run showed a fitted spine of 27.7s, `target_dur` 30.317s and a rebuilt reel at 34.05s. Worth pulling when #2 or anything length-shaped is touched. | S | [#20 second pass](fixes-backlog.md) |
+| ○ | **The length figures do not reconcile** — the 2026-08-03 run showed a fitted spine of 27.7s, `target_dur` 30.317s and a rebuilt reel at 34.05s. **Do this before the P3 "enforce `SPEC.length_s`" row, not beside it**: you cannot enforce a number three stages disagree about, so that row is the fix and this is its diagnosis. | S | [#20 second pass](fixes-backlog.md), length-retime §9 |
 
 ## P3 — someday
 
@@ -101,7 +111,7 @@ does the job).
 adaptive hook length instead of a fixed `HOOK_BEATS` (pacing §10) ·
 per-section mood arc (mood-match §9, pacing §10) ·
 beat as a hard gate, once a cut can be re-trimmed (music-spine §9) ·
-re-pick `MUSIC.start_offset` at the back-edge (length-retime §9) ·
+re-pick `MUSIC.start_offset` at the back-edge (length-retime §9) — **a second lever on the P1 "music ends mid-phrase" row**: moving the in-point moves the out-point, so it may fix #2 without section detection at all, and the investigation should weigh both ·
 enforce `SPEC.length_s` rather than only logging the cross-check (length-retime §9) ·
 music-less dual-emit + trending-sound sidecar, §5.14 (music-spine §9, using-montage §5) ·
 a SPEC field for ambient / SFX instead of only `ReelManifest` flags (ambient §9, sfx §9) ·
@@ -119,7 +129,7 @@ stamp the other six run artifacts with provenance (attested-run §12) ·
 multi-reel fan-out — `reel_count > 1` now refuses loudly instead of silently making one (reel-brief §7, reel-review §7)
 
 **Titles**
-libass/ASS rendering, per-episode titles, the full pixel-level safe-zone gate, cross-platform font install (titles §7)
+libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate — **the same capability the Reel/QC group's "pixel/CV subject detection for safe zones" needs; one measurement, two consumers, so build it once** · cross-platform font install (titles §7)
 
 **Packaging / runtime**
 GitHub-remote marketplace (plugin-packaging §6) ·
@@ -157,10 +167,10 @@ cross-platform `setup.sh` and `bin/vg` — macOS/Homebrew is a stated project bo
 
 | Item | Why |
 |------|-----|
-| Face recognition for hero identity | Excluded by the montage design: faces are small, wet and turned away in this footage |
+| Face **recognition** for hero identity | Excluded by the montage design: faces are small, wet and turned away in this footage. **Not the same thing as the face *detector* the P3 hero-conditioned re-scan is blocked on** — that one only needs to find *a* face to say "this window has a person facing camera", and never matches one person against another. The identity work is what is refused here |
 | A `verify_runtime --fix` that runs `setup.sh` | Rejected on principle — no autonomous system mutation (verify-runtime §4) |
 | A signed rather than merely digested attestation | Pointless against a local adversary who holds the key (attested-run §12) |
-| A per-episode `.attest.json` **sidecar** | Per-episode *binding* already exists and this row is not it — see the note below |
+| A per-episode `.attest.json` **sidecar** | Per-episode *binding* already exists and this row is not it — see the note below (attested-run §12) |
 | Spotify `audio-features` for mood | Deprecated for new apps since Nov 2024 (sourcing §13) |
 | A 4th "dynamism" mood axis | YAGNI — three axes already order the shortlist (mood-match §9) |
 | The analysis proxy for delivery-time track/reframe | They run on short *original* segments; the proxy would cost fidelity for nothing (analysis-proxy §11) |

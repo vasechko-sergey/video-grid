@@ -168,15 +168,25 @@ def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str],
     deliberately wide, authored window back down toward DEFAULT_PARAMS
     ['smooth_window_s'] — the author asked for that window on purpose, and halving
     it against the module default instead of their own ask would discard the
-    instruction the moment a line-lag fires."""
+    instruction the moment a line-lag fires.
+
+    It bounds the JITTER branch too, and that arm is the less obvious one. That
+    branch widens against SMOOTH_WINDOW_S_MAX (0.7), while the EDL, the manifest
+    and ReframeSpec all accept a window up to 2.0 — so an authored 0.8, 1.2 or 2.0
+    came back as 0.7 from a single jitter retry, narrowed rather than widened, the
+    same silent discard at the other end of the ladder. It was unreachable until
+    the window became authorable (params always started at 0.25); making it
+    authorable is what exposed it. So the ceiling is raised to the author's own ask
+    when they asked for more: the ladder still never pushes PAST 0.7 on its own
+    initiative, and now never pulls back from a wider window it did not choose."""
     p = {**DEFAULT_PARAMS, **params}
+    lo = DEFAULT_PARAMS["smooth_window_s"] if floor is None else floor
     if _lags_line(fail_reasons):
         p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
         # a wide window is exactly what makes the crop lag, so give it back the
         # responsiveness the same way it was taken — never below the default, or
         # below the caller's own authored floor when it set one (see the `floor`
         # paragraph above)
-        lo = DEFAULT_PARAMS["smooth_window_s"] if floor is None else floor
         p["smooth_window_s"] = max(lo, p["smooth_window_s"] / 2)
     if "jitter" in fail_reasons:
         p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
@@ -185,7 +195,12 @@ def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str],
         # low-amplitude reversals that are already far under any speed cap the ladder
         # reaches, so speed alone never converges — measured on a 60fps drone ride:
         # 3 attempts of 750→450→270 px/s left worst_reversal unchanged at 4.0px.
-        p["smooth_window_s"] = min(SMOOTH_WINDOW_S_MAX, p["smooth_window_s"] * 2)
+        # The cap is max(SMOOTH_WINDOW_S_MAX, lo), not the constant: an authored
+        # window wider than the ceiling must not be NARROWED by a branch whose job
+        # is widening (see the `floor` docstring). Identical to the old expression
+        # whenever the ask is at or under the ceiling, which is every unauthored
+        # episode and every authored one below 0.7.
+        p["smooth_window_s"] = min(max(SMOOTH_WINDOW_S_MAX, lo), p["smooth_window_s"] * 2)
     return p
 
 

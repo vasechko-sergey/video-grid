@@ -50,6 +50,10 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
     # Delivery. native is the trap — it has no size of its own, so Delivery.dims()
     # just evens whatever crop it is given; feeding it the bare (9, 16) aspect
     # would silently reproduce this exact bug one call deeper.
+    # The FIRST segment sizes the whole draft, so mixed-resolution footage is laid out
+    # against clip 0's geometry. Right for a QA preview — one uniform frame is what
+    # concat needs and what the human is judging order and length in — and wrong for
+    # anything that measured pixels off it, which nothing does.
     crop_w, crop_h = geometry.crop_for(cfg.canvas, 1.0, probe.w, probe.h)
     canvas_w = float(crop_w)
     canvas_h = canvas_w * cfg.canvas[1] / cfg.canvas[0]

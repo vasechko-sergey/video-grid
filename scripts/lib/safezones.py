@@ -48,6 +48,19 @@ def safe_zone_for(platform: str) -> SafeZone:
     return SAFE_ZONES.get(key, SAFE_ZONES["generic"])
 
 
+def known(platform: str) -> bool:
+    """Does this label resolve to a zone of its own, rather than falling back?
+
+    `safe_zone_for` is deliberately forgiving — an unknown label silently gets the
+    generic zone, which is the right runtime behaviour and the wrong thing to be
+    quiet about at authoring time: a typo'd platform is then recorded on the EDL
+    and attested, while the reel is checked against a table it never asked for.
+    Callers that want to SAY something (edit_plan's platform log) ask here first.
+    Same normalization as `safe_zone_for`, so the two can never disagree."""
+    key = (platform or "").strip().lower()
+    return _ALIASES.get(key, key) in SAFE_ZONES
+
+
 def default_zone() -> SafeZone:
     """The generic zone — titles' single margin source (§5.16)."""
     return SAFE_ZONES["generic"]

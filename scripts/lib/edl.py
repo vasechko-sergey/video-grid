@@ -276,7 +276,11 @@ class EDL:
                 raise ValueError(f"EDL.from_dict: episodes[{k}] has a missing or unknown field — {ex}") from ex
         cap = d.get("cap")
         return cls(episodes=tuple(eps), music=d.get("music"), cast=d.get("cast"),
-                   cap=cap if cap is not None else 3, platform=d.get("platform", ""),
+                   # `or ""` and not `.get(k, "")`: a hand-authored SP1 EDL that spells
+                   # an unset field as an explicit JSON null is the norm here — `cap`,
+                   # `music`, `cast` and `smooth_window_s` all read null as absent, and
+                   # a lone field that refused it would be a gratuitous edge.
+                   cap=cap if cap is not None else 3, platform=d.get("platform") or "",
                    target_dur=d.get("target_dur"),
                    variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
                    constraints=(ConstraintReport.from_dict(d["constraints"])
@@ -393,12 +397,16 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model (a manifest default).
-    Five fields cross conditionally, on two different predicates: `pan`/`motion`/
-    `hero`/`smooth_window_s` copy through only when the episode SETS one (not-None),
-    so an absent value leaves the key out rather than carrying an explicit null;
-    `stabilize` copies through only when TRUE, so a false (its default) leaves the
-    key out too. Either way Manifest.from_dict falls to its own None/False default
-    rather than the two sides disagreeing about what unset means. EDL-only fields (source/start/dur/shot_type/processing_notes/
+    Some fields cross CONDITIONALLY, on two different predicates. Not-None:
+    `tone_src`+`tone_dst` (one branch, two keys), `crop_aspect`, `rect`, `motion`,
+    `pan`, `zoom`, `smooth_window_s`, `hero` — an absent value leaves the key out
+    rather than carrying an explicit null. True-only: `stabilize`, so a false (its
+    default) leaves the key out too. Either way Manifest.from_dict falls to its own
+    None/False default rather than the two sides disagreeing about what unset means.
+    (This sentence used to open with a count. It said "Four", then "Five", and both
+    were wrong — a number goes stale the moment someone adds a branch and does not
+    re-count. Read the branches below instead; that is why they are named here.)
+    EDL-only fields (source/start/dur/shot_type/processing_notes/
     beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained

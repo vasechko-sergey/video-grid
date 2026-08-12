@@ -61,8 +61,12 @@ say so rather than guessing a path.
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/PACING.json
    [--spec <run>/SPEC.json]` — this is what writes the snapped durations and
    `beat_slot` into `EDL.json`. Carry `--spec` through when a brief exists: this
-   pass re-stamps the EDL from scratch, and a dropped `--spec` silently re-resolves
-   the variety preset to `balanced`. Stopping at step 4 leaves the EDL un-snapped.
+   pass re-stamps the EDL from scratch, so a dropped `--spec` re-resolves the
+   variety preset to `balanced` **and wipes `EDL.platform` back to `""`**, which
+   reverts `check_reel`'s safe zone and the bottom title's y layout to the generic
+   table. `edit_plan build` logs the platform it resolved on every run — read that
+   line to confirm the second pass kept it. Stopping at step 4 leaves the EDL
+   un-snapped.
 
 ## Not this skill
 

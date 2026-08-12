@@ -76,6 +76,21 @@ today's exact behaviour, and `process_episode` passes the authored seed when the
 episode sets one. The ladder may still raise the window and may still bring it
 back down — but never below what the author asked for.
 
+**The jitter branch had the mirror bug, and this design first got it wrong.** An
+earlier draft of this section declared that arm safe — "widening past an authored
+value is the ladder doing its job" — which is true only up to 0.35. The branch
+widens against `SMOOTH_WINDOW_S_MAX` (0.7) while the EDL, the manifest and
+`ReframeSpec` all accept up to 2.0, so the whole-branch review measured an
+authored 0.8, 1.2 or 2.0 coming back as **0.7** from one jitter retry: the
+*widening* branch narrowing the author's ask, the same silent discard at the
+other end. It was unreachable before this slice, because `params` always started
+at 0.25 — making the window authorable is precisely what exposed it. Both arms
+now bound against `max(SMOOTH_WINDOW_S_MAX, floor)` / `floor`: the ladder never
+pushes past 0.7 on its own initiative, and never pulls back from a wider window
+it did not choose. The general shape is worth keeping: **a knob that becomes
+authorable inherits every clamp that was previously unreachable**, and each one
+has to be re-read as a possible silent override.
+
 ### 1.3 `draft.py` renders an 8×16-pixel video — P0
 
 ```python
@@ -225,6 +240,15 @@ re-reframe, the sharpness metric and layer 3 all get rows, not code.
   `platform` and `smooth_window_s` are contract plumbing whose absence a unit test
   catches, and `reel_count`'s fix is a refusal. Only the draft failed *because* its
   test asserted on the wrong thing, so only the draft's proof has to reach pixels.
+- **An unknown platform label is still accepted, and only logged.** `EDL.platform`
+  validates as a string, not against the safe-zone vocabulary, because
+  `safe_zone_for` is deliberately forgiving at runtime and `reel_brief --platform`
+  advertises free text. So `"facebook"` is recorded on the EDL, carried into the
+  attestation, and checked against the generic zone — the original defect, quieter.
+  `edit_plan build` now says so on every run (`safezones.known` is the predicate),
+  which makes it visible rather than impossible. A refusal would be the stronger
+  answer and would break a hand-authored SP1 EDL that names a platform this table
+  has not learned yet.
 - **Fixing the platform pipe can change a verdict.** A reel whose brief names a
   platform will now be judged against that platform's safe zone instead of the
   generic one, and a bottom title moves accordingly. That is the point, and it is

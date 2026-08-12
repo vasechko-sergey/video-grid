@@ -77,3 +77,24 @@ def test_subject_extents_samples_five_corner_boxes_across_the_episode():
     ext = safezones.subject_extents(route, path, meta, dur=2.0)
     assert len(ext) == 5
     assert ext == [(0.45, 0.4, 0.55, 0.5)] * 5     # constant route → constant extents
+
+
+# --- housekeeping 2026-08-12: `known` backs edit_plan's platform log ---
+
+@pytest.mark.parametrize("label", ["tiktok", "TikTok", "  reels  ", "instagram", "yt", "generic"])
+def test_known_accepts_every_label_safe_zone_for_resolves(label):
+    # The whole point of the helper: it must agree with safe_zone_for's own
+    # normalization (case, whitespace, aliases), or the log line would call a
+    # perfectly good platform unknown.
+    assert safezones.known(label) is True
+    assert safezones.safe_zone_for(label) == safezones.SAFE_ZONES[
+        safezones._ALIASES.get(label.strip().lower(), label.strip().lower())]
+
+
+@pytest.mark.parametrize("label", ["facebook", "vimeo", "", "   ", "tik tok"])
+def test_known_rejects_a_label_that_silently_falls_back_to_generic(label):
+    # These are exactly the cases worth a log line: safe_zone_for hands back the
+    # generic zone and says nothing, so the reel is checked against a table the
+    # brief never asked for while the EDL records the label as authored.
+    assert safezones.known(label) is False
+    assert safezones.safe_zone_for(label) == safezones.default_zone()

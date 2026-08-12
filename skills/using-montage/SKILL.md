@@ -100,9 +100,13 @@ say so rather than guessing a path.
 
 6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). Pass
-   `--spec <run>/SPEC.json` when reel-brief (step 5) ran — its mood picks the
-   shot-mix preset the variety gate holds the cut to; without one the build still
-   runs, against the `balanced` preset. A `variety-gap` stop routes back to
+   `--spec <run>/SPEC.json` when reel-brief (step 5) ran — it carries two things:
+   the mood that picks the shot-mix preset the variety gate holds the cut to, and
+   `SPEC.platform`, which becomes `EDL.platform` and decides which safe-zone table
+   `check_reel` judges the subject against and where a bottom title sits. Without
+   it the build still runs, against the `balanced` preset and the generic zone.
+   Pass it again on the pacing re-apply (step 8) — that pass re-stamps the EDL from
+   scratch and would otherwise drop both. A `variety-gap` stop routes back to
    **edit-plan** like any other `stop_and_report` — add the named shot size or
    state a `variety_waiver` in `selection.json`, never a loosened gate. edit-plan
    runs **before** music and pacing (steps 7-8): this first `edit_plan build`

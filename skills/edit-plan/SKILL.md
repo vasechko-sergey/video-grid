@@ -205,9 +205,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
          [--cast cast.json] [--spec SPEC.json]
 
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
-   the registry the preflight resolves that name against. Pass `--spec` when
-   `SPEC.json` exists — it selects the shot-mix preset the variety gate holds the
-   cut to; without it the gate still runs, against `balanced`. It projects each
+   the registry the preflight resolves that name against. Pass `--spec` whenever
+   `SPEC.json` exists — it carries two separate things onto the EDL. `SPEC.mood`
+   selects the shot-mix preset the variety gate holds the cut to (without it the
+   gate still runs, against `balanced`), and `SPEC.platform` becomes
+   `EDL.platform`, which decides the safe-zone table `check_reel` judges the
+   subject against and where a bottom title is laid out — without it, the generic
+   zone. The build **logs the platform it resolved on every run**, including when
+   there is none and when the label has no zone of its own; read that line rather
+   than assuming. Pass `--spec` again on the `--pacing` re-apply, which re-stamps
+   the EDL from scratch and would otherwise silently drop both. It projects each
    window, **preflights** the EDL against the project, and writes `EDL.json` +
    `EDL.md`. On a `stop_and_report`, fix and re-run — never hand-edit `EDL.json`
    (`selection.json` is the source; the EDL is generated). Three reasons exist.

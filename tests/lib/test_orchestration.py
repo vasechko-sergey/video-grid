@@ -317,13 +317,28 @@ def test_floor_none_keeps_todays_default_floor():
     assert p["smooth_window_s"] == 0.25         # DEFAULT_PARAMS floor, unchanged
 
 
-def test_floor_does_not_affect_the_jitter_branch():
-    # `floor` only walls off the LAG branch's halving — the jitter branch's widening
-    # is explicitly UNCHANGED by an authored floor (adjust_reframe_params' docstring):
-    # SMOOTH_WINDOW_S_MAX still caps it, floor or no floor.
+def test_floor_at_or_under_the_ceiling_leaves_the_jitter_branch_alone():
+    # Below SMOOTH_WINDOW_S_MAX the jitter widening is untouched by an authored floor.
     # 0.1, deliberately: it doubles to 0.2, well clear of the 0.6 floor under test. A
     # start of 0.3 would double to exactly 0.6, and a mutation that leaked `floor` into
     # this branch as another max() would then produce 0.6 either way and pass unseen.
     with_floor = orch.adjust_reframe_params({"smooth_window_s": 0.1}, ["jitter"], floor=0.6)
     without_floor = orch.adjust_reframe_params({"smooth_window_s": 0.1}, ["jitter"])
     assert with_floor["smooth_window_s"] == without_floor["smooth_window_s"] == 0.2
+
+
+@pytest.mark.parametrize("authored", [0.8, 1.2, 2.0])
+def test_jitter_never_narrows_a_window_wider_than_the_ceiling(authored):
+    # The other end of the same discard the `floor` exists to stop, found by the
+    # whole-branch review. SMOOTH_WINDOW_S_MAX is 0.7 but the EDL/manifest/ReframeSpec
+    # band is (0, 2.0], so a plain min(0.7, ...) turned an authored 0.8/1.2/2.0 into
+    # 0.7 — the WIDENING branch narrowing the author's ask. Unreachable before the
+    # window became authorable, because params always started at 0.25.
+    p = orch.adjust_reframe_params({"smooth_window_s": authored}, ["jitter"], floor=authored)
+    assert p["smooth_window_s"] == authored
+
+
+def test_jitter_still_refuses_to_widen_past_the_ceiling_on_its_own():
+    # The ladder's own initiative is still capped at 0.7 — only an author may exceed it.
+    p = orch.adjust_reframe_params({"smooth_window_s": 0.5}, ["jitter"])
+    assert p["smooth_window_s"] == orch.SMOOTH_WINDOW_S_MAX == 0.7

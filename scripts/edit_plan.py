@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import gridfit, moodpreset, ramp as ramp_mod
+from scripts.lib import gridfit, moodpreset, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
@@ -432,10 +432,27 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     if preset.name == "balanced":
         _log(f"variety: no SPEC mood matched a preset — using the 'balanced' shot mix "
              f"{preset.shot_mix} (a skipped brief must not disable the gate)")
+    # Say out loud which safe-zone table the reel will be judged against. Silence here
+    # is how the platform got lost in the first place: `--spec` is optional, this driver
+    # is re-run WITH --pacing to apply the fit, and a dropped flag on that second run
+    # rewrites EDL.platform back to "" — reverting check_reel's safe zone and the bottom
+    # title's y layout to generic with no trace. An unknown label is worth saying too:
+    # safezones.safe_zone_for falls back to the generic table for anything outside its
+    # own vocabulary, so a typo reproduces the original defect quietly.
+    plat = sp.platform if sp else ""
+    if not plat:
+        _log("platform: none (no --spec, or SPEC.platform empty) — check_reel's safe "
+             "zone and the title layout both use the GENERIC table")
+    elif not safezones.known(plat):
+        _log(f"platform: {plat!r} has no safe zone of its own (known: "
+             f"{sorted(safezones.SAFE_ZONES)}) — it is recorded on the EDL and attested, "
+             "but the GENERIC zone is what check_reel will actually judge against")
+    else:
+        _log(f"platform: {plat} — its safe zone is what check_reel and the titles will use")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
-                    platform=sp.platform if sp else "")
+                    platform=plat)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is
