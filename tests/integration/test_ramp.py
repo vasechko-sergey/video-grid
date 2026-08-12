@@ -4,11 +4,14 @@ These render actual pixels. A correct-looking argv is not evidence that a frame
 moved — backlog #18's whole finding is that a live-added vignette came out
 invisible and no test caught it.
 """
+import json
+from pathlib import Path
 import subprocess
 
 import pytest
 
 from scripts.lib import assembly, ffbin, proc, ramp
+from scripts.lib.footage import Footage, FootageClip, FootageWindow
 from scripts.lib.models import RampSpec
 
 pytestmark = pytest.mark.integration
@@ -105,8 +108,18 @@ def test_a_deeper_ramp_slows_more_than_a_shallow_one(ramp_clip, tmp_path):
     assert assembly.probe_duration(b) > assembly.probe_duration(a) + 0.2
 
 
-def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path):
-    """No ramp, no retime, no new bytes — the golden fixtures depend on it."""
+def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path, monkeypatch):
+    """No ramp: two independent runs produce byte-identical output, and a spy on
+    ramp.retime proves the ramp branch itself was never entered.
+
+    A glob for `*_ramped.mp4` has NO discriminating power here: extract_edl always
+    does `ramp.retime(out, ramped, ...)` then `Path(ramped).replace(out)`, and
+    Path.replace() renames — so `ep{i}_ramped.mp4` never persists on disk whether or
+    not the branch ran. That assertion was unconditionally true and proved nothing
+    (Task 7 review finding). Monkeypatching ramp.retime to record its own calls and
+    asserting it was never called is a predicate that actually depends on the code
+    under test: a regression that ramped an unramped episode would call the spy and
+    fail this test, where the old glob assertion would have passed silently."""
     from scripts import extract
     from scripts.lib.edl import EDL, EDLEpisode
     src_dir = tmp_path / "src"
@@ -115,8 +128,144 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path):
     e = EDL(episodes=[EDLEpisode(source="a.mp4", start=0.0, dur=1.0,
                                  shot_type="medium", composition="center",
                                  grid="thirds")])
+
+    calls = []
+    monkeypatch.setattr(extract.ramp, "retime",
+                        lambda *a, **k: calls.append((a, k)))
+
     one = extract.extract_edl(e, str(src_dir), str(tmp_path / "s1"))
     two = extract.extract_edl(e, str(src_dir), str(tmp_path / "s2"))
     from pathlib import Path
     assert Path(one[0]).read_bytes() == Path(two[0]).read_bytes()
-    assert not list((tmp_path / "s1").glob("*_ramped.mp4"))
+    assert calls == [], f"ramp.retime was called for an unramped episode: {calls}"
+
+
+# --- Task 8: end to end, SP3 -> SP1 (design docs/specs/2026-07-11-extract-spine-design.md).
+#
+# Scaffolding copied from tests/integration/test_edit_plan.py's _project_json/_footage_json/
+# _selection_json/_fake_track_pe (test_selection_becomes_edl_becomes_reel is the SP3->SP1 seam
+# this mirrors), adapted: _write_footage takes an `fps` and emits ONE window covering the whole
+# [0.0, 2.0] of ramp.mp4; footage_root is tmp_path itself here (unlike sample_clip's own
+# session-scoped media dir), so ramp_clip is copied in under the name FOOTAGE.json/selection.json
+# reference it by.
+#
+# process_episode IS faked here, same as test_edit_plan.py and for the same reason: driving the
+# FULL real chain on this synthetic fixture does not raise — it ESCALATES. ramp_clip's drawn
+# white box is not a person, so real YOLO returns an empty route, the tracking ladder falls to
+# optical flow (design 2026-07-21), and the flow-derived route is too jittery for
+# check_episode's on_line/continuity gates: process_episode's retry loop exhausts and
+# edl_to_reel returns stop_and_report with fail_reasons ['on_line', 'continuity'] instead of
+# delivering. tests/lib/test_tracking_ladder.py::test_empty_yolo_route_falls_to_optical_flow
+# documents the same fallback on the sibling sample_clip fixture. That failure is a correct,
+# orthogonal finding about composition on synthetic footage — not a length bug — so faking
+# process_episode's mechanical middle (real YOLO/flow/reframe/check_episode never run) is what
+# keeps this test's scope on the thing Task 8 is actually about.
+#
+# Consequently, what the two tests below PROVE is LENGTH ONLY: extract's retime pre-stage and
+# every play_dur()-reading consumer from there down through assemble/check_reel/deliver. They do
+# NOT prove tracking or framing correctness on a ramped clip — that is out of scope for a length
+# proof, and staying honest about the boundary matters more than chasing a broader claim.
+
+
+def _write_project(tmp_path):
+    # 9:16, long_edge 240 — small and fast: canvas sets the crop aspect against the 640x360
+    # source, delivery caps the final encode small so the real extract/track/reframe/deliver
+    # passes below stay quick (mirrors test_zoom.py's reason for the same delivery value).
+    p = tmp_path / "project.json"
+    p.write_text(json.dumps(
+        {"purpose": "reel", "canvas": [1080, 1920], "delivery": "long_edge:240"}))
+    return str(p)
+
+
+def _write_footage(tmp_path, clip, fps):
+    dst = tmp_path / "ramp.mp4"
+    dst.write_bytes(Path(clip).read_bytes())
+    f = Footage(clips=[FootageClip(source="ramp.mp4", dur=DUR, res=(W, H), fps=fps, windows=[
+        FootageWindow(start=0.0, dur=DUR, shot_type="wide", people=1, motion=0.3, shake=0.0)])])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def _write_selection(tmp_path, episodes):
+    base = {"composition": "lead", "grid": "thirds", "crop_scale": 0.8}
+    sel = {"episodes": [{**base, **ep} for ep in episodes]}
+    p = tmp_path / "selection.json"
+    p.write_text(json.dumps(sel))
+    return str(p)
+
+
+def _fake_track_pe(monkeypatch):
+    """Copied from tests/integration/test_edit_plan.py's _fake_track_pe, dims adjusted
+    to ramp_clip's own 640x360 (W, H) instead of sample_clip's 1920x1080 — see the
+    module comment above for why the mechanical middle is faked at all."""
+    from scripts import edl_to_reel
+
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        Path(project_dir).mkdir(parents=True, exist_ok=True)
+        (Path(project_dir) / "route.json").write_text(
+            json.dumps([{"t": 0.0, "x": W // 2, "y": H // 2, "w": 40, "h": 80, "id": 1}]))
+        # real process_episode writes path.json + path.meta.json beside route.json on every
+        # mechanical_pass (reframe emits both); mirror that so build_reel's frozen safe_zones
+        # geometry reads real files. CropPath [0] is parallel to the single route point above;
+        # a plain fill sidecar at the clip's own W x H dims (safe_zones is advisory — this
+        # test doesn't assert it, so the values need only be valid, not "safe").
+        (Path(project_dir) / "path.json").write_text(json.dumps([0]))
+        (Path(project_dir) / "path.meta.json").write_text(json.dumps(
+            {"mode": "fill", "crop_w": W, "crop_h": H, "crop_y": 0,
+             "src_dims": [W, H], "canvas": [W, H], "out_dims": [W, H],
+             "rect_px": [0, 0, W, H], "freedom": 0}))
+        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an",
+                 manifest["out_path"]])
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
+    # the pool — unstubbed, this ffmpeg golden also constructs a real YOLO (importing
+    # torch, and downloading 6MB on a cold cache) for a tracking pass it never runs.
+    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
+
+
+def test_a_ramped_episode_reaches_the_reel_at_its_played_length(ramp_clip, tmp_path, monkeypatch):
+    """The whole point of backlog #7, end to end: the reel is as long as the episodes
+    PLAY, not as long as their source windows. (Scope: see the module comment above
+    this section — process_episode is faked, so this proves LENGTH, not framing.)"""
+    from scripts import edit_plan, edl_to_reel
+    from scripts.lib.edl import EDL
+
+    proj = _write_project(tmp_path)
+    foot = _write_footage(tmp_path, ramp_clip, fps=FPS)
+    sel = _write_selection(tmp_path, [
+        {"source": "ramp.mp4", "window": 0,
+         "ramp": {"at": 1.0, "factor": 0.4, "ease": 0.25, "hold": 0.5}},
+    ])
+    # NOTE: write_edit_plan's real signature is (footage_path, selection_path, project_path,
+    # out_dir, ...) — footage first, matching test_edit_plan.py's own call.
+    plan = edit_plan.write_edit_plan(foot, sel, proj, str(tmp_path))
+    assert plan["status"] == "written", plan
+
+    e = EDL.from_json(str(tmp_path / "EDL.json"))
+    ep = e.episodes[0]
+    assert ep.play_dur() > ep.dur
+
+    _fake_track_pe(monkeypatch)
+    res = edl_to_reel.edl_to_reel(
+        str(tmp_path / "EDL.json"), proj, str(tmp_path),
+        str(tmp_path / "work"), str(tmp_path / "out"))
+    assert res["status"] == "delivered", res
+    assert assembly.probe_duration(res["output"]) == pytest.approx(
+        ep.play_dur(), abs=0.2)
+
+
+def test_the_edl_markdown_reports_the_ramp(ramp_clip, tmp_path):
+    from scripts import edit_plan
+
+    proj = _write_project(tmp_path)
+    foot = _write_footage(tmp_path, ramp_clip, fps=FPS)
+    sel = _write_selection(tmp_path, [
+        {"source": "ramp.mp4", "window": 0,
+         "ramp": {"at": 1.0, "factor": 0.4, "ease": 0.25, "hold": 0.5}},
+    ])
+    plan = edit_plan.write_edit_plan(foot, sel, proj, str(tmp_path))
+    assert plan["status"] == "written", plan
+    md = (tmp_path / "EDL.md").read_text()
+    assert "ramp x2.5" in md and "plays" in md
