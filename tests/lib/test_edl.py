@@ -899,3 +899,34 @@ def test_the_manifest_target_is_unchanged_for_an_unramped_episode():
     # explicitly here, not merely true as a side effect of the ramped test above.
     ep = _ramp_ep()
     assert to_manifest_dict(ep, "seg.mp4", "out.mp4")["target_dur"] == ep.dur
+
+
+# --- housekeeping Task 1: EDLEpisode.smooth_window_s (design §1.2 — the retry
+# ladder's starting value and its lag-branch floor, not a fixed setting) ---
+# NOTE: the task brief's snippets called `EDLEpisode.from_dict(...)`, but EDLEpisode
+# has no from_dict classmethod of its own — only EDL.from_dict does, building episodes
+# via EDLEpisode(**e) (see test_edl_episode_round_trips_the_background_colour's NOTE
+# above, and test_edl_episode_round_trips_a_zoom, for the same discrepancy already
+# documented in this file). Swapped to EDLEpisode(**d), this file's established
+# round-trip idiom everywhere else.
+
+def test_episode_smooth_window_s_defaults_none_and_round_trips():
+    ep = _ep()
+    assert ep.smooth_window_s is None
+    assert ep.to_dict()["smooth_window_s"] is None
+    assert EDLEpisode(**{**ep.to_dict(), "smooth_window_s": 0.6}).smooth_window_s == 0.6
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 2.5, True, "0.5"])
+def test_episode_smooth_window_s_refuses_out_of_band(bad):
+    with pytest.raises(ValueError, match="smooth_window_s"):
+        EDLEpisode(**{**_ep().to_dict(), "smooth_window_s": bad})
+
+
+def test_to_manifest_dict_omits_smooth_window_s_when_unset():
+    assert "smooth_window_s" not in to_manifest_dict(_ep(), "s.mp4", "o.mp4")
+
+
+def test_to_manifest_dict_carries_an_authored_smooth_window_s():
+    ep = EDLEpisode(**{**_ep().to_dict(), "smooth_window_s": 0.6})
+    assert to_manifest_dict(ep, "s.mp4", "o.mp4")["smooth_window_s"] == 0.6

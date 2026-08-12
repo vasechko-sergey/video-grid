@@ -348,6 +348,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
 
     # 3. reframe → check retry loop
     params = dict(orch.DEFAULT_PARAMS)
+    if m.smooth_window_s is not None:
+        # an authored window is this loop's STARTING value, not just its lag-branch
+        # floor (set at the adjust_reframe_params call below) — attempt 1 must render
+        # at the author's own value, not the module default.
+        params["smooth_window_s"] = m.smooth_window_s
     path_out = str(Path(project_dir) / "path.json")
     report = None
     for attempt in range(1, max_attempts + 1):
@@ -417,7 +422,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             if degraded is not None:
                 result["degraded"] = degraded
             return result
-        params = orch.adjust_reframe_params(params, report.fail_reasons)
+        params = orch.adjust_reframe_params(params, report.fail_reasons, floor=m.smooth_window_s)
 
     # defensive: escalation() fires at max_attempts, so this is unreachable
     result = {"status": "escalate", "escalate_to": "edit-plan", "reason": "max-retries",

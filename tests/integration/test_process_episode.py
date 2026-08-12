@@ -1109,3 +1109,68 @@ def test_no_zoom_still_defaults_to_none(monkeypatch, tmp_path):
     calls = _stub_engine(monkeypatch, tmp_path)
     pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
     assert calls["reframe_spec"].zoom is None
+
+
+# --- housekeeping Task 1: the manifest's smooth_window_s seeds the retry ladder's
+# starting value AND floors its lag branch, so an authored window survives a retry
+# instead of being walked back to DEFAULT_PARAMS['smooth_window_s'] (design §1.2) ---
+
+def test_unauthored_smooth_window_s_seeds_the_module_default(monkeypatch, tmp_path):
+    # Global constraint: smooth_window_s=None must keep today's behaviour EXACTLY —
+    # an episode that never asked for a window still reaches ReframeSpec at the
+    # module default, the same value it always got.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_spec"].smooth_window_s == orch.DEFAULT_PARAMS["smooth_window_s"]
+
+
+def test_authored_smooth_window_s_seeds_the_first_attempt(monkeypatch, tmp_path):
+    # The threading half, same shape as test_the_manifests_filler_reaches_the_reframe_spec:
+    # validate() cannot see a drop here (it builds no ReframeSpec of its own to compare
+    # against), so a regression that forgets to seed `params` would pass every gate clean
+    # and silently render every authored window as the module default.
+    calls = _stub_engine(monkeypatch, tmp_path)
+    result = pe.process_episode(_manifest(tmp_path, smooth_window_s=0.6),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert calls["reframe_spec"].smooth_window_s == 0.6
+
+
+def test_authored_smooth_window_s_survives_a_lag_retry(monkeypatch, tmp_path):
+    # THE LOAD-BEARING CASE (design §1.2, brief Steps 5-6). The OLD ladder floors the
+    # lag branch at DEFAULT_PARAMS['smooth_window_s'] (0.25) unconditionally; 0.6 halved
+    # is 0.3, which already clears that floor, so the OLD code would silently walk the
+    # authored 0.6 down to 0.3 on this very retry — discarding the author's instruction
+    # even though it never reaches literal 0.25. The fix floors the lag branch at the
+    # AUTHORED value instead, so attempt 2 must render at the same 0.6 as attempt 1.
+    _stub_engine(monkeypatch, tmp_path)
+    seq = [_report(False, ["on_line"]), _report(True, [])]
+
+    def fake_run(clip, route_path, path_path, spec, out, source=None):
+        r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
+        r.write(out)
+        return r
+    monkeypatch.setattr(pe.check_episode, "run", fake_run)
+
+    windows = []
+
+    def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
+        windows.append(spec.smooth_window_s)
+        # path length must match the route (real reframe invariant) — the shell reads
+        # it back to compute hero marks for the storyboard; reframe also writes
+        # path.meta.json, which the shell reads for the marker mapping
+        Path(out).write_text("clip")
+        Path(path_out).write_text(json.dumps([100] * 10))
+        models.PathMeta(mode="fill", crop_w=1920, crop_h=1080, crop_y=0,
+                        src_dims=(1920, 1080), canvas=(9, 16), out_dims=(1920, 1080),
+                        rect_px=(0, 0, 1920, 1080), freedom=0).write(
+            Path(path_out).with_suffix(".meta.json"))
+        return out
+    monkeypatch.setattr(pe.reframe, "reframe", fake_reframe)
+
+    result = pe.process_episode(_manifest(tmp_path, smooth_window_s=0.6),
+                                project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert result["attempt"] == 2
+    assert windows == [0.6, 0.6]

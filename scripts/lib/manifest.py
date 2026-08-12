@@ -23,7 +23,7 @@ from scripts.lib.models import (COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
 OPTIONAL = ("layout", "motion", "pan", "zoom", "hero", "cast", "color_means", "white_balance",
             "black_point", "highlight", "tone_src", "tone_dst", "saturation", "shadow_red",
-            "mid_blue", "dip",
+            "mid_blue", "dip", "smooth_window_s",
             "stabilize", "model",
             "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
@@ -60,6 +60,10 @@ class Manifest:
     shadow_red: float = 0.0
     mid_blue: float = 1.0
     dip: float = 0.0
+    smooth_window_s: float | None = None   # savgol span in seconds over the tracked path —
+                                           # the retry ladder's starting value and its
+                                           # lag-branch floor; None = ReframeSpec's own
+                                           # 0.25 default. See orchestration.adjust_reframe_params.
     tone_src: tuple[float, float, float] | None = None
     tone_dst: tuple[float, float, float] | None = None
     stabilize: bool = False
@@ -127,6 +131,11 @@ class Manifest:
             shadow_red=float(d["shadow_red"]) if d.get("shadow_red") is not None else 0.0,
             mid_blue=float(d["mid_blue"]) if d.get("mid_blue") is not None else 1.0,
             dip=float(d["dip"]) if d.get("dip") is not None else 0.0,
+            # raw passthrough, NOT float(...) — validate() is the oracle that checks the
+            # type (isinstance-bool-first) and the band; a coercing from_dict would turn
+            # a JSON `true` into 1.0 and a stray "0.5" into 0.5, both silently IN band,
+            # defeating that check before it ever runs (mirrors `hero`'s raw passthrough).
+            smooth_window_s=d.get("smooth_window_s"),
             tone_src=tuple(d["tone_src"]) if d.get("tone_src") is not None else None,
             tone_dst=tuple(d["tone_dst"]) if d.get("tone_dst") is not None else None,
             stabilize=bool(d.get("stabilize", False)),
@@ -230,6 +239,17 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
         problems.append(f"target_dur must be positive; got {m.target_dur}")
     if m.motion is not None and m.motion not in MOTIONS:
         problems.append(f"motion {m.motion!r} unknown — expected one of {MOTIONS} or null")
+    # ReframeSpec is the HARD backstop (scripts/lib/models.py); here it is the soft gate's
+    # oracle, same band and message shape, so a value this gate accepts can never be one
+    # ReframeSpec later rejects deep in the retry loop.
+    if m.smooth_window_s is not None and (
+            isinstance(m.smooth_window_s, bool)
+            or not isinstance(m.smooth_window_s, (int, float))
+            or not 0 < m.smooth_window_s <= 2.0):
+        problems.append(
+            f"smooth_window_s must be a span in seconds in (0, 2.0] or null, got "
+            f"{m.smooth_window_s!r} — it is a filter cutoff, and a window longer than "
+            "a couple of seconds stops following the subject")
     if m.pan is not None:
         # PanSpec is the HARD backstop; here it is the soft gate's oracle — the same
         # LayoutSpec/hero.resolve pattern used twice above. One constructor for

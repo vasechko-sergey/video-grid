@@ -524,6 +524,28 @@ def test_manifest_refuses_a_pan_beside_a_cast_name():
     assert any("hero pin cannot be combined with a pan" in p for p in mf.validate(m))
 
 
+def test_manifest_reads_smooth_window_s():
+    m = mf.Manifest.from_dict(_ok_dict(smooth_window_s=0.6))
+    assert m.smooth_window_s == 0.6
+
+
+def test_manifest_smooth_window_s_defaults_to_none():
+    assert mf.Manifest.from_dict(_ok_dict()).smooth_window_s is None
+
+
+def test_validate_accepts_a_smooth_window_s_in_band():
+    assert mf.validate(mf.Manifest.from_dict(_ok_dict(smooth_window_s=0.6))) == []
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 2.5, True, "0.5"])
+def test_validate_rejects_a_smooth_window_s_out_of_band(bad):
+    # raw passthrough in from_dict (no float() coercion) is load-bearing here: a
+    # coercing from_dict would turn True into 1.0 and "0.5" into 0.5, both IN band,
+    # and this parametrization would then falsely pass for the wrong reason.
+    problems = mf.validate(mf.Manifest.from_dict(_ok_dict(smooth_window_s=bad)))
+    assert any("smooth_window_s" in p for p in problems), (bad, problems)
+
+
 def test_manifest_accepts_a_pan_beside_a_bare_cast_path():
     # `cast` alone, with NO hero pin: must be ACCEPTED. `cast` is the reel-level
     # cast.json PATH — edl.to_manifest_dict (edl.py) stamps it onto EVERY

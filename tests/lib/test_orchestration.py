@@ -299,3 +299,28 @@ def test_adjust_fills_a_partial_params_dict():
     # ...and its OWN value survives the fill (proves {**DEFAULT, **params} order,
     # not the reversed spread that would clobber it back to 750.0)
     assert p["max_speed"] == 300.0 * 0.6
+
+
+# --- housekeeping Task 1: adjust_reframe_params gains a `floor` (design §1.2) ---
+# NOTE: the task brief's snippets called adjust_reframe_params(...) bare, but this
+# file imports the module aliased (`from scripts.lib import orchestration as orch`,
+# top of file) with no bare name ever bound — swapped to orch.adjust_reframe_params(...),
+# matching every other call in this file.
+
+def test_lag_halves_the_window_but_never_below_the_authored_floor():
+    p = orch.adjust_reframe_params({"smooth_window_s": 0.6}, ["on_line"], floor=0.6)
+    assert p["smooth_window_s"] == 0.6          # 0.3 would discard the author's ask
+
+
+def test_floor_none_keeps_todays_default_floor():
+    p = orch.adjust_reframe_params({"smooth_window_s": 0.3}, ["on_line"])
+    assert p["smooth_window_s"] == 0.25         # DEFAULT_PARAMS floor, unchanged
+
+
+def test_floor_does_not_affect_the_jitter_branch():
+    # `floor` only walls off the LAG branch's halving — the jitter branch's widening
+    # is explicitly UNCHANGED by an authored floor (adjust_reframe_params' docstring):
+    # SMOOTH_WINDOW_S_MAX still caps it, floor or no floor.
+    with_floor = orch.adjust_reframe_params({"smooth_window_s": 0.3}, ["jitter"], floor=0.6)
+    without_floor = orch.adjust_reframe_params({"smooth_window_s": 0.3}, ["jitter"])
+    assert with_floor["smooth_window_s"] == without_floor["smooth_window_s"] == 0.6

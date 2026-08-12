@@ -73,6 +73,13 @@ class EDLEpisode:
                               # stabilizing. The signal is already in front of
                               # whoever authors this row — FOOTAGE.md prints the
                               # window's shake.
+    smooth_window_s: float | None = None   # savgol span in SECONDS over the tracked hero
+                                           # path; raise above the 0.25 default to tame
+                                           # jitter on a small/fast subject. None = the
+                                           # ReframeSpec default. This is the retry
+                                           # ladder's STARTING value and its lag-branch
+                                           # floor, not a fixed setting — see
+                                           # orchestration.adjust_reframe_params.
     hero: tuple | str | int | None = None   # seed bbox / rule / track id / cast name (§5.10);
                                             # NOT validated here — see the class docstring: the
                                             # manifest gate reached via preflight is its one home
@@ -124,6 +131,14 @@ class EDLEpisode:
             raise ValueError(f"EDLEpisode.motion {self.motion!r} unknown — expected one of {MOTIONS} or null")
         if not isinstance(self.stabilize, bool):
             raise ValueError(f"EDLEpisode.stabilize must be true or false, got {self.stabilize!r}")
+        if self.smooth_window_s is not None and (
+                isinstance(self.smooth_window_s, bool)
+                or not isinstance(self.smooth_window_s, (int, float))
+                or not 0 < self.smooth_window_s <= 2.0):
+            raise ValueError(
+                f"EDLEpisode.smooth_window_s must be a span in seconds in (0, 2.0] or "
+                f"null, got {self.smooth_window_s!r} — it is a filter cutoff, and a "
+                "window longer than a couple of seconds stops following the subject")
         if self.ramp is not None:
             ramp_mod.validate_window(
                 RampSpec.from_dict(self.ramp), self.dur,
@@ -158,6 +173,7 @@ class EDLEpisode:
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
                 "zoom": self.zoom,
                 "stabilize": self.stabilize, "ramp": self.ramp,
+                "smooth_window_s": self.smooth_window_s,
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
                 "black_point": self.black_point, "highlight": self.highlight,
@@ -377,12 +393,12 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model (a manifest default).
-    Four fields cross conditionally, on two different predicates: `pan`/`motion`/
-    `hero` copy through only when the episode SETS one (not-None), so an absent
-    value leaves the key out rather than carrying an explicit null; `stabilize`
-    copies through only when TRUE, so a false (its default) leaves the key out
-    too. Either way Manifest.from_dict falls to its own None/False default rather
-    than the two sides disagreeing about what unset means. EDL-only fields (source/start/dur/shot_type/processing_notes/
+    Five fields cross conditionally, on two different predicates: `pan`/`motion`/
+    `hero`/`smooth_window_s` copy through only when the episode SETS one (not-None),
+    so an absent value leaves the key out rather than carrying an explicit null;
+    `stabilize` copies through only when TRUE, so a false (its default) leaves the
+    key out too. Either way Manifest.from_dict falls to its own None/False default
+    rather than the two sides disagreeing about what unset means. EDL-only fields (source/start/dur/shot_type/processing_notes/
     beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
@@ -415,6 +431,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["pan"] = ep.pan
     if ep.zoom is not None:
         md["zoom"] = ep.zoom
+    if ep.smooth_window_s is not None:
+        md["smooth_window_s"] = ep.smooth_window_s
     if ep.stabilize:
         md["stabilize"] = True
     if ep.hero is not None:

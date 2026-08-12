@@ -153,19 +153,31 @@ def _lags_line(fail_reasons: list[str]) -> bool:
     return "on_line" in fail_reasons or "centered" in fail_reasons
 
 
-def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str]) -> dict[str, float]:
+def adjust_reframe_params(params: dict[str, float], fail_reasons: list[str],
+                          floor: float | None = None) -> dict[str, float]:
     """One documented nudge per mechanical fail (§4.1 retry-in-place).
 
     A partial `params` is filled from DEFAULT_PARAMS first, so a caller that knows
     about one knob still gets a complete, nudgeable set back rather than a KeyError
-    on the knob it had never heard of."""
+    on the knob it had never heard of.
+
+    `floor` is the authored smooth_window_s (EDLEpisode.smooth_window_s, carried
+    through the manifest) — the lag branch's floor for its max(..., .../2) halving.
+    None means the module default: an episode that never asked for a window keeps
+    today's exact ladder. Set, it stops the first lag retry from silently walking a
+    deliberately wide, authored window back down toward DEFAULT_PARAMS
+    ['smooth_window_s'] — the author asked for that window on purpose, and halving
+    it against the module default instead of their own ask would discard the
+    instruction the moment a line-lag fires."""
     p = {**DEFAULT_PARAMS, **params}
     if _lags_line(fail_reasons):
         p["max_speed"] = p["max_speed"] * 1.5      # crop lags the line → catch up
         # a wide window is exactly what makes the crop lag, so give it back the
-        # responsiveness the same way it was taken — never below the default
-        p["smooth_window_s"] = max(DEFAULT_PARAMS["smooth_window_s"],
-                                   p["smooth_window_s"] / 2)
+        # responsiveness the same way it was taken — never below the default, or
+        # below the caller's own authored floor when it set one (see the `floor`
+        # paragraph above)
+        lo = DEFAULT_PARAMS["smooth_window_s"] if floor is None else floor
+        p["smooth_window_s"] = max(lo, p["smooth_window_s"] / 2)
     if "jitter" in fail_reasons:
         p["max_speed"] = p["max_speed"] * 0.6      # crop too twitchy → damp harder
         # …and widen the averaging window, which is the knob that actually reaches
