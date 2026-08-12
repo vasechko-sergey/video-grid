@@ -31,6 +31,27 @@ def test_the_ease_is_monotonic_and_meets_both_ends():
     assert all(a >= b for a, b in zip(xs, xs[1:]))
 
 
+def test_the_ease_follows_the_cosine_shape_not_a_straight_line():
+    # Coverage hole found by the Task 9 mutation battery: swapping the cosine
+    # ease for a straight line (p instead of (1-cos(pi*p))/2) survived the test
+    # above. Both shapes agree at p=0 and p=1 by construction, and — the
+    # coincidence that hides the mutation — at the EXACT midpoint p=0.5 too,
+    # since cos(pi*0.5) == 0 makes (1-cos(pi*0.5))/2 == 0.5 == p. Monotonicity
+    # holds for a straight line just as it does for the cosine, so nothing in
+    # the test above can tell the two shapes apart. Off-centre is where they
+    # diverge: the cosine's derivative vanishes at both ends, so it spends LESS
+    # of the speed change near the edges and MORE in the middle — a quarter of
+    # the way into the ease it has moved only ~14.6% of the way to `factor`,
+    # not the 25% a straight line would give.
+    p = 0.25
+    lo = SPEC.at - SPEC.hold / 2.0
+    t = (lo - SPEC.ease) + p * SPEC.ease
+    want_cosine = 1.0 + (SPEC.factor - 1.0) * (1.0 - math.cos(math.pi * p)) / 2.0
+    assert ramp.speed_at(t, SPEC) == pytest.approx(want_cosine, abs=1e-9)
+    would_be_linear = 1.0 + (SPEC.factor - 1.0) * p
+    assert ramp.speed_at(t, SPEC) != pytest.approx(would_be_linear, abs=1e-3)
+
+
 def test_knots_span_the_window_and_start_at_zero():
     ts, o = ramp.knots(SPEC, DUR)
     assert len(ts) == len(o)
@@ -166,7 +187,10 @@ def test_retime_issues_one_setpts_fps_pass_through_proc_run(monkeypatch):
     cmd = seen[0]
     vf = cmd[cmd.index("-vf") + 1]
     # single-quoted: the expression's own commas must not split the filter chain
-    assert vf.startswith("setpts='(") and "')/TB'," in vf.replace(")/TB',", "')/TB',")
+    # into separate ffmpeg filters — ffmpeg's own parser strips the quotes it finds.
+    assert vf.startswith("setpts='("), "the setpts expression must open single-quoted"
+    quoted_expr, _, _suffix = vf.partition(",fps=")
+    assert quoted_expr.endswith("'"), "the setpts expression must be closed (quoted) before ,fps="
     assert vf.endswith(",fps=60"), "setpts alone yields VFR — fps= is mandatory"
     assert "-an" in cmd, "slowed audio is pitch garbage; the segment goes silent"
     assert "-ss" not in cmd
@@ -182,9 +206,21 @@ def test_retime_refuses_before_spending_an_encode(monkeypatch):
 
 
 def test_the_retime_argv_passes_the_landmine_lint():
-    # lint._element must not be fooled by the commas inside the quoted setpts
-    # expression — the same quote-blindness that once refused every real zoom
-    # render (design 2026-08-08 as-built).
+    # What this proves: proc.run's always-on check_argv guard does not refuse a
+    # real retime render — the production guarantee that matters, since proc.run
+    # raises before spending an encode on anything check_argv flags.
+    #
+    # It does NOT exercise _element's quote-aware parsing (the fix that stopped a
+    # quoted if(lt(...)) from being misread as a comma-separated filter chain,
+    # design 2026-08-08 as-built) — two reviewers independently established that
+    # check_argv never even calls _element on this argv. _unbounded_source needs a
+    # SYNTH_SOURCES name (color=/testsrc/anullsrc/anoisesrc/sine=), _zoompan_defaults
+    # needs "zoompan=", and _seek_order returns immediately because neither "-t"
+    # nor "-to" is present — none of those trigger strings occur here, so the loops
+    # that would call _element never run. The only check doing real work on this
+    # argv is the always-on lutrgb scan, and it finds nothing either. The quote-aware
+    # parsing itself is exercised by the "_element is quote-aware" section of
+    # tests/lib/test_lint.py, built from the real reframe._xexpr emitter — not here.
     from scripts.lib import lint
     expr = ramp.setpts_expr(SPEC, DUR)
     cmd = ["/bin/ffmpeg", "-y", "-v", "error", "-i", "in.mp4",

@@ -89,9 +89,64 @@ def test_the_retimed_stream_is_constant_frame_rate(ramp_clip, tmp_path):
     assert assembly.probe_stream(dst).fps == pytest.approx(FPS, abs=0.01)
 
 
+def test_the_retimed_stream_actually_holds_fps_many_frames_per_second(ramp_clip, tmp_path):
+    """Coverage hole found by the Task 9 mutation battery: dropping the `,fps=...`
+    suffix from retime's `vf` (row 3) survived the test above. probe_stream reads
+    ffprobe's r_frame_rate, which is the container's DECLARED nominal rate — for
+    an libx264 mp4 with no explicit `-r`, it stays pinned to the source's own fps
+    whether or not a `fps=` filter ran (measured directly: r_frame_rate reports
+    60/1 either way). What `fps=` actually does — duplicate frames until the
+    stream holds FPS of them per second of its own, now-longer, duration — shows
+    up only in the real frame COUNT. Without it, setpts alone re-times each
+    frame's PTS but the filter still emits just the source's original frame
+    count, spread thinner over the stretched duration: the exact stutter
+    MIN_RAMP_FPS exists to refuse, invisible to a check that reads declared
+    metadata instead of measuring it (measured: 120 frames either way the source
+    holds, against ~182 wanted for this SPEC/DUR/FPS — a gap no `abs=` on
+    r_frame_rate could ever see, because r_frame_rate does not move)."""
+    dst = str(tmp_path / "ramped.mp4")
+    ramp.retime(str(ramp_clip), dst, SPEC, DUR, FPS)
+    out_dur = DUR + ramp.ramp_extra(SPEC, DUR)
+    nb_frames = int(proc.run(
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=nb_frames", "-of", "csv=p=0", dst]
+    ).stdout.decode().strip())
+    want = out_dur * FPS
+    assert nb_frames == pytest.approx(want, abs=2), (
+        f"{nb_frames} frames on disk against ~{want:.1f} wanted for {out_dur:.3f}s "
+        f"at {FPS:g}fps — fps= must duplicate frames to fill the stretched "
+        f"duration, not leave the source's own frame count spread over more time")
+
+
 def test_the_retimed_segment_carries_no_audio(ramp_clip, tmp_path):
     dst = str(tmp_path / "ramped.mp4")
     ramp.retime(str(ramp_clip), dst, SPEC, DUR, FPS)
+    streams = proc.run(
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "a",
+         "-show_entries", "stream=index", "-of", "csv=p=0", dst]).stdout.decode()
+    assert streams.strip() == ""
+
+
+def test_retime_drops_a_source_that_actually_has_audio(ramp_clip, tmp_path):
+    """Coverage hole found by the Task 9 mutation battery: dropping `-an` from
+    retime's argv (row 5) left the test above green. ramp_clip, like sample_clip,
+    is built from lavfi color=/overlay sources with no audio input at all — the
+    source has NO audio stream to begin with, so "the output carries none either"
+    holds whether or not `-an` ran; there is nothing for a dropped `-an` to leak
+    through. This test gives retime a source that genuinely carries audio
+    (ramp_clip's picture muxed against a synthesized tone), so a dropped `-an`
+    has something to fail on."""
+    av = str(tmp_path / "with_audio.mp4")
+    proc.run([ffbin.ffmpeg(), "-y", "-i", str(ramp_clip), "-f", "lavfi",
+              "-i", "sine=frequency=440:duration=2", "-shortest",
+              "-c:v", "copy", "-c:a", "aac", av])
+    have = proc.run(
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "a",
+         "-show_entries", "stream=index", "-of", "csv=p=0", av]).stdout.decode()
+    assert have.strip() != "", "fixture setup: the muxed source must actually carry audio"
+
+    dst = str(tmp_path / "ramped.mp4")
+    ramp.retime(av, dst, SPEC, DUR, FPS)
     streams = proc.run(
         [ffbin.ffprobe(), "-v", "error", "-select_streams", "a",
          "-show_entries", "stream=index", "-of", "csv=p=0", dst]).stdout.decode()
