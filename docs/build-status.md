@@ -3060,7 +3060,7 @@ _Last updated: 2026-08-09._
   and for the same reason), and `EDLEpisode.play_dur()` is now the length
   every pacing and reel-length consumer reads — closing the exact coupling
   the 2026-08-03 run broke, where a ramp changed the reel's length but only
-  two of seven readers noticed. That also closes the speed half of #18, with
+  two of eight readers noticed. That also closes the speed half of #18, with
   its own visibility proof (mean frame-difference ratio measured at 0.391
   against a commanded `factor` of 0.40). **What remains of P4**
   (`docs/cinematic-quality-playbook.md` §4): **#9** the cinematic effects

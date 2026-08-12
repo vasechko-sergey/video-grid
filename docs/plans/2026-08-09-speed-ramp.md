@@ -1722,6 +1722,15 @@ git commit -m "docs(ramp): status, registry, backlog and skill guidance"
 | §4 pre-stage at extract | 3 |
 | §5 judder gate, both sites | 1 (`require_playable`), 3 (extract), 5 (edit_plan) |
 | §6 all seven length sites | 2 (markdown), 4 (pacing ×2), 5 (bind ×2, back-edge), 6 (manifest, reel) |
+
+**As built: there were eight, not seven.** The final whole-branch review found an
+eighth consumer this plan and the design both missed — `edit_plan`'s `asl`
+(average shot length), which is screen time and was summing `dur`. It reached
+`EDL.md` and `EDL.json` under-reporting a ramped cut's own ASL. Mechanically
+harmless today, since `moodpreset` reports ASL and never enforces it, but it
+falsified the "every length consumer reads `play_dur()`" claim until the fix
+wave converted it. The count in §6 of the design and in build-status now reads
+eight; the "seven" above is left as the record of what was planned.
 | §7 stage order enforces itself | 5 (the guard), 10 (SKILL) |
 | §8 contract + authoring | 0, 2, 10 |
 | §9 what is not ported | Global Constraints |
