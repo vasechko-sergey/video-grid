@@ -40,7 +40,7 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 
        python -m scripts.reel_brief build --project project.json \
          --length 30 --mood "…" --hook "…" \
-         [--reel-count N] [--music …] [--music-mode free] [--style-lean balanced] \
+         [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
          [--platform …] [--text …] [--ending …] [--cast NAME]... [--notes …] \
          --out-dir .
 
@@ -58,6 +58,11 @@ edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
 - **Optional stage.** The brief enriches the reel; the autonomous path runs off
   `project.json` alone. Run reel-brief when the idea deserves shaping.
 - **Not consumed mechanically in v1:** `music`/`music_mode` are recorded for Phase
-  B3 sourcing (unbuilt); `reel_count > 1` is recorded intent (the mechanical path is
-  single-reel); `style_lean` is editorial guidance, not a `TRENDS.md` (5.4) input.
+  B3 sourcing (unbuilt); `style_lean` is editorial guidance, not a `TRENDS.md` (5.4)
+  input.
+- **`reel_count` stays 1.** `Spec` refuses `reel_count > 1` outright — the field
+  stays in the contract for the day multi-reel fan-out is built, but the CLI will
+  not silently produce one reel for a brief that asked for more. If the user
+  wants several reels, run the conveyor one reel at a time (a project directory
+  per reel).
 - You never hand-edit `SPEC.json`/`SPEC.md` — the CLI regenerates them from answers.

@@ -43,6 +43,12 @@ class Spec:
             raise ValueError("Spec.hook must be a non-empty string (the §5.3 gate)")
         if isinstance(self.reel_count, bool) or not isinstance(self.reel_count, int) or self.reel_count < 1:
             raise ValueError(f"Spec.reel_count must be an int >= 1, got {self.reel_count!r}")
+        if self.reel_count > 1:
+            raise ValueError(
+                f"Spec.reel_count {self.reel_count} — multi-reel fan-out is not built, and "
+                "accepting it here produced ONE reel with no word said. Run the conveyor "
+                "one reel at a time (a project directory per reel). The field stays in the "
+                "contract for the day fan-out lands (design 2026-08-12 §1.4)")
         if not (isinstance(self.music, str) and self.music.strip()):
             raise ValueError("Spec.music must be a non-empty string (track name / 'auto' / 'none')")
         if self.music_mode not in MUSIC_MODES:

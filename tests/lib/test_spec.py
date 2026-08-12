@@ -41,6 +41,15 @@ def test_spec_rejects_reel_count_below_one():
         Spec(**{**GOOD, "reel_count": 0})
 
 
+def test_reel_count_above_one_is_refused_with_the_remedy():
+    with pytest.raises(ValueError, match="one reel at a time"):
+        Spec(**{**GOOD, "reel_count": 3})
+
+
+def test_reel_count_one_is_the_supported_value():
+    assert Spec(**{**GOOD, "reel_count": 1}).reel_count == 1
+
+
 def test_spec_rejects_empty_music():
     with pytest.raises(ValueError, match="music"):
         Spec(**{**GOOD, "music": ""})
@@ -108,9 +117,11 @@ def test_spec_from_dict_rejects_string_cast():
 
 
 def test_to_markdown_heading_and_gate_fields():
-    s = Spec(**{**GOOD, "reel_count": 2, "platform": "tiktok", "cast": ["Anna"]})
+    # reel_count > 1 is refused at construction (see test_reel_count_above_one_is_refused_...);
+    # this test's job is the heading + populated optional fields, not reel_count itself.
+    s = Spec(**{**GOOD, "platform": "tiktok", "cast": ["Anna"]})
     md = s.to_markdown()
-    assert md.startswith("# Reel brief — 2 reels, 30s, 9:16")
+    assert md.startswith("# Reel brief — 1 reel, 30s, 9:16")
     assert "**Mood:** energetic" in md
     assert "**Hook:** jump-cut open" in md
     assert "**Music:** auto (mode: free)" in md
@@ -127,12 +138,15 @@ def test_to_markdown_singular_reel_and_empty_frees_dash():
 
 
 def test_to_markdown_full_render_whole_string():
+    # reel_count is pinned to the only supported value (1) — reel_count > 1 is refused at
+    # construction (see test_reel_count_above_one_is_refused_...); to_markdown's plural
+    # branch is now unreachable through any valid Spec, by design.
     s = Spec(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open",
-             reel_count=2, music="ODESZA", music_mode="local", style_lean="trend",
+             reel_count=1, music="ODESZA", music_mode="local", style_lean="trend",
              platform="tiktok", text="captions", ending="freeze frame",
              cast=["Anna", "Ben"], notes="keep it tight")
     assert s.to_markdown() == (
-        "# Reel brief — 2 reels, 30s, 9:16\n"
+        "# Reel brief — 1 reel, 30s, 9:16\n"
         "\n"
         "- **Mood:** energetic\n"
         "- **Hook:** jump-cut open\n"
