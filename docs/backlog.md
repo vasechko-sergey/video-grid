@@ -76,13 +76,26 @@ reconcile the two neutralizers, white-balance vs normalize-gain, into one author
 crop-accurate / K-frame tone measuring instead of the whole frame at the midpoint (matchgrade §8) ·
 cross-episode white-balance / cast matching (matchgrade §8)
 
-**Moves & effects**
+**Moves — geometry and time.** These move the frame or the clock, ride the
+tracked route, and are judged by `check_episode` like any crop.
 scenery zoom, Ken Burns over a subject-less shot (subject-anchored-moves §11) ·
 easing for zoom and pan travel (subject-anchored-moves §11, pan §12) ·
 `minterpolate` interpolated slow-mo — real intermediate frames instead of duplicates (speed-ramp §13) ·
 speed-**up**, `factor > 1` (speed-ramp §13) ·
-pan tilt (Y motion) and a pan over part of a clip (pan §12) ·
-film LUTs, halation/bloom, light leaks, chromatic aberration, letterbox bars (#9's own candidate list)
+pan tilt (Y motion) and a pan over part of a clip (pan §12)
+
+**Look — image treatment. The tail of #9, whose first half is the P1 row above.**
+Nothing here moves the frame; it tints, darkens or textures it, so none of it
+touches the route or the composition checks. Deferred *behind* the P1 slice, not
+independently of it: film LUTs (need licensed asset files — a distribution
+question before a code one), halation/bloom, light leaks, chromatic aberration,
+letterbox bars (wrong on a 9:16 reel, where the `fit` layout's background already
+does the job).
+
+> **#9 is one item split across three buckets** — P1 builds vignette + grain +
+> bookend fade with a visibility proof each, P2 biases the grade by mood (the
+> long-deferred "mood LUT"), and this line holds the rest. When the P1 slice
+> lands, all three rows move together; do not close #9 on the first one.
 
 **Music**
 adaptive hook length instead of a fixed `HOOK_BEATS` (pacing §10) ·
