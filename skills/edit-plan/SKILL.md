@@ -149,6 +149,29 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      `motion` may still be set — it describes the *subject*, the pan describes
      the *camera*, and the canonical pan is `motion: static` with a moving
      frame, both at once.
+   - `ramp` (optional) — `{"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}`,
+     a **speed ramp**: playback eases down to a slow plateau around one moment
+     and back up — the "hit the drop in slow-mo" move, not a whole-shot
+     slowdown. All four numbers are seconds (or a plain multiplier) measured
+     from the **window's own start**, never the clip's: `at` is the plateau's
+     centre, `factor` is the minimum speed as a literal multiplier (`0.4`
+     means 2.5x slower, not "40% speed"), `ease` is the cosine ramp-in/
+     ramp-out length each side, and `hold` is the plateau's own length at
+     `factor`. The region `[at − hold/2 − ease, at + hold/2 + ease]` must sit
+     entirely inside the window — a ramp that pokes past either edge is
+     refused, naming the overhang, not clamped. The slowest legal `factor` is
+     capped by `MIN_RAMP_FPS = 24.0`: slowing DUPLICATES frames rather than
+     creating them, so a plateau below 24 unique frames per second reads as
+     stutter — the floor is `24 / clip fps`, i.e. `0.4` on 60 fps footage but
+     only `0.8` on 30 fps (`FOOTAGE.md` prints each clip's rate; a deeper
+     ramp needs higher-fps footage, not a lower floor). **Author the ramp
+     before running pacing** — the beat grid is fitted to each episode's
+     PLAYED length, and a ramp added afterwards makes the binding guard
+     refuse, naming the pacing re-run as the fix. A ramped episode therefore
+     plays longer than its window; `EDL.md` shows both numbers on its row. The
+     segment loses its audio entirely (slowed sound is pitch garbage) — say so
+     in `processing_notes` when the shot had nat sound worth keeping, and
+     weigh leaving it unramped instead.
    - `processing_notes` — a short note for the draft labels (optional)
    - **colour** (all optional, per episode; every episode carries an identity-default
      grade, so omit these unless a clip needs correcting): `white_balance` ∈ `[0, 1]`

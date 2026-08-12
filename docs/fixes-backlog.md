@@ -255,7 +255,9 @@ the like.
   `contrast` (+ the grade primitives), plus `tone_src`/`tone_dst` from the
   match-grade conductor. The full per-episode modification set also includes
   layout (crop × rect × filler / `background_color` / border), `composition`,
-  `grid`, `motion`, `pan`, `stabilize` (and the WIP speed `ramp`).
+  `grid`, `motion`, `pan`, `stabilize`, `zoom`, and the speed `ramp` (#7,
+  landed 2026-08-09) — the `edit-plan` SKILL now documents `ramp` itself, but
+  this item is about the skill enumerating the FULL knob set in one place.
 - The `edit-plan` SKILL authors EDL episodes; it should enumerate the full knob
   set so the authoring agent knows its toolbox (today it likely under-documents
   the colour grade). A dedicated grading reference may help.
@@ -292,7 +294,36 @@ known and a title can actually be timed.
 
 ## 7. Slow-mo (speed ramp) is a first-class effect — and it changes the reel length
 
-**Status:** NEEDS DESIGN (feedback captured 2026-08-03). Related to #6.
+**Status:** ✅ LANDED 2026-08-09 — design
+`docs/specs/2026-08-09-speed-ramp-design.md` + plan
+`docs/plans/2026-08-09-speed-ramp.md`. Slow-mo is now a first-class EDL knob:
+`RampSpec` (`at`/`factor`/`ease`/`hold`) eases playback down to a cosine
+plateau around one moment and back up, and `EDLEpisode.play_dur()` — `dur`
+plus the ramp's own added time — is now the length every consumer this
+feedback named reads: `pacing.build_pacing`'s fitter and its shrink floor,
+`edit_plan._bind_pacing`'s guard and assignment, `_back_edge_target`, the
+episode manifest's `target_dur`, and `edl_to_reel`'s reel target. The
+coupling closes structurally, not by convention: a ramp authored AFTER
+pacing makes the binding guard refuse, naming the pacing re-run, because the
+region-enclosure rule (design §2 — the ramp region must sit inside its
+window) makes the added time a `dur`-independent constant the guard can
+compare exactly rather than solve for. The render is ONE `setpts`+`fps`
+ffmpeg pass, applied as a pre-stage at `extract` — the same shape as
+vidstab's own stabilize pre-stage, so tracking always sees the retimed
+pixels rather than a route measured on one timeline and applied to another.
+**What it does not do.** `MIN_RAMP_FPS = 24.0` — the hard, no-waiver floor
+below which duplicated frames read as visible stutter — is a film-rate
+convention, not a measurement against this engine's own footage (design
+§12); it is the constant here most likely to want revisiting. And the floor
+is checked twice, not symmetrically: a hand-authored `EDL.json` driven
+straight through `edl_to_reel`'s SP1 front door meets only the extract
+pre-stage's judder gate, never `edit_plan`'s early one — one of the two
+gates, not both, the same no-silent-bypass shape #17 and #14 already
+recorded. Interpolated slow-mo (`minterpolate`) and speed-up (`factor > 1`)
+are both deferred, not rejected (design §13). See the Done entry in
+`build-status.md` for the measured numbers (the knot-anchoring accuracy, the
+render residual, the visibility proof, and the rejected Python-pipe
+comparison) and the full design §12 honest-limits list.
 
 **Feedback (as given):** the slow-mo effect had to be added on the fly; this is
 an important case because it **changes the length of the reel**.
@@ -634,22 +665,26 @@ effect and reframes existing `pan`.
 
 ## 18. Cinematic effects were born as live patches — land them properly, and verify they show
 
-**Status:** ◐ PARTIALLY LANDED 2026-08-08 (the frame-moving half only) —
-the `zoom` in/out this finding names is now a first-class, TDD'd knob
-(backlog #17 above, design
+**Status:** ◐ PARTIALLY LANDED 2026-08-08 (the frame-moving half) + 2026-08-09
+(the speed half) — the `zoom` in/out this finding names is a first-class,
+TDD'd knob (backlog #17, design
 `docs/specs/2026-08-08-subject-anchored-moves-design.md` + plan
 `docs/plans/2026-08-08-subject-anchored-moves.md`), subject-anchored and
 inside every check, with its own visibility proof (design §9: a real-ffmpeg
 measurement of the subject's on-screen width actually growing, not an
 assumption that a correct-looking argv rendered correct pixels — exactly the
 "is it actually visible on the frame" check this finding asks every effect to
-carry). **Still open, unchanged by this slice:** the speed `ramp` (#7,
-first-class + length-aware — the parked `wip/montage-run-patches` branch
-remains its only surviving copy), the look filters
-(`vignette`/`grain`/`fade`/LUTs, #9), the `highlight_red` colour primitive
-(landed quietly inside colour-as-a-stage but never given its own visibility
-proof), and the `outline-bold` title style — none of these has the TDD +
-visibility-proof treatment this finding asks for yet.
+carry). The speed `ramp` this finding also names is now the same kind of
+knob (backlog #7 above, design `docs/specs/2026-08-09-speed-ramp-design.md`
++ plan `docs/plans/2026-08-09-speed-ramp.md`): a first-class `RampSpec`,
+length-propagated through every pacing and reel-length consumer, with its
+own visibility proof — mean frame-difference measured at a 0.391 ratio
+against a commanded `factor` of 0.40, the same "actually visible on the
+frame" bar the zoom proof set. **Still open after both slices:** the look
+filters (`vignette`/`grain`/`fade`/LUTs, #9), the `highlight_red` colour
+primitive (landed quietly inside colour-as-a-stage but never given its own
+visibility proof), and the `outline-bold` title style — none of these has
+the TDD + visibility-proof treatment this finding asks for yet.
 
 **Finding:** the run grew a real effects wishlist by patching the engine live:
 speed `ramp` (slow-mo), a `highlight_red` colour primitive (pink surf foam),

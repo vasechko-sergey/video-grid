@@ -4,13 +4,199 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-08._
+_Last updated: 2026-08-09._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Speed ramp — slow-mo as a first-class, length-aware EDL knob (fixes-backlog
+  #7, and the speed half of #18 — cinematic-quality playbook priority 4, its
+  second slice) DONE (2026-08-09)** — plan
+  `docs/plans/2026-08-09-speed-ramp.md` + design
+  `docs/specs/2026-08-09-speed-ramp-design.md`, Tasks 0–10 (branch
+  `feat/speed-ramp`, commits `e65eb1b`..`1aed618` + this docs sync). The
+  2026-08-03 real run added slow-mo by patching the engine live (parked on
+  `wip/montage-run-patches`, `fbcd052`, "NOT suite-validated") and updated
+  exactly two length readers — `to_manifest_dict`'s `target_dur` and
+  `EDL.to_markdown`'s total — while scenario-first pacing's beat-grid fitter,
+  the pacing binding guard, the back-edge target and `edl_to_reel`'s reel
+  target all kept reading `ep.dur`: every cut after a ramp silently drifted
+  off its musical line. This slice makes the ramp's added time a first-class
+  fact every length consumer reads, instead of an afterthought two functions
+  happened to see. **The rule: two lengths, both named (design §1).**
+  `EDLEpisode.dur` is how much SOURCE the episode consumes; the new
+  `play_dur()` is how long it PLAYS — `dur + ramp_extra(ramp, dur)`, equal to
+  `dur` without a ramp. **The enclosure refusal (design §2).** A `RampSpec`'s
+  region `[at − hold/2 − ease, at + hold/2 + ease]` must lie inside `[0,
+  dur]`, checked in `EDLEpisode.__post_init__` (so `dataclasses.replace`
+  re-validates on every pacing bind) — not tidiness: with the region
+  enclosed, `ramp_extra` becomes a `dur`-independent CONSTANT, which is what
+  lets `edit_plan._bind_pacing` invert "what source window plays for
+  `slot.dur` seconds?" with one subtraction instead of a solver. **The
+  render: one ffmpeg pass, knots anchored to the region (design §3).**
+  `O(t) = ∫1/s` has no closed form under the cosine ease, so it ships as a
+  piecewise-linear `setpts` expression built from knots that `ramp_extra`
+  (the record) and `setpts_expr` (the render) both read from the SAME
+  `knots()` call — record and render cannot drift apart. The knot PLACEMENT
+  was the slice's one real design correction, caught while the plan was
+  being written: spreading knots evenly across `[0, dur]` makes the
+  approximated `ramp_extra` drift with the window length — 2.0812s at
+  `dur=3.5` against 2.0779s at `dur=6.0` for the reference spec, a 3.3ms
+  spread that grows to 124ms on a shorter ease, silently breaking §2's
+  constancy claim and with it `_bind_pacing`'s subtraction. Anchoring
+  `RAMP_EASE_KNOTS = 16` knots to each ease instead, and spending exactly one
+  interval on each flat and the plateau (where `1/s` is constant and the
+  trapezoid is exact), makes `ramp_extra` bit-identical across
+  `dur ∈ {3.5, 4.0, 6.0, 9.0}` — reconfirmed directly against the shipped
+  `scripts/lib/ramp.py` while writing this entry — and cuts the error
+  against an independent Simpson integration from 5.3ms to **1.8e-15s**,
+  twelve orders of magnitude, because the cosine ease's derivative vanishes
+  at both ends and kills every Euler–Maclaurin correction term (measured:
+  the value stops moving between 8 and 16 subdivisions, Δ=1.4e-10). The
+  reference spec (`at=2.0, factor=0.4, ease=0.5, hold=1.0`) yields **36
+  knots** — 32 spent on the two eases (`RAMP_EASE_KNOTS` each), 4 on the
+  region's own boundaries and the window's — and a **1758-character**
+  expression, the same order as the zoom's crop-path expression. **What the
+  render still costs.** The design's own pre-implementation check rendered
+  the reference spec at 6.0667s against an analytic 6.0811s — 14.5ms of pure
+  frame quantization (6.0811s × 30fps = 182.43 frames, `fps=` emits 182), not
+  knot error. The shipped real-ffmpeg golden
+  (`tests/integration/test_ramp.py::test_the_rendered_length_matches_the_recorded_one`,
+  `at=1.0, factor=0.4, ease=0.25, hold=0.5` on the new 60fps `ramp_clip`
+  fixture) tells the same story at a different scale, reconfirmed by direct
+  measurement while writing this entry: analytic `play_dur()` 3.0406s against
+  a rendered 3.0330s, a 7.6ms residual — under half a frame at 60fps, well
+  inside the test's own `abs=2.0/FPS` (two-frame) tolerance. **Visibility —
+  backlog #18's demand, measured directly against the shipped fixture:** mean
+  `|frame − prev|` over decoded gray frames (the way `lib/anchors` already
+  measures motion) reads 0.657 in the normal band and 0.257 on the plateau, a
+  ratio of **0.391 against a commanded `factor` of 0.40** — the picture is
+  actually slowing, not merely an argv that looks correct. (The design's own
+  §11 illustrative number, 0.453, was measured against a preliminary spec
+  this slice's shipped fixture superseded; 0.391 is what
+  `test_the_ramp_actually_slows_the_picture` measures today, reproduced
+  independently while writing this entry.) **Where it runs, and why (design
+  §4).** `extract_edl` cuts `ep{i}_raw.mp4`, then — when the episode carries
+  a `ramp` — `ramp.retime` replaces that file IN PLACE with a one-pass
+  `setpts='(…)/TB',fps=<source fps>` render before tracking ever sees the
+  segment: a pre-stage writing a file, exactly like vidstab's own stabilize
+  pre-stage (2026-07-20 §1) and for the same reason — the route must be
+  measured on the pixels that ship, or `check_episode` would confirm a
+  framing that agrees with itself while disagreeing with the pixels. The
+  retime is video-only (`-an`): slowed audio is pitch garbage, and
+  `mix._build_ambient`'s existing `anullsrc` substitution keeps the ambient
+  bed in sync by construction. **The judder gate, no waiver (design §5).**
+  `MIN_RAMP_FPS = 24.0` — a hard refusal, not a clamp — is checked twice:
+  free, in `edit_plan.window_to_episode`, against `FootageClip.fps`, before
+  any encode is spent; and again in the extract pre-stage against the
+  PROBED rate, catching a hand-authored EDL that skipped the first gate.
+  `factor` is a literal multiplier (`0.4` = 2.5× slower), so the floor is
+  `24 / fps` — 0.4 on 60fps footage, 0.8 on 30fps. **Seven length sites
+  converted (design §6), each reconfirmed at its shipped location:**
+  `pacing.build_pacing`'s `durs` (`pacing.py:86`), `pacing._bounds`'s inward
+  shrink floor (`pacing.py:43`, via the new `ramp.tail_room`),
+  `edit_plan._bind_pacing`'s guard (`edit_plan.py:211`) and its assignment
+  (`edit_plan.py:222–223`, `dur = slot.dur − ramp_extra` — exact, because
+  §2's enclosure makes `ramp_extra` constant), `edit_plan._back_edge_target`
+  (`edit_plan.py:246`), `edl.to_manifest_dict`'s `target_dur` (`edl.py:375`),
+  and `edl_to_reel`'s reel target sum (`edl_to_reel.py:148`) — plus
+  `EDL.to_markdown`'s total and a `⏱ ramp x2.5 @2.0s (plays 6.08s)`-shaped row
+  annotation. Every one now reads `play_dur()`, not `dur`, wherever it means
+  screen time. **End to end (Task 8, real ffmpeg through a faked
+  `process_episode` middle — see the honest-record note below):** `dur=2.0s`,
+  analytic `play_dur()=3.0406s`, delivered master measured at **3.033s** —
+  within 8ms of the played length (frame quantization, same story as above)
+  and 1.03s longer than the 2.0s source window it was cut from. **The
+  rejected renderer (design §0, §3.4).** The parked WIP's `apply_ramp` opened
+  a decoder/encoder `Popen` pair and pumped raw RGB frames through Python — a
+  fourth `subprocess` importer beside `fetch`/`catalog`/`proc`, invisible to
+  the landmine lint's `proc.run` chokepoint. Measured at 1080p60/3s: the
+  one-pass `setpts`+`fps` render took 0.85s wall-clock for an identical
+  5.083s output; the parked pipe took 1.12s — **1.32×** the cost — and pushed
+  **1.90GB** through the pipe (quadrupling at 4K). Speed was the weakest of
+  the three arguments; going through `proc.run` where the lint can see it,
+  and deleting ~60 lines of hand-rolled frame pumping, were the deciding
+  ones. **Honest limits (design §12, carried here in full).** Slowing
+  duplicates frames; it recovers no detail never shot — a 24fps plateau from
+  a 60fps source is this design's ceiling, not a floor it improves on. A
+  ramped segment loses its natural sound entirely (recorded in
+  `processing_notes`, not left to be discovered). Record and render differ
+  by under one frame — `fps=` cannot emit a fractional frame, so the EDL's
+  number is not bit-exact against the file, though three orders of magnitude
+  under the length gate's ±0.5s band. The ramp costs a second encode
+  generation (crf 8, near-lossless — crf 18 was measured too lossy once a
+  held frame is enlarged by a later tight hero crop). `MIN_RAMP_FPS = 24.0`
+  is a film-rate convention, not a measurement against this engine's own
+  footage — the constant here most likely to want revisiting. The
+  hand-authored front door still bypasses the early gate: an `EDL.json`
+  driven straight through `edl_to_reel`'s SP1 door meets only the extract
+  pre-stage's judder check, never `edit_plan`'s — one gate rather than two,
+  the same shape #17 and #14 already recorded (no *silent* bypass, not no
+  bypass). And the gate proves the ramp is renderable, its claimed length is
+  its played length, and the slowdown is visible in pixels — never whether
+  this was the right moment to slow down. **Deferred (design §13), not
+  rejected:** interpolated slow-mo (`minterpolate`) — real intermediate
+  frames instead of duplicates, deliberately not offered because
+  whitewater/spray is optical flow's worst case (melting artefacts, a worse
+  failure than honest judder) and needs its own artefact study first;
+  speed-UP (`factor > 1`) — the whole design rests on `s ≤ 1` meaning frames
+  are only ever duplicated, and a speed-up drops motion, a different
+  argument; a ramp spanning more than one plateau — the contract admits one
+  region by construction; and auto-placing `at` from `lib/anchors`' action
+  peaks — tempting, and exactly the guess-instead-of-look pattern #12 exists
+  to stop, so it needs the QC judge's eyes, not a heuristic. **Honest-record
+  items, worth more than the wins.** (1) The landmine-lint proof
+  (`test_the_retime_argv_passes_the_landmine_lint`) proves less than its name
+  suggests — verified directly against `scripts/lib/lint.py` while writing
+  this entry: `_seek_order` short-circuits on
+  `if "-t" not in cmd and "-to" not in cmd: return []` (the retime argv has
+  neither), `_unbounded_source` needs a `SYNTH_SOURCES` token present before
+  it ever calls `_element`, and `_zoompan_defaults` needs a literal
+  `"zoompan="` to split on — none of the three appears in a `setpts`+`fps`
+  argv, so only the always-on `lutrgb` substring scan does any real work.
+  The test does prove the production guarantee that matters (the lint does
+  not refuse a real ramp render), just not that `_element`'s quote-aware
+  parsing — the exact thing that once silently refused every real zoom
+  render — was exercised here. (2) The end-to-end proof (Task 8) fakes
+  `process_episode`: real YOLO finds no person in the synthetic drawn box,
+  tracking falls to optical flow, and that route fails `check_episode`'s
+  continuity gate — the same limitation
+  `tests/lib/test_tracking_ladder.py::test_empty_yolo_route_falls_to_optical_flow`
+  documents, and the reason `tests/integration/test_edit_plan.py` fakes the
+  same middle. So Task 8 establishes the LENGTH chain through a real retime
+  at extract; it does not establish tracking or framing on a ramped clip.
+  (3) **The mutation battery (Task 9, 21 rows, reconfirmed against the
+  shipped diff) found three real coverage holes, all closed with new tests —
+  18/21 caught outright:** `probe_stream`'s `r_frame_rate` reports the
+  container's declared nominal rate and never moves whether or not `fps=`
+  ran, so the row-3 mutation (dropping `,fps=…`) survived until
+  `test_the_retimed_stream_actually_holds_fps_many_frames_per_second`
+  asserted the real frame COUNT instead; the `ramp_clip` fixture carries no
+  audio stream at all, so dropping `-an` (row 5) left "no audio out" true
+  either way until `test_retime_drops_a_source_that_actually_has_audio`
+  muxed a synthesized tone in first; and the cosine and linear eases
+  coincide exactly at both endpoints AND at the exact midpoint
+  (`cos(π·0.5) = 0`), precisely the three points
+  `test_the_ease_is_monotonic_and_meets_both_ends` sampled, so swapping the
+  cosine for a straight line (row 18) survived until
+  `test_the_ease_follows_the_cosine_shape_not_a_straight_line` checked an
+  off-centre point. (4) The length proof's tolerance is loose: `abs=2.0/FPS`
+  is two frames — double the one-frame quantization the design claims as the
+  true residual — against a measured residual of 0.0076s; a genuine
+  ~1-frame regression would slip through today. **Two out-of-scope gaps
+  this slice found and deliberately did not fix (design §9):** `EDLEpisode`
+  cannot author `smooth_window_s` even though `ReframeSpec` has carried the
+  field since path-quality (2026-07-28) — a real one-field authoring hole,
+  unrelated to length; and `draft.py` uses the canvas aspect where it needs
+  delivery pixels — a correct fix, but independent of the ramp and belongs
+  on its own evidence. **2614 passed / 3 skipped**, full suite (re-run
+  during this docs-sync task) — the same three pre-existing environment
+  skips (demucs, torchreid, no-network iTunes), none new, no golden fixture
+  moved; an unramped run stays byte-identical by construction
+  (`test_an_unramped_extract_is_unchanged_by_this_slice`).
 
 - **Subject-anchored frame moves (fixes-backlog #17, and the frame-moving half
   of #18 — cinematic-quality playbook priority 4, its first slice) DONE
@@ -2850,15 +3036,28 @@ _Last updated: 2026-08-08._
   first slice, and it also closed the frame-moving half of #18: a `zoom` now
   rides the tracked route through the SAME composition rule every check
   already judges, and a `pan` is refused over any window intake measured as
-  holding people. What remains of P4 (`docs/cinematic-quality-playbook.md`
-  §4): **#7** the speed ramp (first-class, length-aware — the parked
-  `wip/montage-run-patches` branch is still its only surviving copy); **#9**
-  the cinematic effects library + mood-oriented palettes; **#10** the cheap
-  3-frame preview to converge a grade/effect before a full re-encode; and the
-  rest of **#18** — the speed ramp and the look filters
-  (vignette/grain/fade/LUTs) that were born as live patches during the
-  2026-08-03 run and still need landing as first-class, TDD'd knobs with a
-  visibility check, not left parked. **OR**
+  holding people. **#7 (the speed ramp) is now also DONE (2026-08-09, see the
+  Done entry above)** — a `RampSpec` eases playback down to a cosine plateau
+  around one moment and back up, retimed in a single `setpts`+`fps` ffmpeg
+  pass as a pre-stage at extract (the same shape as vidstab's own pre-stage,
+  and for the same reason), and `EDLEpisode.play_dur()` is now the length
+  every pacing and reel-length consumer reads — closing the exact coupling
+  the 2026-08-03 run broke, where a ramp changed the reel's length but only
+  two of seven readers noticed. That also closes the speed half of #18, with
+  its own visibility proof (mean frame-difference ratio measured at 0.391
+  against a commanded `factor` of 0.40). **What remains of P4**
+  (`docs/cinematic-quality-playbook.md` §4): **#9** the cinematic effects
+  library + mood-oriented palettes; **#10** the cheap 3-frame preview to
+  converge a grade/effect before a full re-encode — also the mechanism #18
+  still wants for asserting visibility on the effects that remain; the rest
+  of **#18** — the look filters (vignette/grain/fade/LUTs), `highlight_red`'s
+  still-missing visibility proof, and the `outline-bold` title style; and
+  **#5** (the authoring skill must enumerate every knob), which trails these
+  since it documents whatever surface #9 lands. **Two out-of-scope gaps this
+  slice found and deliberately did not fix** (named in its own Done entry
+  above): `EDLEpisode` cannot author `smooth_window_s` even though
+  `ReframeSpec` has carried the field since path-quality (2026-07-28); and
+  `draft.py` uses the canvas aspect where it needs delivery pixels. **OR**
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
   (`TRENDS.md` cache, §5.4 — low-priority/YAGNI) — the only front-half stage
   left now that SP1b (assemble-draft, DONE 2026-07-13) has shipped; once it's

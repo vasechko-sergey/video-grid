@@ -52,7 +52,7 @@
 **Interfaces:**
 - Produces: `models.RampSpec(at: float, factor: float, ease: float, hold: float)`, frozen-style dataclass with `to_dict() -> dict` and `from_dict(d: dict) -> RampSpec`. Wire keys are `at`/`factor`/`ease`/`hold` — unlike `ZoomSpec`/`PanSpec` there is no keyword clash, so field names and wire names are identical.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_models.py`:
 
@@ -107,12 +107,12 @@ def test_rampspec_names_every_missing_key_at_once():
         models.RampSpec.from_dict({"at": 2.0, "factor": 0.4})
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k rampspec -v`
 Expected: FAIL, `AttributeError: module 'scripts.lib.models' has no attribute 'RampSpec'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Insert into `scripts/lib/models.py` immediately after `ZoomSpec.from_dict` and before `LAYOUT_MODES = ("fill", "fit", "insert")`:
 
@@ -202,12 +202,12 @@ class RampSpec:
         return cls(at=d["at"], factor=d["factor"], ease=d["ease"], hold=d["hold"])
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k rampspec -v`
 Expected: PASS — every test in the selection green
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/models.py tests/lib/test_models.py
@@ -235,7 +235,7 @@ git commit -m "feat(models): RampSpec — the speed ramp's four numbers"
   - `validate_window(spec: RampSpec, dur: float, where: str) -> None`
   - `require_playable(spec: RampSpec, fps: float, where: str) -> None`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_ramp.py`:
 
@@ -411,12 +411,12 @@ def _eval_expr(expr: str, t: float) -> float:
                       {"__builtins__": {}}, env))
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ramp.py -v`
 Expected: FAIL, `ModuleNotFoundError: No module named 'scripts.lib.ramp'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `scripts/lib/ramp.py`:
 
@@ -611,12 +611,12 @@ def setpts_expr(spec: RampSpec, dur: float) -> str:
     return expr
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ramp.py -v`
 Expected: PASS — every test in the file green
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/ramp.py tests/lib/test_ramp.py
@@ -635,7 +635,7 @@ git commit -m "feat(ramp): the pure core — speed profile, knots, extra, gates"
 - Consumes: `ramp.validate_window`, `ramp.ramp_extra`, `models.RampSpec`.
 - Produces: `EDLEpisode.ramp: dict | None`, `EDLEpisode.play_dur() -> float`. Every later task calls `play_dur()`, never `dur`, when it means screen time.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py` (reuse the module's existing episode-building helper if one exists; otherwise this literal):
 
@@ -708,12 +708,12 @@ def test_the_markdown_row_reports_the_ramp_and_its_played_length():
 
 Add to that file's imports: `from scripts.lib import ramp` and `from scripts.lib.models import RampSpec`.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -k "ramp or play_dur" -v`
 Expected: FAIL, `TypeError: EDLEpisode.__init__() got an unexpected keyword argument 'ramp'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/edl.py`, add to the imports:
 
@@ -784,12 +784,12 @@ and inside the row loop, just before the `lines.append(...)`:
 
 and use `notes` in place of `e.processing_notes` in the appended row.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py -v`
 Expected: PASS, no previously-passing test broken
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py tests/lib/test_edl.py
@@ -808,7 +808,7 @@ git commit -m "feat(edl): EDLEpisode.ramp + play_dur() + the enclosure refusal"
 - Consumes: `setpts_expr`, `require_playable` (Task 1); `EDLEpisode.ramp` (Task 2).
 - Produces: `ramp.retime(src: str, dst: str, spec: RampSpec, dur: float, fps: float, crf: int = _CRF) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_ramp.py`:
 
@@ -911,12 +911,12 @@ def test_extract_edl_refuses_a_juddering_ramp_at_the_probed_rate(monkeypatch, tm
             str(tmp_path), str(tmp_path / "seg"))
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ramp.py tests/lib/test_extract.py -k retime -v`
 Expected: FAIL, `AttributeError: module 'scripts.lib.ramp' has no attribute 'retime'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `scripts/lib/ramp.py`:
 
@@ -979,12 +979,12 @@ In `extract_edl`, replace the `segments.append(out)` line with:
 
 (`fps` is already in scope from the `probed, fps = ...` line above.)
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_ramp.py tests/lib/test_extract.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Prove the argv survives the landmine lint**
+- [x] **Step 5: Prove the argv survives the landmine lint**
 
 Add to `tests/lib/test_ramp.py`:
 
@@ -1004,7 +1004,7 @@ def test_the_retime_argv_passes_the_landmine_lint():
 Run: `.venv/bin/python -m pytest tests/lib/test_ramp.py -k landmine -v`
 Expected: PASS. **If it fails, do not weaken the test** — read `scripts/lib/lint.py`'s `check_argv`/`_element` and report the finding: a lint that cannot read this argv would refuse every real ramp render at runtime, exactly as it once did for the zoom.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/ramp.py scripts/extract.py tests/lib/test_ramp.py tests/lib/test_extract.py
@@ -1023,7 +1023,7 @@ git commit -m "feat(ramp): one-pass retime + the extract pre-stage"
 - Consumes: `EDLEpisode.play_dur()` (Task 2), `ramp.tail_room` (Task 1).
 - Produces: no new API — `build_pacing` now fits `Spine` slots to played lengths, so every downstream consumer of `PACING.json` is already in played time.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_the_fitter_receives_played_lengths_not_source_windows(monkeypatch, tmp_path):
@@ -1068,12 +1068,12 @@ def test_the_extend_bound_is_unchanged_by_a_ramp(tmp_path):
 
 Write `_ramped_episode`, `_plain_episode`, `_edl`, `_footage_obj`, `_write_edl`, `_footage`, `_music` and `class _Stop(Exception)` as local helpers in that test module, following whatever fixture style the module already uses for EDL/Footage/MusicSpec construction. `_ramped_episode(dur, factor)` builds an `EDLEpisode` with `ramp={"at": dur/2, "factor": factor, "ease": 0.5, "hold": 1.0}` — for `dur=4.0` that is the region `[1.0, 3.0]`.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing_driver.py -k "played or shrink or extend" -v`
 Expected: FAIL — `seen["durs"] == [4.0]` and `lo == -2.0`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/pacing.py`, add the import:
 
@@ -1114,12 +1114,12 @@ In `build_pacing`, replace the `durs` line:
     durs = [ep.play_dur() for ep in edl.episodes]
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing_driver.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/pacing.py tests/lib/test_pacing_driver.py
@@ -1138,7 +1138,7 @@ git commit -m "fix(pacing): fit the beat grid to played lengths, floor the shrin
 - Consumes: `EDLEpisode.play_dur()`, `ramp.ramp_extra`, `ramp.require_playable`, `FootageClip.fps`.
 - Produces: no new API.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_the_binding_guard_compares_the_played_length():
@@ -1200,12 +1200,12 @@ def test_window_to_episode_accepts_a_ramp_the_clip_can_carry():
 
 Build `_spine(durs, tempo, target=None)` as a local helper returning a `Spine` whose `slots` carry those durations (mirror the module's existing spine helper if it has one), and `_clip(fps)` as a `FootageClip` with at least one window long enough to hold the ramp.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k "played or binding or judder or back_edge" -v`
 Expected: FAIL — the guard raises "fitted to a different edit" on a correct fit
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/edit_plan.py`, extend the lib import with `ramp as ramp_mod` and `RampSpec`.
 
@@ -1252,12 +1252,12 @@ In `_back_edge_target`:
 
 and update that function's docstring sentence "`realized` sums EVERY bound episode" to "`realized` sums EVERY bound episode's PLAYED length".
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -1276,7 +1276,7 @@ git commit -m "fix(edit_plan): bind, target and gate a ramp in played time"
 - Consumes: `EDLEpisode.play_dur()`.
 - Produces: no new API. After this task all seven design §6 sites read played time.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py`:
 
@@ -1314,12 +1314,12 @@ module's current `_build_manifest` tests do; the target arithmetic under test ru
 after both. Do NOT reach for `edl_to_reel.edl_to_reel`, which would go on to
 render.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_edl_to_reel.py -k "played or target" -v`
 Expected: FAIL — both report the source-window sum
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/edl.py`'s `to_manifest_dict`:
 
@@ -1337,12 +1337,12 @@ In `scripts/edl_to_reel.py`:
               else sum(ep.play_dur() for ep in edl.episodes))
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_edl_to_reel.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py scripts/edl_to_reel.py tests/lib/test_edl.py tests/lib/test_edl_to_reel.py
@@ -1363,7 +1363,7 @@ git commit -m "fix(edl,edl_to_reel): episode and reel targets read played time"
 
 **Why a new fixture:** the shared `sample_clip` is 30 fps, and `MIN_RAMP_FPS = 24.0` therefore admits only `factor ≥ 0.8` on it — a 1.25× slowdown too shallow to separate from measurement noise (design §11). At 60 fps `factor = 0.4` is legal.
 
-- [ ] **Step 1: Add the fixture**
+- [x] **Step 1: Add the fixture**
 
 Append to `tests/conftest.py`:
 
@@ -1393,7 +1393,7 @@ def ramp_clip(tmp_path_factory):
     return out
 ```
 
-- [ ] **Step 2: Write the proofs**
+- [x] **Step 2: Write the proofs**
 
 Create `tests/integration/test_ramp.py`:
 
@@ -1505,12 +1505,12 @@ def test_a_deeper_ramp_slows_more_than_a_shallow_one(ramp_clip, tmp_path):
     assert assembly.probe_duration(b) > assembly.probe_duration(a) + 0.2
 ```
 
-- [ ] **Step 3: Run the proofs**
+- [x] **Step 3: Run the proofs**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_ramp.py -v`
 Expected: PASS — every test in the file green. If the visibility ratio misses its band, **report the number** — do not widen `abs=0.12` to make it pass. A ratio far from `factor` means the retime is not doing what the design claims.
 
-- [ ] **Step 4: Prove the unramped path is byte-identical**
+- [x] **Step 4: Prove the unramped path is byte-identical**
 
 Add to `tests/integration/test_ramp.py`:
 
@@ -1535,7 +1535,7 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path):
 Run: `.venv/bin/python -m pytest tests/integration/test_ramp.py -v`
 Expected: PASS — including the new byte-identity test
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_ramp.py tests/conftest.py
@@ -1552,7 +1552,7 @@ git commit -m "test(ramp): real-ffmpeg length, visibility and byte-identity proo
 **Interfaces:**
 - Consumes: Tasks 0–7 complete.
 
-- [ ] **Step 1: Write the end-to-end proof**
+- [x] **Step 1: Write the end-to-end proof**
 
 Find the existing SP3→SP1 integration test (`grep -rln "write_edit_plan" tests/integration/`) and mirror its scaffolding — FOOTAGE.json, project.json, selection.json, then `edit_plan build`, then `edl_to_reel`. Append to `tests/integration/test_ramp.py`:
 
@@ -1601,12 +1601,12 @@ Write `_write_project`, `_write_footage` and `_write_selection` by copying the e
 
 The signature above is the real one: `edl_to_reel.edl_to_reel(edl_path, project_path, footage_root, work_dir, out_dir, *, music=None, titles=None, jobs=DEFAULT_JOBS, color_delta_max=None, changelog="")`, returning `{"status": "delivered", "output": ..., "report": ..., "reprocessed": [...]}` on success and `{"status": "stop_and_report", "finding": {...}, ...}` otherwise. Assert on `status` first so a stop reports its finding instead of a bare `KeyError`.
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_ramp.py -v`
 Expected: PASS — including both end-to-end tests
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_ramp.py
@@ -1622,7 +1622,7 @@ git commit -m "test(ramp): end-to-end — a ramped episode reaches the reel at p
 
 The battery is a sequence of **steps, not suggestions**. For each row: apply the mutation to production code, run the named test selection, confirm it FAILS, then `git checkout --` **only the mutated file** and re-confirm green. If a mutation SURVIVES, write the missing test, commit it, and record the hole in the task report.
 
-- [ ] **Step 1: Run the battery**
+- [x] **Step 1: Run the battery**
 
 | # | Mutation | Must be caught by |
 |---|---|---|
@@ -1648,12 +1648,12 @@ The battery is a sequence of **steps, not suggestions**. For each row: apply the
 | 19 | `RampSpec.__post_init__`'s bool-before-int check removed | the six `test_rampspec_refuses_a_bool_before_int` cases |
 | 20 | `RampSpec` accepts `factor > 1.0` | `test_rampspec_refuses_out_of_range[factor-1.1]` |
 
-- [ ] **Step 2: Run the whole suite**
+- [x] **Step 2: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: every test passes; the only new skips are ones that already existed (demucs, torchreid, no-network iTunes). **No golden fixture may move** — an unramped run is byte-identical by construction. If a golden moved, stop and report it rather than re-pinning.
 
-- [ ] **Step 3: Commit any tests the battery added**
+- [x] **Step 3: Commit any tests the battery added**
 
 ```bash
 git add tests/
@@ -1667,7 +1667,7 @@ git commit -m "test(ramp): close the mutation-battery holes"
 **Files:**
 - Modify: `skills/edit-plan/SKILL.md`, `docs/build-status.md`, `docs/pipeline-map.md`, `CLAUDE.md`, `docs/fixes-backlog.md`, `docs/cinematic-quality-playbook.md`, `docs/plans/2026-08-09-speed-ramp.md`
 
-- [ ] **Step 1: `skills/edit-plan/SKILL.md`**
+- [x] **Step 1: `skills/edit-plan/SKILL.md`**
 
 Add a `ramp` subsection beside the existing `zoom`/`pan` guidance:
 
@@ -1679,15 +1679,15 @@ Add a `ramp` subsection beside the existing `zoom`/`pan` guidance:
 - A ramped episode plays longer than its window; `EDL.md` shows both.
 - The segment goes silent — say so in `processing_notes` if the shot had nat sound worth keeping, and consider not ramping it.
 
-- [ ] **Step 2: `docs/build-status.md`**
+- [x] **Step 2: `docs/build-status.md`**
 
 Add a Done entry dated 2026-08-09 carrying the measured numbers (6.067s rendered against 6.081s analytic; the 32-knot table; the 0.453 visibility ratio against a 0.40 factor; 1.32× and 1.90 GB for the rejected pipe), the seven fixed length sites, every §12 honest limit, and the §13 deferrals. Update **Next action** to name what remains in P4: **#9** effects library + mood palettes, **#10** the 3-frame probe, the rest of **#18** (look filters, `highlight_red`'s missing visibility proof, `outline-bold`), and **#5** documenting the knob surface — plus the two out-of-scope gaps this slice found and did not fix: `EDLEpisode.smooth_window_s` cannot be authored though `ReframeSpec` has the field, and `draft.py` uses the canvas aspect where it needs delivery pixels.
 
-- [ ] **Step 3: `docs/pipeline-map.md`**
+- [x] **Step 3: `docs/pipeline-map.md`**
 
 Note the retime pre-stage in the extract row, beside stabilize.
 
-- [ ] **Step 4: `CLAUDE.md`**
+- [x] **Step 4: `CLAUDE.md`**
 
 Add two Quick Reference rows (design + plan) in the established one-paragraph style, placed after the subject-anchored-moves rows. Add one always-loaded Known-troubles bullet:
 
@@ -1697,11 +1697,11 @@ Add two Quick Reference rows (design + plan) in the established one-paragraph st
 >   string: in argv form nothing strips shell quotes, so the first bare comma
 >   splits the filter chain.
 
-- [ ] **Step 5: `docs/fixes-backlog.md` and the playbook**
+- [x] **Step 5: `docs/fixes-backlog.md` and the playbook**
 
 Mark **#7 ✅ LANDED 2026-08-09** with the design/plan links, what it does, and what it does not (the §12 limits — especially that `MIN_RAMP_FPS` is a convention and that a hand-authored EDL meets only one of the two judder gates). Update **#18** to record the speed half as landed with its visibility proof, leaving the look filters, `highlight_red` and `outline-bold` open. Update the playbook's priority 4 the same way.
 
-- [ ] **Step 6: Tick this plan's checkboxes and commit**
+- [x] **Step 6: Tick this plan's checkboxes and commit**
 
 ```bash
 git add docs/ CLAUDE.md skills/

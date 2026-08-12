@@ -160,8 +160,9 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    refuses a tampered EDL or an unbound reel report and stamps every delivery
    with an attestation; the dirty-tree question is resolved (the live tree is
    clean, one parked branch deleted). #7/#18's speed-ramp/effects work stays
-   open — its only copy still lives on the parked `wip/montage-run-patches`
-   branch — and priority 3 below is otherwise unblocked.
+   open as of this entry — its only copy still lived on the parked
+   `wip/montage-run-patches` branch — and priority 3 below is otherwise
+   unblocked. (#7 has since landed, 2026-08-09 — see priority 4 below.)
 3. **Editorial intelligence** — #12 look-don't-guess, the **selection** half,
    **✅ LANDED 2026-08-05** (design
    `docs/specs/2026-08-05-footage-contact-sheet-design.md` + plan
@@ -215,14 +216,31 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    `docs/plans/2026-08-08-subject-anchored-moves.md`): a `zoom` rides the
    tracked route through the same composition rule as any crop so every
    `check_episode` check applies to it, and a `pan`'s route-less path is now
-   refused over any window intake MEASURED as holding people. Still open:
-   **#7** speed ramp (length-aware, parked WIP on `wip/montage-run-patches` is
-   its only copy), **#9** effects library + mood palettes, the rest of **#18**
-   (look filters, `highlight_red`'s missing visibility proof, `outline-bold`),
-   and **#10** cheap 3-frame preview to keep iteration affordable — which is
-   also the mechanism #18 wants for asserting an effect is visible in pixels.
-   **#5** (the authoring skill must enumerate every knob) trails these: it
-   documents whatever surface #7/#9 land.
+   refused over any window intake MEASURED as holding people. **#7 speed ramp
+   ✅ LANDED 2026-08-09** (design
+   `docs/specs/2026-08-09-speed-ramp-design.md` + plan
+   `docs/plans/2026-08-09-speed-ramp.md`): a `RampSpec` eases playback down to
+   a cosine plateau around one moment and back up, retimed in a single
+   `setpts`+`fps` ffmpeg pass as a pre-stage at extract — the same shape as
+   vidstab's own pre-stage, and for the same reason (the route must be
+   measured on the pixels that ship). `EDLEpisode.play_dur()` closes the
+   coupling the 2026-08-03 run actually broke — a ramp changes the reel's
+   length, and scenario-first pacing computes lengths from the footage — by
+   becoming the length every pacing/reel-length consumer reads instead of the
+   two that noticed before; a ramp authored after pacing now makes the
+   binding guard refuse outright, naming the re-run, rather than silently
+   drifting off the beat grid. A hard, no-waiver judder gate
+   (`MIN_RAMP_FPS = 24.0`, a film-rate convention rather than a footage
+   measurement) refuses a plateau that would duplicate below 24 unique
+   frames per second, checked once free in `edit_plan` and again in
+   `extract` against the probed rate — a hand-authored EDL still meets only
+   the second of those two gates. Still open: **#9** effects library + mood
+   palettes, the rest of **#18** (look filters, `highlight_red`'s missing
+   visibility proof, `outline-bold`), and **#10** cheap 3-frame preview to
+   keep iteration affordable — which is also the mechanism #18 wants for
+   asserting an effect is visible in pixels. **#5** (the authoring skill must
+   enumerate every knob) trails these: it documents whatever surface #9
+   lands.
 5. **Polish** — #2 music phrase-out (still NEEDS INVESTIGATION; #16 versioning
    and #4 setup both ✅ LANDED 2026-08-04), plus the minor run bugs: a stray
    empty `out/title_1.txt` and length figures that do not reconcile (fitted
@@ -244,8 +262,13 @@ finish; polish last.
   rules/QC (the run showed unguided taste drifts and guesses).
 - ~~**Dirty tree:**~~ resolved 2026-08-04 — the live tree is clean;
   `wip/montage-run-hardening` was fully ported and deleted, and
-  `wip/montage-run-patches` stays parked (deliberately, not deferred) as the
-  only copy of the still-open #7/#18 speed-ramp/effects work.
+  `wip/montage-run-patches` stays parked (deliberately, not deferred). Its
+  speed-ramp half was superseded 2026-08-09 by a fresh implementation rather
+  than ported — design §0 read the parked commit and rejected its
+  decode/encode Python renderer and its now-dead zoom code, keeping only the
+  cosine speed-profile math — so the branch is now the only copy of just the
+  still-open #18 remainder (the look filters, `highlight_red`'s missing
+  visibility proof, `outline-bold`).
 - **Effect QC:** what "visible on the frame" and "composition-respecting" checks look
   like concretely (the 3-frame probe, #10, extended beyond colour).
 
