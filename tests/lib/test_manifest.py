@@ -458,10 +458,11 @@ def test_a_manifest_without_stabilize_never_probes_ffmpeg(monkeypatch):
 
 def test_manifest_from_dict_reads_colour():
     # highlight_red=0.15 is distinguishable from every other value asserted here
-    # (and from shadow_red's own test value elsewhere in this file) so a
-    # copy-paste regression in from_dict's highlight_red line — reading
-    # "shadow_red" instead, or an inverted `is None` collapsing it to the 0.0
-    # default — fails this test rather than coincidentally matching.
+    # (and from shadow_red's own test value in tests/integration/test_process_episode.py,
+    # 0.05 — shadow_red never appears as a value in THIS file) so a copy-paste
+    # regression in from_dict's highlight_red line — reading "shadow_red" instead,
+    # or an inverted `is None` collapsing it to the 0.0 default — fails this test
+    # rather than coincidentally matching.
     m = mf.Manifest.from_dict(_ok_dict(white_balance=0.5, dip=0.2, highlight_red=0.15,
                                        tone_src=[30, 100, 148], tone_dst=[35, 110, 150]))
     assert m.white_balance == 0.5 and m.dip == 0.2 and m.tone_src == (30, 100, 148)

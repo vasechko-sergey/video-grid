@@ -669,30 +669,33 @@ REAL_SITES = {
         "-frames:v", "5", "/w/b%02d.png"],
     "storyboard.py:36 — input seek, still grab, no window": [
         "ffmpeg", "-y", "-ss", "1.2", "-i", "src.mp4", "-frames:v", "1", "/w/f00.png"],
-    "mix.py:72 — a segment's nat-sound bed": [
+    "mix.py:74 — a segment's nat-sound bed": [
         "ffmpeg", "-y", "-i", "seg.mp4", "-t", "2.5", "-vn", "-ac", "2",
         "-ar", "48000", "-af", "apad", "-c:a", "pcm_s16le", "amb_000.wav"],
-    "mix.py:75 — anullsrc bounded by -t": [
+    "mix.py:77 — anullsrc bounded by -t": [
         "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
         "-t", "2.5", "-c:a", "pcm_s16le", "amb_000.wav"],
-    "mix.py:109 — anoisesrc bounded by d=, with seed= beside it": [
+    "mix.py:111 — anoisesrc bounded by d=, with seed= beside it": [
         "ffmpeg", "-y", "-f", "lavfi", "-i",
         "anoisesrc=color=pink:r=48000:d=0.35:a=0.9:seed=42",
         "-af", ("bandpass=f=1200:width_type=q:w=0.7,afade=t=in:st=0:d=0.08,"
                 "afade=t=out:st=0.08:d=0.27"),
         "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "whoosh.wav"],
-    "mix.py:137 — sfx bed, the -t sitting AHEAD of the lavfi source": [
+    "mix.py:139 — sfx bed, the -t sitting AHEAD of the lavfi source": [
         "ffmpeg", "-y", "-t", "18.000000", "-f", "lavfi", "-i",
         "anullsrc=r=48000:cl=stereo", "-i", "whoosh.wav", "-filter_complex",
         ("[1:a]asplit=2[w0][w1];[w0]adelay=2800:all=1[d0];"
          "[w1]adelay=7300:all=1[d1];"
          "[0:a][d0][d1]amix=inputs=3:duration=first:normalize=0[sfx]"),
         "-map", "[sfx]", "-c:a", "pcm_s16le", "sfx.wav"],
-    "mix.py:193 — input seek on a window, accurate_seek": [
+    "mix.py:205 — input seek on a window, accurate_seek": [
         "ffmpeg", "-y", "-accurate_seek", "-ss", "12.5", "-i", "track.mp3",
-        "-t", "18.0",
-        "-af", "afade=t=in:st=0:d=0.5,afade=t=out:st=17.5:d=0.5", "frag.wav"],
-    "mix.py:207 — the ducking mix graph (a splat site)": [
+        "-t", "18.0", "frag.wav"],
+    "mix.py:225 — the post-mix bookend fade, before loudnorm (fades the MIXED "
+    "stem, not the fragment — design 2026-08-13 §5)": [
+        "ffmpeg", "-y", "-i", "mixed.wav", "-af",
+        "afade=t=in:st=0:d=0.5,afade=t=out:st=17.5:d=0.5", "faded.wav"],
+    "mix.py:217 — the ducking mix graph (a splat site)": [
         "ffmpeg", "-y", "-i", "frag.wav", "-i", "ambient.wav", "-i", "sfx.wav",
         "-filter_complex",
         ("[0:a]asplit=2[msum][mkey];[1:a]volume=0.6[amb];"
