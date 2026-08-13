@@ -121,8 +121,11 @@ def test_from_dict_rejects_a_non_object():
         LookSpec.from_dict([0.3, 0.8])
 
 
-@pytest.mark.parametrize("v", [-0.1, 0.61, True, "0.3"])
+@pytest.mark.parametrize("v", [-0.1, 0.61, True, False, "0.3"])
 def test_vignette_refuses_out_of_band(v):
+    # False is the discriminating bool case here: False == 0, which IS inside
+    # [0, 0.6], so only the bool exclusion rejects it. True == 1 is outside the band
+    # and would be refused by the range check alone.
     with pytest.raises(ValueError, match="vignette"):
         LookSpec(vignette=v)
 
@@ -299,10 +302,16 @@ def fade_args(fade: float, dur: float) -> list[str]:
     """The bookend pair, or [] at 0. Refuses a fade that would meet itself in the
     middle — two overlapping ramps multiply into a reel that never reaches full
     brightness, which looks like a broken encode rather than a style."""
+    # Type check BEFORE the zero shortcut: False == 0 in Python, so an `if fade == 0`
+    # placed first would accept a bool and return [] instead of refusing it. color.py's
+    # black_point/shadow_red/dip all order these two the same way, for the same reason.
+    if not _num(fade) or not 0.0 <= fade <= LOOK_FADE_MAX:
+        raise ValueError(
+            f"fade_args needs a fade in [0, {LOOK_FADE_MAX}] seconds — the same band "
+            f"LookSpec enforces, re-checked here because this function is public and a "
+            f"direct caller does not go through the dataclass. Got {fade!r}")
     if fade == 0:
         return []
-    if not _num(fade) or fade < 0:
-        raise ValueError(f"fade must be a non-negative number of seconds, got {fade!r}")
     if not _num(dur) or dur <= 0:
         raise ValueError(f"fade_args needs a positive reel duration, got {dur!r}")
     if 2 * fade > dur:
@@ -421,8 +430,12 @@ Then, next to the other checkers, add:
 ```python
 def _blend_multiply(cmd: list[str]) -> list[str]:
     """Flag an all-plane multiply blend — it destroys chroma silently."""
+    # lowercase "chroma" in the MESSAGE on purpose: the Step-1 test asserts
+    # `"chroma" in out[0]` and Python's `in` is case-sensitive, so a capitalised
+    # word here fails this task's own test. The comment above may shout; the
+    # user-facing string matches its five neighbours and does not.
     return [f"blend=all_mode=multiply in {a!r} — design §12: an all-plane multiply "
-            "scales the CHROMA planes as well as luma (measured mean |dU| 63 against "
+            "scales the chroma planes as well as luma (measured mean |dU| 63 against "
             "the same darkening through alpha), so the picture keeps roughly the right "
             "brightness and loses its colour. Composite an RGBA mask with `overlay` "
             "instead, or name one plane with c0_mode=multiply."
