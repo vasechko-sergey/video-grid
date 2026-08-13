@@ -580,6 +580,41 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
     assert "colorchannelmixer=rr=1.000:gg=1.000:bb=1.000" in " ".join(cmd["v"])
 
 
+def test_reframe_forwards_highlight_red_onto_the_grade(tmp_path, monkeypatch):
+    # 2026-08-13 cinematic-look Task 7 fix round 1: highlight_red validated and
+    # rode ReframeSpec/Manifest correctly but this call never forwarded it to
+    # grade_chain — a silent no-op (backlog #18's whole complaint) that no test
+    # caught because the earlier coverage only proved the CARRIER, never the
+    # render. This proves the render.
+    route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
+    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
+    cmd = {}
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
+                              layout=models.LayoutSpec(mode="fill"), highlight_red=0.2)
+    reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
+    joined = " ".join(cmd["v"])
+    assert color.highlight_red_arg(0.2).lstrip(",") in joined
+
+
+def test_reframe_without_highlight_red_never_emits_the_red_shoulder_curve(tmp_path, monkeypatch):
+    # the paired absence proof: at the 0.0 default (highlight_red omitted here),
+    # the fragment a non-zero pull WOULD produce must not appear at all.
+    route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
+    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
+    cmd = {}
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
+                              layout=models.LayoutSpec(mode="fill"))
+    reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
+    joined = " ".join(cmd["v"])
+    assert color.highlight_red_arg(0.2).lstrip(",") not in joined
+
+
 # --- colour-as-a-stage Task 6 (Approach A): _filter_args takes a FINISHED grade
 # string from color.grade_chain; reframe() builds wb/tone/grade and verifies the
 # tone curve before it ever reaches ffmpeg for real ---

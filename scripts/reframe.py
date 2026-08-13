@@ -488,6 +488,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     grade = color.grade_chain(gains, wb=wb, tone=tone, black_point=spec.black_point,
                               shadow_red=spec.shadow_red, mid_blue=spec.mid_blue,
                               saturation=spec.saturation, highlight=spec.highlight,
+                              highlight_red=spec.highlight_red,
                               dip=spec.dip, dur=dur)
     zoom_args = ""
     base_xs = path                     # the crop filter's x — the desired rect without a zoom
