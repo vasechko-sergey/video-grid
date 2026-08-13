@@ -73,7 +73,7 @@ def test_titles_from_json_roundtrip(tmp_path):
 
 def test_positions_and_styles_frozen():
     assert POSITIONS == ("top", "center", "bottom")
-    assert STYLES == ("bold-box", "outline", "plain")
+    assert STYLES == ("bold-box", "outline", "outline-bold", "plain")
 
 
 def _fake_resolve(name):
