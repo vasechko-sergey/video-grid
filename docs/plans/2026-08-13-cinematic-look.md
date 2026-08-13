@@ -1276,7 +1276,10 @@ git commit -m "feat(look): MoodPreset.look supplies the brief's default"
 - Modify: `scripts/lib/color.py` (`highlight_red_arg` + two constants + `grade_chain`)
 - Modify: `scripts/lib/models.py` (`ReframeSpec.highlight_red`)
 - Modify: `scripts/lib/edl.py` (`EDLEpisode.highlight_red` + `to_manifest_dict`)
+- Modify: `scripts/lib/manifest.py` (`Manifest.highlight_red` — the OPTIONAL tuple, the
+  field, the `from_dict` line, mirroring `shadow_red`'s three parts)
 - Modify: `scripts/process_episode.py` (pass it into the spec)
+- Modify: `scripts/reframe.py` (forward `spec.highlight_red` into `grade_chain`)
 - Test: `tests/lib/test_color.py`, `tests/lib/test_models.py`, `tests/lib/test_edl.py`
 
 **Interfaces:**
@@ -1327,9 +1330,12 @@ def test_highlight_red_refuses_a_knee_outside_its_band(knee):
 
 def test_grade_chain_places_highlight_red_after_the_shoulder():
     # the shoulder lift, then the red shoulder pull, then the timeline dip LAST
-    out = color.grade_chain((1.0, 1.0, 1.0), highlight=1.2, highlight_red=0.2,
+    # highlight must be IN highlight_arg's [0.6, 1.0] band and NOT at its identity:
+    # out of band it raises before the test runs, and at identity it returns "",
+    # whose .index() is 0 and would make the ordering assertion pass vacuously.
+    out = color.grade_chain((1.0, 1.0, 1.0), highlight=0.8, highlight_red=0.2,
                             dip=0.1, dur=3.0)
-    hi = color.highlight_arg(1.2).lstrip(",")
+    hi = color.highlight_arg(0.8).lstrip(",")
     hr = color.highlight_red_arg(0.2).lstrip(",")
     dip = color.dip_arg(0.1, 3.0).lstrip(",")
     assert out.index(hi) < out.index(hr) < out.index(dip)
