@@ -33,9 +33,12 @@ class LookSpec:
     filter is NOT EMITTED — the same convention color.white_balance uses, so a
     LookSpec() renders exactly what this repo rendered before looks existed.
 
-    Distinct from None on its carriers: `EDL.look is None` means never authored
-    (the mood preset fills it), `EDL.look == LookSpec()` means authored as no look
-    (the preset does not get to override it)."""
+    Distinct from None on its carriers: `EDL.look is None` means never authored,
+    `EDL.look == LookSpec()` means authored as no look (the preset does not get to
+    override it). A mood that MATCHES a preset fills the None from it; a mood that
+    matches nothing leaves it None on purpose, because None is the only value that
+    changes neither half of a brief-less run — filling it would either impose a
+    picture fade nobody asked for or, at fade=0, switch off mix's audio bookend."""
     vignette: float = 0.0    # corner darkening as a fraction, 0 = off
     fade: float = 0.0        # bookend fade seconds per end, 0 = off
 

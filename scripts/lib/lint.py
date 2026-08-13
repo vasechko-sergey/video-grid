@@ -35,7 +35,7 @@ import re
 BANNED_FILTERS = ("lutrgb",)
 
 # lavfi sources that never send end-of-stream unless bounded (design §12).
-# Six is deliberately not exhaustive: ffmpeg has a dozen more infinite sources
+# Six is deliberately not exhaustive: ffmpeg has eleven more infinite sources
 # and every one reads clean here. Those are MISSES, the safe direction; widening
 # is a later call, but the under-coverage is written down rather than implied
 # away — in the landmine-lint design §5, which NAMES them and is the one place

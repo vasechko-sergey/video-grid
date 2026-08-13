@@ -293,15 +293,22 @@ lint — it converts an unexamined risk into a false sense of safety.
   default `"ffmpeg"`). Harmless today, but it is the template for a future bypass of
   any check keyed on argv[0] being the literal `"ffmpeg"`. The runtime guard therefore
   inspects **every** command it is handed rather than filtering on argv[0].
-- **`SYNTH_SOURCES` is a five-entry denylist and it under-covers.** It names
-  `color=`, `testsrc`, `anullsrc`, `anoisesrc`, `sine=` — the five this repo
-  actually uses. ffmpeg has many more infinite sources, and every one of them
-  reads clean: `nullsrc`, `aevalsrc`, `rgbtestsrc`, `yuvtestsrc`, `smptebars`,
+- **`SYNTH_SOURCES` is a six-entry denylist and it under-covers.** It names
+  `color=`, `testsrc`, `nullsrc`, `anullsrc`, `anoisesrc`, `sine=` — the six
+  this repo actually uses. ffmpeg has eleven more infinite sources, and every
+  one of them reads clean: `aevalsrc`, `rgbtestsrc`, `yuvtestsrc`, `smptebars`,
   `gradients`, `cellauto`, `life`, `mandelbrot`, `allrgb`, `allyuv`,
-  `haldclutsrc`. **`nullsrc` deserves singling out — it is one keystroke from
-  `anullsrc`, which *is* covered.**
+  `haldclutsrc`.
 
-  Five is a defensible v1 and the direction is safe (a miss, never a false
+  **`nullsrc` was the sixth, added 2026-08-13** with the cinematic-look slice,
+  which made it a production source (`deliver._render_mask`'s one-frame vignette
+  mask). Until then this paragraph singled it out as the most dangerous miss —
+  one keystroke from `anullsrc`, which *was* already covered. That prediction
+  was right about which source would arrive next and wrong about the danger: the
+  real call bounds it twice over, with `d=1` **and** `-frames:v 1`, so nothing
+  was ever unguarded. The guard simply could not see it.
+
+  Six is a defensible v1 and the direction is safe (a miss, never a false
   positive). Leaving this unsaid would not be: it is structurally the same flaw
   §1 quotes `test_reframe.py:438` confessing to — "silently under-covers as the
   vocabulary grows." A lint whose denylist is believed complete is exactly the
