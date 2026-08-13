@@ -1653,6 +1653,20 @@ Update that entry to the argv `mix.py` actually emits now, and add an entry for
 the new post-mix pre-measure fade call. Then confirm the whole of
 `tests/lib/test_lint.py` is green.
 
+Separately, and less seriously: the Task 4 review found that several other
+labels (`"mix.py:72"`, `"75"`, `"109"`, `"137"`, `"207"`) now carry stale line
+numbers because the insertions shifted the file. Their pinned **argv values are
+still correct** — those call sites were not touched — so this is cosmetic label
+drift, not the stale-content problem above. Re-sync them in the same pass so
+nobody rediscovers them.
+
+Worth knowing while you do this: the review confirmed `proc.run` calls
+`lint.check_argv` on **every** command unconditionally, independent of anything
+in `REAL_SITES`. So the new fade call is already guarded live; `REAL_SITES` is a
+regression-documentation layer on top of the enforcement path, not the
+enforcement path itself. That is why nothing is broken today, and also why a
+fixture that lies is worth fixing rather than deleting.
+
 - [ ] **Step 2: Close any hole the battery found**
 
 For each row where nothing went red, write the missing test, verify it goes red
