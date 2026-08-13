@@ -82,8 +82,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                 want = rm.ambient or rm.sfx
                 segments = ([(e.manifest["segment"], e.manifest["target_dur"]) for e in rm.episodes]
                             if want else None)
+                # A look's fade is the ONE number both bookends use. No look → mix keeps
+                # its own default; a look with fade=0 → the author asked for no bookend at
+                # all, in the picture and in the sound (design 2026-08-13 §5).
+                fade_kw = {} if rm.look is None else {"fade": rm.look.fade}
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
-                                segments=segments, ambient=rm.ambient, sfx=rm.sfx)
+                                segments=segments, ambient=rm.ambient, sfx=rm.sfx, **fade_kw)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
             # design §8: loop-2 re-renders culprits AFTER the QC gate ran, so a verdict on a
             # reprocessed episode is one render out of date the moment it is rebuilt. That
@@ -102,7 +106,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             prov["episode_qc"] = qc
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   audio=audio, titles=titles, platform=rm.platform,
-                                  run_provenance=prov)
+                                  look=rm.look, run_provenance=prov)
             return {"status": "delivered", "output": out, "report": report.to_dict(),
                     "reprocessed": sorted(reprocessed)}
         if action.kind == "escalate":

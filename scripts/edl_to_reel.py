@@ -152,7 +152,8 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # VERSIONS.md log the file's own path instead of the reason for the version.
     note = changelog or f"delivered from {Path(edl_path).name}"
     rm = ReelManifest(episodes=episodes, target_dur=target, cap=edl.cap,
-                      changelog=note, music=music or edl.music, platform=edl.platform, **extra)
+                      changelog=note, music=music or edl.music, platform=edl.platform,
+                      look=edl.look, **extra)
     # The run's record, assembled where all three parts are in hand (design §6). The
     # override list is a DIFF of the effective check spec against a default one, so a
     # threshold added to ReelCheckSpec later is covered without touching this line.

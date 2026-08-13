@@ -1,15 +1,16 @@
 import pytest
 from scripts import build_reel
 from scripts.lib.assembly import StreamInfo
+from scripts.lib.look import LookSpec
 from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailure,
                                 CheckResult, MusicSpec)
 
 
-def _rm(cap=3, n=2, platform=""):
+def _rm(cap=3, n=2, platform="", look=None):
     eps = [ReelEpisode(manifest={"segment": f"s{i}.mp4"}, clip=f"c{i}.mp4", route=f"r{i}.json")
            for i in range(n)]
     return ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=cap,
-                        platform=platform)
+                        platform=platform, look=look)
 
 
 def _pass():
@@ -53,10 +54,13 @@ def _wire(monkeypatch, reports, pe_results=None):
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
-    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform="", run_provenance=None):
+    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform="",
+                     look=None, run_provenance=None):
         # run_provenance= tolerated (and ignored): build_reel now always passes it (Task 4)
         # — not the subject of this fixture; see
         # test_build_reel_threads_the_manifest_provenance_into_deliver for the dedicated check.
+        # look= similarly tolerated (and ignored) — Task 5; see
+        # test_build_reel_hands_the_look_to_deliver for the dedicated check.
         seen["deliver"].append(od)
         seen["titles"].append(titles)
         seen["deliver_platform"] = platform
@@ -303,11 +307,11 @@ def test_retime_rides_along_with_a_colour_reprocess(monkeypatch, tmp_path):
 # for the pre-existing A.5 tests above; a same-named redefinition here would
 # shadow those at module scope and break every test that calls them.
 
-def _rm_music(music, ambient=True, sfx=False):
+def _rm_music(music, ambient=True, sfx=False, look=None):
     ep0 = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 3.0}, clip="c0.mp4", route="r0.json")
     ep1 = ReelEpisode(manifest={"segment": "s1.mp4", "target_dur": 3.0}, clip="c1.mp4", route="r1.json")
     return ReelManifest(episodes=[ep0, ep1], target_dur=6.0, variety_min=4,
-                        music=music, ambient=ambient, sfx=sfx)
+                        music=music, ambient=ambient, sfx=sfx, look=look)
 
 
 def _fake_music():
@@ -537,3 +541,62 @@ def test_build_reel_does_not_clobber_an_already_judged_qc_state(tmp_path, monkey
     build_reel.build_reel(rm, str(tmp_path / "o"), str(tmp_path / "w"))
     assert seen["run_provenance"]["episode_qc"] == {
         "state": "judged", "judged": {"0": "aa", "1": "bb"}, "reprocessed_after": []}
+
+
+# --- Task 5: rm.look -> deliver(look=), and its fade -> mix(fade=) ---------------
+
+def test_build_reel_hands_the_look_to_deliver(monkeypatch, tmp_path):
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out.mp4")
+    build_reel.build_reel(_rm(look=LookSpec(vignette=0.4, fade=0.6)),
+                          str(tmp_path / "out"), str(tmp_path / "w"))
+    assert seen["look"] == LookSpec(vignette=0.4, fade=0.6)
+
+
+def test_a_reel_with_no_look_passes_none_to_deliver(monkeypatch, tmp_path):
+    # the other half of the wire: a reel with no look must still deliver exactly as
+    # before — look=None reaches deliver, which is its own byte-identical fast path
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out.mp4")
+    build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert seen["look"] is None
+
+
+def test_build_reel_gives_mix_the_looks_fade(tmp_path, monkeypatch):
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix", lambda *a, **k: (got.update(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.8)),
+                          str(tmp_path / "out"), str(tmp_path / "work"))
+    assert got["fade"] == 0.8
+
+
+def test_a_reel_with_no_look_keeps_mixs_own_default(tmp_path, monkeypatch):
+    # absence of a look must not switch the audio bookend off: no fade= kwarg at all,
+    # so mix keeps its own _FADE default rather than being handed something else
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix", lambda *a, **k: (got.update(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json")),
+                          str(tmp_path / "out"), str(tmp_path / "work"))
+    assert "fade" not in got
+
+
+def test_a_look_with_fade_zero_reaches_mix_as_zero_not_the_default(tmp_path, monkeypatch):
+    # The one judgement call this task makes concrete: rm.look is not None but
+    # rm.look.fade == 0.0 must still pass fade=0.0 explicitly — `rm.look.fade or 0.5`
+    # would silently turn an authored 0 back into mix's 0.5s default, which is wrong:
+    # an author who wrote fade: 0 asked for no bookend, in the picture AND the sound.
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix", lambda *a, **k: (got.update(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.0)),
+                          str(tmp_path / "out"), str(tmp_path / "work"))
+    assert "fade" in got and got["fade"] == 0.0

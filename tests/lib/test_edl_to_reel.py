@@ -8,6 +8,7 @@ from scripts.lib import provenance
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.footage import DESCRIPTOR_LEN
+from scripts.lib.look import LookSpec
 from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
 
@@ -142,6 +143,24 @@ def test_edl_to_reel_leaves_the_reel_manifest_platform_empty_by_default(monkeypa
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
                             str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
     assert seen["rm"].platform == ""
+
+
+def test_edl_to_reel_passes_the_edls_look_to_the_reel_manifest(monkeypatch, tmp_path):
+    # mirrors the platform pipe (2026-08-12): the EDL is the attested artifact, so the
+    # look a reel was delivered with is recorded with the cut
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path, look={"vignette": 0.3, "fade": 0.8}),
+                            _project(tmp_path), str(tmp_path), str(tmp_path / "w"),
+                            str(tmp_path / "out"))
+    assert seen["rm"].look == LookSpec(vignette=0.3, fade=0.8)
+
+
+def test_edl_to_reel_leaves_the_reel_manifest_look_none_by_default(monkeypatch, tmp_path):
+    # None = never authored — distinct from LookSpec() (authored as explicitly no look)
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].look is None
 
 
 def test_color_delta_max_override_reaches_the_reel_manifest(monkeypatch, tmp_path):
