@@ -33,10 +33,13 @@ section). A P0 row means something ships wrong today, so an empty P0 is the
 normal state and a populated one interrupts whatever is in P1.
 
 **Three items span buckets** rather than sitting in one, and each says so where
-it appears: **#9** (cinematic look) is split P1/P2/P3; the **episode-QC loop** is
-P2 for the re-judge and P3 for the auto-route; and **reel length** is P2 for the
-diagnosis and P3 for the enforcement. Do not close any of the three on its first
-row alone.
+it appears: **#9** (cinematic look) was split P1/P2/P3 — the **P1 look half
+landed 2026-08-13** (cinematic-look: vignette + bookend fade, each with a
+measured visibility proof); **P2 (mood biasing the grade) and P3 (the image-
+treatment tail, now incl. grain) stay open, so #9 itself is not closed**. The
+**episode-QC loop** is P2 for the re-judge and P3 for the auto-route; and
+**reel length** is P2 for the diagnosis and P3 for the enforcement. Do not
+close either of those two on its first row alone.
 
 ---
 
@@ -44,7 +47,6 @@ row alone.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **Cinematic look filters + mood look** — vignette + grain + bookend fade as a reel-level `EDL.look` applied in `deliver`'s one encode, each with a measured visibility proof; `MoodPreset.look` supplies the default from the brief. Carries the two parked leftovers `highlight_red` and the `outline-bold` title style, which closes #18. | M | [#9](fixes-backlog.md#9-cinematic-effects-library--mood-oriented-palettes), [#18](fixes-backlog.md#18-cinematic-effects-were-born-as-live-patches--land-them-properly-and-verify-they-show), playbook P4 |
 | ○ | **Music ends mid-phrase** — the cut grid is beat-aligned; the music *out-point* is not. Needs `systematic-debugging` on a real `MUSIC.json` before a design. Its likely fix is the librosa **section detection** that pacing §10, length-retime §9 and music-spine §9 have each deferred in turn. | M | [#2](fixes-backlog.md#2-music-is-cut-in-the-middle-of-a-phrase), pacing §10 |
 
 ## P2 — soon
@@ -52,8 +54,10 @@ row alone.
 | | Item | Size | Source |
 |---|------|------|--------|
 | ○ | **The authoring skill documents every knob it has** — `edit-plan` should enumerate the full set in one place: layout / composition / grid / motion / pan / zoom / ramp / stabilize / smooth_window_s + the colour grade. Verify each against `models.ReframeSpec` first: a named-but-missing tool (curves, shadows) is a build-or-not decision, not a doc gap. | S | [#5](fixes-backlog.md#5-the-authoring-skill-must-document-every-modification-tool-it-has) |
-| ○ | **Cheap 3-frame probe** — render three frames with a new grade, measure, iterate; pay the full episode re-encode only once it converges. The 2026-08-03 run spent ~29 full re-encodes. Generalizes to effect *visibility*, not just colour — but it is a **run-time convergence loop**, not the same thing as the P1 row's per-effect visibility proofs, which are one-off measurements in the test suite. #18 asks for both; neither substitutes for the other. | M | [#10](fixes-backlog.md#10-cheap-3-frame-preview-to-converge-the-colour-grade-before-a-full-episode-re-render) |
-| ○ | **Mood → grade** — bias `match_grade`'s common target by the brief's mood instead of taking the source median alone. This is the "§10 mood LUT" colour-as-a-stage deferred; the *look* half lands with #9 above, this is the grade half. | M | colour-stage §11, matchgrade §8 |
+| ○ | **Cheap 3-frame probe, now also folded: does the look actually render?** — render three frames with a new grade, measure, iterate; pay the full episode re-encode only once it converges. The 2026-08-03 run spent ~29 full re-encodes. Generalizes to effect *visibility*, not just colour — but it is a **run-time convergence loop**, not the same thing as the cinematic-look slice's per-effect visibility proofs, which are one-off measurements in the test suite (both exist now; neither substitutes for the other). The cinematic-look design adds a second reason: `check_reel` runs on the master, BEFORE `deliver` encodes the vignette/fade/titles, so **no gate today ever sees the look that shipped** — the same probe this row already owns is the cheapest real fix, generalized from colour to effect visibility. | M | [#10](fixes-backlog.md#10-cheap-3-frame-preview-to-converge-the-colour-grade-before-a-full-episode-re-render), cinematic-look §11.1/§12 |
+| ○ | **Calibrate the look** — `LOOK_VIGNETTE_MAX` (0.6), the 0.55/0.45 plateau/falloff split, and every row of `MoodPreset.look` are hand-picked on synthetic test patterns; no real footage has graded against them yet. | S | cinematic-look §11.3/§12 |
+| ○ | **`color.shadow_red_arg` has `highlight_red_arg`'s pre-fix sparse-anchor defect — worse.** Found while fixing `highlight_red_arg` for the identical flaw (three sparse anchors pin the spline AT three points, not the curve it draws between them): measured **−6** at `SHADOW_RED_MAX` against `highlight_red`'s pre-fix worst case of −3. It is the mirror function, and `highlight_red`'s own docstring cited "the shadow_red lesson" for a lesson `shadow_red` itself never learned. Same one-line densification fix, plus a probe test. | S | cinematic-look §12 |
+| ○ | **Mood → grade** — bias `match_grade`'s common target by the brief's mood instead of taking the source median alone. This is the "§10 mood LUT" colour-as-a-stage deferred; #9's *look* half landed 2026-08-13 (cinematic-look), this is the grade half that remains. | M | colour-stage §11, matchgrade §8, [#9](fixes-backlog.md#9-cinematic-effects-library--mood-oriented-palettes) |
 | ○ | **Re-assess §6.1a layer 3 against track-stitch** — both address a mid-episode hero ID switch, by different mechanisms (descriptor continuity vs geometric overlap-vs-gap). Decide whether a real remainder exists before building anything. | S | cast-hero-pin §11 |
 | ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. | S | hero-reid §11, cast-hero-pin §11 |
 | ○ | **Close the episode-QC loop** — two halves of one loop, both episode-qc §13, and the P3 list holds the other one. **This half:** `build_reel`'s retry reprocesses an episode *after* its QC verdict, so it ships judged one render out of date (recorded as `reprocessed` in the attestation, not prevented) — closes episode-qc §8. **The other half, in P3:** auto-routing a *blocking* finding back into a re-render. Do the re-judge first; routing findings into renders that are then never re-judged makes the hole bigger. | M | episode-qc §13 |
@@ -84,7 +88,11 @@ sharpness/blur metric — the cv2 blocker is gone, the cost is now measurement w
 **Colour**
 reconcile the two neutralizers, white-balance vs normalize-gain, into one authority (colour-stage §11) ·
 crop-accurate / K-frame tone measuring instead of the whole frame at the midpoint (matchgrade §8) ·
-cross-episode white-balance / cast matching (matchgrade §8)
+cross-episode white-balance / cast matching (matchgrade §8) ·
+`highlight_red_arg`'s shoulder (`hi`) formula is monotonicity-fragile near
+`pull ≈ 1 − knee` for `knee ≥ 0.7` — a knee×pull grid scan found the
+pre-existing code already broken there; unreachable today (the one production
+call site never passes `knee=`), reported not fixed (cinematic-look §12)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
@@ -94,18 +102,27 @@ easing for zoom and pan travel (subject-anchored-moves §11, pan §12) ·
 speed-**up**, `factor > 1` (speed-ramp §13) ·
 pan tilt (Y motion) and a pan over part of a clip (pan §12)
 
-**Look — image treatment. The tail of #9, whose first half is the P1 row above.**
+**Look — image treatment. The tail of #9, whose vignette + bookend fade half
+landed 2026-08-13 (cinematic-look).**
 Nothing here moves the frame; it tints, darkens or textures it, so none of it
-touches the route or the composition checks. Deferred *behind* the P1 slice, not
-independently of it: film LUTs (need licensed asset files — a distribution
-question before a code one), halation/bloom, light leaks, chromatic aberration,
-letterbox bars (wrong on a 9:16 reel, where the `fit` layout's background already
-does the job).
+touches the route or the composition checks. **Grain** (`noise`) joins this
+line rather than the landed half — measured and priced out, not merely
+deferred for time: at the delivery profile's own crf 18, `noise=alls=8` (the
+first setting with any real presence) costs **×4.36** the file size, `alls=12`
+**×8.82**, `alls=20` **×14.08** — a 30s reel goes from ~37MB to ~160MB at the
+cheapest useful strength, and the platform re-encodes on upload anyway, so the
+cost is paid and the grain is then destroyed by someone else's encoder
+(cinematic-look §11.2/§12). Also here: film LUTs (need licensed asset files —
+a distribution question before a code one), halation/bloom, light leaks,
+chromatic aberration, letterbox bars (wrong on a 9:16 reel, where the `fit`
+layout's background already does the job).
 
-> **#9 is one item split across three buckets** — P1 builds vignette + grain +
-> bookend fade with a visibility proof each, P2 biases the grade by mood (the
-> long-deferred "mood LUT"), and this line holds the rest. When the P1 slice
-> lands, all three rows move together; do not close #9 on the first one.
+> **#9 is one item split across three buckets** — P1 built the vignette +
+> bookend fade, each with a measured visibility proof (2026-08-13,
+> cinematic-look — closing #18 alongside it), P2 biases the grade by mood
+> (the long-deferred "mood LUT", still open), and this line holds the rest,
+> now joined by grain. Landing P1 does not close #9 — it stays open until P2
+> and this P3 line land too.
 
 **Music**
 adaptive hook length instead of a fixed `HOOK_BEATS` (pacing §10) ·
@@ -160,6 +177,11 @@ per-track music feature caching, and ML-embedding mood (mood-match §9, sourcing
 merge-all-catalogs as the `any` default (sourcing §13) ·
 draft-stage polish: creative crop/colour, ducked ambient, beat-accurate pacing, a segment cache, a standalone SKILL (assemble-draft §7) ·
 gradient and auto-derived background colours (fit-solid §9) ·
+the chroma-preserving vignette — a luma-plane blend or `geq` — if the corner
+desaturation reads wrong on real footage; 26× the cost or a five-node graph,
+for a difference that may be an improvement (cinematic-look §11.4/§12) ·
+a per-episode look override — the reel's finish is reel-level by
+construction, and no request for it exists (cinematic-look §12) ·
 network reachability probes in preflight (verify-runtime §9) ·
 cross-platform `setup.sh` and `bin/vg` — macOS/Homebrew is a stated project boundary (ffmpeg-baseline §9, plugin-packaging §4)
 
@@ -208,7 +230,7 @@ status column that file does not have.
 | 6 | The router never asked about titles / effects | ✅ 2026-08-04 |
 | 7 | Slow-mo is a first-class effect, and it changes the reel length | ✅ 2026-08-09 |
 | 8 | Subagents must not be able to disable quality control | ✅ 2026-08-04 |
-| 9 | Cinematic effects library + mood-oriented palettes | ○ **P1** (look half), P2 (grade half) |
+| 9 | Cinematic effects library + mood-oriented palettes | ◐ P1 look half ✅ 2026-08-13 (vignette + bookend fade, cinematic-look); P2 grade half ○ open; P3 tail ○ open (incl. grain, measured and priced out) |
 | 10 | Cheap 3-frame preview to converge the grade | ○ **P2** |
 | 11 | Freeze the engine during a run | ✅ 2026-08-04 |
 | 12 | "Look, don't guess" — examine real frames | ✅ both halves (2026-08-05 selection, 2026-08-08 per-episode) |
@@ -217,7 +239,7 @@ status column that file does not have.
 | 15 | CP3 reel-review must not be silently skipped | ✅ 2026-08-04 |
 | 16 | `VERSIONS.md` note bug — path logged instead of the reason | ✅ 2026-08-04 |
 | 17 | Frame-moving effects stay subject-anchored and inside QC | ✅ 2026-08-08 |
-| 18 | Cinematic effects were born as live patches — land them, verify they show | ◐ zoom ✅ 2026-08-08, ramp ✅ 2026-08-09; look filters + `highlight_red` + `outline-bold` ride #9 |
+| 18 | Cinematic effects were born as live patches — land them, verify they show | ✅ 2026-08-13 — zoom ✅ 2026-08-08, ramp ✅ 2026-08-09, look filters (vignette + bookend fade) + `highlight_red` + `outline-bold` ✅ 2026-08-13 (cinematic-look), each with a measured visibility proof |
 | 19 | Shot-type variety + brief fidelity | ✅ 2026-08-06 |
 | 20 | Off-pipeline manual EDL editing | ✅ 2026-08-04 |
 
@@ -242,4 +264,4 @@ that never existed, a cv2 blocker that disappeared when the tracking ladder
 landed, and three build-status entries about §6.1a layer 3 written as though
 track-stitch had not shipped.
 
-_Last updated: 2026-08-12._
+_Last updated: 2026-08-13._

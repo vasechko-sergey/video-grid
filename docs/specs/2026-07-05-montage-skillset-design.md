@@ -835,6 +835,41 @@ The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more
   `degraded:"flow"` and the storyboard marker shows what it followed), and it
   keeps **no** machine predicate, same as the wade-in stabilize rule
   (2026-07-21 §7).
+- **`blend=all_mode=multiply` against a single-plane (grayscale) mask destroys
+  chroma, not just luma.** U/V sit at 128 for neutral, so multiplying them by
+  `mask/255` drags every pixel toward 0 — measured mean **|ΔU| 63.44, |ΔV|
+  62.76** against a `geq` reference. Restricting the blend to the luma plane
+  (`extractplanes` → blend → `mergeplanes`) fixes it (ΔU/ΔV 0.18) at the cost
+  of a five-node graph; `overlay` through alpha avoids the whole class. This
+  one is machine-checked, not just documented: the landmine lint's sixth
+  `check_argv` check (`scripts/lib/lint.py`) refuses it outright. See [the
+  cinematic-look design](2026-08-13-cinematic-look-design.md) §8.1.
+- `movie=` inside `-vf`, without `loop`, truncates the whole reel to **one
+  frame** — the tempting way to keep a single `-vf` slot for a second (mask)
+  input. ffmpeg exits **0** and writes a valid mp4 with `nb_frames=1`: the PNG
+  source ends after its one frame and `overlay=shortest=1` ends the graph with
+  it. Use a real `-loop 1 -i <mask.png>` second input instead. See [the
+  cinematic-look design](2026-08-13-cinematic-look-design.md) §8.2.
+- `movie=…:loop=0` inside `-vf` — the obvious repair for the landmine above —
+  **hangs** instead of truncating. Measured: the output file stalled at 48
+  bytes with no progress for six minutes before being killed, against 0.55s
+  for the identical composite through a real `-loop 1 -i` input. See [the
+  cinematic-look design](2026-08-13-cinematic-look-design.md) §8.3.
+- A mask (or any "untouched" plateau) built by grading a `color=c=white`
+  source reads **253, not 255** — the plateau is silently dimmed 0.8%
+  everywhere. Build on `nullsrc` with an explicit `255*(…)` alpha expression
+  instead, which gives a true 255. `scripts/lib/look.py` (`mask_expr`). See
+  [the cinematic-look design](2026-08-13-cinematic-look-design.md) §8.4.
+- ffmpeg's built-in `vignette` filter has **no plateau** — on a vertical (9:16)
+  canvas that makes it a top-and-bottom dimmer, not a corner vignette. At its
+  default angle the sky band above a subject sits at **0.637** of centre while
+  the corner is **0.413** — the falloff reaches wherever a subject stands, not
+  just the frame edges. Worst form: `aspect=16/9` on a 9:16 frame drives the
+  corners **and the entire sky to pure black** at any angle — a
+  one-character authoring slip that silently destroys the frame. Use a
+  plateau mask (`scripts/lib/look.py`) for a tall canvas instead of the
+  built-in filter. See [the cinematic-look design](2026-08-13-cinematic-look-design.md)
+  §2.1/§8.5.
 
 ---
 

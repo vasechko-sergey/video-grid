@@ -96,7 +96,7 @@ _SYNTH_RE = re.compile(r"(?<![^,;\]])\s*(" + "|".join(
 # The source's own duration. `d=` cannot be a substring test: `seed=` contains it,
 # and so do `speed=` and the literal `pad=`. `seed=` is a real parameter of
 # anoisesrc, testsrc, gradients, cellauto, life and mandelbrot — so a bare
-# `"d=" in element` reads scripts/mix.py:109's whoosh as bounded even with its
+# `"d=" in element` reads scripts/mix.py's `_whoosh` as bounded even with its
 # `d=` deleted, i.e. it silently exempts the exact command this check exists for.
 # Third instance of the contains-a-shorter-token trap in this module; hence a
 # boundary, not paranoia.
@@ -181,7 +181,7 @@ def _seek_order(cmd: list[str]) -> list[str]:
     return [f"input-side -ss #{n} of {len(seeks)} (argv[{i}], seeking to "
             f"{cmd[i + 1]!r}) — design §12: this is the black-frames-at-a-cut "
             "landmine. Move -ss after the -i it applies to (output seek), or pass "
-            "-accurate_seek if the input seek is deliberate (see scripts/mix.py:193)."
+            "-accurate_seek if the input seek is deliberate (see scripts/mix.py:205)."
             for n, i in enumerate(seeks, 1)]
 
 

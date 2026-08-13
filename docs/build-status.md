@@ -4,13 +4,280 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-12._
+_Last updated: 2026-08-13._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Cinematic look — a reel-level `EDL.look` (plateau vignette + bookend
+  fade), the parked `highlight_red` + `outline-bold` leftovers (fixes-backlog
+  #9 P1 look half, and #18 in full — cinematic-quality playbook priority 4,
+  its third slice) DONE (2026-08-13)** — plan
+  `docs/plans/2026-08-13-cinematic-look.md` + design
+  `docs/specs/2026-08-13-cinematic-look-design.md`, Tasks 0–11 (branch
+  `feat/cinematic-look`, commits `919950d`..`ca0fab6` + this docs sync). The
+  2026-08-03 real run grew a five-item effects wishlist by patching the
+  engine live; two items (`zoom`, the speed `ramp`) had already landed as
+  first-class knobs (2026-08-08/09, see their own Done entries). This slice
+  lands the remaining three — the look filters, `highlight_red`,
+  `outline-bold` — and closes #18, whose demand is specific: not "add the
+  effect" but that **every knob ships with a measurement of the pixels it
+  moved**, because the live-added vignette had come out invisible (filter
+  strength or chain order ate it) and no test caught it.
+
+  **Where a look lives, and why there is only one place it can (design §1).**
+  `EDL.look → ReelManifest.look → build_reel → deliver`'s single
+  filtergraph — a copy of the `platform` pipe (2026-08-12). Two other
+  positions were considered and are wrong for reasons the code already
+  enforces: not in `assemble`, because `check_reel`'s black gate
+  (`blackdetect=d=0.05:pic_th=0.98`) would fail a deliberate 0.5s bookend
+  fade to black; not per-episode in `reframe`, because a vignette there
+  would be re-judged by `check_episode`'s composition/colour checks (which
+  know nothing about an intentional corner falloff) and cost one re-encode
+  per episode instead of one for the reel.
+
+  **The vignette's shape is the whole slice (design §2).** ffmpeg's built-in
+  `vignette` filter is a `cos⁴` lens model with no plateau — measured on a
+  flat 1080×1920 field at crf 18, its default angle puts the sky band above
+  a subject at **0.637** of centre while the corner is **0.413**;
+  `aspect=16/9` on the same tall frame drives corners **and the entire sky
+  to 0.000** (landmine 5, below). Three ways to get a real plateau (identity
+  to 55% of the corner radius, then a smoothstep falloff) were measured on a
+  textured source: the built-in filter costs +0.33s over a 0.37s no-look
+  baseline for corner/sky ratios of 0.728/0.843 (no plateau); a
+  per-pixel-per-frame `geq` costs **+4.69s** for 0.664/0.990; the shipped
+  **one-shot RGBA mask + `overlay`** costs **+0.18s** — cheaper than the
+  built-in filter and **26.4× cheaper than `geq`** — for 0.709/0.995, the
+  only route of the three with a genuine plateau. The centre is untouched
+  (mean |ΔY| over a 240×240 patch: 0.144). Overlay also desaturates the
+  corners where `geq` does not (corner chroma excursion 74.89 vs 108.28) —
+  recorded as the *correct* choice (less light is less saturation), not an
+  accident, and reversible later at a measured cost (§11.4, below).
+
+  **The mechanism (design §3).** New `scripts/lib/look.py`, pure —
+  `LookSpec(vignette: float = 0.0, fade: float = 0.0)`, both 0 at identity
+  and 0 means *not emitted at all* (the `color.white_balance` convention, so
+  `LookSpec()` renders exactly what today renders); `mask_expr` (the geq
+  expression, refusing outside `(0, LOOK_VIGNETTE_MAX]`); `fade_args` (the
+  two `fade` filters or `[]`, refusing `2*fade > dur`); `chain` (owns the
+  order: titles, then the bookend fades — the vignette overlay is NOT in
+  this list, since it needs a second input `deliver` wires by label).
+  **`None` and `LookSpec()` are different, and the difference is
+  load-bearing**: `EDL.look is None` means *never authored* (the mood preset
+  fills it); `EDL.look == LookSpec()` means *authored as no look* (the
+  preset does not get to override it) — the same `EDL.variety`/
+  `EDL.constraints` shape. The JSON boundary tests `is not None`, never
+  truthiness, because `{"vignette": 0, "fade": 0}` is a non-empty dict and
+  therefore truthy either way — only `"look": {}` actually discriminates the
+  two spellings, and review caught this as the slice's own reasoning error
+  before it shipped (Task 2's fix round; a `{}`-specific test now pins it).
+
+  **`deliver` grows one branch, and the off path stays byte-identical
+  (design §3.2).** No vignette (including no look at all): unchanged `-vf`,
+  byte-for-byte the same argv and delivered file as before looks existed
+  (proven: three encodes — `look=None`, `look=LookSpec()`, and a reference
+  built with the pre-look argv — all **16540 bytes, byte-for-byte equal**).
+  A vignette needs a second input, so it takes `-loop 1 -i <mask.png>` plus
+  `-filter_complex`, the mask rendered at the master's own probed dimensions
+  (`assembly.probe_stream`) — never a config's idea of them, the exact
+  `Delivery.dims(native)` trap that made `draft.py` render 8×16
+  (housekeeping, 2026-08-12) one call away from here. There is no `movie=`
+  shortcut to keep the single `-vf` slot — both obvious attempts fail
+  silently (landmines 2/3, below).
+
+  **Chain order, and the one part of it that is measured (design §4).**
+  `overlay(mask) → drawtext(titles) → fade in/out`. Vignette before titles,
+  so a bottom title is not dimmed by the corner falloff it sits near.
+  **Fade last, and this is measured, not a preference**: with the fades at
+  the end, the first delivered frame reads **0.0** — the title goes black
+  with the picture. Move them before `drawtext` and the title burns on at
+  full brightness over a black frame. The whole five-stage chain (overlay,
+  noise, drawtext, two fades) composes in one filtergraph and runs in 1.39s
+  on 3s of 1080×1920.
+
+  **The audio, and the defect the fade exposed (design §5).** `mix.py`
+  already faded the music (`_FADE = 0.5`, hardcoded) before this slice —
+  applied to the music fragment BEFORE ambient/SFX were mixed in. That
+  placement is wrong, and the bookend fade is what makes it visible:
+  `_mix_graph` ducks the ambient with `sidechaincompress` keyed on the
+  music, so when the music fades the key signal falls, the compressor
+  **releases**, and the nat-sound gets *louder* exactly as the picture goes
+  black. Fix: the fade moved off the music fragment onto the **mixed**
+  stem, applied before `_measure` so `loudnorm` still measures what ships;
+  `_FADE` became `mix(fade=)`, and `build_reel` passes `rm.look.fade` when a
+  look exists (a reel with no look, or `fade=0`, keeps the 0.5s default
+  unchanged — the audio bookend is not something a missing look should
+  silently disable). Not claimed byte-identical on the music-only path — a
+  double s16 quantization (once into `frag.wav`, once after the fade) costs
+  up to 1 LSB on the faded 0.5s at each end, measured rather than asserted
+  away.
+
+  **`MoodPreset.look` — the brief's default (design §6).** Five rows, first
+  cuts declared as guesses alongside `shot_mix`/`asl`: fun 0.00/0.3s, epic
+  0.30/0.8s, moody 0.40/1.0s, nostalgic 0.25/0.8s, balanced (fallback)
+  0.00/0.5s. `BALANCED` applies no vignette and exactly the 0.5s fade `mix`
+  already did, so the autonomous path (no brief) delivers today's picture
+  unchanged. The authored `EDL.look` always wins over the preset;
+  `edit_plan build` logs which source resolved (`selection.json` or the
+  `<mood>` preset) on every run.
+
+  **The two parked leftovers (design §7).** `highlight_red` — a red-channel
+  `curves` fragment that pulls only the shoulder down (so specular foam
+  carrying a red board's reflection reads neutral while water/skin/the
+  board itself, below the 0.60 knee, keep their red), ported verbatim from
+  `wip/montage-run-patches` into `color.py` beside its mirror
+  `shadow_red_arg`, authored per-episode through `ReframeSpec`/
+  `EDLEpisode`, not on the reel's look. `outline-bold` — a fourth title
+  style (`STYLES = ("bold-box", "outline", "outline-bold", "plain")`), a
+  heavier 7px border plus an offset shadow where a plain 4px `outline`
+  disappears against a bright or busy background (the exact bright-water
+  case the 2026-08-03 run hit).
+
+  **Five landmines found while measuring, all silent — now in the
+  design-spec §12 registry (this task).** (1) `blend=all_mode=multiply`
+  against a single-plane mask destroys **chroma**, not just luma: U/V sit
+  at 128 for neutral, so the multiply drags every pixel toward 0 — measured
+  mean **|ΔU| 63.44, |ΔV| 62.76** against a `geq` reference; restricting the
+  blend to the luma plane fixes it (ΔU/ΔV 0.18) at a five-node-graph cost.
+  This one is now the landmine lint's **sixth `check_argv` check**
+  (`scripts/lib/lint.py`), and the first of the five to also join
+  `CLAUDE.md`'s always-loaded Known Troubles, since it is the one a future
+  author is most likely to reach for and it is machine-checked, not just
+  documented. (2) `movie=` inside `-vf` without `loop` truncates the whole
+  reel to **one frame** — ffmpeg exits 0, writes a valid mp4 with
+  `nb_frames=1`. (3) `movie=…:loop=0` — the obvious repair — **hangs**: the
+  output stalled at 48 bytes with no progress for six minutes before being
+  killed, against 0.55s for the same composite through a real `-loop 1 -i`
+  input. (4) A mask built by grading a `color=c=white` source reads **253,
+  not 255** — a silent 0.8% dim everywhere; building on `nullsrc` with an
+  explicit `255*(…)` alpha expression gives a true 255 plateau. (5) The
+  built-in `vignette` on a vertical canvas is a top-and-bottom dimmer (§2,
+  above), and `aspect=16/9` on a 9:16 frame is the worst form — corners
+  **and the entire sky** to pure black at any angle, a one-character
+  authoring slip that silently destroys the frame.
+
+  **Numbers measured after the design was written — carried here so nobody
+  re-derives them.** `highlight_red_arg`'s docstring, ported verbatim from
+  the parked branch, claimed its three sub-knee anchors (0, knee/2, knee)
+  held the region below the knee at identity — false: three anchors pin the
+  cubic spline ffmpeg fits AT three points, not the curve it draws BETWEEN
+  them. A 256-step lossless ramp probe (the `reframe.verify_tone` method)
+  found **249 of 256 codes deviating** at `pull=0.3`, peaking **+7** at code
+  116 — mid grey (code 128) read 135, not 128. Densifying the sub-knee
+  anchors to a step of 0.1 (derived from `knee`, not hardcoded) brought the
+  same probe to **+1/−1** at `pull=0.3` and **+2/−1** at the
+  `HIGHLIGHT_RED_MAX=0.35` ceiling — monotone throughout, and code 255
+  (white, the shoulder's own computation, untouched by this fix)
+  bit-identical before and after. On real delivered pixels this took the
+  shadow-band R−B contamination from 2.054 to **0.046**. Two further
+  findings, measured and deliberately **not** fixed, queued instead
+  (`docs/backlog.md`, this task): `color.shadow_red_arg` — the mirror
+  function, the one `highlight_red`'s own docstring cited as "the
+  shadow_red lesson" — has the **identical** defect, worse: **−6** at
+  `SHADOW_RED_MAX` against `highlight_red`'s pre-fix −3. And
+  `highlight_red_arg`'s **shoulder** (`hi`) formula is
+  monotonicity-fragile near `pull ≈ 1 − knee` for `knee ≥ 0.7` — a
+  63-point knee×pull grid scan found the pre-existing code already broken
+  there; unreachable today, since the one production call site never
+  passes `knee=`. Separately, the audio proof's own first draft would have
+  shipped green against the exact defect design §5 fixes: with `mix.py`
+  reverted to the pre-slice fade placement, the **broadband** ratio
+  (`rms[-1] < rms[mid]*0.35`) still reads **0.2078** — passing — while the
+  ambient's own band ends at **1.81×** its mid level, because the music
+  dominates the broadband sum and genuinely did fade. Only a band-isolated
+  probe tone sees the ambient swelling into black; verified twice
+  independently (a second run, at the final 700 Hz probe tone after the
+  first round's 880 Hz was replaced, measured **1.8139** against an
+  un-faded control of **0.9997**).
+
+  **Three of the slice's own tests proved the wrong thing, and review
+  caught every one before it shipped.** A `probe_stream` stub that
+  returned a fixed 1080×1920 regardless of its argument, so a
+  `_render_mask` that hardcoded those dimensions instead of probing them
+  passed anyway (closed in Task 3's fix round by a discriminating test
+  using 606×1078, a value appearing nowhere else in the file).
+  `highlight_red` wired through every carrier — `ReframeSpec`,
+  `EDLEpisode`, `Manifest`, `process_episode`'s construction — and
+  validated correctly at each hop, while `reframe.py`'s own
+  `grade_chain(...)` call never forwarded `spec.highlight_red` to a pixel:
+  a fully carrier-proven, never render-proven value, the exact silent-no-op
+  class #18 exists to close (found in Task 7's review, fixed the same
+  round). And — the closest call, an Important finding from Task 9's
+  review — a vignette+fade delivery still passed the WHOLE suite (2759
+  passed) with `deliver`'s `-filter_complex` branch built from only
+  `overlay=shortest=1`, dropping the titles+fade tail (`*parts`) that
+  branch is supposed to carry: `parts` carries the titles chain too, and
+  three of the four mood presets (epic/moody/nostalgic) ship a non-zero
+  vignette, so this single mutation would have silently deleted the bookend
+  fade **and every on-screen title** on 75% of mood presets. Closed the
+  same round with a real-ffmpeg proof
+  (`test_a_vignette_and_a_muxed_stem_pick_the_right_audio_input`, extended
+  to assert both fade ends) and folded into the mutation battery as row 6b.
+
+  **Honest limits (design §11, carried here in full).** Nothing checks the
+  look happened: `check_reel` runs on the master, BEFORE `deliver` encodes
+  the vignette/fade/titles, so no gate in this pipeline ever sees what
+  actually shipped — the same boundary titles have carried since
+  2026-07-13; the cheapest real fix is #10's 3-frame probe, now the named
+  home for this too (`docs/backlog.md`, this task). Grain was measured and
+  priced out, not built: at crf 18, `noise=alls=8` (the first setting with
+  any real presence) costs **×4.36** the file size, `alls=12` **×8.82**,
+  `alls=20` **×14.08** — a 30s reel goes from ~37MB to ~160MB at the
+  cheapest useful strength, and the platform re-encodes it away on upload
+  regardless, so the cost is paid for nothing. `LOOK_VIGNETTE_MAX` (0.6),
+  the 0.55/0.45 plateau/falloff split, and every `MoodPreset.look` row are
+  hand-picked on synthetic test patterns — no real footage has graded
+  against them yet. The corner desaturation (§2, above) is a recorded
+  choice, not a match: overlay and `geq` agree on luma (mean |ΔY| 1.39) and
+  disagree on corner saturation by construction; the chroma-preserving
+  alternative costs `geq`'s 26× or a five-node luma-plane-blend graph. A
+  0.5s fade on a 30fps reel is 15 frames whose last one lands wherever the
+  reel's own duration puts it — measured 7.5/255 on a 3s test, "near 0" not
+  exactly 0, no visible consequence. The mask renders once per `deliver`
+  call at the master's probed dimensions, uncached by design — a cached
+  mask keyed on the wrong dimensions is a silent letterbox, and the thing
+  being avoided costs a tenth of a second.
+
+  **Deferred (design §12) — every row now in `docs/backlog.md` (this
+  task), per the 2026-08-12 rule.** Grain (P3, the look tail, with its cost
+  table so nobody re-measures); folding "does the look actually render"
+  into #10's 3-frame probe (P2); calibrating `LOOK_VIGNETTE_MAX`/the
+  plateau-falloff split/`MoodPreset.look` on real footage (P2); the
+  chroma-preserving vignette, if the desaturation reads wrong on real
+  footage (P4); a per-episode look override (P4) — plus the two findings
+  above (`shadow_red_arg`'s worse defect, P2; `highlight_red_arg`'s
+  shoulder fragility, P3). #9 does **not** close: its P1 look half is done,
+  the P2 grade half (mood biasing `match_grade`'s common target — the
+  long-deferred "mood LUT") and the P3 tail stay open. #18 **does** close —
+  all five originally-named pieces (zoom, ramp, look filters,
+  `highlight_red`, `outline-bold`) now have their own real-ffmpeg
+  visibility proof.
+
+  **One production fix riding this task:** `scripts/lib/lint.py`'s own
+  `_seek_order` error message cited `scripts/mix.py:193` as an example
+  `-accurate_seek` call site; the bookend fade moved off that line during
+  the slice (it is now the fade-validation guard), and the real
+  `-accurate_seek` call sits at `scripts/mix.py:205`. Corrected;
+  `tests/lib/test_lint.py`'s own `REAL_SITES` fixture dict had already been
+  resynced to the same line in Task 10 — this was the one remaining stale
+  citation, in a user-facing message rather than a test fixture.
+
+  **2761 passed / 3 skipped**, full suite (unchanged from Task 10's own
+  count — this task is docs-only plus the one-line lint.py message fix,
+  which no test asserts on literally). The three skips are the
+  pre-existing environment ones (demucs, torchreid, no-network iTunes),
+  none new. **Mutation battery (Task 10, 14 rows + one historical bonus
+  row): all 15 caught by an existing test — no coverage hole needing a new
+  test.** Two of the battery's OWN row pointers were themselves stale
+  (found and corrected in Task 10, not new tests): row 7's named test used
+  a `probe_stream` stub that discards its argument and cannot discriminate
+  a hardcoded mask size (a different, already-existing test does); row 9's
+  named test authors a truthy non-empty dict that passes under either the
+  `is not None` or the truthiness spelling (a different, already-existing
+  `{}`-specific test does).
 
 - **Housekeeping — the four orphaned deferrals, and a backlog that is a queue
   DONE (2026-08-12)** — plan `docs/plans/2026-08-12-housekeeping-backlog.md` +
@@ -3107,19 +3374,39 @@ _Last updated: 2026-08-12._
   the 2026-08-03 run broke, where a ramp changed the reel's length but only
   two of eight readers noticed. That also closes the speed half of #18, with
   its own visibility proof (mean frame-difference ratio measured at 0.391
-  against a commanded `factor` of 0.40). **What remains of P4**
-  (`docs/cinematic-quality-playbook.md` §4): **#9** the cinematic effects
-  library + mood-oriented palettes; **#10** the cheap 3-frame preview to
-  converge a grade/effect before a full re-encode — also the mechanism #18
-  still wants for asserting visibility on the effects that remain; the rest
-  of **#18** — the look filters (vignette/grain/fade/LUTs), `highlight_red`'s
-  still-missing visibility proof, and the `outline-bold` title style; and
-  **#5** (the authoring skill must enumerate every knob), which trails these
-  since it documents whatever surface #9 lands. **Two out-of-scope gaps this
-  slice found and deliberately did not fix** (named in its own Done entry
-  above): `EDLEpisode` cannot author `smooth_window_s` even though
-  `ReframeSpec` has carried the field since path-quality (2026-07-28); and
-  `draft.py` uses the canvas aspect where it needs delivery pixels. **OR**
+  against a commanded `factor` of 0.40). **#9's P1 look half, and #18 in
+  full, are now also DONE (2026-08-13, see the Done entry above)** — a
+  reel-level `EDL.look` (plateau vignette + bookend fade) rides `deliver`'s
+  one encode, defaulted per mood by `MoodPreset.look`, closing #18 alongside
+  the parked `highlight_red` colour primitive and the `outline-bold` title
+  style — every one of the five originally-named pieces (zoom, ramp, look
+  filters, `highlight_red`, `outline-bold`) now carries its own real-ffmpeg
+  visibility proof. **What remains of P4** (`docs/cinematic-quality-playbook.md`
+  §4): **#9**'s P2 grade half (bias `match_grade`'s common target by mood —
+  the long-deferred "mood LUT") and P3 image-treatment tail (film LUTs,
+  halation, light leaks, chromatic aberration, letterbox, and now **grain**
+  — measured and priced out rather than merely deferred: at the delivery
+  profile's own crf 18, `noise=alls=8` already costs ×4.36 the file size,
+  and the platform re-encodes it away on upload regardless); **#10** the
+  cheap 3-frame preview to converge a grade/effect before a full re-encode —
+  now also the named home for "does the look actually render", since
+  `check_reel` runs on the master *before* `deliver` applies the
+  vignette/fade/titles, so no gate today ever sees them; and **#5** (the
+  authoring skill must enumerate every knob), which trails these since it
+  documents whatever surface #9's remainder lands. ~~**Two out-of-scope gaps
+  this slice found and deliberately did not fix**: `EDLEpisode` cannot
+  author `smooth_window_s`...; and `draft.py` uses the canvas aspect where
+  it needs delivery pixels.~~ — **both fixed by the housekeeping slice,
+  2026-08-12** (see its Done entry above): `smooth_window_s` is authorable
+  now, with a retry-ladder floor that stops a lag retry discarding it, and
+  `draft.py` renders real delivery pixels (8×16 → 606×1078). **Two new
+  findings the cinematic-look slice made, reported not fixed** (see its own
+  Done entry above, and `docs/backlog.md`): `color.shadow_red_arg` has
+  `highlight_red_arg`'s identical pre-fix sparse-anchor defect, worse
+  (measured **−6** at `SHADOW_RED_MAX` against highlight_red's pre-fix −3);
+  and `highlight_red_arg`'s shoulder formula is monotonicity-fragile near
+  `pull ≈ 1 − knee` for `knee ≥ 0.7`, unreachable today (the one call site
+  never passes `knee=`). **OR**
 - **Front-half continuation — trend-scan, then the real-footage v1 gate**
   (`TRENDS.md` cache, §5.4 — low-priority/YAGNI) — the only front-half stage
   left now that SP1b (assemble-draft, DONE 2026-07-13) has shipped; once it's

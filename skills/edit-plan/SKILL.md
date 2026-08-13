@@ -98,6 +98,20 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    The reason is printed in `EDL.md` and stamped into `EDL.json`. A blank waiver is
    refused.
 
+   **The reel's finish is `"look"`, a top-level key, not a per-episode one.**
+   `{"vignette": 0.0-0.6, "fade": 0.0-2.0}` — corner darkening and a bookend fade
+   in seconds, applied once over the whole reel at `deliver`, never per episode.
+   Omit it and the mood's preset (`MoodPreset.look`, resolved from `SPEC.mood`
+   the same way the variety gate resolves its shot-mix) decides — `balanced`'s
+   fallback is no vignette and the 0.5s fade `mix` already applies on its own,
+   so an autonomous run with no brief looks exactly as it did before looks
+   existed. Write `{}` or `{"vignette": 0, "fade": 0}` to mean *no look, and the
+   preset does not get to override that* — an authored zero beats a guessed
+   default even though both render nothing today; a hand-picked `{"vignette":
+   0.4, "fade": 1.0}` overrides the preset the same way. `edit_plan build` logs
+   which source won (`selection.json` or the `<mood>` preset) on every run —
+   read that line rather than assuming.
+
    Dedup across sources so one clip doesn't dominate, fit the running sum to the
    target length, and order them **hook first**. For each episode assign:
    - `composition` ∈ `lead` / `center` / `break` (required)
@@ -195,7 +209,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
             "grid": "thirds", "white_balance": 0.5, "saturation": 1.1},
            {"source": "MVI_3998.mp4", "window": 1, "composition": "center", "grid": "phi"}
          ],
-         "music": null, "cap": 3, "target_dur": null
+         "music": null, "cap": 3, "target_dur": null, "look": {"vignette": 0.3, "fade": 0.8}
        }
 
 3. **Build.** Run the authoring script (explicit args; the user never types flags):

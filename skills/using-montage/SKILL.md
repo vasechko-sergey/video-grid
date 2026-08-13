@@ -199,6 +199,9 @@ say so rather than guessing a path.
     music bed — the user eyeballs layout / order / length / beat-landing and
     approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
     `montage status` never points `next` at it, and the autonomous path skips it.
+    **The draft never shows the reel's look** (the vignette/bookend fade, §5.14
+    below) — it is a QA preview of the cut, not the finish, so do not judge
+    vignette strength or fade timing from it; there is nothing to see here yet.
 
 11. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
     exists) and the reel wants on-screen text, invoke the **titles** skill — it
@@ -260,7 +263,14 @@ say so rather than guessing a path.
     then runs assemble -> check_reel -> deliver. When `TITLES.json` is
     passed, `deliver` burns its drawtext chain into the ONE encode it already
     runs — no second pass; `deliver` also writes a `REEL_v{n}.attest.json`
-    sidecar beside the encode (design 2026-08-04). When the delivered result
+    sidecar beside the encode (design 2026-08-04). The reel's **look** (a
+    plateau vignette and/or a bookend fade — `EDL.look`, authored in
+    `selection.json` at step 6 or defaulted from the mood preset) rides this
+    SAME one encode, exactly like titles. Because `check_reel` runs on the
+    assembled master *before* `deliver` applies either, the look is invisible
+    in `draft.mp4` and in every check that ran before this point — Checkpoint
+    3, right here, is the first place anyone actually sees it (design
+    2026-08-13 §11.1). When the delivered result
     carries a non-empty `reprocessed` list (design §8 — `build_reel`'s own
     retry loop re-rendered those episode indices AFTER episode-qc judged
     them, chasing a colour or length fix), name those episodes at Checkpoint

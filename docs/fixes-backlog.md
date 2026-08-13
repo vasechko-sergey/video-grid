@@ -404,7 +404,27 @@ quality rules.
 
 ## 9. Cinematic effects library + mood-oriented palettes
 
-**Status:** NEEDS DESIGN (feedback captured 2026-08-03). Related to #5, #6, #7.
+**Status:** ◐ P1 (look half) LANDED 2026-08-13 — design
+`docs/specs/2026-08-13-cinematic-look-design.md` + plan
+`docs/plans/2026-08-13-cinematic-look.md`. A reel-level `EDL.look` (a plateau
+vignette + a bookend fade) now rides `deliver`'s one encode, defaulted per
+mood by `MoodPreset.look`. The vignette is a one-shot RGBA mask + `overlay`
+(26.4× cheaper than a per-frame `geq`, and the only route of the three
+measured with a real plateau — ffmpeg's built-in `vignette` filter has none
+and reads as a top-and-bottom dimmer on a 9:16 canvas), and the bookend fade
+moved off `mix`'s music fragment onto the **mixed** stem so ambient/SFX fade
+with the picture instead of swelling into black as the duck releases. Each
+knob carries a real-ffmpeg visibility proof — pixels/samples measured to
+actually move, not an argv that merely looks correct (backlog #18's exact
+demand). This slice also lands #18's other two named leftovers,
+`highlight_red` and the `outline-bold` title style, which is why #18 closes
+here (see its own entry below) while #9 does not: **the P1 look half is
+done; the P2 grade half (biasing `match_grade`'s common target by mood — the
+long-deferred "mood LUT") and the P3 image-treatment tail (film LUTs,
+halation, light leaks, chromatic aberration, letterbox, and now grain,
+measured and priced out at design §11.2) both remain open** — see
+`docs/backlog.md`, which is where priority for the remainder lives. Related
+to #5, #6, #7.
 
 **Feedback (as given):** add cinematic effects; and possibly reference palettes
 to steer toward for different mood choices.
@@ -670,26 +690,41 @@ effect and reframes existing `pan`.
 
 ## 18. Cinematic effects were born as live patches — land them properly, and verify they show
 
-**Status:** ◐ PARTIALLY LANDED 2026-08-08 (the frame-moving half) + 2026-08-09
-(the speed half) — the `zoom` in/out this finding names is a first-class,
-TDD'd knob (backlog #17, design
-`docs/specs/2026-08-08-subject-anchored-moves-design.md` + plan
-`docs/plans/2026-08-08-subject-anchored-moves.md`), subject-anchored and
-inside every check, with its own visibility proof (design §9: a real-ffmpeg
-measurement of the subject's on-screen width actually growing, not an
-assumption that a correct-looking argv rendered correct pixels — exactly the
-"is it actually visible on the frame" check this finding asks every effect to
-carry). The speed `ramp` this finding also names is now the same kind of
-knob (backlog #7 above, design `docs/specs/2026-08-09-speed-ramp-design.md`
-+ plan `docs/plans/2026-08-09-speed-ramp.md`): a first-class `RampSpec`,
-length-propagated through every pacing and reel-length consumer, with its
-own visibility proof — mean frame-difference measured at a 0.391 ratio
-against a commanded `factor` of 0.40, the same "actually visible on the
-frame" bar the zoom proof set. **Still open after both slices:** the look
-filters (`vignette`/`grain`/`fade`/LUTs, #9), the `highlight_red` colour
-primitive (landed quietly inside colour-as-a-stage but never given its own
-visibility proof), and the `outline-bold` title style — none of these has
-the TDD + visibility-proof treatment this finding asks for yet.
+**Status:** ✅ LANDED 2026-08-13 — design
+`docs/specs/2026-08-13-cinematic-look-design.md` + plan
+`docs/plans/2026-08-13-cinematic-look.md`, closing the finding's last three
+pieces on top of the two that had already landed. The `zoom` in/out this
+finding names was already a first-class, TDD'd knob (backlog #17, 2026-08-08,
+subject-anchored and inside every check, with its own visibility proof — a
+real-ffmpeg measurement of the subject's on-screen width actually growing).
+The speed `ramp` this finding also names was already the same kind of knob
+(backlog #7, 2026-08-09: a first-class `RampSpec`, length-propagated through
+every pacing and reel-length consumer, visibility-proved at a 0.391
+frame-difference ratio against a commanded `factor` of 0.40). **This slice
+lands the remaining three** — the look filters (`vignette` + bookend `fade`;
+grain was measured and priced out, design §11.2, and stays deferred as part
+of #9's P3 tail rather than being forced in here), the `highlight_red`
+colour primitive (ported from the parked patch, and its docstring's claim
+that the sub-knee anchors held identity turned out to be false — measured
+249/256 codes deviating at `pull=0.3`, fixed by densifying the anchors to
++1/−1), and the `outline-bold` title style — **each with its own real-ffmpeg
+visibility proof** (design §9: six proofs, every one executed as an actual
+mutation-and-revert against production code, not reasoned about). This
+finding's exact demand — "is it actually visible on the frame", because the
+live-added vignette had come out invisible and no test caught it — is what
+every proof in `tests/integration/test_look.py` measures: pixels/samples
+decoded and moved, with a control that must NOT move alongside each one. The
+review process for this slice caught three of its own tests proving the
+wrong thing before they shipped: a `probe_stream` stub that discarded its
+argument (so a mask hardcoding its dimensions would have passed),
+`highlight_red` wired through every carrier without ever reaching a pixel
+(closed before Task 9 ran), and — the closest call — a vignette+fade proof
+that would have passed with `deliver`'s filter list dropped from one of its
+two graph branches, which would have silently deleted the bookend fade AND
+every on-screen title on 3 of the 4 mood presets that ship a vignette. See
+the Done entry in `build-status.md` for the full mechanism and every
+measured number. #9 (which this slice's design also serves, as its P1
+"look" bucket) does **not** close here — see its own entry above.
 
 **Finding:** the run grew a real effects wishlist by patching the engine live:
 speed `ramp` (slow-mo), a `highlight_red` colour primitive (pink surf foam),

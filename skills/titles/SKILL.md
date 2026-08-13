@@ -1,6 +1,6 @@
 ---
 name: titles
-description: Conveyor stage — the reel's on-screen text. Turns hook/text/ending into a timed, positioned titles track, writing TITLES.json (+ TITLES.md). using-montage invokes this after reel-brief; the text is reviewed alongside the near-final reel at checkpoint CP3. Words, timing, position (top/center/bottom), style (bold-box/outline/plain), font — drawtext burns them into deliver's one encode, never a second pass. Optional — enriches the reel; the autonomous path skips it.
+description: Conveyor stage — the reel's on-screen text. Turns hook/text/ending into a timed, positioned titles track, writing TITLES.json (+ TITLES.md). using-montage invokes this after reel-brief; the text is reviewed alongside the near-final reel at checkpoint CP3. Words, timing, position (top/center/bottom), style (bold-box/outline/outline-bold/plain), font — drawtext burns them into deliver's one encode, never a second pass. Optional — enriches the reel; the autonomous path skips it.
 ---
 
 # titles (stage 5.16)
@@ -38,8 +38,12 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    that's reel-brief's call). Work out the reel length in seconds (Inputs,
    above) — the number `--total` needs below.
 2. **Propose the titles.** For each line: its window (`start`/`dur`, seconds),
-   `pos` (`top`/`center`/`bottom`), `style` (`bold-box`/`outline`/`plain`), and
-   `font`. Default `font="system"` — it always renders, no setup required. A
+   `pos` (`top`/`center`/`bottom`), `style` (`bold-box`/`outline`/`outline-bold`/
+   `plain`), and `font`. Reach for `outline-bold` over plain `outline` on a
+   bright or busy background — sky, sand, whitewater — where a 4px border
+   disappears; its heavier 7px border plus an offset shadow is what a plain
+   outline lacks (this is what the 2026-08-03 real run hit against bright
+   water). Default `font="system"` — it always renders, no setup required. A
    named font (Montserrat / Inter / Bebas Neue / Oswald) needs the curated set,
    which `bash setup.sh` installs as baseline; a named-but-uninstalled font is
    not a silent fallback — `deliver` fails loud instead (Landmines, below).
