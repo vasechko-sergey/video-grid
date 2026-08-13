@@ -374,8 +374,19 @@ def highlight_red_arg(pull: float, knee: float = HIGHLIGHT_RED_KNEE) -> str:
     neutral reads PINK, and only in the highlights where the reflection lives. A global
     red cut (the mixer) would cool the water and cyan the sky with it; this leaves
     everything below `knee` (water, skin, the board itself) untouched and bends only the
-    specular top back toward neutral. Anchors below `knee` are pinned to identity so
-    ffmpeg's spline cannot sag the mids while bending the top (the shadow_red lesson)."""
+    specular top back toward neutral.
+
+    Anchors below `knee` step every 0.1 up to and including it — not the three points
+    (0, knee/2, knee) this shipped with originally, which do NOT pin the CUBIC SPLINE
+    ffmpeg fits BETWEEN them: pinning three points pins the spline AT three points, not
+    the curve it draws in between (shadow_red_arg cites the same lesson and, measured
+    2026-08-13, turns out to have the identical sparseness — unfixed here, pre-existing,
+    queued separately). Probed losslessly through a 256-step ramp (reframe.verify_tone's
+    method): with three anchors, pull=0.3 sagged the sub-knee region by up to +7/-3
+    codes; densified, the same probe measures at most +1/-1. At HIGHLIGHT_RED_MAX=0.35
+    it is +2/-1. Not zero — a natural cubic spline through evenly-spaced collinear
+    points still curves infinitesimally between them — but confined to the bottom
+    couple of bits, and monotone throughout at the knee this ships with."""
     if isinstance(pull, bool) or not isinstance(pull, (int, float)):
         raise ValueError(f"highlight_red must be a number in [0, {HIGHLIGHT_RED_MAX}], got {pull!r}")
     if pull == 0:
@@ -388,7 +399,17 @@ def highlight_red_arg(pull: float, knee: float = HIGHLIGHT_RED_KNEE) -> str:
     if not 0.3 <= knee <= 0.9:
         raise ValueError(f"highlight_red knee {knee} must be in [0.3, 0.9] — below it the pull "
                          "reaches skin/board, above it there is no shoulder left to correct")
-    lo = [f"{a:.4f}/{a:.4f}" for a in (0.0, knee * 0.5, knee)]              # hold mids/board flat
+    # dense identity anchors below the knee, not three sparse ones — see the docstring's
+    # measured sag. Derived from `knee` (a step of 0.1 up to and including it) rather
+    # than a hardcoded list, so a caller passing a non-default knee still gets a dense
+    # sub-knee region instead of silently falling back to the old three-point sparsity.
+    lo_xs = []
+    i = 0
+    while i * 0.1 < knee - 1e-9:
+        lo_xs.append(i * 0.1)
+        i += 1
+    lo_xs.append(knee)
+    lo = [f"{x:.4f}/{x:.4f}" for x in lo_xs]
     xs = [knee + (1 - knee) * i / 3 for i in range(1, 4)]                   # ..., 1.0
     hi = [f"{x:.4f}/{x - pull * (x - knee) / (1 - knee):.4f}" for x in xs]  # linear pull to 1-pull
     return f",curves=r='{' '.join(lo + hi)}'"

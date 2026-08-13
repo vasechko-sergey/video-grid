@@ -158,10 +158,16 @@ def test_highlight_red_is_identity_at_zero():
 
 
 def test_highlight_red_pins_everything_below_the_knee_to_identity():
+    # fix round 2 (2026-08-13): dense anchors every 0.1 up to and including the knee,
+    # not the original three (0, knee/2, knee) — pinning three points does not pin
+    # the CUBIC SPLINE ffmpeg fits between them (measured: up to +7/-3 codes of sag
+    # with three anchors; see the docstring and test_highlight_red_sub_knee_residual
+    # below for the real-ffmpeg proof this string-level test cannot give on its own).
     arg = color.highlight_red_arg(0.2)
     assert arg.startswith(",curves=r='")
-    lo = arg.split("'")[1].split()[:3]
-    assert lo == ["0.0000/0.0000", "0.3000/0.3000", "0.6000/0.6000"]
+    lo = arg.split("'")[1].split()[:7]
+    assert lo == ["0.0000/0.0000", "0.1000/0.1000", "0.2000/0.2000", "0.3000/0.3000",
+                  "0.4000/0.4000", "0.5000/0.5000", "0.6000/0.6000"]
 
 
 def test_highlight_red_pulls_white_by_the_full_amount():

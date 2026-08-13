@@ -2,7 +2,7 @@ import dataclasses
 import json, subprocess
 import pytest
 from scripts import reframe
-from scripts.lib import color, ffbin, models
+from scripts.lib import color, ffbin, models, proc
 from scripts.lib import layout as layout_lib
 from scripts.lib.models import BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec, PathMeta
 
@@ -643,6 +643,78 @@ def test_verify_tone_rejects_a_banding_curve():
 @pytest.mark.integration
 def test_verify_tone_accepts_a_gentle_monotone_curve():
     reframe.verify_tone(color.tone_arg((30, 100, 148), (35, 110, 150)))   # no raise
+
+
+# --- highlight_red_arg's sub-knee residual (fix round 2, 2026-08-13 cinematic-look
+# Task 7, item 1): the same "probe a bare fragment string with a lossless ramp"
+# pattern verify_tone's own tests use above, not wired through a full ReframeSpec +
+# reframe.reframe() render (that end-to-end proof, on real delivered pixels, is
+# tests/integration/test_look.py::test_highlight_red_pulls_the_highlights_and_leaves_
+# the_shadows) ---
+
+def _ramp_r_lut(frag: str) -> list[int]:
+    """Push reframe.verify_tone's own 256-step R=G=B=x ramp through `frag` losslessly
+    (rawvideo in, rawvideo out, no encode) and return the R channel as a 256-entry LUT
+    (lut[x] is the output code for input code x).
+
+    Not reframe.verify_tone itself: that helper strips a TRAILING comma (tone_arg's
+    shape — first in the chain), while highlight_red_arg/shadow_red_arg emit a
+    LEADING one (mid-chain filters) — so this strips both ends instead. Same width
+    (reframe.RAMP_PROBE_W), same construction, same method — a `curves` fragment
+    pins its control points, not the spline it draws BETWEEN them, and reading the
+    actual output is the only way to know how far it strays.
+    """
+    ramp = bytes(bytearray(
+        [v for _ in range(4) for v in
+         (b for x in range(reframe.RAMP_PROBE_W) for b in (x, x, x))]))
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                    "-s", f"{reframe.RAMP_PROBE_W}x4", "-i", "-",
+                    "-vf", frag.strip(","),
+                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                   input=ramp).stdout
+    return [out[i * 3] for i in range(reframe.RAMP_PROBE_W)]
+
+
+@pytest.mark.integration
+def test_highlight_red_sub_knee_residual_is_small_and_monotone(need_filter):
+    """The docstring used to claim anchors below `knee` were "pinned to identity so
+    ffmpeg's spline cannot sag the mids" — false; three anchors pin three POINTS, not
+    the spline drawn between them. Measured with those three anchors (0, knee/2,
+    knee): pull=0.3 sagged the sub-knee region by up to +7/-3 codes, monotone but
+    nowhere near identity. Densified to a step every 0.1 up to and including the
+    knee: the same probe now measures at most +1/-1 at pull=0.3 and +2/-1 at
+    HIGHLIGHT_RED_MAX — not zero (a natural cubic spline through evenly-spaced
+    collinear points still curves infinitesimally between them) but confined to the
+    bottom couple of bits. The bounds below sit at 3/-2: comfortably clear of both
+    measured densified values, and strictly tighter than the old +7/-3 sag, so a
+    regression back toward three sparse anchors fails this test.
+    """
+    need_filter("curves")
+    knee_code = round(color.HIGHLIGHT_RED_KNEE * 255)   # 153 at the default 0.60 knee
+
+    for pull in (0.3, color.HIGHLIGHT_RED_MAX):
+        lut = _ramp_r_lut(color.highlight_red_arg(pull))
+        below = [lut[i] - i for i in range(knee_code + 1)]
+        assert max(below) <= 3, (
+            f"pull={pull}: sub-knee max deviation is +{max(below)} — the densified "
+            "anchors no longer hold the spline near identity")
+        assert min(below) >= -2, (
+            f"pull={pull}: sub-knee min deviation is {min(below)} — the densified "
+            "anchors no longer hold the spline near identity")
+        assert all(lut[i + 1] >= lut[i] for i in range(255)), (
+            f"pull={pull}: the curve is not monotone — a non-monotone transfer curve bands")
+        # the knee itself is an explicit control point, so a natural cubic spline
+        # passes through it exactly (±1 for 8-bit quantization, not curve error).
+        assert abs(lut[knee_code] - knee_code) <= 1, (
+            f"pull={pull}: the knee anchor at code {knee_code} maps to {lut[knee_code]}, "
+            "not (close to) itself")
+        # the shoulder is unchanged by the sub-knee fix: white (code 255) still
+        # reaches 1-pull, exactly as the three-anchor version did (verified by hand
+        # against the pre-fix code: both land on the identical output code).
+        expected_white = round(255 * (1 - pull))
+        assert abs(lut[255] - expected_white) <= 1, (
+            f"pull={pull}: white (code 255) is {lut[255]}, expected close to "
+            f"{expected_white} (255 * (1 - pull)) — the above-knee pull moved")
 
 
 # --- reframe.generate_pan_path (design 2026-07-19 §4): the pure generator ---

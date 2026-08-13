@@ -453,17 +453,25 @@ def test_a_manifest_without_stabilize_never_probes_ffmpeg(monkeypatch):
     assert mf.validate(mf.Manifest.from_dict(_ok_dict())) == []
 
 
-# --- colour-as-a-stage Task 9: Manifest carries the nine colour fields ---
+# --- colour-as-a-stage Task 9: Manifest carries the ten colour fields
+# (highlight_red added 2026-08-13 cinematic-look Task 7 fix round 2 item 2) ---
 
 def test_manifest_from_dict_reads_colour():
-    m = mf.Manifest.from_dict(_ok_dict(white_balance=0.5, dip=0.2,
+    # highlight_red=0.15 is distinguishable from every other value asserted here
+    # (and from shadow_red's own test value elsewhere in this file) so a
+    # copy-paste regression in from_dict's highlight_red line — reading
+    # "shadow_red" instead, or an inverted `is None` collapsing it to the 0.0
+    # default — fails this test rather than coincidentally matching.
+    m = mf.Manifest.from_dict(_ok_dict(white_balance=0.5, dip=0.2, highlight_red=0.15,
                                        tone_src=[30, 100, 148], tone_dst=[35, 110, 150]))
     assert m.white_balance == 0.5 and m.dip == 0.2 and m.tone_src == (30, 100, 148)
+    assert m.highlight_red == 0.15
 
 
 def test_manifest_colour_defaults_identity():
     m = mf.Manifest.from_dict(_ok_dict())
     assert (m.white_balance, m.black_point, m.saturation, m.dip) == (0.0, 0.0, 1.0, 0.0)
+    assert m.highlight_red == 0.0
     assert m.tone_src is None
 
 

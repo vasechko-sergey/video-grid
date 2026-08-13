@@ -583,25 +583,32 @@ def test_color_correct_defaults_to_none(monkeypatch, tmp_path):
 
 
 def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
-    # colour-as-a-stage Task 10: the manifest's nine colour fields must reach
-    # ReframeSpec, and the pre-grade segment (`src`, reframe's own input) must
-    # reach check_episode.run as source= — the advisory color_fidelity check's
-    # only ingredient. validate() structurally cannot catch a drop here (same
-    # shape as test_the_manifests_filler_reaches_the_reframe_spec above): it
-    # never builds a ReframeSpec of its own to compare against, so a regression
-    # would pass the gate clean and every authored grade would silently render
-    # as identity. Silent corruption, not a raise — needs its own pin.
+    # colour-as-a-stage Task 10 (+ highlight_red, 2026-08-13 cinematic-look Task 7
+    # fix round 2 item 2): the manifest's ten colour fields must reach ReframeSpec,
+    # and the pre-grade segment (`src`, reframe's own input) must reach
+    # check_episode.run as source= — the advisory color_fidelity check's only
+    # ingredient. validate() structurally cannot catch a drop here (same shape as
+    # test_the_manifests_filler_reaches_the_reframe_spec above): it never builds a
+    # ReframeSpec of its own to compare against, so a regression would pass the
+    # gate clean and every authored grade would silently render as identity.
+    # Silent corruption, not a raise — needs its own pin. highlight_red uses 0.15,
+    # distinguishable from every other colour field's value here (notably
+    # shadow_red's 0.05 — the field it is most likely to be cross-wired with,
+    # since Manifest.from_dict's two lines and the OPTIONAL/dataclass entries for
+    # the two fields sit right beside each other) so a copy-paste regression on
+    # either field fails this test instead of coincidentally matching.
     calls = _stub_engine(monkeypatch, tmp_path)
     result = pe.process_episode(
         _manifest(tmp_path, white_balance=0.5, black_point=0.1, highlight=0.9,
-                  saturation=1.1, shadow_red=0.05, mid_blue=0.95, dip=0.2,
-                  tone_src=[30, 100, 148], tone_dst=[35, 110, 150]),
+                  highlight_red=0.15, saturation=1.1, shadow_red=0.05, mid_blue=0.95,
+                  dip=0.2, tone_src=[30, 100, 148], tone_dst=[35, 110, 150]),
         project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass"
     spec = calls["reframe_spec"]
     assert spec.white_balance == 0.5
     assert spec.black_point == 0.1
     assert spec.highlight == 0.9
+    assert spec.highlight_red == 0.15
     assert spec.saturation == 1.1
     assert spec.shadow_red == 0.05
     assert spec.mid_blue == 0.95
@@ -615,7 +622,7 @@ def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
 
 
 def test_process_episode_colour_fields_default_identity(monkeypatch, tmp_path):
-    # the complement of the test above: a manifest that names none of the nine
+    # the complement of the test above: a manifest that names none of the ten
     # fields must still reach ReframeSpec at its identity defaults — an episode
     # authored before this slice renders byte-identically (design's whole point).
     calls = _stub_engine(monkeypatch, tmp_path)
@@ -624,6 +631,7 @@ def test_process_episode_colour_fields_default_identity(monkeypatch, tmp_path):
     assert spec.white_balance == 0.0
     assert spec.black_point == 0.0
     assert spec.highlight == 1.0
+    assert spec.highlight_red == 0.0
     assert spec.saturation == 1.0
     assert spec.shadow_red == 0.0
     assert spec.mid_blue == 1.0
