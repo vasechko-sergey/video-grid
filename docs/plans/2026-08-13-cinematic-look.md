@@ -1729,6 +1729,18 @@ Per the 2026-08-12 rule, every row of the design's §12 table goes into
 - **P4:** the chroma-preserving vignette (luma-plane blend or `geq`), if the
   corner desaturation reads wrong on real footage.
 - **P4:** a per-episode look override.
+- **P2, found by this slice, not caused by it:** `color.shadow_red_arg` has the
+  **identical sparse-anchor defect** `highlight_red_arg` was fixed for here, and
+  worse — measured **−6** at `SHADOW_RED_MAX` against `highlight_red`'s pre-fix
+  −3. It is the mirror function, and `highlight_red`'s docstring cited "the
+  shadow_red lesson" for a lesson `shadow_red` itself never learned. The fix is
+  the same one-line densification, plus a probe test.
+- **P3, pre-existing, unreachable today:** `highlight_red_arg`'s **shoulder**
+  (`hi`) formula is monotonicity-fragile near `pull ≈ 1 − knee` for
+  `knee ≥ 0.7`. A knee × pull grid scan found the old code already broken across
+  a swath there; the sub-knee fix moves 2 of 63 grid points, both on that
+  boundary. The only production call site never passes `knee=`, so nothing
+  reaches it — but the formula, not the anchors, is what needs rethinking.
 
 Update the P1 row for #9: the look half is done, the P2 grade half and the P3 tail
 remain — **do not mark #9 closed**. Update #18's row: all four pieces have landed,
