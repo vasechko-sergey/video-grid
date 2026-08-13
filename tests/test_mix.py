@@ -163,3 +163,56 @@ def test_mix_sfx_false_leaves_ambient_graph_unchanged(tmp_path, monkeypatch):
             "[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300[duck];"
             "[msum][duck]amix=inputs=2:duration=first[mixed]") in joined
     assert "[sfx]" not in joined
+
+
+# --- the bookend fade moves onto the mixed stem (Task 4) --------------------
+# design 2026-08-13 §5: _mix_graph's sidechaincompress keys the ambient duck on the
+# music (input 0). With the fade baked into the music fragment, the key falls at the
+# reel's end, the duck RELEASES, and the nat-sound gets louder exactly as the picture
+# goes to black — and the sfx whoosh was never faded at all. The fix moves `afade`
+# onto the fully-mixed stem, after the duck/whoosh mix and before `_measure`.
+
+def test_the_fragment_extract_no_longer_carries_the_fade(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0)
+    frag_cmd = " ".join(map(str, calls[0]))
+    assert "afade" not in frag_cmd
+
+
+def test_the_fade_runs_on_the_mixed_stem_before_loudnorm(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
+            segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)])
+    joined = [" ".join(map(str, c)) for c in calls]
+    fade_i = next(i for i, c in enumerate(joined) if "afade=t=in" in c)
+    mix_i = next(i for i, c in enumerate(joined) if "sidechaincompress" in c)
+    norm_i = next(i for i, c in enumerate(joined) if "loudnorm=I=" in c and "print_format" not in c)
+    assert mix_i < fade_i < norm_i     # ambient is ducked, THEN faded, THEN normalized
+
+
+def test_the_fade_is_a_parameter_and_zero_emits_none(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, fade=0.0)
+    assert not any("afade" in " ".join(map(str, c)) for c in calls)
+
+
+def test_a_custom_fade_reaches_both_ends(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, fade=0.8)
+    af = next(" ".join(map(str, c)) for c in calls if "afade=t=in" in " ".join(map(str, c)))
+    assert "afade=t=in:st=0:d=0.8" in af
+    assert "afade=t=out:st=5.2:d=0.8" in af             # dur(6.0) - fade(0.8)
+
+
+def test_overlapping_fades_are_refused_with_the_authored_number(tmp_path):
+    with pytest.raises(ValueError, match="1.5s"):
+        mix.mix(_ms(tmp_path), str(tmp_path / "out"), 2.0, fade=1.5)

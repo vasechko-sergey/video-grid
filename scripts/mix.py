@@ -16,7 +16,9 @@ from scripts.lib.models import MusicSpec
 _TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12)
 _TP_MAX = -1.5                                         # true-peak ceiling (dBTP)
 _LRA_TARGET = 11                                       # loudness range target
-_FADE = 0.5
+_FADE = 0.5     # default bookend fade, seconds per end. The DEFAULT, not a fixed
+                # value: build_reel overrides it with EDL.look.fade so the audio and
+                # video bookends are one number (design 2026-08-13 §5).
 
 
 def _measure(audio: str) -> dict[str, str]:
@@ -168,32 +170,40 @@ def _mix_graph(has_ambient: bool, has_sfx: bool) -> str:
 
 def mix(music: MusicSpec, out_dir: str, dur: float,
         segments: list[tuple[str, float]] | None = None,
-        ambient: bool = True, sfx: bool = False) -> str:
+        ambient: bool = True, sfx: bool = False, fade: float = _FADE) -> str:
     """Audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS). With
     `segments` ([(raw_segment_path, episode_dur), …] in reel order) and `ambient`,
     each clip's nat-sound is ducked under the music; with `sfx`, a synthesized whoosh
     is placed on the reel's major transitions and mixed in on top. Both bake into the
     one stem before the final loudnorm; without them the stem is music-only, exactly
-    as before."""
+    as before.
+
+    `fade` is the bookend fade at each end, in seconds, and it is applied to the
+    MIXED stem rather than to the music fragment — design 2026-08-13 §5. On the
+    fragment it faded only the music, and since _mix_graph's sidechaincompress is
+    keyed on the music, the duck RELEASED as the music fell and the nat-sound got
+    louder exactly as the picture went to black. build_reel passes EDL.look.fade
+    here so the audio and video bookends are the same number."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
     if dur > music.duration + 0.1:
         raise ValueError(f"mix: reel dur {dur}s exceeds the analyzed music window {music.duration}s "
                          f"(track={music.track}, start_offset={music.start_offset}) — analyze a longer "
                          "window or shorten the reel; a shorter stem would silently desync from the video")
-    if dur < 2 * _FADE:
-        raise ValueError(f"mix: dur {dur}s is shorter than the two {_FADE}s fades (they would overlap) — "
-                         "use a longer reel or a shorter _FADE")
+    if not isinstance(fade, (int, float)) or isinstance(fade, bool) or fade < 0:
+        raise ValueError(f"mix: fade must be a non-negative number of seconds, got {fade!r}")
+    if dur < 2 * fade:
+        raise ValueError(f"mix: a {fade}s fade at each end of a {dur}s reel would overlap — "
+                         f"lower the look's fade to at most {dur / 2:.2f}s or cut a longer reel")
     os.makedirs(out_dir, exist_ok=True)
     out = os.path.join(out_dir, "audio.m4a")
     with tempfile.TemporaryDirectory() as d:
         frag = os.path.join(d, "frag.wav")
         # accurate-seek the fragment (audio seek is exempt from the frame-accurate-video
-        # landmine, but placed exactly), trim to the reel length, fade in/out
+        # landmine, but placed exactly), trim to the reel length — the fade below runs on
+        # the MIXED stem instead, so it reaches the ambient duck and the sfx too
         proc.run([ffbin.ffmpeg(), "-y", "-accurate_seek", "-ss", f"{music.start_offset}",
-                  "-i", music.track, "-t", f"{dur}",
-                  "-af", f"afade=t=in:st=0:d={_FADE},afade=t=out:st={max(0.0, dur - _FADE)}:d={_FADE}",
-                  frag])
+                  "-i", music.track, "-t", f"{dur}", frag])
         amb = _build_ambient(segments, d) if (segments and ambient) else None
         sfx_bed = _build_sfx([du for _, du in segments], d) if (segments and sfx) else None
         norm_src = frag
@@ -208,6 +218,14 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
                       _mix_graph(amb is not None, sfx_bed is not None),
                       "-map", "[mixed]", mixed])
             norm_src = mixed
+        if fade:
+            # AFTER the mix and BEFORE the measurement: everything in the stem fades
+            # together, and loudnorm still measures the signal that actually ships.
+            faded = os.path.join(d, "faded.wav")
+            proc.run([ffbin.ffmpeg(), "-y", "-i", norm_src, "-af",
+                      f"afade=t=in:st=0:d={fade},"
+                      f"afade=t=out:st={max(0.0, dur - fade)}:d={fade}", faded])
+            norm_src = faded
         st = _measure(norm_src)
         proc.run([ffbin.ffmpeg(), "-y", "-i", norm_src, "-af",
                   (f"loudnorm=I={_TARGET_LUFS}:TP={_TP_MAX}:LRA={_LRA_TARGET}:"
