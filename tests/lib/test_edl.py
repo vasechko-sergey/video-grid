@@ -953,6 +953,17 @@ def test_edl_look_accepts_an_authored_no_look():
     assert e.look == LookSpec()
 
 
+def test_edl_look_empty_object_is_authored_not_absent():
+    # THE discriminating case (fix round 1): {} is FALSY, so `if d.get("look")`
+    # collapses it to None ("never authored") and a later mood-preset conductor
+    # would then silently override the author's decision. `is not None` keeps it
+    # as LookSpec() instead. test_edl_look_accepts_an_authored_no_look above uses
+    # a non-empty {"vignette": 0, "fade": 0}, which is TRUTHY and passes under
+    # either spelling — it proves nothing about which guard is in place.
+    e = EDL.from_dict({"episodes": [_ep().to_dict()], "look": {}})
+    assert e.look == LookSpec()
+
+
 def test_edl_look_refuses_a_wrong_type():
     with pytest.raises(ValueError, match="EDL.look must be a LookSpec"):
         EDL(episodes=(_ep(),), look={"vignette": 0.3})
@@ -960,5 +971,11 @@ def test_edl_look_refuses_a_wrong_type():
 
 def test_edl_markdown_prints_the_look_only_when_set():
     assert "Look" not in EDL(episodes=(_ep(),)).to_markdown()
+    # fix round 1 (Minor): the third state — a look IS authored but is the identity
+    # LookSpec() (both fields 0), so there is nothing to report. Distinct from the
+    # look=None case above: both print no Look line, but for different reasons, and
+    # only this state exercises the `self.look.vignette or self.look.fade` guard's
+    # false branch on a non-None look.
+    assert "Look" not in EDL(episodes=(_ep(),), look=LookSpec()).to_markdown()
     md = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.3, fade=0.8)).to_markdown()
     assert "- **Look:** vignette 0.30 · fade 0.80s" in md

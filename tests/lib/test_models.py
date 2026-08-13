@@ -923,6 +923,28 @@ def test_reel_manifest_look_refuses_a_wrong_type():
                        target_dur=10.0, look=0.3)
 
 
+def test_reel_manifest_look_accepts_an_authored_no_look():
+    # fix round 1 (Important — same gap the EDL side already covered): LookSpec()
+    # is NOT None — it means "the author said no look", and a later mood-preset
+    # conductor must not override it. Goes through from_dict/_reel_dict, this
+    # file's own idiom for from_dict-shaped ReelManifest tests (see
+    # test_reel_manifest_platform_default_and_set above).
+    rm = m.ReelManifest.from_dict(_reel_dict(look={"vignette": 0, "fade": 0}))
+    assert rm.look == LookSpec()
+
+
+def test_reel_manifest_look_empty_object_is_authored_not_absent():
+    # THE discriminating case (fix round 1): {} is FALSY, so `if d.get("look")`
+    # would collapse it to None ("never authored") and a later mood-preset
+    # conductor would then silently override the author's decision; `is not None`
+    # keeps it as LookSpec(). The test above uses a non-empty
+    # {"vignette": 0, "fade": 0}, which is TRUTHY and passes under either
+    # spelling — it proves nothing about which guard is actually in place. This
+    # file had NO authored-no-look test at all before this fix round.
+    rm = m.ReelManifest.from_dict(_reel_dict(look={}))
+    assert rm.look == LookSpec()
+
+
 def test_reelreport_overall_excludes_advisory_safe_zones():
     rr = m.ReelReport(checks={"safe_zones": m.CheckResult("safe_zones", False, {"advisory": True})})
     assert rr.overall is True          # advisory False never blocks the reel
