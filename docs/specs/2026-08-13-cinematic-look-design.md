@@ -161,6 +161,15 @@ preset. `EDL.look == LookSpec()` means *authored as no look* — the preset does
 not get to override it. Same shape as `EDL.variety` and `EDL.constraints`, where
 `None` means "never evaluated" and is never read as "passed".
 
+The JSON boundary must therefore test `is not None`, never truthiness — and the
+reason is narrower than it first looks. `{"vignette": 0, "fade": 0}` is a
+non-empty dict and so is truthy either way; the input that actually separates the
+two spellings is `"look": {}`. Under `is not None` that is `LookSpec()`, an
+authored decision; under truthiness it silently becomes `None` and the preset
+overrides it. `EDL.from_json` is a documented hand-authored front door
+(extract-spine SP1), so an empty object is reachable, and it is the case a test
+has to name.
+
 Functions:
 
 - `LookSpec.has_vignette` — `vignette > 0`. The one predicate that decides

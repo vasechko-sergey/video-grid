@@ -575,9 +575,14 @@ In `from_dict`, beside `variety`:
                    look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
 ```
 
-Note the explicit `is not None` and **not** a truthiness test: `{"vignette": 0,
-"fade": 0}` is a falsy-looking but meaningful authored value, and `if d.get("look")`
-would silently drop it back to "never authored".
+Note the explicit `is not None` and **not** a truthiness test. Get the reason
+right, because the obvious one is wrong: `{"vignette": 0, "fade": 0}` is a
+NON-EMPTY dict and therefore truthy, so it survives either spelling. The input
+that actually discriminates is `"look": {}` — an empty object, which is falsy.
+Under `is not None` it resolves to `LookSpec()` (authored, no look); under
+truthiness it collapses to `None` (never authored) and the mood preset then
+overrides a decision the author made. `EDL.from_json` is a documented
+hand-authored front door, so `{}` is reachable.
 
 In `to_dict`, beside `"variety"`:
 
@@ -1143,7 +1148,7 @@ def test_selection_json_overrides_the_preset(...):
 
 
 def test_an_authored_no_look_beats_the_preset(...):
-    # {"vignette": 0, "fade": 0} is falsy-looking and meaningful: the author said no
+    # the author said "no look" explicitly; the preset must not override a decision
     sel = {**selection, "look": {"vignette": 0, "fade": 0}}
     edl = edit_plan.build_edl(footage, sel, preset=moodpreset.resolve("moody"),
                               look=moodpreset.resolve("moody").look, aspect=(9, 16))
