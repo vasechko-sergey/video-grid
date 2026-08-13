@@ -1674,6 +1674,15 @@ regression-documentation layer on top of the enforcement path, not the
 enforcement path itself. That is why nothing is broken today, and also why a
 fixture that lies is worth fixing rather than deleting.
 
+- [ ] **Step 1c: One false comment to correct**
+
+`tests/lib/test_manifest.py`'s new `highlight_red=0.15` carries a comment saying
+the value is distinguishable "from `shadow_red`'s own test value elsewhere in
+this file". Grep says `shadow_red` never appears as a value anywhere in that
+file — the colliding value (`0.05`) lives in the *other* file,
+`tests/integration/test_process_episode.py`. The choice of 0.15 is right; the
+sentence explaining it is not. Correct it to name the real neighbour.
+
 - [ ] **Step 2: Close any hole the battery found**
 
 For each row where nothing went red, write the missing test, verify it goes red
