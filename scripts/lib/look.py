@@ -95,10 +95,16 @@ def fade_args(fade: float, dur: float) -> list[str]:
     """The bookend pair, or [] at 0. Refuses a fade that would meet itself in the
     middle — two overlapping ramps multiply into a reel that never reaches full
     brightness, which looks like a broken encode rather than a style."""
+    # Type check BEFORE the zero shortcut: False == 0 in Python, so an `if fade == 0`
+    # placed first would accept a bool and return [] instead of refusing it. color.py's
+    # black_point/shadow_red/dip all order these two the same way, for the same reason.
+    if not _num(fade) or not 0.0 <= fade <= LOOK_FADE_MAX:
+        raise ValueError(
+            f"fade_args needs a fade in [0, {LOOK_FADE_MAX}] seconds — the same band "
+            f"LookSpec enforces, re-checked here because this function is public and a "
+            f"direct caller does not go through the dataclass. Got {fade!r}")
     if fade == 0:
         return []
-    if not _num(fade) or fade < 0:
-        raise ValueError(f"fade must be a non-negative number of seconds, got {fade!r}")
     if not _num(dur) or dur <= 0:
         raise ValueError(f"fade_args needs a positive reel duration, got {dur!r}")
     if 2 * fade > dur:

@@ -26,8 +26,11 @@ def test_from_dict_rejects_a_non_object():
         LookSpec.from_dict([0.3, 0.8])
 
 
-@pytest.mark.parametrize("v", [-0.1, 0.61, True, "0.3"])
+@pytest.mark.parametrize("v", [-0.1, 0.61, True, False, "0.3"])
 def test_vignette_refuses_out_of_band(v):
+    # False is the discriminating bool case here: False == 0, which IS inside
+    # [0, 0.6], so only the bool exclusion rejects it. True == 1 is outside the band
+    # and would be refused by the range check alone.
     with pytest.raises(ValueError, match="vignette"):
         LookSpec(vignette=v)
 
@@ -69,6 +72,18 @@ def test_fade_args_off_at_zero():
 def test_fade_args_refuse_overlapping_fades():
     with pytest.raises(ValueError, match="would overlap"):
         fade_args(0.8, 1.5)
+
+
+def test_fade_args_refuses_a_bool_rather_than_reading_it_as_zero():
+    # False == 0, so a zero-shortcut placed before the type guard would return []
+    with pytest.raises(ValueError, match="fade_args"):
+        fade_args(False, 30.0)
+
+
+def test_fade_args_re_checks_the_ceiling_on_its_own():
+    # public function: a direct caller does not pass through LookSpec's validation
+    with pytest.raises(ValueError, match=str(LOOK_FADE_MAX)):
+        fade_args(3.0, 100.0)
 
 
 def test_chain_puts_the_fade_after_the_titles():
