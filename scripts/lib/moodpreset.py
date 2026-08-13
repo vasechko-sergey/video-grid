@@ -1,17 +1,19 @@
 """Mood presets (design docs/specs/2026-08-06-mood-preset-variety-design.md §4) —
-the playbook §3 spine, carrying exactly the two fields its one consumer reads.
+the playbook §3 spine.
 
 A mood is not one knob: it is a recipe across shot selection, pace, colour, music
-and effects. v1 wires the SELECTION half only — `edit_plan` reads `shot_mix` to
-decide which shot-size under-use is refusable, and `asl` to report the realized
-average shot length against a band. Colour, effects and QC are named follow-ups in
-the design's §14, not fields nothing reads.
+and effects. Today it wires the SELECTION half (`shot_mix`, `asl` — edit_plan) and
+the LOOK half (`look` — the reel's vignette and bookend fade, spent in deliver).
+Colour and QC are named follow-ups in the 2026-08-06 design's §14, not fields
+nothing reads.
 
-Pure: stdlib + lib.mood + lib.footage's SHOT_TYPES vocabulary. No IO."""
-from dataclasses import dataclass
+Pure: stdlib + lib.mood + lib.footage's SHOT_TYPES vocabulary + lib.look's
+LookSpec. No IO."""
+from dataclasses import dataclass, field
 
 from scripts.lib import mood
 from scripts.lib.footage import SHOT_TYPES
+from scripts.lib.look import LookSpec
 
 
 def _num(v: object) -> bool:
@@ -29,6 +31,7 @@ class MoodPreset:
     anchor: mood.MoodVector | None
     shot_mix: dict[str, float]        # a distribution over SHOT_TYPES, summing to 1.0
     asl: tuple[float, float]          # (lo, hi) seconds — reported, never enforced
+    look: LookSpec = field(default_factory=LookSpec)   # the reel's finish (design 2026-08-13 §6)
 
     def __post_init__(self) -> None:
         if not (isinstance(self.name, str) and self.name):
@@ -52,6 +55,9 @@ class MoodPreset:
         self.asl = (float(self.asl[0]), float(self.asl[1]))
         if not 0.0 < self.asl[0] < self.asl[1]:
             raise ValueError(f"MoodPreset.asl needs 0 < lo < hi seconds, got {self.asl!r}")
+        if not isinstance(self.look, LookSpec):
+            raise ValueError(f"MoodPreset.look must be a LookSpec, got "
+                             f"{type(self.look).__name__}")
 
 
 # Hand-tuned FIRST CUT. No footage has been cut against these numbers, so they live
@@ -59,21 +65,27 @@ class MoodPreset:
 # CLUSTER_COS and MAX_CAST carry. Calibrate on the first real run that uses them.
 PRESETS: tuple[MoodPreset, ...] = (
     MoodPreset("fun", mood.MoodVector(0.74, 0.84, 0.72),
-               {"close": 0.35, "medium": 0.40, "wide": 0.25}, (1.2, 2.5)),
+               {"close": 0.35, "medium": 0.40, "wide": 0.25}, (1.2, 2.5),
+               look=LookSpec(vignette=0.00, fade=0.3)),
     MoodPreset("epic", mood.MoodVector(0.80, 0.55, 0.55),
-               {"close": 0.25, "medium": 0.35, "wide": 0.40}, (1.5, 3.5)),
+               {"close": 0.25, "medium": 0.35, "wide": 0.40}, (1.5, 3.5),
+               look=LookSpec(vignette=0.30, fade=0.8)),
     MoodPreset("moody", mood.MoodVector(0.48, 0.22, 0.42),
-               {"close": 0.30, "medium": 0.35, "wide": 0.35}, (2.5, 5.0)),
+               {"close": 0.30, "medium": 0.35, "wide": 0.35}, (2.5, 5.0),
+               look=LookSpec(vignette=0.40, fade=1.0)),
     MoodPreset("nostalgic", mood.MoodVector(0.32, 0.45, 0.34),
-               {"close": 0.35, "medium": 0.40, "wide": 0.25}, (2.0, 4.0)),
+               {"close": 0.35, "medium": 0.40, "wide": 0.25}, (2.0, 4.0),
+               look=LookSpec(vignette=0.25, fade=0.8)),
 )
 
-# The no-match fallback. Its close share is deliberately above WANT_FLOOR: the
-# autonomous path skips the optional reel-brief, and skipping a brief must not
-# disable a quality gate (design §4.2). "A montage that stays one size reads
-# amateur" is a grammar rule, not a mood-specific one.
+# The no-match fallback. Its close share is deliberately above WANT_FLOOR (a skipped
+# brief must not disable a quality GATE), and its look is deliberately EMPTY of
+# vignette (a skipped brief must not silently apply a TASTE). The 0.5s fade is what
+# mix already did before looks existed, so the autonomous path delivers exactly
+# today's reel.
 BALANCED = MoodPreset("balanced", None,
-                      {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0))
+                      {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0),
+                      look=LookSpec(vignette=0.0, fade=0.5))
 
 
 def resolve(mood_text: str | None) -> MoodPreset:

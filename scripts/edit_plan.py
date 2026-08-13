@@ -21,6 +21,7 @@ from scripts.lib import gridfit, moodpreset, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
+from scripts.lib.look import LookSpec
 from scripts.lib.models import HERO_RULES, RampSpec
 from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine
@@ -307,7 +308,8 @@ def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None, *, aspect: tuple[int, int] | None = None,
               preset: MoodPreset | None = None,
-              rules: Constraints | None = None, platform: str = "") -> EDL:
+              rules: Constraints | None = None, platform: str = "",
+              look: LookSpec | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -343,7 +345,16 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
 
     `platform` (design 2026-08-12 §1.1, keyword-only) rides straight onto EDL.platform —
     build_edl does not resolve it from anything, write_edit_plan already reads SPEC.platform
-    for the caller. A bare "" (the default) means the generic safe zone, same as omitting it."""
+    for the caller. A bare "" (the default) means the generic safe zone, same as omitting it.
+
+    `look` (design 2026-08-13 §6, keyword-only) is the mood preset's default LookSpec —
+    write_edit_plan passes preset.look here, so a mood always has a look unless the author
+    overrides it. selection.json's own "look" key wins when present: an author who writes
+    {} or {"vignette": 0, "fade": 0} has DECIDED against a look, and the preset must not
+    overwrite that decision, so the check is `is not None`, never truthiness — {} is falsy,
+    and a naive `if sel_look:` would silently fall through to the preset on exactly that
+    spelling. Omitting `look` with no selection.json override leaves EDL.look at None — the
+    same "never authored" a hand-authored SP1 EDL.json carries."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -386,9 +397,13 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     # reads — but evaluating the FINAL episode list keeps the report describing the
     # EDL that is actually written.
     cons = check_constraints(rules, tuple(placed), footage) if rules is not None else None
+    # selection.json wins over the preset's default, and an authored {"vignette": 0,
+    # "fade": 0} is a DECISION, not an absence — `is not None`, never truthiness.
+    sel_look = selection.get("look")
+    resolved_look = LookSpec.from_dict(sel_look) if sel_look is not None else look
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
-               cap=cap if cap is not None else 3, platform=platform, target_dur=target,
-               variety=variety, constraints=cons)
+               cap=cap if cap is not None else 3, platform=platform, look=resolved_look,
+               target_dur=target, variety=variety, constraints=cons)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
@@ -449,10 +464,16 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
              "but the GENERIC zone is what check_reel will actually judge against")
     else:
         _log(f"platform: {plat} — its safe zone is what check_reel and the titles will use")
+    # selection.json wins over the preset's default (build_edl re-applies the same
+    # is-not-None rule below; this log line only reports which source won).
+    sel_look = selection.get("look")
+    eff_look = LookSpec.from_dict(sel_look) if sel_look is not None else preset.look
+    _log(f"look: vignette {eff_look.vignette:.2f} · fade {eff_look.fade:.2f}s — from "
+         f"{'selection.json' if sel_look is not None else preset.name + ' preset'}")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
-                    platform=plat)
+                    platform=plat, look=preset.look)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is

@@ -136,3 +136,32 @@ def test_gaps_are_reported_in_shot_type_order():
                                  (1.0, 5.0))
     r = moodpreset.evaluate(_counts(close=5, medium=5, wide=5), _counts(wide=3), 2.0, bare)
     assert r.gaps == ("close", "medium")
+
+
+# --- MoodPreset.look: the reel's default finish (design 2026-08-13 §6) --------------
+
+from scripts.lib.look import LookSpec
+from scripts.lib.moodpreset import BALANCED, PRESETS, MoodPreset, resolve
+
+
+def test_every_preset_carries_a_look():
+    for p in (*PRESETS, BALANCED):
+        assert isinstance(p.look, LookSpec)
+
+
+def test_the_fallback_applies_no_vignette():
+    # skipping the optional brief must not silently apply a TASTE. (It must not
+    # disable a quality GATE either — that is why BALANCED's shot_mix keeps a real
+    # close share. The two rows read opposite because a gate and a look are
+    # different kinds of thing.)
+    assert BALANCED.look == LookSpec(vignette=0.0, fade=0.5)
+
+
+def test_moody_is_the_heaviest_look():
+    assert resolve("dark and moody").look == LookSpec(vignette=0.40, fade=1.0)
+
+
+def test_look_must_be_a_lookspec():
+    with pytest.raises(ValueError, match="MoodPreset.look must be a LookSpec"):
+        MoodPreset("x", None, {"close": 0.3, "medium": 0.4, "wide": 0.3}, (1.0, 2.0),
+                   look={"vignette": 0.3})

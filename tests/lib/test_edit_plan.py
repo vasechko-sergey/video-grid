@@ -1006,3 +1006,51 @@ def test_window_to_episode_accepts_a_ramp_the_clip_can_carry():
         clip, clip.windows[0], composition="lead", grid="thirds",
         ramp={"at": 1.0, "factor": 0.4, "ease": 0.3, "hold": 0.2})
     assert ep.ramp == {"at": 1.0, "factor": 0.4, "ease": 0.3, "hold": 0.2}
+
+
+# --- EDL.look: the mood preset's default, selection.json's override (design 2026-08-13 §6) --
+
+from scripts.lib.look import LookSpec
+
+
+def _look_selection():
+    return {"episodes": [{"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"}]}
+
+
+def test_an_unauthored_look_comes_from_the_preset():
+    edl = edit_plan.build_edl(_footage(), _look_selection(), preset=moodpreset.resolve("moody"),
+                              look=moodpreset.resolve("moody").look, aspect=(9, 16))
+    assert edl.look == LookSpec(vignette=0.40, fade=1.0)
+
+
+def test_selection_json_overrides_the_preset():
+    sel = {**_look_selection(), "look": {"vignette": 0.1, "fade": 0.2}}
+    edl = edit_plan.build_edl(_footage(), sel, preset=moodpreset.resolve("moody"),
+                              look=moodpreset.resolve("moody").look, aspect=(9, 16))
+    assert edl.look == LookSpec(vignette=0.1, fade=0.2)
+
+
+def test_an_authored_no_look_beats_the_preset():
+    # {"vignette": 0, "fade": 0} is falsy-looking and meaningful: the author said no
+    sel = {**_look_selection(), "look": {"vignette": 0, "fade": 0}}
+    edl = edit_plan.build_edl(_footage(), sel, preset=moodpreset.resolve("moody"),
+                              look=moodpreset.resolve("moody").look, aspect=(9, 16))
+    assert edl.look == LookSpec()
+
+
+def test_an_authored_empty_look_object_beats_the_preset():
+    # {} is the spelling that actually discriminates a truthiness bug from `is not
+    # None`: {"vignette": 0, "fade": 0} above is a non-empty dict (truthy), so it would
+    # pass even a buggy `if sel_look:` check. {} is falsy — only `is not None` resolves
+    # it to "the author decided" rather than "nothing was authored".
+    sel = {**_look_selection(), "look": {}}
+    edl = edit_plan.build_edl(_footage(), sel, preset=moodpreset.resolve("moody"),
+                              look=moodpreset.resolve("moody").look, aspect=(9, 16))
+    assert edl.look == LookSpec()
+
+
+def test_build_edl_without_a_look_or_a_selection_override_stays_unauthored():
+    # No `look=` argument and no selection.json key: EDL.look stays None, the same
+    # "never authored" state a hand-authored SP1 EDL.json reads as.
+    edl = edit_plan.build_edl(_footage(), _look_selection())
+    assert edl.look is None
