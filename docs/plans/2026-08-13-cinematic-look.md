@@ -810,8 +810,8 @@ Replace the `vf` block and the two `proc.run` calls with:
         # a PNG.
         aidx = 2 if mask_in else 1
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, "-i", audio, *graph,
-                  *(vmap or ["-map", "0:v:0"]), "-map", f"{aidx}:a:0",
-                  *_video_only_args(profile), "-c:a", "copy", "-shortest", out])
+                  *_video_only_args(profile), *(vmap or ["-map", "0:v:0"]),
+                  "-map", f"{aidx}:a:0", "-c:a", "copy", "-shortest", out])
 ```
 
 Add the CLI flags in `main()`:
@@ -1629,7 +1629,7 @@ mutation.
 | 4 | `look.fade_args`: drop the `2 * fade > dur` guard | `test_fade_args_refuse_overlapping_fades` |
 | 5 | `deliver`: use `aidx = 1` unconditionally | `test_audio_input_index_shifts_when_a_mask_is_present` **and** `test_a_vignette_and_a_muxed_stem_pick_the_right_audio_input` |
 | 6 | `deliver`: emit `-vf` even when a mask exists (drop the `-filter_complex` branch) | `test_vignette_renders_a_mask_and_moves_to_filter_complex` |
-| 7 | `deliver`: build the mask at a hardcoded `1080x1920` instead of the probed dims | `test_vignette_renders_a_mask_and_moves_to_filter_complex` |
+| 7 | `deliver`: build the mask at a hardcoded `1080x1920` instead of the probed dims, and make `_render_mask` never call `probe_stream` at all | the Task 3 probe-recording test. **This row already fired once** — the Task 3 review demonstrated that the first round of tests passed under exactly this mutation, because the `probe_stream` stub discarded its argument. The fix added a call-recording assertion; this row re-checks it. |
 | 8 | `deliver`: replace `overlay=shortest=1` with `blend=all_mode=multiply` | `lint`'s new check fires through `proc.run` — any deliver test with a vignette |
 | 9 | `EDL.from_dict`: use `if d.get("look")` instead of `is not None` | `test_edl_look_accepts_an_authored_no_look` |
 | 10 | `mix`: move the `afade` back onto the fragment extract | `test_the_fade_runs_on_the_mixed_stem_before_loudnorm` and `test_the_audio_bookend_falls_with_ambient_on` |
@@ -1637,6 +1637,21 @@ mutation.
 | 12 | `moodpreset.BALANCED`: give it `vignette=0.3` | `test_the_fallback_applies_no_vignette` |
 | 13 | `color.grade_chain`: move `highlight_red_arg` before `mixer_arg` | `test_grade_chain_places_highlight_red_after_the_shoulder` |
 | 14 | `titles._STYLE_FRAGMENTS["outline-bold"]`: copy `outline`'s value | `test_outline_bold_draws_a_heavier_border_than_outline` |
+
+- [ ] **Step 1b: Re-sync `test_lint.py`'s `REAL_SITES` fixture**
+
+Task 4 moved `mix.py`'s bookend `afade` off the music-fragment extract and onto the
+mixed stem. `tests/lib/test_lint.py` carries a `REAL_SITES` fixture of hand-copied
+production argv literals, and its `"mix.py:193 — input seek on a window,
+accurate_seek"` entry now pins a command that **no longer exists** — the real call
+moved and dropped its `-af`. The battery still passes, because the fixtures are
+literals rather than being derived from the source, which is exactly what makes
+this dishonest: a safety fixture that describes code that is gone proves nothing
+about the code that is there.
+
+Update that entry to the argv `mix.py` actually emits now, and add an entry for
+the new post-mix pre-measure fade call. Then confirm the whole of
+`tests/lib/test_lint.py` is green.
 
 - [ ] **Step 2: Close any hole the battery found**
 
