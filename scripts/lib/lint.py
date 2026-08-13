@@ -44,6 +44,14 @@ BANNED_FILTERS = ("lutrgb",)
 # a safety check misses is worse than a pointer to a current one.
 SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
 
+# design §12 (2026-08-13 §8.1): `blend=all_mode=multiply` against a single-plane
+# mask multiplies the CHROMA planes too. U and V sit at 128 for neutral, so scaling
+# them by mask/255 drags every pixel toward 0 — measured mean |dU| 63.44, |dV| 62.76
+# against the same darkening done through alpha. The luma looks right, which is what
+# makes it silent. `all_mode` only: `c0_mode`/`c1_mode` name ONE plane and are the
+# correct spelling when a per-plane multiply is really what you want.
+_BLEND_MULT_RE = re.compile(r"(?:^|[,;\]])blend=[^,;\[]*\ball_mode=multiply\b")
+
 # Where a filtergraph element ENDS: at the next filter (`,`), the next chain
 # (`;`), or a label (`[`). One constant, two readers — _element slices on it and
 # _SYNTH_RE anchors its right-hand boundary against it. Two copies of this set
@@ -350,10 +358,20 @@ def _zoompan_defaults(cmd: list[str]) -> list[str]:
     return out
 
 
+def _blend_multiply(cmd: list[str]) -> list[str]:
+    """Flag an all-plane multiply blend — it destroys chroma silently."""
+    return [f"blend=all_mode=multiply in {a!r} — design §12: an all-plane multiply "
+            "scales the chroma planes as well as luma (measured mean |dU| 63 against "
+            "the same darkening through alpha), so the picture keeps roughly the right "
+            "brightness and loses its colour. Composite an RGBA mask with `overlay` "
+            "instead, or name one plane with c0_mode=multiply."
+            for a in cmd if _BLEND_MULT_RE.search(a)]
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
     for check in (_banned_filters, _seek_order, _unbounded_source, _drawtext_font,
-                  _zoompan_defaults):
+                  _zoompan_defaults, _blend_multiply):
         out.extend(check(cmd))
     return out

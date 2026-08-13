@@ -774,6 +774,34 @@ REAL_SITES = {
 }
 
 
+def test_blend_all_mode_multiply_is_flagged():
+    out = lint.check_argv(["ffmpeg", "-i", "a.mp4", "-loop", "1", "-i", "m.png",
+                           "-filter_complex",
+                           "[1:v]format=gray[m];[0:v][m]blend=all_mode=multiply:shortest=1[v]",
+                           "out.mp4"])
+    assert len(out) == 1
+    assert "all_mode=multiply" in out[0]
+    assert "chroma" in out[0]
+    assert "overlay" in out[0]        # the message must name the working alternative
+
+
+def test_per_plane_blend_multiply_is_legal():
+    # c0_mode targets ONE plane, which is the correct way to multiply luma only
+    assert lint.check_argv(["ffmpeg", "-i", "a.mp4", "-filter_complex",
+                            "[0][1]blend=c0_mode=multiply[v]", "out.mp4"]) == []
+
+
+def test_other_blend_modes_are_legal():
+    assert lint.check_argv(["ffmpeg", "-i", "a.mp4", "-filter_complex",
+                            "[0][1]blend=all_mode=screen[v]", "out.mp4"]) == []
+
+
+def test_the_overlay_route_is_clean():
+    assert lint.check_argv(["ffmpeg", "-y", "-i", "a.mp4", "-loop", "1", "-i", "m.png",
+                            "-filter_complex", "[0:v][1:v]overlay=shortest=1[v]",
+                            "-map", "[v]", "out.mp4"]) == []
+
+
 @pytest.mark.parametrize("name", sorted(REAL_SITES))
 def test_every_real_call_site_lints_clean(name):
     assert lint.check_argv(REAL_SITES[name]) == [], name
