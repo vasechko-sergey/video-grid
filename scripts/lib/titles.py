@@ -15,7 +15,7 @@ from scripts.lib.fonts import resolve_font
 from scripts.lib import safezones
 
 POSITIONS: tuple[str, ...] = ("top", "center", "bottom")
-STYLES: tuple[str, ...] = ("bold-box", "outline", "plain")
+STYLES: tuple[str, ...] = ("bold-box", "outline", "outline-bold", "plain")
 REVEALS: tuple[str, ...] = ("none", "word", "stair")
 
 FONTSIZE_DIV = 18      # drawtext fontsize is h/FONTSIZE_DIV — one spelling, two readers
@@ -181,6 +181,9 @@ class Titles:
 _STYLE_FRAGMENTS: dict[str, str] = {
     "bold-box": "box=1:boxcolor=black@0.5:boxborderw=16",
     "outline": "borderw=4:bordercolor=black",
+    # a heavier outline PLUS an offset shadow: `outline` alone disappears against
+    # bright water, which is what the 2026-08-03 run hit
+    "outline-bold": "borderw=7:bordercolor=black:shadowcolor=black@0.55:shadowx=3:shadowy=3",
     "plain": "",
 }
 
