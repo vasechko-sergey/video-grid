@@ -837,6 +837,9 @@ class ReframeSpec:
                                # field existed renders the same command it always did.
     highlight: float = 1.0     # white pulled down to this AFTER the gain — see
                                # color.highlight_arg. 1.0 emits no curve at all.
+    highlight_red: float = 0.0 # red SHOULDER pulled down by this at white — see
+                               # color.highlight_red_arg. The mirror of shadow_red, at
+                               # the other end. 0.0 emits no filter.
     saturation: float = 1.0    # chroma scale AFTER the gain — see color.saturation_arg.
                                # 1.0 emits nothing. The one hue-preserving way to pull an
                                # over-vivid source (aerial sky/water) toward a tamer one.
@@ -912,6 +915,10 @@ class ReframeSpec:
                 or not 0.6 <= self.highlight <= 1.0):
             raise ValueError(f"ReframeSpec.highlight must be a fraction in [0.6, 1.0], "
                              f"got {self.highlight!r}")
+        if (isinstance(self.highlight_red, bool) or not isinstance(self.highlight_red, (int, float))
+                or not 0 <= self.highlight_red <= 0.35):
+            raise ValueError(f"ReframeSpec.highlight_red must be a fraction in [0, 0.35], "
+                             f"got {self.highlight_red!r}")
         if (self.tone_src is None) != (self.tone_dst is None):
             raise ValueError("ReframeSpec.tone_src and tone_dst come as a pair — a source "
                              "profile with no target (or a target with no source) names no "

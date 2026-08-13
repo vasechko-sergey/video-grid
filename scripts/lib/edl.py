@@ -93,6 +93,9 @@ class EDLEpisode:
                                 # floor rather than moving it. See color.black_point_arg.
     highlight: float = 1.0      # white pulled down to this after the gain; the twin of
                                 # black_point at the other end. See color.highlight_arg.
+    highlight_red: float = 0.0  # red SHOULDER pull; de-pinks specular foam a bright red
+                                # board throws its reflection into. The mirror of
+                                # shadow_red. See color.highlight_red_arg.
     saturation: float = 1.0     # chroma scale after the gain; the hue-preserving way to
                                 # tame an over-vivid source. See color.saturation_arg.
     dip: float = 0.0            # fade in/out to dark grey, seconds. A transition that costs
@@ -178,6 +181,7 @@ class EDLEpisode:
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
                 "black_point": self.black_point, "highlight": self.highlight,
+                "highlight_red": self.highlight_red,
                 "saturation": self.saturation, "shadow_red": self.shadow_red,
                 "mid_blue": self.mid_blue, "dip": self.dip,
                 **({"tone_src": list(self.tone_src), "tone_dst": list(self.tone_dst)}
@@ -413,12 +417,14 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     dict (the process_episode brief). A deliberate field MAP, not a dump — the
     manifest gate rejects unknown keys. Omits canvas/delivery (the driver fills
     them from the project via resolve_manifest) and model (a manifest default).
-    Some fields cross CONDITIONALLY, on two different predicates. Not-None:
+    Some fields cross CONDITIONALLY, each on its own predicate. Not-None:
     `tone_src`+`tone_dst` (one branch, two keys), `crop_aspect`, `rect`, `motion`,
     `pan`, `zoom`, `smooth_window_s`, `hero` — an absent value leaves the key out
     rather than carrying an explicit null. True-only: `stabilize`, so a false (its
-    default) leaves the key out too. Either way Manifest.from_dict falls to its own
-    None/False default rather than the two sides disagreeing about what unset means.
+    default) leaves the key out too. Nonzero-only: `highlight_red`, so its identity
+    0.0 leaves the key out the same way. Either way Manifest.from_dict falls to its
+    own None/False/0.0 default rather than the two sides disagreeing about what
+    unset means.
     (This sentence used to open with a count. It said "Four", then "Five", and both
     were wrong — a number goes stale the moment someone adds a branch and does not
     re-count. Read the branches below instead; that is why they are named here.)
@@ -444,6 +450,7 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         "mid_blue": ep.mid_blue, "dip": ep.dip,
         **({"tone_src": list(ep.tone_src), "tone_dst": list(ep.tone_dst)}
            if ep.tone_src is not None else {}),
+        **({"highlight_red": ep.highlight_red} if ep.highlight_red else {}),
     }
     if ep.crop_aspect is not None:      # None → let Manifest pick canvas/source by layout
         md["crop_aspect"] = list(ep.crop_aspect) if isinstance(ep.crop_aspect, tuple) else ep.crop_aspect

@@ -362,7 +362,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                             smooth_window_s=params["smooth_window_s"],
                             color_correct=color_correct,
                             white_balance=m.white_balance, black_point=m.black_point,
-                            highlight=m.highlight, saturation=m.saturation,
+                            highlight=m.highlight, highlight_red=m.highlight_red,
+                            saturation=m.saturation,
                             shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
                             tone_src=m.tone_src, tone_dst=m.tone_dst, pan=pan, zoom=zoom)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,

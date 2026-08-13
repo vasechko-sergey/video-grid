@@ -361,13 +361,48 @@ def white_balance_arg(means: tuple[float, ...], strength: float) -> str:
     return mixer_arg(*white_balance_gains(means, strength)) + ","
 
 
+HIGHLIGHT_RED_MAX = 0.35     # past this the whites lose their body and read cyan, not just de-pinked
+HIGHLIGHT_RED_KNEE = 0.60    # identity at/below this — the pull acts only on the shoulder (specular
+                             # foam), so a red board and skin (both below it) keep their red
+
+
+def highlight_red_arg(pull: float, knee: float = HIGHLIGHT_RED_KNEE) -> str:
+    """A red-channel `curves` that pulls ONLY the shoulder down, or "" for 0.
+
+    The mirror of shadow_red_arg at the other end. A bright coloured object — a red
+    surfboard — throws its hue into the white spray it kicks up, so foam that should be
+    neutral reads PINK, and only in the highlights where the reflection lives. A global
+    red cut (the mixer) would cool the water and cyan the sky with it; this leaves
+    everything below `knee` (water, skin, the board itself) untouched and bends only the
+    specular top back toward neutral. Anchors below `knee` are pinned to identity so
+    ffmpeg's spline cannot sag the mids while bending the top (the shadow_red lesson)."""
+    if isinstance(pull, bool) or not isinstance(pull, (int, float)):
+        raise ValueError(f"highlight_red must be a number in [0, {HIGHLIGHT_RED_MAX}], got {pull!r}")
+    if pull == 0:
+        return ""
+    if not 0 <= pull <= HIGHLIGHT_RED_MAX:
+        raise ValueError(
+            f"highlight_red {pull} is outside [0, {HIGHLIGHT_RED_MAX}] — it is how far the red "
+            "shoulder is pulled at white, and past this the foam reads cyan rather than neutral. "
+            "Measure the foam's R-B against a white reference first")
+    if not 0.3 <= knee <= 0.9:
+        raise ValueError(f"highlight_red knee {knee} must be in [0.3, 0.9] — below it the pull "
+                         "reaches skin/board, above it there is no shoulder left to correct")
+    lo = [f"{a:.4f}/{a:.4f}" for a in (0.0, knee * 0.5, knee)]              # hold mids/board flat
+    xs = [knee + (1 - knee) * i / 3 for i in range(1, 4)]                   # ..., 1.0
+    hi = [f"{x:.4f}/{x - pull * (x - knee) / (1 - knee):.4f}" for x in xs]  # linear pull to 1-pull
+    return f",curves=r='{' '.join(lo + hi)}'"
+
+
 def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
                 black_point: float = 0.0, shadow_red: float = 0.0,
                 mid_blue: float = 1.0, saturation: float = 1.0,
-                highlight: float = 1.0, dip: float = 0.0, dur: float) -> str:
+                highlight: float = 1.0, highlight_red: float = 0.0,
+                dip: float = 0.0, dur: float) -> str:
     """The colour portion of reframe's -vf tail, in the ONE correct order:
     white-balance → tone (source profile) → black_point (toe) → gain (the mixer) →
-    shadow_red → mid_blue → saturation → highlight (shoulder) → dip (timeline, last).
+    shadow_red → mid_blue → saturation → highlight (shoulder) → highlight_red (the red
+    shoulder) → dip (timeline, last).
     `wb`/`tone` are pre-built fragments (the caller builds AND verifies them — a tone
     curve is ramp-checked in reframe.verify_tone before it reaches here). Returns the
     fragment WITHOUT the trailing fps/format, which reframe owns. Every builder is ""
@@ -376,7 +411,7 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
     return (wb + tone + black_point_arg(black_point) + mixer_arg(*gains)
             + shadow_red_arg(shadow_red) + mid_blue_arg(mid_blue)
             + saturation_arg(saturation) + highlight_arg(highlight)
-            + dip_arg(dip, dur))
+            + highlight_red_arg(highlight_red) + dip_arg(dip, dur))
 
 
 def percentiles(hist256: list[int]) -> tuple[float, float, float]:

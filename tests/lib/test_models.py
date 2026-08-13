@@ -1487,6 +1487,22 @@ def test_reframespec_accepts_the_inclusive_smooth_window_s_upper_bound():
     assert s.smooth_window_s == 2.0
 
 
+# --- highlight_red (2026-08-13 cinematic-look Task 7): the parked colour primitive ---
+
+def test_reframe_spec_highlight_red_defaults_off():
+    from scripts.lib.models import ReframeSpec, Delivery
+    s = ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                    color_means=(100, 100, 100), delivery=Delivery("native"))
+    assert s.highlight_red == 0.0
+
+
+def test_reframe_spec_highlight_red_refuses_out_of_band():
+    from scripts.lib.models import ReframeSpec, Delivery
+    with pytest.raises(ValueError, match="highlight_red"):
+        ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
+                    color_means=(100, 100, 100), delivery=Delivery("native"), highlight_red=0.5)
+
+
 # --- attested-run Task 1: ReelReport.master_digest / ReelManifest.provenance
 # (design docs/specs/2026-08-04-attested-run-design.md §4/§6) ---
 

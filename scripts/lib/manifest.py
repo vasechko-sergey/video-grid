@@ -22,8 +22,8 @@ from scripts.lib.models import (COMPOSITIONS, GRIDS, MODELS, MOTIONS, Delivery, 
 
 REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur")
 OPTIONAL = ("layout", "motion", "pan", "zoom", "hero", "cast", "color_means", "white_balance",
-            "black_point", "highlight", "tone_src", "tone_dst", "saturation", "shadow_red",
-            "mid_blue", "dip", "smooth_window_s",
+            "black_point", "highlight", "highlight_red", "tone_src", "tone_dst", "saturation",
+            "shadow_red", "mid_blue", "dip", "smooth_window_s",
             "stabilize", "model",
             "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
@@ -56,6 +56,7 @@ class Manifest:
     white_balance: float = 0.0
     black_point: float = 0.0
     highlight: float = 1.0
+    highlight_red: float = 0.0
     saturation: float = 1.0
     shadow_red: float = 0.0
     mid_blue: float = 1.0
@@ -127,6 +128,7 @@ class Manifest:
             white_balance=float(d.get("white_balance") or 0.0),
             black_point=float(d.get("black_point") or 0.0),
             highlight=float(d["highlight"]) if d.get("highlight") is not None else 1.0,
+            highlight_red=float(d["highlight_red"]) if d.get("highlight_red") is not None else 0.0,
             saturation=float(d["saturation"]) if d.get("saturation") is not None else 1.0,
             shadow_red=float(d["shadow_red"]) if d.get("shadow_red") is not None else 0.0,
             mid_blue=float(d["mid_blue"]) if d.get("mid_blue") is not None else 1.0,

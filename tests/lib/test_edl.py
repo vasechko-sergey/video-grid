@@ -979,3 +979,15 @@ def test_edl_markdown_prints_the_look_only_when_set():
     assert "Look" not in EDL(episodes=(_ep(),), look=LookSpec()).to_markdown()
     md = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.3, fade=0.8)).to_markdown()
     assert "- **Look:** vignette 0.30 · fade 0.80s" in md
+
+
+def test_episode_highlight_red_reaches_the_manifest():
+    # to_manifest_dict is a module-level function taking ep as its first argument
+    # (see test_manifest_dict_carries_the_zoom_through's note above) — not a method
+    # on EDLEpisode.
+    ep = _ep(highlight_red=0.2)
+    assert to_manifest_dict(ep, "seg.mp4", "out.mp4")["highlight_red"] == 0.2
+
+
+def test_episode_highlight_red_is_omitted_at_its_default():
+    assert "highlight_red" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")

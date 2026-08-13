@@ -151,3 +151,51 @@ def test_percentiles_of_a_spike():
 def test_percentiles_rejects_wrong_length():
     with pytest.raises(ValueError):
         color.percentiles([1, 2, 3])
+
+
+def test_highlight_red_is_identity_at_zero():
+    assert color.highlight_red_arg(0.0) == ""
+
+
+def test_highlight_red_pins_everything_below_the_knee_to_identity():
+    arg = color.highlight_red_arg(0.2)
+    assert arg.startswith(",curves=r='")
+    lo = arg.split("'")[1].split()[:3]
+    assert lo == ["0.0000/0.0000", "0.3000/0.3000", "0.6000/0.6000"]
+
+
+def test_highlight_red_pulls_white_by_the_full_amount():
+    # the top anchor is x=1.0 mapped to 1-pull: that IS the pull, at white
+    arg = color.highlight_red_arg(0.2)
+    assert arg.split("'")[1].split()[-1] == "1.0000/0.8000"
+
+
+@pytest.mark.parametrize("pull", [-0.01, 0.36, True, "0.2"])
+def test_highlight_red_refuses_out_of_band(pull):
+    with pytest.raises(ValueError, match="highlight_red"):
+        color.highlight_red_arg(pull)
+
+
+@pytest.mark.parametrize("knee", [0.29, 0.91])
+def test_highlight_red_refuses_a_knee_outside_its_band(knee):
+    with pytest.raises(ValueError, match="knee"):
+        color.highlight_red_arg(0.2, knee=knee)
+
+
+def test_grade_chain_places_highlight_red_after_the_shoulder():
+    # the shoulder lift, then the red shoulder pull, then the timeline dip LAST.
+    # NOTE: the task brief's snippet used highlight=1.2 — out of highlight_arg's own
+    # [0.6, 1.0] band (HIGHLIGHT_MIN), so it raises rather than returning a fragment
+    # to search for. 0.8 is in-band and, per the self-review note above, not 1.0
+    # (highlight's identity, which would emit "" and make the ordering assert vacuous).
+    out = color.grade_chain((1.0, 1.0, 1.0), highlight=0.8, highlight_red=0.2,
+                            dip=0.1, dur=3.0)
+    hi = color.highlight_arg(0.8).lstrip(",")
+    hr = color.highlight_red_arg(0.2).lstrip(",")
+    dip = color.dip_arg(0.1, 3.0).lstrip(",")
+    assert out.index(hi) < out.index(hr) < out.index(dip)
+
+
+def test_grade_chain_is_unchanged_at_the_highlight_red_default():
+    assert (color.grade_chain((1.1, 1.0, 0.9), dur=3.0)
+            == color.grade_chain((1.1, 1.0, 0.9), highlight_red=0.0, dur=3.0))
