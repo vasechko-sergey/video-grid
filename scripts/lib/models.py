@@ -8,6 +8,7 @@ from pathlib import Path
 
 from scripts.lib import color
 from scripts.lib.geometry import even
+from scripts.lib.look import LookSpec
 
 
 COMPOSITIONS = ("lead", "center", "break")
@@ -1298,6 +1299,8 @@ class ReelManifest:
     ambient: bool = True               # duck each clip's nat-sound under the music (§5.12); False → pure-music stem
     sfx: bool = False                  # whoosh on major transitions (§5.12); default off (opt-in stylistic accent)
     platform: str = ""                 # UI safe-zone table key (§5.13); "" → generic; from Spec.platform
+    look: LookSpec | None = None       # reel finish rendered in deliver (design 2026-08-13);
+                                       # None = none authored
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1336,6 +1339,10 @@ class ReelManifest:
         if not isinstance(self.platform, str):
             raise ValueError(f"ReelManifest.platform must be a string label (e.g. 'tiktok'), "
                              f"got {self.platform!r}")
+        if self.look is not None and not isinstance(self.look, LookSpec):
+            raise ValueError(f"ReelManifest.look must be a LookSpec or None, got "
+                             f"{type(self.look).__name__} — edl_to_reel builds it from "
+                             f"EDL.look")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
@@ -1374,6 +1381,7 @@ class ReelManifest:
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
                    music=d.get("music"), ambient=d.get("ambient", True),
                    sfx=d.get("sfx", False), platform=d.get("platform", ""),
+                   look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1386,6 +1394,7 @@ class ReelManifest:
                 "color_delta_max": self.color_delta_max, "cap": self.cap,
                 "changelog": self.changelog, "music": self.music,
                 "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
+                "look": self.look.to_dict() if self.look is not None else None,
                 "provenance": dict(self.provenance)}
 
     def write(self, path: str | Path) -> None:

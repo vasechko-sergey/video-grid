@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
+from scripts.lib.look import LookSpec
 from scripts.lib.models import LayoutSpec, PanSpec, PathMeta, ReelCheckSpec, ZoomSpec
 
 
@@ -895,6 +896,31 @@ def test_reel_manifest_rejects_a_lone_sidecar():
 def test_reel_manifest_platform_default_and_set():
     assert m.ReelManifest.from_dict(_reel_dict()).platform == ""
     assert m.ReelManifest.from_dict(_reel_dict(platform="tiktok")).platform == "tiktok"
+
+
+# --- cinematic-look Task 2: ReelManifest.look (design docs/specs/2026-08-13-cinematic-look-design.md §1) ---
+# NOTE: the task brief's snippet used a placeholder `_reel_ep()` factory, but this file has no
+# helper by that name — direct ReelManifest tests here build episodes inline as
+# `m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")` (see e.g.
+# test_reel_manifest_still_accepts_a_string_route above); matched that established idiom.
+
+def test_reel_manifest_look_round_trips():
+    rm = m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                        target_dur=10.0, look=LookSpec(vignette=0.25, fade=0.5))
+    assert m.ReelManifest.from_dict(rm.to_dict()).look == LookSpec(vignette=0.25, fade=0.5)
+
+
+def test_reel_manifest_look_defaults_to_none():
+    rm = m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                        target_dur=10.0)
+    assert rm.look is None
+    assert rm.to_dict()["look"] is None
+
+
+def test_reel_manifest_look_refuses_a_wrong_type():
+    with pytest.raises(ValueError, match="ReelManifest.look must be a LookSpec"):
+        m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                       target_dur=10.0, look=0.3)
 
 
 def test_reelreport_overall_excludes_advisory_safe_zones():

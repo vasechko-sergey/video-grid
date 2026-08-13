@@ -19,6 +19,7 @@ from scripts.lib import provenance
 from scripts.lib import ramp as ramp_mod
 from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
+from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
@@ -214,6 +215,12 @@ class EDL:
                                    # flag because the EDL is the attested artifact: the
                                    # platform a reel was checked against is recorded with
                                    # the cut (design 2026-08-12 §1.1).
+    look: LookSpec | None = None   # design 2026-08-13 §1. None = NEVER AUTHORED, so
+                                   # edit_plan fills it from the mood preset; LookSpec()
+                                   # means the author said "no look" and the preset must
+                                   # not override it. Spent by edl_to_reel on
+                                   # ReelManifest.look and rendered in deliver's one
+                                   # encode — no gate ever sees it (design §11.1).
     target_dur: float | None = None
     variety: VarietyReport | None = None   # design 2026-08-06 §9. None = never evaluated
                                            # (a hand-authored EDL through the SP1 front door)
@@ -245,6 +252,9 @@ class EDL:
         if self.variety is not None and not isinstance(self.variety, VarietyReport):
             raise ValueError(f"EDL.variety must be a VarietyReport or None, got "
                              f"{type(self.variety).__name__} — re-run edit_plan build")
+        if self.look is not None and not isinstance(self.look, LookSpec):
+            raise ValueError(f"EDL.look must be a LookSpec or None, got "
+                             f"{type(self.look).__name__} — re-run edit_plan build")
         if self.constraints is not None and not isinstance(self.constraints, ConstraintReport):
             raise ValueError(f"EDL.constraints must be a ConstraintReport or None, got "
                              f"{type(self.constraints).__name__} — re-run edit_plan build")
@@ -281,6 +291,7 @@ class EDL:
                    # `music`, `cast` and `smooth_window_s` all read null as absent, and
                    # a lone field that refused it would be a gratuitous edge.
                    cap=cap if cap is not None else 3, platform=d.get("platform") or "",
+                   look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
                    target_dur=d.get("target_dur"),
                    variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
                    constraints=(ConstraintReport.from_dict(d["constraints"])
@@ -311,7 +322,9 @@ class EDL:
     def to_dict(self) -> dict:
         d = {"episodes": [e.to_dict() for e in self.episodes],
              "music": self.music, "cast": self.cast, "cap": self.cap,
-             "platform": self.platform, "target_dur": self.target_dur,
+             "platform": self.platform,
+             "look": self.look.to_dict() if self.look is not None else None,
+             "target_dur": self.target_dur,
              "variety": self.variety.to_dict() if self.variety is not None else None,
              "constraints": self.constraints.to_dict() if self.constraints is not None else None}
         if self.provenance:
@@ -328,6 +341,9 @@ class EDL:
         # always-present line would move every existing golden markdown (§1.1).
         if self.platform:
             lines.append(f"- **Platform:** {self.platform}")
+        if self.look is not None and (self.look.vignette or self.look.fade):
+            lines.append(f"- **Look:** vignette {self.look.vignette:.2f} · "
+                         f"fade {self.look.fade:.2f}s")
         lines += ["",
                  "| # | source | window | shot | layout | comp | grid | motion | beat | notes |",
                  "|---|--------|--------|------|--------|------|------|--------|:----:|-------|"]

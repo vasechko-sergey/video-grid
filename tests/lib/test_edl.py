@@ -6,6 +6,7 @@ from scripts.lib.constraints import ConstraintReport, Violation
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import moodpreset
 from scripts.lib.footage import DESCRIPTOR_LEN
+from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR
 from scripts.lib.project import ProjectConfig
 from scripts.lib import ramp
@@ -930,3 +931,34 @@ def test_to_manifest_dict_omits_smooth_window_s_when_unset():
 def test_to_manifest_dict_carries_an_authored_smooth_window_s():
     ep = EDLEpisode(**{**_ep().to_dict(), "smooth_window_s": 0.6})
     assert to_manifest_dict(ep, "s.mp4", "o.mp4")["smooth_window_s"] == 0.6
+
+
+# --- cinematic-look Task 2: EDL.look (design docs/specs/2026-08-13-cinematic-look-design.md §1) ---
+
+def test_edl_look_defaults_to_none_meaning_never_authored():
+    e = EDL(episodes=(_ep(),))
+    assert e.look is None
+    assert e.to_dict()["look"] is None
+
+
+def test_edl_look_round_trips():
+    e = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.3, fade=0.8))
+    assert EDL.from_dict(e.to_dict()).look == LookSpec(vignette=0.3, fade=0.8)
+
+
+def test_edl_look_accepts_an_authored_no_look():
+    # LookSpec() is NOT None: it means "the author said no look", which the mood
+    # preset must not override
+    e = EDL.from_dict({"episodes": [_ep().to_dict()], "look": {"vignette": 0, "fade": 0}})
+    assert e.look == LookSpec()
+
+
+def test_edl_look_refuses_a_wrong_type():
+    with pytest.raises(ValueError, match="EDL.look must be a LookSpec"):
+        EDL(episodes=(_ep(),), look={"vignette": 0.3})
+
+
+def test_edl_markdown_prints_the_look_only_when_set():
+    assert "Look" not in EDL(episodes=(_ep(),)).to_markdown()
+    md = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.3, fade=0.8)).to_markdown()
+    assert "- **Look:** vignette 0.30 · fade 0.80s" in md
