@@ -7,7 +7,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from scripts.lib import ffbin, proc, provenance
+from scripts.lib import assembly, ffbin, look as look_lib, proc, provenance
+from scripts.lib.look import LookSpec
 from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Titles, build_filterchain
 
@@ -46,9 +47,26 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
         f.write(f"- v{n} | {stamp} | {changelog}\n")
 
 
+def _render_mask(master: str, out_dir: str, vignette: float) -> str:
+    """Render the one-frame RGBA vignette mask at the MASTER's real pixels.
+
+    Probed, never derived from a config: the delivery's dimensions are what the
+    episodes actually produced, and a mask built at a config's idea of the canvas
+    would letterbox the whole reel silently. No cache — this is one frame, and a
+    stale mask keyed to the wrong dimensions is exactly the failure not caching
+    avoids (design §11.6)."""
+    si = assembly.probe_stream(master)
+    mask = str(Path(out_dir) / "look_mask.png")
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+              "-i", f"nullsrc=s={si.w}x{si.h}:d=1:r=1",
+              "-vf", look_lib.mask_expr(vignette), "-frames:v", "1", mask])
+    return mask
+
+
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             report: ReelReport, *, audio: str | None = None, titles: str | None = None,
-            platform: str = "", run_provenance: dict | None = None) -> str:
+            platform: str = "", look: LookSpec | None = None,
+            run_provenance: dict | None = None) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -68,7 +86,13 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     the check or assembled outside the pipeline. `run_provenance` carries what only the
     driver knows (the run's start stamp, the EDL's digest and state, the loosened
     thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
-    writes."""
+    writes.
+
+    With `look` (design 2026-08-13), a plateau vignette and/or a bookend fade ride
+    this same encode. A vignette needs a second input (the mask), so the video
+    filters move from -vf into -filter_complex and the audio stem — when there is
+    one — becomes input 2 rather than input 1. Without a vignette the argv is
+    byte-for-byte what it was before looks existed."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
@@ -96,24 +120,41 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             f"re-made after the check, or assembled outside the pipeline. Re-run "
             f"`check_reel` on THIS master and deliver with the report it writes")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    # Titles ride deliver's ONE encode (§5.16): build_filterchain writes each title's
-    # text to a title_i.txt sidecar in out_dir (work_dir=out_dir) and returns a drawtext
-    # chain. This is the SOLE -vf slot — ExportProfile.args() emits no -vf/scale, so
-    # nothing clobbers it (last -vf wins in ffmpeg — the §12 silent-drop flavor).
-    vf: list[str] = []
+    # Titles and the look share ONE video-filter slot (§5.16 + design 2026-08-13 §4):
+    # build_filterchain writes each title's text to a title_i.txt sidecar in out_dir
+    # and returns a drawtext chain; look.chain appends the bookend fade AFTER it, so
+    # a title goes to black with the picture. ExportProfile.args() emits no -vf/scale,
+    # so nothing clobbers this (last -vf wins in ffmpeg — the §12 silent-drop flavor).
+    title_chain = ""
     if titles is not None:
-        chain = build_filterchain(Titles.from_json(titles), out_dir, platform=platform)
-        if chain:
-            vf = ["-vf", chain]
+        title_chain = build_filterchain(Titles.from_json(titles), out_dir, platform=platform)
+    dur = assembly.probe_duration(master) if (look is not None and look.fade) else 0.0
+    parts = look_lib.chain(look, dur, title_chain)
+    mask_in: list[str] = []
+    graph: list[str] = []
+    vmap: list[str] = []
+    if look is not None and look.has_vignette:
+        mask_in = ["-loop", "1", "-i", _render_mask(master, out_dir, look.vignette)]
+        graph = ["-filter_complex",
+                 ",".join(["[0:v][1:v]overlay=shortest=1", *parts]) + "[v]"]
+        vmap = ["-map", "[v]"]
+    elif parts:
+        graph = ["-vf", ",".join(parts)]
     n = _next_version(out_dir, profile.container)
     out = str(Path(out_dir) / f"REEL_v{n}.{profile.container}")
     if audio is None:
-        proc.run([ffbin.ffmpeg(), "-y", "-i", master, *vf, *profile.args(), out])
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, *graph, *vmap,
+                  *profile.args(), out])
     else:
         # mux the pre-normalized aac stem: profile audio settings don't apply — we
-        # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy
-        proc.run([ffbin.ffmpeg(), "-y", "-i", master, "-i", audio, *vf, *_video_only_args(profile),
-                  "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy", "-shortest", out])
+        # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy.
+        # The stem's input index is 1 normally and 2 behind the mask: `-loop 1 -i mask`
+        # occupies index 1, and mapping 1:a:0 there would look for an audio stream in
+        # a PNG.
+        aidx = 2 if mask_in else 1
+        proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, "-i", audio, *graph,
+                  *(vmap or ["-map", "0:v:0"]), "-map", f"{aidx}:a:0",
+                  *_video_only_args(profile), "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
     # The delivery's record (design §6). reel_digest binds it to the SHIPPED file, not
     # only to the master, so a reel swapped after delivery is detectable. A hand-run
@@ -141,10 +182,15 @@ def main() -> None:
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the encode (§5.16)")
     ap.add_argument("--platform", default="", help="safe-zone table key (reel/tiktok/shorts/…) — "
                                                    "where the app's chrome sits; titles lay out inside it")
+    ap.add_argument("--vignette", type=float, default=0.0,
+                    help="corner darkening 0..0.6 (0 = off) — the reel's plateau vignette")
+    ap.add_argument("--fade", type=float, default=0.0,
+                    help="bookend fade seconds per end 0..2.0 (0 = off)")
     a = ap.parse_args()
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
     out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report,
-                  titles=a.titles, platform=a.platform)
+                  titles=a.titles, platform=a.platform,
+                  look=LookSpec(vignette=a.vignette, fade=a.fade))
     print(out)
 
 
