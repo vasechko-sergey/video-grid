@@ -123,6 +123,27 @@ def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypat
     assert "-vf" not in enc
 
 
+def test_the_mask_is_sized_from_the_probed_master_not_a_constant(tmp_path, monkeypatch):
+    # a hardcoded nullsrc size would pass the other vignette assertions too (they only
+    # check that SOME correctly-shaped nullsrc/geq/frames:v argv was built) — this test
+    # records the probe CALL, not just its return, and uses dims that appear nowhere
+    # else in this file so a constant cannot coincidentally match.
+    calls = _capture(monkeypatch)
+    seen = []
+
+    def _probe(path):
+        seen.append(path)
+        return StreamInfo(w=606, h=1078, fps=30.0, pix_fmt="yuv420p",
+                          vcodec="h264", color_range="tv")
+
+    monkeypatch.setattr(deliver_mod.assembly, "probe_stream", _probe)
+    master, rep = _bound(tmp_path)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        look=LookSpec(vignette=0.35))
+    assert seen == [master]                     # probed THE MASTER, not something else
+    assert "nullsrc=s=606x1078:" in " ".join(calls[-2])   # and spent what it returned
+
+
 def test_audio_input_index_shifts_when_a_mask_is_present(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream",

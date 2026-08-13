@@ -79,6 +79,12 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     check_reel judges the PICTURE against; it must reach here too, or a bottom title
     is laid out against generic margins and lands under the app's chrome.
 
+    With `look` (design 2026-08-13), a plateau vignette and/or a bookend fade ride
+    this same encode. A vignette needs a second input (the mask), so the video
+    filters move from -vf into -filter_complex and the audio stem — when there is
+    one — becomes input 2 rather than input 1. Without a vignette the argv is
+    byte-for-byte what it was before looks existed.
+
     Two bindings guard the gate, in this order. `report.overall` refuses a reel that
     failed; then `report.master_digest` refuses a report that does not describe THIS
     file — an empty digest means the report was not written by `check_reel` (its only
@@ -86,13 +92,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     the check or assembled outside the pipeline. `run_provenance` carries what only the
     driver knows (the run's start stamp, the EDL's digest and state, the loosened
     thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
-    writes.
-
-    With `look` (design 2026-08-13), a plateau vignette and/or a bookend fade ride
-    this same encode. A vignette needs a second input (the mask), so the video
-    filters move from -vf into -filter_complex and the audio stem — when there is
-    one — becomes input 2 rather than input 1. Without a vignette the argv is
-    byte-for-byte what it was before looks existed."""
+    writes."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
@@ -153,8 +153,8 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         # a PNG.
         aidx = 2 if mask_in else 1
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, "-i", audio, *graph,
-                  *(vmap or ["-map", "0:v:0"]), "-map", f"{aidx}:a:0",
-                  *_video_only_args(profile), "-c:a", "copy", "-shortest", out])
+                  *_video_only_args(profile), *(vmap or ["-map", "0:v:0"]),
+                  "-map", f"{aidx}:a:0", "-c:a", "copy", "-shortest", out])
     _log_version(out_dir, n, changelog)
     # The delivery's record (design §6). reel_digest binds it to the SHIPPED file, not
     # only to the master, so a reel swapped after delivery is detectable. A hand-run
