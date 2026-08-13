@@ -12,7 +12,8 @@ what a strength-eaten effect looks like from the argv.
 
 Every threshold below carries the number it was set against, measured on
 2026-08-13 with the ffmpeg config/ffmpeg.env resolves (8.1.1, homebrew ffmpeg-full)
-on the `sample_clip` session fixture: 3s, 1920x1080, 30fps, a white 140x320 box
+— the highlight_red row re-measured after 1b120dc densified that curve's sub-knee
+anchors — on the `sample_clip` session fixture: 3s, 1920x1080, 30fps, a white 140x320 box
 sliding over a flat 0x303030 field. The field decodes to luma 48 and the box to 255,
 so a flat-field measurement here is exact rather than approximate — several of the
 "did not move" numbers below are 0.000 for that reason, and would be small but
@@ -120,25 +121,30 @@ def _rgb(path, idx: int) -> np.ndarray:
 
 
 def _band_mask(frame: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    """Pixels whose own Rec.601 luma sits in [lo, hi]."""
+    """Pixels whose Rec.601 luma sits in [lo, hi].
+
+    Callers take this ONCE, off the UNGRADED frame, and hand the same mask to both
+    sides — see _rb_over. Choosing it per-frame would let a grade that moved a pixel
+    across a band edge change the population as well as the measurement, so the two
+    sides would no longer be comparable. (On this fixture they coincide exactly:
+    1196 highlight and 56304 shadow pixels either way, and both routes return the
+    same numbers to four decimals. Verified, not assumed — a future fixture with
+    pixels near a band edge would not be so kind.)
+    """
     y = 0.299 * frame[..., 0] + 0.587 * frame[..., 1] + 0.114 * frame[..., 2]
     m = (y >= lo) & (y <= hi)
     assert m.any(), f"no pixels in the [{lo}, {hi}] luma band — wrong fixture?"
     return m
 
 
-def _rb_in_band(path, lo: float, hi: float, idx: int = _MID_FRAME) -> float:
-    """Mean R−B over the pixels whose luma is in [lo, hi]. Neutral reads 0."""
-    f = _rgb(path, idx)
-    m = _band_mask(f, lo, hi)
-    return float((f[..., 0][m] - f[..., 2][m]).mean())
+def _rb_over(frame: np.ndarray, mask: np.ndarray) -> float:
+    """Mean R−B over `mask`. Neutral reads 0."""
+    return float((frame[..., 0][mask] - frame[..., 2][mask]).mean())
 
 
-def _blue_in_band(path, lo: float, hi: float, idx: int = _MID_FRAME) -> float:
-    """Mean B over the same band — the channel highlight_red must NOT touch."""
-    f = _rgb(path, idx)
-    m = _band_mask(f, lo, hi)
-    return float(f[..., 2][m].mean())
+def _blue_over(frame: np.ndarray, mask: np.ndarray) -> float:
+    """Mean B over `mask` — the channel highlight_red must NOT touch."""
+    return float(frame[..., 2][mask].mean())
 
 
 # --- stream probes ----------------------------------------------------------
@@ -192,9 +198,18 @@ def _tone(path, secs: float, freq: float, amp: float) -> str:
     return str(path)
 
 
+_MUSIC_HZ = 220.0      # the music fundamental
+_AMBIENT_HZ = 700.0    # the nat-sound probe tone. NOT a harmonic of _MUSIC_HZ: at the
+                       # 880 Hz this started on (exactly 4x), any codec or loudnorm
+                       # distortion product of the music lands in the same DFT bin as
+                       # the thing being measured. Re-measured at both — 700 Hz gives
+                       # a band ratio of 0.4933 faded / 0.9997 un-faded against 880's
+                       # 0.4931 / 0.9993, i.e. no worse and the question does not arise.
+
+
 def _music(path, secs: float) -> MusicSpec:
     """A 220 Hz music track + the MusicSpec mix needs (test_ambient.py's fixture)."""
-    _tone(path, secs, 220.0, 0.6)
+    _tone(path, secs, _MUSIC_HZ, 0.6)
     return MusicSpec(track=str(path), start_offset=0.0, duration=float(secs),
                      tempo=120.0,
                      beats=tuple(round(k * 0.5, 3) for k in range(int(secs / 0.5))),
@@ -291,6 +306,16 @@ def test_no_look_delivers_a_byte_identical_file(tmp_path, sample_clip, need_filt
     does reach the filter slot — is asserted to differ from it.
 
     Measured: all three identical at 16540 bytes; the fade-only delivery differs.
+
+    **This proof discharges only the second half of §9 row 3** ("and so is the
+    delivered file"). The first half — "the argv is byte-identical to today's" — is
+    pinned by tests/test_deliver.py::test_no_look_argv_is_unchanged, and it has to
+    be, because the two halves are not the same claim: an always-emitted IDENTITY
+    filter (`chain` returning `["null"]`, say) changes the argv and leaves the
+    delivered bytes untouched, so this test stays green under it. Verified by
+    running exactly that mutation. What this test does catch is an always-emitted
+    filter that touches pixels — `eq=contrast=1.02` reds the reference comparison
+    below.
     """
     need_filter("fade")
     a = _deliver(tmp_path / "e", sample_clip, look=None)
@@ -314,22 +339,48 @@ def test_a_vignette_and_a_muxed_stem_pick_the_right_audio_input(
     for audio inside a PNG. Proven by probing the delivered file for an audio stream
     of the right duration, not by reading the argv.
 
-    Measured: audio 3.000000s against a 2.966667s picture (delta 0.033 — the picture
-    ends one frame short of 3s at 30fps), and the corner/centre ratio is 0.6458 at
-    vignette=0.35. That second assertion is the control: the obvious way to "fix" a
-    mis-mapped audio index is to drop the mask input, which would restore the audio
-    and silently take the vignette away with it.
+    **This is also the ONLY proof that a vignette and a fade ride the same graph
+    together** (plan mutation row 6b), which is why the look here is not
+    vignette-only. `deliver` builds its filtergraph in TWO branches over the same
+    `parts` list — `-vf` without a mask, `-filter_complex` with one — and `parts`
+    carries the titles drawtext chain as well as the bookend fade. Dropping `*parts`
+    from the -filter_complex branch alone passed the WHOLE suite (2759 tests) while
+    silently deleting the fade and every on-screen title for `epic`, `moody` and
+    `nostalgic` — three of the four mood presets, all of which ship vignette and
+    fade together. The first-frame assertion below is what closes that hole.
+
+    Measured with LookSpec(vignette=0.35, fade=0.5) + a muxed 3s stem: audio
+    3.000000s against a 2.966667s picture (delta 0.033 — the picture ends one frame
+    short of 3s at 30fps), first frame 0.0000, last frame 3.063, corner/centre
+    0.6458 at frame 15 (identical to the vignette-only delivery: t=0.5 is exactly
+    where the fade-in finishes, so the two effects do not contaminate each other's
+    sample point). The corner-ratio assertion is the audio control's mirror: the
+    obvious way to "fix" a mis-mapped audio index is to drop the mask input, which
+    would restore the audio and silently take the vignette away with it.
+
+    Frame 15 and not a later one: the fixture's white box slides right and enters
+    the 240x240 centre patch at t≈1.49, which drags the corner/centre ratio to
+    0.1837 at frame 45 for reasons that have nothing to do with the vignette.
     """
     need_filter("geq")
+    need_filter("fade")
     stem = str(tmp_path / "stem.m4a")
     proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
               "sine=frequency=440:duration=3", "-c:a", "aac", "-b:a", "128k", stem])
-    out = _deliver(tmp_path / "g", sample_clip, look=LookSpec(vignette=0.35), audio=stem)
+    out = _deliver(tmp_path / "g", sample_clip,
+                   look=LookSpec(vignette=0.35, fade=0.5), audio=stem)
 
     assert _has_audio(out)
     assert abs(_audio_dur(out) - _video_dur(out)) < 0.2, (
         f"audio {_audio_dur(out):.3f}s against video {_video_dur(out):.3f}s")
-    ratio = _corner_ratio(_gray(out, _MID_FRAME))
+    frames = _all_gray(out)
+    assert frames[0].mean() < 2.0, (
+        f"first frame is {frames[0].mean():.3f}, not black — the fade did not reach "
+        f"the -filter_complex branch the mask put this delivery on")
+    assert frames[-1].mean() < 12.0, (
+        f"last frame is {frames[-1].mean():.3f}, not black — only half the bookend "
+        f"survived the mask branch")
+    ratio = _corner_ratio(frames[_MID_FRAME].astype(float))
     assert ratio < 0.85, (
         f"corner/centre is {ratio:.4f} — the stem got muxed but the vignette did not "
         f"ride the same encode")
@@ -339,22 +390,23 @@ def test_the_audio_bookend_falls_with_ambient_on(tmp_path, need_filter):
     """design §9 row 4 + §5. The tail must FALL. Before this slice the duck released
     as the music faded and the ambient rose here.
 
-    Two stems, one faded and one not, over the same 220 Hz music + 880 Hz nat-sound.
+    Two stems, one faded and one not, over the same 220 Hz music + 700 Hz nat-sound
+    (see _AMBIENT_HZ for why 700 and not the 880 this started on).
     Measured (0.1s windows, 60 of them over 6s):
 
     * faded  last/mid RMS = 0.1155   (assert < 0.35)
-    * un-faded last/mid RMS = 1.0000 (assert > 0.9 — the control: the measurement
+    * un-faded last/mid RMS = 1.0001 (assert > 0.9 — the control: the measurement
       is reading the fade, not a stem that always decays)
     * mid faded/un-faded = 1.0457    (assert within 15%: loudnorm re-normalizes the
       faded stem slightly upward, and that is the ONLY thing the fade does to the
       middle)
-    * 880 Hz ambient band, last 0.5s ÷ the middle 0.5s: faded 0.4931 (assert < 0.7),
-      un-faded 1.0006 (assert > 0.85). 0.4931 is the mean of a linear ramp over that
+    * 700 Hz ambient band, last 0.5s ÷ the middle 0.5s: faded 0.4933 (assert < 0.7),
+      un-faded 0.9997 (assert > 0.85). 0.4933 is the mean of a linear ramp over that
       window (~0.5), i.e. the ambient fades with everything else.
 
     That last pair is not decoration, and the number that proves it was measured:
     with mix.py reverted to the pre-slice placement (the fade on the music FRAGMENT,
-    before _mix_graph), the ambient band ends at **1.8088** of its mid level — the
+    before _mix_graph), the ambient band ends at **1.8139** of its mid level — the
     sidechain key falls with the music, the compressor releases, and the nat-sound
     swells 81% as the picture goes black. Under that same mutation the BROADBAND
     assertions above still pass, because the music dominates the sum and the music
@@ -364,7 +416,7 @@ def test_the_audio_bookend_falls_with_ambient_on(tmp_path, need_filter):
     for f in ("sidechaincompress", "loudnorm", "afade", "amix"):
         need_filter(f)
     music = _music(tmp_path / "m.wav", 6.0)
-    seg = _tone(tmp_path / "seg.wav", 6.0, 880.0, 0.5)
+    seg = _tone(tmp_path / "seg.wav", 6.0, _AMBIENT_HZ, 0.5)
     segments = [(seg, 3.0), (seg, 3.0)]
     faded = mix.mix(music, str(tmp_path / "faded"), 6.0, segments=segments,
                     ambient=True, fade=0.5)
@@ -384,8 +436,10 @@ def test_the_audio_bookend_falls_with_ambient_on(tmp_path, need_filter):
 
     sr, yf = _samples(faded)
     _, yp = _samples(plain)
-    amb_f = _band_rms(yf, sr, 880.0, 5.5, 6.0) / _band_rms(yf, sr, 880.0, 2.75, 3.25)
-    amb_p = _band_rms(yp, sr, 880.0, 5.5, 6.0) / _band_rms(yp, sr, 880.0, 2.75, 3.25)
+    amb_f = (_band_rms(yf, sr, _AMBIENT_HZ, 5.5, 6.0)
+             / _band_rms(yf, sr, _AMBIENT_HZ, 2.75, 3.25))
+    amb_p = (_band_rms(yp, sr, _AMBIENT_HZ, 5.5, 6.0)
+             / _band_rms(yp, sr, _AMBIENT_HZ, 2.75, 3.25))
     assert amb_f < 0.7, (
         f"the ambient band holds {amb_f:.4f} of its mid level through the fade — the "
         f"duck released and the nat-sound is swelling into the black (design §5)")
@@ -399,40 +453,44 @@ def test_highlight_red_pulls_the_highlights_and_leaves_the_shadows(
     """design §9 row 5. R−B must fall where the pull acts and hold where it does not.
 
     Measured on the reframe grade (highlight_red is per-episode colour, not the
-    reel's look), frame 15 of a 320x180 delivery:
+    reel's look), frame 15 of a 320x180 delivery, both sides over the SAME pixel
+    set — the one the ungraded frame's own luma selects (see _band_mask):
 
-    | band (own luma) | R−B at 0.0 | R−B at 0.3 |
-    |---|---|---|
-    | 200..255 (the white box) | 0.000 | −71.122 |
-    | 0..80 (the 0x303030 field) | 0.000 | **−2.054** |
+    | band | pixels | R−B at 0.0 | R−B at 0.3 | assertion |
+    |---|---|---|---|---|
+    | 200..255 (the white box) | 1196 | 0.0000 | **−72.6756** | falls by > 30 |
+    | 0..80 (the 0x303030 field) | 56304 | 0.0000 | **−0.0460** | moves by < 1.0 |
 
-    and B over the highlight band moves 252.30 → 251.46, i.e. only the RED channel
-    was pulled. The shoulder assertion is set at a 30-unit fall against a measured
-    71.1; the highlight-B control at 3 against a measured 0.84.
+    and B over the highlight band moves 252.301 → 251.987 (Δ 0.314, assert < 1.5):
+    only the RED channel was pulled, so the shoulder did not simply go dim.
 
-    **The shadow figure is a finding, not a rounding error.** color.highlight_red_arg's
-    docstring says anchors below the knee are "pinned to identity so ffmpeg's spline
-    cannot sag the mids"; they pin the spline AT 0.0/0.3/0.6 and not BETWEEN them.
-    Probed losslessly through a 256-step ramp (reframe.verify_tone's method), the
-    r-curve for pull=0.3 deviates from identity across the whole sub-knee range:
-    −3 codes at input 48, −2 at 64, +4 at 100 and **+7 at 128**, returning to 0 only
-    at the 153 knee anchor. The −2.054 above is that −3 at the field's own 48,
-    softened by the yuv round trip. So the threshold is 3.5 (measured 2.054) rather
-    than the ~0 the design predicts, and it still discriminates the failure it is
-    for: a global red cut at this strength would move the shadow band by ~14.
+    **The sub-knee threshold is 1.0 for a reason, and it is not the measurement.**
+    At 0.046 measured, anything from 0.1 up would pass today. 1.0 is where the
+    curve's own worst case sits: `color.highlight_red_arg` densified its sub-knee
+    anchors in 1b120dc, and a lossless 256-step ramp probe (reframe.verify_tone's
+    method) now shows at most ±1 code of residual spline curvature below the knee
+    at pull=0.3 (±2 at the HIGHLIGHT_RED_MAX ceiling) — a full code landing on this
+    field's own 48 would read ~1.0 here. Under the pre-fix sparse anchors the same
+    measurement read **2.054** (the probe showed −3 codes at input 48 and +7 at
+    128), so this threshold reds if that regression ever returns — verified by
+    restoring the sparse anchors and watching it fail. A global red cut, the gross
+    failure the control is nominally for, would move this band by ~14.
     """
     need_filter("curves")
     plain = _reframe_graded(tmp_path / "h", sample_clip, highlight_red=0.0)
     pulled = _reframe_graded(tmp_path / "i", sample_clip, highlight_red=0.3)
+    fp, fq = _rgb(plain, _MID_FRAME), _rgb(pulled, _MID_FRAME)
+    high, shadow = _band_mask(fp, 200, 255), _band_mask(fp, 0, 80)
 
-    assert _rb_in_band(pulled, 200, 255) < _rb_in_band(plain, 200, 255) - 30.0, (
-        f"R−B in the highlight band is {_rb_in_band(pulled, 200, 255):.3f} against "
-        f"{_rb_in_band(plain, 200, 255):.3f} — the red shoulder was not pulled")
-    shadow_delta = abs(_rb_in_band(pulled, 0, 80) - _rb_in_band(plain, 0, 80))
-    assert shadow_delta < 3.5, (
+    assert _rb_over(fq, high) < _rb_over(fp, high) - 30.0, (
+        f"R−B in the highlight band is {_rb_over(fq, high):.3f} against "
+        f"{_rb_over(fp, high):.3f} — the red shoulder was not pulled")
+    shadow_delta = abs(_rb_over(fq, shadow) - _rb_over(fp, shadow))
+    assert shadow_delta < 1.0, (
         f"R−B below the knee moved by {shadow_delta:.3f} — the pull is reaching past "
-        f"the shoulder (see this test's docstring for the measured sub-knee sag)")
-    blue_delta = abs(_blue_in_band(pulled, 200, 255) - _blue_in_band(plain, 200, 255))
-    assert blue_delta < 3.0, (
+        f"the shoulder (see this test's docstring: the sub-knee anchors have gone "
+        f"sparse again, or the knee moved)")
+    blue_delta = abs(_blue_over(fq, high) - _blue_over(fp, high))
+    assert blue_delta < 1.5, (
         f"B in the highlight band moved by {blue_delta:.3f} — the highlights were "
         f"dimmed, not de-redded")
