@@ -1638,7 +1638,7 @@ mutation.
 | 6b | `deliver`: drop `*parts` from the **`-filter_complex` branch only**, keeping the overlay | the Task 9 vignette+fade proof. **This row already fired once**: before it existed, that mutation passed the WHOLE suite (2759 passed). `deliver` builds the graph in two branches over the same `parts` list, and `parts` carries the titles chain as well as the fade — so a refactor touching one branch silently deleted the bookend AND every on-screen title for `epic`, `moody` and `nostalgic`, which are 3 of the 4 mood presets and ship vignette+fade together. |
 | 7 | `deliver`: build the mask at a hardcoded `1080x1920` instead of the probed dims, and make `_render_mask` never call `probe_stream` at all | the Task 3 probe-recording test. **This row already fired once** — the Task 3 review demonstrated that the first round of tests passed under exactly this mutation, because the `probe_stream` stub discarded its argument. The fix added a call-recording assertion; this row re-checks it. |
 | 8 | `deliver`: replace `overlay=shortest=1` with `blend=all_mode=multiply` | `lint`'s new check fires through `proc.run` — any deliver test with a vignette |
-| 9 | `EDL.from_dict`: use `if d.get("look")` instead of `is not None` | `test_edl_look_accepts_an_authored_no_look` |
+| 9 | `EDL.from_dict`: use `if d.get("look")` instead of `is not None` | `test_edl_look_empty_object_is_authored_not_absent`. **Not** `test_edl_look_accepts_an_authored_no_look`, which this row named until Task 10 ran it and watched it pass: that test authors `{"vignette": 0, "fade": 0}`, a NON-EMPTY and therefore truthy dict, so it survives either spelling. Only the empty object discriminates. |
 | 10 | `mix`: move the `afade` back onto the fragment extract | `test_the_fade_runs_on_the_mixed_stem_before_loudnorm` and `test_the_audio_bookend_falls_with_ambient_on` |
 | 11 | `build_reel`: pass `fade=0.0` when `rm.look is None` | `test_a_reel_with_no_look_keeps_mixs_own_default` |
 | 12 | `moodpreset.BALANCED`: give it `vignette=0.3` | `test_the_fallback_applies_no_vignette` |
@@ -1659,6 +1659,12 @@ about the code that is there.
 Update that entry to the argv `mix.py` actually emits now, and add an entry for
 the new post-mix pre-measure fade call. Then confirm the whole of
 `tests/lib/test_lint.py` is green.
+
+One more of the same class, in **production** rather than test code:
+`scripts/lib/lint.py`'s own error message still cites `scripts/mix.py:193` as an
+example call site. That line moved with the fade. Correct it here — it is the
+same drift, and a lint message that points at the wrong line teaches the next
+reader the wrong thing.
 
 Separately, and less seriously: the Task 4 review found that several other
 labels (`"mix.py:72"`, `"75"`, `"109"`, `"137"`, `"207"`) now carry stale line
