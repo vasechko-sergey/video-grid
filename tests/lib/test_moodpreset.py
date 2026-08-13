@@ -150,11 +150,18 @@ def test_every_preset_carries_a_look():
 
 
 def test_the_fallback_applies_no_vignette():
-    # skipping the optional brief must not silently apply a TASTE. (It must not
-    # disable a quality GATE either — that is why BALANCED's shot_mix keeps a real
-    # close share. The two rows read opposite because a gate and a look are
-    # different kinds of thing.)
-    assert BALANCED.look == LookSpec(vignette=0.0, fade=0.5)
+    # This field is defence in depth, not the mechanism (corrected post-review,
+    # final-findings.md I-2): write_edit_plan — not MoodPreset — is what keeps a
+    # brief-less run's output unchanged, by passing look=None to build_edl whenever
+    # resolve() falls back to BALANCED (see tests/lib/test_edit_plan.py's
+    # test_write_edit_plan_leaves_the_look_unauthored_when_no_mood_matches). Filling
+    # THIS field with anything but identity would still be a change for a caller who
+    # reads MoodPreset.look directly, bypassing that check: a real fade imposes a
+    # TASTE nobody chose, and even fade=0.0 would reach build_reel as an AUTHORED
+    # zero and switch off mix's own audio bookend. (BALANCED must not disable a
+    # quality GATE either — that is why its shot_mix keeps a real close share. The
+    # two rows read opposite because a gate and a look are different kinds of thing.)
+    assert BALANCED.look == LookSpec()
 
 
 def test_moody_is_the_heaviest_look():

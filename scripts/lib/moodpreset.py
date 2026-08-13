@@ -79,13 +79,23 @@ PRESETS: tuple[MoodPreset, ...] = (
 )
 
 # The no-match fallback. Its close share is deliberately above WANT_FLOOR (a skipped
-# brief must not disable a quality GATE), and its look is deliberately EMPTY of
-# vignette (a skipped brief must not silently apply a TASTE). The 0.5s fade is what
-# mix already did before looks existed, so the autonomous path delivers exactly
-# today's reel.
+# brief must not disable a quality GATE). Its look field, in contrast, is NEVER what
+# reaches a reel: write_edit_plan passes look=None to build_edl whenever resolve()
+# returns this preset (preset.name == "balanced" is the exact test), because a skipped
+# brief must not silently apply a TASTE, and filling this field with any concrete
+# value would be one — a real fade imposes a picture bookend nobody chose, and even
+# fade=0.0 would reach build_reel as an AUTHORED zero and switch OFF mix's own 0.5s
+# audio bookend (an authored {"vignette": 0, "fade": 0} does exactly that from
+# selection.json — see LookSpec's docstring). EDL.look staying None is the only value
+# that changes NOTHING about a brief-less run's output, so that is what write_edit_plan
+# sends down. This field is LookSpec() only as defence in depth, for a caller that
+# reads MoodPreset.look directly rather than going through write_edit_plan's check —
+# corrected post-review 2026-08-13 (final-findings.md I-2); it used to read
+# LookSpec(vignette=0.0, fade=0.5) and write_edit_plan applied it unconditionally,
+# which put a real fade=t=in/fade=t=out pair on every autonomous reel's picture.
 BALANCED = MoodPreset("balanced", None,
                       {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0),
-                      look=LookSpec(vignette=0.0, fade=0.5))
+                      look=LookSpec())
 
 
 def resolve(mood_text: str | None) -> MoodPreset:

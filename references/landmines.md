@@ -11,12 +11,14 @@ drifted to 17 entries against §12's 26, and still asserted an `ultralytics` det
 §12 had struck through as never true. A second copy of a safety-critical list is a
 second thing to forget to update, so it is now a pointer rather than a duplicate.
 
-## Four entries are machine-checked
+## Six entries are machine-checked
 
 `lutrgb`, an input-side `-ss` on a re-encoded window, an unbounded synthesized
-lavfi source, and `drawtext` without `fontfile=` can no longer re-enter the
-codebase silently. The predicate is [scripts/lib/lint.py](../scripts/lib/lint.py),
-enforced at two layers:
+lavfi source, `drawtext` without `fontfile=`, `zoompan` without an explicit
+`s=`/`fps=`/`d=` (2026-08-08), and `blend=all_mode=multiply` against a
+single-plane mask (2026-08-13, destroys chroma — see the cinematic-look design
+§8.1) can no longer re-enter the codebase silently. The predicate is
+[scripts/lib/lint.py](../scripts/lib/lint.py), enforced at two layers:
 
 - **`proc.run`'s runtime guard** — always on, raises before `subprocess.run`, and
   sees the *assembled* argv including graphs that arrive through a splat.

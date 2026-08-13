@@ -106,9 +106,13 @@ def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypat
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
+    f = tmp_path / "f.ttf"
+    f.write_text("x")
+    tj = tmp_path / "TITLES.json"
+    Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
-                        look=LookSpec(vignette=0.35))
+                        titles=str(tj), look=LookSpec(vignette=0.35))
     mask_cmd, enc = calls[-2], calls[-1]
     # the mask is rendered at the MASTER's probed dims, one frame
     assert "nullsrc=s=1080x1920:d=1:r=1" in mask_cmd
@@ -121,6 +125,16 @@ def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypat
     assert enc[enc.index("-filter_complex") + 1].startswith("[0:v][1:v]overlay=shortest=1")
     assert enc[enc.index("-filter_complex") + 1].endswith("[v]")
     assert "-vf" not in enc
+    # I-1 (final whole-branch review): a title actually passed in alongside a vignette
+    # must survive the -filter_complex branch too. deliver builds its filtergraph in
+    # two branches over the same `parts` list (titles + the bookend fade); dropping
+    # *parts from the -filter_complex branch ONLY, while keeping the overlay and the
+    # fade, left the WHOLE suite green (2761 passed) because no test anywhere before
+    # this one exercised titles and a vignette together — every on-screen title was
+    # silently deleted for `epic`/`moody`/`nostalgic`, which all ship vignette+fade.
+    g = enc[enc.index("-filter_complex") + 1]
+    assert "drawtext" in g, "every title vanished on the vignette branch"
+    assert g.index("overlay") < g.index("drawtext")
 
 
 def test_the_mask_is_sized_from_the_probed_master_not_a_constant(tmp_path, monkeypatch):

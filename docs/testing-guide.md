@@ -3,7 +3,7 @@
 Testing philosophy and the patterns that matter for video-grid. Adapted from the
 anna-auth testing guide to a pytest + real-ffmpeg codebase.
 
-_Last updated: 2026-07-11._
+_Last updated: 2026-08-13._
 
 ## Philosophy
 
@@ -45,6 +45,30 @@ _Last updated: 2026-07-11._
 - **Assert on delivered dimensions, not on a hardcoded resolution.** The engine
   is aspect/resolution-agnostic; a delivery test pins the *derived* dims
   (e.g. native 9:16-from-720 → `404×720`), never a stale `1080×1920`.
+
+## Mutation batteries
+
+Plans in `docs/plans/` routinely close with a mutation battery: break the
+production code one specific way per row, confirm the named test goes red,
+revert by hand, confirm green — "steps, not suggestions" (per each battery's
+own framing). A row where nothing goes red is a coverage hole to close with a
+new test, not a battery to weaken.
+
+**The `.pyc` hazard.** A mutation that edits a literal to another of the
+**same byte length** (e.g. one number for another, `,;]` for `,;\[`) and is
+reverted inside the same filesystem second can leave a stale `__pycache__`
+entry whose recorded mtime *and* size still validate against the reverted
+source file. Python then trusts the cached bytecode, the mutant silently
+survives the revert, and every later `pytest` run in that session passes
+against code that is no longer on disk — a false "confirmed green" that
+proves nothing. Hit during the 2026-08-13 cinematic-look final review.
+
+**Remedy:** clear `__pycache__` before trusting a "reverted, green" result,
+and again before the battery's final full-suite run:
+
+```bash
+find . -name __pycache__ -exec rm -rf {} +
+```
 
 ## Markers & Layout
 

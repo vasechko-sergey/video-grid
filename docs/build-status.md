@@ -118,11 +118,31 @@ _Last updated: 2026-08-13._
   **`MoodPreset.look` — the brief's default (design §6).** Five rows, first
   cuts declared as guesses alongside `shot_mix`/`asl`: fun 0.00/0.3s, epic
   0.30/0.8s, moody 0.40/1.0s, nostalgic 0.25/0.8s, balanced (fallback)
-  0.00/0.5s. `BALANCED` applies no vignette and exactly the 0.5s fade `mix`
-  already did, so the autonomous path (no brief) delivers today's picture
-  unchanged. The authored `EDL.look` always wins over the preset;
-  `edit_plan build` logs which source resolved (`selection.json` or the
-  `<mood>` preset) on every run.
+  `LookSpec()` (0.00/0.00, never applied — see below). The authored
+  `EDL.look` always wins over the preset; when a mood MATCHES, the preset
+  only fills an unauthored one, and `edit_plan build` logs which source
+  resolved (`selection.json` or the `<mood>` preset) on every run.
+
+  **Fix wave, 2026-08-13 (final-findings.md I-2).** This entry originally read
+  "`BALANCED` applies no vignette and exactly the 0.5s fade `mix` already did,
+  so the autonomous path (no brief) delivers today's picture unchanged" — and
+  shipped that way: `write_edit_plan` passed `preset.look` unconditionally, so
+  a mood-less or skipped brief set `EDL.look = LookSpec(vignette=0.0,
+  fade=0.5)`, which reached `deliver` as a real `fade=t=in`/`fade=t=out` pair —
+  every autonomous reel opened on a black frame, the opposite of "unchanged"
+  (pre-slice `deliver` had no video fade at all). The mechanism that actually
+  delivers today's picture is `EDL.look is None`: `write_edit_plan` now passes
+  `look=None` to `build_edl` whenever `moodpreset.resolve` falls back to
+  `BALANCED` (`preset.name == "balanced"` is the exact test), which is the
+  state `deliver`/`build_reel` already read as "nothing authored" — no
+  vignette, no picture fade, and `mix` keeps its own 0.5s audio default
+  because it is never told `fade=`. `BALANCED.look` itself was changed to
+  `LookSpec()` as defence in depth only; filling it with anything concrete
+  would be a change either way (a real fade imposes a taste, and even
+  `fade=0.0` would reach `build_reel` as an AUTHORED zero that switches off
+  the audio bookend — see the next paragraph). `None` is the only value that
+  changes nothing, which is why the fallback's look is carried but never
+  applied.
 
   **The two parked leftovers (design §7).** `highlight_red` — a red-channel
   `curves` fragment that pulls only the shoulder down (so specular foam

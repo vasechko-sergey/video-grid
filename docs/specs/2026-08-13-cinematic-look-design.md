@@ -1,7 +1,7 @@
 # Cinematic look — design (backlog #9 look half, #18 remainder)
 
 **Date:** 2026-08-13
-**Status:** design approved, not built
+**Status:** design approved, built 2026-08-13
 **Backlog:** [#9](../fixes-backlog.md#9-cinematic-effects-library--mood-oriented-palettes)
 (P1 look half), [#18](../fixes-backlog.md#18-cinematic-effects-were-born-as-live-patches--land-them-properly-and-verify-they-show)
 (the whole remainder), playbook priority 4
@@ -284,17 +284,42 @@ First cut, declared guesses in the same breath as `shot_mix` and `asl`:
 | epic | 0.30 | 0.8 |
 | moody | 0.40 | 1.0 |
 | nostalgic | 0.25 | 0.8 |
-| **balanced** (fallback) | **0.00** | **0.5** |
+| **balanced** (fallback) | 0.00 | 0.00 — never applied; see below |
 
-`BALANCED` deliberately applies **no vignette** and the 0.5s fade `mix` already
-does — so the autonomous path, which skips the brief, delivers exactly today's
-picture. Note this reads *opposite* to `BALANCED`'s variety row, where the
-fallback deliberately keeps a gate armed: skipping a brief must not disable a
-**quality gate**, but it also must not silently apply a **taste**. The two rows
-differ because a gate and a look are different kinds of thing.
+**Corrected post-review (final-findings.md I-2).** This section originally said
+`BALANCED` applies no vignette and the 0.5s fade `mix` already does, so the
+autonomous path delivers exactly today's picture — and shipped that way:
+`write_edit_plan` passed `preset.look` unconditionally, so a mood-less or
+skipped brief set `EDL.look = LookSpec(vignette=0.0, fade=0.5)`, which reached
+`deliver` as a real `fade=t=in`/`fade=t=out` pair. Every autonomous reel opened
+on a black frame — an editorial decision nobody made, and the opposite of what
+this section claimed. Pre-slice `deliver` had no video fade at all.
+
+The mechanism that actually delivers today's picture is `EDL.look is None`, not
+a zero-vignette preset row. `write_edit_plan` passes `look=None` to `build_edl`
+whenever `moodpreset.resolve` falls back (`preset.name == "balanced"` is the
+exact test — `BALANCED.anchor is None` keeps it out of the nearest-neighbour
+search), and `None` is the state `deliver`/`build_reel` already read as "nothing
+authored": no vignette, no picture fade, and `mix` keeps its own pre-existing
+0.5s audio default (it is never told `fade=`, so its own default applies).
+`BALANCED.look` itself is `LookSpec()` — vignette 0, fade 0 — as defence in
+depth only, for a caller that reads the field directly rather than going
+through `write_edit_plan`'s check. Filling it with any concrete value would
+itself be a change to a brief-less run's output: a real fade imposes a taste
+nobody chose, and even `fade=0.0` would reach `build_reel` as an **authored**
+zero and switch off `mix`'s audio bookend (see §5's mechanism — an authored
+`fade=0.0` is not the same as an absent look). `None` is the only value that
+changes nothing, which is why the fallback's look is carried but never applied.
+
+Note this reads *opposite* to `BALANCED`'s variety row, where the fallback
+deliberately keeps a gate armed: skipping a brief must not disable a **quality
+gate**, but it also must not silently apply a **taste**. The two rows differ
+because a gate and a look are different kinds of thing.
 
 The authored `EDL.look` always wins over the preset's default; the preset only
-fills an unauthored one, and `edit_plan build` logs which it used.
+fills an unauthored one when its mood MATCHED, and `edit_plan build` logs which
+source won (`selection.json`, the `<mood>` preset, or "left unauthored" when
+nothing matched).
 
 ---
 

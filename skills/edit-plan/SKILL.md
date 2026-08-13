@@ -102,15 +102,27 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `{"vignette": 0.0-0.6, "fade": 0.0-2.0}` — corner darkening and a bookend fade
    in seconds, applied once over the whole reel at `deliver`, never per episode.
    Omit it and the mood's preset (`MoodPreset.look`, resolved from `SPEC.mood`
-   the same way the variety gate resolves its shot-mix) decides — `balanced`'s
-   fallback is no vignette and the 0.5s fade `mix` already applies on its own,
-   so an autonomous run with no brief looks exactly as it did before looks
-   existed. Write `{}` or `{"vignette": 0, "fade": 0}` to mean *no look, and the
-   preset does not get to override that* — an authored zero beats a guessed
-   default even though both render nothing today; a hand-picked `{"vignette":
-   0.4, "fade": 1.0}` overrides the preset the same way. `edit_plan build` logs
-   which source won (`selection.json` or the `<mood>` preset) on every run —
-   read that line rather than assuming.
+   the same way the variety gate resolves its shot-mix) decides — unless
+   nothing matches: a skipped or mood-less brief leaves `EDL.look`
+   **unauthored** (`None`), never filled from `balanced`'s own preset row,
+   because filling it with any concrete value would itself be a taste nobody
+   chose (a real fade) or a silent change to the audio bookend every reel has
+   had since the music spine (see the next paragraph). Unauthored, `deliver`
+   applies no vignette or fade and `mix` keeps its own 0.5s audio default — so
+   an autonomous run with no brief looks exactly as it did before looks
+   existed.
+
+   Write `{}` or `{"vignette": 0, "fade": 0}` to mean *no look, and the preset
+   does not get to override that* — but know this is **not** the same as
+   omitting the key. An authored `{"vignette": 0, "fade": 0}` sets `EDL.look`
+   to a real `LookSpec`, and `build_reel` then passes its `fade=0.0` to `mix`
+   explicitly, switching OFF the 0.5s audio bookend every other reel keeps. An
+   authored zero is a decision with an audible consequence, not the same
+   no-op as leaving the key out — they render the same silent picture but not
+   the same audio. A hand-picked `{"vignette": 0.4, "fade": 1.0}` overrides
+   the preset the same way. `edit_plan build` logs which source won
+   (`selection.json`, the `<mood>` preset, or "left unauthored" when nothing
+   matched) on every run — read that line rather than assuming.
 
    Dedup across sources so one clip doesn't dominate, fit the running sum to the
    target length, and order them **hook first**. For each episode assign:
@@ -192,7 +204,10 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      neutralizes a cast first (grey-world; `0` = off); `black_point` ∈ `[0, 0.35]`
      lifts a washed toe; `highlight` ∈ `[0.6, 1.0]` tames blown whites; `saturation`
      ∈ `[0.5, 1.5]` scales chroma; `shadow_red` ∈ `[0, 0.20]` neutralizes a green/cyan
-     black; `mid_blue` ∈ `[0.80, 1.20]` fixes sky-bounce on skin; `dip` ∈ `[0, 0.5]`s
+     black; `highlight_red` ∈ `[0, 0.35]` pulls only the red **shoulder** down — de-pinks
+     specular foam/spray carrying a bright red object's reflection, leaving everything
+     below the 0.60 knee (water, skin, the object itself) alone; `mid_blue` ∈
+     `[0.80, 1.20]` fixes sky-bounce on skin; `dip` ∈ `[0, 0.5]`s
      fades the episode in/out to dark grey. `tone` matches a clip's tonal profile to
      the reel: set `tone_src` to that clip's measured `[p5, p50, p95]` luma and
      `tone_dst` to the reel's common target — measure both with

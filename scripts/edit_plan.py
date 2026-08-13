@@ -347,14 +347,19 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     build_edl does not resolve it from anything, write_edit_plan already reads SPEC.platform
     for the caller. A bare "" (the default) means the generic safe zone, same as omitting it.
 
-    `look` (design 2026-08-13 §6, keyword-only) is the mood preset's default LookSpec —
-    write_edit_plan passes preset.look here, so a mood always has a look unless the author
-    overrides it. selection.json's own "look" key wins when present: an author who writes
-    {} or {"vignette": 0, "fade": 0} has DECIDED against a look, and the preset must not
-    overwrite that decision, so the check is `is not None`, never truthiness — {} is falsy,
-    and a naive `if sel_look:` would silently fall through to the preset on exactly that
-    spelling. Omitting `look` with no selection.json override leaves EDL.look at None — the
-    same "never authored" a hand-authored SP1 EDL.json carries."""
+    `look` (design 2026-08-13 §6, keyword-only) is the fallback LookSpec applied when
+    selection.json authors none — write_edit_plan passes preset.look when a mood MATCHED,
+    and None when nothing did (corrected post-review, final-findings.md I-2): the
+    'balanced' fallback's own look is never applied, because filling it with any concrete
+    value would itself be a silent change to a brief-less run's output (a real fade, or an
+    authored fade=0.0 switching off mix's own audio bookend — see moodpreset.BALANCED's
+    comment). selection.json's own "look" key wins when present regardless of which look
+    was passed here: an author who writes {} or {"vignette": 0, "fade": 0} has DECIDED
+    against a look, and neither the preset nor the fallback gets to overwrite that
+    decision, so the check is `is not None`, never truthiness — {} is falsy, and a naive
+    `if sel_look:` would silently fall through to `look` on exactly that spelling.
+    Omitting `look` (passing None) with no selection.json override leaves EDL.look at
+    None — the same "never authored" a hand-authored SP1 EDL.json carries."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -465,15 +470,34 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     else:
         _log(f"platform: {plat} — its safe zone is what check_reel and the titles will use")
     # selection.json wins over the preset's default (build_edl re-applies the same
-    # is-not-None rule below; this log line only reports which source won).
+    # is-not-None rule below; this log line only reports which source won). When
+    # NOTHING matched (preset is the 'balanced' fallback), the preset's own .look is
+    # never what fills the gap: a skipped or mood-less brief must not silently apply a
+    # TASTE (a real fade) or silently switch off mix's own audio bookend (an authored
+    # fade=0.0 reaching build_reel does that — see LookSpec's docstring), so the
+    # fallback handed to build_edl is None, the same "never authored" state a
+    # hand-authored EDL.json carries and the only value that changes NOTHING about a
+    # brief-less run's output (design 2026-08-13 §6, corrected post-review —
+    # final-findings.md I-2; moodpreset.BALANCED's own comment carries the same
+    # reasoning for a caller who reads that field directly).
     sel_look = selection.get("look")
-    eff_look = LookSpec.from_dict(sel_look) if sel_look is not None else preset.look
-    _log(f"look: vignette {eff_look.vignette:.2f} · fade {eff_look.fade:.2f}s — from "
-         f"{'selection.json' if sel_look is not None else preset.name + ' preset'}")
+    fallback_look = None if preset.name == "balanced" else preset.look
+    if sel_look is not None:
+        eff_look = LookSpec.from_dict(sel_look)
+        _log(f"look: vignette {eff_look.vignette:.2f} · fade {eff_look.fade:.2f}s — "
+             "from selection.json")
+    elif fallback_look is not None:
+        _log(f"look: vignette {fallback_look.vignette:.2f} · fade {fallback_look.fade:.2f}s "
+             f"— from the {preset.name} preset")
+    else:
+        _log("look: left unauthored — no SPEC mood matched a preset, and the 'balanced' "
+             "fallback's own look is never applied (it would itself be a silent change "
+             "to a brief-less run's output); deliver renders no vignette/fade and mix "
+             "keeps its own default 0.5s audio bookend")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
-                    platform=plat, look=preset.look)
+                    platform=plat, look=fallback_look)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is

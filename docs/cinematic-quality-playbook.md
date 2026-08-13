@@ -234,13 +234,17 @@ Starter preset set (v1 candidates): `fun/playful`, `epic/adventure`, `moody/dram
    measurement) refuses a plateau that would duplicate below 24 unique
    frames per second, checked once free in `edit_plan` and again in
    `extract` against the probed rate — a hand-authored EDL still meets only
-   the second of those two gates. Still open: **#9** effects library + mood
-   palettes, the rest of **#18** (look filters, `highlight_red`'s missing
-   visibility proof, `outline-bold`), and **#10** cheap 3-frame preview to
-   keep iteration affordable — which is also the mechanism #18 wants for
-   asserting an effect is visible in pixels. **#5** (the authoring skill must
-   enumerate every knob) trails these: it documents whatever surface #9
-   lands.
+   the second of those two gates. **#18 landed in full 2026-08-13**
+   (cinematic-look: the reel-level look — vignette + bookend fade —,
+   `highlight_red`, and `outline-bold`, each with a measured visibility
+   proof). Still open: **#9**'s P2 grade half (mood biasing the match-grade
+   target) and P3 tail (grain — measured and priced out, design §11.2; LUTs),
+   and **#10** cheap 3-frame preview to keep iteration affordable — the
+   mechanism #18 wanted for asserting an effect is visible in pixels, now
+   answered per-knob instead by real-ffmpeg pixel measurements
+   (`tests/integration/test_look.py`). **#5** (the authoring skill must
+   enumerate every knob) trails these: it documents whatever surface #9's
+   grade half lands.
 5. **Polish** — #2 music phrase-out (still NEEDS INVESTIGATION; #16 versioning
    and #4 setup both ✅ LANDED 2026-08-04), plus the minor run bugs: a stray
    empty `out/title_1.txt` and length figures that do not reconcile (fitted
@@ -266,9 +270,10 @@ finish; polish last.
   speed-ramp half was superseded 2026-08-09 by a fresh implementation rather
   than ported — design §0 read the parked commit and rejected its
   decode/encode Python renderer and its now-dead zoom code, keeping only the
-  cosine speed-profile math — so the branch is now the only copy of just the
-  still-open #18 remainder (the look filters, `highlight_red`'s missing
-  visibility proof, `outline-bold`).
+  cosine speed-profile math. Its remaining #18 half (the look filters,
+  `highlight_red`, `outline-bold`) landed too, 2026-08-13 (cinematic-look) —
+  the parked branch is kept only as a historical record; nothing on it is
+  still outstanding.
 - **Effect QC:** what "visible on the frame" and "composition-respecting" checks look
   like concretely (the 3-frame probe, #10, extended beyond colour).
 

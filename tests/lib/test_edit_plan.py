@@ -1054,3 +1054,37 @@ def test_build_edl_without_a_look_or_a_selection_override_stays_unauthored():
     # "never authored" state a hand-authored SP1 EDL.json reads as.
     edl = edit_plan.build_edl(_footage(), _look_selection())
     assert edl.look is None
+
+
+# --- write_edit_plan's own fallback resolution (final-findings.md I-2) --------------
+#
+# Every test above exercises build_edl directly, passing `look=` explicitly — none of
+# them can see the bug that shipped: write_edit_plan ALWAYS passed preset.look, even
+# when moodpreset.resolve fell back to BALANCED, so a mood-less/skipped brief set
+# EDL.look = LookSpec(vignette=0.0, fade=0.5) instead of leaving it None. That reached
+# deliver as a real fade=t=in/fade=t=out pair — every autonomous reel opened on a
+# black frame, an editorial decision nobody made (pre-slice `deliver` had no video
+# fade at all). These two pin write_edit_plan's OWN resolution, the layer the bug
+# actually lived in.
+
+def test_write_edit_plan_leaves_the_look_unauthored_when_no_mood_matches(tmp_path):
+    # mood="unspecified" matches no scripts.lib.mood.MOOD_ANCHORS token, so
+    # moodpreset.resolve falls back to BALANCED (see the housekeeping-task comment on
+    # _write_spec above) — and EDL.look must stay None, not fill from BALANCED.look.
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    spec_path = _write_spec(tmp_path, mood="unspecified")
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert result["status"] == "written"
+    edl = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert edl.look is None
+
+
+def test_write_edit_plan_fills_the_look_from_a_matched_preset(tmp_path):
+    # The opposite case: a mood that DOES match a preset still fills EDL.look from it,
+    # so the fix above did not turn "unauthored" into "always unauthored".
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    spec_path = _write_spec(tmp_path, mood="dark and moody")
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert result["status"] == "written"
+    edl = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert edl.look == LookSpec(vignette=0.40, fade=1.0)

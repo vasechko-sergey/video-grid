@@ -88,7 +88,7 @@ the picture.
   constants `LOOK_VIGNETTE_MAX = 0.6`, `LOOK_FADE_MAX = 2.0`,
   `VIGNETTE_PLATEAU = 0.55`, `VIGNETTE_FALLOFF = 0.45`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/lib/test_look.py`:
 
@@ -195,12 +195,12 @@ def test_fade_ceiling_is_two_seconds():
     assert LOOK_FADE_MAX == 2.0
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_look.py -x -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.lib.look'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/lib/look.py`:
 
@@ -343,12 +343,12 @@ def chain(spec: "LookSpec | None", dur: float, titles: str = "") -> list[str]:
     return parts
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_look.py -q`
 Expected: PASS, 15 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/look.py tests/lib/test_look.py
@@ -372,7 +372,7 @@ git commit -m "feat(look): LookSpec + the plateau mask expression + the chain or
 **Why first:** the measured landmine (design §8.1) is the exact mistake the rest of
 this slice could make. The guard goes in before the code it guards.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_lint.py`:
 
@@ -405,12 +405,12 @@ def test_the_overlay_route_is_clean():
                             "-map", "[v]", "out.mp4"]) == []
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_lint.py -x -q -k blend`
 Expected: FAIL — the first test gets `[]` where it wants one violation.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/lint.py`, after the `SYNTH_SOURCES` block, add the pattern
 constant:
@@ -449,12 +449,12 @@ Wire it into the tuple in `check_argv`:
                   _zoompan_defaults, _blend_multiply):
 ```
 
-- [ ] **Step 4: Run to verify they pass, and that nothing else moved**
+- [x] **Step 4: Run to verify they pass, and that nothing else moved**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_lint.py tests/lib/test_proc.py tests/lib/test_landmine_scan.py -q`
 Expected: PASS, all of them.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/lint.py tests/lib/test_lint.py
@@ -476,7 +476,7 @@ git commit -m "feat(lint): sixth check — blend=all_mode=multiply destroys chro
   `ReelManifest.look: LookSpec | None = None`, both round-tripping through
   `to_dict`/`from_dict` as a nested object or `null`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl.py` (reuse whatever episode factory the file already
 has; the snippet below assumes a local helper named `_ep()` — if the file names it
@@ -537,12 +537,12 @@ def test_reel_manifest_look_refuses_a_wrong_type():
 (`_reel_ep()` stands for whatever `ReelEpisode` factory `tests/lib/test_models.py`
 already uses; keep the file's existing helper.)
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_models.py -x -q -k look`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'look'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/lib/edl.py` — add the import at the top:
 
@@ -627,12 +627,12 @@ Validation in `__post_init__`, after the `platform` check:
                 "look": self.look.to_dict() if self.look is not None else None,
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl.py tests/lib/test_models.py tests/lib/test_edl_to_reel.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/edl.py scripts/lib/models.py tests/lib/test_edl.py tests/lib/test_models.py
@@ -658,7 +658,7 @@ stay in `-vf` and the argv is byte-for-byte what it is today. With one, the mask
 `-loop 1 -i <mask>` — **input 1** — which pushes the audio stem to **input 2**. The
 `-map` for audio must follow.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_deliver.py`. The file already monkeypatches `proc.run` to
 capture argv — reuse that pattern; the snippet below assumes a `calls` list
@@ -722,12 +722,12 @@ def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, run_calls, 
     assert graph.index("drawtext") < graph.index("fade=t=in")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_deliver.py -x -q -k look`
 Expected: FAIL — `deliver() got an unexpected keyword argument 'look'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/deliver.py`, extend the imports:
 
@@ -833,13 +833,13 @@ and in the `deliver(...)` call:
 Note: the CLI always passes a `LookSpec`, and `LookSpec()` at the defaults produces
 no filters at all — so the CLI's argv is unchanged when neither flag is given.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_deliver.py -q`
 Expected: PASS, including the pre-existing tests (the byte-identity one is the
 regression pin).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deliver.py tests/test_deliver.py
@@ -864,7 +864,7 @@ git commit -m "feat(look): deliver renders the vignette mask and the bookend fad
 the key falls at the reel's end, the compressor releases, and the nat-sound gets
 *louder* exactly as the picture goes black. The SFX whoosh is not faded at all.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_mix.py` (reuse the file's existing `proc.run` capture):
 
@@ -901,12 +901,12 @@ def test_overlapping_fades_are_refused_with_the_authored_number():
         mix.mix(music, str(tmp_path), 2.0, fade=1.5)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -x -q`
 Expected: FAIL — the fragment extract still carries `afade`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/mix.py`, change the signature and the guard:
 
@@ -967,12 +967,12 @@ _FADE = 0.5     # default bookend fade, seconds per end. The DEFAULT, not a fixe
                 # video bookends are one number (design 2026-08-13 §5).
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_mix.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/mix.py tests/test_mix.py
@@ -993,7 +993,7 @@ git commit -m "fix(mix): fade the mixed stem, not the music — the duck release
   `mix(fade=)` (Task 4).
 - Produces: nothing new — this is wiring.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_edl_to_reel.py`:
 
@@ -1039,12 +1039,12 @@ def test_a_reel_with_no_look_keeps_mixs_own_default(monkeypatch, ...):
     assert "fade" not in seen
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -x -q -k look`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/edl_to_reel.py`, where the `ReelManifest` is built (the call that
 already passes `platform=edl.platform`), add `look=edl.look`:
@@ -1078,12 +1078,12 @@ bookend off:
 (Match the existing `mix.mix` call's positional/keyword shape in the file — only the
 `**fade_kw` is new.)
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/edl_to_reel.py scripts/build_reel.py tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py
@@ -1103,7 +1103,7 @@ git commit -m "feat(look): thread EDL.look through edl_to_reel and build_reel"
 - Consumes: `LookSpec` (Task 0), `EDL.look` (Task 2).
 - Produces: `MoodPreset.look: LookSpec`; `build_edl(..., look: LookSpec | None = None)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_moodpreset.py`:
 
@@ -1155,12 +1155,12 @@ def test_an_authored_no_look_beats_the_preset(...):
     assert edl.look == LookSpec()
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py tests/lib/test_edit_plan.py -x -q -k look`
 Expected: FAIL — `MoodPreset.__init__() got an unexpected keyword argument 'look'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scripts/lib/moodpreset.py` — import `from scripts.lib.look import LookSpec`, add
 the field to `MoodPreset`:
@@ -1256,12 +1256,12 @@ Prefer a local variable over evaluating that twice:
 and pass `look=preset.look` into `build_edl` (which re-applies the same
 selection-wins rule; the log line above only reports it).
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_moodpreset.py tests/lib/test_edit_plan.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/moodpreset.py scripts/edit_plan.py tests/lib/test_moodpreset.py tests/lib/test_edit_plan.py
@@ -1294,7 +1294,7 @@ git commit -m "feat(look): MoodPreset.look supplies the brief's default"
 verbatim — including the docstrings, which carry the reasons. Do **not** port
 anything else from that branch.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/lib/test_color.py`:
 
@@ -1370,12 +1370,12 @@ def test_episode_highlight_red_is_omitted_at_its_default():
     assert "highlight_red" not in _ep().to_manifest_dict(...)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py tests/lib/test_models.py tests/lib/test_edl.py -x -q -k highlight_red`
 Expected: FAIL — `AttributeError: module 'scripts.lib.color' has no attribute 'highlight_red_arg'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Port from the parked branch. In `scripts/lib/color.py`, after `highlight_arg`, add
 the two constants and the function exactly as they stand there:
@@ -1428,12 +1428,12 @@ and emit it conditionally in `to_manifest_dict` alongside the other conditional
 colour fields. In `scripts/process_episode.py`, carry it into the `ReframeSpec`
 the same way `shadow_red` is carried.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py tests/lib/test_models.py tests/lib/test_edl.py tests/lib/test_manifest.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/color.py scripts/lib/models.py scripts/lib/edl.py scripts/process_episode.py tests/
@@ -1452,7 +1452,7 @@ git commit -m "feat(color): land the parked highlight_red shoulder pull"
 - Consumes: nothing.
 - Produces: `"outline-bold"` accepted by `Title.style`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_titles.py`:
 
@@ -1471,12 +1471,12 @@ def test_outline_bold_draws_a_heavier_border_than_outline(tmp_path):
     assert "shadowx=3" in bold and "shadow" not in thin
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_titles.py -x -q -k outline_bold`
 Expected: FAIL — `'outline-bold' not in STYLES`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/titles.py`:
 
@@ -1495,12 +1495,12 @@ _STYLE_FRAGMENTS: dict[str, str] = {
 }
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_titles.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/titles.py tests/test_titles.py
@@ -1529,7 +1529,7 @@ fixture. Decode with ffmpeg to `rawvideo`/`gray` and compute with numpy, as
 of those two files reads more cleanly and reuse its helpers rather than writing new
 ones.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 Create `tests/integration/test_look.py` with these six, in this order:
 
@@ -1599,14 +1599,14 @@ Write the helpers (`_deliver`, `_gray`, `_all_gray`, `_corner_ratio`, `_centre`,
 `sample_clip` is 1920×1080; the vignette measurements do not depend on the aspect,
 only on the plateau, so no vertical fixture is needed for these proofs.
 
-- [ ] **Step 2: Run them**
+- [x] **Step 2: Run them**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_look.py -q`
 Expected: PASS, 6 tests. If a threshold is close, **measure and adjust the
 threshold to the measured value with margin — do not weaken an assertion to
 "something changed"**. Record the measured numbers in the commit message.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/integration/test_look.py
@@ -1625,7 +1625,7 @@ specific way and names the test that must go red. A row where nothing goes red i
 coverage hole: **close it with a new test in the same task**, then revert the
 mutation.
 
-- [ ] **Step 1: Run each mutation, record the result**
+- [x] **Step 1: Run each mutation, record the result**
 
 | # | mutation | expected red |
 |---|---|---|
@@ -1636,6 +1636,7 @@ mutation.
 | 5 | `deliver`: use `aidx = 1` unconditionally | `test_audio_input_index_shifts_when_a_mask_is_present` **and** `test_a_vignette_and_a_muxed_stem_pick_the_right_audio_input` |
 | 6 | `deliver`: emit `-vf` even when a mask exists (drop the `-filter_complex` branch) | `test_vignette_renders_a_mask_and_moves_to_filter_complex` |
 | 6b | `deliver`: drop `*parts` from the **`-filter_complex` branch only**, keeping the overlay | the Task 9 vignette+fade proof. **This row already fired once**: before it existed, that mutation passed the WHOLE suite (2759 passed). `deliver` builds the graph in two branches over the same `parts` list, and `parts` carries the titles chain as well as the fade — so a refactor touching one branch silently deleted the bookend AND every on-screen title for `epic`, `moody` and `nostalgic`, which are 3 of the 4 mood presets and ship vignette+fade together. |
+| 6c | `deliver`: drop every `drawtext` from the **`-filter_complex` branch only** (`[p for p in parts if not p.startswith("drawtext")]`), keeping the overlay AND the fade | `test_vignette_renders_a_mask_and_moves_to_filter_complex`'s `"drawtext" in g` assertion. **This row already fired once** — the final whole-branch review found that this narrower sibling of 6b passed the WHOLE suite (2761 passed): 6b was closed with a *fade* assertion only, and no test anywhere exercised titles and a vignette together, so a mutation that keeps the fade but drops only the titles slipped past it. Every on-screen title vanished for `epic`/`moody`/`nostalgic`. Verified red under the mutation, then reverted by hand and re-verified green (final-fix-report.md). |
 | 7 | `deliver`: build the mask at a hardcoded `1080x1920` instead of the probed dims, and make `_render_mask` never call `probe_stream` at all | the Task 3 probe-recording test. **This row already fired once** — the Task 3 review demonstrated that the first round of tests passed under exactly this mutation, because the `probe_stream` stub discarded its argument. The fix added a call-recording assertion; this row re-checks it. |
 | 8 | `deliver`: replace `overlay=shortest=1` with `blend=all_mode=multiply` | `lint`'s new check fires through `proc.run` — any deliver test with a vignette |
 | 9 | `EDL.from_dict`: use `if d.get("look")` instead of `is not None` | `test_edl_look_empty_object_is_authored_not_absent`. **Not** `test_edl_look_accepts_an_authored_no_look`, which this row named until Task 10 ran it and watched it pass: that test authors `{"vignette": 0, "fade": 0}`, a NON-EMPTY and therefore truthy dict, so it survives either spelling. Only the empty object discriminates. |
@@ -1645,7 +1646,7 @@ mutation.
 | 13 | `color.grade_chain`: move `highlight_red_arg` before `mixer_arg` | `test_grade_chain_places_highlight_red_after_the_shoulder` |
 | 14 | `titles._STYLE_FRAGMENTS["outline-bold"]`: copy `outline`'s value | `test_outline_bold_draws_a_heavier_border_than_outline` |
 
-- [ ] **Step 1b: Re-sync `test_lint.py`'s `REAL_SITES` fixture**
+- [x] **Step 1b: Re-sync `test_lint.py`'s `REAL_SITES` fixture**
 
 Task 4 moved `mix.py`'s bookend `afade` off the music-fragment extract and onto the
 mixed stem. `tests/lib/test_lint.py` carries a `REAL_SITES` fixture of hand-copied
@@ -1680,7 +1681,7 @@ regression-documentation layer on top of the enforcement path, not the
 enforcement path itself. That is why nothing is broken today, and also why a
 fixture that lies is worth fixing rather than deleting.
 
-- [ ] **Step 1c: One false comment to correct**
+- [x] **Step 1c: One false comment to correct**
 
 `tests/lib/test_manifest.py`'s new `highlight_red=0.15` carries a comment saying
 the value is distinguishable "from `shadow_red`'s own test value elsewhere in
@@ -1689,17 +1690,17 @@ file — the colliding value (`0.05`) lives in the *other* file,
 `tests/integration/test_process_episode.py`. The choice of 0.15 is right; the
 sentence explaining it is not. Correct it to name the real neighbour.
 
-- [ ] **Step 2: Close any hole the battery found**
+- [x] **Step 2: Close any hole the battery found**
 
 For each row where nothing went red, write the missing test, verify it goes red
 under the mutation and green without it, and note it in the commit message.
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all green. Record the exact pass/skip counts.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/
@@ -1717,7 +1718,7 @@ git commit -m "test(look): 14-row mutation battery + the holes it found"
 - Modify: `docs/fixes-backlog.md` (#9 and #18 status headers)
 - Modify: `skills/edit-plan/SKILL.md`, `skills/titles/SKILL.md`, `skills/using-montage/SKILL.md`
 
-- [ ] **Step 1: Add the five landmines to §12**
+- [x] **Step 1: Add the five landmines to §12**
 
 In `docs/specs/2026-07-05-montage-skillset-design.md` §12, add one entry each,
 with the measured numbers, for design §8.1–§8.5: the chroma-destroying
@@ -1730,7 +1731,7 @@ Also add the first of these to `CLAUDE.md`'s always-loaded "Known troubles" list
 it is the one a future author is most likely to reach for, and it is machine-checked
 now, so the entry can say so.
 
-- [ ] **Step 2: Add the backlog rows**
+- [x] **Step 2: Add the backlog rows**
 
 Per the 2026-08-12 rule, every row of the design's §12 table goes into
 `docs/backlog.md`:
@@ -1761,7 +1762,7 @@ Update the P1 row for #9: the look half is done, the P2 grade half and the P3 ta
 remain — **do not mark #9 closed**. Update #18's row: all four pieces have landed,
 so it closes.
 
-- [ ] **Step 3: Update the skills**
+- [x] **Step 3: Update the skills**
 
 - `skills/edit-plan/SKILL.md`: `selection.json` may carry a top-level `"look"`
   (`{"vignette": 0.0–0.6, "fade": 0.0–2.0}`); absent means the mood preset decides;
@@ -1772,7 +1773,7 @@ so it closes.
 - `skills/using-montage/SKILL.md`: the look is delivery-time, so it is invisible in
   the draft and in every check — CP3 is the first place a human sees it.
 
-- [ ] **Step 4: Status docs**
+- [x] **Step 4: Status docs**
 
 Add a Done entry to `docs/build-status.md` dated 2026-08-13 carrying the measured
 numbers (the §2.2 cost table, the corner/sky ratios, the grain cost table, the
@@ -1781,7 +1782,7 @@ landmines, and every §11 honest limit. Update **Next action**. Add the two regi
 rows (design + plan) to `CLAUDE.md`'s Quick Reference and the look row to
 `docs/pipeline-map.md`'s §5.14/§5.16 lines.
 
-- [ ] **Step 5: Full suite + commit**
+- [x] **Step 5: Full suite + commit**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: all green.

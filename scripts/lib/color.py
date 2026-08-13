@@ -146,8 +146,14 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
     The anchors above `ret` are load-bearing, not decoration: ffmpeg fits a spline, and
     with the segment from `ret` to 1.0 unpinned it SAGS — measured, a red board lost 7
     units of R-G from a curve that never meant to touch it. Pinning 0.50/0.70/0.85 to
-    identity holds the top flat, and the surgical result (skin and board move by 0.2)
-    is what those pins buy.
+    identity holds the top flat, but those three anchors are themselves sparse in the
+    same way `highlight_red_arg`'s were before its 2026-08-13 fix (see that function's
+    own docstring): they pin the spline AT three points, not the curve it draws
+    between them. Measured 2026-08-13: **-6** at `SHADOW_RED_MAX`, worse than
+    `highlight_red_arg`'s own pre-fix worst case of -3 — not the "skin and board move
+    by 0.2" this docstring used to claim as a measured result. Unfixed here,
+    pre-existing, queued separately: docs/backlog.md, "`color.shadow_red_arg` has
+    `highlight_red_arg`'s pre-fix sparse-anchor defect — worse" (cinematic-look §12).
     """
     # type FIRST — see black_point_arg: True == 1 would slip the identity shortcut.
     if isinstance(lift, bool) or not isinstance(lift, (int, float)):

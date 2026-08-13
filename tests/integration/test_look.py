@@ -31,6 +31,7 @@ from scripts.lib import assembly, color, ffbin, proc
 from scripts.lib.look import LookSpec
 from scripts.lib.models import (Delivery, LayoutSpec, MusicSpec, REEL_H264,
                                 ReelCheckSpec, ReframeSpec)
+from scripts.lib.titles import Title, Titles, build_filterchain
 
 pytestmark = pytest.mark.integration
 
@@ -494,3 +495,70 @@ def test_highlight_red_pulls_the_highlights_and_leaves_the_shadows(
     assert blue_delta < 1.5, (
         f"B in the highlight band moved by {blue_delta:.3f} — the highlights were "
         f"dimmed, not de-redded")
+
+
+# --- outline-bold: design §9 row 6 (I-4) -------------------------------------
+
+def _style_frame(tmp_path, style: str, text: str = "HOOK BACK") -> np.ndarray:
+    """One rendered frame (h, w) luma array: `text` centred in `style`, on a flat
+    mid-grey 1920x1080 field — the SAME drawtext chain `deliver` burns in, run
+    directly through `build_filterchain` rather than `deliver()`: a single-frame ink
+    measurement needs no bound ReelReport/master, only the real filtergraph."""
+    w, h = 1920, 1080
+    work = tmp_path / style
+    work.mkdir()
+    titles = Titles(items=(Title(text, 0.0, 1.0, pos="center", style=style),))
+    chain = build_filterchain(titles, str(work))
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-f", "lavfi",
+                    "-i", f"color=c=gray:s={w}x{h}:d=1",
+                    "-vf", chain, "-frames:v", "1",
+                    "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
+    assert len(raw) >= w * h, f"{style}: decoded no full frame ({len(raw)} bytes)"
+    return np.frombuffer(raw, dtype=np.uint8)[:w * h].reshape(h, w).astype(float)
+
+
+def _ink_extent(frame: np.ndarray, tol: float = 15.0) -> tuple[int, int, int]:
+    """(bbox width, bbox height, ink pixel count) of pixels differing from the flat
+    background by more than `tol`. The background dominates a title frame's pixel
+    count (text is a small fraction of 1920x1080), so its own median IS the
+    background reading — no hardcoded "gray is 128" assumption about how `color=`
+    or the raw pixel format quantizes it."""
+    bg = float(np.median(frame))
+    ink = np.abs(frame - bg) > tol
+    rows, cols = np.any(ink, axis=1), np.any(ink, axis=0)
+    assert rows.any() and cols.any(), "no ink rendered at all — drawtext did not fire"
+    r0, r1 = np.where(rows)[0][[0, -1]]
+    c0, c1 = np.where(cols)[0][[0, -1]]
+    return int(c1 - c0 + 1), int(r1 - r0 + 1), int(ink.sum())
+
+
+def test_outline_bold_draws_a_heavier_glyph_than_outline(tmp_path, need_filter):
+    """design §9 row 6. "the rendered glyph's ink extent is wider than the same title
+    in `outline`" — a REAL pixel measurement, not the argv string test the plan's
+    Task 8 shipped instead (I-4: dropped at plan time, in the slice whose whole
+    premise is that string tests are how an invisible vignette got through).
+
+    `outline-bold` (borderw=7 + an offset shadowx=3:shadowy=3) against plain
+    `outline` (borderw=4, no shadow) — same text, size and position, on a flat
+    mid-grey field so "ink" is simply whatever differs from the background.
+
+    Measured on this text/font/machine (re-measure rather than trusting these —
+    ffmpeg/font version can move them): outline 360x54 (12540 ink px), outline-bold
+    369x63 (18871 ink px) — +9px wider, +9px taller, 1.51x the ink, consistent with
+    a heavier border plus an offset shadow that outline alone does not draw.
+    """
+    need_filter("drawtext")
+    plain = _style_frame(tmp_path, "outline")
+    bold = _style_frame(tmp_path, "outline-bold")
+    pw, ph, pn = _ink_extent(plain)
+    bw, bh, bn = _ink_extent(bold)
+
+    assert bw > pw, (
+        f"outline-bold's ink extent is {bw}px wide, not wider than outline's {pw}px — "
+        f"the heavier border/shadow did not reach the rendered pixels")
+    assert bh > ph, (
+        f"outline-bold's ink extent is {bh}px tall, not taller than outline's {ph}px")
+    assert bn > pn * 1.1, (
+        f"outline-bold's ink count is {bn}px against outline's {pn}px — not enough "
+        f"more ink for a heavier border plus an offset shadow (only a wider bbox "
+        f"with the same fill would still pass the width/height checks above)")

@@ -108,7 +108,8 @@ def test_sseof_is_never_mistaken_for_ss():
 def test_ss_is_input_side_when_any_i_follows_it_not_only_the_first():
     """ffmpeg binds -ss to the input AFTER it. In `-i a -ss 5 -i b` the seek is
     input-side for b; a 'before the FIRST -i' test reads it as an output seek and
-    misses the violation. scripts/mix.py:207 already builds multi-input commands."""
+    misses the violation. scripts/mix.py's `mix()` already builds multi-input
+    commands (its ambient/sfx `-filter_complex` call)."""
     cmd = ["ffmpeg", "-y", "-i", "a.mp4", "-ss", "5.0", "-i", "b.mp4",
            "-t", "2.0", "-c:v", "libx264", "out.mp4"]
     assert len(lint.check_argv(cmd)) == 1
@@ -224,8 +225,8 @@ def test_an_output_bound_makes_a_synth_source_clean():
 
 
 def test_a_source_side_duration_makes_a_synth_source_clean():
-    """scripts/mix.py:109 — anoisesrc with d= and no -t. The d= IS the whoosh's
-    length; there is no real input for it to mismatch.
+    """scripts/mix.py's `_whoosh` — anoisesrc with d= and no -t. The d= IS the
+    whoosh's length; there is no real input for it to mismatch.
 
     The real command also carries `seed=7`, dropped here so the `d=` is the only
     thing that can be answering. With it present this test passed whether or not
@@ -250,7 +251,7 @@ def test_an_unbounded_anoisesrc_is_reported():
 def test_a_seed_or_speed_parameter_does_not_bound_a_source():
     """`seed=` and `speed=` both CONTAIN `d=`. A substring test reads either as
     the source's duration and exempts a genuinely infinite source — the first is
-    scripts/mix.py:109's own shape with its `d=` removed, i.e. exactly the
+    scripts/mix.py's `_whoosh` own shape with its `d=` removed, i.e. exactly the
     command this check exists to catch."""
     seeded = ["ffmpeg", "-y", "-f", "lavfi", "-i",
               "anoisesrc=color=pink:r=48000:a=0.9:seed=7", "out.wav"]
@@ -383,7 +384,7 @@ def test_a_filename_that_merely_starts_with_a_source_name_is_not_a_source():
 @pytest.mark.parametrize("graph, expect", [
     # A real source is `name` alone or `name=params` — never `name.ext`. These
     # are every shape of "alone" the graph syntax allows, and all must survive.
-    ("anullsrc=r=48000:cl=stereo", "anullsrc"),   # params — mix.py:75's own form
+    ("anullsrc=r=48000:cl=stereo", "anullsrc"),   # params — mix.py's `_build_ambient` own form
     ("anullsrc", "anullsrc"),                     # parameterless, ends the element
     ("testsrc[t]", "testsrc"),                    # an output label follows
     ("testsrc,format=yuv420p", "testsrc"),        # a filter chain follows
@@ -623,9 +624,10 @@ def test_an_unclosed_quote_falls_back_to_the_quote_blind_bound():
 # Wider than the design's seven-row table, in two directions the fix rounds
 # proved load-bearing:
 #   * The three SPLAT sites design §2 names — reframe.py:380, deliver.py:76/:80,
-#     mix.py:207 — assemble their argv through `*builder(...)`. Static analysis
-#     cannot see through that, so runtime is the ONLY layer covering them and
-#     one fixture per background variant is cheap insurance.
+#     mix.py's `mix()` (its ambient/sfx filter_complex call) — assemble their
+#     argv through `*builder(...)`. Static analysis cannot see through that, so
+#     runtime is the ONLY layer covering them and one fixture per background
+#     variant is cheap insurance.
 #   * The shapes that were live false positives: `drawbox=…:color=red@1.0`
 #     (test_pan.py:27), `pad=…` (whose literal `d=` masked a second bug, design
 #     §6), `seed=` beside a real `d=`, and `-sseof`.
@@ -648,7 +650,7 @@ def test_an_unclosed_quote_falls_back_to_the_quote_blind_bound():
 #     test_each_source_in_a_graph_needs_its_own_bound.
 # Two fixtures do reach the scanner and earn their keep there: test_pan.py:27
 # (matches a bounded `color=` AND boundary-rejects two drawbox `color=` params)
-# and mix.py:109 (per-element bound, with `seed=` sitting beside a real `d=`).
+# and mix.py's `_whoosh` (per-element bound, with `seed=` sitting beside a real `d=`).
 
 _FONT = "/System/Library/Fonts/Helvetica.ttc"
 

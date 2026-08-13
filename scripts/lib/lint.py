@@ -35,14 +35,27 @@ import re
 BANNED_FILTERS = ("lutrgb",)
 
 # lavfi sources that never send end-of-stream unless bounded (design §12).
-# Five is deliberately not exhaustive: ffmpeg has a dozen more infinite sources
+# Six is deliberately not exhaustive: ffmpeg has a dozen more infinite sources
 # and every one reads clean here. Those are MISSES, the safe direction; widening
 # is a later call, but the under-coverage is written down rather than implied
 # away — in the landmine-lint design §5, which NAMES them and is the one place
 # that does. This comment deliberately does not repeat the list: it carried a
 # copy that had already drifted to ten of the twelve, and a stale roster of what
 # a safety check misses is worse than a pointer to a current one.
-SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
+# `nullsrc` (2026-08-13, cinematic-look): deliver._render_mask's one-frame vignette
+# mask source. Bounded today by both `d=1` and `-frames:v 1`, so nothing was ever
+# unguarded — the guard simply could not SEE it before this entry existed.
+SYNTH_SOURCES = ("color=", "testsrc", "nullsrc", "anullsrc", "anoisesrc", "sine=")
+
+# Where a filtergraph element ENDS: at the next filter (`,`), the next chain
+# (`;`), or a label (`[`). One constant, three readers — _element slices on it,
+# _SYNTH_RE anchors its right-hand boundary against it, and _BLEND_MULT_RE (below)
+# reads it in BOTH directions: its right-hand exclusion set is this constant
+# verbatim, and its left anchor is this constant's mirror (see that regex's own
+# comment). Independent copies of this set could drift into a checker that finds
+# a source its own slicer cannot delimit — which is exactly what _BLEND_MULT_RE
+# had become (a private `,;]`/`,;[` copy) until this comment's count was corrected.
+_GRAPH_SEPS = ",;["
 
 # design §12 (2026-08-13 §8.1): `blend=all_mode=multiply` against a single-plane
 # mask multiplies the CHROMA planes too. U and V sit at 128 for neutral, so scaling
@@ -50,13 +63,16 @@ SYNTH_SOURCES = ("color=", "testsrc", "anullsrc", "anoisesrc", "sine=")
 # against the same darkening done through alpha. The luma looks right, which is what
 # makes it silent. `all_mode` only: `c0_mode`/`c1_mode` name ONE plane and are the
 # correct spelling when a per-plane multiply is really what you want.
-_BLEND_MULT_RE = re.compile(r"(?:^|[,;\]])blend=[^,;\[]*\ball_mode=multiply\b")
-
-# Where a filtergraph element ENDS: at the next filter (`,`), the next chain
-# (`;`), or a label (`[`). One constant, two readers — _element slices on it and
-# _SYNTH_RE anchors its right-hand boundary against it. Two copies of this set
-# could drift into a checker that finds a source its own slicer cannot delimit.
-_GRAPH_SEPS = ",;["
+#
+# Both bracket sets below are _GRAPH_SEPS, read in opposite directions, not a second
+# hardcoded literal. The right-hand exclusion IS _GRAPH_SEPS: blend='s own params end
+# at the same separators any element's do. The left anchor is _GRAPH_SEPS's MIRROR —
+# an element STARTS just after a previous one's `,`/`;`, or right after a label
+# reference CLOSES with `]`, which is the opposite boundary from _GRAPH_SEPS's `[`
+# (marking where a label reference OPENS, ending the element before it).
+_BLEND_MULT_RE = re.compile(
+    r"(?:^|[" + re.escape(_GRAPH_SEPS.replace("[", "]")) + r"])blend="
+    r"[^" + re.escape(_GRAPH_SEPS) + r"]*\ball_mode=multiply\b")
 
 # A source NAME — not a parameter that merely ends in one, and not a FILENAME that
 # merely begins with one. Both anchors are load-bearing.
