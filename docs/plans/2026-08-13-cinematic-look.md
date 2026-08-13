@@ -1308,10 +1308,13 @@ def test_highlight_red_refuses_a_knee_outside_its_band(knee):
 
 
 def test_grade_chain_places_highlight_red_after_the_shoulder():
-    out = color.grade_chain((1.0, 1.0, 1.0), highlight=1.2, highlight_red=0.2, dur=3.0)
-    assert out.index("highlight") < out.index("curves=r=") or True  # order asserted below
-    # the shoulder lift comes before the red shoulder pull, and dip stays last
-    assert out.rindex("curves=r=") > out.index(color.highlight_arg(1.2).lstrip(","))
+    # the shoulder lift, then the red shoulder pull, then the timeline dip LAST
+    out = color.grade_chain((1.0, 1.0, 1.0), highlight=1.2, highlight_red=0.2,
+                            dip=0.1, dur=3.0)
+    hi = color.highlight_arg(1.2).lstrip(",")
+    hr = color.highlight_red_arg(0.2).lstrip(",")
+    dip = color.dip_arg(0.1, 3.0).lstrip(",")
+    assert out.index(hi) < out.index(hr) < out.index(dip)
 
 
 def test_grade_chain_is_unchanged_at_the_highlight_red_default():
