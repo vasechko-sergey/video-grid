@@ -8,9 +8,10 @@ from scripts.lib import moodpreset
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR
+from scripts.lib.models import RampSpec
+from scripts.lib.outro import OutroFit
 from scripts.lib.project import ProjectConfig
 from scripts.lib import ramp
-from scripts.lib.models import RampSpec
 
 
 def _ep(**kw):
@@ -995,9 +996,6 @@ def test_episode_highlight_red_is_omitted_at_its_default():
 
 # --- music-outro-fit Task 4: EDL.outro (design docs/specs/2026-08-14-music-outro-fit-design.md §7) ---
 
-from scripts.lib.outro import OutroFit
-
-
 def test_edl_outro_round_trips():
     fit = OutroFit(reel_dur=35.7, line=35.2, fade=0.5, tail=1.5, rung="gap", moved=1.7)
     e = EDL(episodes=(_ep(),), outro=fit)
@@ -1021,6 +1019,19 @@ def test_markdown_reports_the_rung_and_the_move():
     md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
     assert "## Music outro" in md
     assert "`gap`" in md and "35.26s" in md and "1.50s" in md and "+1.72s" in md
+
+
+def test_markdown_no_gap_rung_explains_the_longer_fade():
+    # The no-gap rung's markdown branch must be exercised: constructs an OutroFit
+    # with rung="no-gap" and asserts the else branch's actual sentence including TAIL_MIN.
+    from scripts.lib import outro as outro_mod
+    fit = OutroFit(reel_dur=32.5, line=32.0, fade=1.5, tail=0.0, rung="no-gap", moved=-0.5)
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "## Music outro" in md
+    assert "`no-gap`" in md
+    # Assert the exact TAIL_MIN value quoted in the branch
+    assert f"no bar line in range left {outro_mod.TAIL_MIN:.2f}s of vocal-free space" in md
+    assert "32.00s" in md and "1.50s" in md and "-0.50s" in md
 
 
 def test_markdown_has_no_outro_section_when_unfitted():
