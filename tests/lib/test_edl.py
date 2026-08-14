@@ -9,6 +9,7 @@ from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR
 from scripts.lib.models import RampSpec
+from scripts.lib import outro as outro_mod
 from scripts.lib.outro import OutroFit
 from scripts.lib.project import ProjectConfig
 from scripts.lib import ramp
@@ -1024,7 +1025,6 @@ def test_markdown_reports_the_rung_and_the_move():
 def test_markdown_no_gap_rung_explains_the_longer_fade():
     # The no-gap rung's markdown branch must be exercised: constructs an OutroFit
     # with rung="no-gap" and asserts the else branch's actual sentence including TAIL_MIN.
-    from scripts.lib import outro as outro_mod
     fit = OutroFit(reel_dur=32.5, line=32.0, fade=1.5, tail=0.0, rung="no-gap", moved=-0.5)
     md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
     assert "## Music outro" in md
