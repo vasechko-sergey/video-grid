@@ -1,10 +1,12 @@
+import dataclasses
 import json
 
 import pytest
-from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict
+from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict, write_edl
 from scripts.lib.constraints import ConstraintReport, Violation
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import moodpreset
+from scripts.lib import provenance
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR
@@ -591,51 +593,46 @@ def test_edl_refuses_a_non_dict_provenance():
 # episode's dict form.
 
 def test_write_edl_stamps_and_from_json_reads_it_back_intact(tmp_path):
-    from scripts.lib import edl as edl_mod, provenance
     e = _edl()
     p = tmp_path / "EDL.json"
-    edl_mod.write_edl(e, p)
+    write_edl(e, p)
     assert provenance.check(json.loads(p.read_text()))[0] == "intact"
-    assert edl_mod.EDL.from_json(p).provenance["self"]
+    assert EDL.from_json(p).provenance["self"]
 
 
 def test_write_edl_records_the_selection_digest(tmp_path):
-    from scripts.lib import edl as edl_mod, provenance
     sel = tmp_path / "selection.json"
     sel.write_text('{"episodes": []}')
     p = tmp_path / "EDL.json"
-    edl_mod.write_edl(_edl(), p, selection=sel)
+    write_edl(_edl(), p, selection=sel)
     block = json.loads(p.read_text())["provenance"]
     assert block["inputs"]["selection"] == provenance.digest_file(sel)
 
 
 def test_from_json_refuses_an_edl_edited_after_the_tool_wrote_it(tmp_path):
-    from scripts.lib import edl as edl_mod
     p = tmp_path / "EDL.json"
-    edl_mod.write_edl(_edl(), p)
+    write_edl(_edl(), p)
     d = json.loads(p.read_text())
     d["cap"] = 9                                   # raw-JSON surgery
     p.write_text(json.dumps(d, indent=2))
     with pytest.raises(ValueError, match="selection.json"):
-        edl_mod.EDL.from_json(p)
+        EDL.from_json(p)
 
 
 def test_from_json_still_loads_a_hand_authored_unstamped_edl(tmp_path):
     # edl_to_reel's documented SP1 front door: absence is legal, tampering is not
-    from scripts.lib import edl as edl_mod
     p = tmp_path / "EDL.json"
     p.write_text(json.dumps({"episodes": [_ep().to_dict()]}, indent=2))
-    assert edl_mod.EDL.from_json(p).provenance == {}
+    assert EDL.from_json(p).provenance == {}
 
 
 def test_a_rewritten_edl_restamps_rather_than_going_stale(tmp_path):
-    from scripts.lib import edl as edl_mod, provenance
     p = tmp_path / "EDL.json"
     e = _edl()
-    edl_mod.write_edl(e, p)
-    e2 = edl_mod.EDL.from_json(p)
+    write_edl(e, p)
+    e2 = EDL.from_json(p)
     e2.cap = 5                                     # a TOOL changing the EDL
-    edl_mod.write_edl(e2, p)
+    write_edl(e2, p)
     assert provenance.check(json.loads(p.read_text()))[0] == "intact"
 
 
@@ -850,7 +847,6 @@ def test_an_episode_refuses_a_malformed_ramp_object():
 def test_shrinking_a_ramped_episode_into_its_region_raises_on_replace():
     # dataclasses.replace re-runs __post_init__, so the pacing binding cannot
     # quietly cut a window down into a ramp it no longer contains.
-    import dataclasses
     ep = _ramp_ep(ramp=RAMP)
     with pytest.raises(ValueError, match="ends 1.00s past"):
         dataclasses.replace(ep, dur=2.0)

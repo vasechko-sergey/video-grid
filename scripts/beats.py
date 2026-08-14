@@ -5,6 +5,7 @@ import argparse
 import dataclasses
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -41,7 +42,7 @@ def analyze(track: str, start_offset: float = 0.0, duration: float | None = None
                      bars=bars)
 
 
-def _downbeat_phase(y, sr: int, beat_times) -> int | None:
+def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int | None:
     """Which of the four beat phases carries the bar's kick — the downbeat.
 
     Peak STFT energy below _LOW_HZ in a +/-_BAR_WIN window around each beat, averaged

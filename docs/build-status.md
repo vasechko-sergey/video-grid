@@ -12,6 +12,157 @@ _Last updated: 2026-08-14._
 
 ## Done
 
+- **Music outro fit — the reel ends where the phrase does (backlog #2, closes it)
+  DONE (2026-08-14)** — plan `docs/plans/2026-08-14-music-outro-fit.md` + design
+  `docs/specs/2026-08-14-music-outro-fit-design.md`, Tasks 0–7 (+5b, a fix task
+  forced mid-slice — see below) (branch `feat/music-outro-fit`, commits
+  `58580e2`..`596cfc2` + this docs sync). Builds directly on the demucs-required
+  entry just below: that slice made a vocal-free half-second *measurable*; this one
+  is what spends the measurement.
+
+  **The one lever.** `mix.py` already fades the music over `[dur - fade, dur]` —
+  it always has. So a reel of length `line + fade`, for any detected bar line
+  `line`, starts that EXISTING fade exactly on the line. No ffmpeg stage changes
+  at all (design §1); the whole slice reduces to picking ONE number, the reel's
+  length. `edit_plan` moves only the LAST episode's `dur` to reach it, after
+  `_bind_pacing` and never through a slot — cuts before it keep the beat they
+  were fitted to, so `check_reel`'s beat gate stays green by construction.
+
+  **Bars come from the bass band, not the obvious detector.** Onset strength per
+  beat phase, on the 2026-08-03 run's own 110.294-BPM track: **4.313 / 4.285 /
+  4.267 / 4.309** — no signal, all four phases within 1%. A detector built on
+  novelty picks a phase out of noise and looks like it works. Low-band (<150 Hz
+  kick) peak per beat instead: **48.01 / 54.65 / 42.03 / 79.31**, a **1.887**
+  max/min ratio, and the winning phase's beat was the loudest of its own bar in
+  **14 of 18 bars** (78% against 25% by chance). `beats._downbeat_phase` reads the
+  bass band exclusively; the mutation battery (Task 7, row 7) rebuilt the
+  onset-strength variant for real on synthetic audio and it picked phase 3, not
+  the phase 2 the fixture demands — the design's own claim, reproduced.
+
+  **§8.1 — the resolution trap that fooled this design once.** The first pass of
+  the investigation ran real demucs at the existing 2 Hz envelope
+  (`MusicSpec.energy`'s own resolution) and reported "one usable bar line in the
+  window, and it is at 4.71s" — i.e. no usable ending. A 2 Hz envelope has **0.5s
+  bins**, and the rule asks about 0.5 vocal-free seconds after a boundary: a
+  0.5s-binned sensor cannot resolve a 0.5s question, so the first pass concluded
+  the whole feature was impossible. At the vocal stem's own resolution the same
+  track has **two** usable lines, and the useful one is exactly the ending this
+  design ships (bar 15, stem 35.26s, 1.50s of vocal-free space after it). The
+  fix: `vocals.vocal_spans` builds its envelope at `_SPAN_HZ = 40.0` (~23ms bins)
+  and nothing downstream ever reads the 2 Hz curve for this question again — one
+  sensor now serves both the music in-point (`choose_offset`) and this out-point,
+  so the two cannot disagree about the same track. The mutation battery's row 8
+  rebuilt the ORIGINAL mistake (call `separate_vocal_energy` without the explicit
+  `target_hz=_SPAN_HZ`, defaulting to 2.0) and confirmed the pure unit test catches
+  it; the real-demucs integration wiring smoke test does not (its own docstring
+  already disclaims semantic precision — see Task 7's report for why that stayed
+  as a documented limit rather than a forced new assertion).
+
+  **The defect this slice's end-to-end proof found — its most important finding.**
+  Design §6 originally claimed that after the outro fit extends the closing
+  episode, `_back_edge_target` "then reports the new total the ordinary way."
+  That sentence was false, and a unit test could not have caught it: `_bind_pacing`
+  gives a same-length spine `target_dur == sum(pre-fit play_durs)` BY
+  CONSTRUCTION whenever the spine has as many slots as episodes (`pacing.fit_spine`'s
+  own shape, with no slack), so ANY positive `moved` makes the realized total
+  exceed `spine.target_dur`, and `_back_edge_target`'s over-flow branch — correct
+  for footage the music genuinely cannot cover — clamped `target_dur` straight
+  back down to the PRE-fit total. The EDL then disagreed with its own episodes,
+  and `edl_to_reel` returned `stop_and_report` on the length check (`{"dur": 10.7,
+  "target": 10.0}`) instead of delivering. **On a normally-fitted spine — the
+  shape `pacing.fit_spine` actually produces — the feature did not ship at all.**
+  Task 6's fixture had originally passed only because it gave the spine slack (an
+  extra unfilled tail slot the fit's growth landed inside), which hid the exact
+  defect the proof exists to catch; retightening the fixture to the real,
+  no-slack shape is what surfaced it. The fix (Task 5b): `build_edl` now replaces
+  `_back_edge_target`'s answer with `fit.reel_dur` whenever `_apply_outro` chose a
+  line (`fit.rung != "unchanged"`) — safe because `fit_outro` already bounded that
+  answer by `music_dur` (condition 2 of `_candidates`), so the length it returns
+  is one the music provably covers; the clamp stays in charge on every OTHER
+  path. Both the design and the plan were corrected in the same commit, the false
+  sentence named as false rather than quietly reworded.
+
+  **The mutation battery (Task 7) found one more coverage hole than the plan
+  anticipated — four rows total.** The brief listed 12 rows and flagged 2 as
+  certain to stay green (call-order swap, hardcoded fade) plus 2 new rows
+  (dropping the `TAIL_MIN` floor, widening the `fit.rung != "unchanged"` guard).
+  All 4 were real: the call-order swap needed a new integration-shaped test
+  through `build_edl` (no existing test combines real pacing + real music in a
+  way that observes call order inside it — the pacing-binding tests call
+  `_bind_pacing` directly); the hardcoded-fade row needed a test authoring
+  `look.fade != 0.5` (every existing outro test uses mix's own 0.5s default); the
+  `TAIL_MIN` row needed a tail strictly between the fade and the floor (0.6s
+  clears both a real 0.5s floor and a buggy 0.0s one); the `fit.rung` guard row
+  was already covered by an existing test that trips at exactly `target_dur` 7.65
+  vs 5.15. **A fifth hole surfaced only in execution, not in planning:** row 1
+  (`free_after(...) >= need` flipped to `>`) stayed green against its own named
+  test — the `- _EPS` float-slop the comparison carries means an ORDINARY decimal
+  tie (tail == need) passes under `>=` and `>` alike, so only a tail landing
+  bit-exactly on `need - _EPS` tells the two operators apart. Closed with a test
+  constructed the same way the source computes that boundary (not a contrived
+  coincidence). All 14 rows (12 + 2 mandated + 1 found in execution) confirmed
+  RED under the mutation and GREEN after an exact revert (`git diff` empty against
+  `HEAD` for every touched production file). Two typing gaps against
+  coding-standards.md's "every module-level function is fully typed" were closed
+  in the same pass (`beats._downbeat_phase`'s `y`/`beat_times`,
+  `edit_plan._apply_outro`'s `footage`/`music`/return type) — full details, the
+  per-row table, and the deferred-minor triage are in the task's own report
+  (`.superpowers/sdd/2026-08-14-music-outro-fit/task-7-report.md`, not checked
+  into the repo).
+
+  **Five ffmpeg-stage scripts are untouched across the ENTIRE slice** —
+  `mix.py`, `deliver.py`, `check_reel.py`, `build_reel.py`, `edl_to_reel.py`, all
+  verified empty on `git diff --stat 58580e2..HEAD`. This is the slice's central
+  engineering claim (design §1): the reel's length is the only lever, and it is
+  paid entirely by `edit_plan`'s own episode list before any of those five ever
+  runs.
+
+  **Whole-suite proof.** `find . -name "__pycache__" ... -exec rm -rf` then the
+  full suite: **2823 passed, 2 skipped** (the pre-existing `torchreid`
+  unimportable-on-this-machine skip and the off-network iTunes smoke — no new
+  skip), 0 failed, in ~171s.
+
+  **Honest limits, copied verbatim from design §11 rather than paraphrased.**
+  **§11.1** `TAIL_MIN = 0.5` is an assumption, not a measurement. It came from the
+  project owner's ear, not from the editing literature, and nothing here
+  validates it. It is one named constant in one module precisely so re-tuning is
+  a one-line change, and a backlog row carries the check. **§11.2** `NO_GAP_FADE =
+  1.5` is taste. No measurement says a 1.5s fade disguises a mid-vocal cut better
+  than a 0.5s one. **§11.3** The downbeat detector is calibrated on one track.
+  14/18 bars, ratio 1.887, one song, one genre. The 150 Hz band edge and the
+  ±0.10s window are first cuts. **§11.4** The threshold behind the spans is
+  inherited. `vocal_gaps`' 15%-of-peak relative bar is `offset.py`'s existing
+  choice. Measured sensitivity on this track: 0.05 → 1 usable line, 0.10/0.15/
+  0.20/0.30 → 2. Stable across the useful range, on one track. **§11.5** The gate
+  proves placement, never taste. It proves the reel ends on a detected bar line
+  with a measured vocal-free tail. It does not prove the phrase sounds resolved,
+  that the line is a *phrase* boundary rather than merely a bar, or that a
+  listener hears anything different. As with the cinematic look, no automated
+  check ever hears the delivered reel — CP3 is the first place a human does.
+  **§11.6** The `no-gap` rung ships a known-imperfect ending and says so in the
+  report. That is the design's answer to material with no vocal-free space; it is
+  not a claim that the result sounds good. **§11.7** `MIN_LAST = 1.0` is a floor,
+  not a finding. It stops the shrink direction turning a closing shot into a
+  flash; a real minimum would come from how long a viewer needs to read a shot,
+  which nobody here has measured.
+
+  **Deferred-minor triage (Task 7).** Two genuine one-line typing gaps fixed (see
+  above). `EDL.from_dict`'s `outro` field uses a truthy check, flagged as an
+  inconsistency against `look`'s `is not None` — investigated and left AS-IS: its
+  true structural peers `variety` and `constraints` share the identical truthy
+  pattern, and all three carriers (like `outro`) never legitimately round-trip to
+  `{}` from any real writer, so aligning `outro` alone with `look` (a field with
+  different, meaningful-empty-dict semantics) would have introduced a new
+  inconsistency rather than resolved one. `tests/lib/test_edl.py`'s 6 pre-existing
+  in-function imports (predating this slice) hoisted to the top, mechanical and
+  zero behaviour change (155/155 still pass). A `pick()` tie-break in the pure
+  ladder (design §5, "then toward the earlier line") had no test — closed with
+  one. The rest (report-accuracy notes on earlier tasks' own scratch reports, a
+  missing autouse `_SPANS`-reset fixture for `tests/integration/` — no
+  conftest.py exists there yet, and creating one is a bigger structural change
+  than this pass's scope, safe today only by the tmp_path convention) are named
+  with reasoning in the task report rather than fixed reflexively.
+
 - **demucs becomes REQUIRED, and `choose_offset`'s mix-silence proxy is deleted
   (backlog #2, first step) DONE (2026-08-14)** — branch `feat/demucs-required`.
   No design doc: this is one semantic flip plus its fallout, and the evidence

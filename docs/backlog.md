@@ -47,7 +47,7 @@ close either of those two on its first row alone.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ◐ | **Music ends mid-phrase** — **investigated 2026-08-14** against the 2026-08-03 run's own artifacts; findings below. First step landed the same day: **demucs is now a REQUIRED runtime component** and `choose_offset`'s mix-silence proxy is deleted. The out-point fix itself is still open and still needs the librosa **section detection** that pacing §10, length-retime §9 and music-spine §9 have each deferred in turn. | M | [#2](fixes-backlog.md#2-music-is-cut-in-the-middle-of-a-phrase), pacing §10 |
+| ✅ | **Music ends mid-phrase** — **fixed 2026-08-14.** Investigated the same day against the 2026-08-03 run's own artifacts (findings below); demucs made a REQUIRED runtime component as the first step. The out-point fix itself landed hours later: the reel's length becomes `bar_line + fade` (`lib/outro.fit_outro`'s pure three-rung ladder — `gap` → `no-gap` (a longer fade) → `unchanged`), applied by `edit_plan` to the closing episode after pacing binds, because `mix` already fades over `[dur - fade, dur]` — so that length starts the fade exactly on the bar line with **no ffmpeg stage changed at all**. `MusicSpec` gained `bars` (from the **bass band**, not onset strength — see the measurements below) and `vocal_spans` (from the demucs stem at ~23ms resolution, not the 2 Hz energy curve that fooled the first pass of this very investigation — §8.1 below). What remains open, already filed in P3: meter beyond 4/4, real section detection, a check that hears the delivered audio, and fitting a ramped closing episode instead of skipping it. | M | [#2](fixes-backlog.md#2-music-is-cut-in-the-middle-of-a-phrase), pacing §10, [music-outro-fit design](specs/2026-08-14-music-outro-fit-design.md) |
 
 **What the 2026-08-14 investigation measured** (scripts under the session scratchpad;
 every number is from the delivered `out/REEL_v1.mp4` and its own track):
@@ -298,7 +298,7 @@ status column that file does not have.
 | # | Finding | Status |
 |---|---------|--------|
 | 1 | Hero identity — colour-histogram descriptor → OSNet re-ID embedding | ✅ 2026-08-04 (the hero-conditioned re-scan remains, P3) |
-| 2 | Music is cut in the middle of a phrase | ◐ **P1** — investigated 2026-08-14 (root cause + six measurements in the P1 row above); demucs made required the same day; the out-point fix itself still open |
+| 2 | Music is cut in the middle of a phrase | ✅ 2026-08-14 — the outro-fit ladder (`lib/outro.fit_outro`, see the P1 row above) grows or shrinks the closing episode so the reel ends `bar_line + fade`; meter beyond 4/4, real section detection, an audio-hearing check, and fitting a ramped closing episode all stay open in P3 |
 | 3 | Per-episode rendering and QC in subagents | ✅ 2026-08-08 |
 | 4 | `setup.sh` installs everything; unavailable components warn and continue | ✅ 2026-08-04 |
 | 5 | The authoring skill must document every modification tool it has | ○ **P2** |

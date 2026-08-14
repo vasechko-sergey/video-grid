@@ -1265,3 +1265,59 @@ def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):
                                        (0.0, 0.5, 1.0, 1.5), (0.3,), 2.0).to_dict()))
     edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), music=str(mj))
     assert isinstance(seen["music"], MusicSpec)
+
+
+# --- Task 7 mutation battery: two coverage holes a review found in the original
+# rows (progress.md, Task 5's two warnings) -------------------------------------
+
+
+def test_build_edl_applies_the_outro_fit_after_binding_not_before():
+    """Row 9. No existing test can see a call-order swap of _apply_outro/_bind_pacing
+    INSIDE build_edl: the pacing-binding tests (test_bind_applies_a_fitted_slot_
+    verbatim etc.) call _bind_pacing directly, and every other outro test either
+    skips pacing or uses a spine the fit never grows past. This drives real pacing +
+    real music through build_edl together, sized so the fit's own growth (0.7s) trips
+    _bind_pacing's half-beat guard (0.25s at 120 BPM) if _apply_outro ever ran BEFORE
+    binding instead of after it — an outro extension routed through the slot is
+    exactly landmine #3 in the design's §8."""
+    footage = Footage(clips=[_clip(source="a.mp4", dur=30.0, scene_cuts=[], windows=[
+        _window(start=0.0, dur=6.0, shot_type="wide", description="approach"),
+        _window(start=8.0, dur=4.0, shot_type="wide", description="closer")])])
+    sel = {"episodes": [
+        {"source": "a.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "a.mp4", "window": 1, "composition": "lead", "grid": "thirds"}]}
+    spine = _spine([6.0, 4.0], tempo=120.0)
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(10.2,), vocal_spans=((10.2, 12.0),))
+    # fixture sanity: the fit really does move the closing episode past the bind
+    # guard's allowance (30/120 + 1e-3 = 0.251s) -- otherwise a call-order swap would
+    # be invisible either way, and this test would prove nothing
+    fit = outro.fit_outro(music.bars, music.vocal_spans, reel_dur=10.0,
+                          bar_s=outro.bar_seconds(120.0), fade=0.5, music_dur=42.0,
+                          grow_max=18.0, shrink_max=3.0)
+    assert fit.rung == "gap" and fit.moved == pytest.approx(0.7) and fit.moved > 0.3
+    # the CORRECT order (bind, THEN fit) must not raise, and the fit must land
+    edl = edit_plan.build_edl(footage, sel, pacing=spine, music=music)
+    assert edl.outro.rung == "gap" and edl.outro.moved == pytest.approx(0.7)
+
+
+def test_build_edl_threads_the_authored_look_fade_into_the_outro_fit():
+    """Row 12. Every existing outro test passes fade=0.5 (mix's own default), so a
+    `resolved_fade` hardcoded to the literal 0.5 in build_edl is invisible to all of
+    them. Author a look.fade of 1.0 and prove _apply_outro actually receives IT, not
+    a constant standing in for it."""
+    footage = Footage(clips=[_clip(source="a.mp4", dur=30.0, scene_cuts=[], windows=[
+        _window(start=0.0, dur=6.0, shot_type="wide", description="approach"),
+        _window(start=8.0, dur=4.0, shot_type="wide", description="closer")])])
+    sel = {"episodes": [
+        {"source": "a.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "a.mp4", "window": 1, "composition": "lead", "grid": "thirds"}],
+        "look": {"vignette": 0.0, "fade": 1.0}}
+    spine = _spine([6.0, 4.0], tempo=120.0)
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(10.2,), vocal_spans=((10.2, 12.0),))
+    edl = edit_plan.build_edl(footage, sel, pacing=spine, music=music)
+    assert edl.outro.fade == 1.0
+    assert edl.outro.reel_dur == pytest.approx(11.2)     # line 10.2 + the AUTHORED 1.0 fade

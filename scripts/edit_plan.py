@@ -270,8 +270,8 @@ def _back_edge_target(episodes: list, spine: Spine) -> float:
     return min(realized, spine.target_dur)
 
 
-def _apply_outro(episodes: list, footage, music, fade: float,
-                 brief_len: float | None) -> tuple[list, "outro.OutroFit"]:
+def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec, fade: float,
+                 brief_len: float | None) -> tuple[list[EDLEpisode], outro.OutroFit]:
     """Move the LAST episode's end so the music resolves on a bar line (design §6).
 
     The reel's length is the one number this whole slice decides: `line + fade`, which

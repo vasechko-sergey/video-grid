@@ -231,7 +231,34 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
        python -m scripts.edit_plan build --footage FOOTAGE.json \
          --selection selection.json --project project.json --out-dir . \
-         [--cast cast.json] [--spec SPEC.json]
+         [--cast cast.json] [--spec SPEC.json] \
+         [--pacing PACING.json --music MUSIC.json]
+
+   Pass `--music` together with `--pacing` on the pacing-apply re-run (step 5 of the
+   **pacing** skill) to fit the reel's END to a bar line: `lib/outro.fit_outro`
+   grows or shrinks the LAST episode only, after pacing binds every cut, so the
+   music resolves on a detected downbeat with a vocal-free half-second after it,
+   instead of stopping mid-phrase wherever the footage happened to end. `--music`
+   with no `--pacing` is a no-op — the fit needs the bound episode list, never a
+   slot. Read `EDL.md`'s **Music outro** section (or the `outro:` log line) for
+   which of three rungs won:
+   - **`gap`** — a bar line has enough vocal-free space after it for the reel's own
+     fade; the ending is clean. Nothing to do.
+   - **`no-gap`** — no line had room at the normal fade, so the fit fell back to the
+     nearest line with a longer fade (masking the cut instead of landing in
+     silence) and says so in the report. A known-imperfect ending, not a failure —
+     weigh whether a different closing shot (more `room_after`) or a different music
+     window would do better before accepting it.
+   - **`unchanged`** — no bar line was reachable within one bar in either direction,
+     bounded by the closing shot's own room to grow or shrink; the reel keeps its
+     footage-derived length and the music will end mid-phrase. The log names the
+     grow/shrink room it had to work with — a shot with more `room_after` (a longer
+     take, or moving the outro to a different episode) is the usual fix.
+
+   `EDL.md`'s outro section also shows the move (seconds, signed) and, when
+   `--spec` supplied a brief, the distance from `SPEC.length_s` — the fit does not
+   resolve that tension silently, so read it rather than assume the length still
+   matches the brief.
 
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
    the registry the preflight resolves that name against. Pass `--spec` whenever

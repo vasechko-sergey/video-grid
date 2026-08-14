@@ -119,6 +119,44 @@ def test_fade_zero_needs_only_tail_min():
     assert fit.rung == "gap" and fit.reel_dur == line and fit.fade == 0.0
 
 
+def test_gap_rung_tail_exactly_at_the_epsilon_floor_still_counts():
+    """Task 7 battery row 1 — coverage hole closed: the named
+    test_gap_rung_picks_the_line_with_room_for_the_fade uses a 1.5s tail against a
+    0.5s need, nowhere near the `>=`/`>` boundary, so flipping the tail filter's `>=`
+    to `>` left EVERY test in this file green. The `- _EPS` slop on that comparison
+    means an ordinary decimal tie (tail == need, e.g. both 0.5) passes under EITHER
+    operator — `need > need - _EPS` always — so only a tail landing bit-exactly on
+    `need - _EPS` tells `>=` apart from `>`. Constructed the SAME way the source
+    computes it (line=0.0 so `b - t` has no float cancellation), not a coincidence."""
+    tail = 0.5 - outro._EPS
+    fit = outro.fit_outro((0.0,), ((0.0, tail),), reel_dur=0.5, bar_s=BAR, fade=0.5,
+                          music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.rung == "gap"
+
+
+def test_gap_rung_needs_tail_min_not_just_the_fade():
+    """Task 7 battery — new row, closing a coverage hole a review found:
+    test_fade_zero_needs_only_tail_min's 0.6s tail clears BOTH the real 0.5s TAIL_MIN
+    floor and a buggy `need = fade` (0.0), so it cannot discriminate `need = max(
+    TAIL_MIN, fade)` from `need = fade`. 0.2s of vocal-free space clears fade=0.0 but
+    not TAIL_MIN=0.5 — only the real floor refuses the gap rung here, so the ladder
+    must fall to no-gap instead."""
+    line = 20.0
+    fit = outro.fit_outro((line,), ((line, line + 0.2),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.rung == "no-gap"
+
+
+def test_the_earlier_line_wins_an_exact_tie():
+    """pick()'s secondary tie-break (design §5's "then toward the earlier line") had
+    no test: the 18-bar BARS fixture never produces an exact numeric tie. Two lines
+    equidistant from reel_dur, no brief -> the earlier one wins."""
+    spans = ((9.0, 10.0), (11.0, 12.0))
+    fit = outro.fit_outro((9.0, 11.0), spans, reel_dur=10.5, bar_s=BAR, fade=0.5,
+                          music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.line == 9.0
+
+
 def test_fit_round_trips():
     fit = OutroFit(reel_dur=35.7, line=35.2, fade=0.5, tail=1.5, rung="gap", moved=1.7)
     assert OutroFit.from_dict(fit.to_dict()) == fit

@@ -59,14 +59,19 @@ say so rather than guessing a path.
    another window, change a scenario length, or accept an off-grid reel (check_reel's
    beat gate is advisory).
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/PACING.json
-   [--spec <run>/SPEC.json]` — this is what writes the snapped durations and
-   `beat_slot` into `EDL.json`. Carry `--spec` through when a brief exists: this
-   pass re-stamps the EDL from scratch, so a dropped `--spec` re-resolves the
-   variety preset to `balanced` **and wipes `EDL.platform` back to `""`**, which
-   reverts `check_reel`'s safe zone and the bottom title's y layout to the generic
-   table. `edit_plan build` logs the platform it resolved on every run — read that
-   line to confirm the second pass kept it. Stopping at step 4 leaves the EDL
-   un-snapped.
+   [--spec <run>/SPEC.json] [--music <run>/MUSIC.json]` — this is what writes the
+   snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a
+   brief exists: this pass re-stamps the EDL from scratch, so a dropped `--spec`
+   re-resolves the variety preset to `balanced` **and wipes `EDL.platform` back to
+   `""`**, which reverts `check_reel`'s safe zone and the bottom title's y layout to
+   the generic table. `edit_plan build` logs the platform it resolved on every run —
+   read that line to confirm the second pass kept it. Also pass `--music` (the SAME
+   `MUSIC.json` step 3 analysed): it fits the reel's *end* to a bar line —
+   `edit_plan`'s own outro ladder, distinct from this skill's cut-grid fit — by
+   moving only the last episode, after this pass binds every slot. Omitting it
+   leaves the reel ending wherever the footage happens to; see the **edit-plan**
+   skill's step 3 for what each rung (`gap`/`no-gap`/`unchanged`) means. Stopping
+   at step 4 leaves the EDL un-snapped.
 
 ## Not this skill
 
