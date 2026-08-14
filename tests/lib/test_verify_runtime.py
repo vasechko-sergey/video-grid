@@ -101,11 +101,23 @@ def test_cli_exit_1_on_required_miss(monkeypatch, capsys):
 
 
 def test_cli_exit_0_on_advisory_only_miss(monkeypatch, capsys):
-    _stub_all(monkeypatch, demucs=(False, "not installed"))
+    _stub_all(monkeypatch, reid=(False, "not installed"))
     monkeypatch.setattr(sys, "argv", ["verify_runtime"])
     with pytest.raises(SystemExit) as e:
         verify_runtime.main()
     assert e.value.code == 0                     # advisory never changes the exit code
+
+
+def test_cli_exit_1_on_demucs_miss(monkeypatch, capsys):
+    """demucs is REQUIRED since 2026-08-14 — it used to sit in the advisory row
+    above, where a miss exited 0 and the run proceeded on a proxy that answered
+    wrongly. Pinned separately so a flip back to advisory fails here, not in a reel."""
+    _stub_all(monkeypatch, demucs=(False, "not installed"))
+    monkeypatch.setattr(sys, "argv", ["verify_runtime"])
+    with pytest.raises(SystemExit) as e:
+        verify_runtime.main()
+    assert e.value.code == 1
+    assert "demucs: cd " in capsys.readouterr().out
 
 
 def test_cli_json(monkeypatch, capsys):

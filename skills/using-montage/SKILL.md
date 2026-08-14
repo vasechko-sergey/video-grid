@@ -38,9 +38,11 @@ run: `project_init --project-dir <run>`, `intake <root> <run>`,
    `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
    proceed. Non-zero → surface each `BLOCKED` check with its remedy (almost always
    `bash setup.sh`) and **stop** — do not run project-init against a broken
-   runtime, and never run `setup.sh` yourself. Advisory gaps (e.g. `demucs`) are
-   named, not blocking (they only affect optional lanes — e.g. music in-point uses
-   the librosa proxy without demucs). The venv and the recorded root are the
+   runtime, and never run `setup.sh` yourself. Advisory gaps (e.g. `reid`) are
+   named, not blocking (they only affect optional lanes — without `reid` intake
+   still produces windows, only cast identity is unavailable). `demucs` is **not**
+   advisory: it blocks, because the music in/out-point has no fallback sensor.
+   The venv and the recorded root are the
    pre-venv layer, checked by the launcher preamble and `bin/vg` before this runs.
    The dedicated `verify-runtime` skill runs the same check on demand.
 
@@ -145,9 +147,10 @@ say so rather than guessing a path.
    - a **local file path** -> analyse it directly, preferring the tool's own
      in-point pick: `"$VG" scripts.beats <track> --auto-start
      --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
-     strongest fragment, in a vocal pause (demucs — installed by `bash setup.sh` —
-     sharpens this; a librosa mix-silence proxy is the fallback). Pass an explicit
-     `--start-offset S` instead only to override.
+     strongest fragment, in a vocal pause. The pauses come from demucs (installed
+     by `bash setup.sh`, and required — step 0 already blocked if it is missing);
+     there is no proxy fallback. Pass an explicit `--start-offset S` instead only
+     to override.
    - an explicit **track name** (not a path) -> skip discovery; invoke
      **music-source** with `--track "<name>"` to resolve and fetch it, then the
      same `beats --auto-start` locks it.

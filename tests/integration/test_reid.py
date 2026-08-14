@@ -7,9 +7,14 @@ test_offset.py). This is the one test that proves the real thing: genuine OSNet
 weights, loaded through the same `reid.embed` boundary every consumer calls,
 actually separate two visually different people and agree with themselves.
 Skips (does not fail) when torchreid is absent — do not install it to pass this.
-"""
-import importlib.util
 
+The skip gate is `reid.available()`, the SAME probe the production path uses, not a
+`find_spec` check. It was the latter until 2026-08-14, when a real install exposed the
+difference: torchreid 0.2.5 under-declares `gdown`, so pip installs it, `find_spec`
+finds it, and importing it raises. The gate said present, `reid.require()` said absent,
+and this test failed instead of skipping — a test skip must never rest on a weaker
+question than the code it guards.
+"""
 import numpy as np
 import pytest
 
@@ -18,11 +23,7 @@ from scripts.lib import appearance, reid
 pytestmark = pytest.mark.integration
 
 
-def _has_torchreid() -> bool:
-    return importlib.util.find_spec("torchreid") is not None
-
-
-@pytest.mark.skipif(not _has_torchreid(), reason="needs torchreid (bash setup.sh)")
+@pytest.mark.skipif(not reid.available(), reason="needs torchreid (bash setup.sh)")
 def test_osnet_embeds_are_512d_l2normed_and_separate_two_people():
     # two visually different synthetic "people": a bright vertical bar vs a dark blob.
     a = np.zeros((256, 128, 3), np.uint8); a[:, 50:78] = (230, 200, 180)

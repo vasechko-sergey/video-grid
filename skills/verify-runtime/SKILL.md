@@ -1,6 +1,6 @@
 ---
 name: verify-runtime
-description: Preflight — verify the video-grid runtime is fully installed; on any gap, print the exact command to fix it. Use before a montage run, after `bash setup.sh` or a plugin reinstall, or when a run won't start; using-montage also calls it as step 0. Checks deps, ffmpeg, drawtext/vidstab filters, font, YOLO weights (demucs advisory); read-only, never installs. Required — gates the conveyor.
+description: Preflight — verify the video-grid runtime is fully installed; on any gap, print the exact command to fix it. Use before a montage run, after `bash setup.sh` or a plugin reinstall, or when a run won't start; using-montage also calls it as step 0. Checks deps, ffmpeg, drawtext/vidstab filters, font, YOLO weights, demucs (reid advisory); read-only, never installs. Required — gates the conveyor.
 ---
 
 # verify-runtime
@@ -37,8 +37,9 @@ Announce on entry: **"Using verify-runtime to check the environment."**
      runs from **any** directory. Present it **verbatim in a ```bash block** (so the
      Run button works wherever the user's shell is), then have them re-check. Do
      **not** run `setup.sh` yourself — installers are the user's to run.
-   - **Optional (advisory) gaps** (e.g. `demucs`): mention them as "only needed for
-     X", not as blockers.
+   - **Optional (advisory) gaps** (e.g. `reid`): mention them as "only needed for
+     X", not as blockers. `demucs` is **not** one of these — it moved to required
+     on 2026-08-14 and blocks like any other required check.
 
 ## Boundaries
 

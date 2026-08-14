@@ -191,26 +191,43 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
 # demucs: vocal separation for phrase-aware music in/out-point (§5.5, backlog #2 —
-# "разбиение по фразам"). Baseline install, no longer behind --with-demucs. Pulls
-# torch (large) and can lack a wheel on some platforms, so this is WARN-AND-CONTINUE,
-# not a hard requirement: absent → choose_offset falls back to a librosa mix-silence
-# proxy (coarser phrase detection). Kept OUT of requirements.txt precisely so a failed
-# torch wheel degrades HERE instead of aborting the whole `pip install -r` (and with it
-# the venv and the recorded runtime root). Guarded on already-installed so a rerun is a
-# clean no-op; the `|| echo` also makes the compound exit 0, so `set -e` does not trip.
-"$VENV/bin/pip" show demucs >/dev/null 2>&1 || {
+# "разбиение по фразам"). REQUIRED since 2026-08-14 — there is no longer a fallback:
+# the librosa mix-silence proxy that used to cover an absence was deleted for
+# answering WRONG instead of failing (measured: 2 gaps in a 228s dense-pop track, so
+# every in-point candidate collapsed to 0.0). preflight's demucs row is now a
+# BLOCKING check, so a run cannot start without it.
+#
+# This block still CONTINUES on failure rather than aborting, and that is deliberate:
+# `set -e` here would leave torchreid, the models dir and the recorded runtime root
+# unconfigured, turning one missing wheel into a half-built install that is harder to
+# diagnose. Installing is this script's job; GATING is verify_runtime's. Kept OUT of
+# requirements.txt for the same reason — a failed torch wheel must not abort the whole
+# `pip install -r` (and with it the venv). Guarded on already-installed so a rerun is
+# a clean no-op; the `|| echo` also makes the compound exit 0, so `set -e` does not trip.
+"$VENV/bin/python" -c 'import demucs' >/dev/null 2>&1 || {
   echo "installing demucs (vocal separation for phrase-aware music points; pulls torch)..."
   "$VENV/bin/pip" install demucs \
-    || echo "WARNING: demucs install failed (no torch wheel for this platform?) -> music in/out-point falls back to the librosa mix-silence proxy (coarser). Re-run 'bash setup.sh' to retry."; }
+    || echo "ERROR: demucs install failed (no torch wheel for this platform?) -> demucs is REQUIRED and 'verify_runtime' will BLOCK every montage run until it is present. There is no proxy fallback. Re-run 'bash setup.sh' to retry."
+  "$VENV/bin/python" -c 'import demucs' >/dev/null 2>&1 \
+    || echo "ERROR: demucs INSTALLED BUT DOES NOT IMPORT — $("$VENV/bin/python" -c 'import demucs' 2>&1 | tail -1). demucs is REQUIRED; 'verify_runtime' will BLOCK. Usually a missing transitive dep: pip-install it and re-run 'bash setup.sh'."; }
 # torchreid: person re-ID embeddings for cast identity (§6.1 / backlog #1). Baseline
-# install, WARN-AND-CONTINUE like demucs: pulls torch, can lack a wheel on some
-# platforms. Kept OUT of requirements.txt so a failed wheel degrades HERE (cast
+# install, WARN-AND-CONTINUE (advisory, unlike demucs): pulls torch, can lack a wheel
+# on some platforms. Kept OUT of requirements.txt so a failed wheel degrades HERE (cast
 # surfacing unavailable; windows/scoring still run) instead of aborting the venv.
 # OSNet weights download on the first reid.ensure_model() (like YOLO on first track).
-"$VENV/bin/pip" show torchreid >/dev/null 2>&1 || {
+#
+# The explicit dep list is not decoration: torchreid 0.2.5 declares NO runtime
+# requirements at all (only test/dev extras), yet imports six packages. Measured
+# 2026-08-14 on a real install — `pip install torchreid` reported success, `pip show`
+# listed it, and `import torchreid` raised ModuleNotFoundError for gdown. The
+# capability was missing with no printed reason, which is exactly what this script's
+# header promises never happens. Guard and verify on IMPORT, never on `pip show`.
+"$VENV/bin/python" -c 'import torchreid' >/dev/null 2>&1 || {
   echo "installing torchreid (person re-ID for cast identity; pulls torch)..."
-  "$VENV/bin/pip" install torchreid \
-    || echo "WARNING: torchreid install failed (no torch wheel for this platform?) -> cast identity is unavailable; intake still produces windows & scoring. Re-run 'bash setup.sh' to retry."; }
+  "$VENV/bin/pip" install torchreid gdown tabulate Cython h5py imageio yacs \
+    || echo "WARNING: torchreid install failed (no torch wheel for this platform?) -> cast identity is unavailable; intake still produces windows & scoring. Re-run 'bash setup.sh' to retry."
+  "$VENV/bin/python" -c 'import torchreid' >/dev/null 2>&1 \
+    || echo "WARNING: torchreid INSTALLED BUT DOES NOT IMPORT — $("$VENV/bin/python" -c 'import torchreid' 2>&1 | tail -1). Cast identity is unavailable; intake still produces windows & scoring. pip-install the named module and re-run 'bash setup.sh'."; }
 # music sourcing (§5.5 B3): yt-dlp (the `any` lane) now ships in requirements.txt, so
 # there is nothing to install here. The `any`-lane legal/responsibility gate is
 # UNTOUCHED — it lives in the sourcing code at USE time, not at install time; having the

@@ -4,13 +4,107 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-13._
+_Last updated: 2026-08-14._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **demucs becomes REQUIRED, and `choose_offset`'s mix-silence proxy is deleted
+  (backlog #2, first step) DONE (2026-08-14)** — branch `feat/demucs-required`.
+  No design doc: this is one semantic flip plus its fallout, and the evidence
+  for it came out of the #2 investigation rather than a brainstorm. The
+  investigation's own findings live in
+  [backlog.md](backlog.md)'s P1 row, which is where a reader looking for "why
+  does music end mid-phrase" will go.
+
+  **What changed.** `preflight.CHECKS`' `demucs` row flips `required=False →
+  True`, so `verify_runtime` exits 1 and `using-montage` step 0 stops the
+  conveyor when it is absent. `beats.choose_offset` loses its `use_vocals`
+  parameter and its fallback branch entirely: vocal-free spans now come from
+  `vocals.separate_vocal_energy` and nothing else, and that function's existing
+  guard — reworded to say REQUIRED and to name `bash setup.sh` — is the only
+  remaining gate on the direct call path. The mix envelope still *ranks* the
+  surviving candidates; it measures loudness, which it can do. Only the
+  gap-finding moved.
+
+  **Why the fallback had to go rather than stay as a ladder.** It is a §12
+  silent-corruption shape: it does not fail, it answers **wrongly**. Measured on
+  the 2026-08-03 run's own track (228s of dense pop), the full-mix envelope never
+  drops to 15% of its peak mid-song, so `vocal_gaps` found exactly **2** spans —
+  the lead-in and the fade-out — and every in-point candidate collapsed to
+  **0.000** for durations 25/30/33/34/42/45. The run's `MUSIC.json` records
+  `start_offset` 46.0, which therefore did **not** come from `--auto-start` at
+  all. A degradation ladder is worth keeping when the lower rung is weaker; this
+  one was confidently blind, which is worse than absent.
+
+  **`setup.sh` still continues on a failed demucs install, deliberately.** Its
+  `WARNING` became an `ERROR` naming the block, but the block does not abort:
+  `set -e` there would leave torchreid, `models/` and the recorded runtime root
+  unconfigured, turning one missing wheel into a half-built install that is
+  harder to diagnose than a clean "verify_runtime says BLOCKED". Installing is
+  setup's job; gating is `verify_runtime`'s. demucs stays out of
+  `requirements.txt` for the same reason it always was — a failed torch wheel
+  must not abort the whole `pip install -r` and with it the venv.
+
+  **Tests.** Two new pins carry the behaviour change where a revert would
+  otherwise pass: `test_demucs_alone_blocks_the_run` (a demucs-only miss →
+  `ok is False`, `failures == ["demucs"]`, `advisories == ()`) and
+  `test_cli_exit_1_on_demucs_miss`. `test_choose_offset_gaps_are_not_the_mix_envelope`
+  is the discriminating one for the deletion: its mix envelope has a quiet run
+  the vocal stem does not, so reading gaps off the mix picks 3.0s while reading
+  them off the stem picks 1.5s — the old code passes only the first way. The five
+  preflight/verify tests that had been using `demucs` as their stand-in advisory
+  row moved to `reid`, now the only advisory. The mix-proxy unit test and its
+  integration twin are replaced by refusal tests.
+
+  **The suite is 2766 passed / 3 skipped / 1 FAILED, and the failure is the point.**
+  `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready` — the
+  "needs the user's install" proof — now reports `[FAIL] demucs: not installed` on
+  this machine, because this machine genuinely does not satisfy the contract any
+  more. It was left red rather than skip-gated: skipping on a missing component is
+  exactly how an incomplete install stops being visible, and it is the same shape
+  that caught the never-working vidstab shake path in the ffmpeg-baseline slice.
+  `bash setup.sh` (the user's to run — no autonomous installs) turns it green.
+
+  **Verified after the user installed it (same day).** `verify_runtime` reports
+  `runtime ready`, the skip-gated vocal integration test now runs, and the claim
+  this slice rested on stopped being an inference: on the 2026-08-03 run's own
+  track demucs finds **19** vocal-free spans against the proxy's **2**, five of
+  them inside the reel's music window, and `best_offset` returns **147.772s**
+  where the proxy returned 0.000. Measured cost: **62.1s / 46.2s** over a 229s
+  track, ~0.2–0.27× realtime, paid once per `--auto-start`. The full #2 numbers
+  live in [backlog.md](backlog.md)'s P1 row, including one they corrected — a
+  first pass read the gaps off demucs' own 2 Hz envelope, whose **0.5s bins**
+  cannot resolve a 0.5s rule; at the stem's 11.6 ms resolution the window has a
+  usable ending that the coarse pass had reported as absent.
+
+  **A latent probe defect the install exposed, fixed here.** Running the suite on
+  the freshly-installed machine turned `test_reid.py` from *skipped* to *FAILED*,
+  and the cause was not reid: torchreid 0.2.5 declares **no runtime requirements
+  at all** while importing six packages, so `pip install torchreid` succeeded and
+  `import torchreid` raised `ModuleNotFoundError: gdown`. The test's skip gate
+  asked `find_spec("torchreid")` (a file exists) while `reid.available()` asked
+  the real question (it imports) — so the gate said present, the code said absent,
+  and the test failed instead of skipping. **The same weak probe was in
+  `vocals.has_demucs()`**, which this slice had just made load-bearing: a
+  half-installed demucs would have passed the REQUIRED gate and died at the first
+  real call. Both now import. `setup.sh` guards and verifies on **import** rather
+  than `pip show` for demucs and torchreid alike, installs torchreid's six
+  undeclared deps explicitly, and prints the actual import error when a package is
+  present but unusable — the header's "never leaves a capability missing without a
+  printed reason" was not being honoured, because pip-installed ≠ importable.
+  Suite after: **2770 passed / 2 skipped**, the skips being torchreid (still
+  unimportable on this machine) and the off-network iTunes smoke.
+
+  **Honest limits.** The change does not fix #2: it makes #2's second requirement
+  (a vocal-free half-second after the boundary) *measurable*, which it was not
+  before. And the vocal path is still covered in the suite only by a smoke test —
+  synthetic audio cannot semantically exercise a vocal-trained net, so the
+  evidence above is a one-off measurement on one real track, not a regression
+  guard.
 
 - **Cinematic look — a reel-level `EDL.look` (plateau vignette + bookend
   fade), the parked `highlight_red` + `outline-bold` leftovers (fixes-backlog

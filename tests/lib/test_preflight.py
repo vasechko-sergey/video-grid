@@ -12,26 +12,40 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights"]
-    assert [c.key for c in CHECKS if not c.required] == ["demucs", "reid"]
+        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights", "demucs"]
+    assert [c.key for c in CHECKS if not c.required] == ["reid"]
+
+
+def test_demucs_alone_blocks_the_run():
+    """2026-08-14: demucs went advisory → REQUIRED. It is the only sensor that can
+    say where the vocals stop, and choose_offset's mix-silence proxy — which used to
+    make an absence survivable — was deleted for answering wrongly rather than
+    failing. A demucs-only miss must now block, not warn."""
+    results = tuple(
+        CheckOutcome(key=c.key, label=c.label, required=c.required,
+                     ok=(c.key != "demucs"), detail="", remedy=c.remedy)
+        for c in CHECKS)
+    r = RuntimeReport(results=results)
+    assert r.ok is False
+    assert [f.key for f in r.failures] == ["demucs"] and r.advisories == ()
 
 
 def test_report_partition():
     results = tuple(
         CheckOutcome(key=c.key, label=c.label, required=c.required,
-                     ok=(c.key not in ("drawtext", "demucs")),
+                     ok=(c.key not in ("drawtext", "reid")),
                      detail="", remedy=c.remedy)
         for c in CHECKS)
     r = RuntimeReport(results=results)
     assert r.ok is False                                  # a required miss (drawtext)
     assert [f.key for f in r.failures] == ["drawtext"]
-    assert [a.key for a in r.advisories] == ["demucs"]
+    assert [a.key for a in r.advisories] == ["reid"]
 
 
 def test_report_ok_when_only_advisory_fails():
     results = tuple(
         CheckOutcome(key=c.key, label=c.label, required=c.required,
-                     ok=(c.key != "demucs"), detail="", remedy=c.remedy)
+                     ok=(c.key != "reid"), detail="", remedy=c.remedy)
         for c in CHECKS)
     assert RuntimeReport(results=results).ok is True             # advisory never blocks
 
@@ -61,15 +75,15 @@ def test_to_text_ready_header_when_ok():
 def test_to_text_lists_failures_and_advisories_with_remedies():
     results = tuple(
         CheckOutcome(key=c.key, label=c.label, required=c.required,
-                     ok=(c.key not in ("font", "demucs")),
+                     ok=(c.key not in ("font", "reid")),
                      detail=("no system font" if c.key == "font" else
-                             "not installed" if c.key == "demucs" else "ok"),
+                             "not installed" if c.key == "reid" else "ok"),
                      remedy=c.remedy)
         for c in CHECKS)
     text = RuntimeReport(results=results).to_text()
     assert "runtime NOT ready" in text
     assert "[FAIL] font" in text and "font: bash setup.sh" in text
-    assert "[warn] demucs" in text and "demucs: bash setup.sh" in text
+    assert "[warn] reid" in text and "reid: bash setup.sh" in text
 
 
 def test_evaluate_all_ok_is_ready():
@@ -122,6 +136,6 @@ def test_evaluate_root_prefixes_cd_so_remedy_runs_from_any_cwd():
 
 def test_evaluate_root_shell_quotes_a_spaced_path():
     raw = _all_ok_raw()
-    raw["demucs"] = (False, "x")
+    raw["reid"] = (False, "x")
     adv = preflight.evaluate(raw, root="/a b/clone").advisories[0]
     assert adv.remedy == "cd '/a b/clone' && bash setup.sh"

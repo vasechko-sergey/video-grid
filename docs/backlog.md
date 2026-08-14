@@ -47,7 +47,74 @@ close either of those two on its first row alone.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **Music ends mid-phrase** — the cut grid is beat-aligned; the music *out-point* is not. Needs `systematic-debugging` on a real `MUSIC.json` before a design. Its likely fix is the librosa **section detection** that pacing §10, length-retime §9 and music-spine §9 have each deferred in turn. | M | [#2](fixes-backlog.md#2-music-is-cut-in-the-middle-of-a-phrase), pacing §10 |
+| ◐ | **Music ends mid-phrase** — **investigated 2026-08-14** against the 2026-08-03 run's own artifacts; findings below. First step landed the same day: **demucs is now a REQUIRED runtime component** and `choose_offset`'s mix-silence proxy is deleted. The out-point fix itself is still open and still needs the librosa **section detection** that pacing §10, length-retime §9 and music-spine §9 have each deferred in turn. | M | [#2](fixes-backlog.md#2-music-is-cut-in-the-middle-of-a-phrase), pacing §10 |
+
+**What the 2026-08-14 investigation measured** (scripts under the session scratchpad;
+every number is from the delivered `out/REEL_v1.mp4` and its own track):
+
+- **Root cause confirmed, and it is structural, not a bug.** `MUSIC.json` records
+  tempo, a flat beat list and a 2 Hz energy curve — *no downbeats, no bars, no
+  sections*. `mix.py` trims the music to the master's length. So no stage in the
+  pipeline is *able* to end on a phrase; the out-point is whatever the picture's
+  length happens to be. In the run: reel 34.051s, out-point at track 80.044s,
+  **0.96s past a bar line**.
+- **The fade is not the problem.** It fires correctly — 18.1 dB over the last
+  ~800ms, final 200ms at −33 dBFS — but the song is at full energy there (6.1× the
+  gap threshold), so 0.5s ducks the chop without resolving the phrase.
+- **Bars ARE recoverable, but not by the obvious detector.** Onset strength per beat
+  phase: 4.313 / 4.285 / 4.267 / 4.309 — no signal, all four within 1%. Low-band
+  (<150 Hz kick) peak per beat: phase 3 at 79.31 vs phase 2 at 42.03, ratio **1.89**,
+  and the phase-3 beat is the loudest of its bar in **14/18 bars** (78% against 25%
+  by chance). Any section detector should use the bass band, not novelty.
+- **The triage hypothesis in [fixes-backlog #2](fixes-backlog.md) was wrong.** It
+  assumed `--auto-start` had already placed the in-point in a vocal pause. Run
+  `best_offset` on that track and it returns **0.000** for every plausible duration
+  (25/30/33/34/42/45); `MUSIC.json` records 46.0. The in-point was hand-set, and the
+  auto path would have started the reel at second 0 of the song.
+- **There is headroom.** The analysed window is 42s and only 34.04s was used —
+  **7.96s of already-analysed music**, so moving the out-point to a bar line needs no
+  `beats` re-run. Nearest bar up is +1.22s; but the reel is already **+4.04s** over
+  `SPEC.length_s` (30.0), and the only candidate landing *under* the brief is a 4-bar
+  step down to 28.73s. "End on a musical line" and "hit the brief's length" pull
+  against each other, and the stage must **report** that tension rather than resolve
+  it silently.
+- **A vocal-free half-second after the boundary exists, and there is exactly one
+  usable place for it.** This was measured twice; only the second measurement is
+  right. With no demucs installed the mix-silence proxy found **2** vocal-free spans
+  in 228s and none in the window, which is what made the fallback's deletion
+  obviously correct — but it is not evidence about the music. Re-run with real
+  demucs (installed 2026-08-14): **19** spans in the track, **5** overlapping the
+  reel's 42s music window. A first pass on demucs' own 2 Hz envelope still said "one
+  usable bar line", and that was an artifact — a 2 Hz envelope has **0.5s bins** and
+  the rule asks for 0.5s, so it cannot resolve the answer. At the vocal stem's full
+  11.6 ms resolution: **2 of the window's 18 bar lines** can end the music with
+  ≥0.5s of silence after, and the useful one is **bar 15 at stem 35.26s — +1.22s
+  from the reel's current end, with 1.50s of vocal-free after it**. Stable across
+  threshold fractions 0.10–0.30 (0.05 drops it to 1). Any gap sensor built for this
+  must measure at frame resolution, not on the 2 Hz curve `MusicSpec.energy` stores.
+- **The 1.22s is available, and the in-point lever cannot pay it instead.** The
+  closing clip has **11.53s** of unused source after its episode, so extending is
+  cheap in footage terms (35.26s reel = +5.26s over the brief's 30.0s, against
+  +4.04s today — the tension to report, not resolve). Moving `start_offset` instead
+  looks free but is not: the shift needed is **2.235 beats**, and only a whole-beat
+  shift keeps the existing cuts on the grid — 2 beats leaves the end 0.128s off the
+  bar line, and a whole-*bar* shift maps the grid onto itself and changes nothing.
+  So the P3 row "re-pick `MUSIC.start_offset` at the back-edge" is **measured
+  insufficient on its own**: it can only work as part of re-fitting the whole spine
+  (pacing's two-axis search), never as a back-edge tweak.
+- **`--auto-start` now answers.** With real vocal gaps `best_offset` returns
+  **147.772s** for every duration tried (30/34/42), against the proxy's 0.000.
+- **Cost of the requirement:** htdemucs separation measured **62.1s and 46.2s** on
+  two runs over this 229s track — roughly **0.2–0.27× realtime**, paid once per
+  `--auto-start`.
+
+Two run-hygiene observations, neither the cause: `PACING.json` was stale from the
+previously-chosen Manson track (tempo 140.625 vs the actual 110.294) — harmless,
+because `check_reel` shows the cuts land on `MUSIC.json`'s own beats at 0.017s worst
+deviation, so the EDL was re-bound after the swap; and `MUSIC_SHORTLIST` was built
+from an explicitly-passed mood ("aggressive driving energetic industrial") rather than
+`SPEC.mood` ("Fun and playful"), which the file mtimes confirm was already on disk —
+an override, not a bug.
 
 ## P2 — soon
 
@@ -60,6 +127,7 @@ close either of those two on its first row alone.
 | ○ | **Mood → grade** — bias `match_grade`'s common target by the brief's mood instead of taking the source median alone. This is the "§10 mood LUT" colour-as-a-stage deferred; #9's *look* half landed 2026-08-13 (cinematic-look), this is the grade half that remains. | M | colour-stage §11, matchgrade §8, [#9](fixes-backlog.md#9-cinematic-effects-library--mood-oriented-palettes) |
 | ○ | **Re-assess §6.1a layer 3 against track-stitch** — both address a mid-episode hero ID switch, by different mechanisms (descriptor continuity vs geometric overlap-vs-gap). Decide whether a real remainder exists before building anything. | S | cast-hero-pin §11 |
 | ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. | S | hero-reid §11, cast-hero-pin §11 |
+| ○ | **Confirm the torchreid dep list on a clean install** — torchreid 0.2.5 declares **no runtime requirements at all** while importing six packages, so `pip install torchreid` succeeds and `import torchreid` raises (measured 2026-08-14: `gdown` missing, and `tabulate`/`Cython`/`h5py`/`imageio`/`yacs` absent too). `setup.sh` now installs all six explicitly and verifies on **import** rather than `pip show`, but that fix is **unverified** — it was written on a machine where the broken install already existed, so nobody has watched a clean run succeed. The suite's 1 remaining skip is this. | S | demucs-required slice, 2026-08-14 |
 | ○ | **Close the episode-QC loop** — two halves of one loop, both episode-qc §13, and the P3 list holds the other one. **This half:** `build_reel`'s retry reprocesses an episode *after* its QC verdict, so it ships judged one render out of date (recorded as `reprocessed` in the attestation, not prevented) — closes episode-qc §8. **The other half, in P3:** auto-routing a *blocking* finding back into a re-render. Do the re-judge first; routing findings into renders that are then never re-judged makes the hole bigger. | M | episode-qc §13 |
 | ○ | **Surface the active editorial constraints in `montage status`** — a human should see which rules bind a re-cut without opening `CONSTRAINTS.json`. | S | constraints §11 |
 | ○ | **Auto-place a ramp's `at` from the action anchors** — `lib/anchors` already computes the curve the author is eyeballing. | S | speed-ramp §13 |
@@ -223,7 +291,7 @@ status column that file does not have.
 | # | Finding | Status |
 |---|---------|--------|
 | 1 | Hero identity — colour-histogram descriptor → OSNet re-ID embedding | ✅ 2026-08-04 (the hero-conditioned re-scan remains, P3) |
-| 2 | Music is cut in the middle of a phrase | ○ **P1** — needs investigation before design |
+| 2 | Music is cut in the middle of a phrase | ◐ **P1** — investigated 2026-08-14 (root cause + six measurements in the P1 row above); demucs made required the same day; the out-point fix itself still open |
 | 3 | Per-episode rendering and QC in subagents | ✅ 2026-08-08 |
 | 4 | `setup.sh` installs everything; unavailable components warn and continue | ✅ 2026-08-04 |
 | 5 | The authoring skill must document every modification tool it has | ○ **P2** |
@@ -264,4 +332,4 @@ that never existed, a cv2 blocker that disappeared when the tracking ladder
 landed, and three build-status entries about §6.1a layer 3 written as though
 track-stitch had not shipped.
 
-_Last updated: 2026-08-13._
+_Last updated: 2026-08-14._

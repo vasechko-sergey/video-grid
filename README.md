@@ -21,9 +21,13 @@ cd video-grid
 bash setup.sh          # venv + ffmpeg-full (drawtext + vidstab) + fonts; weights on first run
 ```
 
-`bash setup.sh` installs the **whole** runtime — including demucs (phrase-aware
-music in-point) and yt-dlp (fetch tracks from the internet). No opt-in flags:
-where a platform genuinely cannot provide a piece, setup warns and continues.
+`bash setup.sh` installs the **whole** runtime — including demucs (vocal separation
+for the phrase-aware music in/out-point) and yt-dlp (fetch tracks from the internet).
+No opt-in flags. Where a platform genuinely cannot provide a piece, setup warns and
+continues — **except that demucs is required**: setup still finishes, but
+`verify_runtime` blocks every run until demucs is present. It is the only sensor that
+can tell where the singing stops, and the mix-loudness proxy that used to stand in for
+it was deleted for answering wrongly instead of failing.
 
 Verify the install any time with `/video-grid:verify-runtime` (or
 `"$VG" scripts.verify_runtime`) — it reports each missing piece with the exact

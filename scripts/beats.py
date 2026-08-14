@@ -36,10 +36,21 @@ def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> float:
+def choose_offset(track: str, duration: float) -> float:
     """Auto-pick MusicSpec.start_offset (design §4): the strongest duration-window
-    whose start lands in a vocal pause. demucs vocal path when available+use_vocals,
-    else a logged full-mix silence proxy. Emits one stderr info line."""
+    whose start lands in a vocal pause. Emits one stderr info line.
+
+    The pauses come from the demucs vocal stem and from nothing else. Until
+    2026-08-14 an absent demucs silently fell back to a full-mix silence proxy —
+    deleted, because it does not fail, it answers WRONG: measured on the 2026-08-03
+    run's own track (228s of dense pop), the mix envelope never drops to 15% of its
+    peak mid-song, so vocal_gaps found 2 gaps (the lead-in and the fade-out) and
+    every candidate collapsed to 0.0. A confident wrong in-point is exactly the §12
+    silent-corruption shape. demucs is a REQUIRED runtime component (preflight
+    gates it); separate_vocal_energy raises with the remedy when it is missing.
+
+    The mix envelope still RANKS the surviving candidates — it measures loudness,
+    which it can do; only the gap-finding moved to the stem."""
     import librosa                                    # lazy import: heavy optional dep (librosa)
     y, sr = librosa.load(track, sr=None, mono=True)
     track_dur = len(y) / sr
@@ -48,14 +59,10 @@ def choose_offset(track: str, duration: float, *, use_vocals: bool = True) -> fl
         return 0.0
     mix_rms = librosa.feature.rms(y=y, hop_length=offset.HOP)[0]
     mix_energy, mix_hz = offset.downsample(mix_rms, sr, offset.HOP, 2.0)
-    if use_vocals and vocals.has_demucs():
-        env, hz = vocals.separate_vocal_energy(track)
-        gaps, path = offset.vocal_gaps(env, hz), "vocal"
-    else:
-        gaps, path = offset.vocal_gaps(mix_energy, mix_hz), "mix-proxy"
+    env, hz = vocals.separate_vocal_energy(track)
+    gaps = offset.vocal_gaps(env, hz)
     off = offset.best_offset(mix_energy, mix_hz, gaps, duration, track_dur)
-    extra = "" if path == "vocal" else " (demucs absent — setup.sh --with-demucs for vocal-accurate)"
-    _log(f"choose_offset: {off:.2f}s via {path}{extra}")
+    _log(f"choose_offset: {off:.2f}s via vocal ({len(gaps)} vocal-free spans found)")
     return off
 
 
