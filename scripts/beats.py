@@ -50,7 +50,13 @@ def choose_offset(track: str, duration: float) -> float:
     gates it); separate_vocal_energy raises with the remedy when it is missing.
 
     The mix envelope still RANKS the surviving candidates — it measures loudness,
-    which it can do; only the gap-finding moved to the stem."""
+    which it can do; only the gap-finding moved to the stem.
+
+    Since 2026-08-14 the spans come from vocals.vocal_spans at ~23 ms resolution
+    rather than from a 2 Hz envelope. That is a deliberate change of ANSWER as well
+    as of precision: finer bins find short gaps the coarse binning smeared away and
+    drop ones binning invented. One sensor serves the in-point and the out-point, so
+    the two cannot disagree about the same track (design 2026-08-14 §4)."""
     import librosa                                    # lazy import: heavy optional dep (librosa)
     y, sr = librosa.load(track, sr=None, mono=True)
     track_dur = len(y) / sr
@@ -59,8 +65,7 @@ def choose_offset(track: str, duration: float) -> float:
         return 0.0
     mix_rms = librosa.feature.rms(y=y, hop_length=offset.HOP)[0]
     mix_energy, mix_hz = offset.downsample(mix_rms, sr, offset.HOP, 2.0)
-    env, hz = vocals.separate_vocal_energy(track)
-    gaps = offset.vocal_gaps(env, hz)
+    gaps = vocals.vocal_spans(track)
     off = offset.best_offset(mix_energy, mix_hz, gaps, duration, track_dur)
     _log(f"choose_offset: {off:.2f}s via vocal ({len(gaps)} vocal-free spans found)")
     return off

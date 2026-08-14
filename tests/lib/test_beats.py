@@ -27,26 +27,21 @@ def test_choose_offset_track_shorter_than_reel_returns_zero(monkeypatch, capsys)
 
 def test_choose_offset_gaps_come_from_the_vocal_stem(monkeypatch, capsys):
     _fake_librosa(monkeypatch, track_seconds=4.0)
-    # fixed mix envelope: loud in the second half (mix_hz=2 → 8 samples = 4s)
     monkeypatch.setattr(offset, "downsample",
                         lambda *a, **k: ([1.0, 1.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0], 2.0))
-    # vocal env silent at t=1.5s (sample 3) → a gap leading into the loud region
-    monkeypatch.setattr(vocals, "separate_vocal_energy",
-                        lambda *a, **k: ([9.0, 9.0, 9.0, 0.0, 0.0, 9.0, 9.0, 9.0], 2.0))
+    monkeypatch.setattr(vocals, "vocal_spans", lambda *a, **k: ((1.5, 2.5),))
     off = beats.choose_offset("t.wav", duration=2.0)
-    assert off == 1.5                                        # best_offset over the injected arrays
+    assert off == 1.5
     assert "via vocal" in capsys.readouterr().err
 
 
 def test_choose_offset_gaps_are_not_the_mix_envelope(monkeypatch):
     """Discriminates the deleted mix-proxy: the mix envelope has its own quiet run
-    (samples 0-1 and 6-7) that the vocal stem does not. Reading gaps off the mix
-    would pick 3.0s; reading them off the stem picks 1.5s."""
+    that the vocal stem does not. Reading gaps off the mix would pick 3.0s."""
     _fake_librosa(monkeypatch, track_seconds=4.0)
     monkeypatch.setattr(offset, "downsample",
                         lambda *a, **k: ([0.0, 0.0, 1.0, 5.0, 5.0, 5.0, 0.0, 0.0], 2.0))
-    monkeypatch.setattr(vocals, "separate_vocal_energy",
-                        lambda *a, **k: ([9.0, 9.0, 9.0, 0.0, 0.0, 9.0, 9.0, 9.0], 2.0))
+    monkeypatch.setattr(vocals, "vocal_spans", lambda *a, **k: ((1.5, 2.5),))
     assert beats.choose_offset("t.wav", duration=2.0) == 1.5
 
 
@@ -55,6 +50,8 @@ def test_choose_offset_refuses_without_demucs(monkeypatch):
     does not fail, it silently returns a wrong answer — measured 2 gaps in a 228s
     dense pop track, so every candidate collapsed to 0.0."""
     _fake_librosa(monkeypatch, track_seconds=4.0)
+    vocals._SPANS.clear()   # isolation: another test's real vocal_spans("t.wav") memo
+                            # must not shadow the has_demucs guard this test exercises
     monkeypatch.setattr(vocals, "has_demucs", lambda: False)
     with pytest.raises(ValueError, match="demucs"):
         beats.choose_offset("t.wav", duration=2.0)

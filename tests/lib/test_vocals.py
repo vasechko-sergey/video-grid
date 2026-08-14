@@ -43,3 +43,35 @@ def test_separate_vocal_energy_raises_a_remedy_when_absent(monkeypatch):
     monkeypatch.setattr(vocals, "has_demucs", lambda: False)
     with pytest.raises(ValueError, match="bash setup.sh"):
         vocals.separate_vocal_energy("track.wav")
+
+
+def test_vocal_spans_uses_a_fine_envelope_not_the_2hz_one(monkeypatch):
+    """§8.1 — a 2 Hz envelope has 0.5s bins and the outro rule asks about 0.5s. The
+    span sensor must ask separate_vocal_energy for _SPAN_HZ, not the 2.0 default."""
+    seen = {}
+
+    def fake(track, target_hz=2.0):
+        seen["hz"] = target_hz
+        return [9.0] * 40 + [0.0] * 40 + [9.0] * 40, 40.0
+
+    monkeypatch.setattr(vocals, "separate_vocal_energy", fake)
+    vocals._SPANS.clear()
+    spans = vocals.vocal_spans("t.wav")
+    assert seen["hz"] == vocals._SPAN_HZ == 40.0
+    assert spans == ((1.0, 2.0),)
+
+
+def test_vocal_spans_memoizes_per_track(monkeypatch):
+    """The separation costs 46-62s. choose_offset and beats.main both want the spans
+    in one process; the second call must not pay again."""
+    calls = []
+
+    def fake(track, target_hz=2.0):
+        calls.append(track)
+        return [0.0] * 40, 40.0
+
+    monkeypatch.setattr(vocals, "separate_vocal_energy", fake)
+    vocals._SPANS.clear()
+    vocals.vocal_spans("t.wav")
+    vocals.vocal_spans("t.wav")
+    assert calls == ["t.wav"]

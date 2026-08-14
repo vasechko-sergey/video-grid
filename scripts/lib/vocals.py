@@ -27,6 +27,32 @@ def has_demucs() -> bool:
         return False
 
 
+_SPAN_HZ = 40.0                  # ~23 ms bins after downsample's integer step. NOT 2.0:
+                                 # a 2 Hz envelope has 0.5s bins and the outro rule asks
+                                 # about 0.5s, so it cannot resolve its own question — the
+                                 # first pass of the 2026-08-14 investigation reported the
+                                 # feature impossible because of exactly this (design §8.1).
+_SPANS: dict[str, tuple[tuple[float, float], ...]] = {}   # per-process memo, keyed on the
+                                 # track path: choose_offset and beats.main both want the
+                                 # spans inside one beats.py run, and the separation costs
+                                 # 46-62s on a 229s track (measured 2026-08-14).
+
+
+def vocal_spans(track: str) -> tuple[tuple[float, float], ...]:
+    """TRACK-relative (start, end) spans where the vocal stem is quiet.
+
+    The one sensor both the music IN-point (choose_offset) and the OUT-point (the
+    outro fit) read, so the two cannot disagree about where the singing stops. The
+    decision stays pure — this only supplies the envelope offset.vocal_gaps judges.
+
+    Times are track-relative because that is what separate_vocal_energy measures;
+    outro.window_spans converts them to the stem-relative form MusicSpec stores."""
+    if track not in _SPANS:
+        env, hz = separate_vocal_energy(track, target_hz=_SPAN_HZ)
+        _SPANS[track] = offset.vocal_gaps(env, hz)
+    return _SPANS[track]
+
+
 def separate_vocal_energy(track: str, target_hz: float = 2.0) -> tuple[list[float], float]:
     """Whole-track demucs → vocal stem → mono RMS → downsample to ~target_hz.
     Returns (env, hz). Lazy demucs+torch import (heavy). demucs is a REQUIRED
