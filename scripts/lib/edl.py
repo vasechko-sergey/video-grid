@@ -407,18 +407,34 @@ class EDL:
                 lines += [""] + [f"**Broken:** {v.message}" for v in c.violations]
             else:
                 lines += ["", f"{len(c.rules)} checked, none broken."]
-        if self.outro is not None and self.outro.line is not None:
+        # Every rung renders, `unchanged` included. Gating this on `line is not None`
+        # made the third rung invisible in the only DURABLE artifact — the skill tells
+        # the agent to read this section "for which of three rungs won", and only the
+        # transient stderr line carried it (design §7; final review I-3).
+        if self.outro is not None:
             o = self.outro
             if o.rung == "gap":
                 why = (f"the music resolves on a bar line at {o.line:.2f}s with "
                        f"{o.tail:.2f}s of vocal-free space after it")
-            else:
+            elif o.rung == "no-gap":
                 why = (f"no bar line in range left {outro_mod.TAIL_MIN:.2f}s of "
                        f"vocal-free space, so the reel ends on the nearest line at "
                        f"{o.line:.2f}s under a longer fade")
+            else:
+                why = ("no bar line within one bar of the cut's own length could be "
+                       "reached (none that the closing shot has room for, or no bar "
+                       "grid at all), so the reel keeps its footage-derived length "
+                       "and the music ends mid-phrase")
+            line_txt = "–" if o.line is None else f"{o.line:.2f}s"
+            # The distance from SPEC.length_s is the reported half of the length
+            # tension (design §6). Absent brief -> say the comparison could not be
+            # made, never omit the clause: a missing number reads as "on target".
+            brief = ("no SPEC.length_s to compare against"
+                     if o.brief_len is None else
+                     f"{o.reel_dur - o.brief_len:+.2f}s vs the brief's {o.brief_len:.1f}s")
             lines += ["", "## Music outro", "", f"- **rung:** `{o.rung}` — {why}",
-                      f"- **line** {o.line:.2f}s · **fade** {o.fade:.2f}s · "
-                      f"**reel** {o.reel_dur:.2f}s ({o.moved:+.2f}s)"]
+                      f"- **line** {line_txt} · **fade** {o.fade:.2f}s · "
+                      f"**reel** {o.reel_dur:.2f}s ({o.moved:+.2f}s) · {brief}"]
         return "\n".join(lines)
 
 

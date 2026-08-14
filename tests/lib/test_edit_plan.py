@@ -1254,6 +1254,81 @@ def test_an_unchanged_outro_fit_does_not_unclamp_an_unrelated_pacing_overflow():
     assert edl.target_dur == pytest.approx(5.15)                # _back_edge_target's clamp must hold
 
 
+def test_a_reachable_line_does_not_unclamp_a_PRE_EXISTING_pacing_overflow(capsys):
+    """The sibling hole the `rung != "unchanged"` guard alone does NOT close (final
+    review I-3 -> I-2): a cut that ALREADY over-flowed the spine before the fit ran.
+
+    test_an_unchanged_outro_fit_does_not_unclamp_an_unrelated_pacing_overflow above
+    covers the case where no line is reachable — there the rung check does the work.
+    Give the SAME over-flowing fixture a bar line the closing shot can reach and the
+    rung becomes "gap", so the rung check waves it through and the override replaces
+    the clamped 5.15s target with the fit's 8.0s. Nothing then escalates, even though
+    _back_edge_target has just logged that the excess "escalates at the reel gate" —
+    a stale PACING.json's over-flow ships silently, and the log is false while it does.
+
+    The fit's own bound is only over the length IT chose (outro._candidates' music_dur
+    condition). The 2.85s of pre-existing excess never passed through it, so the
+    override may only fire when there was no pre-existing over-flow at all.
+
+    Same precedented shape as the sibling: _sel3() (durs 2.0/3.0/2.5) against the
+    2-slot _spine2() (target_dur 5.15) leaves the 3rd episode unbound at 2.5s, so
+    realized = 2.1 + 3.05 + 2.5 = 7.65s > 5.15s independently of any music. The line
+    at 7.5s is inside the +/-one-bar band of 7.65 (bar_s = 2.0 at 120 BPM), the
+    closing B.mp4 shot has room to grow into it, and (7.5, 9.0) leaves 1.5s of
+    vocal-free tail — so the fitter answers "gap" at 7.5 + 0.5 = 8.0s."""
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(7.5,), vocal_spans=((7.5, 9.0),))
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
+    # fixture sanity: the fit really does land on a line here, so the rung check alone
+    # cannot be what saves us — otherwise this test would pass for the wrong reason
+    assert edl.outro.rung == "gap" and edl.outro.reel_dur == pytest.approx(8.0)
+    # ...and the target must STILL be the clamped fragment length, not the fit's 8.0
+    assert edl.target_dur == pytest.approx(5.15)
+    err = capsys.readouterr().err
+    assert "escalates at the reel gate" in err        # _back_edge_target's line stays TRUE
+    assert "over-flowed the 5.15s spine before the fit ran" in err   # and the decline is said
+
+
+def test_music_without_pacing_says_it_did_nothing(capsys):
+    """--music is accepted without --pacing and then fits NOTHING: the whole fit sits
+    inside build_edl's `pacing is not None` branch. Silence there reads as "the fit
+    ran and found nothing" — the house style is to say so (final review, minor)."""
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(7.5,), vocal_spans=((7.5, 9.0),))
+    edl = edit_plan.build_edl(_footage(), _sel3(), music=music)     # no pacing
+    assert edl.outro is None                                        # nothing was fitted
+    assert "--music was supplied without --pacing" in capsys.readouterr().err
+
+
+def test_the_fit_carries_the_briefs_length_onto_the_edl(capsys):
+    """brief_len reaches OutroFit, so EDL.md — not only the stderr line — can state
+    the distance from SPEC.length_s (design §6; final review I-3)."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=4.0)]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    _out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=12.0)
+    assert fit.rung == "gap" and fit.brief_len == 12.0
+    assert "vs the brief's 12.0s" in capsys.readouterr().err
+
+
+def test_an_unfittable_reel_still_carries_the_briefs_length(capsys):
+    """The `unchanged` early returns build their OutroFit in edit_plan, not in
+    fit_outro — so they need the brief threaded through separately, and a reel that
+    could not be fitted is exactly when the distance from the brief matters."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0)]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(), vocal_spans=())                     # no bar grid at all
+    _out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=12.0)
+    assert fit.rung == "unchanged" and fit.brief_len == 12.0
+
+
 def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):
     seen = {}
     real = edit_plan.build_edl

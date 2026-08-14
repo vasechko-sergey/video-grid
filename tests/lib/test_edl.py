@@ -1032,3 +1032,44 @@ def test_markdown_no_gap_rung_explains_the_longer_fade():
 
 def test_markdown_has_no_outro_section_when_unfitted():
     assert "Music outro" not in EDL(episodes=(_ep(),)).to_markdown()
+
+
+# --- final review I-3: the unchanged rung, and the distance from the brief -----------
+
+def test_markdown_renders_the_unchanged_rung_too():
+    """Gating the section on `line is not None` made the THIRD rung invisible in the
+    only durable artifact, while skills/edit-plan/SKILL.md tells the agent to read
+    this section "for which of three rungs won". Only the transient stderr line
+    carried it."""
+    fit = OutroFit(reel_dur=34.04, line=None, fade=0.5, tail=0.0, rung="unchanged",
+                   moved=0.0)
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "## Music outro" in md
+    assert "`unchanged`" in md
+    assert "keeps its footage-derived length" in md
+    assert "34.04s" in md and "+0.00s" in md
+    assert "**line** –" in md            # no line to name, said as such, not omitted
+
+
+def test_markdown_states_the_distance_from_the_brief():
+    """design §6: "The log and EDL.md state the move, the rung, and the distance from
+    the brief". EDL.md stated the first two and not the third."""
+    fit = OutroFit(reel_dur=35.76, line=35.26, fade=0.5, tail=1.5, rung="gap",
+                   moved=1.72, brief_len=30.0)
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "+5.76s vs the brief's 30.0s" in md
+
+
+def test_markdown_says_when_there_is_no_brief_to_compare_against():
+    """An omitted clause reads as "on target"; the absence is stated instead."""
+    fit = OutroFit(reel_dur=35.76, line=35.26, fade=0.5, tail=1.5, rung="gap",
+                   moved=1.72)
+    assert "no SPEC.length_s to compare against" in (
+        EDL(episodes=(_ep(),), outro=fit).to_markdown())
+
+
+def test_edl_outro_round_trips_the_brief_length():
+    fit = OutroFit(reel_dur=35.7, line=35.2, fade=0.5, tail=1.5, rung="gap",
+                   moved=1.7, brief_len=30.0)
+    back = EDL.from_dict(EDL(episodes=(_ep(),), outro=fit).to_dict()).outro
+    assert back == fit and back.brief_len == 30.0

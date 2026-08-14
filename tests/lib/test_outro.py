@@ -162,6 +162,41 @@ def test_fit_round_trips():
     assert OutroFit.from_dict(fit.to_dict()) == fit
 
 
+def test_fit_round_trips_the_brief_length():
+    """brief_len rides the carrier so EDL.md can state the distance from SPEC.length_s
+    (design §6/§7; final review I-3). It must survive to_dict/from_dict like every
+    other field, not be recomputed by a reader who no longer has the brief."""
+    fit = OutroFit(reel_dur=35.7, line=35.2, fade=0.5, tail=1.5, rung="gap",
+                   moved=1.7, brief_len=30.0)
+    assert fit.to_dict()["brief_len"] == 30.0
+    assert OutroFit.from_dict(fit.to_dict()) == fit
+
+
+def test_a_pre_brief_len_artifact_still_loads():
+    """An EDL.json written before this field existed carries no `brief_len` key; it
+    reads as "no brief", never as 0.0 (which would render as a false distance)."""
+    assert OutroFit.from_dict({"reel_dur": 35.7, "line": 35.2, "fade": 0.5,
+                               "tail": 1.5, "rung": "gap", "moved": 1.7}).brief_len is None
+
+
+@pytest.mark.parametrize("bars, spans, want_rung", [
+    ((35.188,), ((35.188, 36.7),), "gap"),      # rung 1: a line with room for the fade
+    ((), (), "unchanged"),                      # rung 3: no grid at all
+])
+def test_every_rung_carries_the_brief_length_it_was_given(bars, spans, want_rung):
+    """All three rungs, not just the one that moved: the distance from the brief is
+    exactly as worth reporting when NOTHING could be fitted."""
+    fit = outro.fit_outro(bars, spans, reel_dur=34.044, bar_s=BAR, fade=0.5,
+                          music_dur=42.0, grow_max=11.5, shrink_max=3.0, brief_len=30.0)
+    assert fit.rung == want_rung and fit.brief_len == 30.0
+
+
+def test_the_no_gap_rung_carries_the_brief_length_too():
+    fit = outro.fit_outro(BARS, (), reel_dur=34.044, bar_s=BAR, fade=0.5,
+                          music_dur=42.0, grow_max=11.5, shrink_max=3.0, brief_len=30.0)
+    assert fit.rung == "no-gap" and fit.brief_len == 30.0
+
+
 def test_negative_fade_is_refused():
     with pytest.raises(ValueError, match="fade must be"):
         outro.fit_outro(BARS, (), reel_dur=34.0, bar_s=BAR, fade=-1.0, music_dur=42.0,

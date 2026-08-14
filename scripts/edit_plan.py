@@ -227,7 +227,14 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
                 f"pacing: slot {i} is {slot.dur:.2f}s against a {played:.2f}s episode — "
                 f"further apart than the {allow:.2f}s snap allows, so this PACING.json "
                 f"was fitted to a different edit. Re-run pacing against the current "
-                f"EDL.json before binding")
+                f"EDL.json before binding — BUT if that EDL.json already carries an "
+                f"outro fit (EDL.md's 'Music outro' section, or a non-null `outro` in "
+                f"EDL.json), re-running pacing against it LOOPS: pacing reads the "
+                f"fitted length while this projection re-derives the episode from "
+                f"FOOTAGE, so the two never agree. Break it by rebuilding the EDL "
+                f"WITHOUT --pacing first (`edit_plan build` with no --pacing/--music "
+                f"restores the footage-projected lengths), then re-run pacing against "
+                f"THAT EDL.json, then re-apply with --pacing --music")
         # Assign the SOURCE window that plays for slot.dur. ramp_extra is constant
         # in dur while the region stays enclosed (design §2), so this is exact
         # rather than a solve — and dataclasses.replace re-runs __post_init__, so a
@@ -289,11 +296,11 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     if not episodes or not music.bars:
         return episodes, outro.OutroFit(reel_dur=sum(e.play_dur() for e in episodes),
                                         line=None, fade=fade, tail=0.0,
-                                        rung="unchanged", moved=0.0)
+                                        rung="unchanged", moved=0.0, brief_len=brief_len)
     last = episodes[-1]
     realized = sum(e.play_dur() for e in episodes)
     unchanged = outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
-                               rung="unchanged", moved=0.0)
+                               rung="unchanged", moved=0.0, brief_len=brief_len)
     if last.ramp is not None:
         _log(f"outro: the closing episode carries a ramp — its played length is not its "
              f"source length, so the outro fit is skipped and the reel stays "
@@ -464,8 +471,19 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     resolved_fade = resolved_look.fade if resolved_look is not None else _MIX_DEFAULT_FADE
     target = selection.get("target_dur")
     fit = None
+    if music is not None and pacing is None:
+        # Say it out loud. --music without --pacing is accepted by the CLI and then does
+        # nothing at all: the fit runs inside the `pacing is not None` branch below, so
+        # EDL.outro stays None and the reel's length is whatever the footage decided.
+        # Silence here reads as "the fit ran and found nothing" (final review, minor).
+        _log("outro: --music was supplied without --pacing — the outro fit runs only "
+             "after the pacing binding, so NOTHING was fitted and EDL.outro stays null. "
+             "Run pacing first, then re-run this with --pacing AND --music")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
+        # Measured BEFORE the fit moves anything: the override below must be able to tell
+        # the fit's own growth from an over-flow that was already there (final review I-2).
+        pre_fit_realized = sum(e.play_dur() for e in episodes)
         # AFTER the binding and BEFORE the back-edge target: _bind_pacing's half-beat
         # guard must keep guarding what it was built for. _back_edge_target's OWN
         # answer is not automatically the length the outro fit chose — its over-flow
@@ -476,7 +494,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                                          resolved_fade, brief_len)
         target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
         if fit is not None and fit.rung != "unchanged":
-            # ...except when the outro fit chose the length. _back_edge_target clamps an
+            # ...except when the outro fit chose the length, AND the cut was not already
+            # over-flowing the spine before the fit touched it. _back_edge_target clamps an
             # over-flow to the spine so footage the music CANNOT cover escalates at the
             # reel gate instead of reaching mix, which refuses a stem longer than its
             # fragment. The fit's growth is not that case: fit_outro already bounded its
@@ -485,7 +504,24 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
             # disagreed with its own episodes, and edl_to_reel escalated on `length`
             # instead of delivering — measured end-to-end (design 2026-08-14 §6, the
             # correction Task 6's proof forced).
-            target = fit.reel_dur
+            #
+            # The pre-fit test is what keeps the two cases apart. `fit.rung` alone cannot:
+            # the fitter bounds only the length IT chose, and on a stale PACING.json (or an
+            # unbound over-flow tail) the cut can already exceed the spine before the fit
+            # runs — an excess no music_dur bound ever saw. Overriding there un-clamps an
+            # over-flow the fit did not cause, and ships it silently the moment a bar line
+            # happens to be reachable (final review I-2). On the ordinary no-slack spine
+            # the two are EQUAL by construction, which is why this reads <=, with the same
+            # tolerance _back_edge_target itself uses.
+            if pre_fit_realized <= pacing.target_dur + _BACK_EDGE_TOL:
+                target = fit.reel_dur
+            else:
+                _log(f"outro: the fit asks for {fit.reel_dur:.2f}s, but the cut already "
+                     f"over-flowed the {pacing.target_dur:.2f}s spine before the fit ran "
+                     f"({pre_fit_realized:.2f}s of footage) — that excess is NOT something "
+                     f"the fitter bounded against the music, so the target stays clamped at "
+                     f"{target:.2f}s and the over-flow escalates at the reel gate. Re-run "
+                     f"pacing against the current EDL.json, or drop episodes")
     cap = selection.get("cap")
     variety = None
     if aspect is not None and preset is not None:

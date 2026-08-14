@@ -30,6 +30,13 @@ class OutroFit:
     tail: float               # measured vocal-free seconds after the line
     rung: str                 # one of RUNGS
     moved: float              # reel_dur minus the input reel_dur (signed)
+    brief_len: float | None = None   # SPEC.length_s, the brief's asked-for length, carried so
+                                     # the DURABLE artifact can state the distance from it
+                                     # (design §6: "the length tension is reported, never
+                                     # resolved silently"). Without it only the transient
+                                     # stderr line could say how far the reel drifted, and
+                                     # EDL.md — the thing a later reader actually has —
+                                     # could not. None = no brief was supplied.
 
     def __post_init__(self) -> None:
         if self.rung not in RUNGS:
@@ -37,7 +44,8 @@ class OutroFit:
 
     def to_dict(self) -> dict:
         return {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,
-                "tail": self.tail, "rung": self.rung, "moved": self.moved}
+                "tail": self.tail, "rung": self.rung, "moved": self.moved,
+                "brief_len": self.brief_len}
 
     @classmethod
     def from_dict(cls, d: dict) -> "OutroFit":
@@ -46,7 +54,8 @@ class OutroFit:
                              f"{type(d).__name__} — re-run edit_plan build")
         return cls(reel_dur=d.get("reel_dur", 0.0), line=d.get("line"),
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
-                   rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0))
+                   rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
+                   brief_len=d.get("brief_len"))
 
 
 def bar_seconds(tempo: float) -> float:
@@ -122,7 +131,7 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
                          f"(one bar) — got {bar_s!r}; derive it with outro.bar_seconds")
     reel_dur = float(reel_dur)
     unchanged = OutroFit(reel_dur=reel_dur, line=None, fade=float(fade), tail=0.0,
-                         rung="unchanged", moved=0.0)
+                         rung="unchanged", moved=0.0, brief_len=brief_len)
     if not bars:
         return unchanged
 
@@ -138,7 +147,7 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         line = pick(gapped, fade)
         return OutroFit(reel_dur=line + fade, line=line, fade=float(fade),
                         tail=free_after(vocal_spans, line), rung="gap",
-                        moved=(line + fade) - reel_dur)
+                        moved=(line + fade) - reel_dur, brief_len=brief_len)
     long_fade = max(float(fade), NO_GAP_FADE)
     nearest = _candidates(bars, reel_dur, bar_s, long_fade, music_dur,
                           grow_max, shrink_max)
@@ -146,5 +155,5 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         line = pick(nearest, long_fade)
         return OutroFit(reel_dur=line + long_fade, line=line, fade=long_fade,
                         tail=free_after(vocal_spans, line), rung="no-gap",
-                        moved=(line + long_fade) - reel_dur)
+                        moved=(line + long_fade) - reel_dur, brief_len=brief_len)
     return unchanged
