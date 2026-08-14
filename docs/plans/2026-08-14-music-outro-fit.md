@@ -1234,6 +1234,17 @@ with:
         target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
 ```
 
+**Correction (Task 5b, forced by Task 6's end-to-end proof): the comment above is
+wrong.** "`_back_edge_target` must report the length the outro fit actually chose"
+does not describe what the code above it does — `_back_edge_target` clamps an
+over-flow to `spine.target_dur`, discarding the fit's growth, on any spine with no
+slack past the pre-fit episode total (exactly the shape `pacing.fit_spine` produces).
+Task 6's real-ffmpeg proof of this design hit that clamp and got `stop_and_report` on
+`length` instead of a delivered reel. The call site needs one more step this task did
+not write — reading the fit's length back out and overriding `_back_edge_target`'s
+answer with it whenever a line was chosen — which Task 5b adds separately. Do not
+carry this comment's claim forward as fact; see Task 5b for the actual fix.
+
 `resolved_fade` must be the SAME number `build_reel` hands `mix` — the reel's own
 bookend. Compute it just above, next to where `resolved_look` is decided, and move
 that decision earlier in the function so the fit can read it:
@@ -1481,3 +1492,18 @@ claim is written out.
 `brief_len`) match between the module, the tests and `_apply_outro`'s call.
 `outro.BAR_BEATS` is defined in Task 3 and consumed by Task 2 — noted in Task 2's
 Interfaces block, so an out-of-order implementer knows to do Task 3 first.
+
+**A plan defect this plan itself did not catch — found by execution, not review
+(Task 5b).** Task 5, Step 5 wired `_apply_outro`'s result into `build_edl` but then
+called `_back_edge_target` and stopped, on the strength of a comment claiming it
+"must report the length the outro fit actually chose." No task in this plan, and no
+unit test in Task 5, ever built a spine with as many slots as episodes — the exact
+shape `pacing.fit_spine` produces — so nothing here exercised `_back_edge_target`'s
+over-flow clamp against a real outro-fit growth. Task 6's end-to-end proof did build
+that shape and found `edl_to_reel` refuse to deliver: `stop_and_report`, check
+`length`, `{"dur": 10.7, "target": 10.0}`. The fix is Task 5b: the call site reads
+`fit.reel_dur` back out and overrides `_back_edge_target`'s answer whenever a line
+was chosen. The lesson for future plans in this repo: a unit test that hand-picks a
+spine with slack is not a substitute for one built the way the real upstream
+producer builds it — this is the same class of gap the design's own §8.1 landmine
+names for the gap sensor, one layer up the stack.

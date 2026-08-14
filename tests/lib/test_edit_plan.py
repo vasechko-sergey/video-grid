@@ -2,7 +2,7 @@ import json
 
 import pytest
 from scripts import edit_plan
-from scripts.lib import provenance
+from scripts.lib import outro, provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -1179,6 +1179,48 @@ def test_apply_outro_shrink_floor(capsys):
                       bars=(9.0,), vocal_spans=((9.0, 11.0),))
     out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=None)
     assert fit.rung == "unchanged" and out[-1].dur == pytest.approx(1.2)
+
+
+def test_a_growing_outro_fit_sets_the_target_that_ships():
+    """The clamp in _back_edge_target must not discard the fit's growth.
+
+    _bind_pacing gives a same-length spine `target_dur == sum(pre-fit play_durs)` by
+    construction, so ANY growth makes realized > spine.target_dur and the over-flow
+    clamp returns the PRE-fit total. The EDL then disagrees with its own episodes and
+    edl_to_reel escalates on `length` — measured end-to-end by Task 6, whose real-
+    ffmpeg proof of a no-slack spine hit exactly this and got back `stop_and_report`
+    ({"check": "length", "detail": {"dur": 10.7, "target": 10.0}}). The clamp is
+    right for footage the music cannot cover; the fit's growth is not that, because
+    fit_outro already bounded it by music_dur (Task 5b; design 2026-08-14 §6)."""
+    footage = Footage(clips=[_clip(source="a.mp4", dur=30.0, scene_cuts=[], windows=[
+        _window(start=0.0, dur=6.0, shot_type="wide", description="approach"),
+        _window(start=8.0, dur=4.0, shot_type="wide", description="closer")])])
+    sel = {"episodes": [
+        {"source": "a.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"source": "a.mp4", "window": 1, "composition": "lead", "grid": "thirds"}]}
+    # NO SLACK: 2 slots for 2 episodes, target_dur == 6.0 + 4.0 exactly — the shape
+    # pacing.fit_spine actually produces. _bind_pacing fits each episode's dur to its
+    # own slot's dur exactly, so a spine with as many slots as episodes always has
+    # spine.target_dur == the pre-fit episode total BY CONSTRUCTION (design §6).
+    spine = _spine([6.0, 4.0], tempo=120.0)
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(10.2,), vocal_spans=((10.2, 12.0),))
+    # Derive the expected numbers from fit_outro directly, using the SAME grow_max/
+    # shrink_max _apply_outro will itself compute for this fixture (clip dur 30.0, no
+    # scene cuts, closing episode start=8.0/dur=4.0): room_after(8.0) = 30.0 - 8.0 =
+    # 22.0, so grow_max = 22.0 - 4.0 = 18.0; shrink_max = 4.0 - outro.MIN_LAST = 3.0.
+    fit = outro.fit_outro(music.bars, music.vocal_spans, reel_dur=6.0 + 4.0,
+                          bar_s=outro.bar_seconds(120.0), fade=0.5, music_dur=42.0,
+                          grow_max=18.0, shrink_max=3.0)
+    assert fit.rung == "gap" and fit.moved > 0    # fixture sanity: it must actually grow
+
+    edl = edit_plan.build_edl(footage, sel, pacing=spine, music=music)
+    assert edl.outro.rung == "gap"
+    assert edl.outro.moved > 0
+    assert edl.outro.reel_dur == pytest.approx(fit.reel_dur)
+    assert edl.target_dur == pytest.approx(edl.outro.reel_dur)
+    assert edl.target_dur == pytest.approx(sum(e.play_dur() for e in edl.episodes))
 
 
 def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):

@@ -467,12 +467,25 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
         # AFTER the binding and BEFORE the back-edge target: _bind_pacing's half-beat
-        # guard must keep guarding what it was built for, and _back_edge_target must
-        # report the length the outro fit actually chose (design §6).
+        # guard must keep guarding what it was built for. _back_edge_target's OWN
+        # answer is not automatically the length the outro fit chose — its over-flow
+        # clamp discards the fit's growth on a no-slack spine; see the override just
+        # below (Task 5b, forced by Task 6's end-to-end proof; design 2026-08-14 §6).
         if music is not None:
             episodes, fit = _apply_outro(episodes, footage, music,
                                          resolved_fade, brief_len)
         target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
+        if fit is not None and fit.rung != "unchanged":
+            # ...except when the outro fit chose the length. _back_edge_target clamps an
+            # over-flow to the spine so footage the music CANNOT cover escalates at the
+            # reel gate instead of reaching mix, which refuses a stem longer than its
+            # fragment. The fit's growth is not that case: fit_outro already bounded its
+            # answer by music_dur, so the length it returns is one the music provably
+            # covers. Leaving the clamp in charge here shipped an EDL whose target_dur
+            # disagreed with its own episodes, and edl_to_reel escalated on `length`
+            # instead of delivering — measured end-to-end (design 2026-08-14 §6, the
+            # correction Task 6's proof forced).
+            target = fit.reel_dur
     cap = selection.get("cap")
     variety = None
     if aspect is not None and preset is not None:

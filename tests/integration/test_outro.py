@@ -15,7 +15,13 @@ small 640x360 source + long_edge:240 delivery combination (fast real encodes)
 comes from.
 
 mix.py/deliver.py/check_reel.py/build_reel.py/edl_to_reel.py are untouched by this
-slice (design §1) — this file only calls them, never edits them."""
+slice (design §1) — this file only calls them, never edits them.
+
+`_pacing_json` below is deliberately NO-SLACK — exactly as many slots as episodes,
+`target_dur` equal to the pre-fit total — because an earlier, slacker version of this
+same fixture (an extra unfilled tail slot) masked the exact defect this file exists to
+prove: `edit_plan._back_edge_target`'s over-flow clamp discarding the outro fit's own
+growth (Task 5b; design 2026-08-14 §6's correction has the mechanism)."""
 import json
 import subprocess
 from pathlib import Path
@@ -148,35 +154,38 @@ def _project_json(tmp_path):
 
 
 def _pacing_json(tmp_path):
-    """3 slots for 2 episodes — the 3rd, UNFILLED slot is what keeps the spine's
-    target_dur clear of edit_plan._back_edge_target's clamp.
+    """2 slots for 2 episodes — NO SLACK: target_dur is the pre-fit total exactly
+    (6.0 + 4.0 = 10.0), which is what pacing.fit_spine actually produces (as many
+    slots as episodes, nothing left unfilled).
 
     _bind_pacing fits episode i's dur to slot i's dur EXACTLY (both windows already
     match their slots: 6.0/4.0), so after binding `realized == spine.target_dur`
     always, for any 1:1 slot:episode spine — the sum is definitionally the same sum.
-    The outro fit then GROWS the closing episode past that total, so
-    _back_edge_target's own over-flow branch ("keeps the fragment length... the
-    excess escalates at the reel gate") would clamp EDL.target_dur straight back
-    down to the PRE-fit total — and check_reel's length gate treats a master LONGER
-    than its recorded target as unrecoverable over-length
+    The outro fit then GROWS the closing episode past that total, so BEFORE Task 5b's
+    fix, edit_plan._back_edge_target's own over-flow branch ("keeps the fragment
+    length... the excess escalates at the reel gate") clamped EDL.target_dur straight
+    back down to the PRE-fit 10.0s — and check_reel's length gate treats a master
+    LONGER than its recorded target as unrecoverable over-length
     (reel_orchestration._shortfall returns None for dur > target, so next_action
     escalates rather than delivers — "an over-length reel is never absorbed").
 
-    A 3rd slot nobody binds to (a pattern test_edit_plan.py's own
-    test_build_edl_back_edge_retimes_the_target_to_the_realized_footage and
-    test_build_edl_pacing_overflow_tail_unbound already exercise: "more slots than
-    episodes" is a logged, non-error shape) gives spine.target_dur 2.0s of slack the
-    two bound episodes never consume — room enough for the fit's own +0.7s growth
-    (verified directly against edit_plan._apply_outro before this file was written,
-    see the report) to land inside spine.target_dur instead of past it, so
-    _back_edge_target reports the GROWN total "the ordinary way" (design §6) rather
-    than clamping it away.
+    An earlier version of this fixture gave the spine a 3rd, unfilled tail slot
+    purely to buy 2.0s of slack the two bound episodes never consumed — enough room
+    for the fit's own +0.7s growth to land inside spine.target_dur instead of past
+    it, so the old (unfixed) _back_edge_target took its UNDER-fill branch instead of
+    its over-flow one and happened to return the grown total anyway. That made this
+    proof pass while hiding the real defect (Task 5b) — on THIS no-slack spine the
+    old code got back `edl_to_reel` status stop_and_report, check "length", detail
+    {"dur": 10.7, "target": 10.0} — `_back_edge_target` was never actually exercised
+    on the shape `fit_spine` produces. Now that `build_edl` makes the outro fit
+    authoritative whenever it chose a line (Task 5b; design 2026-08-14 §6's
+    correction), this NO-SLACK spine is what proves the fix rather than avoiding the
+    question.
     """
     spine = Spine(slots=(
         Slot(0, 0.0, 6.0, 0.5, "hook", line=6.0, dev=0.0),
         Slot(1, 6.0, 4.0, 0.5, "peak", line=10.0, dev=0.0),
-        Slot(2, 10.0, 2.0, 0.3, "release", line=None, dev=0.0),
-    ), target_dur=12.0, tempo=TEMPO)
+    ), target_dur=10.0, tempo=TEMPO)
     p = tmp_path / "PACING.json"
     p.write_text(json.dumps(spine.to_dict()))
     return str(p)
@@ -226,8 +235,8 @@ def test_delivered_reel_ends_at_line_plus_fade(outro_clip, tone, tmp_path, monke
     # room_after(10.0) - dur(4.0) = (20.0 - 10.0) - 4.0 = 6.0s, so grow_max never
     # binds here; shrink_max is irrelevant since the move is a growth. Checked
     # directly against outro.fit_outro BEFORE building any video (and cross-checked
-    # against edit_plan._apply_outro on synthetic episodes — see the report) so the
-    # expected numbers are derived, not guessed.
+    # against edit_plan._apply_outro on equivalent synthetic episodes during Task 6)
+    # so the expected numbers are derived, not guessed.
     realized = 6.0 + 4.0
     grow_max = (CLIP_DUR - 10.0) - 4.0
     shrink_max = 4.0 - outro.MIN_LAST

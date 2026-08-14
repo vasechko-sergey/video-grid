@@ -248,8 +248,27 @@ refuses a slot that differs from its episode by more than half a beat, and that 
 is load-bearing: it catches a spine fitted to a *different* edit, which used to
 truncate a 7.3s ride into a 4.6s slot in silence. An outro extension of 2.24 beats
 would trip it. So the extension is an explicit, logged adjustment to the last
-episode's duration, made after binding and before `_back_edge_target`, which then
-reports the new total the ordinary way.
+episode's duration, made after binding and before `_back_edge_target`.
+
+**Correction (Task 5b, forced by Task 6's end-to-end proof).** This section
+originally claimed `_back_edge_target` "then reports the new total the ordinary
+way" after the extension. That sentence was wrong, and it was wrong in a way a unit
+test could not catch: Task 6's real-ffmpeg proof of this same design, run against a
+spine with as many slots as episodes (`fit_spine`'s own shape, `target_dur` equal to
+the pre-fit total exactly), found `edl_to_reel` refuse to deliver at all —
+`stop_and_report` on the `length` check. `_back_edge_target`'s over-flow branch
+clamps `target_dur` to the PRE-fit total whenever the realized footage exceeds the
+spine, precisely so that footage the music cannot cover escalates at the reel gate
+instead of reaching `mix`, which refuses a stem longer than its fragment. But an
+outro-fit growth is never that case: `fit_outro` has already bounded its answer by
+`music_dur` (condition 2 of `_candidates`, §5), so the length it returns is one the
+music provably covers. The clamp cannot tell the two apart, so it discarded a length
+the fitter had already proven safe. The fit's length is authoritative: `build_edl`
+replaces `_back_edge_target`'s answer with `fit.reel_dur` whenever `_apply_outro`
+chose a line (`fit.rung != "unchanged"`), and leaves `_back_edge_target`'s own
+under-fill/over-flow answer in charge otherwise. "Ordinary way" undersold this by a
+wide margin — it only held when the spine happened to carry slack past the pre-fit
+total, and no `PACING.json` that `pacing.fit_spine` actually produces carries any.
 
 **Cuts do not move.** Only the last episode's end does. `check_reel`'s beat check
 measures cut times, so it stays green by construction (worst deviation on this run:
