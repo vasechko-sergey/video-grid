@@ -194,6 +194,15 @@ ends exactly on the line and the tail requirement is `TAIL_MIN` alone.
    free: without this bound a one-bar step down can leave a 2.5s closing shot at 0.3s,
    which is not an ending, it is a glitch.
 
+**A ramped closing episode is skipped, not fitted.** Once an episode carries a
+`RampSpec`, `play_dur()` is a non-linear function of `dur` (speed-ramp §2), so the
+caller cannot pay a move by adding `moved` to `dur` — it would need the ramp's own
+arithmetic, and the two would disagree by exactly the amount the ramp stretches. The
+fit reports `unchanged` and logs the reason, with the remedy: move the ramp off the
+last episode. Solving it properly means inverting `ramp_extra` against a new `dur`,
+which speed-ramp already does for `_bind_pacing` — reusing that here is a real option
+and a deferred one (§12), not an oversight.
+
 **The ladder.**
 
 | rung | rule | fade used |
@@ -365,6 +374,8 @@ finished — the rule that exists because four deferrals once left every list.
 - **Whole-spine re-fit across in-point candidates** (§0, §10) — the surviving half of
   the P3 "re-pick `MUSIC.start_offset`" row, now that its back-edge form is measured
   dead. P3, M.
+- **Fit a ramped closing episode** (§5) — invert `ramp_extra` against the new `dur`
+  the way `_bind_pacing` already does, instead of skipping. P3, S.
 
 ---
 

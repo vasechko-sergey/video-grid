@@ -199,6 +199,7 @@ meter beyond 4/4 — the downbeat detector assumes it, so a 3/4 track silently g
 real librosa **section** detection — the outro fitter approximates a phrase boundary with a bar line; segmentation would find the real ones (music-outro-fit §10) ·
 a check that HEARS the delivered audio — the same hole the cinematic look has, now with a second occupant (music-outro-fit §11.5, cinematic-look §11.1) ·
 whole-spine re-fit across in-point candidates — the surviving half of the "re-pick `MUSIC.start_offset`" row below, now that its back-edge form is measured dead (music-outro-fit §0) ·
+fit a RAMPED closing episode instead of skipping it — `play_dur()` is non-linear in `dur` once a ramp is present, so the outro fit refuses to move it; inverting `ramp_extra` the way `_bind_pacing` does would close it (music-outro-fit §5/§12) ·
 adaptive hook length instead of a fixed `HOOK_BEATS` (pacing §10) ·
 per-section mood arc (mood-match §9, pacing §10) ·
 beat as a hard gate, once a cut can be re-trimmed (music-spine §9) ·
