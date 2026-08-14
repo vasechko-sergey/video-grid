@@ -1223,6 +1223,37 @@ def test_a_growing_outro_fit_sets_the_target_that_ships():
     assert edl.target_dur == pytest.approx(sum(e.play_dur() for e in edl.episodes))
 
 
+def test_an_unchanged_outro_fit_does_not_unclamp_an_unrelated_pacing_overflow():
+    """The `fit.rung != "unchanged"` exclusion in build_edl's override guards a real
+    hole, found in code review of Task 5b (not by this test, until now).
+
+    On the "unchanged" rung, OutroFit.reel_dur is just the raw pre-fit `realized`
+    passed straight through _apply_outro's early return (music.bars empty, or no
+    reachable line) — it never passes through outro._candidates' music_dur bound,
+    which only applies on the "gap"/"no-gap" rungs. So an "unchanged" fit's reel_dur
+    carries NO bound against the music at all.
+
+    Here the over-flow has NOTHING to do with the outro fit: reusing the precedented
+    _sel3()/_spine2() shape (test_build_edl_pacing_overflow_tail_unbound,
+    test_build_edl_back_edge_clamps_an_overflow_to_the_fragment) — 3 episodes
+    (durs 2.0/3.0/2.5) against a 2-slot spine (target_dur=5.15) — _bind_pacing
+    leaves the 3rd episode unbound at its own 2.5s, so realized (2.1+3.05+2.5=7.65)
+    over-flows the 5.15s spine independently of music. `_back_edge_target`'s clamp
+    is the ONLY thing standing between that unbound tail and a target_dur the music
+    (bars=() here — no grid at all) cannot be shown to cover. If the guard were
+    `if fit is not None:` (dropping the rung check), `target` would become the
+    unclamped `fit.reel_dur` (7.65) instead of the clamped 5.15 — silently
+    reproducing the exact class of bug Task 5b fixed, through a door the fit itself
+    never opens."""
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(), vocal_spans=())                 # no bar grid at all
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
+    assert edl.outro.rung == "unchanged"
+    assert edl.outro.reel_dur == pytest.approx(7.65)           # unbound tail included, UNCLAMPED
+    assert edl.target_dur == pytest.approx(5.15)                # _back_edge_target's clamp must hold
+
+
 def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):
     seen = {}
     real = edit_plan.build_edl
