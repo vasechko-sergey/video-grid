@@ -236,7 +236,12 @@ binding, never that anyone actually looked).
 **Status:** ✅ LANDED 2026-08-04 (branch `feat/setup-install-all`, design
 `docs/specs/2026-08-04-setup-install-all-design.md`). `demucs` is now a baseline
 install with warn-and-continue (kept out of `requirements.txt` so a torch-wheel
-failure degrades to the librosa proxy instead of aborting the venv);
+failure degrades HERE instead of aborting the venv). **Superseded 2026-08-14:** the
+librosa mix-silence proxy this sentence originally named as the degradation is
+DELETED, and `preflight`'s `demucs` row is `required=True` — a missing demucs now
+BLOCKS every run rather than degrading to anything (music-outro-fit, commit
+`1871c48`). `setup.sh` still continues past a failed install, but it prints an ERROR
+saying the run is blocked, and gating is `verify_runtime`'s job, not setup's.
 `--with-demucs`/`--with-sourcing` removed; the Jamendo key became a non-blocking
 notice; the `any`-lane use-time legal gate preserved untouched. `torchreid` (#1)
 landed 2026-08-04 with the hero re-ID slice, following the same
