@@ -17,12 +17,14 @@ from pathlib import Path
 
 from scripts.lib import provenance
 from scripts.lib import ramp as ramp_mod
+from scripts.lib import outro as outro_mod
 from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
+from scripts.lib.outro import OutroFit
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -231,6 +233,11 @@ class EDL:
     constraints: ConstraintReport | None = None   # design 2026-08-07 §8. None = never
                                                   # evaluated (no CONSTRAINTS.json beside
                                                   # project.json), never "passed"
+    outro: OutroFit | None = None   # design 2026-08-14 §7. None = never fitted (a
+                                    # hand-authored SP1 EDL, or a reel with no music) —
+                                    # never "the ending is fine". Provenance only:
+                                    # nothing downstream reads it, but the reel's length
+                                    # cannot otherwise say which rung chose it.
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
@@ -262,6 +269,9 @@ class EDL:
         if self.constraints is not None and not isinstance(self.constraints, ConstraintReport):
             raise ValueError(f"EDL.constraints must be a ConstraintReport or None, got "
                              f"{type(self.constraints).__name__} — re-run edit_plan build")
+        if self.outro is not None and not isinstance(self.outro, OutroFit):
+            raise ValueError(f"EDL.outro must be an OutroFit or None, got "
+                             f"{type(self.outro).__name__} — re-run edit_plan build")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"EDL.provenance must be an object, got "
                              f"{type(self.provenance).__name__} — re-run edit_plan build "
@@ -300,6 +310,7 @@ class EDL:
                    variety=VarietyReport.from_dict(d["variety"]) if d.get("variety") else None,
                    constraints=(ConstraintReport.from_dict(d["constraints"])
                                 if d.get("constraints") else None),
+                   outro=OutroFit.from_dict(d["outro"]) if d.get("outro") else None,
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -330,7 +341,8 @@ class EDL:
              "look": self.look.to_dict() if self.look is not None else None,
              "target_dur": self.target_dur,
              "variety": self.variety.to_dict() if self.variety is not None else None,
-             "constraints": self.constraints.to_dict() if self.constraints is not None else None}
+             "constraints": self.constraints.to_dict() if self.constraints is not None else None,
+             "outro": self.outro.to_dict() if self.outro is not None else None}
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d
@@ -395,6 +407,18 @@ class EDL:
                 lines += [""] + [f"**Broken:** {v.message}" for v in c.violations]
             else:
                 lines += ["", f"{len(c.rules)} checked, none broken."]
+        if self.outro is not None and self.outro.line is not None:
+            o = self.outro
+            if o.rung == "gap":
+                why = (f"the music resolves on a bar line at {o.line:.2f}s with "
+                       f"{o.tail:.2f}s of vocal-free space after it")
+            else:
+                why = (f"no bar line in range left {outro_mod.TAIL_MIN:.2f}s of "
+                       f"vocal-free space, so the reel ends on the nearest line at "
+                       f"{o.line:.2f}s under a longer fade")
+            lines += ["", "## Music outro", "", f"- **rung:** `{o.rung}` — {why}",
+                      f"- **line** {o.line:.2f}s · **fade** {o.fade:.2f}s · "
+                      f"**reel** {o.reel_dur:.2f}s ({o.moved:+.2f}s)"]
         return "\n".join(lines)
 
 

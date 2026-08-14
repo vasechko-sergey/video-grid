@@ -991,3 +991,37 @@ def test_episode_highlight_red_reaches_the_manifest():
 
 def test_episode_highlight_red_is_omitted_at_its_default():
     assert "highlight_red" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+
+
+# --- music-outro-fit Task 4: EDL.outro (design docs/specs/2026-08-14-music-outro-fit-design.md §7) ---
+
+from scripts.lib.outro import OutroFit
+
+
+def test_edl_outro_round_trips():
+    fit = OutroFit(reel_dur=35.7, line=35.2, fade=0.5, tail=1.5, rung="gap", moved=1.7)
+    e = EDL(episodes=(_ep(),), outro=fit)
+    assert EDL.from_dict(e.to_dict()).outro == fit
+
+
+def test_edl_outro_defaults_to_none():
+    """None = never fitted (a hand-authored SP1 EDL, or a run with no music), never
+    'the ending is fine'."""
+    assert EDL(episodes=(_ep(),)).outro is None
+    assert EDL.from_dict({"episodes": [_ep().to_dict()]}).outro is None
+
+
+def test_edl_outro_must_be_an_outrofit():
+    with pytest.raises(ValueError, match="EDL.outro must be an OutroFit"):
+        EDL(episodes=(_ep(),), outro={"rung": "gap"})
+
+
+def test_markdown_reports_the_rung_and_the_move():
+    fit = OutroFit(reel_dur=35.76, line=35.26, fade=0.5, tail=1.5, rung="gap", moved=1.72)
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "## Music outro" in md
+    assert "`gap`" in md and "35.26s" in md and "1.50s" in md and "+1.72s" in md
+
+
+def test_markdown_has_no_outro_section_when_unfitted():
+    assert "Music outro" not in EDL(episodes=(_ep(),)).to_markdown()
