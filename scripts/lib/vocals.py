@@ -36,6 +36,15 @@ _SPANS: dict[str, tuple[tuple[float, float], ...]] = {}   # per-process memo, ke
                                  # track path: choose_offset and beats.main both want the
                                  # spans inside one beats.py run, and the separation costs
                                  # 46-62s on a 229s track (measured 2026-08-14).
+                                 # TEST HAZARD: this dict outlives any single test. A test
+                                 # that populates _SPANS["t.wav"] and never clears it can
+                                 # silently shadow a LATER test's guard — e.g. a has_demucs
+                                 # stub never gets exercised because the cache answers first,
+                                 # so separate_vocal_energy is never called at all (found
+                                 # 2026-08-14 in test_choose_offset_refuses_without_demucs).
+                                 # tests/lib/conftest.py's autouse _reset_vocal_spans fixture
+                                 # clears this before/after every tests/lib/ test for exactly
+                                 # this reason — a new test here does not need its own clear().
 
 
 def vocal_spans(track: str) -> tuple[tuple[float, float], ...]:
