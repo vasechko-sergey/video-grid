@@ -682,8 +682,14 @@ def test_grow_max_bounds_the_extension():
 
 
 def test_shrink_max_bounds_the_shortening():
-    """Without it a one-bar step down can leave a 2.5s closing shot at 0.3s."""
-    line = 33.0
+    """Without it a one-bar step down can leave a 2.5s closing shot at 0.3s.
+
+    The line is placed so that BOTH rungs are blocked by shrink_max alone and by
+    nothing else: at fade 0.5 the move is -1.50s and at NO_GAP_FADE it is -0.50s, both
+    inside the +/-2.176s band, both past the 0.2s the closing shot can give up. The
+    tail is 2.0s, so the gap rung would otherwise accept it — shrink_max is the only
+    thing saying no, which is what this test is for."""
+    line = 32.5
     fit = outro.fit_outro((line,), ((line, line + 2.0),), reel_dur=34.5, bar_s=BAR,
                           fade=0.5, music_dur=42.0, grow_max=99.0, shrink_max=0.2)
     assert fit.rung == "unchanged"
