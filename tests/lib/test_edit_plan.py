@@ -6,6 +6,7 @@ from scripts.lib import provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
+from scripts.lib.models import MusicSpec
 from scripts.lib.spec import Spec
 
 
@@ -1088,3 +1089,106 @@ def test_write_edit_plan_fills_the_look_from_a_matched_preset(tmp_path):
     assert result["status"] == "written"
     edl = EDL.from_json(str(tmp_path / "EDL.json"))
     assert edl.look == LookSpec(vignette=0.40, fade=1.0)
+
+
+# --- outro fit: edit_plan applies the pure ladder to the last episode (design
+# 2026-08-14-music-outro-fit-design.md §6/§7) -----------------------------------------
+
+
+def _footage_with(*, source, dur, scene_cuts):
+    """A single-clip Footage for the outro-fit tests below — _apply_outro only ever
+    reads clip.source/dur/room_after, never clip.windows, so windows stays empty
+    rather than carrying _clip's unrelated default window. Built on _clip (not a bare
+    FootageClip(...)) to inherit its fps/res, and scene_cuts is coerced to a list:
+    FootageClip.__post_init__ requires a real list — a tuple (including the empty ()
+    a caller reaches for) fails its isinstance check."""
+    return Footage(clips=[_clip(source=source, dur=dur, scene_cuts=list(scene_cuts), windows=[])])
+
+
+def _edl_ep(**kw):
+    """A minimal EDLEpisode with every required field defaulted — none of this file's
+    other episode helpers (_ep/_plain_episode/_ramped_episode) take an arbitrary
+    `start`, which the tests below need to place two episodes back to back."""
+    base = dict(source="a.mp4", start=0.0, dur=1.0, shot_type="wide",
+                composition="center", grid="thirds", layout="fill")
+    base.update(kw)
+    return EDLEpisode(**base)
+
+
+def test_apply_outro_extends_the_last_episode(tmp_path):
+    """The reel grows to line + fade, and the growth lands on the LAST episode's dur."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=4.0)]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=None)
+    assert fit.rung == "gap" and fit.line == 15.0
+    assert fit.reel_dur == pytest.approx(15.5)
+    assert out[-1].dur == pytest.approx(4.0 + 1.5)     # 14.0 realized -> 15.5
+    assert out[0].dur == 10.0                          # only the last one moves
+
+
+def test_apply_outro_refuses_to_move_a_ramped_last_episode(tmp_path, capsys):
+    """A ramp makes play_dur() a non-linear function of dur; moving it would need the
+    ramp arithmetic and is out of this slice's scope. Skipped and logged, not guessed."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=4.0,
+                   # at=2.0, not the design doc's 1.0: the region [at-hold/2-ease,
+                   # at+hold/2+ease] = [0.75, 3.25] must sit inside this 4.0s window
+                   # (EDLEpisode.__post_init__ -> ramp.validate_window enforces it),
+                   # and at=1.0 puts the region's start at -0.25s — before the window
+                   # even begins. Only `at` moved; factor/ease/hold are unchanged.
+                   ramp={"at": 2.0, "factor": 0.5, "ease": 1.0, "hold": 0.5})]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=None)
+    assert fit.rung == "unchanged" and out == eps
+    assert "ramp" in capsys.readouterr().err
+
+
+def test_apply_outro_is_bounded_by_the_closing_shot(capsys):
+    """room_after stops at the next scene cut — the fit must not splice two shots."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=(16.2,))
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=4.0)]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=None)
+    assert fit.rung == "unchanged" and out[-1].dur == 4.0
+
+
+def test_apply_outro_shrink_floor(capsys):
+    """MIN_LAST keeps the closing shot readable."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=1.2)]
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      # bars=(9.0,), not the design doc's (10.2,): at 10.2 the ladder's
+                      # SECOND rung (the NO_GAP_FADE=1.5s retry) lands at 10.2+1.5=11.7,
+                      # which is ABOVE the 11.2s realized total — a grow, not a shrink —
+                      # so shrink_max (0.2s, from last.play_dur() 1.2 - MIN_LAST 1.0)
+                      # never gets asked and the fit lands on rung "no-gap" instead of
+                      # "unchanged". 9.0 keeps BOTH the 0.5s and the 1.5s fade shrinking
+                      # past that 0.2s floor, so the whole ladder empties out.
+                      bars=(9.0,), vocal_spans=((9.0, 11.0),))
+    out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=None)
+    assert fit.rung == "unchanged" and out[-1].dur == pytest.approx(1.2)
+
+
+def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):
+    seen = {}
+    real = edit_plan.build_edl
+    monkeypatch.setattr(edit_plan, "build_edl",
+                        lambda *a, **k: seen.update(k) or real(*a, **k))
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    mj = tmp_path / "MUSIC.json"
+    mj.write_text(json.dumps(MusicSpec("t.wav", 0.0, 2.0, 120.0,
+                                       (0.0, 0.5, 1.0, 1.5), (0.3,), 2.0).to_dict()))
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), music=str(mj))
+    assert isinstance(seen["music"], MusicSpec)

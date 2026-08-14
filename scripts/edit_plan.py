@@ -17,12 +17,12 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import gridfit, moodpreset, ramp as ramp_mod, safezones
+from scripts.lib import gridfit, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
 from scripts.lib.look import LookSpec
-from scripts.lib.models import HERO_RULES, RampSpec
+from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine
 from scripts.lib.project import ProjectConfig
@@ -40,6 +40,10 @@ PAN_PRESENCE_MAX = 0.10   # fraction of a window's samples holding >= 1 person. 
                           # about what "incidental" means, not a measurement.
 
 _BACK_EDGE_TOL = 1e-6      # a realized total within this of the spine target "fills the spine"
+
+_MIX_DEFAULT_FADE = 0.5    # mix._FADE — the bookend a reel gets when no look is authored.
+                           # Duplicated rather than imported: edit_plan must not import a
+                           # driver, and this slice does not touch mix.py at all (§1).
 
 
 def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: float = 0.0,
@@ -266,6 +270,60 @@ def _back_edge_target(episodes: list, spine: Spine) -> float:
     return min(realized, spine.target_dur)
 
 
+def _apply_outro(episodes: list, footage, music, fade: float,
+                 brief_len: float | None) -> tuple[list, "outro.OutroFit"]:
+    """Move the LAST episode's end so the music resolves on a bar line (design §6).
+
+    The reel's length is the one number this whole slice decides: `line + fade`, which
+    starts mix's existing bookend exactly on the line. Only the closing episode moves —
+    every cut before it keeps the beat it was fitted to, so check_reel's beat gate stays
+    green by construction.
+
+    Applied AFTER _bind_pacing and never through a slot. That guard refuses a slot more
+    than half a beat from its episode and exists to catch a spine fitted to a DIFFERENT
+    edit; an outro extension is typically two beats and would trip it (§6).
+
+    A ramped closing episode is skipped: `play_dur()` is a non-linear function of `dur`
+    once a ramp is present, so growing it would need the ramp arithmetic. Skipped and
+    logged, never guessed."""
+    if not episodes or not music.bars:
+        return episodes, outro.OutroFit(reel_dur=sum(e.play_dur() for e in episodes),
+                                        line=None, fade=fade, tail=0.0,
+                                        rung="unchanged", moved=0.0)
+    last = episodes[-1]
+    realized = sum(e.play_dur() for e in episodes)
+    unchanged = outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
+                               rung="unchanged", moved=0.0)
+    if last.ramp is not None:
+        _log(f"outro: the closing episode carries a ramp — its played length is not its "
+             f"source length, so the outro fit is skipped and the reel stays "
+             f"{realized:.2f}s. Move the ramp off the last episode to fit the ending.")
+        return episodes, unchanged
+    clip = next((c for c in footage.clips if c.source == last.source), None)
+    if clip is None:
+        _log(f"outro: {last.source!r} is not in FOOTAGE — cannot measure the closing "
+             f"shot's room, so the reel stays {realized:.2f}s")
+        return episodes, unchanged
+    grow_max = max(0.0, clip.room_after(last.start) - last.dur)
+    shrink_max = max(0.0, last.play_dur() - outro.MIN_LAST)
+    fit = outro.fit_outro(music.bars, music.vocal_spans, realized,
+                          outro.bar_seconds(music.tempo), fade,
+                          music_dur=music.duration, grow_max=grow_max,
+                          shrink_max=shrink_max, brief_len=brief_len)
+    if fit.rung == "unchanged":
+        _log(f"outro: no bar line within one bar of {realized:.2f}s that the closing shot "
+             f"can reach (grow {grow_max:.2f}s / shrink {shrink_max:.2f}s) — the reel "
+             f"keeps its footage-derived length and the music will end mid-phrase")
+        return episodes, fit
+    out = list(episodes)
+    out[-1] = dataclasses.replace(last, dur=last.dur + fit.moved)
+    brief = "" if brief_len is None else f", {fit.reel_dur - brief_len:+.2f}s vs the brief's {brief_len:.1f}s"
+    _log(f"outro: rung {fit.rung} — the music resolves on the bar line at {fit.line:.2f}s "
+         f"with {fit.tail:.2f}s of vocal-free space after it; the reel moves "
+         f"{fit.moved:+.2f}s to {fit.reel_dur:.2f}s (fade {fit.fade:.2f}s){brief}")
+    return out, fit
+
+
 def _available_census(footage: Footage, aspect: tuple[int, int]) -> dict[str, int]:
     """Every window the footage offers, bucketed in DELIVERED geometry (design §6).
 
@@ -309,7 +367,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None, *, aspect: tuple[int, int] | None = None,
               preset: MoodPreset | None = None,
               rules: Constraints | None = None, platform: str = "",
-              look: LookSpec | None = None) -> EDL:
+              look: LookSpec | None = None, music: MusicSpec | None = None,
+              brief_len: float | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -359,7 +418,16 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     decision, so the check is `is not None`, never truthiness — {} is falsy, and a naive
     `if sel_look:` would silently fall through to `look` on exactly that spelling.
     Omitting `look` (passing None) with no selection.json override leaves EDL.look at
-    None — the same "never authored" a hand-authored SP1 EDL.json carries."""
+    None — the same "never authored" a hand-authored SP1 EDL.json carries.
+
+    `music` (design 2026-08-14 §6/§7, keyword-only) is MUSIC.json's MusicSpec — supplying
+    it lets `_apply_outro` move the LAST episode's end so the reel's length resolves on a
+    bar line, but ONLY when `pacing` is also supplied: the fit runs after `_bind_pacing`
+    and reads the fade `look` resolves to (never through a slot — see `_apply_outro`'s own
+    docstring). Omitting `music` (the default) leaves EDL.outro at None, same as a
+    hand-authored SP1 EDL. `brief_len` is SPEC.length_s, the tie-breaker `outro.fit_outro`
+    prefers when two bar lines are equally reachable; None (no brief) breaks ties toward
+    the smaller move instead."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
@@ -388,9 +456,22 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         ep = window_to_episode(clip, fw, start_offset=start_offset, **ed)
         episodes.append(ep)
         placed.append(_placed(clip, ep))
+    # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over
+    # the preset), because it is the number mix uses and therefore the number the outro
+    # fit must add to the bar line. No look at all -> mix's own default.
+    sel_look = selection.get("look")
+    resolved_look = LookSpec.from_dict(sel_look) if sel_look is not None else look
+    resolved_fade = resolved_look.fade if resolved_look is not None else _MIX_DEFAULT_FADE
     target = selection.get("target_dur")
+    fit = None
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
+        # AFTER the binding and BEFORE the back-edge target: _bind_pacing's half-beat
+        # guard must keep guarding what it was built for, and _back_edge_target must
+        # report the length the outro fit actually chose (design §6).
+        if music is not None:
+            episodes, fit = _apply_outro(episodes, footage, music,
+                                         resolved_fade, brief_len)
         target = _back_edge_target(episodes, pacing)   # pacing owns a paced reel's length (§4)
     cap = selection.get("cap")
     variety = None
@@ -402,18 +483,14 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     # reads — but evaluating the FINAL episode list keeps the report describing the
     # EDL that is actually written.
     cons = check_constraints(rules, tuple(placed), footage) if rules is not None else None
-    # selection.json wins over the preset's default, and an authored {"vignette": 0,
-    # "fade": 0} is a DECISION, not an absence — `is not None`, never truthiness.
-    sel_look = selection.get("look")
-    resolved_look = LookSpec.from_dict(sel_look) if sel_look is not None else look
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
                cap=cap if cap is not None else 3, platform=platform, look=resolved_look,
-               target_dur=target, variety=variety, constraints=cons)
+               target_dur=target, variety=variety, constraints=cons, outro=fit)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
                     pacing_path: str | None = None, cast: str | None = None,
-                    spec: str | None = None) -> dict:
+                    spec: str | None = None, music: str | None = None) -> dict:
     """Author EDL.json + EDL.md from FOOTAGE + a selection, gated by the project's
     manifest preflight. Nothing is written when preflight fails — a bad EDL never
     lands as a half-valid artifact. cast is cast.json from intake — required if any
@@ -436,7 +513,12 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     rules; present means enforced on every invocation, which is what makes a stated
     rule survive a re-cut. A broken rule stops here with its own reason
     `constraint-violation`, before the variety gate and before preflight, and there is
-    no waiver: the rule is the user's, not the agent's to overrule."""
+    no waiver: the rule is the user's, not the agent's to overrule.
+
+    `music` (design 2026-08-14 §7, optional) is MUSIC.json — supplying it, together with
+    `--pacing`, fits the reel's end to a bar line with a vocal-free tail after it (see
+    build_edl's `music` paragraph and `_apply_outro`). Absent, EDL.outro stays None and
+    the reel's length is whatever the footage/pacing already decided, unchanged."""
     footage = Footage.from_json(footage_path)
     try:
         selection = json.loads(Path(selection_path).read_text())
@@ -495,9 +577,15 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
              "to a brief-less run's output); deliver renders no vignette/fade and mix "
              "keeps its own default 0.5s audio bookend")
     pacing = Spine.from_json(pacing_path) if pacing_path else None
+    ms = MusicSpec.from_json(music) if music else None
+    if ms is not None and not ms.bars:
+        _log(f"outro: {music} has no bar grid (beats found fewer than 8 beats, or the "
+             f"file predates the 2026-08-14 fields) — re-run beats to regenerate it; "
+             f"the reel keeps its footage-derived length")
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
-                    platform=plat, look=fallback_look)
+                    platform=plat, look=fallback_look,
+                    music=ms, brief_len=sp.length_s if sp else None)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is
@@ -546,8 +634,11 @@ def main() -> None:
     b.add_argument("--cast", help="cast.json from intake — required if any episode pins a cast name (§6.1a)")
     b.add_argument("--spec", help="SPEC.json — its mood picks the shot-mix preset "
                                   "(optional; without it the 'balanced' preset applies)")
+    b.add_argument("--music", help="MUSIC.json — fit the reel's end to a bar line "
+                                   "with a vocal-free tail (optional, §5.5/backlog #2)")
     a = ap.parse_args()
-    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing, cast=a.cast, spec=a.spec)
+    result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing,
+                             cast=a.cast, spec=a.spec, music=a.music)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "written" else 1)
 
