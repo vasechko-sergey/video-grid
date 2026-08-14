@@ -809,7 +809,7 @@ def test_reel_manifest_from_dict_rejects_non_dict_episode_entry():
         m.ReelManifest.from_dict({"episodes": ["ep0.json"], "target_dur": 3.0})
 
 
-def _music(**kw):
+def _music_dict(**kw):
     d = dict(track="t.m4a", start_offset=0.0, duration=10.0, tempo=120.0,
              beats=(0.0, 0.5, 1.0), energy=(0.1, 0.2), energy_hz=2.0)
     d.update(kw)
@@ -817,7 +817,7 @@ def _music(**kw):
 
 
 def test_musicspec_roundtrips():
-    spec = m.MusicSpec.from_dict(_music())
+    spec = m.MusicSpec.from_dict(_music_dict())
     assert m.MusicSpec.from_dict(spec.to_dict()) == spec
     assert spec.beats == (0.0, 0.5, 1.0) and spec.duration == 10.0
 
@@ -838,7 +838,7 @@ def test_musicspec_roundtrips():
 ])
 def test_musicspec_rejects_with_remedy(kw, msg):
     with pytest.raises(ValueError, match=msg):
-        m.MusicSpec.from_dict(_music(**kw))
+        m.MusicSpec.from_dict(_music_dict(**kw))
 
 
 def test_reelmanifest_accepts_music_path_and_defaults_none():
@@ -1760,3 +1760,54 @@ def test_rampspec_refuses_a_non_object():
 def test_rampspec_names_every_missing_key_at_once():
     with pytest.raises(ValueError, match="missing ease, hold"):
         m.RampSpec.from_dict({"at": 2.0, "factor": 0.4})
+
+
+def _music(**kw):
+    base = dict(track="t.wav", start_offset=0.0, duration=10.0, tempo=120.0,
+                beats=(0.0, 0.5, 1.0, 1.5), energy=(0.1,), energy_hz=2.0)
+    base.update(kw)
+    return m.MusicSpec(**base)
+
+
+def test_musicspec_bars_and_spans_default_empty():
+    """An artifact written before this slice still loads — the outro fit reads the
+    empty grid as 'unchanged', which is honest, rather than raising."""
+    m_spec = _music()
+    assert m_spec.bars == () and m_spec.vocal_spans == ()
+
+
+def test_musicspec_bars_round_trip():
+    m_spec = _music(bars=[0.0, 2.0], vocal_spans=[[1.0, 1.8]])
+    assert m_spec.bars == (0.0, 2.0)
+    assert m_spec.vocal_spans == ((1.0, 1.8),)
+    assert m.MusicSpec.from_dict(m_spec.to_dict()) == m_spec
+
+
+def test_musicspec_bars_must_be_ascending():
+    with pytest.raises(ValueError, match="ascending"):
+        _music(bars=[2.0, 1.0])
+
+
+def test_musicspec_bars_must_be_inside_the_window():
+    with pytest.raises(ValueError, match=r"outside \[0, 10.0\]"):
+        _music(bars=[0.0, 11.0])
+
+
+def test_musicspec_span_must_be_a_pair():
+    with pytest.raises(ValueError, match="two numbers"):
+        _music(vocal_spans=[[1.0]])
+
+
+def test_musicspec_span_must_be_forward():
+    with pytest.raises(ValueError, match="start before its end"):
+        _music(vocal_spans=[[2.0, 1.0]])
+
+
+def test_musicspec_spans_must_be_ascending_and_disjoint():
+    with pytest.raises(ValueError, match="ascending, non-overlapping"):
+        _music(vocal_spans=[[1.0, 3.0], [2.0, 4.0]])
+
+
+def test_musicspec_span_must_be_inside_the_window():
+    with pytest.raises(ValueError, match=r"outside \[0, 10.0\]"):
+        _music(vocal_spans=[[9.0, 12.0]])

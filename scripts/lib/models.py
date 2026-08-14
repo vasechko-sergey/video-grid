@@ -1103,6 +1103,20 @@ class MusicSpec:
     beats: tuple[float, ...]
     energy: tuple[float, ...]
     energy_hz: float
+    bars: tuple[float, ...] = ()          # downbeat times, stem-relative (design
+                                          # 2026-08-14 §2/§3). Derived from `beats` by
+                                          # the bass-band phase test, NOT from onset
+                                          # strength, which carries no downbeat signal
+                                          # (§3: all four phases within 1%). () = the
+                                          # producer could not tell — fewer than 8 beats,
+                                          # or an artifact written before this slice.
+                                          # Assumes 4/4 (§11.3).
+    vocal_spans: tuple[tuple[float, float], ...] = ()
+                                          # (start, end) spans with NO vocal, stem-
+                                          # relative and clipped to [0, duration]. From
+                                          # the demucs stem at ~23 ms resolution, never
+                                          # from `energy`: a 2 Hz curve has 0.5s bins and
+                                          # the outro rule asks about 0.5s (§8.1).
 
     def __post_init__(self) -> None:
         if not (isinstance(self.track, str) and self.track):
@@ -1141,11 +1155,53 @@ class MusicSpec:
             raise ValueError("MusicSpec.energy is empty — analyze() produced no RMS curve")
         if not isinstance(self.energy_hz, (int, float)) or self.energy_hz <= 0:
             raise ValueError(f"MusicSpec.energy_hz must be a positive sample rate, got {self.energy_hz!r}")
+        if not isinstance(self.bars, (tuple, list)):
+            raise ValueError("MusicSpec.bars must be a list of stem-relative downbeat "
+                             "times (seconds) — re-run beats to regenerate MUSIC.json")
+        try:
+            self.bars = tuple(float(b) for b in self.bars)
+        except (TypeError, ValueError):
+            raise ValueError("MusicSpec.bars must contain only numeric times — a "
+                             "non-numeric entry means the MUSIC.json is malformed") from None
+        if list(self.bars) != sorted(self.bars):
+            raise ValueError("MusicSpec.bars must be ascending — beats emits them in time order")
+        for b in self.bars:
+            if not (0.0 <= b <= self.duration):
+                raise ValueError(f"MusicSpec.bars has {b} outside [0, {self.duration}] — bars "
+                                 "are stem-relative; a stray value means the window is wrong")
+        if not isinstance(self.vocal_spans, (tuple, list)):
+            raise ValueError("MusicSpec.vocal_spans must be a list of [start, end] pairs — "
+                             "re-run beats to regenerate MUSIC.json")
+        spans: list[tuple[float, float]] = []
+        prev_end = -1.0
+        for s in self.vocal_spans:
+            if not isinstance(s, (tuple, list)) or len(s) != 2:
+                raise ValueError(f"MusicSpec.vocal_spans entry {s!r} must be two numbers "
+                                 "[start, end] in stem-relative seconds")
+            try:
+                a, b = float(s[0]), float(s[1])
+            except (TypeError, ValueError):
+                raise ValueError(f"MusicSpec.vocal_spans entry {s!r} must be numeric") from None
+            if a >= b:
+                raise ValueError(f"MusicSpec.vocal_spans entry {s!r} must start before its end")
+            if not (0.0 <= a and b <= self.duration):
+                raise ValueError(f"MusicSpec.vocal_spans entry {s!r} is outside "
+                                 f"[0, {self.duration}] — spans are stem-relative and clipped "
+                                 "to the analysed window by outro.window_spans")
+            if a < prev_end:
+                raise ValueError("MusicSpec.vocal_spans must be ascending, non-overlapping — "
+                                 "offset.vocal_gaps emits them that way; overlap means the "
+                                 "MUSIC.json was hand-edited")
+            prev_end = b
+            spans.append((a, b))
+        self.vocal_spans = tuple(spans)
 
     def to_dict(self) -> dict:
         return {"track": self.track, "start_offset": self.start_offset, "duration": self.duration,
                 "tempo": self.tempo, "beats": list(self.beats),
-                "energy": list(self.energy), "energy_hz": self.energy_hz}
+                "energy": list(self.energy), "energy_hz": self.energy_hz,
+                "bars": list(self.bars),
+                "vocal_spans": [list(s) for s in self.vocal_spans]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "MusicSpec":
@@ -1163,7 +1219,8 @@ class MusicSpec:
         return cls(track=d.get("track", ""), start_offset=d.get("start_offset", 0.0),
                    duration=d.get("duration", 0.0), tempo=d.get("tempo", 0.0),
                    beats=d.get("beats", ()), energy=d.get("energy", ()),
-                   energy_hz=d.get("energy_hz", 0.0))
+                   energy_hz=d.get("energy_hz", 0.0),
+                   bars=d.get("bars", ()), vocal_spans=d.get("vocal_spans", ()))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "MusicSpec":
