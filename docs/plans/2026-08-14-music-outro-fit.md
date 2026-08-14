@@ -707,10 +707,11 @@ def test_the_brief_breaks_the_tie():
 
 
 def test_fade_zero_needs_only_tail_min():
+    """A brief with no look leaves fade at mix's default, but an authored fade of 0 is
+    legal: the reel then ends exactly on the line and TAIL_MIN alone is the bar."""
     line = 20.0
-    fit = outro.fit_outro((line,), ((line, line + TAIL := 0.6),), reel_dur=20.3,
-                          bar_s=BAR, fade=0.0, music_dur=42.0,
-                          grow_max=99.0, shrink_max=99.0)
+    fit = outro.fit_outro((line,), ((line, line + 0.6),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
     assert fit.rung == "gap" and fit.reel_dur == line and fit.fade == 0.0
 
 
@@ -730,16 +731,6 @@ def test_non_positive_bar_is_refused():
         outro.fit_outro(BARS, (), reel_dur=34.0, bar_s=0.0, fade=0.5, music_dur=42.0,
                         grow_max=1.0, shrink_max=1.0)
 ```
-
-> **Note for the implementer:** `test_fade_zero_needs_only_tail_min` above uses a
-> walrus inside a tuple literal, which is legal but unreadable. Write it as:
-> ```python
-> def test_fade_zero_needs_only_tail_min():
->     line = 20.0
->     fit = outro.fit_outro((line,), ((line, line + 0.6),), reel_dur=20.3, bar_s=BAR,
->                           fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
->     assert fit.rung == "gap" and fit.reel_dur == line and fit.fade == 0.0
-> ```
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1009,22 +1000,6 @@ In `from_dict`, in the `cls(...)` call after `constraints=`:
 - [ ] **Step 5: Add the markdown section**
 
 In `to_markdown`, immediately before the final `return "\n".join(lines)`:
-
-```python
-        if self.outro is not None and self.outro.line is not None:
-            o = self.outro
-            lines += ["", "## Music outro", "",
-                      f"- **rung:** `{o.rung}` — the music resolves on a bar line at "
-                      f"{o.line:.2f}s with {o.tail:.2f}s of vocal-free space after it"
-                      if o.rung == "gap" else
-                      f"- **rung:** `{o.rung}` — no bar line in range left "
-                      f"{outro_mod.TAIL_MIN:.2f}s of vocal-free space, so the reel ends "
-                      f"on the nearest line at {o.line:.2f}s under a longer fade",
-                      f"- **line** {o.line:.2f}s · **fade** {o.fade:.2f}s · "
-                      f"**reel** {o.reel_dur:.2f}s ({o.moved:+.2f}s)"]
-```
-
-That conditional expression inside a list literal is hard to read. Write it as:
 
 ```python
         if self.outro is not None and self.outro.line is not None:
