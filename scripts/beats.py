@@ -2,17 +2,23 @@
 (tempo + reel-relative beat grid + coarse RMS energy). librosa imports lazily
 (§5.5 — heavy, keep test collection fast). CLI writes MUSIC.json."""
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
 
 import numpy as np
 
-from scripts.lib import mood, offset, vocals
+from scripts.lib import mood, offset, outro, vocals
 from scripts.lib.models import MusicSpec
 
 _HOP = offset.HOP                                     # kept as a module name for analyze() below
 _downsample = offset.downsample                       # relocated to scripts/lib/offset.py
+
+_LOW_HZ = 150.0                # kick band edge — measured 2026-08-14 §3
+_BAR_WIN = 0.10                # +/- seconds sampled around each beat
+_MIN_BEATS_FOR_BARS = 8        # below this a per-phase mean is one or two samples
+_NFFT = 2048
 
 
 def analyze(track: str, start_offset: float = 0.0, duration: float | None = None) -> MusicSpec:
@@ -28,8 +34,43 @@ def analyze(track: str, start_offset: float = 0.0, duration: float | None = None
                   if 0.0 <= t <= dur)
     rms = librosa.feature.rms(y=y, hop_length=_HOP)[0]
     energy, energy_hz = _downsample(rms, sr, _HOP, target_hz=2.0)   # ~2 Hz coarse curve — small MUSIC.json, B4-ready (design §3)
+    phase = _downbeat_phase(y, sr, beats)
+    bars = tuple(beats[phase::outro.BAR_BEATS]) if phase is not None else ()
     return MusicSpec(track=track, start_offset=float(start_offset), duration=dur,
-                     tempo=tempo, beats=beats, energy=tuple(energy), energy_hz=energy_hz)
+                     tempo=tempo, beats=beats, energy=tuple(energy), energy_hz=energy_hz,
+                     bars=bars)
+
+
+def _downbeat_phase(y, sr: int, beat_times) -> int | None:
+    """Which of the four beat phases carries the bar's kick — the downbeat.
+
+    Peak STFT energy below _LOW_HZ in a +/-_BAR_WIN window around each beat, averaged
+    per phase; the loudest phase wins. Measured on a real track (design §3): phases
+    scored 48.01 / 54.65 / 42.03 / 79.31, a 1.887 max/min ratio, and the winner's beat
+    was the loudest of its own bar in 14 of 18 bars against 25% by chance.
+
+    ONSET STRENGTH DOES NOT WORK HERE — the same track scored 4.313 / 4.285 / 4.267 /
+    4.309, all four phases inside 1%. A detector built on novelty picks a phase out of
+    noise and looks like it works. Do not 'simplify' this to librosa.onset.
+
+    None when there are fewer than _MIN_BEATS_FOR_BARS beats. Assumes 4/4 (§11.3).
+    `beat_times` are relative to the START of `y`, which is what analyze() passes."""
+    import librosa                                    # lazy import: heavy optional dep (librosa)
+    if len(beat_times) < _MIN_BEATS_FOR_BARS:
+        return None
+    spec = np.abs(librosa.stft(y, n_fft=_NFFT, hop_length=_HOP))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=_NFFT)
+    low = spec[freqs < _LOW_HZ].sum(axis=0)
+    hz = sr / _HOP
+
+    def peak(t: float) -> float:
+        a, b = int((t - _BAR_WIN) * hz), int((t + _BAR_WIN) * hz)
+        seg = low[max(a, 0):b]
+        return float(seg.max()) if len(seg) else 0.0
+
+    vals = [peak(float(t)) for t in beat_times]
+    means = [float(np.mean(vals[p::outro.BAR_BEATS])) for p in range(outro.BAR_BEATS)]
+    return int(np.argmax(means))
 
 
 def _log(msg: str) -> None:
@@ -104,6 +145,12 @@ def main() -> None:
     else:
         start = a.start_offset
     ms = analyze(a.track, start, a.duration)
+    # Always measured, with or without --auto-start: vocal_spans is part of MUSIC.json's
+    # contract now, and the outro fit cannot run without it. When --auto-start already
+    # ran, vocals.vocal_spans is memoized and this call is free (design §4).
+    ms = dataclasses.replace(
+        ms, vocal_spans=outro.window_spans(vocals.vocal_spans(a.track),
+                                           ms.start_offset, ms.duration))
     Path(a.out).write_text(json.dumps(ms.to_dict(), indent=2))
     print(a.out)
 

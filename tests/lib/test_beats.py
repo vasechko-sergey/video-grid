@@ -71,6 +71,9 @@ def test_cli_auto_start_computes_offset(monkeypatch, tmp_path):
                          beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0)
 
     monkeypatch.setattr(beats, "analyze", fake_analyze)
+    # main() now always measures vocal_spans too (Step 7); stub it so this test, which
+    # is only about the --auto-start offset wiring, doesn't drive a real demucs call.
+    monkeypatch.setattr(vocals, "vocal_spans", lambda t: ())
     out = tmp_path / "M.json"
     monkeypatch.setattr("sys.argv", ["beats", "t.wav", "--auto-start", "--duration", "10",
                                      "--out", str(out)])
@@ -115,3 +118,71 @@ def test_mood_features_silent_track_guards_zero_division(monkeypatch):
     monkeypatch.setattr(librosa.feature, "rms", lambda *a, **k: np.array([[0.0]]))
     v = beats.mood_features("silent.wav")     # peak=0 → guarded, no ZeroDivisionError
     assert v.energy == 0.0
+
+
+def test_downbeat_phase_finds_the_bass_phase(monkeypatch):
+    """§3 — the kick marks the downbeat. Synthesize a 4/4 grid whose every 4th beat
+    (phase 2 here) carries a 60 Hz thump and the rest carry a 1 kHz tick, and the
+    detector must return 2. Onset strength cannot do this (measured: all four phases
+    within 1%), which is why the band is the bass band."""
+    sr = 22050
+    period = 0.5
+    times = [i * period for i in range(16)]
+    y = np.zeros(int(sr * (times[-1] + period)), dtype=np.float32)
+    t = np.arange(int(sr * 0.12)) / sr
+    thump = (0.9 * np.sin(2 * np.pi * 60 * t)).astype(np.float32)
+    tick = (0.9 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+    for i, bt in enumerate(times):
+        a = int(bt * sr)
+        pulse = thump if i % 4 == 2 else tick
+        y[a:a + len(pulse)] += pulse
+    assert beats._downbeat_phase(y, sr, times) == 2
+
+
+def test_downbeat_phase_none_when_too_few_beats():
+    """A phase argmax over one or two samples per group is noise; () is the honest
+    answer and the outro fit reads it as the 'unchanged' rung."""
+    assert beats._downbeat_phase(np.zeros(1000, dtype=np.float32), 22050,
+                                 [0.0, 0.5, 1.0, 1.5]) is None
+
+
+def test_analyze_fills_bars_from_the_detected_phase(monkeypatch):
+    import librosa
+    times = [i * 0.5 for i in range(16)]
+    monkeypatch.setattr(librosa, "load",
+                        lambda *a, **k: (np.zeros(int(8.0 * 22050), dtype=np.float32), 22050))
+    monkeypatch.setattr(librosa.beat, "beat_track",
+                        lambda *a, **k: (np.array([120.0]), np.arange(16)))
+    monkeypatch.setattr(librosa, "frames_to_time", lambda f, **k: np.array(times))
+    monkeypatch.setattr(librosa.feature, "rms", lambda *a, **k: np.array([[0.1]]))
+    monkeypatch.setattr(beats, "_downbeat_phase", lambda *a, **k: 1)
+    ms = beats.analyze("t.wav")
+    assert ms.bars == (0.5, 2.5, 4.5, 6.5)
+
+
+def test_analyze_leaves_bars_empty_when_the_phase_is_unknown(monkeypatch):
+    import librosa
+    monkeypatch.setattr(librosa, "load",
+                        lambda *a, **k: (np.zeros(int(8.0 * 22050), dtype=np.float32), 22050))
+    monkeypatch.setattr(librosa.beat, "beat_track",
+                        lambda *a, **k: (np.array([120.0]), np.arange(4)))
+    monkeypatch.setattr(librosa, "frames_to_time",
+                        lambda f, **k: np.array([0.0, 0.5, 1.0, 1.5]))
+    monkeypatch.setattr(librosa.feature, "rms", lambda *a, **k: np.array([[0.1]]))
+    monkeypatch.setattr(beats, "_downbeat_phase", lambda *a, **k: None)
+    assert beats.analyze("t.wav").bars == ()
+
+
+def test_cli_fills_vocal_spans_windowed_to_the_stem(monkeypatch, tmp_path):
+    """The spans MusicSpec stores are stem-relative and clipped to the window; the
+    sensor measures track-relative. main() is where the one conversion happens."""
+    monkeypatch.setattr(vocals, "vocal_spans", lambda t: ((3.0, 4.0), (19.0, 30.0)))
+    monkeypatch.setattr(beats, "analyze", lambda track, start, duration: MusicSpec(
+        track=track, start_offset=start, duration=10.0, tempo=120.0,
+        beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0, bars=(0.0,)))
+    out = tmp_path / "M.json"
+    monkeypatch.setattr("sys.argv", ["beats", "t.wav", "--start-offset", "12",
+                                     "--duration", "10", "--out", str(out)])
+    beats.main()
+    ms = MusicSpec.from_json(out)
+    assert ms.vocal_spans == ((7.0, 10.0),)     # (19,30) clipped; (3,4) is before the window
