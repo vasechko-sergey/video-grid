@@ -83,7 +83,8 @@ _Last updated: 2026-08-14._
   sentence named as false rather than quietly reworded.
 
   **The mutation battery (Task 7) found one more coverage hole than the plan
-  anticipated — four rows total.** The brief listed 12 rows and flagged 2 as
+  anticipated — five in total, across 14 rows.** The brief listed 12 rows and
+  flagged 2 as
   certain to stay green (call-order swap, hardcoded fade) plus 2 new rows
   (dropping the `TAIL_MIN` floor, widening the `fit.rung != "unchanged"` guard).
   All 4 were real: the call-order swap needed a new integration-shaped test
@@ -100,15 +101,21 @@ _Last updated: 2026-08-14._
   tie (tail == need) passes under `>=` and `>` alike, so only a tail landing
   bit-exactly on `need - _EPS` tells the two operators apart. Closed with a test
   constructed the same way the source computes that boundary (not a contrived
-  coincidence). All 14 rows (12 + 2 mandated + 1 found in execution) confirmed
+  coincidence). All 14 rows (the brief's 12 plus the 2 mandated additions; the
+  fifth hole was inside row 1, not a fifteenth row) confirmed
   RED under the mutation and GREEN after an exact revert (`git diff` empty against
   `HEAD` for every touched production file). Two typing gaps against
   coding-standards.md's "every module-level function is fully typed" were closed
   in the same pass (`beats._downbeat_phase`'s `y`/`beat_times`,
-  `edit_plan._apply_outro`'s `footage`/`music`/return type) — full details, the
-  per-row table, and the deferred-minor triage are in the task's own report
-  (`.superpowers/sdd/2026-08-14-music-outro-fit/task-7-report.md`, not checked
-  into the repo).
+  `edit_plan._apply_outro`'s `footage`/`music`/return type).
+
+  **Two battery items were triaged as leave-as-is, with reasons** (recorded here
+  rather than behind a pointer): row 8's real-demucs smoke test stayed green under
+  its mutation — the *unit* test is what gives that row its RED, and the
+  integration test's own docstring disclaims semantic precision; and
+  `EDL.from_dict`'s truthy `outro` check matches its true peers `variety` and
+  `constraints`, so aligning it with `look`'s `is not None` alone would have
+  introduced a NEW inconsistency rather than removed one.
 
   **Five ffmpeg-stage scripts are untouched across the ENTIRE slice** —
   `mix.py`, `deliver.py`, `check_reel.py`, `build_reel.py`, `edl_to_reel.py`, all
@@ -161,7 +168,66 @@ _Last updated: 2026-08-14._
   missing autouse `_SPANS`-reset fixture for `tests/integration/` — no
   conftest.py exists there yet, and creating one is a bigger structural change
   than this pass's scope, safe today only by the tmp_path convention) are named
-  with reasoning in the task report rather than fixed reflexively.
+  with reasoning rather than fixed reflexively.
+
+  **Final whole-branch review — four Important findings, all fixed in one pass
+  (2026-08-14).** The review verified the central claim and that the feature is
+  reachable in a real run; these are what it found beside that.
+
+  **I-1 · a fitted EDL breaks pacing's round trip.** `pacing.py` fits its spine to
+  the durations it reads out of `EDL.json`, so after a fit it refits a length no
+  footage re-projection can reproduce, and re-applying deadlocks in
+  `_bind_pacing` — whose remedy ("re-run pacing against the current EDL.json")
+  looped. Measured with the real `write_edit_plan`/`build_pacing` drivers on a
+  120 BPM fixture: no fit `[6.0, 4.0]` → refit `[6.0, 4.0]` → binds; with fit
+  `[6.0, 4.70]` → refit `[6.0, 4.70]` → raises. **Taken as the documentation fix,
+  and the escape was VERIFIED before being documented**: rebuild without
+  `--pacing` (durs return to `[6.0, 4.0]`), re-run pacing, re-apply — the fit
+  lands again at `[6.0, 4.70]`, target 10.70. `_bind_pacing`'s refusal now names
+  that sequence; the `pacing`, `edit-plan` and `reel-review` skills warn about it;
+  design §11.8 records it and P2 carries the structural fix.
+
+  **I-2 · the target override unclamped an over-flow the fit did not cause.** The
+  guard was `fit.rung != "unchanged"` alone, which cannot tell the fit's own
+  (music-bounded) growth from a pre-existing over-flow — so a stale `PACING.json`'s
+  excess shipped silently whenever a bar line happened to be reachable, while
+  `_back_edge_target` logged that it "escalates at the reel gate" and nothing did.
+  Tightened to also require `pre_fit_realized <= pacing.target_dur +
+  _BACK_EDGE_TOL` (equal by construction on the ordinary no-slack spine, which is
+  why the tolerance matters), and the declined override now logs. New test
+  proven RED before the fix (`assert 8.0 == 5.15`) and GREEN after.
+
+  **I-3 · `EDL.md` contradicted the design and the skill.** The section was gated
+  on `outro.line is not None`, so the `unchanged` rung — one of the three the
+  edit-plan skill tells the agent to read this section for — rendered **nothing**;
+  and the section never showed the distance from `SPEC.length_s`, which design §6
+  requires in the only durable artifact. Both closed: `OutroFit` gained
+  `brief_len` (round-tripping, defaulted `None` so every existing construction and
+  every pre-existing artifact still loads), all three rungs render, and an absent
+  brief is stated rather than omitted. No existing golden markdown moved.
+
+  **I-4 · seven docs still advertised the deleted librosa mix-silence fallback.**
+  Swept and corrected: `CLAUDE.md`'s two registry rows (always-loaded context) and
+  its verify-runtime row, `pipeline-map.md` §5.5, `development-workflow.md`'s
+  baseline-install bullet, and `fixes-backlog.md`'s finding #2 — which still read
+  `NEEDS INVESTIGATION` and still carried the in-point hypothesis the
+  investigation measured wrong, on the same day `backlog.md` declared it fixed.
+  Five design docs got **amendment notes, not rewrites** (start-offset
+  intelligence, verify-runtime, the montage skillset spec, setup-install-all,
+  ffmpeg-baseline) plus a one-line correction in music-sourcing.
+
+  **Cheap minors in the same pass.** `--music` without `--pacing` now says on
+  stderr that it fitted nothing (it was silently ignored); the mutation-battery
+  arithmetic above is corrected (five coverage holes across 14 rows, not "four
+  rows total" and not 12+2+1=14); the gitignored `task-7-report.md` pointer is
+  replaced by the facts it pointed at; `backlog.md`'s superseded P3
+  `MUSIC.start_offset` row is marked measured-dead instead of still recommending
+  itself; and #2's ✅ row now carries §11.5 (nothing hears the reel) and §11.6
+  (`no-gap` ships a known-imperfect ending), which the skill already admitted and
+  the queue did not. Design §11 gained §11.9 (the fade lands on the line only to
+  the master's render accuracy) and §11.10 (`build_reel`'s within-band shortfall
+  absorb replaces the fitted target with the master's real length and reports
+  nothing about the outro) — both queued in P2/P3.
 
 - **demucs becomes REQUIRED, and `choose_offset`'s mix-silence proxy is deleted
   (backlog #2, first step) DONE (2026-08-14)** — branch `feat/demucs-required`.

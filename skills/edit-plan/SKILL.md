@@ -260,6 +260,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    resolve that tension silently, so read it rather than assume the length still
    matches the brief.
 
+   **A fitted EDL is not re-fittable in place.** Once a fit has landed, the last
+   episode's `dur` is a length no re-projection from `FOOTAGE.json` can reproduce,
+   so re-running **pacing** against that `EDL.json` and applying the result
+   deadlocks: this build re-derives the episode from the footage, finds the slot
+   more than half a beat away and refuses — leaving `EDL.json` at the fitted length,
+   which the next pacing run reads again. The refusal message names the way out; it
+   is: rebuild here **without** `--pacing`/`--music` (footage-projected lengths
+   return), re-run pacing against that EDL, then re-apply with `--pacing --music`.
+   Same order whenever a **reel-review** finding routes you back to `pacing`.
+
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
    the registry the preflight resolves that name against. Pass `--spec` whenever
    `SPEC.json` exists — it carries two separate things onto the EDL. `SPEC.mood`

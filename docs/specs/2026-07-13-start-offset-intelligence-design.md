@@ -1,5 +1,19 @@
 # Start-Offset Intelligence — Design Spec (§5.5 sub-slice)
 
+> **Amended 2026-08-14 (commit `1871c48`) — read the whole document through this.**
+> Two of this design's decisions are reversed and are NOT how the code works today:
+> **(3) demucs is opt-in** and **(2) the mix-energy silence proxy is the fallback**.
+> demucs is now a **required** runtime component (`verify_runtime` blocks a run without
+> it, `setup.sh --with-demucs` no longer exists), and the **librosa mix-silence proxy is
+> deleted outright**. The reason is one this design did not anticipate: the proxy did
+> not *fail* when demucs was absent — it *answered wrong*. On the 2026-08-03 run's own
+> track it found **0** vocal-free spans where demucs finds **2**, so `best_offset`
+> returned 0.000 for every plausible duration and the "never cut into words" guarantee
+> this whole slice exists to provide was silently off. A blind sensor that returns a
+> number is worse than no sensor. Every `--with-demucs`, "opt-in", "fallback" and
+> "mix-proxy" mention below is history. The same vocal-span sensor now also answers the
+> **out**-point — see `2026-08-14-music-outro-fit-design.md`.
+
 The slice that makes a reel's music **in-point** a decision, not a hand-typed
 number. Today `MusicSpec.start_offset` is passed by the agent (`beats
 --start-offset S`) or defaults to `0.0`; this adds `choose_offset(track,

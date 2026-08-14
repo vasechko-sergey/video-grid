@@ -1,5 +1,15 @@
 # Setup installs everything — no optional flags
 
+> **Amended 2026-08-14 (commit `1871c48`).** This design keeps demucs *installed at
+> baseline but degradable* — "absent → `choose_offset` uses the librosa mix-silence
+> proxy", warn-and-continue. That half is reversed: **the proxy is deleted and demucs
+> is required.** Warn-and-continue at *install* time still stands (a platform with no
+> torch wheel must not abort the venv), but there is no longer anything to degrade to —
+> `verify_runtime` blocks the run instead. The proxy went because it did not fail, it
+> answered wrong: 0 vocal-free spans against demucs's 2 on the same track, so the
+> in-point guarantee was silently off. Read every "falls back to the proxy" below as
+> history.
+
 **Design — 2026-08-04.** Backlog [#4](../fixes-backlog.md). `setup.sh` should
 install the *whole* runtime, not a lean base plus opt-in extras behind flags. A
 capability the pipeline is meant to have must be present after one `bash

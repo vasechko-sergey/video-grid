@@ -237,7 +237,9 @@ class FetchedTrack:        # scripts/lib/fetch.py
   `config/sourcing.env` that `setup.sh` writes and `catalog.py` loads) is an optional
   **upgrade** to the richer catalog — absent just means the ccMixter fallback, never an
   error.
-- **`setup.sh --with-sourcing`** (opt-in, mirrors `--with-demucs`/`--with-fonts`)
+- **`setup.sh --with-sourcing`** (opt-in, mirrors `--with-demucs`/`--with-fonts` — all
+  three flags were folded into baseline on 2026-08-04 and no longer exist; demucs went
+  further and became *required* on 2026-08-14)
   installs `yt-dlp` **and** runs an interactive free-lane step: with no
   `JAMENDO_CLIENT_ID` configured it asks — **[1]** paste a client_id (persisted to
   gitignored `config/sourcing.env`), **[2]** open the Jamendo devportal to create one,

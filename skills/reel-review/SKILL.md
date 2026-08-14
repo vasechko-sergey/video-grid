@@ -81,7 +81,7 @@ reel-review builds **no fixer** — each `route` names a stage that already exis
 | route | re-run | typical finding |
 |-------|--------|-----------------|
 | `edit-plan` | edit-plan SKILL (edit `selection.json`, rebuild `EDL`) | weak hook / weak ending / missing EDL element / classic↔trend lean |
-| `pacing` | pacing SKILL then `edit_plan build --pacing` | cuts drift off the energy spine |
+| `pacing` | pacing SKILL then `edit_plan build --pacing` — but if `EDL.json` carries an outro fit, rebuild WITHOUT `--pacing`/`--music` first, else the re-fit deadlocks (pacing SKILL step 1) | cuts drift off the energy spine |
 | `music` | music-match / music-source SKILL | mood mismatch / wrong track |
 | `reprocess` | process_episode on one episode (grade/layout redo) | one episode reads wrong vs the reel |
 | `titles` | titles SKILL | hook/ending wants on-screen text |

@@ -273,6 +273,14 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 > vocal stem, librosa mix-silence proxy fallback), via `beats --auto-start`.
 > Mood-match and autonomous sourcing (B3) remain deferred. See
 > `docs/specs/2026-07-13-start-offset-intelligence-design.md`.
+>
+> **Amended 2026-08-14 (commit `1871c48`):** demucs is no longer opt-in and the
+> **librosa mix-silence proxy fallback is deleted**. It was removed because it did
+> not fail on a missing sensor — it answered *wrong* (0 vocal-free spans against
+> demucs's 2 on the same track), and a wrong in-point is silent all the way to the
+> delivered reel. demucs is now a required runtime component that `verify_runtime`
+> blocks on. The same vocal-span sensor also answers the **out**-point since the
+> music-outro-fit slice (`docs/specs/2026-08-14-music-outro-fit-design.md`).
 
 > **Built (2026-07-14, mood-match):** the §5.5 mood-match (local lane) now ships —
 > `scripts/lib/mood.py` scores a track's energy/brightness/pace (loudness-robust)

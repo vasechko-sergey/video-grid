@@ -46,10 +46,15 @@ _Last updated: 2026-07-20._
   font is missing.
 - **All installed at baseline (no opt-in flags):** demucs (torch, 2–3 GB; the
   phrase-aware music in/out-point) installs with **warn-and-continue** — a platform
-  with no torch wheel degrades to the librosa mix-silence proxy rather than aborting
-  the venv (which is why it stays OUT of `requirements.txt`); yt-dlp (the `any`
-  music-source lane) ships in `requirements.txt`. A Jamendo `client_id` is an
-  optional non-blocking notice (`config/sourcing.env`), not a flag.
+  with no torch wheel leaves the venv built rather than aborting it (which is why
+  demucs stays OUT of `requirements.txt`). **It does not degrade to anything:** since
+  2026-08-14 (`1871c48`) demucs is a **required** runtime component and the librosa
+  mix-silence proxy is deleted, so a `setup.sh` that warned here produces a runtime
+  `verify_runtime` **blocks** until demucs is present. The proxy was removed because
+  it did not fail — it answered *wrong* (0 vocal-free spans against demucs's 2 on the
+  same track), and a wrong music in-point is silent. yt-dlp (the `any` music-source
+  lane) ships in `requirements.txt`. A Jamendo `client_id` is an optional
+  non-blocking notice (`config/sourcing.env`), not a flag.
 - `setup.sh` is **macOS/homebrew only for now** (cross-platform auto-install is a
   TODO), and warns-and-continues without brew so the venv still gets built. The
   runtime code is already portable — `scripts/lib/fonts.py` `FONT_CANDIDATES`

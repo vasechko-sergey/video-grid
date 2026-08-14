@@ -374,6 +374,45 @@ that the result sounds good.
 turning a closing shot into a flash; a real minimum would come from how long a
 viewer needs to read a shot, which nobody here has measured.
 
+**§11.8 A fitted EDL breaks pacing's round trip** *(final review I-1, measured)*.
+`scripts/pacing.py` fits its spine to `[ep.play_dur() for ep in edl.episodes]`, read
+from `EDL.json`. After a fit the closing episode's `dur` is a number footage
+re-projection cannot reproduce, so the round trip stops being a fixed point.
+Measured on a 120 BPM fixture with the real `pacing.fit_spine` and the real
+`write_edit_plan`/`build_pacing` drivers (clip `a.mp4`, windows 6.0s + 4.0s, one bar
+line at 10.2s):
+
+| pass | EDL durs | refit spine | re-apply |
+|---|---|---|---|
+| no fit (pre-slice) | `[6.0, 4.0]` | `[6.0, 4.0]` | binds ✓ |
+| with fit | `[6.0, 4.70]` | `[6.0, 4.70]` | **raises**: `slot 1 is 4.70s against a 4.00s episode — further apart than the 0.25s snap allows` |
+
+The refusal is in `_bind_pacing`, so dropping `--music` does not avoid it. **The
+escape is verified**: rebuild the EDL *without* `--pacing` (durs return to
+`[6.0, 4.0]`), re-run pacing against that (`[6.0, 4.0]`, target 10.0), then re-apply
+with `--pacing --music` — the fit lands again at `[6.0, 4.70]`, target 10.70. That
+sequence is now named in `_bind_pacing`'s own refusal message and in the **pacing**,
+**edit-plan** and **reel-review** skills. It is a documentation fix, not a structural
+one: making `pacing` read footage-projected durs (or subtract the recorded
+`outro.moved`) is its own slice, queued in §12.
+
+**§11.9 The fade lands on the line only to the master's render accuracy.** The whole
+design turns on `reel_dur = line + fade`, but `mix` is handed
+`check_reel._probe_dur(master)` — the length of the master that ffmpeg actually
+produced, not the `target_dur` this fitter chose. Frame quantization and concat
+rounding put those a fraction of a frame apart, so the fade starts a fraction of a
+frame off the line. Nothing measures the residual.
+
+**§11.10 `build_reel`'s shortfall absorb silently defeats the fit.** When the
+assembled master comes out short of `target_dur` but inside
+`ReelCheckSpec.length_retime_max`, `build_reel` replaces the target with the master's
+real length (`spec = dataclasses.replace(spec, target_dur=action.retime)`) and
+re-checks. That is right for the case it was built for — the reel *is* that long —
+but it also means a reel whose length was chosen as `line + fade` can ship at a
+different length entirely, with the fade no longer starting on the line. `build_reel`
+logs the re-time; nothing anywhere connects it back to the outro fit, and `EDL.outro`
+still records the length that was *asked* for. Queued in §12.
+
 ---
 
 ## §12 Deferred → backlog
@@ -395,6 +434,16 @@ finished — the rule that exists because four deferrals once left every list.
   dead. P3, M.
 - **Fit a ramped closing episode** (§5) — invert `ramp_extra` against the new `dur`
   the way `_bind_pacing` already does, instead of skipping. P3, S.
+- **Make pacing's round trip a fixed point again** (§11.8) — `scripts/pacing.py`
+  should fit against footage-projected durs (or subtract the recorded `outro.moved`)
+  so a fitted EDL can be re-fitted in place instead of needing the rebuild-without-
+  `--pacing` detour. P2, M.
+- **Reconcile `build_reel`'s length re-time with the fit** (§11.10) — a within-band
+  absorb replaces the fitted `line + fade` target with the master's real length and
+  reports nothing about the outro; at minimum say so, at best re-derive. P2, S.
+- **Measure the fade's real distance from the line** (§11.9) — the delivered stem's
+  fade start against `EDL.outro.line`, so the central claim has a residual instead of
+  an argument. P3, S.
 
 ---
 

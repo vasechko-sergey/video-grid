@@ -57,7 +57,18 @@ catches a broken opencv independently.
 
 | key | check | needed only for | remedy |
 |-----|-------|-----------------|--------|
-| `demucs` | demucs importable | phrase-aware music in/out-point (§5.5); absent → librosa mix-silence proxy | `bash setup.sh` |
+| ~~`demucs`~~ | demucs importable | phrase-aware music in/out-point (§5.5); absent → librosa mix-silence proxy | `bash setup.sh` |
+
+> **Superseded 2026-08-14 (commit `1871c48`, demucs-required).** This row is no longer
+> advisory and its "absent → librosa mix-silence proxy" justification no longer holds:
+> **the proxy is deleted and demucs is a REQUIRED check**, so `verify_runtime` now exits
+> non-zero and `using-montage` stops when it is missing. The reason is the one this
+> design could not see: the proxy did not *fail* on a missing sensor, it *answered
+> wrong* — 0 vocal-free spans against demucs's 2 on the same track — and a wrong music
+> in-point is silent all the way to the delivered reel. A platform with no torch wheel
+> is now a blocked platform, deliberately, rather than a quietly degraded one. `reid`
+> is the only advisory row left. The paragraph below is kept as written for the
+> 2026-08-04 history; read it as superseded.
 
 `demucs` is the only runtime module not in `requirements.txt`, so it stays the one
 **importable** advisory row. **Superseded 2026-08-04 (setup-install-all):** it is no
@@ -197,8 +208,10 @@ up.
 Replace the prose "Ensure env (one-time install)" with an explicit gate: after
 resolving `$VG`, run `"$VG" scripts.verify_runtime`; a non-zero exit (a required
 failure) → surface the report's failures + remedies and **stop** (do not proceed to
-project-init); advisory gaps → name them (e.g. "demucs absent — music in-point
-uses the librosa proxy") and proceed; green → step 1. The existing launcher
+project-init); advisory gaps → name them and proceed; green → step 1. (The example
+here was "demucs absent — music in-point uses the librosa proxy". **Superseded
+2026-08-14:** demucs is a *required* check and the proxy is gone, so that gap now
+takes the stop branch, not this one.) The existing launcher
 preamble (root record) stays as the pre-venv gate ahead of this.
 
 ## 7. Invariants

@@ -312,7 +312,9 @@ anyway: four small casks, and without them the titles stage fails loud — which
 the "install a second thing later with a flag" this slice removes.
 
 `--with-demucs` stays opt-in. torch is 2–3 GB; that is a real cost axis, not a missing
-library.
+library. **Superseded twice:** folded into baseline on 2026-08-04 (setup-install-all),
+then made **required** on 2026-08-14 (`1871c48`) when the librosa mix-silence fallback
+was deleted for answering wrong rather than failing. The flag no longer exists.
 
 `--with-sourcing` keeps the Jamendo key prompt at install time. The **rights/responsibility
 choice moves to per-run** — a user can move between jurisdictions, so a decision frozen at

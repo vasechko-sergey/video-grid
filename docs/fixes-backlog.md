@@ -129,28 +129,47 @@ cast→hero-pin slice). One spec + one plan when promoted.
 
 ## 2. Music is cut in the middle of a phrase
 
-**Status:** NEEDS INVESTIGATION.
+**Status:** ✅ LANDED 2026-08-14 — design
+`docs/specs/2026-08-14-music-outro-fit-design.md` + plan
+`docs/plans/2026-08-14-music-outro-fit.md`. See
+[backlog.md's P1 row](backlog.md) for the queue's view.
 
 **Symptom (reported):** the music ends abruptly mid-phrase in the delivered reel.
 
-**Hypothesis (triage only — not confirmed):** the music **start** is already
-placed in a vocal pause (`offset --auto-start`, start-offset intelligence). The
-**end** is the likely culprit: the reel length comes from the edit (scenario-first
-pacing — episode lengths derive from footage), and the music is trimmed to that
-length in `mix.py`; the reel length is not obliged to land on a musical-phrase
-boundary, so the tail is cut mid-phrase (any fade-out then lands mid-phrase too).
+**Confirmed root cause — structural, not a bug in any one stage.** `MUSIC.json`
+recorded tempo, a flat beat list and a 2 Hz energy curve: no downbeats, no bars, no
+sections. `mix.py` trims the music to the master's probed length. So **no stage was
+able** to end on a musical boundary. Measured on the 2026-08-03 run's own artifacts:
+reel 34.051s, music out-point at track 80.044s — **0.956s past a bar line**, with the
+song at 6.1× the mix envelope's gap threshold at that instant. The bookend fade fired
+correctly; it ducks the chop, it does not resolve the phrase.
 
-**Where to look:** [`scripts/mix.py`](../scripts/mix.py) (stem length/fade),
-[`scripts/lib/offset.py`](../scripts/lib/offset.py) (start only today),
-[`scripts/beats.py`](../scripts/beats.py) / `MUSIC.json` (phrase/section
-structure — sections were deferred in the music-spine slice),
-`reel_orchestration` length gates. Confirm with systematic-debugging on a real
-`MUSIC.json` + delivered reel before designing.
+**The triage hypothesis above was wrong on its first clause** and is corrected here
+rather than left standing. It assumed `--auto-start` had placed the in-point in a
+vocal pause. It had not: run `best_offset` on that track and it returns **0.000** for
+every plausible duration (25/30/33/34/42/45) while `MUSIC.json` records 46.0 — the
+in-point was hand-set, and the sensor behind that 0.000 was blind. That blindness was
+fixed separately the same day (`1871c48`: demucs became required and the librosa
+mix-silence proxy was deleted — it did not fail, it answered wrong). The second
+clause, about the **end**, was right.
 
-**Possible directions (unvetted):** snap the reel end to the nearest phrase
-boundary; or a musically-aware fade-out that begins at a phrase boundary; or
-extend/trim the last episode to reach a phrase line. Separate subsystem from #1
-(music-spine, not hero) — its own investigate → design.
+**What shipped.** The reel's length becomes `bar_line + fade`, so `mix`'s existing
+`afade` starts exactly on the line and **no ffmpeg stage changed at all**.
+`MusicSpec` gained `bars` (detected from the **bass band** — onset strength carries no
+downbeat signal: all four phases within 1%) and `vocal_spans` (from the demucs stem at
+~23 ms, never from the 2 Hz energy curve, which cannot answer a 0.5s question).
+`lib/outro.fit_outro` is a pure `gap` → `no-gap` → `unchanged` ladder searching ±one
+bar, bounded by the closing shot's own room; `edit_plan` applies it to the last
+episode after pacing binds.
+
+**Measured dead, so nobody re-derives it:** moving `MUSIC.start_offset` at the
+back-edge cannot fix this. The shift this reel needed was 2.235 beats, and only a
+whole-*beat* shift keeps the existing cuts on the grid — two beats leaves the end
+0.128s off the line, and a whole-*bar* shift maps the grid onto itself and changes
+nothing.
+
+**What it does not claim:** no automated check hears the delivered reel, and the
+`no-gap` rung ships a known-imperfect ending by design. See the design's §11.
 
 ---
 
@@ -228,16 +247,20 @@ flags. If a capability cannot be installed on this system, print a message about
 it but **keep working** (setup does not abort; the pipeline runs on with that
 capability absent/degraded).
 
-**Orienting notes (not a design — for the later triage):**
-- Current optional flags: `--with-demucs` (vocal separation for start-offset),
+**Orienting notes (not a design — for the later triage).** These describe the state
+**as of the 2026-08-03 feedback**, before the fix above landed; every flag named here
+is gone today.
+- Optional flags at the time: `--with-demucs` (vocal separation for start-offset),
   `--with-sourcing` (yt-dlp + the music-sourcing network lanes). Already folded
   into baseline earlier: `--with-vidstab`, `--with-fonts`.
 - Desired: baseline installs all (including `torchreid` from #1); **per-component
   best-effort** — a component that fails to install warns and continues, not a
   `set -e` abort that kills the whole setup.
-- `verify_runtime` already has a required/advisory split (demucs is advisory) —
-  the "warn and continue" model fits; extend it so every now-baseline component
-  reports its own gap with a remedy.
+- `verify_runtime` already has a required/advisory split (demucs was advisory
+  then; **it became required on 2026-08-14**, `1871c48`, when the librosa
+  mix-silence fallback was deleted for answering wrong) — the "warn and continue"
+  model fits; extend it so every now-baseline component reports its own gap with a
+  remedy.
 - **Nuance to preserve:** `--with-sourcing`'s `any` lane (yt-dlp) is
   copyrighted/legally-gray and opt-in ("user's responsibility"). Installing the
   *tool* by default is fine; the legal responsibility gate at **use** time
