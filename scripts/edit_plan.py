@@ -200,6 +200,10 @@ def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> F
 
 _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
 
+_TEMPO_TOL = 0.5      # BPM. A spine copies MusicSpec.tempo straight through, so an honest
+                      # pair is bit-identical; half a BPM is far below any musically
+                      # meaningful difference and far above float round-trip noise.
+
 
 def _bind_pacing(episodes: list, spine: Spine) -> list:
     """Apply a FITTED spine: episode i's `play_dur()` — the PLAYED length, literally
@@ -479,6 +483,17 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         _log("outro: --music was supplied without --pacing — the outro fit runs only "
              "after the pacing binding, so NOTHING was fitted and EDL.outro stays null. "
              "Run pacing first, then re-run this with --pacing AND --music")
+    if music is not None and pacing is not None and abs(pacing.tempo - music.tempo) > _TEMPO_TOL:
+        # The one live defect behind "the length figures do not reconcile" (design
+        # 2026-08-15 §2). _bind_pacing's half-beat guard is a DURATION guard: it fires only
+        # once a stale spine is actually bound, and it never says which track the spine
+        # came from. The 2026-08-03 run shipped a 140.625 BPM spine against a 110.294 BPM
+        # reel and no stage objected.
+        raise ValueError(
+            f"pacing: the spine was fitted at {pacing.tempo:.3f} BPM but this MUSIC.json is "
+            f"{music.tempo:.3f} BPM — further apart than the {_TEMPO_TOL} BPM two reads of "
+            f"one track can differ by, so this PACING.json belongs to a DIFFERENT track. "
+            f"Re-run pacing against this MUSIC.json before binding")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
         # Measured BEFORE the fit moves anything: the override below must be able to tell

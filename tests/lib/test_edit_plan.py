@@ -1302,6 +1302,37 @@ def test_music_without_pacing_says_it_did_nothing(capsys):
     assert "--music was supplied without --pacing" in capsys.readouterr().err
 
 
+def test_build_edl_refuses_a_spine_fitted_to_a_different_track():
+    # The 2026-08-03 run: PACING.json fitted at 140.625 BPM against a 110.294 BPM
+    # MUSIC.json — nine hours older, and belonging to the track that was swapped out.
+    # _bind_pacing's half-beat guard is a DURATION guard: it fires only once a stale
+    # spine is bound, and it never says which track the spine came from (design
+    # 2026-08-15 §2.2). _spine2() is 120.0 BPM.
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=90.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0)
+    with pytest.raises(ValueError, match="DIFFERENT track"):
+        edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
+
+
+def test_build_edl_accepts_a_spine_and_music_from_the_same_track():
+    # The paired proof. pacing.py copies MusicSpec.tempo straight into the spine, so an
+    # honest pair is bit-identical and must still build — without this, a blanket
+    # "--pacing with --music always raises" would satisfy the test above.
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0)
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
+    assert edl.episodes[0].beat_slot == 0
+
+
+def test_build_edl_tolerates_a_sub_half_bpm_tempo_difference():
+    # _TEMPO_TOL exists so a re-analysis or a hand-typed tempo does not trip the guard.
+    # 0.4 BPM is inside it; the 30 BPM case above proves the guard is not merely absent.
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.4,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0)
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
+    assert edl.episodes[0].beat_slot == 0
+
+
 def test_the_fit_carries_the_briefs_length_onto_the_edl(capsys):
     """brief_len reaches OutroFit, so EDL.md — not only the stderr line — can state
     the distance from SPEC.length_s (design §6; final review I-3)."""
