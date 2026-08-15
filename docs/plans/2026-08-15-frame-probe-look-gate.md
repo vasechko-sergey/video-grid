@@ -58,7 +58,7 @@ pytest. Scripts run as modules (`pythonpath = .`); the interpreter is `.venv/bin
 |---|---|
 | `scripts/reframe.py` | **modified** — `RenderPlan` + `plan_render()` + `RenderPlan.with_tail()`; `reframe()` becomes plan + x264 sink + sidecars |
 | `scripts/process_episode.py` | **modified** — `build_reframe_spec()` extracted, so the probe uses the one Manifest→ReframeSpec map |
-| `scripts/lib/lookcheck.py` | **new, pure** — the gate's constants, `frame_delta`, `corner_centre`, `LookFinding`, `evaluate` |
+| `scripts/lib/lookcheck.py` | **new, pure** — the gate's constants, `corner_centre`, `LookFinding`, `evaluate` |
 | `scripts/lib/lint.py` | **modified** — a seventh `check_argv` check: `select` ahead of `fps=` in one chain |
 | `scripts/probe.py` | **new** — the driver: `probe_grade` (half A) and `probe_look` (a manual re-run of half B) |
 | `scripts/deliver.py` | **modified** — `_verify_look` after the encode, before the attestation |
@@ -399,10 +399,19 @@ EOF
 **Interfaces:**
 - Produces: `LookFinding` (frozen dataclass: `check: str`, `status: str`,
   `detail: str`, `measured: float`, `expected: float`, plus `to_dict()`),
-  `frame_delta(a, b) -> float`, `corner_centre(f) -> tuple[float, float]`,
+  `corner_centre(f) -> tuple[float, float]`,
   `evaluate(mid_master, mid_delivered, first_master, first_delivered, *, vignette=0.0, fade=0.0, titles=False) -> list[LookFinding]`,
-  and the constants `LOOK_NOISE_MAX`, `VIGNETTE_MIN_FRACTION`, `FADE_BLACK_MAX`,
-  `FADE_SOURCE_MIN`, `VIGNETTE_FLOOR`, `BOX_DIV`.
+  and the constants `VIGNETTE_MIN_FRACTION`, `FADE_BLACK_MAX`, `FADE_SOURCE_MIN`,
+  `VIGNETTE_FLOOR`, `BOX_DIV`.
+
+> **Design amended mid-slice — read design §7.1.** An earlier draft carried a third,
+> general "rendered" check (any declared effect that left every sampled frame within
+> encode noise of the master did not render) plus a `LOOK_NOISE_MAX` constant and a
+> `frame_delta` helper. Measurement killed it: a **fade-only** delivery sits
+> 0.639/0.726/0.780 codes from its master — identical to a look-less one, because the
+> three interior samples fall outside both ramps — so the check would refuse every
+> fade-only reel; and a 0.10 vignette clears the 2.0 floor by 3%. Neither the check,
+> the constant, nor the helper exists. Do not add them back.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -435,20 +444,25 @@ def test_nothing_declared_measures_nothing():
 
 def test_a_declared_vignette_that_changed_no_pixels_fails():
     same = [_flat(100), _flat(100), _flat(100)]
-    out = lookcheck.evaluate(same, list(same), None, None, vignette=0.3)
-    rendered = [f for f in out if f.check == "rendered"]
-    assert len(rendered) == 1
-    assert rendered[0].status == "fail"
-    assert rendered[0].measured == pytest.approx(0.0)
+    by = {f.check: f for f in lookcheck.evaluate(same, list(same), None, None,
+                                                 vignette=0.3)}
+    assert by["vignette"].status == "fail"
+    assert by["vignette"].measured == pytest.approx(0.0)
 
 
 def test_a_rendered_vignette_passes():
     master = [_flat(100), _flat(100), _flat(100)]
     delivered = [_corners_dark(100, 0.3) for _ in range(3)]
-    out = lookcheck.evaluate(master, delivered, None, None, vignette=0.3)
-    by = {f.check: f for f in out}
-    assert by["rendered"].status == "pass"
+    by = {f.check: f for f in lookcheck.evaluate(master, delivered, None, None,
+                                                 vignette=0.3)}
     assert by["vignette"].status == "pass"
+
+
+def test_titles_alone_report_not_checked_rather_than_nothing():
+    """Titles have no check this slice (design §11). Returning [] would read as "the
+    gate looked and was satisfied"; a not-checked finding records the absence."""
+    out = lookcheck.evaluate([_flat(100)] * 3, [_flat(100)] * 3, None, None, titles=True)
+    assert [(f.check, f.status) for f in out] == [("titles", "not-checked")]
 
 
 def test_a_vignette_too_shallow_to_be_the_declared_one_fails():
@@ -522,10 +536,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Measured 2026-08-15 on a deliver-shaped encode of a heavy-grain master (the worst
-# case for x264 at crf 18): two encodes of the SAME picture sit 0.638 / 0.727 / 0.779
-# codes apart. 2.0 leaves ~2.6x headroom over the worst of those.
-LOOK_NOISE_MAX = 2.0
 # Measured: a declared vignette of 0.10 / 0.30 / 0.60 dropped the corner-over-centre
 # ratio by 0.0844 / 0.2576 / 0.5209 — 0.84 to 0.87 of what was asked for. Requiring
 # half the declared depth leaves a 1.7x margin below the worst measured case, which is
@@ -569,19 +579,13 @@ def _rgb(f: object, what: str) -> np.ndarray:
     return f
 
 
-def frame_delta(a: np.ndarray, b: np.ndarray) -> float:
-    """Mean absolute per-pixel, per-channel difference between two frames.
-
-    The catch-all sensor: two encodes of the same picture sit under LOOK_NOISE_MAX
-    apart, so a declared effect that leaves this at the floor did not render at all —
-    whatever the effect was, and even where its own specific measurement has a
-    not-checked arm."""
-    _rgb(a, "a"), _rgb(b, "b")
+def _same_shape(a: np.ndarray, b: np.ndarray) -> None:
+    """Refuse a delivery that is not the master's geometry — the two checks below both
+    compare paired frames, and a resized delivery would compare different pictures."""
     if a.shape != b.shape:
         raise ValueError(f"lookcheck: frames must be the same shape to compare, got "
                          f"{a.shape} and {b.shape} — the delivery was resized relative "
                          f"to the master, which no ExportProfile should do")
-    return float(np.abs(a.astype(np.int16) - b.astype(np.int16)).mean())
 
 
 def corner_centre(f: np.ndarray) -> tuple[float, float]:
@@ -612,18 +616,19 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
         raise ValueError(f"lookcheck.evaluate needs the same number of master and "
                          f"delivered frames, got {len(mid_master)} and "
                          f"{len(mid_delivered)}")
+    for m, d in zip(mid_master, mid_delivered):
+        _same_shape(_rgb(m, "a master frame"), _rgb(d, "a delivered frame"))
     out: list[LookFinding] = []
 
-    worst = max(frame_delta(m, d) for m, d in zip(mid_master, mid_delivered))
-    out.append(LookFinding(
-        check="rendered",
-        status="pass" if worst > LOOK_NOISE_MAX else "fail",
-        detail=(f"the delivered picture differs from the master by {worst:.3f} codes "
-                f"at most, at or under the {LOOK_NOISE_MAX} two encodes of the SAME "
-                f"picture differ by — the declared look did not reach the filter chain"
-                if worst <= LOOK_NOISE_MAX else
-                f"the delivered picture differs from the master by {worst:.3f} codes"),
-        measured=worst, expected=LOOK_NOISE_MAX))
+    if titles and not (vignette or fade):
+        # Titles have no check this slice (design §11). Returning nothing would read as
+        # "the gate looked and was satisfied" — this records the absence instead.
+        out.append(LookFinding(
+            check="titles", status="not-checked",
+            detail="titles were declared and this slice has no check for them: locating "
+                   "a title's band needs titles.y_exprs plus the safe-zone table (design "
+                   "§11). Nothing here says whether the text rendered",
+            measured=0.0, expected=0.0))
 
     if vignette:
         mid = len(mid_master) // 2
@@ -697,15 +702,23 @@ fade and the titles into a file no gate reads. This is the sensor for that gap
 (design 2026-08-15 §7): delivered frames against the master's at the same
 timestamps.
 
-Three checks, each with a not-checked arm where the source cannot
-discriminate — a reel that already opens on black, corners that are already
-dark. not-checked is a real outcome, not a synonym for pass.
+Two checks, each with a not-checked arm where the source cannot discriminate —
+a reel that already opens on black, corners that are already dark. not-checked
+is a real outcome, not a synonym for pass, and titles get one of their own
+because this slice has no check for them.
 
 Constants calibrated on a real deliver-shaped encode of a heavy-grain master:
-noise floor 0.638/0.727/0.779 codes -> LOOK_NOISE_MAX 2.0; a declared vignette
-of 0.10/0.30/0.60 drops the corner ratio 0.0844/0.2576/0.5209, i.e. 0.84-0.87x
-of what was asked, so the floor is half the declared depth; a 0.5s fade took a
-75.28-mean first frame to exactly 0.00 -> FADE_BLACK_MAX 2.0.
+a declared vignette of 0.10/0.30/0.60 drops the corner ratio
+0.0844/0.2576/0.5209, i.e. 0.84-0.87x of what was asked, so the floor is half
+the declared depth; a 0.5s fade took a 75.28-mean first frame to exactly 0.00
+-> FADE_BLACK_MAX 2.0.
+
+A third, general "did anything change at all" check was designed and then
+deleted by its own calibration (design §7.1): a fade-only delivery sits
+0.639/0.726/0.780 codes from its master — indistinguishable from a look-less
+one, because the three interior samples fall outside both ramps — so it would
+have refused every fade-only reel, and a 0.10 vignette cleared its floor by
+3%. Each effect's own check carries the margin instead.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -1246,7 +1259,7 @@ EOF
 Append to the deliver test file:
 
 ```python
-def _finding(check="rendered", status="fail"):
+def _finding(check="vignette", status="fail"):
     return lookcheck.LookFinding(check=check, status=status, detail="d",
                                  measured=0.4, expected=2.0)
 
@@ -1541,7 +1554,6 @@ def test_a_delivered_vignette_and_fade_pass_the_gate(tmp_path):
                               rep, look=LookSpec(vignette=0.3, fade=0.5))
     att = json.loads(Path(provenance.attest_path(out)).read_text())
     by = {c["check"]: c for c in att["look_checks"]}
-    assert by["rendered"]["status"] == "pass"
     assert by["vignette"]["status"] == "pass"
     assert by["fade"]["status"] == "pass"
 
@@ -1628,7 +1640,7 @@ test that catches it before moving on, and say so in the commit body.
 | 3 | `_refuse_on_drift`: delete the path comparison, keep the meta one | `test_the_probe_refuses_a_path_that_no_longer_matches_the_render` |
 | 4 | `regrade`: `out = dict(md)` then `out.update(fresh)` (a plain merge) | `test_regrade_drops_a_colour_field_the_author_deleted` |
 | 5 | `with_tail`: prepend instead of append (`f"{extra},{args[-1]}"`) | `test_with_tail_appends_after_the_chain` **and** `test_a_select_ahead_of_the_tail_collapses_to_one_frame` |
-| 6 | `LOOK_NOISE_MAX = 1000.0` | `test_a_declared_vignette_that_changed_no_pixels_fails` |
+| 6 | `evaluate`: drop the titles-only `not-checked` arm (return `[]` instead) | `test_titles_alone_report_not_checked_rather_than_nothing` |
 | 7 | `VIGNETTE_MIN_FRACTION = 0.0` | `test_a_vignette_too_shallow_to_be_the_declared_one_fails` |
 | 8 | `evaluate`: make the `mc < VIGNETTE_FLOOR` arm return `status="pass"` | `test_a_vignette_on_black_corners_is_not_checked` |
 | 9 | `evaluate`: make the `m0 < FADE_SOURCE_MIN` arm return `status="fail"` | `test_a_fade_on_an_already_black_opening_is_not_checked` |

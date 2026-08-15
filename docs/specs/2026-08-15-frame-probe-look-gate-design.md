@@ -169,12 +169,37 @@ delivered `REEL_v{n}` and the master at the same timestamps and compares. With n
 look and no titles declared there is nothing to prove and the gate makes no ffmpeg
 call at all — a look-less delivery costs exactly what it costs today.
 
-Calibrated on a real deliver-shaped encode of the grain master:
+Calibrated on a real deliver-shaped encode of the grain master.
 
-**Noise floor.** A look-less delivery against its master: mean |Δ| = **0.638 /
-0.727 / 0.779** codes at three sample times. `LOOK_NOISE_MAX = 2.0` — ~2.6× headroom.
-If a look was declared and every sampled frame sits under this, the chain rendered
-nothing.
+### §7.1 The catch-all that measurement killed
+
+The first design carried a third, general check: *any declared effect that leaves
+every sampled frame within encode noise of the master did not render*. The noise floor
+is real — a look-less delivery sits **0.638 / 0.727 / 0.779** codes from its master —
+but the predicate built on it is not, and two measurements say so:
+
+| delivery | whole-frame mean \|Δ\| vs master | against a 2.0 floor |
+|---|---|---|
+| no look | 0.638 / 0.727 / 0.779 | — |
+| vignette 0.10 | 1.754 / 1.955 / **2.063** | passes by 3% |
+| vignette 0.30 | 4.592 / 5.134 / 5.344 | passes |
+| vignette 0.60 | 8.919 / 9.987 / 10.355 | passes |
+| **fade 0.5s** | 0.639 / 0.726 / **0.780** | **fails — always** |
+
+A fade touches only the first and last half-second; the three samples sit at 25/50/75%
+of the reel, outside both ramps, so a fade-only delivery is **indistinguishable from a
+look-less one** by this measure and the catch-all would refuse every one of them. And
+a shallow vignette clears the floor by 3%, which on a darker picture it would not.
+
+The premise was wrong: only a **vignette** changes the whole frame everywhere. So the
+catch-all is deleted, and with it `LOOK_NOISE_MAX`. Nothing is lost — a dropped filter
+still fails the effect's OWN check: a vignette that did not render drops the corner
+ratio by ~0, and a fade that did not render leaves the first frame at the master's
+brightness. Both are decisive with a real margin, which the catch-all was not.
+
+What the catch-all would uniquely have caught is **titles**, whose own check is
+deferred (§11). A titles-only delivery therefore reports one `not-checked` finding
+rather than nothing at all: the absence is recorded, not silent.
 
 **Vignette.** Mean luma of four corner boxes over a centre box, delivered against
 master — content cancels in the ratio. The boxes are `h//10 × w//10` at each corner
@@ -194,7 +219,8 @@ The drop tracks the declared depth at 0.84–0.87×. `VIGNETTE_MIN_FRACTION = 0.
 **Fade.** First delivered frame's mean luma. Measured: master **75.28** → delivered
 **0.00**. `FADE_BLACK_MAX = 2.0`.
 
-**Not-checked arms, and they are real holes.** A master whose own first frame is
+**Not-checked arms, and they are real holes.** A titles-only delivery has no check at
+all this slice (§7.1). A master whose own first frame is
 already dark (`< FADE_SOURCE_MIN = 8.0`) cannot discriminate a fade; a master whose
 corners are already black (`< VIGNETTE_FLOOR = 8.0`) cannot discriminate a vignette.
 Those report `not-checked` and pass. Reporting them as proven would be the lie this
