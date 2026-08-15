@@ -717,6 +717,35 @@ def test_highlight_red_sub_knee_residual_is_small_and_monotone(need_filter):
             f"{expected_white} (255 * (1 - pull)) — the above-knee pull moved")
 
 
+@pytest.mark.integration
+def test_shadow_red_identity_region_holds_after_the_return_point(need_filter):
+    """The mirror of the test above, at the other end of the picture. shadow_red_arg's
+    three hardcoded anchors (0.50/0.70/0.85) pinned three POINTS above the return point,
+    not the spline between them: probed 2026-08-15 at the shipped ret=0.25, the region
+    above `ret` sagged -6 codes at SHADOW_RED_MAX, worst at code 79 (x~0.31) — inside the
+    gap between the return point and the first anchor. Densified to a step every 0.05 from
+    `ret`, the same probe measures exactly 0 at every legal lift.
+
+    The bound below is +1/-1: strictly tighter than the -3 the old anchors left at lift=0.1
+    and the -6 they left at SHADOW_RED_MAX, so a regression back to sparse anchors fails
+    here, and loose enough that 8-bit rounding cannot flake it.
+    """
+    need_filter("curves")
+    ret_code = round(color.SHADOW_RED_RETURN * 255)        # 64 at the default 0.25
+
+    for lift in (0.1, color.SHADOW_RED_MAX):
+        lut = _ramp_r_lut(color.shadow_red_arg(lift))
+        above = [lut[i] - i for i in range(ret_code, 256)]
+        assert max(above) <= 1, (
+            f"lift={lift}: identity region rises +{max(above)} above the return point — "
+            "the densified anchors no longer hold the spline at identity")
+        assert min(above) >= -1, (
+            f"lift={lift}: identity region sags {min(above)} above the return point — "
+            "the densified anchors no longer hold the spline at identity")
+        assert all(lut[i + 1] >= lut[i] for i in range(255)), (
+            f"lift={lift}: the curve is not monotone — a non-monotone transfer curve bands")
+
+
 # --- reframe.generate_pan_path (design 2026-07-19 §4): the pure generator ---
 
 def test_generate_pan_path_travels_the_declared_extent():
