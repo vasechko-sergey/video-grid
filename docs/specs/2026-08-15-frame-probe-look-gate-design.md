@@ -51,11 +51,15 @@ grade change cannot move the crop.** That is what makes a probe over a frozen ro
 legitimate: at those timestamps its pixels are the pixels the next full render will
 ship.
 
-An invariant that is only asserted rots. This one is **checked**: the probe
-recomputes its plan and compares it against the frozen `path.meta.json` — `mode`,
-`crop_w`, `crop_h`, `out_dims`, `pan`, `stabilized`. A disagreement means the frozen
-route/segment no longer describe this manifest, and the probe **refuses** rather than
-showing pixels that will not ship.
+An invariant that is only asserted rots. This one is **checked**, and against the
+strongest oracle available: the probe recomputes the crop path and compares it
+**element by element** against the frozen `path.json`, then compares its resolved
+geometry against `path.meta.json` (`mode`, `crop_w`, `crop_h`, `out_dims`). The path
+comparison is the load-bearing half — it also catches a retry-adjusted `max_speed` or
+`smooth_window_s`, which move every x but leave the recorded rect identical, so the
+meta alone would wave them through. Any disagreement means the frozen route/segment no
+longer describe this manifest, and the probe **refuses** rather than showing pixels
+that will not ship.
 
 ## §3 One chain, two sinks
 
@@ -64,11 +68,14 @@ second implementation of the chain; it drifts from `reframe`, and the day it dri
 is the day the probe lies about exactly the thing it exists to answer.
 
 **Built:** the middle of `reframe()` becomes `plan_render(spec, src, route_path)`,
-returning the filter args, `dur`, `fps`, the crop path and the geometry `PathMeta`
-needs. `reframe()` = that plan + the x264 sink + the sidecar writes. The probe = the
-same plan + a `select` sink into PNGs. `_filter_args` gains `tail_extra: str = ""`,
-appended after `format=yuv420p`; at its default every existing argv stays
-byte-identical, which is what the golden fixtures pin.
+returning a `RenderPlan` — the filter args, `dur`, `fps`, the crop path and the
+geometry `PathMeta` needs. `reframe()` = that plan + the x264 sink + the sidecar
+writes. The probe = the same plan + a `select` sink into PNGs.
+
+A sink filter is added through exactly one method, `RenderPlan.with_tail(extra)`,
+which appends to the end of the chain string. `_filter_args` is not touched at all, so
+every existing argv stays byte-identical — which is what the golden fixtures pin — and
+§3.1's ordering rule has one place to live rather than one per caller.
 
 `verify_tone` stays inside `plan_render`, so the probe refuses a banding spline with
 the same loud error the real render does.
@@ -90,8 +97,9 @@ count. The tail's `fps={fps}` filter re-interpolates the dropped frames back up 
 rate by duplication, and `-frames:v 3` then takes three copies of the first. The 30%
 saving buys a probe that shows one frame and claims it is three.
 
-This is a §12-class landmine and is recorded there. `tail_extra` appends after the
-`fps=`, so the correct position is the only reachable one.
+This is a §12-class landmine and is recorded there. `with_tail` appends after the
+`fps=`, so the correct position is the only reachable one, and the lint gains a check
+that refuses a `select` emitted ahead of an `fps=` in the same chain.
 
 ## §4 What the probe does
 
