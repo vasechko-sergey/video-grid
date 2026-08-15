@@ -45,6 +45,17 @@ def test_titles_alone_report_not_checked_rather_than_nothing():
     assert [(f.check, f.status) for f in out] == [("titles", "not-checked")]
 
 
+def test_titles_are_reported_even_beside_a_rendered_vignette():
+    """The common case: titles ride WITH a look. If the titles row only appeared when
+    titles were alone, a defect that killed the drawtext stage while the vignette still
+    rendered would ship attested with no trace titles were ever declared."""
+    master = [_flat(100)] * 3
+    delivered = [_corners_dark(100, 0.3) for _ in range(3)]
+    by = {f.check: f.status for f in lookcheck.evaluate(master, delivered, None, None,
+                                                        vignette=0.3, titles=True)}
+    assert by == {"vignette": "pass", "titles": "not-checked"}
+
+
 def test_a_vignette_too_shallow_to_be_the_declared_one_fails():
     master = [_flat(100)] * 3
     delivered = [_corners_dark(100, 0.05) for _ in range(3)]   # asked 0.30, got 0.05

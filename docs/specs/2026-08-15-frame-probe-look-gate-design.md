@@ -243,7 +243,7 @@ bar.
 
 | File | Change |
 |---|---|
-| `scripts/lib/lookcheck.py` | new — pure: the three measurements, the constants, `evaluate` → findings. numpy in, verdict out |
+| `scripts/lib/lookcheck.py` | new — pure: the vignette and fade measurements, the titles not-checked placeholder, the constants, `evaluate` → findings. numpy in, verdict out |
 | `scripts/probe.py` | new — driver: `grade` (§4), `look` (a manual re-check of §7) |
 | `scripts/reframe.py` | `plan_render` extraction; `_filter_args(tail_extra="")` |
 | `scripts/deliver.py` | the post-encode gate |
@@ -271,10 +271,11 @@ bar.
 
 ## §11 Deferred — must reach the backlog
 
-- **Titles in the look gate.** Needs the title's band geometry from
-  `titles.y_exprs` + the safe-zone table to know where to diff. The §7 noise-floor
-  predicate covers a wholesale filter-list drop; a single missing title does not
-  move the whole-frame mean enough to catch.
+- **Titles in the look gate.** Titles carry no pixel coverage at all this slice — the
+  only thing recorded is the `titles` `not-checked` finding from §7.1, which says a
+  title was declared, not that it rendered. Closing the gap needs the title's band
+  geometry from `titles.y_exprs` plus the safe-zone table, to know where in the frame
+  to diff.
 - **Auto re-render of one converged episode.** Already possible —
   `process_episode --route <frozen>` skips tracking — so this is skill guidance in
   this slice, not machinery. A driver that does it in one step is a separate row.

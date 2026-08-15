@@ -101,9 +101,14 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
         _same_shape(_rgb(m, "a master frame"), _rgb(d, "a delivered frame"))
     out: list[LookFinding] = []
 
-    if titles and not (vignette or fade):
+    if titles:
         # Titles have no check this slice (design §11). Returning nothing would read as
         # "the gate looked and was satisfied" — this records the absence instead.
+        # Unconditional, NOT `titles and not (vignette or fade)`: titles ride beside a
+        # vignette or a fade in the common case, and a defect that killed only the
+        # drawtext stage while the vignette still rendered would otherwise ship attested
+        # with no trace that titles were ever declared. That is the exact bug class this
+        # gate exists for.
         out.append(LookFinding(
             check="titles", status="not-checked",
             detail="titles were declared and this slice has no check for them: locating "
@@ -146,6 +151,7 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
                              "pass them, or do not declare a fade")
         m0 = float(_rgb(first_master, "first_master").mean())
         d0 = float(_rgb(first_delivered, "first_delivered").mean())
+        _same_shape(first_master, first_delivered)
         if m0 < FADE_SOURCE_MIN:
             out.append(LookFinding(
                 check="fade", status="not-checked",
