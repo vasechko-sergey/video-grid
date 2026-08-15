@@ -94,6 +94,27 @@ def test_shadow_red_toe_only_pins_the_top():
     assert frag.startswith(",curves=r='") and "0.50/0.50" in frag and "1/1" in frag
 
 
+def test_shadow_red_refuses_a_lift_that_inverts_the_toe():
+    # slope in the toe is 1 - lift/ret; at lift > ret it is negative, so the mapping
+    # DECREASES and the shadows band. Measured 2026-08-15 (design §1.3): every
+    # non-monotone cell in the scan had lift >= ret, and none with lift < ret did.
+    with pytest.raises(ValueError, match="inverts"):
+        color.shadow_red_arg(0.20, ret=0.10)
+
+
+def test_shadow_red_refuses_a_lift_equal_to_the_return_point():
+    # lift == ret is slope exactly 0: a flat plateau in the toe, where 8-bit rounding
+    # decides whether the output wobbles. Refused rather than left to the quantizer.
+    with pytest.raises(ValueError, match="inverts"):
+        color.shadow_red_arg(0.10, ret=0.10)
+
+
+def test_shadow_red_accepts_a_lift_below_the_return_point():
+    # the paired proof: the refusal must not swallow the configuration that ships.
+    assert color.shadow_red_arg(0.20).startswith(",curves=r='")
+    assert color.shadow_red_arg(0.09, ret=0.10).startswith(",curves=r='")
+
+
 def test_grade_chain_default_is_just_the_mixer():
     gains = (1.1, 1.0, 0.9)
     assert color.grade_chain(gains, dur=3.0) == color.mixer_arg(*gains)

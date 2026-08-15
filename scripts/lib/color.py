@@ -168,6 +168,12 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
     if not 0 < ret <= 0.45:
         raise ValueError(f"shadow_red return point {ret} must be in (0, 0.45] — past that the "
                          "lift reaches skin, which is the thing it exists to leave alone")
+    if lift >= ret:
+        raise ValueError(
+            f"shadow_red {lift} inverts the toe against a return point of {ret} — the toe "
+            f"maps x -> x + lift*(1 - x/ret), whose slope is 1 - lift/ret, so at lift >= ret "
+            f"the curve stops rising and the shadows band. Lower the lift below the return "
+            f"point, or move the return point above the lift")
     # linear decay from `lift` at black to nothing at `ret`, then identity
     xs = [i * ret / 3 for i in range(4)]
     pts = [f"{x:.4f}/{x + lift * max(0.0, 1 - x / ret):.4f}" for x in xs]
