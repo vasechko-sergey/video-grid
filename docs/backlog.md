@@ -170,7 +170,15 @@ ret` — **15** cells at `ret` step 0.01, not three: that count was a
 `ret`-step-0.05 reading, and the three it named (0.15/0.14, 0.20/0.18,
 0.20/0.19) are exactly the subset that coarser grid could see, up to 0.03
 from `ret` (not "within 0.02"); step 0.1 has one, uncounted at the finer
-step; the shipped `ret` has none (shadow-red-length-reconcile §1.2/§6)
+step; the shipped `ret` has none (shadow-red-length-reconcile §1.2/§6) ·
+`highlight_red_arg`'s sub-knee loop carries the same `1e-9`-bound-vs-`.4f`-
+emission mismatch `shadow_red_arg` fixed on 2026-08-15 with
+`SHADOW_RED_FMT_EPS`: a `knee` landing in a ~5e-5 band would emit a
+duplicated control point and ffmpeg refuses the filter (exit 234).
+Unreachable today — the one production call site never passes `knee=`, and
+the default 0.60 is an exact 0.1 multiple — so it is filed, not fixed; the
+one-line fix is the constant that already exists (shadow-red-length-reconcile
+§1.2 M-2, found by that slice's whole-branch review)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
