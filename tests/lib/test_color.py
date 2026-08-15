@@ -89,9 +89,28 @@ def test_tone_validates_anchors_and_emits_a_curve():
         color.tone_arg((30, 33, 148), (35, 110, 150))
 
 
-def test_shadow_red_toe_only_pins_the_top():
+def test_shadow_red_pins_the_identity_region_densely():
+    # Three anchors (0.50/0.70/0.85) pinned three POINTS, not the spline between them:
+    # measured -6 codes at the shipped ret, worst at x~0.31, in the gap right after the
+    # return point (design 2026-08-15 §1.1). Anchors now step 0.05 from `ret` to 1.0.
     frag = color.shadow_red_arg(0.1)
-    assert frag.startswith(",curves=r='") and "0.50/0.50" in frag and "1/1" in frag
+    assert frag.startswith(",curves=r='") and frag.endswith("'")
+    pts = frag[len(",curves=r='"):-1].split(" ")
+    xs = [float(p.split("/")[0]) for p in pts]
+    assert xs[:4] == [0.0, 0.0833, 0.1667, 0.25]              # the toe, unchanged
+    above = xs[4:]
+    assert above[0] == 0.3 and above[-1] == 1.0
+    assert len(above) == 15                                    # 0.30..0.95 step .05, plus 1.0
+    assert all(abs(b - a - 0.05) < 1e-9 for a, b in zip(above, above[1:]))
+    assert all(p.split("/")[0] == p.split("/")[1] for p in pts[4:])   # identity, exactly
+
+
+def test_shadow_red_density_follows_a_non_default_return_point():
+    # derived from `ret`, not hardcoded — a caller passing a non-default return point
+    # must not silently fall back to the old sparsity (the twin's knee lesson).
+    frag = color.shadow_red_arg(0.05, ret=0.40)
+    xs = [float(p.split("/")[0]) for p in frag[len(",curves=r='"):-1].split(" ")]
+    assert xs[4] == 0.45 and xs[-1] == 1.0
 
 
 def test_shadow_red_refuses_a_lift_that_inverts_the_toe():

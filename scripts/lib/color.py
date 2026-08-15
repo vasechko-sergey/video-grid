@@ -125,7 +125,9 @@ def saturation_arg(sat: float) -> str:
 
 SHADOW_RED_MAX = 0.20      # past this the toe goes visibly pink instead of neutral
 SHADOW_RED_RETURN = 0.25   # where the lift has decayed to nothing (64/255)
-SHADOW_RED_ANCHORS = (0.50, 0.70, 0.85)   # identity pins above the return point
+SHADOW_RED_STEP = 0.05     # identity anchors above the return point. 0.05, not the twin's
+                           # 0.1: measured 2026-08-15, 0.1 still leaves -2 codes at the
+                           # shipped return point and -3 at the domain's worst, 0.05 leaves 0
 
 
 def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
@@ -145,15 +147,22 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
 
     The anchors above `ret` are load-bearing, not decoration: ffmpeg fits a spline, and
     with the segment from `ret` to 1.0 unpinned it SAGS — measured, a red board lost 7
-    units of R-G from a curve that never meant to touch it. Pinning 0.50/0.70/0.85 to
-    identity holds the top flat, but those three anchors are themselves sparse in the
-    same way `highlight_red_arg`'s were before its 2026-08-13 fix (see that function's
-    own docstring): they pin the spline AT three points, not the curve it draws
-    between them. Measured 2026-08-13: **-6** at `SHADOW_RED_MAX`, worse than
-    `highlight_red_arg`'s own pre-fix worst case of -3 — not the "skin and board move
-    by 0.2" this docstring used to claim as a measured result. Unfixed here,
-    pre-existing, queued separately: docs/backlog.md, "`color.shadow_red_arg` has
-    `highlight_red_arg`'s pre-fix sparse-anchor defect — worse" (cinematic-look §12).
+    units of R-G from a curve that never meant to touch it. They used to be three hardcoded
+    points (0.50/0.70/0.85), which pinned the spline AT three points and not the curve it draws
+    BETWEEN them — the same defect `highlight_red_arg` fixed on 2026-08-13, cited there and
+    left standing here. Probed losslessly through a 256-step ramp (reframe.verify_tone's
+    method), 2026-08-15: at the shipped ret=0.25 those three anchors left **-6** codes at
+    SHADOW_RED_MAX, worst at code 79 (x~0.31) — in the gap immediately after the return
+    point — and up to -14 across the legal (lift, ret) domain. Stepping SHADOW_RED_STEP from
+    `ret` instead measures **exactly identity** at the shipped ret for every legal lift, and
+    at most one code anywhere legal.
+
+    Why 0.05 when the twin steps 0.1: this curve returns from a lift to identity over a range
+    of `ret` rather than easing across a wide shoulder, so its kink is steeper and 0.1 still
+    leaves -2 codes where it ships. The divergence is deliberate — do not "fix" it back. The
+    cost is three single-code non-monotone cells against 0.1's one, all where `lift` is within
+    0.02 of `ret` and the toe's slope is already near zero; that is 8-bit rounding on a flat
+    region, and the shipped ret has none of them (design 2026-08-15 §1.4/§6).
     """
     # type FIRST — see black_point_arg: True == 1 would slip the identity shortcut.
     if isinstance(lift, bool) or not isinstance(lift, (int, float)):
@@ -177,7 +186,15 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
     # linear decay from `lift` at black to nothing at `ret`, then identity
     xs = [i * ret / 3 for i in range(4)]
     pts = [f"{x:.4f}/{x + lift * max(0.0, 1 - x / ret):.4f}" for x in xs]
-    pts += [f"{a:.2f}/{a:.2f}" for a in SHADOW_RED_ANCHORS] + ["1/1"]
+    # identity anchors every SHADOW_RED_STEP from `ret` to 1.0, derived from `ret` rather
+    # than hardcoded, so a non-default return point gets a dense region too.
+    hi_xs = []
+    i = 1
+    while ret + i * SHADOW_RED_STEP < 1.0 - 1e-9:
+        hi_xs.append(ret + i * SHADOW_RED_STEP)
+        i += 1
+    hi_xs.append(1.0)
+    pts += [f"{x:.4f}/{x:.4f}" for x in hi_xs]
     return f",curves=r='{' '.join(pts)}'"
 
 
