@@ -134,6 +134,46 @@ def test_shadow_red_accepts_a_lift_below_the_return_point():
     assert color.shadow_red_arg(0.09, ret=0.10).startswith(",curves=r='")
 
 
+def test_shadow_red_anchors_never_duplicate_the_appended_endpoint():
+    # The loop building the identity anchors above `ret` used to bound itself with a bare
+    # `1e-9` against FLOAT precision, but the anchors are EMITTED at .4f (1e-4) precision:
+    # an anchor within the last half-quantum below 1.0 (ret within ~5e-5 below a
+    # SHADOW_RED_STEP multiple — e.g. ret=0.04996) formatted to "1.0000" and was then
+    # followed by the unconditionally-appended "1.0000" — two identical control points,
+    # which ffmpeg's curves parser refuses outright (confirmed: exit 234). Fixed by
+    # SHADOW_RED_FMT_EPS, derived from the .4f quantum instead of a bare float epsilon.
+    #
+    # Swept at 1e-5 resolution — finer than the ~5e-5-wide bad bands — across the whole
+    # legal `ret` domain. `lift` is pinned to a tiny constant rather than swept too: the
+    # anchors above `ret` are built from `ret` and SHADOW_RED_STEP alone (see
+    # shadow_red_arg's `hi_xs` loop) and do not depend on `lift`, so varying it would
+    # repeat the same check for no extra coverage.
+    lift = 1e-6
+    i = 1
+    checked = 0
+    while True:
+        ret = round(i * 1e-5, 6)
+        i += 1
+        if ret > 0.45 + 1e-9:
+            break
+        if lift >= ret:
+            continue
+        frag = color.shadow_red_arg(lift, ret=ret)
+        pts = frag[len(",curves=r='"):-1].split(" ")
+        above = pts[4:]                  # the toe is always exactly 4 points; skip it
+        xs = [p.split("/")[0] for p in above]
+        assert above[-1] == "1.0000/1.0000", (
+            f"ret={ret}: last control point is {above[-1]!r}, not the appended endpoint")
+        assert len(xs) == len(set(xs)), (
+            f"ret={ret}: duplicate x among the formatted anchors {xs} — ffmpeg's curves "
+            "parser refuses two identical control points")
+        floats = [float(x) for x in xs]
+        assert all(b > a for a, b in zip(floats, floats[1:])), (
+            f"ret={ret}: formatted anchors are not strictly increasing: {xs}")
+        checked += 1
+    assert checked > 40000, f"only {checked} ret values were swept — the loop ran short"
+
+
 def test_grade_chain_default_is_just_the_mixer():
     gains = (1.1, 1.0, 0.9)
     assert color.grade_chain(gains, dur=3.0) == color.mixer_arg(*gains)

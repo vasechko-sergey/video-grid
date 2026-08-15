@@ -165,10 +165,12 @@ cross-episode white-balance / cast matching (matchgrade §8) ·
 `pull ≈ 1 − knee` for `knee ≥ 0.7` — a knee×pull grid scan found the
 pre-existing code already broken there; unreachable today (the one production
 call site never passes `knee=`), reported not fixed (cinematic-look §12) ·
-`shadow_red_arg`'s densified curve keeps three single-code non-monotone
-cells where `lift` is within 0.02 of `ret` (0.15/0.14, 0.20/0.18,
-0.20/0.19); step 0.1 has one instead of three; the shipped `ret` has none
-(shadow-red-length-reconcile §6)
+`shadow_red_arg`'s densified curve keeps a one-code wobble near `lift ≈
+ret` — **15** cells at `ret` step 0.01, not three: that count was a
+`ret`-step-0.05 reading, and the three it named (0.15/0.14, 0.20/0.18,
+0.20/0.19) are exactly the subset that coarser grid could see, up to 0.03
+from `ret` (not "within 0.02"); step 0.1 has one, uncounted at the finer
+step; the shipped `ret` has none (shadow-red-length-reconcile §1.2/§6)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
@@ -269,7 +271,8 @@ for a difference that may be an improvement (cinematic-look §11.4/§12) ·
 a per-episode look override — the reel's finish is reel-level by
 construction, and no request for it exists (cinematic-look §12) ·
 network reachability probes in preflight (verify-runtime §9) ·
-cross-platform `setup.sh` and `bin/vg` — macOS/Homebrew is a stated project boundary (ffmpeg-baseline §9, plugin-packaging §4)
+cross-platform `setup.sh` and `bin/vg` — macOS/Homebrew is a stated project boundary (ffmpeg-baseline §9, plugin-packaging §4) ·
+implementation plans must not hand a task a literal one-line `git commit -m` subject while the plan's own Global Constraints ask for a message that says *why* — five of this slice's six commits were generated exactly that way and shipped subject-only, and none of the five can be repaired now since amending is forbidden (shadow-red-length-reconcile, whole-branch review 2026-08-15)
 
 ## ⊘ Won't do
 

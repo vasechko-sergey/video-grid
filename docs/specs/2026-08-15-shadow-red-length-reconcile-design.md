@@ -71,6 +71,26 @@ Measured over the domain that survives §1.3's refusal — `lift` 0.01…0.20 st
 At the shipped `ret` the densified curve is exactly identity above the return point for every
 legal lift from 0.01 to `SHADOW_RED_MAX` — not "small", zero.
 
+**Fix 1 (whole-branch review, 2026-08-15): the row above is a `ret`-step-0.05 grid, and its
+"1"/"3 cells" read as domain absolutes rather than what that grid could see.** Re-measured at
+`ret` step **0.01** (same `lift` step 0.01, same domain, same real-ffmpeg ramp probe) — the
+resolution the shipped `ret = 0.25` is not privileged against:
+
+| grid | worst \|dev\| | at the shipped `ret = 0.25` | non-monotone cells |
+|---|---|---|---|
+| `ret` step 0.05 (table above) | 1 | +0 / −0 at every legal `lift` | 3 |
+| **`ret` step 0.01** | **2** (`ret`=0.04/`lift`=0.03; also `ret`=0.11/`lift`=0.10) | **+0 / −0 at every legal `lift`** | **15** |
+
+Both grids agree on the number that matters — the shipped `ret` is exactly identity at every
+legal `lift` — because 0.25 is on both grids. They disagree on the domain-wide worst case
+because the coarser grid only ever tested `ret` at multiples of 0.05: the three non-monotone
+cells it found (`ret`/`lift` 0.15/0.14, 0.20/0.18, 0.20/0.19) are exactly the subset of the 15
+whose `ret` happens to land on that grid. The other 12 cells carry a `ret` the 0.05-step grid
+never tried at all (0.13, 0.14, 0.16, 0.17, 0.18, 0.19, 0.21, 0.22, 0.23). The widest
+`ret − lift` gap among all 15 is **0.03**, not the "within 0.02" the coarser grid implied.
+Every cell is still a single-code drop in the near-flat toe, and it is still the case that the
+shipped `ret` carries none of them.
+
 ### 1.3 The second defect — `lift >= ret` inverts the toe
 
 The same grid scan showed the curve is **non-monotone** in 8 of 45 cells. A non-monotone
@@ -107,15 +127,21 @@ not the densification, that closes this one.
 `highlight_red_arg` steps 0.1 and accepts a +2/−1 residual. This curve's kink is steeper — it
 returns from a lift to identity over a range of `ret` rather than easing across a wide
 shoulder — so 0.1 still leaves −2 where it ships, and −3 at the domain's worst, while 0.05
-leaves exactly nothing at the shipped `ret` and at most one code anywhere legal. Fifteen
-control points instead of four cost nothing; they are characters in a filter string.
+leaves exactly nothing at the shipped `ret`. (At `ret` step 0.05 that last figure also read as
+"at most one code anywhere legal" domain-wide; §1.2's `ret`-step-0.01 addendum found the true
+worst is 2.) Fifteen control points instead of four cost nothing; they are characters in a
+filter string.
 
-The trade is not free and the coarse first scan hid it: **0.05 has three single-code
-non-monotone cells to 0.10's one.** All four sit where `lift` is within 0.01–0.02 of `ret`,
-i.e. where the toe's slope `1 − lift/ret` is already near zero, so the output is flat over
-several input codes and one rounding step reads as a drop — quantization at a deliberately
-flat region, not spline banding. Chosen 0.05 for the 3× better identity fidelity in the region
-the defect is actually about, with the wobble recorded in §6 rather than hidden.
+The trade is not free and the coarse first scan hid it further than it first appeared: at
+`ret` step 0.05, **0.05 has three single-code non-monotone cells to 0.10's one.** At `ret`
+step 0.01 (§1.2, the resolution the shipped `ret` is not privileged against) 0.05's own count
+is **fifteen** — the 0.10 comparison was not re-run at that finer step, so it stays at "1" here
+on purpose, cited only at the resolution it was actually measured at. All fifteen sit where
+`lift` is within 0.01–0.03 of `ret` (not "0.01–0.02"), i.e. where the toe's slope `1 −
+lift/ret` is already near zero, so the output is flat over several input codes and one
+rounding step reads as a drop — quantization at a deliberately flat region, not spline
+banding. Chosen 0.05 for the 3× better identity fidelity in the region the defect is actually
+about, with the wobble recorded in §6 rather than hidden.
 
 The divergence from the twin is deliberate and recorded in both docstrings so the next reader
 does not "fix" the inconsistency back.
@@ -244,10 +270,13 @@ figure that *was* found.
 - **The refusal `lift < ret` cannot fire in the shipped configuration.** It is a guard for a
   caller that does not exist yet. Its value is that the function can no longer emit an
   inverting curve, not that anything today would have.
-- **The densified curve keeps a one-code wobble as `lift` approaches `ret`.** Three cells
-  (`ret/lift` 0.15/0.14, 0.20/0.18, 0.20/0.19) step down by a single code where the toe's
-  slope is near zero. Step 0.10 has one such cell instead of three; neither step removes them,
-  and the shipped `ret = 0.25` has none at any legal lift. Not fixed, measured (§1.4).
+- **The densified curve keeps a one-code wobble as `lift` approaches `ret`.** At `ret` step
+  0.01 (design Fix 1, 2026-08-15) there are **15** such cells, not three — the three first
+  named (`ret/lift` 0.15/0.14, 0.20/0.18, 0.20/0.19) are exactly the subset whose `ret` lands
+  on the coarser 0.05-step grid the original scan used. They span `ret` 0.13–0.23, up to
+  **0.03** away from `lift` (not "within 0.02"), where the toe's slope is near zero. Step 0.10
+  has one such cell (not re-measured at the finer step); neither step removes them, and the
+  shipped `ret = 0.25` has none at any legal lift. Not fixed, measured (§1.2/§1.4).
 - **The anchor step is measured on a synthetic ramp, not on footage.** The probe reads the
   transfer curve exactly, which is the right instrument for "does the spline sag" — but
   whether −6 codes in the shadows was visible on this reel was never measured, and is not

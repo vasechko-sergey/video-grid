@@ -82,11 +82,14 @@ _Last updated: 2026-08-15._
   other; the strong version (recording the music file's digest on `Spine`)
   is folded into the existing P2 "make pacing's round trip a fixed point"
   row instead of a new one, because it rewrites that same file. And the
-  densified `shadow_red_arg` curve keeps three single-code non-monotone
-  cells of its own — unrelated to the inversion defect above — where `lift`
-  is within 0.02 of `ret` (0.15/0.14, 0.20/0.18, 0.20/0.19): 8-bit rounding
-  where the toe's slope is already near zero. Step 0.10 has one such cell
-  instead of three, and the shipped `ret=0.25` has none at any legal lift.
+  densified `shadow_red_arg` curve keeps a one-code wobble of its own —
+  unrelated to the inversion defect above — near `lift ≈ ret`: **15** cells
+  at `ret` step 0.01, not three — the three first reported (0.15/0.14,
+  0.20/0.18, 0.20/0.19) were read off a `ret`-step-0.05 grid and are exactly
+  the subset it could see, up to 0.03 from `ret` (not "within 0.02"): 8-bit
+  rounding where the toe's slope is already near zero. Step 0.10 has one
+  such cell (uncounted at the finer step), and the shipped `ret=0.25` has
+  none at any legal lift.
   One side effect: the P3 "enforce `SPEC.length_s`" row is now unblocked —
   the diagnosis found the target it would gate (`EDL.target_dur`) already
   equals what the master delivers, so a real number is waiting for it.

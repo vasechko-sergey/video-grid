@@ -127,7 +127,15 @@ SHADOW_RED_MAX = 0.20      # past this the toe goes visibly pink instead of neut
 SHADOW_RED_RETURN = 0.25   # where the lift has decayed to nothing (64/255)
 SHADOW_RED_STEP = 0.05     # identity anchors above the return point. 0.05, not the twin's
                            # 0.1: measured 2026-08-15, 0.1 still leaves -2 codes at the
-                           # shipped return point and -3 at the domain's worst, 0.05 leaves 0
+                           # shipped return point and -3 at the domain's worst; 0.05 leaves 0
+                           # at the shipped return point, up to 2 across the domain (ret step
+                           # 0.01, design 2026-08-15 Fix 1 — the 0.05-ret-step grid this first
+                           # shipped on did not sample every `ret`)
+SHADOW_RED_FMT_EPS = 5e-5  # half the anchors' .4f write quantum (1e-4 / 2) — the loop below
+                           # must clear the EMITTED precision, not float precision. At 1e-9,
+                           # an anchor within one write-quantum of 1.0 formatted to "1.0000"
+                           # and duplicated the appended 1.0 point; ffmpeg's curves parser
+                           # refuses two identical control points outright (exit 234)
 
 
 def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
@@ -154,14 +162,19 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
     method), 2026-08-15: at the shipped ret=0.25 those three anchors left **-6** codes at
     SHADOW_RED_MAX, worst at code 79 (x~0.31) — in the gap immediately after the return
     point — and up to -14 across the legal (lift, ret) domain. Stepping SHADOW_RED_STEP from
-    `ret` instead measures **exactly identity** at the shipped ret for every legal lift, and
-    at most one code anywhere legal.
+    `ret` instead measures **exactly identity** at the shipped ret for every legal lift. On
+    the ret-step-0.05 grid this was first measured on that also read as "at most one code
+    anywhere legal"; re-measured at ret step 0.01 (design 2026-08-15 Fix 1) the true worst is
+    **2** codes, at ret=0.04/lift=0.03 and ret=0.11/lift=0.10 — `ret` values the coarser grid
+    never sampled.
 
     Why 0.05 when the twin steps 0.1: this curve returns from a lift to identity over a range
     of `ret` rather than easing across a wide shoulder, so its kink is steeper and 0.1 still
-    leaves -2 codes where it ships. The divergence is deliberate — do not "fix" it back. The
-    cost is three single-code non-monotone cells against 0.1's one, all where `lift` is within
-    0.02 of `ret` and the toe's slope is already near zero; that is 8-bit rounding on a flat
+    leaves -2 codes where it ships. The divergence is deliberate — do not "fix" it back. At
+    ret step 0.01 (design 2026-08-15 Fix 1) the cost is **15** single-code non-monotone cells,
+    not three — the three first named are exactly the subset whose `ret` lands on the coarser
+    0.05-step grid — spanning ret 0.13-0.23, up to **0.03** away from `lift` (not "within
+    0.02"), where the toe's slope is already near zero; that is 8-bit rounding on a flat
     region, and the shipped ret has none of them (design 2026-08-15 §1.4/§6).
     """
     # type FIRST — see black_point_arg: True == 1 would slip the identity shortcut.
@@ -190,7 +203,7 @@ def shadow_red_arg(lift: float, ret: float = SHADOW_RED_RETURN) -> str:
     # than hardcoded, so a non-default return point gets a dense region too.
     hi_xs = []
     i = 1
-    while ret + i * SHADOW_RED_STEP < 1.0 - 1e-9:
+    while ret + i * SHADOW_RED_STEP < 1.0 - SHADOW_RED_FMT_EPS:
         hi_xs.append(ret + i * SHADOW_RED_STEP)
         i += 1
     hi_xs.append(1.0)
