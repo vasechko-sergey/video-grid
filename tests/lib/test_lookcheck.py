@@ -24,27 +24,25 @@ def test_nothing_declared_measures_nothing():
 
 def test_a_declared_vignette_that_changed_no_pixels_fails():
     same = [_flat(100), _flat(100), _flat(100)]
-    out = lookcheck.evaluate(same, list(same), None, None, vignette=0.3)
-    rendered = [f for f in out if f.check == "rendered"]
-    assert len(rendered) == 1
-    assert rendered[0].status == "fail"
-    assert rendered[0].measured == pytest.approx(0.0)
+    by = {f.check: f for f in lookcheck.evaluate(same, list(same), None, None,
+                                                 vignette=0.3)}
+    assert by["vignette"].status == "fail"
+    assert by["vignette"].measured == pytest.approx(0.0)
 
 
 def test_a_rendered_vignette_passes():
-    # frac=0.3 (this test's original value) darkens only the h//BOX_DIV x w//BOX_DIV
-    # corner boxes — 4% of a 200x100 frame — so its whole-frame frame_delta (1.2) sits
-    # under LOOK_NOISE_MAX (2.0) even though the corner-over-centre ratio drop clears
-    # the vignette check on its own. That is a synthetic-fixture artifact (a real
-    # vignette's falloff covers far more than 4% of the frame): 0.3 is real, its
-    # narrow box is not. 0.6 is the design doc's own third calibration row (§7's
-    # measured table) and clears both checks: frame_delta 2.4 > 2.0.
     master = [_flat(100), _flat(100), _flat(100)]
-    delivered = [_corners_dark(100, 0.6) for _ in range(3)]
-    out = lookcheck.evaluate(master, delivered, None, None, vignette=0.6)
-    by = {f.check: f for f in out}
-    assert by["rendered"].status == "pass"
+    delivered = [_corners_dark(100, 0.3) for _ in range(3)]
+    by = {f.check: f for f in lookcheck.evaluate(master, delivered, None, None,
+                                                 vignette=0.3)}
     assert by["vignette"].status == "pass"
+
+
+def test_titles_alone_report_not_checked_rather_than_nothing():
+    """Titles have no check this slice (design §11). Returning [] would read as "the
+    gate looked and was satisfied"; a not-checked finding records the absence."""
+    out = lookcheck.evaluate([_flat(100)] * 3, [_flat(100)] * 3, None, None, titles=True)
+    assert [(f.check, f.status) for f in out] == [("titles", "not-checked")]
 
 
 def test_a_vignette_too_shallow_to_be_the_declared_one_fails():

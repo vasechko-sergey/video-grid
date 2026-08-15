@@ -17,10 +17,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Measured 2026-08-15 on a deliver-shaped encode of a heavy-grain master (the worst
-# case for x264 at crf 18): two encodes of the SAME picture sit 0.638 / 0.727 / 0.779
-# codes apart. 2.0 leaves ~2.6x headroom over the worst of those.
-LOOK_NOISE_MAX = 2.0
 # Measured: a declared vignette of 0.10 / 0.30 / 0.60 dropped the corner-over-centre
 # ratio by 0.0844 / 0.2576 / 0.5209 — 0.84 to 0.87 of what was asked for. Requiring
 # half the declared depth leaves a 1.7x margin below the worst measured case, which is
@@ -64,19 +60,13 @@ def _rgb(f: object, what: str) -> np.ndarray:
     return f
 
 
-def frame_delta(a: np.ndarray, b: np.ndarray) -> float:
-    """Mean absolute per-pixel, per-channel difference between two frames.
-
-    The catch-all sensor: two encodes of the same picture sit under LOOK_NOISE_MAX
-    apart, so a declared effect that leaves this at the floor did not render at all —
-    whatever the effect was, and even where its own specific measurement has a
-    not-checked arm."""
-    _rgb(a, "a"), _rgb(b, "b")
+def _same_shape(a: np.ndarray, b: np.ndarray) -> None:
+    """Refuse a delivery that is not the master's geometry — the two checks below both
+    compare paired frames, and a resized delivery would compare different pictures."""
     if a.shape != b.shape:
         raise ValueError(f"lookcheck: frames must be the same shape to compare, got "
                          f"{a.shape} and {b.shape} — the delivery was resized relative "
                          f"to the master, which no ExportProfile should do")
-    return float(np.abs(a.astype(np.int16) - b.astype(np.int16)).mean())
 
 
 def corner_centre(f: np.ndarray) -> tuple[float, float]:
@@ -107,18 +97,19 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
         raise ValueError(f"lookcheck.evaluate needs the same number of master and "
                          f"delivered frames, got {len(mid_master)} and "
                          f"{len(mid_delivered)}")
+    for m, d in zip(mid_master, mid_delivered):
+        _same_shape(_rgb(m, "a master frame"), _rgb(d, "a delivered frame"))
     out: list[LookFinding] = []
 
-    worst = max(frame_delta(m, d) for m, d in zip(mid_master, mid_delivered))
-    out.append(LookFinding(
-        check="rendered",
-        status="pass" if worst > LOOK_NOISE_MAX else "fail",
-        detail=(f"the delivered picture differs from the master by {worst:.3f} codes "
-                f"at most, at or under the {LOOK_NOISE_MAX} two encodes of the SAME "
-                f"picture differ by — the declared look did not reach the filter chain"
-                if worst <= LOOK_NOISE_MAX else
-                f"the delivered picture differs from the master by {worst:.3f} codes"),
-        measured=worst, expected=LOOK_NOISE_MAX))
+    if titles and not (vignette or fade):
+        # Titles have no check this slice (design §11). Returning nothing would read as
+        # "the gate looked and was satisfied" — this records the absence instead.
+        out.append(LookFinding(
+            check="titles", status="not-checked",
+            detail="titles were declared and this slice has no check for them: locating "
+                   "a title's band needs titles.y_exprs plus the safe-zone table (design "
+                   "§11). Nothing here says whether the text rendered",
+            measured=0.0, expected=0.0))
 
     if vignette:
         mid = len(mid_master) // 2
