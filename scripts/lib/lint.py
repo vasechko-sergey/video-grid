@@ -402,16 +402,36 @@ def _select_before_fps(cmd: list[str]) -> list[str]:
     asked for, so nothing fails. A probe built that way shows one frame and calls it
     three.
 
-    Split on ';' first: a filter_complex's chains run independently, so a select in
-    one says nothing about an fps= in another. Chain-local, in emission order, using
-    the FIRST occurrence of each — a chain with several of either is still wrong if
-    any select precedes any fps.
+    FIRST select against the LAST fps, not first-vs-first. `re.search` only ever
+    returns the leftmost match, so two `.search()` calls would answer "does the
+    first select precede the first fps", not "does any select precede any fps".
+    Measured false negative from exactly that bug: `fps=24,select=...,fps=30,...`
+    has a select sitting between two fps= occurrences — still the landmine — but
+    a first-vs-first compare let the leading fps=24 win the leftmost slot and
+    shield it. The first select is the earliest a select could be wrong at; the
+    last fps is the latest an fps= could still rescue it — so
+    first-select-position < last-fps-position holds exactly when SOME select
+    precedes SOME fps in the chain, which is the property this check promises.
+
+    Split on ';' first: this repo's one filter-graph builder
+    (reframe.RenderPlan.with_tail) always appends its sink filter to the chain's
+    OWN tail, so every shape this module actually sees keeps `;`-separated chains
+    independent — a select in one chain says nothing about an fps= in another for
+    any graph this codebase emits. That is not a general property of
+    filter_complex, though: `;`-chains are routinely pad-connected
+    (`[a]select=...[x];[x]fps=30[y]` is legal ffmpeg and IS the landmine, split
+    across the `;`). This check does not walk pad labels and will not see that
+    shape — chain-local by construction, not by having proven no such graph can
+    exist.
     """
     out: list[str] = []
     for a in cmd:
         for chain in a.split(";"):
-            s, f = _SELECT_RE.search(chain), _FPS_TAIL_RE.search(chain)
-            if s and f and s.start() < f.start():
+            s = _SELECT_RE.search(chain)
+            last_f = None
+            for m in _FPS_TAIL_RE.finditer(chain):
+                last_f = m
+            if s and last_f and s.start() < last_f.start():
                 out.append(
                     f"select ahead of fps= in {chain!r} — design §12: fps re-interpolates "
                     f"the frames select dropped back up to rate by DUPLICATING the "

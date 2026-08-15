@@ -843,3 +843,11 @@ def test_select_and_fps_in_DIFFERENT_chains_is_clean():
     assert not [m for m in lint.check_argv(
         ["ffmpeg", "-i", "a.mp4", "-filter_complex",
          "[0:v]select='eq(n\\,3)'[a];[1:v]fps=30[b];[a][b]overlay"]) if "select" in m]
+
+
+def test_a_select_between_two_fps_filters_is_flagged():
+    """The comparison is any-select-before-any-fps, not first-vs-first: a leading fps=
+    must not shield a select that still precedes a later one."""
+    bad = ["ffmpeg", "-i", "a.mp4", "-vf",
+           "fps=24,select='eq(n\\,3)',fps=30,format=yuv420p"]
+    assert any("select" in m and "fps=" in m for m in lint.check_argv(bad))
