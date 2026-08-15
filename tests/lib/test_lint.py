@@ -810,3 +810,36 @@ def test_the_overlay_route_is_clean():
 @pytest.mark.parametrize("name", sorted(REAL_SITES))
 def test_every_real_call_site_lints_clean(name):
     assert lint.check_argv(REAL_SITES[name]) == [], name
+
+
+# --- the select-before-fps check ------------------------------------------------
+# design 2026-08-15 §3.1: a `select` placed BEFORE a chain's own `fps=` emits the
+# SAME frame once per requested frame — fps re-interpolates the frames select
+# dropped back up to rate by duplicating the survivor, and the output frame count
+# is still exactly what was asked for, so nothing fails silently.
+
+def test_select_before_fps_is_flagged():
+    bad = ["ffmpeg", "-i", "a.mp4", "-vf",
+           "select='eq(n\\,3)',crop=100:200:x='5':y=0,scale=54:96,fps=30,format=yuv420p"]
+    out = lint.check_argv(bad)
+    assert any("select" in m and "fps=" in m for m in out)
+
+
+def test_select_after_the_fps_tail_is_clean():
+    good = ["ffmpeg", "-i", "a.mp4", "-vf",
+            "crop=100:200:x='5':y=0,scale=54:96,fps=30,format=yuv420p,select='eq(n\\,3)'"]
+    assert not [m for m in lint.check_argv(good) if "select" in m]
+
+
+def test_a_select_with_no_fps_in_its_chain_is_clean():
+    """assembly.frames_rgb emits exactly this and must never be flagged."""
+    assert not [m for m in lint.check_argv(
+        ["ffmpeg", "-i", "a.mp4", "-vf", "select='eq(n\\,3)+eq(n\\,9)'"]) if "select" in m]
+
+
+def test_select_and_fps_in_DIFFERENT_chains_is_clean():
+    """A filter_complex's chains are separated by ';' and run independently — a select
+    in one says nothing about an fps= in another."""
+    assert not [m for m in lint.check_argv(
+        ["ffmpeg", "-i", "a.mp4", "-filter_complex",
+         "[0:v]select='eq(n\\,3)'[a];[1:v]fps=30[b];[a][b]overlay"]) if "select" in m]

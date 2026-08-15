@@ -142,6 +142,14 @@ _VIDEO_COPY_RE = re.compile(r"-(?:vcodec|(?:c|codec)(?::v(?::\d+)?)?)")
 # audio frame count, which grabs no still — cannot exempt a video window.
 _STILL_GRAB_RE = re.compile(r"-(?:vframes|frames:v(?::\d+)?)")
 
+# design §12 (2026-08-15): a `select` placed BEFORE a chain's own `fps=` emits the
+# SAME frame once per requested frame — see _select_before_fps below for the
+# measurement. Anchored the same way _SYNTH_RE is: a name must START an element —
+# string start, or just after a `,` / `;` / `]` — so `videoselect=`/`otherfps=`-
+# shaped neighbours (were any to exist) cannot satisfy either boundary.
+_SELECT_RE = re.compile(r"(?:^|[,;\]])select=")
+_FPS_TAIL_RE = re.compile(r"(?:^|[,;\]])fps=")
+
 
 def _banned_filters(cmd: list[str]) -> list[str]:
     """§12: lutrgb renders black frames — a wrong-pixels failure with no traceback.
@@ -384,10 +392,40 @@ def _blend_multiply(cmd: list[str]) -> list[str]:
             for a in cmd if _BLEND_MULT_RE.search(a)]
 
 
+def _select_before_fps(cmd: list[str]) -> list[str]:
+    """Flag a `select` that sits BEFORE an `fps=` in the SAME filter chain.
+
+    Measured 2026-08-15 (design 2026-08-15 §3.1): asking for frames 15/45/75 of a
+    90-frame clip through `select=...,crop=...,fps=30` returned the SAME frame three
+    times — `fps` re-interpolates the frames select dropped back up to rate by
+    duplicating the survivor, and the output frame count is still exactly what was
+    asked for, so nothing fails. A probe built that way shows one frame and calls it
+    three.
+
+    Split on ';' first: a filter_complex's chains run independently, so a select in
+    one says nothing about an fps= in another. Chain-local, in emission order, using
+    the FIRST occurrence of each — a chain with several of either is still wrong if
+    any select precedes any fps.
+    """
+    out: list[str] = []
+    for a in cmd:
+        for chain in a.split(";"):
+            s, f = _SELECT_RE.search(chain), _FPS_TAIL_RE.search(chain)
+            if s and f and s.start() < f.start():
+                out.append(
+                    f"select ahead of fps= in {chain!r} — design §12: fps re-interpolates "
+                    f"the frames select dropped back up to rate by DUPLICATING the "
+                    f"survivor, so the output has the right frame count and the wrong "
+                    f"frames (measured: three requested frames came back as one frame "
+                    f"three times). Append the select at the END of the chain, after the "
+                    f"fps=/format= tail — reframe.RenderPlan.with_tail does exactly that.")
+    return out
+
+
 def check_argv(cmd: list[str]) -> list[str]:
     """Every §12 landmine violation in one ffmpeg argv. Empty list = clean."""
     out: list[str] = []
     for check in (_banned_filters, _seek_order, _unbounded_source, _drawtext_font,
-                  _zoompan_defaults, _blend_multiply):
+                  _zoompan_defaults, _blend_multiply, _select_before_fps):
         out.extend(check(cmd))
     return out
