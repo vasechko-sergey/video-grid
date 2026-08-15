@@ -465,6 +465,17 @@ def test_titles_alone_report_not_checked_rather_than_nothing():
     assert [(f.check, f.status) for f in out] == [("titles", "not-checked")]
 
 
+def test_titles_are_reported_even_beside_a_rendered_vignette():
+    """The common case: titles ride WITH a look. If the titles row only appeared when
+    titles were alone, a defect that killed the drawtext stage while the vignette still
+    rendered would ship attested with no trace titles were ever declared."""
+    master = [_flat(100)] * 3
+    delivered = [_corners_dark(100, 0.3) for _ in range(3)]
+    by = {f.check: f.status for f in lookcheck.evaluate(master, delivered, None, None,
+                                                        vignette=0.3, titles=True)}
+    assert by == {"vignette": "pass", "titles": "not-checked"}
+
+
 def test_a_vignette_too_shallow_to_be_the_declared_one_fails():
     master = [_flat(100)] * 3
     delivered = [_corners_dark(100, 0.05) for _ in range(3)]   # asked 0.30, got 0.05
@@ -620,9 +631,14 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
         _same_shape(_rgb(m, "a master frame"), _rgb(d, "a delivered frame"))
     out: list[LookFinding] = []
 
-    if titles and not (vignette or fade):
+    if titles:
         # Titles have no check this slice (design §11). Returning nothing would read as
         # "the gate looked and was satisfied" — this records the absence instead.
+        # Unconditional, NOT `titles and not (vignette or fade)`: titles ride beside a
+        # vignette or a fade in the common case, and a defect that killed only the
+        # drawtext stage while the vignette still rendered would otherwise ship attested
+        # with no trace that titles were ever declared. That is the exact bug class this
+        # gate exists for.
         out.append(LookFinding(
             check="titles", status="not-checked",
             detail="titles were declared and this slice has no check for them: locating "
@@ -1640,7 +1656,8 @@ test that catches it before moving on, and say so in the commit body.
 | 3 | `_refuse_on_drift`: delete the path comparison, keep the meta one | `test_the_probe_refuses_a_path_that_no_longer_matches_the_render` |
 | 4 | `regrade`: `out = dict(md)` then `out.update(fresh)` (a plain merge) | `test_regrade_drops_a_colour_field_the_author_deleted` |
 | 5 | `with_tail`: prepend instead of append (`f"{extra},{args[-1]}"`) | `test_with_tail_appends_after_the_chain` **and** `test_a_select_ahead_of_the_tail_collapses_to_one_frame` |
-| 6 | `evaluate`: drop the titles-only `not-checked` arm (return `[]` instead) | `test_titles_alone_report_not_checked_rather_than_nothing` |
+| 6 | `evaluate`: drop the titles `not-checked` arm (return `[]` instead) | `test_titles_alone_report_not_checked_rather_than_nothing` |
+| 6b | `evaluate`: narrow the titles arm back to `if titles and not (vignette or fade)` | `test_titles_are_reported_even_beside_a_rendered_vignette` |
 | 7 | `VIGNETTE_MIN_FRACTION = 0.0` | `test_a_vignette_too_shallow_to_be_the_declared_one_fails` |
 | 8 | `evaluate`: make the `mc < VIGNETTE_FLOOR` arm return `status="pass"` | `test_a_vignette_on_black_corners_is_not_checked` |
 | 9 | `evaluate`: make the `m0 < FADE_SOURCE_MIN` arm return `status="fail"` | `test_a_fade_on_an_already_black_opening_is_not_checked` |
