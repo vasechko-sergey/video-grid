@@ -1333,6 +1333,24 @@ def test_build_edl_tolerates_a_sub_half_bpm_tempo_difference():
     assert edl.episodes[0].beat_slot == 0
 
 
+def test_build_edl_checks_tempo_before_binding_the_spine():
+    # ORDER, not just presence. The four tests above all bind through _spine2(), whose
+    # slots sit inside _bind_pacing's own snap allowance — so they cannot tell "tempo
+    # checked before _bind_pacing" from "tempo checked after": relocating the guard to
+    # run AFTER _bind_pacing left every one of them green (2026-08-15 mutation battery,
+    # row 7 — a real coverage hole, found by running the mutation, not anticipated).
+    # This spine ALSO fails _bind_pacing's half-beat snap (slot 0 is 5.0s against a
+    # 2.0s episode), so only "tempo checked first" reaches the DIFFERENT-track message
+    # before _bind_pacing ever runs; "tempo checked after bind" hits _bind_pacing's own
+    # "fitted to a different edit" refusal instead, which does not match this regex.
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=90.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0)
+    mismatched = Spine(slots=(Slot(0, 0.0, 5.0, 0.2, "hook"),
+                              Slot(1, 5.0, 8.0, 0.9, "peak")), target_dur=13.0, tempo=120.0)
+    with pytest.raises(ValueError, match="DIFFERENT track"):
+        edit_plan.build_edl(_footage(), _sel3(), pacing=mismatched, music=music)
+
+
 def test_the_fit_carries_the_briefs_length_onto_the_edl(capsys):
     """brief_len reaches OutroFit, so EDL.md — not only the stderr line — can state
     the distance from SPEC.length_s (design §6; final review I-3)."""

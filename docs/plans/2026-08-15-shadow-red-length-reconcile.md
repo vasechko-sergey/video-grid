@@ -53,7 +53,7 @@ slope is negative — the curve decreases, which bands. Design §1.3. The existi
 - Modify: `scripts/lib/color.py` (`shadow_red_arg`)
 - Test: `tests/lib/test_color.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_color.py`, after `test_shadow_red_toe_only_pins_the_top`:
 
@@ -79,12 +79,12 @@ def test_shadow_red_accepts_a_lift_below_the_return_point():
     assert color.shadow_red_arg(0.09, ret=0.10).startswith(",curves=r='")
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -k shadow_red -v`
 Expected: the two `raises` tests FAIL (`DID NOT RAISE ValueError`); the acceptance test PASSES.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/color.py`, inside `shadow_red_arg`, **after** the existing `ret` range check
 (`if not 0 < ret <= 0.45:`), add:
@@ -98,19 +98,19 @@ In `scripts/lib/color.py`, inside `shadow_red_arg`, **after** the existing `ret`
             f"point, or move the return point above the lift")
 ```
 
-- [ ] **Step 4: Run the tests again**
+- [x] **Step 4: Run the tests again**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -k shadow_red -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Run the whole colour surface**
+- [x] **Step 5: Run the whole colour surface**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py tests/lib/test_models.py -q`
 Expected: PASS. (The shipped default is `ret=0.25`, `SHADOW_RED_MAX=0.20`, so `lift < ret`
 always holds and nothing existing should trip. If something does, report it — do not relax
 the refusal.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -130,7 +130,7 @@ between them. Measured at the shipped `ret=0.25`: **−6** codes at `lift=0.20`,
   docstring)
 - Test: `tests/lib/test_color.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Replace `test_shadow_red_toe_only_pins_the_top` in `tests/lib/test_color.py` with:
 
@@ -159,13 +159,13 @@ def test_shadow_red_density_follows_a_non_default_return_point():
     assert xs[4] == 0.45 and xs[-1] == 1.0
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -k shadow_red -v`
 Expected: both new tests FAIL — today's fragment ends `0.85/0.85 1/1`, so `above[0]` is 0.50,
 not 0.30.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scripts/lib/color.py`:
 
@@ -223,22 +223,22 @@ load-bearing" — with:
     region, and the shipped ret has none of them (design 2026-08-15 §1.4/§6).
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Prove nothing else read the deleted constant**
+- [x] **Step 5: Prove nothing else read the deleted constant**
 
 Run: `grep -rn "SHADOW_RED_ANCHORS" --include="*.py" scripts/ tests/`
 Expected: no output. (Two docs still mention it; Task 4 fixes those.)
 
-- [ ] **Step 6: Run the surfaces that render a grade**
+- [x] **Step 6: Run the surfaces that render a grade**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_color.py tests/lib/test_manifest.py tests/lib/test_models.py -q`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/lib/color.py tests/lib/test_color.py
@@ -257,7 +257,7 @@ file with the `_ramp_r_lut` helper the new test reuses.
 **Files:**
 - Modify: `tests/integration/test_reframe.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Append to `tests/integration/test_reframe.py`, immediately after
 `test_highlight_red_sub_knee_residual_is_small_and_monotone`:
@@ -292,12 +292,12 @@ def test_shadow_red_identity_region_holds_after_the_return_point(need_filter):
             f"lift={lift}: the curve is not monotone — a non-monotone transfer curve bands")
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py -k "shadow_red or highlight_red" -v`
 Expected: PASS (both).
 
-- [ ] **Step 3: Prove the test discriminates**
+- [x] **Step 3: Prove the test discriminates**
 
 Temporarily restore the sparse anchors — in `scripts/lib/color.py` replace the `hi_xs` block's
 final line with `pts += [f"{a:.2f}/{a:.2f}" for a in (0.50, 0.70, 0.85)] + ["1/1"]` — and run
@@ -305,7 +305,7 @@ the same command. Expected: the new test FAILS with `identity region sags -6`. *
 that edit by hand** (retype the correct line; do not use `git checkout`/`git restore`) and
 re-run to confirm PASS. Record both outputs in the report.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/test_reframe.py
@@ -326,7 +326,7 @@ was swapped out. `edit_plan build` is handed both files and compares nothing.
 - Modify: `scripts/edit_plan.py` (`_TEMPO_TOL`, a guard in `build_edl`)
 - Test: `tests/lib/test_edit_plan.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/lib/test_edit_plan.py`, beside `test_music_without_pacing_says_it_did_nothing`
 (~line 1293). These reuse the file's own `_footage()` / `_sel3()` / `_spine2()` trio — the
@@ -366,12 +366,12 @@ def test_build_edl_tolerates_a_sub_half_bpm_tempo_difference():
     assert edl.episodes[0].beat_slot == 0
 ```
 
-- [ ] **Step 2: Run them and watch the first fail**
+- [x] **Step 2: Run them and watch the first fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -k "different_track or same_track or sub_half_bpm" -v`
 Expected: the refusal test FAILS (`DID NOT RAISE`); the two acceptance tests PASS.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 (a) In `scripts/edit_plan.py`, beside the other module constants (near `_SNAP_TOL`, line ~201):
 
@@ -398,19 +398,19 @@ that logs the no-op case, and **before** `if pacing is not None:`:
             f"Re-run pacing against this MUSIC.json before binding")
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Run the drivers that call build_edl**
+- [x] **Step 5: Run the drivers that call build_edl**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_edit_plan.py tests/integration/test_outro.py tests/integration/test_edit_plan.py -q`
 (Skip any path that does not exist; report which you ran.)
 Expected: PASS. If an existing test passes a mismatched pair, that test was relying on the
 hole — fix the test's tempo to match, and say so in the report.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/edit_plan.py tests/lib/test_edit_plan.py
@@ -431,7 +431,7 @@ constant's name.
   `docs/plans/2026-07-26-colour-stage.md`
 - Modify: `docs/plans/2026-08-15-shadow-red-length-reconcile.md` (tick every checkbox)
 
-- [ ] **Step 1: `docs/backlog.md` — close both rows**
+- [x] **Step 1: `docs/backlog.md` — close both rows**
 
 In **P2**, replace the `color.shadow_red_arg` row's status `○` with `✅` and rewrite its text
 to record: the measured −6 at the shipped `ret` (worst at code 79, x≈0.31) and −14 across the
@@ -445,7 +445,7 @@ design's §2.1 table: `EDL.target_dur` 34.072 = `sum(play_dur())` to 0.0004s, th
 `MUSIC.json`'s 110.294, `EDL.md`'s 32.4s already fixed by `to_markdown`, and **"30.317" not
 reproducible from any artifact**. Name the fix: the `_TEMPO_TOL` refusal.
 
-- [ ] **Step 2: `docs/backlog.md` — the unblock and the new rows**
+- [x] **Step 2: `docs/backlog.md` — the unblock and the new rows**
 
 In **P3 → Music**, annotate the `enforce SPEC.length_s` line: it is **unblocked** — the
 diagnosis found the target it would gate (`EDL.target_dur`) already equals what the master
@@ -462,19 +462,19 @@ step 0.1 has one instead of three; the shipped `ret` has none (design §6).
 
 Update `_Last updated:_` to 2026-08-15.
 
-- [ ] **Step 3: `docs/build-status.md`**
+- [x] **Step 3: `docs/build-status.md`**
 
 Add a Done entry for this slice in the file's existing style: what landed, the measured
 numbers, and the two honest limits (equal tempo ≠ same track; the near-`ret` wobble).
 
-- [ ] **Step 4: `CLAUDE.md` — one registry row**
+- [x] **Step 4: `CLAUDE.md` — one registry row**
 
 Add one row to the Quick Reference table pointing at the design, in the table's voice: what it
 fixed and the one load-bearing surprise (the queued row's `−6` was real, but the same probe
 found `lift >= ret` inverts the toe, and the length figures had **already** reconciled —
 only a nine-hour-stale `PACING.json` disagreed). One row, not two.
 
-- [ ] **Step 5: the two stale `SHADOW_RED_ANCHORS` mentions**
+- [x] **Step 5: the two stale `SHADOW_RED_ANCHORS` mentions**
 
 `docs/specs/2026-07-26-colour-stage-design.md` lines ~120 and ~130 and
 `docs/plans/2026-07-26-colour-stage.md` line ~78 name the deleted constant. Correct them to
@@ -484,9 +484,9 @@ paragraphs.
 Run: `grep -rn "SHADOW_RED_ANCHORS" --include="*.py" --include="*.md" . | grep -v '^./.venv'`
 Expected: only this slice's own design/plan, which quote it historically.
 
-- [ ] **Step 6: Tick every checkbox in this plan file**
+- [x] **Step 6: Tick every checkbox in this plan file**
 
-- [ ] **Step 7: The whole suite, bytecode cleared**
+- [x] **Step 7: The whole suite, bytecode cleared**
 
 ```bash
 find . -name __pycache__ -type d -not -path './.venv/*' -exec rm -rf {} + 2>/dev/null; .venv/bin/python -m pytest -q
@@ -495,7 +495,7 @@ find . -name __pycache__ -type d -not -path './.venv/*' -exec rm -rf {} + 2>/dev
 Expected: EXIT 0, no new failures, and the same 2 pre-existing skips (torchreid weights,
 off-network iTunes). Report the exact counts.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A

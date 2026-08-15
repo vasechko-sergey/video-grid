@@ -4,13 +4,92 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-14._
+_Last updated: 2026-08-15._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Two P2 rows close by measurement — the shadow_red toe, and the length
+  figures that already agreed DONE (2026-08-15)** — plan
+  `docs/plans/2026-08-15-shadow-red-length-reconcile.md` + design
+  `docs/specs/2026-08-15-shadow-red-length-reconcile-design.md`, Tasks 0–4
+  (branch `fix/shadow-red-and-length-reconcile`, commits `996b506`..`c91b73f`
+  + this docs sync). Both rows were queued on a number that turned out to be
+  incomplete or stale, and in both cases the fix is a refusal, not new
+  machinery.
+
+  **`shadow_red_arg`'s anchors, re-measured.** The queued row already
+  suspected the three hardcoded identity anchors above the return point
+  (0.50/0.70/0.85) sagged the fitted spline; re-measured here with the same
+  lossless ramp probe `highlight_red_arg` used
+  (`tests/integration/test_reframe.py::_ramp_r_lut`), the sag at the shipped
+  `ret=0.25`/`SHADOW_RED_MAX` is **−6** codes, worst at code 79 (x≈0.31, in
+  the gap right after the return point), and up to **−14** across the legal
+  `(lift, ret)` domain. Fix: identity anchors every `SHADOW_RED_STEP=0.05`
+  derived from `ret` rather than hardcoded, so a caller passing a
+  non-default `ret` gets a dense region too — exactly identity above the
+  return point at the shipped `ret` for every legal lift. **The same probe
+  found a second, worse defect the queued row never named**: the toe maps
+  `x -> x + lift*(1 - x/ret)`, slope `1 - lift/ret`, so once `lift >= ret`
+  the slope is non-positive and the mapping inverts, banding the shadows —
+  every non-monotone cell the grid scan found had `lift >= ret`, and none
+  with `lift < ret` did. `shadow_red_arg` now refuses `lift >= ret`; it is
+  THIS refusal, not the densification, that removes every non-monotone cell
+  in the scanned domain. Unreachable in the shipped configuration today
+  (`SHADOW_RED_MAX=0.20 < SHADOW_RED_RETURN=0.25`), so the refusal guards
+  only a caller that does not exist yet, the same reachability class as the
+  twin's `knee`.
+
+  **The length figures, read off the run's own artifacts, not the summary
+  that queued the row.** `EDL.target_dur` (34.072) equals `sum(play_dur())`
+  (34.0724) to **0.0004s** — the rounding the field is written with — and
+  the delivered `out/REEL_v1.mp4` (34.051) is **21ms** off `EDL.target_dur`,
+  under one frame at 30fps (33.3ms). Those two never disagreed. What
+  disagreed was `PACING.json`: written **nine hours** before `MUSIC.json`,
+  fitted at **140.625** BPM against the shipped track's **110.294** — it
+  belonged to a track that was later swapped out.
+  `EDL.md`'s "32.4s" (sum of `dur`, ignoring the ramp) was **already
+  fixed** — `edl.to_markdown` sums `play_dur()` — the run's markdown just
+  predates the speed-ramp slice by eleven hours. And **"30.317" is not
+  reproducible from any artifact** in the run: not `EDL.json`, not
+  `PACING.json`, not `reel_report.json`, and no `.md`/`.txt`/`.log` contains
+  the string "30.3". Fix: `build_edl` now refuses when `pacing.tempo` and
+  `music.tempo` differ by more than `_TEMPO_TOL = 0.5` BPM, checked before
+  `_bind_pacing` runs and named beside the existing
+  `--music`-without-`--pacing` log.
+
+  **The seven-row mutation battery (design/plan) found one coverage hole.**
+  Row 7 asked whether the tempo guard's ordering — before `_bind_pacing`,
+  not after — is actually observed by any test. It is not: the four
+  existing tempo tests all bind through `_spine2()`, whose slots sit inside
+  `_bind_pacing`'s own snap allowance, so relocating the guard to run AFTER
+  `_bind_pacing` left all four green (the guard still ran, just later, and
+  still raised the same message before anything else could). Closed with a
+  new test, `test_build_edl_checks_tempo_before_binding_the_spine`, whose
+  spine ALSO fails `_bind_pacing`'s own half-beat snap — so only "tempo
+  checked first" reaches the DIFFERENT-track message, and "tempo checked
+  after bind" hits `_bind_pacing`'s own "fitted to a different edit" message
+  instead, which the test's regex catches. The other six rows failed their
+  named test on the first try and reverted clean. Whole suite, bytecode
+  cleared: **2845 passed, 2 skipped** (pre-existing: torchreid weights,
+  off-network iTunes), 0 failed.
+
+  **Two honest limits, left open on purpose.** Equal tempo does not prove
+  the same track — two different tracks can sit within 0.5 BPM of each
+  other; the strong version (recording the music file's digest on `Spine`)
+  is folded into the existing P2 "make pacing's round trip a fixed point"
+  row instead of a new one, because it rewrites that same file. And the
+  densified `shadow_red_arg` curve keeps three single-code non-monotone
+  cells of its own — unrelated to the inversion defect above — where `lift`
+  is within 0.02 of `ret` (0.15/0.14, 0.20/0.18, 0.20/0.19): 8-bit rounding
+  where the toe's slope is already near zero. Step 0.10 has one such cell
+  instead of three, and the shipped `ret=0.25` has none at any legal lift.
+  One side effect: the P3 "enforce `SPEC.length_s`" row is now unblocked —
+  the diagnosis found the target it would gate (`EDL.target_dur`) already
+  equals what the master delivers, so a real number is waiting for it.
 
 - **Music outro fit — the reel ends where the phrase does (backlog #2, closes it)
   DONE (2026-08-14)** — plan `docs/plans/2026-08-14-music-outro-fit.md` + design

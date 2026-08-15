@@ -75,7 +75,10 @@ copy the bodies. Each returns `""` at its identity value and type-checks `bool` 
 
 Constants: `BLACK_POINT_MAX=0.35`, `HIGHLIGHT_KNEE=0.55`, `HIGHLIGHT_MIN=0.6`,
 `SATURATION_MIN=0.5`, `SATURATION_MAX=1.5`, `SHADOW_RED_MAX=0.20`,
-`SHADOW_RED_RETURN=0.25`, `SHADOW_RED_ANCHORS=(0.50,0.70,0.85)`, `TONE_ANCHORS=3`,
+`SHADOW_RED_RETURN=0.25`, `SHADOW_RED_STEP=0.05` (`SHADOW_RED_ANCHORS` deleted
+2026-08-15 — see
+[shadow-red-length-reconcile](../specs/2026-08-15-shadow-red-length-reconcile-design.md)),
+`TONE_ANCHORS=3`,
 `TONE_MIN_GAP=6.0`, `TONE_TOP_SLOPE=0.35`, `TONE_SAMPLES=13`, `MID_BLUE_MIN=0.80`,
 `MID_BLUE_MAX=1.20`, `MID_BLUE_BAND=(0.45,0.65)`, `MID_BLUE_PINS=(0.25,0.85)`,
 `DIP_MAX=0.5`, `DIP_COLOR="0x141414"`.

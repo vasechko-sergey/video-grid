@@ -116,8 +116,10 @@ math.
 
 New module constants: `BLACK_POINT_MAX=0.35`, `HIGHLIGHT_KNEE=0.55`,
 `HIGHLIGHT_MIN=0.6`, `SATURATION_MIN=0.5`, `SATURATION_MAX=1.5`,
-`SHADOW_RED_MAX=0.20`, `SHADOW_RED_RETURN=0.25`,
-`SHADOW_RED_ANCHORS=(0.50,0.70,0.85)`, `TONE_ANCHORS=3`, `TONE_MIN_GAP=6.0`,
+`SHADOW_RED_MAX=0.20`, `SHADOW_RED_RETURN=0.25`, `SHADOW_RED_STEP=0.05`
+(`SHADOW_RED_ANCHORS` deleted 2026-08-15 — see
+[shadow-red-length-reconcile](2026-08-15-shadow-red-length-reconcile-design.md)),
+`TONE_ANCHORS=3`, `TONE_MIN_GAP=6.0`,
 `TONE_TOP_SLOPE=0.35`, `TONE_SAMPLES=13`, `MID_BLUE_MIN=0.80`,
 `MID_BLUE_MAX=1.20`, `MID_BLUE_BAND=(0.45,0.65)`, `MID_BLUE_PINS=(0.25,0.85)`,
 `DIP_MAX=0.5`, `DIP_COLOR="0x141414"`.
@@ -127,7 +129,7 @@ New module constants: `BLACK_POINT_MAX=0.35`, `HIGHLIGHT_KNEE=0.55`,
 | `black_point_arg(black)` | `colorlevels=rimin=gimin=bimin` | before the gain | `[0, 0.35]` (`0`) | subtract a lifted black floor; a multiply cannot move a floor |
 | `highlight_arg(white, knee=0.55)` | `curves=all='0/0 knee/knee 1/white'` | after the gain | `[0.6, 1.0]` (`1.0`) | shoulder pulling whites down; knee `0.55` because a `0.70` knee bulges the spline **above** identity (mean 113→117) |
 | `saturation_arg(sat)` | `eq=saturation` | after the gain | `[0.5, 1.5]` (`1.0`) | YUV chroma scale; the gain neutralizes a cast but cannot lower overall saturation |
-| `shadow_red_arg(lift, ret=0.25)` | `curves=r=…` toe lift + `SHADOW_RED_ANCHORS` pins | after the gain | `[0, 0.20]` (`0`) | neutralize a green/cyan black without warming skin/red gear; the anchor pins are load-bearing (a red board lost 7 R−G without them) |
+| `shadow_red_arg(lift, ret=0.25)` | `curves=r=…` toe lift + `SHADOW_RED_STEP` pins (anchors deleted 2026-08-15, [shadow-red-length-reconcile](2026-08-15-shadow-red-length-reconcile-design.md)) | after the gain | `[0, 0.20]` (`0`) | neutralize a green/cyan black without warming skin/red gear; the anchor pins are load-bearing (a red board lost 7 R−G without them) |
 | `mid_blue_arg(scale)` | `curves=b=…` midtone band, `MID_BLUE_PINS` hold ends | after the gain | `[0.80, 1.20]` (`1.0`) | scale blue in the midtones only (sky-bounce on skin); trade is a less-blue sky |
 | `tone_arg(src, dst)` + `_lerp` | sampled `curves=all` `(p5,p50,p95)` transfer | before the gain | anchors: 3 values, 0–255, strictly increasing by ≥`TONE_MIN_GAP` | the **non-linear** profile transfer a gain+levels provably cannot do (an affine map leaves histogram shape invariant) |
 | `dip_arg(dip, dur)` | `fade=t=in:color=0x141414` + `fade=t=out` | last (timeline) | `(0, 0.5]` (`0`); raises if `dur ≤ 2·dip` | a zero-cost transition; grey `0x141414`, **not black**, so `check_reel`'s `blackdetect` stays silent |

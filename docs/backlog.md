@@ -125,7 +125,7 @@ an override, not a bug.
 | ○ | **Calibrate the look** — `LOOK_VIGNETTE_MAX` (0.6), the 0.55/0.45 plateau/falloff split, and every row of `MoodPreset.look` are hand-picked on synthetic test patterns; no real footage has graded against them yet. | S | cinematic-look §11.3/§12 |
 | ○ | **Validate `outro.TAIL_MIN` against editing practice** — the 0.5s of vocal-free space a music boundary must leave is the project owner's assumption stated out loud, not a measurement or a citation. One named constant in one module, so re-tuning is a one-line change; check it against the literature on cutting to music. | S | music-outro-fit §11.1 |
 | ○ | **Calibrate the downbeat detector on more than one track** — the <150 Hz band edge, the ±0.10s window and the phase-confidence margin are first cuts measured on one song (14/18 bars, ratio 1.887). A second genre is the cheapest next evidence. | S | music-outro-fit §11.3 |
-| ○ | **`color.shadow_red_arg` has `highlight_red_arg`'s pre-fix sparse-anchor defect — worse.** Found while fixing `highlight_red_arg` for the identical flaw (three sparse anchors pin the spline AT three points, not the curve it draws between them): measured **−6** at `SHADOW_RED_MAX` against `highlight_red`'s pre-fix worst case of −3. It is the mirror function, and `highlight_red`'s own docstring cited "the shadow_red lesson" for a lesson `shadow_red` itself never learned. Same one-line densification fix, plus a probe test. | S | cinematic-look §12 |
+| ✅ | **`color.shadow_red_arg` had `highlight_red_arg`'s pre-fix sparse-anchor defect — worse. Fixed 2026-08-15.** Re-measured with the same lossless ramp probe: the three hardcoded anchors sagged **−6** codes at the shipped `ret=0.25`/`SHADOW_RED_MAX`, worst at code 79 (x≈0.31, in the gap right after the return point), and up to **−14** across the legal `(lift, ret)` domain. Fix: identity anchors every `SHADOW_RED_STEP=0.05` derived from `ret` (not hardcoded) — exactly identity at the shipped `ret` for every legal lift. **The same probe found a second, worse defect the queued row never named**: at `lift >= ret` the toe's slope `1 − lift/ret` goes non-positive and the mapping inverts, banding the shadows — now refused with a `ValueError`. It is this refusal, not the densification, that removes every non-monotone cell in the scanned domain. | S | [shadow-red-length-reconcile](specs/2026-08-15-shadow-red-length-reconcile-design.md) §1, cinematic-look §12 |
 | ○ | **Mood → grade** — bias `match_grade`'s common target by the brief's mood instead of taking the source median alone. This is the "§10 mood LUT" colour-as-a-stage deferred; #9's *look* half landed 2026-08-13 (cinematic-look), this is the grade half that remains. | M | colour-stage §11, matchgrade §8, [#9](fixes-backlog.md#9-cinematic-effects-library--mood-oriented-palettes) |
 | ○ | **Re-assess §6.1a layer 3 against track-stitch** — both address a mid-episode hero ID switch, by different mechanisms (descriptor continuity vs geometric overlap-vs-gap). Decide whether a real remainder exists before building anything. | S | cast-hero-pin §11 |
 | ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. | S | hero-reid §11, cast-hero-pin §11 |
@@ -135,8 +135,8 @@ an override, not a bug.
 | ○ | **Auto-place a ramp's `at` from the action anchors** — `lib/anchors` already computes the curve the author is eyeballing. | S | speed-ramp §13 |
 | ○ | **A `sample_clip` fixture longer than `WIN_MAX`** — the 3s no-scene-cut fixture can only ever carve one window, which is why the pool-relative scoring and window-boundary changes have no real-bytes proof. A testing gap that blocks proofs, not a feature. | S | intake-motion-scoring §9 |
 | ○ | **LICENSE + its `plugin.json` field** — the repo has none, and the plugin manifest omits the field. A distribution blocker, cheap to close. | S | plugin-packaging §6 |
-| ○ | **The length figures do not reconcile** — the 2026-08-03 run showed a fitted spine of 27.7s, `target_dur` 30.317s and a rebuilt reel at 34.05s. **Do this before the P3 "enforce `SPEC.length_s`" row, not beside it**: you cannot enforce a number three stages disagree about, so that row is the fix and this is its diagnosis. | S | [#20 second pass](fixes-backlog.md), length-retime §9 |
-| ○ | **Make pacing's round trip a fixed point again** — `scripts/pacing.py` fits its spine to the durations it reads out of `EDL.json`, so after an outro fit it refits a length footage re-projection cannot reproduce, and re-applying deadlocks (`_bind_pacing` refuses; the refusal's remedy used to loop). **Measured, and the escape is verified**: rebuild the EDL without `--pacing`, re-run pacing, re-apply — which is now what the refusal message and three skills say. This row is the structural fix: pacing should fit footage-projected durs, or subtract the recorded `outro.moved`. | M | music-outro-fit §11.8, final review I-1 |
+| ✅ | **The length figures do not reconcile — diagnosed and fixed 2026-08-15.** Read off the 2026-08-03 run's own artifacts, not the summary that queued the row: `EDL.target_dur` 34.072 equals `sum(play_dur())` to **0.0004s**, and the delivered `out/REEL_v1.mp4` is 34.051 — **21ms** off `EDL.target_dur`, under one frame at 30fps. Those two never disagreed. What disagreed was `PACING.json`: written **nine hours** before `MUSIC.json`, fitted at **140.625** BPM against the shipped track's **110.294** — it belonged to a track that was swapped out. `EDL.md`'s "32.4s" (sum of `dur`, ignoring the ramp) was **already fixed**: `edl.to_markdown` sums `play_dur()`; the run's markdown just predates the speed-ramp slice. And **"30.317" is not reproducible from any artifact** in the run — not `EDL.json`, not `PACING.json`, not `reel_report.json`, no `.md`/`.txt`/`.log`. Fix: `build_edl` now refuses when `pacing.tempo` and `music.tempo` differ by more than `_TEMPO_TOL = 0.5` BPM. | S | [#20 second pass](fixes-backlog.md), length-retime §9, [shadow-red-length-reconcile](specs/2026-08-15-shadow-red-length-reconcile-design.md) §2 |
+| ○ | **Make pacing's round trip a fixed point again** — `scripts/pacing.py` fits its spine to the durations it reads out of `EDL.json`, so after an outro fit it refits a length footage re-projection cannot reproduce, and re-applying deadlocks (`_bind_pacing` refuses; the refusal's remedy used to loop). **Measured, and the escape is verified**: rebuild the EDL without `--pacing`, re-run pacing, re-apply — which is now what the refusal message and three skills say. This row is the structural fix: pacing should fit footage-projected durs, or subtract the recorded `outro.moved`. **Folded in 2026-08-15**: the strong form of that slice's tempo cross-check is recording the music file's **digest** on `Spine` — equal tempo does not prove the same track — and it belongs here because it rewrites this same file. | M | music-outro-fit §11.8, final review I-1, shadow-red-length-reconcile §6/§7 |
 | ○ | **Reconcile `build_reel`'s length re-time with the outro fit** — a within-band shortfall absorb replaces `target_dur` with the master's real length, so a reel whose length was *chosen* as `line + fade` can ship at a different length with the fade no longer on the line. `build_reel` logs the re-time; nothing connects it back to the fit, and `EDL.outro` still records the length that was asked for. At minimum say so; at best re-derive. | S | music-outro-fit §11.10 |
 
 ## P3 — someday
@@ -164,7 +164,11 @@ cross-episode white-balance / cast matching (matchgrade §8) ·
 `highlight_red_arg`'s shoulder (`hi`) formula is monotonicity-fragile near
 `pull ≈ 1 − knee` for `knee ≥ 0.7` — a knee×pull grid scan found the
 pre-existing code already broken there; unreachable today (the one production
-call site never passes `knee=`), reported not fixed (cinematic-look §12)
+call site never passes `knee=`), reported not fixed (cinematic-look §12) ·
+`shadow_red_arg`'s densified curve keeps three single-code non-monotone
+cells where `lift` is within 0.02 of `ret` (0.15/0.14, 0.20/0.18,
+0.20/0.19); step 0.1 has one instead of three; the shipped `ret` has none
+(shadow-red-length-reconcile §6)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
@@ -207,7 +211,11 @@ per-section mood arc (mood-match §9, pacing §10) ·
 beat as a hard gate, once a cut can be re-trimmed (music-spine §9) ·
 ⊘ re-pick `MUSIC.start_offset` at the back-edge (length-retime §9) — **measured dead 2026-08-14 and superseded** by the "whole-spine re-fit across in-point candidates" row above: the shift the 2026-08-03 reel needed was 2.235 beats, and only a whole-*beat* shift keeps the existing cuts on the grid (two beats leaves the end 0.128s off; a whole-*bar* shift maps the grid onto itself and changes nothing). Kept as a line so nobody re-derives it (music-outro-fit §0) ·
 measure the delivered fade's real distance from `EDL.outro.line` — the design's central claim is `reel_dur = line + fade`, but `mix` is handed the master's *probed* length, so the fade starts a fraction of a frame off the line and nothing measures the residual (music-outro-fit §11.9) ·
-enforce `SPEC.length_s` rather than only logging the cross-check (length-retime §9) ·
+enforce `SPEC.length_s` rather than only logging the cross-check —
+**unblocked 2026-08-15**: the length diagnosis found the target this would
+gate (`EDL.target_dur`) already equals what the master delivers, and only a
+stale `PACING.json` ever disagreed (length-retime §9,
+shadow-red-length-reconcile §2) ·
 music-less dual-emit + trending-sound sidecar, §5.14 (music-spine §9, using-montage §5) ·
 a SPEC field for ambient / SFX instead of only `ReelManifest` flags (ambient §9, sfx §9) ·
 per-episode ambient level or mute (ambient §9)
@@ -342,4 +350,4 @@ that never existed, a cv2 blocker that disappeared when the tracking ladder
 landed, and three build-status entries about §6.1a layer 3 written as though
 track-stitch had not shipped.
 
-_Last updated: 2026-08-14._
+_Last updated: 2026-08-15._

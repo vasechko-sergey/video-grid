@@ -435,10 +435,12 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     it lets `_apply_outro` move the LAST episode's end so the reel's length resolves on a
     bar line, but ONLY when `pacing` is also supplied: the fit runs after `_bind_pacing`
     and reads the fade `look` resolves to (never through a slot — see `_apply_outro`'s own
-    docstring). Omitting `music` (the default) leaves EDL.outro at None, same as a
-    hand-authored SP1 EDL. `brief_len` is SPEC.length_s, the tie-breaker `outro.fit_outro`
-    prefers when two bar lines are equally reachable; None (no brief) breaks ties toward
-    the smaller move instead."""
+    docstring). Supplying both also raises ValueError when `pacing.tempo` and
+    `music.tempo` differ by more than `_TEMPO_TOL` (0.5 BPM) — this PACING.json was
+    fitted to a DIFFERENT track (design 2026-08-15 §2.2). Omitting `music` (the default)
+    leaves EDL.outro at None, same as a hand-authored SP1 EDL. `brief_len` is
+    SPEC.length_s, the tie-breaker `outro.fit_outro` prefers when two bar lines are
+    equally reachable; None (no brief) breaks ties toward the smaller move instead."""
     eps_in = selection.get("episodes")
     if not isinstance(eps_in, list) or not eps_in:
         raise ValueError("selection.episodes must be a non-empty list of episode objects")
