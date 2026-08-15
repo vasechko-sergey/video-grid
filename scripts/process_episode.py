@@ -29,6 +29,36 @@ from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpe
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
+def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dict,
+                       color_correct: tuple[float, ...] | None = None) -> ReframeSpec:
+    """The ONE place a Manifest becomes a ReframeSpec.
+
+    Extracted so the frame probe (scripts/probe.py, design 2026-08-15) renders from
+    the same field map the real render uses. A probe carrying its own copy of this
+    mapping would drift field by field, and a probe that renders a different grade
+    than the next render is worse than no probe: it converges on pixels nobody gets.
+
+    `params` is the retry-parameter dict (orchestration.DEFAULT_PARAMS, possibly
+    adjusted). `color_correct` is the reel loop's per-channel pull, None outside it.
+    """
+    lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
+                       rect=m.rect, background=m.background,
+                       background_color=m.background_color,
+                       border_px=m.border_px, border_color=m.border_color)
+    return ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
+                       color_means=m.color_means, delivery=delivery, layout=lspec,
+                       max_speed=params["max_speed"],
+                       smooth_window_s=params["smooth_window_s"],
+                       color_correct=color_correct,
+                       white_balance=m.white_balance, black_point=m.black_point,
+                       highlight=m.highlight, highlight_red=m.highlight_red,
+                       saturation=m.saturation,
+                       shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
+                       tone_src=m.tone_src, tone_dst=m.tone_dst,
+                       pan=PanSpec.from_dict(m.pan) if m.pan is not None else None,
+                       zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None)
+
+
 def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")
@@ -107,6 +137,9 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
 
     # the layout is editorial intent, not a retry parameter: it does not change
     # between attempts, so build it once. validate() already proved it constructs.
+    # Also built inside build_reframe_spec (the ONE map). Kept here because the layout
+    # and pan preflights below need the resolved objects BEFORE any encode; both
+    # constructions are pure and validate() already proved they succeed.
     lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
                        rect=m.rect, background=m.background,
                        background_color=m.background_color,
@@ -356,16 +389,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     path_out = str(Path(project_dir) / "path.json")
     report = None
     for attempt in range(1, max_attempts + 1):
-        rspec = ReframeSpec(composition=m.composition, grid=m.grid, canvas=m.canvas,
-                            color_means=m.color_means, delivery=delivery, layout=lspec,
-                            max_speed=params["max_speed"],
-                            smooth_window_s=params["smooth_window_s"],
-                            color_correct=color_correct,
-                            white_balance=m.white_balance, black_point=m.black_point,
-                            highlight=m.highlight, highlight_red=m.highlight_red,
-                            saturation=m.saturation,
-                            shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
-                            tone_src=m.tone_src, tone_dst=m.tone_dst, pan=pan, zoom=zoom)
+        rspec = build_reframe_spec(m, delivery, params, color_correct)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
                                                   stabilized=m.stabilize))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
