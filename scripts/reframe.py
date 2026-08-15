@@ -1,5 +1,6 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
 import argparse, json
+from dataclasses import dataclass
 from pathlib import Path
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, ffbin, proc
@@ -391,42 +392,57 @@ def _filter_args(rl: ResolvedLayout, xexpr: str, cy: int, grade: str,
              f"[bg][fg]overlay={ox}:{oy}{ov_opts},{tail}")]
 
 
-def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
-            path_out: str, *, stabilized: bool = False) -> str:
-    """Compose one episode from a tracked route OR a generated pan (spec §6):
-    crop/scale/color per `spec`.
+@dataclass(frozen=True)
+class RenderPlan:
+    """Everything ONE render needs, decided but not yet executed.
 
-    spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/layout/max_speed/color_correct/pan/zoom. src/route_path/out/path_out stay
-    explicit per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
-    independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
-    optional per-channel factor the reel retry loop composes onto the grade to pull one
-    episode toward the reel median (None = base grade only). Stabilization is a
-    PRE-STAGE, not part of this chain: the caller runs vidstab.stabilize and hands
-    its output in as `src`, and `stabilized` (below) records that it did (design
-    2026-07-20 §1).
+    Exists so this repo has exactly ONE chain builder. reframe() is this plan plus an
+    x264 sink; the frame probe is this plan plus a select sink (design
+    2026-08-15 §3). A probe that rebuilt the chain from path.meta.json's recorded rect
+    would be a second implementation of the render, and the day the two drift is the
+    day the probe lies about the one thing it exists to answer.
+    """
+    filter_args: list[str]        # ["-vf", chain] or ["-filter_complex", graph]
+    path: list[int]               # the crop's x per route sample — CropPath's payload
+    fps: float
+    dur: float
+    src_w: int                    # ResolvedLayout does NOT carry the source dims (checked:
+    src_h: int                    # scripts/lib/layout.py:16-29), and PathMeta.src_dims needs
+                                  # them — so they ride here rather than costing a second ffprobe
+    rl: ResolvedLayout
+    cy: int
+    crop_ws: list[int] | None
+    crop_hs: list[int] | None
+    crop_ys: list[int] | None
+    grade: str                    # the finished colour fragment, for the probe's report
 
-    route_path is OPTIONAL and must be None under a pan: a pan's path is
-    generated, so there is no route to read, and writing an empty route.json to
-    keep a consumer happy would be a fabricated observation — an empty route
-    already MEANS "the tracker ran and found nobody" (design 2026-07-19 §6.1).
+    def with_tail(self, extra: str) -> list[str]:
+        """These filter args with `extra` appended to the END of the chain.
 
-    `stabilized` is a FACT ABOUT `src`, not an instruction: it says the caller
-    already ran the vidstab pre-stage and handed us its output. reframe cannot
-    stabilize — a ReframeSpec.stabilize would be a lie in the type — but it does
-    write the sidecar, and whether the pixels were corrected is exactly the kind of
-    thing PathMeta exists to record (design 2026-07-20 §6.2). It flows to PathMeta
-    and nowhere else.
+        The ONLY supported way to add a sink filter, and the position is not a
+        preference: measured 2026-08-15, a `select` placed BEFORE the chain's own
+        `fps=` emits the SAME frame once per requested frame — the fps filter
+        re-interpolates the dropped frames back up to rate by duplication, and the
+        output frame count is still right, so nothing fails. Requesting frames
+        15/45/75 of a 90-frame clip returned one hash three times.
+        """
+        if not extra:
+            raise ValueError("with_tail needs a filter to append; pass the plan's "
+                             "filter_args unchanged if there is no sink filter")
+        args = list(self.filter_args)
+        args[-1] = f"{args[-1]},{extra}"
+        return args
 
-    Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
-    sidecar — what was actually cut, for check_episode/storyboard to read back instead
-    of re-deriving the crop from the canvas (silently wrong under a non-fill layout).
 
-    A zoom and a pan cannot coexist on one episode — checked FIRST, before any ffmpeg
-    call, so a manifest authoring mistake fails on the cheap check, not partway
-    through a probe/encode of a src that may not even be reachable yet (design
-    2026-08-08 §5): a zoom anchors the rect to the tracked route, a pan generates a
-    path with none to anchor to.
+def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPlan:
+    """Decide one render without executing it: probe the source, resolve the layout,
+    compute (or generate) the crop path, build the colour fragment, and assemble the
+    filter args. Every refusal reframe() used to raise still raises HERE — a zoom
+    beside a pan, a missing route, an empty route, a non-monotone tone curve — so a
+    probe fails on exactly the same input the real render would.
+
+    Pure of side effects except the ffprobe and verify_tone's 256x4 ramp: it writes no
+    file. reframe() owns path.json and path.meta.json; the probe writes neither.
     """
     if spec.pan is not None and spec.zoom is not None:
         raise ValueError(
@@ -475,7 +491,6 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
                             crop_ws=crop_ws,
                             smooth_window=pathsmooth.window_frames(
                                 spec.smooth_window_s, fps))
-    CropPath(path).to_json(path_out)
 
     gains = color.gains_for_means(spec.color_means)
     if spec.color_correct is not None:  # reel retry loop; see docstring
@@ -510,6 +525,51 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
                      f":y='{_xexpr(yy, times, var='it')}'"
                      f":d=1:s={rl.crop_w}x{rl.crop_h}:fps={fps:.6g}")
     xexpr = _xexpr(base_xs, times)
+    filter_args = _filter_args(rl, xexpr, cy, grade, fps, dur, zoom_args=zoom_args)
+    return RenderPlan(filter_args=filter_args, path=path, fps=fps, dur=dur,
+                      src_w=src_w, src_h=src_h, rl=rl, cy=cy, crop_ws=crop_ws,
+                      crop_hs=crop_hs, crop_ys=crop_ys, grade=grade)
+
+
+def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
+            path_out: str, *, stabilized: bool = False) -> str:
+    """Compose one episode from a tracked route OR a generated pan (spec §6):
+    crop/scale/color per `spec`.
+
+    spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
+    delivery/layout/max_speed/color_correct/pan/zoom. src/route_path/out/path_out stay
+    explicit per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
+    independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
+    optional per-channel factor the reel retry loop composes onto the grade to pull one
+    episode toward the reel median (None = base grade only). Stabilization is a
+    PRE-STAGE, not part of this chain: the caller runs vidstab.stabilize and hands
+    its output in as `src`, and `stabilized` (below) records that it did (design
+    2026-07-20 §1).
+
+    route_path is OPTIONAL and must be None under a pan: a pan's path is
+    generated, so there is no route to read, and writing an empty route.json to
+    keep a consumer happy would be a fabricated observation — an empty route
+    already MEANS "the tracker ran and found nobody" (design 2026-07-19 §6.1).
+
+    `stabilized` is a FACT ABOUT `src`, not an instruction: it says the caller
+    already ran the vidstab pre-stage and handed us its output. reframe cannot
+    stabilize — a ReframeSpec.stabilize would be a lie in the type — but it does
+    write the sidecar, and whether the pixels were corrected is exactly the kind of
+    thing PathMeta exists to record (design 2026-07-20 §6.2). It flows to PathMeta
+    and nowhere else.
+
+    Writes `out` (the clip), `path_out` (the crop path) and `path_out`'s `.meta.json`
+    sidecar — what was actually cut, for check_episode/storyboard to read back instead
+    of re-deriving the crop from the canvas (silently wrong under a non-fill layout).
+
+    A zoom and a pan cannot coexist on one episode — checked FIRST, before any ffmpeg
+    call, so a manifest authoring mistake fails on the cheap check, not partway
+    through a probe/encode of a src that may not even be reachable yet (design
+    2026-08-08 §5): a zoom anchors the rect to the tracked route, a pan generates a
+    path with none to anchor to.
+    """
+    plan = plan_render(spec, src, route_path)
+    CropPath(plan.path).to_json(path_out)
     # `-t` pins the render to the source's length, and is the ONLY thing that does
     # (design §4). `color=:d=` alone leaves the overlay's output timebase mismatched
     # with the tail's `fps` filter: a 90-frame 3s clip came out 46080 frames / 1536s.
@@ -521,19 +581,20 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     # (both already end with the source), and unconditional means no future filler
     # can forget it. That decision is pinned by a test — see
     # test_reframe_bounds_every_layout_to_the_source_length.
-    cmd = [ffbin.ffmpeg(), "-y", "-i", src,
-           *_filter_args(rl, xexpr, cy, grade, fps, dur, zoom_args=zoom_args),
-           "-t", f"{dur:.6f}",
+    cmd = [ffbin.ffmpeg(), "-y", "-i", src, *plan.filter_args,
+           "-t", f"{plan.dur:.6f}",
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)
 
-    PathMeta(mode=rl.mode, crop_w=rl.crop_w, crop_h=rl.crop_h, crop_y=cy,
-             src_dims=(src_w, src_h), canvas=spec.canvas, out_dims=(rl.out_w, rl.out_h),
-             rect_px=rl.rect_px, freedom=rl.freedom, background=rl.background,
+    PathMeta(mode=plan.rl.mode, crop_w=plan.rl.crop_w, crop_h=plan.rl.crop_h,
+             crop_y=plan.cy, src_dims=(plan.src_w, plan.src_h),
+             canvas=spec.canvas, out_dims=(plan.rl.out_w, plan.rl.out_h),
+             rect_px=plan.rl.rect_px, freedom=plan.rl.freedom,
+             background=plan.rl.background,
              pan=spec.pan is not None, stabilized=stabilized,
-             crop_ws=crop_ws if spec.zoom is not None else None,
-             crop_hs=crop_hs if spec.zoom is not None else None,
-             crop_ys=crop_ys if spec.zoom is not None else None,
+             crop_ws=plan.crop_ws if spec.zoom is not None else None,
+             crop_hs=plan.crop_hs if spec.zoom is not None else None,
+             crop_ys=plan.crop_ys if spec.zoom is not None else None,
              ).write(Path(path_out).with_suffix(".meta.json"))
     return out
 

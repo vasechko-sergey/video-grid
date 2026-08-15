@@ -241,3 +241,43 @@ def test_reframe_without_a_zoom_writes_no_arrays(tmp_path, monkeypatch):
                        layout=LayoutSpec(mode="fill"))
     reframe.reframe(spec, "src.mp4", str(route), str(tmp_path / "out.mp4"), str(path_out))
     assert "crop_ws" not in json.loads(path_out.with_suffix(".meta.json").read_text())
+
+
+class _FakeCompleted:
+    stdout = b""
+    stderr = b""
+    returncode = 0
+
+
+def _fake_ok():
+    return _FakeCompleted()
+
+
+def test_plan_render_and_reframe_build_the_same_filter_args(tmp_path, monkeypatch):
+    """reframe() must emit exactly what plan_render decided — if the two ever diverge
+    the probe stops describing the render, which is the one thing it is for."""
+    seen: list[list[str]] = []
+    monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: seen.append(cmd) or _fake_ok())
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                       color_means=(110.0, 120.0, 130.0),
+                       delivery=Delivery.from_spec("short_edge:540"),
+                       pan=PanSpec(start=0.0, end=0.2))
+    plan = reframe.plan_render(spec, "src.mp4", None)
+    reframe.reframe(spec, "src.mp4", None, str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
+    assert plan.filter_args == seen[-1][4:4 + len(plan.filter_args)]
+
+
+def test_with_tail_appends_after_the_chain(tmp_path, monkeypatch):
+    """The sink filter lands at the END of the chain — design §3.1: ahead of the
+    tail's fps= it silently emits one frame N times."""
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                       color_means=(110.0, 120.0, 130.0),
+                       delivery=Delivery.from_spec("short_edge:540"),
+                       pan=PanSpec(start=0.0, end=0.2))
+    plan = reframe.plan_render(spec, "src.mp4", None)
+    tailed = plan.with_tail("select='eq(n\\,3)'")
+    assert tailed[:-1] == plan.filter_args[:-1]
+    assert tailed[-1] == plan.filter_args[-1] + ",select='eq(n\\,3)'"
+    assert tailed[-1].index("fps=") < tailed[-1].index("select=")
