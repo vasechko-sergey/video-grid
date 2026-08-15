@@ -1666,6 +1666,7 @@ test that catches it before moving on, and say so in the commit body.
 | 12 | `deliver`: drop the `if not (vig or fade or titles)` shortcut | `test_a_look_less_delivery_runs_no_look_check_at_all` |
 | 13 | `lint`: remove `_select_before_fps` from `check_argv`'s tuple | `test_select_before_fps_is_flagged` |
 | 14 | `lint`: drop the `a.split(";")` (scan whole arguments) | `test_select_and_fps_in_DIFFERENT_chains_is_clean` |
+| 14b | `lint`: take the FIRST `fps=` match instead of the last (`search` in place of the `finditer` walk) | `test_a_select_between_two_fps_filters_is_flagged` |
 | 15 | `probe_grade`: use `md["segment"]` for the render but `source_for` for the report | `test_the_probes_frames_are_the_frames_the_render_ships` under a stabilized fixture — **if no such fixture exists, this row has no test; write one or record the hole explicitly** |
 
 - [ ] **Step 2: Run the full suite**
