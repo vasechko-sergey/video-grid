@@ -4,13 +4,107 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-15._
+_Last updated: 2026-08-16._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Frame probe + look gate — converge a colour grade without a reel
+  re-render, and catch a look that silently failed to render DONE
+  (2026-08-16)** — plan `docs/plans/2026-08-15-frame-probe-look-gate.md` +
+  design `docs/specs/2026-08-15-frame-probe-look-gate-design.md`, Tasks 0–7
+  (branch `feat/frame-probe-look-gate`, commits `86d84a5`..`47742b0` + this
+  docs sync). Backlog P2 #10, closes it. One primitive answers two
+  complaints: `scripts/probe.py grade` renders 3 frames of ONE episode
+  through the SAME chain `reframe` would encode (`reframe.plan_render` +
+  `RenderPlan.with_tail` — one chain builder now, not two implementations
+  that can drift) over its frozen route, so a colour grade converges without
+  paying for a reel re-render; `deliver`'s post-encode look gate
+  (`scripts/lib/lookcheck.py`) samples the delivered `REEL_v{n}` against its
+  master and hard-refuses a declared vignette/fade that did not reach the
+  pixels — the exact bug class the cinematic-look review caught once by
+  hand, now machine-checked on every delivery.
+
+  **What the probe costs, measured.** Dropping the encode alone buys
+  1.34–1.84× (full encode 0.59–3.83s across flat/grain 1080p/4K vs. the
+  probe's 0.37–2.86s); the bigger saving is the tracking pass it also
+  skips — **5.00s** on a 1080p/3s clip, against the encode's 0.59–2.41s
+  beside it. One grade attempt today is track+encode ≥7.4s against the
+  probe's 1.31s (**≈5.7×**), and via `edl_to_reel` that cost is paid per
+  episode, every attempt.
+
+  **Whether the probe's pixels are the shipped pixels, measured.** Probe
+  PNGs against the same frame numbers decoded back out of `reframe`'s real
+  output, on the grain source (the worst case for x264 at crf 18): mean
+  |Δ| 1.07–1.39 codes per pixel. The statistic the grade decision actually
+  reads — mean luma — agrees to **0.14 codes or better**.
+
+  **The look gate's calibration, measured.** A declared vignette of
+  0.10/0.30/0.60 drops the corner-over-centre ratio 0.0844/0.2576/0.5209 —
+  0.84–0.87× of the declared depth, so `VIGNETTE_MIN_FRACTION = 0.5` sits
+  with a 1.7× margin below the worst measured case. A 0.5s fade took a
+  75.28-mean opening frame to exactly 0.00 (`FADE_BLACK_MAX = 2.0`). Task
+  6's independent real-ffmpeg proof measured **0.2576 at declared 0.30** on
+  a different canvas — matching the table at a different point. The gate's
+  original THIRD check — a whole-frame noise-floor catch-all — was
+  designed, measured, and deleted in this same slice: a fade touches only
+  the first/last half-second, so the three interior samples it would have
+  compared sit outside both ramps and read as "no look at all"
+  (0.638–0.780 vs. the master, indistinguishable from a shallow vignette
+  that passes the same floor by 3%) — the premise (any declared effect
+  moves the whole frame) was wrong; only a vignette does.
+
+  **The `select`-before-`fps=` landmine is now unreachable, not just
+  documented.** `scripts/lib/lint.py` gained a seventh `check_argv` check,
+  wired into `proc.run`'s always-on guard — production code can no longer
+  construct that argv at all. Task 6's own proof of the duplication (three
+  requested frames returned as one frame, three times) had to bypass
+  `proc.run` via a direct `subprocess.run` call to still measure ffmpeg's
+  raw behaviour; the design's §3.1 now says so explicitly (added this
+  task, since a rule with no evidence behind it decays into folklore).
+
+  **Task 7's 15-row mutation battery (17 checks counting the 6b/14b
+  variants) found one coverage hole.** Row 15 asked whether `probe_grade`
+  could render `md["segment"]` while still labelling its report with
+  `source_for()`'s path — and nothing in the suite called `probe_grade`
+  end-to-end on a `stabilize` episode to catch it. The gap is real and
+  structural, not a test-writing oversight: a raw and a stabilized source
+  of matching dims/fps/dur give `plan_render` IDENTICAL geometry either
+  way, so `_refuse_on_drift` — the guard this whole slice built to catch
+  drift — cannot see a pure content swap; only the rendered pixels would be
+  wrong. Closed with
+  `test_the_probes_frames_are_the_frames_the_render_ships_under_stabilize`
+  (`tests/integration/test_probe.py`): a dark `raw.mp4` and a bright
+  `stabilized.mp4`, an identity-gain grade so only the source pixels can
+  move the mean, confirmed red under the mutation (p50 27.0, reading as the
+  dark segment) before reverting clean. The other 16 checks held on their
+  first try. Whole suite: **2881 passed / 2 skipped** (pre-existing skips:
+  torchreid weights, off-network iTunes) — +1 over the prior 2880 baseline,
+  exactly the one new test.
+
+  **Wired into the skills.** `edit-plan`'s colour-grade section now carries
+  the convergence loop (`probe grade` against an edited `EDL.json`, look at
+  the pixels, edit, probe again; then materialize the converged manifest
+  with `probe.regrade` itself — never a hand-merge, which keeps a colour
+  field the EDL edit just deleted — and re-render one episode with its
+  frozen route, never the reel). There is no one-step command for that last
+  re-render yet; filed to the backlog (P4). `using-montage` notes at the
+  episode-qc checkpoint to probe before spending a re-render on a colour
+  finding, and that `deliver`'s look-gate refusal is a broken look chain,
+  never something to retry as-is.
+
+  **Honest limits, filed to the backlog, not left stranded in the design's
+  own `§Deferred`.** Titles carry no pixel check in the look gate (only a
+  `not-checked` finding that one was declared); the gate's constants are
+  calibrated on synthetic patterns and one encode profile, not real
+  footage; the probe is wired for colour only, not composition or path
+  smoothness; there is no one-step re-render of a converged episode. All
+  four now have their own row in `docs/backlog.md` (P3/P3/P3/P4), each
+  citing `frame-probe-look-gate §11`, alongside backlog #10 itself flipping
+  to ✅.
 
 - **Two P2 rows close by measurement — the shadow_red toe, and the length
   figures that already agreed DONE (2026-08-15)** — plan

@@ -214,6 +214,39 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      `python -m scripts.color_measure <clip>`. A banding `tone` curve fails loud at
      render (`verify_tone`), so trust the error and widen the anchors.
 
+   **Converging a grade — do not re-render a reel to look at one episode.** Once
+   `edl_to_reel --stop-after-episodes` has written `<run>/out/EPISODES.json`, edit
+   the episode's colour fields in `EDL.json`, then:
+
+       python -m scripts.probe grade --episodes <run>/out/EPISODES.json \
+         --index <N> --edl EDL.json
+
+   It writes `<run>/work/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
+   (naturalness flags plus p5/p50/p95 per frame, which read straight into a
+   `tone_src`/`tone_dst` pair). Look at the pixels, edit `EDL.json`, probe again.
+   The probe **refuses** if the recomputed crop path differs from the frozen one:
+   that means something other than colour changed (a re-track, a retry-adjusted
+   `max_speed`/`smooth_window_s`, a different source file), and its frames would
+   not be the frames the next render ships.
+
+   Only when it converges is the full render worth paying for — and re-render
+   **that one episode**, never the reel, so the tracker never runs again. There is
+   no one-step command for this yet (backlog, `frame-probe-look-gate §11`):
+   materialize the converged manifest with the SAME `regrade` the probe used
+   internally — never hand-merge the colour block yourself; a plain merge keeps a
+   field the EDL edit just deleted (see `_COLOUR_KEYS` in `scripts/probe.py`) —
+   then pass the episode's frozen route so tracking is skipped:
+
+       python -c "
+       import json
+       from scripts import probe
+       rm = json.load(open('<run>/out/EPISODES.json'))
+       json.dump(probe.regrade(rm['episodes'][<N>]['manifest'], 'EDL.json', <N>),
+                 open('<run>/work/ep<N>/manifest.json', 'w'), indent=2)
+       "
+       python -m scripts.process_episode <run>/work/ep<N>/manifest.json \
+         --project-dir <run>/work/ep<N> --route <run>/work/ep<N>/route.json
+
    The shape (integer window indices — or a `[i, j]` span — + editorial only, no timestamps):
 
        {

@@ -101,6 +101,19 @@ This is a §12-class landmine and is recorded there. `with_tail` appends after t
 `fps=`, so the correct position is the only reachable one, and the lint gains a check
 that refuses a `select` emitted ahead of an `fps=` in the same chain.
 
+**Amended 2026-08-16 (Task 7).** That lint check turned out to be stronger than
+written above: once Task 3 landed it, `proc.run`'s always-on guard refuses the
+select-ahead-of-`fps=` argv **before ffmpeg ever starts**, so production code can no
+longer construct that argv at all — the landmine is unreachable through the
+sanctioned path, and the lint is what makes it unreachable. Task 6's own proof of the
+table above had to bypass `proc.run` (a direct `subprocess.run` call in
+`tests/integration/test_probe.py::test_a_select_ahead_of_the_tail_collapses_to_one_frame`)
+to still measure ffmpeg's raw behaviour, precisely because the sanctioned path now
+refuses to run it. That measurement stays in the suite on purpose, unreachable
+production path or not: a rule with no evidence behind it decays into folklore, and
+the day someone touches the lint or `with_tail`, that test is what still shows the
+duplication actually happens.
+
 ## §4 What the probe does
 
 `probe grade --episodes EPISODES.json --index N [--edl EDL.json]`

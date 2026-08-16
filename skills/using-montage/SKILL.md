@@ -256,6 +256,17 @@ say so rather than guessing a path.
     stage (`reprocess` / `edit-plan` / `match-grade`), then episode-qc runs
     again from its own step 1 (a re-render makes the old verdict stale).
 
+    When a blocking finding is on the **colour** axis, run the probe
+    convergence loop (**edit-plan** skill, colour-grade section) against
+    `EDL.json` before spending a re-render on it — look at the pixels, edit,
+    probe again, and only re-render the episode once it converges. Separately:
+    `deliver` (step 14) hard-refuses a reel whose declared vignette/fade did
+    not reach the delivered pixels (design 2026-08-15 §7 — a declared titles
+    track has no pixel check yet, only a `not-checked` finding) — that failure
+    is a broken look chain (a filter silently dropped from the encode), never
+    something to retry as-is; fix `EDL.look` or the titles file and deliver
+    again.
+
 14. **deliver (edl_to_reel, phase 2).**
 
     ```bash
