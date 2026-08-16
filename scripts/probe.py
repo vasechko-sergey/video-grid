@@ -23,7 +23,7 @@ from PIL import Image
 
 from scripts import process_episode, reframe
 from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
-                         naturalness, orchestration as orch, proc, sheet)
+                         naturalness, orchestration as orch, proc, provenance, sheet)
 from scripts.lib.edl import EDL
 from scripts.lib.manifest import Manifest
 from scripts.lib.models import CropPath, Delivery, PathMeta, ReelManifest
@@ -97,8 +97,35 @@ def regrade(md: dict, edl_path: str, index: int) -> dict:
     not the fact this function's whole job is to state: what the episode's colour
     block IS now. _COLOUR_IDENTITY supplies the value to_manifest_dict left
     implicit, so every one of _COLOUR_KEYS is always present in `out`.
+
+    `edl_path` must reach here through the ordinary front door: edit
+    `selection.json`, then re-run `edit_plan build`, which re-stamps EDL.json
+    (design §4, amended). A hand-edited EDL.json fails EDL.from_json's own tamper
+    check (design 2026-08-04, provenance.check) — this catches THAT refusal and
+    re-raises one naming this loop specifically, chained with `from e` so the
+    original digest mismatch is not lost. It does NOT weaken or bypass the check:
+    governance says editorial changes go through selection.json, and a probe that
+    read a tampered EDL anyway would itself be the second authoring surface the
+    design forbids.
     """
-    e = EDL.from_json(edl_path)
+    try:
+        e = EDL.from_json(edl_path)
+    except ValueError as ex:
+        raw = None
+        try:
+            raw = json.loads(Path(edl_path).read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
+        if not (isinstance(raw, dict) and provenance.check(raw)[0] == "tampered"):
+            raise      # a different failure (bad JSON, an unreadable episode field,
+                       # ...) — its own message and remedy are already right
+        raise ValueError(
+            f"{edl_path} was hand-edited after edit_plan wrote it ({ex}), so the "
+            f"probe will not read it either. Converge a grade through "
+            f"selection.json, never EDL.json directly: edit the episode's colour "
+            f"fields in selection.json, re-run `edit_plan build` (a pure "
+            f"projection — no ffmpeg — that re-stamps EDL.json), then probe THAT "
+            f"freshly-written file again") from ex
     if not 0 <= index < len(e.episodes):
         raise IndexError(f"--edl has {len(e.episodes)} episodes; index {index} is out of "
                          f"range. The index is the episode's position in BOTH EDL.json and "

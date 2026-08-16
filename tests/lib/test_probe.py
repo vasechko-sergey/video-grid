@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from scripts import probe
+from scripts.lib.edl import EDL, EDLEpisode, write_edl
 
 
 def _md(**over) -> dict:
@@ -71,3 +72,40 @@ def test_regrade_refuses_an_index_past_the_edl(tmp_path):
     p.write_text(json.dumps(_edl_dict()))
     with pytest.raises(IndexError, match="out of range"):
         probe.regrade(_md(), str(p), 3)
+
+
+def _stamped_edl(path: Path, **ep_over) -> None:
+    """A write_edl-stamped EDL.json — the shape the pipeline actually hands the
+    probe: edit_plan.write_edit_plan always routes through write_edl, so every
+    EDL.json a real run produces carries a provenance stamp (design 2026-08-04)."""
+    ep = {"source": "c.mp4", "start": 0.0, "dur": 2.0, "shot_type": "wide",
+          "composition": "lead", "grid": "thirds"}
+    ep.update(ep_over)
+    write_edl(EDL(episodes=(EDLEpisode(**ep),)), path)
+
+
+def test_regrade_reads_a_write_edl_stamped_edl(tmp_path):
+    """The stamp itself must never be mistaken for tampering — only a stamp that no
+    longer matches its own contents is (final review C1)."""
+    p = tmp_path / "EDL.json"
+    _stamped_edl(p, highlight_red=0.3)
+    out = probe.regrade(_md(), str(p), 0)
+    assert out["highlight_red"] == 0.3
+    assert out["segment"] == "seg.mp4"          # non-colour keys survive
+
+
+def test_regrade_refuses_a_hand_edited_stamped_edl_naming_the_probe_loop(tmp_path):
+    """Reproduces the documented convergence loop's OLD failure mode (final review
+    C1): EDL.json is stamped, then hand-edited — exactly what the SKILL used to
+    instruct before this fix. EDL.from_json's tamper refusal must survive through
+    regrade, but naming the probe's actual remedy (selection.json + edit_plan
+    build), not just the generic edit_plan-build pointer the design layer's own
+    message already gives."""
+    p = tmp_path / "EDL.json"
+    _stamped_edl(p)
+    d = json.loads(p.read_text())
+    d["episodes"][0]["white_balance"] = 0.9      # edited after the stamp, stamp untouched
+    p.write_text(json.dumps(d))
+    with pytest.raises(ValueError, match="selection.json") as exc:
+        probe.regrade(_md(), str(p), 0)
+    assert "edit_plan build" in str(exc.value)

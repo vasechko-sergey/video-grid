@@ -216,18 +216,45 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
    **Converging a grade — do not re-render a reel to look at one episode.** Once
    `edl_to_reel --stop-after-episodes` has written `<run>/out/EPISODES.json`, edit
-   the episode's colour fields in `EDL.json`, then:
+   the episode's colour fields in **`selection.json`** — never `EDL.json` directly.
+   `EDL.json` is stamped (design 2026-08-04): `probe grade --edl` opens it through
+   the same `EDL.from_json` that refuses a file whose contents no longer match its
+   own stamp, so a hand-edited `EDL.json` is refused on the probe's very first
+   command, naming this exact remedy. Re-run the build (step 3 below, the SAME
+   command with the SAME flags the earlier build used — omitting `--pacing`/
+   `--music` here silently discards the pacing binding and the outro fit; see "A
+   fitted EDL is not re-fittable in place" below):
+
+       python -m scripts.edit_plan build --footage FOOTAGE.json \
+         --selection selection.json --project project.json --out-dir . \
+         [--cast cast.json] [--spec SPEC.json] \
+         [--pacing PACING.json --music MUSIC.json]
+
+   — a pure projection, no ffmpeg, that re-stamps `EDL.json` — then probe the
+   freshly-written file:
 
        python -m scripts.probe grade --episodes <run>/out/EPISODES.json \
          --index <N> --edl EDL.json
 
    It writes `<run>/work/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
    (naturalness flags plus p5/p50/p95 per frame, which read straight into a
-   `tone_src`/`tone_dst` pair). Look at the pixels, edit `EDL.json`, probe again.
-   The probe **refuses** if the recomputed crop path differs from the frozen one:
-   that means something other than colour changed (a re-track, a retry-adjusted
-   `max_speed`/`smooth_window_s`, a different source file), and its frames would
-   not be the frames the next render ships.
+   `tone_src`/`tone_dst` pair). Look at the pixels, edit `selection.json`, rebuild,
+   probe again. The probe **refuses** if the recomputed crop path differs from the
+   frozen one: that means something other than colour changed (a re-track, a
+   retry-adjusted `max_speed`/`smooth_window_s`, a different source file), and its
+   frames would not be the frames the next render ships.
+
+   **This loop is not free just because it skips ffmpeg.** Every rebuild re-runs
+   the variety gate and the `CONSTRAINTS.json` gate over the WHOLE cut, not only
+   the episode you touched — an unrelated pre-existing gap can surface
+   mid-convergence; it is not caused by the colour edit, so read the
+   `stop_and_report` and fix or waive it the normal way (step 2 above). And if
+   **match-grade** authored this episode's `tone_src`/`tone_dst` (it rewrites
+   `EDL.json` in place, bypassing `selection.json`), a rebuild from
+   `selection.json` does **not** carry that pair forward — the projection reads
+   `selection.json` only, so match-grade's result is silently gone from the new
+   `EDL.json` unless you copy the pair into `selection.json` yourself or re-run
+   **match-grade** again after converging.
 
    Only when it converges is the full render worth paying for — and re-render
    **that one episode**, never the reel, so the tracker never runs again. There is

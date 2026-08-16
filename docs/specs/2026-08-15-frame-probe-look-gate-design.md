@@ -123,6 +123,19 @@ duplication actually happens.
   same `edl.to_manifest_dict` bridge the real run uses, so what converges is exactly
   what ships. No transcription step, no second authoring surface.
 
+**Amended 2026-08-16 (final review C1).** "(edited) EDL" means edited through the
+ordinary front door — `selection.json` changed, `edit_plan build` re-run — never a
+hand-edited `EDL.json`. `EDL.json` is stamped (design 2026-08-04) and
+`probe.regrade` opens it with `EDL.from_json`, which refuses a stamped file whose
+contents no longer match the stamp; a colour field changed by hand in `EDL.json`
+is therefore refused on the probe's very first command. "No second authoring
+surface" is the reason, stated precisely: the loop is edit `selection.json` →
+re-run `edit_plan build` (a pure projection that re-stamps) → probe the
+freshly-written `EDL.json`. `probe.regrade` re-raises `EDL.from_json`'s tamper
+refusal with this loop named explicitly (chained with `from e`), so the failure
+mode teaches its own remedy instead of leaving the reader to guess which of the
+two authoring paths it meant.
+
 Frames: `--frames N` (default 3), placed at `(i + 0.5)/N · dur` — interior, never the
 first or last frame, which a dip or a bookend can own.
 

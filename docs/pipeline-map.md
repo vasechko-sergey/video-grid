@@ -42,7 +42,9 @@ gap. Deliberately **not** in `V1_STAGES`; produces no run artifact. See
 conveyor stage — no `V1_STAGES` row, no run artifact `using-montage` tracks.
 `probe grade` renders 3 frames of one already-rendered episode through
 `reframe`'s own chain over its frozen route, so a colour grade converges
-(edit `EDL.json`, probe, look, repeat) without paying for a re-render of the
+(edit `selection.json`, re-run `edit_plan build`, probe, look, repeat — never
+hand-edit `EDL.json`, which is stamped and whose tamper refusal `probe`'s own
+`--edl` inherits) without paying for a re-render of the
 episode, let alone the reel; run it between `episodes` (5.14's first
 sub-stage, which writes `EPISODES.json`) and `episode-qc`, whenever a QC
 verdict — or the agent's own eye — flags colour. `probe look` re-runs the
