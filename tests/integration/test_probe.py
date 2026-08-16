@@ -12,7 +12,8 @@ import pytest
 from scripts import deliver as deliver_mod, probe, reframe
 from scripts.lib import assembly, color, ffbin, layout as layout_lib, proc, provenance
 from scripts.lib.look import LookSpec
-from scripts.lib.models import Delivery, ExportProfile, PanSpec, ReelReport, ReframeSpec
+from scripts.lib.models import (Delivery, ExportProfile, PanSpec, ReelEpisode, ReelManifest,
+                                ReelReport, ReframeSpec)
 
 pytestmark = pytest.mark.integration
 
@@ -56,6 +57,65 @@ def test_the_probes_frames_are_the_frames_the_render_ships(tmp_path):
     for a, b in zip(probed, shipped):
         assert a.shape == b.shape
         assert abs(float(a.mean()) - float(b.mean())) < 0.5
+
+
+def _flat(dst_dir: Path, name: str, hexcolor: str, w: int = 640, h: int = 360,
+         dur: float = 3.0) -> str:
+    """A lightly-textured near-solid clip at one brightness. Two of these, far apart in
+    brightness, give plan_render nothing to tell apart geometrically (same w/h/fps/dur
+    either way) but leave a large, easy-to-measure pixel gap — exactly the shape a
+    content swap that a geometry-only drift check cannot see needs."""
+    dst = str(dst_dir / name)
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+              "-i", f"color=c={hexcolor}:s={w}x{h}:d={dur:g}:r=30",
+              "-vf", "noise=alls=10:allf=t+u",
+              "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+              "-pix_fmt", "yuv420p", dst])
+    return dst
+
+
+def test_the_probes_frames_are_the_frames_the_render_ships_under_stabilize(tmp_path):
+    """Row 15 of the Task 7 mutation battery: source_for's whole point is that a probe
+    renders the file reframe actually consumed, and no existing test called
+    probe_grade end-to-end on a stabilize episode to prove it. A probe_grade that
+    rendered md["segment"] while still labelling the report with source_for()'s path
+    would have nothing to catch it: raw.mp4 and stabilized.mp4 share dims/fps/dur, so
+    plan_render's geometry — and therefore _refuse_on_drift — is identical either way.
+    Only the PIXELS differ, which is exactly what this measures instead.
+
+    raw.mp4 (md["segment"]) is dark and must never be read; stabilized.mp4 (what the
+    pre-stage actually produced, in epdir as source_for expects) is bright and must be
+    the only thing rendered. The luma gap (~32 vs ~224) is far past anything the
+    identity-gain grade below could produce by itself."""
+    epdir = tmp_path / "ep0"
+    epdir.mkdir()
+    raw = _flat(tmp_path, "raw.mp4", "0x202020")                # must never reach the render
+    stabilized = _flat(epdir, "stabilized.mp4", "0xE0E0E0")     # what reframe actually ran on
+
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                       color_means=(105.0, 122.0, 137.0),        # == color.TARGET: identity gain,
+                       delivery=Delivery.from_spec("native"),    # so only the source pixels move the mean
+                       pan=PanSpec(start=0.0, end=0.3))
+    clip = str(epdir / "clip.mp4")
+    path_json = str(epdir / "path.json")
+    reframe.reframe(spec, stabilized, None, clip, path_json, stabilized=True)
+
+    md = {"segment": raw, "out_path": clip, "composition": "center", "grid": "thirds",
+          "canvas": [9, 16], "target_dur": 3.0, "pan": {"from": 0.0, "to": 0.3},
+          "stabilize": True}
+    ep = ReelEpisode(manifest=md, clip=clip, route=None, path=path_json,
+                     meta=str(Path(path_json).with_suffix(".meta.json")))
+    ep_json = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=3.0).write(ep_json)
+
+    report = probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / "probe_out"))
+
+    assert report["source"] == stabilized
+    for p5, p50, p95 in report["tone"]:
+        assert p50 > 150, (
+            f"probe reported p50={p50}, which reads as raw.mp4's dark content (~32) "
+            f"rather than stabilized.mp4's bright one (~224) — probe_grade rendered "
+            f"md['segment'] instead of source_for()'s output")
 
 
 def test_a_select_ahead_of_the_tail_collapses_to_one_frame(tmp_path):
