@@ -155,6 +155,11 @@ def test_deliver_threads_platform_into_the_filterchain(tmp_path, monkeypatch):
         return ""                                   # empty chain → no -vf, encode still runs
     monkeypatch.setattr(deliver, "build_filterchain", _spy)
     _fake_encode(monkeypatch)
+    # titles=... makes deliver's post-encode look gate (_verify_look) sample real
+    # frames from the fake encoded file this test's stub produces; irrelevant to what
+    # this test checks (platform threading into build_filterchain), so stub it away
+    # the same way tests/test_deliver.py isolates it in its own argv-shape tests.
+    monkeypatch.setattr(deliver, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("hi", 0.0, 2.0),)).write(tj)
