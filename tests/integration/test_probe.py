@@ -176,6 +176,24 @@ def test_the_probe_refuses_a_path_that_no_longer_matches_the_render(tmp_path):
         probe._refuse_on_drift(plan, str(pj), str(pj.with_suffix(".meta.json")))
 
 
+def test_the_probe_refuses_a_crop_y_that_no_longer_matches_the_render(tmp_path):
+    """final review I-1: the path comparison alone cannot catch this — CropPath
+    carries only x, so a route whose y moved while every x stayed put passes it
+    unchanged. Before the fix, an 1100px vertical shift (cy 127 vs 1227, the
+    reviewer's own reproduction) passed BOTH halves of _refuse_on_drift silently."""
+    src = _grainy(tmp_path)
+    sp = _spec()
+    pj = tmp_path / "path.json"
+    reframe.reframe(sp, src, None, str(tmp_path / "o.mp4"), str(pj))
+    plan = reframe.plan_render(sp, src, None)
+    meta_path = pj.with_suffix(".meta.json")
+    meta = json.loads(meta_path.read_text())
+    meta["crop_y"] = meta["crop_y"] + 1100
+    meta_path.write_text(json.dumps(meta))
+    with pytest.raises(RuntimeError, match="recomputed geometry"):
+        probe._refuse_on_drift(plan, str(pj), str(meta_path))
+
+
 def test_a_delivered_vignette_and_fade_pass_the_gate(tmp_path):
     """The positive control. Without it, a gate that always failed would look correct
     to the negative test below."""

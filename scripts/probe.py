@@ -146,6 +146,14 @@ def _refuse_on_drift(plan: reframe.RenderPlan, path_json: str, meta_json: str) -
     The PATH comparison is the load-bearing half: a retry-adjusted max_speed or
     smooth_window_s moves every x while leaving the recorded rect identical, so the
     meta check alone would wave it straight through.
+
+    The meta comparison carries `cy` for the SAME reason, in the other axis:
+    CropPath.xs is x only, so a route whose vertical placement moved while every x
+    stayed put (final review I-1 — e.g. a re-track that only shifted where the
+    subject sits top-to-bottom) would pass the path comparison unchanged and,
+    without cy here, pass the meta comparison too. `cy` derives from the route's
+    mean y where the path derives from its x, so this is the one place y is ever
+    checked at all.
     """
     frozen = CropPath.from_json(path_json).xs
     if list(plan.path) != list(frozen):
@@ -158,15 +166,18 @@ def _refuse_on_drift(plan: reframe.RenderPlan, path_json: str, meta_json: str) -
             f"re-track, a retry-adjusted max_speed/smooth_window_s, or a different "
             f"source file. Re-render this episode, then probe the render you got")
     meta = PathMeta.from_json(meta_json)
-    got = (plan.rl.mode, plan.rl.crop_w, plan.rl.crop_h,
+    got = (plan.rl.mode, plan.rl.crop_w, plan.rl.crop_h, plan.cy,
            (plan.rl.out_w, plan.rl.out_h))
-    want = (meta.mode, meta.crop_w, meta.crop_h, tuple(meta.out_dims))
+    want = (meta.mode, meta.crop_w, meta.crop_h, meta.crop_y, tuple(meta.out_dims))
     if got != want:
         raise RuntimeError(
             f"the recomputed geometry does not match the frozen {meta_json}: "
-            f"mode/crop/out {got} vs {want}. The layout or the delivery changed since "
-            f"this episode was rendered, so the probe would show a frame this episode "
-            f"never produced. Re-render it first")
+            f"mode/crop/crop_y/out {got} vs {want}. The layout, the delivery, or the "
+            f"crop's vertical placement changed since this episode was rendered — cy "
+            f"comes from the route's mean y, which the path comparison above never "
+            f"looks at (it carries only x), so a route whose y moved without its x "
+            f"would have passed that check and shown up only here. The probe would "
+            f"show a frame this episode never produced. Re-render it first")
 
 
 def _tone(f: np.ndarray) -> tuple[float, float, float]:
