@@ -242,7 +242,8 @@ stamp the other six run artifacts with provenance (attested-run §12) ·
 multi-reel fan-out — `reel_count > 1` now refuses loudly instead of silently making one (reel-brief §7, reel-review §7) ·
 titles in the look gate — the only pixel coverage they have is the `not-checked` finding that says a title was declared, never that the drawtext stage actually rendered it; closing the gap needs the title's band geometry from `titles.y_exprs` plus the safe-zone table (frame-probe-look-gate §11) ·
 calibrate the look gate's constants (`VIGNETTE_MIN_FRACTION`/`FADE_BLACK_MAX`/`FADE_SOURCE_MIN`/`VIGNETTE_FLOOR` in `lib/lookcheck.py`) on real footage — measured, but on synthetic patterns and one encode profile (frame-probe-look-gate §11) ·
-generalize the frame probe to the other QC axes, composition and path smoothness — `RenderPlan` + `with_tail` are axis-agnostic, only colour is wired this slice (frame-probe-look-gate §11)
+generalize the frame probe to the other QC axes, composition and path smoothness — `RenderPlan` + `with_tail` are axis-agnostic, only colour is wired this slice (frame-probe-look-gate §11) ·
+record the applied `color_correct` on `PathMeta` so `probe_grade` can see and reproduce (or refuse against) a reel-level colour retry — its no-`--edl` baseline is silently wrong for any episode `build_reel`'s retry touched, because the pull lives only in `build_reel`'s own in-memory dict and `EPISODES.json` never carries it forward, so no later re-probe can recover the shipped grade either (frame-probe-look-gate, whole-branch review)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate — **the same capability the Reel/QC group's "pixel/CV subject detection for safe zones" needs; one measurement, two consumers, so build it once** · cross-platform font install (titles §7)

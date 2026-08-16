@@ -333,6 +333,17 @@ bar.
 7. Nothing forces anyone to run the grade probe. It removes the *cost* excuse for
    iterating, not the possibility of shipping without looking. The look gate, by
    contrast, cannot be skipped without skipping `deliver`.
+8. **`probe_grade`'s baseline (no `--edl`) is silently wrong for an episode a
+   reel-level colour retry touched** (final review I-2). `build_reel`'s per-channel
+   `color_correct` pull is never persisted — not on `Manifest`, not on `PathMeta`,
+   not in `report.json`, only in `build_reel`'s own in-memory dict — and
+   `probe_grade` always builds its `ReframeSpec` with `color_correct=None`, because
+   it reads `EPISODES.json`'s phase-1 manifest and phase 2 never rewrites that file.
+   The probe then reproduces the PRE-retry grade forever, regardless of when it is
+   run — probing again after `deliver` does not help, since `EPISODES.json` itself
+   never changes. The forward (`--edl`) claim is unaffected. Filed to the backlog:
+   record the applied `color_correct` on `PathMeta` so the probe can see and
+   reproduce it, or refuse.
 
 ## §11 Deferred — must reach the backlog
 
