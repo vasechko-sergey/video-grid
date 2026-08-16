@@ -339,7 +339,7 @@ status column that file does not have.
 | 7 | Slow-mo is a first-class effect, and it changes the reel length | ✅ 2026-08-09 |
 | 8 | Subagents must not be able to disable quality control | ✅ 2026-08-04 |
 | 9 | Cinematic effects library + mood-oriented palettes | ◐ P1 look half ✅ 2026-08-13 (vignette + bookend fade, cinematic-look); P2 grade half ○ open; P3 tail ○ open (incl. grain, measured and priced out) |
-| 10 | Cheap 3-frame preview to converge the grade | ○ **P2** |
+| 10 | Cheap 3-frame preview to converge the grade | ✅ 2026-08-15 — `probe.py grade` renders 3 frames through `reframe`'s own chain over the frozen route (≈5.7× against a track+encode attempt), and `deliver`'s look gate refuses a declared vignette/fade that never reached the pixels; titles pixel coverage and real-footage calibration stay open in P3 |
 | 11 | Freeze the engine during a run | ✅ 2026-08-04 |
 | 12 | "Look, don't guess" — examine real frames | ✅ both halves (2026-08-05 selection, 2026-08-08 per-episode) |
 | 13 | A quality gate must not be bypassable by manual assembly | ✅ 2026-08-04 |
@@ -372,4 +372,4 @@ that never existed, a cv2 blocker that disappeared when the tracking ladder
 landed, and three build-status entries about §6.1a layer 3 written as though
 track-stitch had not shipped.
 
-_Last updated: 2026-08-15._
+_Last updated: 2026-08-16._
