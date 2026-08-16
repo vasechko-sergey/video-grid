@@ -22,8 +22,27 @@ import numpy as np
 # half the declared depth leaves a 1.7x margin below the worst measured case, which is
 # the point: this proves the effect is THERE, it does not grade it.
 VIGNETTE_MIN_FRACTION = 0.5
-# Measured: a 0.5s fade took the master's 75.28-mean first frame to exactly 0.00.
+# Measured: a 0.5s fade took the master's 75.28-mean first frame to exactly 0.00. Valid
+# ONLY for fade-IN's t=0, which is frame-exact — n=0 always sits exactly at t=0, so the
+# ramp has not started and the frame must read black with no slack for quantization.
 FADE_BLACK_MAX = 2.0
+# fade-OUT's LAST frame is NOT exact at the ramp's true end the way fade-in's t=0 is
+# exact at its start: unless the file's duration happens to land precisely on a frame
+# boundary, there is no frame AT the end, so the last decodable one keeps a real
+# residual even on a correctly-rendered fade. Measured on the reel fixture (fade=0.5s,
+# 30fps, master ~52.47 mean luma, tests/integration/test_look.py's own reference):
+# last frame 3.303, a residual FRACTION of 0.063 against a linear ramp's own
+# prediction of (1/fps)/fade = 0.067 (agrees to within 6%) — so FADE_BLACK_MAX reused
+# unchanged here refuses that CORRECT render (reproduced directly against this
+# fixture), and it gets worse at a shorter fade or a lower fps, where the SAME
+# one-frame shortfall is a larger share of the ramp (a legal 0.3s fade at 24fps: ~14%
+# residual by the same formula). Checked dynamically instead of against a fixed pixel
+# value: at most one delivered-fps frame period of the ramp can be missing, so the
+# residual cannot exceed roughly `master * (1/fps)/fade` — this margin multiplies
+# that bound for curve-shape and encoder-rounding slack, while a genuine non-render
+# (residual ~= the full master brightness) still fails by a wide margin at any legal
+# fade/fps combination.
+FADE_OUT_RESIDUAL_MARGIN = 3.0
 # Below these the source cannot discriminate: a reel that opens on black is already
 # black at t=0, and corners that are already dark cannot be darkened. Both report
 # not-checked and pass — an honest hole, named in design §10.4.
@@ -81,15 +100,80 @@ def corner_centre(f: np.ndarray) -> tuple[float, float]:
     return float(np.mean([float(c.mean()) for c in corners])), float(centre.mean())
 
 
+def _fade_edge(m: np.ndarray, d: np.ndarray, *, check: str, edge: str,
+               fade: float = 0.0, fps: float = 0.0) -> LookFinding:
+    """One end of the bookend fade. `edge` is "first" (t=0, fade-in) or "last" (the
+    delivery's own final decodable frame, fade-out).
+
+    Split into two checks, one per edge (design §7, amended — final review I-3): a
+    single "fade" finding that only ever looked at t=0 read as "the fade rendered"
+    when only half the bookend had been proven. The two edges are NOT
+    interchangeable evidence — a fade-out can fail while fade-in passes cleanly:
+    `deliver` computes the fade-out's start from the MASTER's duration, but the
+    audio mux's `-shortest` can truncate the DELIVERED file short of that point, so
+    the fade-out never reaches black in what actually shipped while fade-in (which
+    none of that touches) still does.
+
+    The two edges are NOT judged by the same predicate, either (a second amendment
+    to design §7, found only by running this against a real render): `fade` and
+    `fps` are unused for `edge == "first"` (t=0 is frame-exact, so FADE_BLACK_MAX
+    alone is correct) but size the fade-out's own quantization slack for
+    `edge == "last"` — see FADE_OUT_RESIDUAL_MARGIN.
+    """
+    m0 = float(_rgb(m, f"{edge}_master").mean())
+    d0 = float(_rgb(d, f"{edge}_delivered").mean())
+    _same_shape(m, d)
+    if m0 < FADE_SOURCE_MIN:
+        return LookFinding(
+            check=check, status="not-checked",
+            detail=(f"the master's own {edge} frame averages {m0:.2f}, under the "
+                    f"{FADE_SOURCE_MIN} this check needs — the reel already "
+                    f"{'opens' if edge == 'first' else 'ends'} on black, so a black "
+                    f"{edge} delivered frame proves nothing"),
+            measured=m0, expected=FADE_SOURCE_MIN)
+    if edge == "first":
+        ok, expected = d0 <= FADE_BLACK_MAX, FADE_BLACK_MAX
+        detail = (f"a fade-in must start from black, but the delivery's first frame "
+                  f"averages {d0:.2f} against the master's {m0:.2f} — the fade did "
+                  f"not render" if not ok else f"first frame {m0:.2f} -> {d0:.2f}")
+        return LookFinding(check=check, status="pass" if ok else "fail", detail=detail,
+                           measured=d0, expected=expected)
+    # edge == "last": no frame sits exactly at the ramp's true end unless the file's
+    # duration happens to land on a frame boundary, so the last decodable frame keeps
+    # a real residual — bounded by at most one frame period of unfinished ramp,
+    # `master * (1/fps)/fade`, with FADE_OUT_RESIDUAL_MARGIN of slack above it.
+    if not (fade > 0 and fps > 0):
+        raise ValueError(f"lookcheck._fade_edge: the last edge needs fade > 0 and "
+                         f"fps > 0 to size its quantization slack, got fade={fade!r} "
+                         f"fps={fps!r}")
+    residual_frac = min(1.0, (1.0 / fps) / fade * FADE_OUT_RESIDUAL_MARGIN)
+    expected = m0 * residual_frac
+    ok = d0 <= expected
+    detail = (f"a fade-out must reach black, but the delivery's last frame averages "
+              f"{d0:.2f} against the master's {m0:.2f} (allowing up to {expected:.2f} "
+              f"for one {fps:.4g}fps frame period of unfinished {fade}s ramp) — the "
+              f"fade did not render" if not ok else
+              f"last frame {m0:.2f} -> {d0:.2f} (within {expected:.2f})")
+    return LookFinding(check=check, status="pass" if ok else "fail", detail=detail,
+                       measured=d0, expected=expected)
+
+
 def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
              first_master: np.ndarray | None, first_delivered: np.ndarray | None,
-             *, vignette: float = 0.0, fade: float = 0.0,
+             last_master: np.ndarray | None, last_delivered: np.ndarray | None,
+             *, vignette: float = 0.0, fade: float = 0.0, fps: float = 0.0,
              titles: bool = False) -> list[LookFinding]:
     """Judge a delivery against its master. Empty list = nothing was declared, so
     there is nothing to prove and no ffmpeg was worth spending.
 
-    `mid_*` are paired frames from the reel's interior; `first_*` are the frames at
-    t=0, needed only when a fade was declared.
+    `mid_*` are paired frames from the reel's interior. `first_*`/`last_*` are the
+    frames at t=0 and the delivery's own last decodable frame respectively, needed
+    only when a fade was declared — the fade is a BOOKEND (`look.fade_args` emits
+    both `fade=t=in` and `fade=t=out`), so both ends must be supplied together or
+    not at all; see `_fade_edge`. `fps` is the DELIVERED file's own frame rate,
+    needed only alongside `fade`: it sizes how much of the fade-out's ramp the last
+    decodable frame can still be short of (`FADE_OUT_RESIDUAL_MARGIN`) — fade-in's
+    t=0 needs no such slack, since it is frame-exact regardless of fps.
     """
     if not (vignette or fade or titles):
         return []
@@ -145,28 +229,22 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
                 measured=drop, expected=need))
 
     if fade:
-        if first_master is None or first_delivered is None:
-            raise ValueError("lookcheck.evaluate needs the master's and the delivery's "
-                             "first frame to judge a fade — sample t=0 from both and "
-                             "pass them, or do not declare a fade")
-        m0 = float(_rgb(first_master, "first_master").mean())
-        d0 = float(_rgb(first_delivered, "first_delivered").mean())
-        _same_shape(first_master, first_delivered)
-        if m0 < FADE_SOURCE_MIN:
-            out.append(LookFinding(
-                check="fade", status="not-checked",
-                detail=(f"the master's own first frame averages {m0:.2f}, under the "
-                        f"{FADE_SOURCE_MIN} this check needs — the reel already opens on "
-                        f"black, so a black first delivered frame proves nothing"),
-                measured=m0, expected=FADE_SOURCE_MIN))
-        else:
-            out.append(LookFinding(
-                check="fade",
-                status="pass" if d0 <= FADE_BLACK_MAX else "fail",
-                detail=(f"a {fade}s fade-in must start from black, but the delivery's "
-                        f"first frame averages {d0:.2f} against the master's {m0:.2f} "
-                        f"— the fade did not render"
-                        if d0 > FADE_BLACK_MAX else
-                        f"first frame {m0:.2f} -> {d0:.2f}"),
-                measured=d0, expected=FADE_BLACK_MAX))
+        need = {"first_master": first_master, "first_delivered": first_delivered,
+               "last_master": last_master, "last_delivered": last_delivered}
+        missing = [n for n, v in need.items() if v is None]
+        if missing or not fps:
+            raise ValueError(
+                f"lookcheck.evaluate needs all four bookend frames AND fps (the "
+                f"delivered file's own rate) to judge a fade — the master's and the "
+                f"delivery's first frame (t=0) AND last frame, all four, not just one "
+                f"end: the fade is a bookend (fade=t=in and fade=t=out both render), "
+                f"so checking only the first frame would report 'pass' while the "
+                f"closing half never reached black. fps sizes the fade-out's own "
+                f"quantization slack (§7, amended) — without it a correctly-rendered "
+                f"short fade cannot be told from a genuine miss. Missing: {missing}"
+                + ("" if fps else " + fps"))
+        out.append(_fade_edge(first_master, first_delivered, check="fade-in", edge="first",
+                              fade=fade, fps=fps))
+        out.append(_fade_edge(last_master, last_delivered, check="fade-out", edge="last",
+                              fade=fade, fps=fps))
     return out

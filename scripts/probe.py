@@ -278,14 +278,25 @@ def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
     """The delivered-look check deliver gates on, run by hand against two files."""
     dur = assembly.probe_duration(delivered)
     ts = [dur * 0.25, dur * 0.5, dur * 0.75]
-    mm = assembly.frames_rgb(master, ts, assembly.probe_stream(master).fps)
-    dd = assembly.frames_rgb(delivered, ts, assembly.probe_stream(delivered).fps)
-    f_m = f_d = None
+    m_fps, d_fps = assembly.probe_stream(master).fps, assembly.probe_stream(delivered).fps
+    mm = assembly.frames_rgb(master, ts, m_fps)
+    dd = assembly.frames_rgb(delivered, ts, d_fps)
+    f_m = f_d = l_m = l_d = None
     if fade:
-        f_m = assembly.frames_rgb(master, [0.0], assembly.probe_stream(master).fps)[0]
-        f_d = assembly.frames_rgb(delivered, [0.0], assembly.probe_stream(delivered).fps)[0]
+        f_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
+        f_d = assembly.frames_rgb(delivered, [0.0], d_fps)[0]
+        # each file's TRUE last frame, via last_frame_rgb rather than a computed
+        # timestamp — sampling both sides at one shared timestamp would miss exactly
+        # the failure this check exists to catch (deliver derives the fade-out from
+        # the MASTER's duration; a shorter muxed audio stem truncates the DELIVERED
+        # file before the fade-out reaches black), and a computed `dur - 1/fps` can
+        # itself land past a file's real last frame (design 2026-08-15 §7, amended —
+        # final review I-3; see assembly.last_frame_rgb)
+        l_m = assembly.last_frame_rgb(master, m_fps)
+        l_d = assembly.last_frame_rgb(delivered, d_fps)
     return [f.to_dict() for f in lookcheck.evaluate(
-        mm, dd, f_m, f_d, vignette=vignette, fade=fade, titles=titles)]
+        mm, dd, f_m, f_d, l_m, l_d, vignette=vignette, fade=fade, fps=d_fps,
+        titles=titles)]
 
 
 def main() -> None:

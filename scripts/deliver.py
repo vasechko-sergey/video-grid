@@ -69,11 +69,22 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
 
     check_reel measured the master; everything below rides this encode and nothing
     else ever reads the result. Samples three interior frames from both files at the
-    same timestamps — and t=0 from both as well when a fade was declared.
+    same timestamps — and, when a fade was declared, BOTH bookend frames from both
+    files: t=0 (fade-in) and each file's own TRUE last decodable frame (fade-out),
+    via `assembly.last_frame_rgb` rather than a computed timestamp — `deliver`
+    derives the fade-out's start from the MASTER's duration, but the audio mux's
+    `-shortest` can truncate the DELIVERED file short of that, and even without any
+    truncation a computed `dur - 1/fps` can land on a frame index one past a file's
+    real last frame (final review I-3; see `last_frame_rgb`'s own docstring). A
+    single "fade" check that only ever sampled t=0 could not see any of that.
 
     Each file's own fps is probed separately rather than shared: a profile that
     changed the rate would otherwise shift every frame number on one side only, and
-    compare two different moments as if they were one.
+    compare two different moments as if they were one. `d_fps` (the DELIVERED file's
+    own rate) is also what sizes the fade-out's quantization slack in
+    `lookcheck.evaluate` — passed through even when a fade is not declared, since it
+    costs nothing to compute and `evaluate` itself only ever reads it when `fade` is
+    truthy.
 
     With nothing declared this makes no ffmpeg call at all, so a look-less delivery
     costs exactly what it cost before this gate existed.
@@ -82,16 +93,20 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     fade = look.fade if look is not None else 0.0
     if not (vig or fade or titles is not None):
         return []
-    ts = [d * f for d in (assembly.probe_duration(out),) for f in (0.25, 0.5, 0.75)]
+    out_dur = assembly.probe_duration(out)
+    ts = [out_dur * f for f in (0.25, 0.5, 0.75)]
     m_fps, d_fps = assembly.probe_stream(master).fps, assembly.probe_stream(out).fps
-    first_m = first_d = None
+    first_m = first_d = last_m = last_d = None
     if fade:
         first_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
         first_d = assembly.frames_rgb(out, [0.0], d_fps)[0]
+        last_m = assembly.last_frame_rgb(master, m_fps)
+        last_d = assembly.last_frame_rgb(out, d_fps)
     return lookcheck.evaluate(assembly.frames_rgb(master, ts, m_fps),
                               assembly.frames_rgb(out, ts, d_fps),
-                              first_m, first_d,
-                              vignette=vig, fade=fade, titles=titles is not None)
+                              first_m, first_d, last_m, last_d,
+                              vignette=vig, fade=fade, fps=d_fps,
+                              titles=titles is not None)
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,

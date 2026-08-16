@@ -214,3 +214,45 @@ def frame_rgb(src: str, t: float) -> np.ndarray:
     frame). For many frames call frames_rgb directly: it decodes once (design
     2026-08-02 §4). For re-extracting cast crops from the ORIGINAL (design §5)."""
     return frames_rgb(src, [t], probe_stream(src).fps)[0]
+
+
+# Seconds of safety margin scanned backward from the estimated last frame before
+# giving up, for last_frame_rgb below. Covers duration-probe slop against the true
+# encoded frame count — measured: a `-shortest`-muxed delivery's own probe_duration
+# can overstate its last frame's index by at least one frame (video stream 2.966667s
+# against a probed 3.0s container duration at 30fps — `round(dur*fps)` landed on a
+# frame that does not exist). A full second of margin absorbs any plausible
+# duration/frame-count disagreement (encoder padding, mux truncation, float slop)
+# while still decoding only a handful of frames, never the whole file.
+_LAST_FRAME_MARGIN_S = 1.0
+
+
+def last_frame_rgb(src: str, fps: float) -> np.ndarray:
+    """The file's TRUE last decodable frame, as an HxWx3 uint8 RGB ndarray.
+
+    NOT `frames_rgb(src, [probe_duration(src) - 1/fps], fps)`: the container
+    duration `probe_duration` reads does not always agree with the frame count the
+    stream actually encoded, and asking `select` for a frame index one past the real
+    end raises rather than returning the one right before it (design
+    2026-08-15 §7, amended — final review I-3).
+
+    Selects every frame from `_LAST_FRAME_MARGIN_S` seconds before the estimated
+    last-frame index onward (`gte`, not `eq`) and keeps whichever ffmpeg actually
+    emits last, so an over-estimated index still lands on the real last frame
+    instead of raising, and an under-estimated one only costs a few extra decoded
+    frames — never a full decode of the file, and no `-ss` (§12).
+    """
+    dur = probe_duration(src)
+    est = max(0, round(dur * fps) - 1)
+    start = max(0, est - round(_LAST_FRAME_MARGIN_S * fps))
+    with tempfile.TemporaryDirectory() as d:
+        sub = Path(d)
+        proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", rf"select='gte(n\,{start})'",
+                  "-vsync", "0", str(sub / "f%05d.png")])
+        pngs = sorted(sub.glob("f*.png"))
+        if not pngs:
+            raise RuntimeError(
+                f"last_frame_rgb: no frame at or after estimated index {start} in "
+                f"{src} ({dur:.3f}s at {fps:.4g}fps) — the file may be empty, or "
+                f"shorter than probe_duration reported")
+        return np.asarray(Image.open(pngs[-1]).convert("RGB"))

@@ -245,12 +245,50 @@ The drop tracks the declared depth at 0.84–0.87×. `VIGNETTE_MIN_FRACTION = 0.
 **Fade.** First delivered frame's mean luma. Measured: master **75.28** → delivered
 **0.00**. `FADE_BLACK_MAX = 2.0`.
 
+**Amended 2026-08-16 (final review I-3).** The fade is a **bookend** —
+`look.fade_args` emits both `fade=t=in` and `fade=t=out` — but the check above only
+ever sampled t=0, so `check="fade"` `status="pass"` read as "the fade rendered" when
+only the opening half had been proven. A reachable miss: `deliver` derives the
+fade-out's start from the **master's** own duration, while the audio mux runs with
+`-shortest`; a stem shorter than the master truncates the DELIVERED file before
+`fade=t=out` ever reaches black, so the fade-out silently fails to render while
+fade-in (untouched by any of that) still passes cleanly. Fixed by sampling each
+file's OWN TRUE last decodable frame (`assembly.last_frame_rgb`, not a computed
+timestamp — a `probe_duration`-derived `dur - 1/fps` can itself land one index past
+a file's real last frame, raising rather than returning the frame before it;
+measured on a `-shortest`-muxed delivery) and adding a second check, `fade-out`,
+each edge with its own `not-checked` arm.
+
+**One threshold does NOT serve both, and reusing `FADE_BLACK_MAX` unchanged for
+fade-out refuses correct renders — reproduced directly against this design's own
+§7 reference fixture.** Fade-in's t=0 is frame-exact: frame 0 always sits exactly
+at t=0, so the ramp has not started and the frame must read black with no slack.
+Fade-out's last frame is **not** exact at the ramp's true end — unless the file's
+duration happens to land precisely on a frame boundary, there is no frame there,
+so the last decodable one keeps a real residual even on a correct render. Measured
+on the §7 fixture (fade=0.5s, 30fps, master ~52.47 mean luma): last frame 3.303, a
+residual **fraction** of 0.063, matching a linear ramp's own prediction of
+`(1/fps)/fade = 0.067` to within 6% — over `FADE_BLACK_MAX`'s 2.0, so the naive
+symmetric check fails that correct delivery, and gets worse at a shorter fade or a
+lower fps (a legal 0.3s fade at 24fps: ~14% residual by the same formula, comfortably
+past any fixed pixel bound tight enough to still catch a non-render). `fade-out` is
+therefore checked as a bound **relative** to the master's own last-frame
+brightness — mirroring the vignette check's own ratio logic rather than fade-in's
+absolute one: at most one delivered-fps frame period of the ramp can be missing, so
+`FADE_OUT_RESIDUAL_MARGIN = 3.0` multiplies `(1/fps)/fade` for real slack above
+that bound, while a genuine non-render (residual ≈ the full master brightness)
+still fails by a wide margin at any legal fade/fps. `lookcheck.evaluate` gained an
+`fps` parameter (the delivered file's own rate) to carry this, required alongside
+the four bookend frames whenever a fade is declared.
+
 **Not-checked arms, and they are real holes.** A titles-only delivery has no check at
 all this slice (§7.1). A master whose own first frame is
-already dark (`< FADE_SOURCE_MIN = 8.0`) cannot discriminate a fade; a master whose
-corners are already black (`< VIGNETTE_FLOOR = 8.0`) cannot discriminate a vignette.
-Those report `not-checked` and pass. Reporting them as proven would be the lie this
-gate exists to stop.
+already dark (`< FADE_SOURCE_MIN = 8.0`) cannot discriminate a fade-in, and the same
+test against the master's own LAST frame cannot discriminate a fade-out — the two are
+independent arms (a reel can open bright and already end dark, or the reverse). A
+master whose corners are already black (`< VIGNETTE_FLOOR = 8.0`) cannot discriminate
+a vignette. Those report `not-checked` and pass. Reporting them as proven would be the
+lie this gate exists to stop.
 
 **On failure** `deliver` raises. `REEL_v{n}` is already on disk and stays there —
 deleting output nobody asked to delete is worse than leaving evidence — but no
@@ -286,7 +324,8 @@ bar.
    §2's meta oracle catches the mismatch, but only once the mismatch exists on disk.
 3. The look gate proves an effect **changed pixels**, not that it looks right. Depth,
    placement and taste are outside it.
-4. The two not-checked arms (§7) pass without evidence, by construction.
+4. The three not-checked arms (§7 — vignette, fade-in, fade-out) pass without
+   evidence, by construction.
 5. The cost figures in §5 are synthetic. No real 4K/60 surf footage has been probed;
    the tracking-share argument is structural, the ratios are not.
 6. The naturalness thresholds the probe reports against remain uncalibrated first
