@@ -261,18 +261,59 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    no one-step command for this yet (backlog, `frame-probe-look-gate §11`):
    materialize the converged manifest with the SAME `regrade` the probe used
    internally — never hand-merge the colour block yourself; a plain merge keeps a
-   field the EDL edit just deleted (see `_COLOUR_KEYS` in `scripts/probe.py`) —
-   then pass the episode's frozen route so tracking is skipped:
+   field the EDL edit just deleted (see `_COLOUR_KEYS` in `scripts/probe.py`) — and
+   write it back into **both** places that carry a copy, not only the scratch file:
 
        python -c "
        import json
        from scripts import probe
-       rm = json.load(open('<run>/out/EPISODES.json'))
-       json.dump(probe.regrade(rm['episodes'][<N>]['manifest'], 'EDL.json', <N>),
-                 open('<run>/work/ep<N>/manifest.json', 'w'), indent=2)
+       ep_path = '<run>/out/EPISODES.json'
+       rm = json.load(open(ep_path))
+       regraded = probe.regrade(rm['episodes'][<N>]['manifest'], 'EDL.json', <N>)
+       json.dump(regraded, open('<run>/work/ep<N>/manifest.json', 'w'), indent=2)
+       rm['episodes'][<N>]['manifest'] = regraded
+       json.dump(rm, open(ep_path, 'w'), indent=2)
+       print('stabilize:', regraded.get('stabilize'), '  pan:', regraded.get('pan'))
        "
+
+   **`EPISODES.json`'s own copy is not optional** (final review I-4): a later
+   reel-level retry (`build_reel`, inside `deliver`) reprocesses a colour-culprit
+   episode from `rm.episodes[idx].manifest` — the entry INSIDE `EPISODES.json`,
+   never the scratch `<run>/work/ep<N>/manifest.json` above. Skip the second
+   `json.dump` and that retry silently re-renders this episode from the STALE
+   pre-convergence grade — no error, no trace. The alternative is re-running phase 1
+   (`edl_to_reel --stop-after-episodes`, step 3's driver) from the re-stamped
+   `EDL.json`, which writes a fully consistent `EPISODES.json` too — but at the cost
+   of re-tracking and re-rendering EVERY episode, the whole expense this loop exists
+   to avoid; reach for it only when converging several episodes at once makes that
+   cost worth it.
+
+   This still leaves the run's eventual attestation stating a stale fact, and there
+   is no code fix for it here: `deliver` binds `REEL_v{n}.attest.json`'s `edl` block
+   to the digest phase 1 stamped when it first wrote `EPISODES.json`
+   (`rm.provenance["edl"]["digest"]`), and nothing re-reads that block after the
+   patch above — the shipped pixels came from the re-stamped `EDL.json`, but the
+   attestation still names the ORIGINAL one. Say so plainly if reel-review or the
+   user asks why the attested EDL digest does not match the file on disk; re-running
+   phase 1 (the alternative above) is the only way to make the attestation agree
+   with the pixels again.
+
+   Then pass the episode's frozen route so tracking is skipped — but only when
+   there IS a route to reuse. `process_episode` refuses `stabilize=true` combined
+   with a supplied `--route` (the frozen route was measured against pixels that no
+   longer exist once stabilize re-runs), and a `pan` episode never had a
+   `route.json` written for it at all (design 2026-07-19 §6.1) — passing `--route`
+   in either case is wrong, not merely redundant. Read the `stabilize`/`pan` line
+   the command above printed before choosing:
+
        python -m scripts.process_episode <run>/work/ep<N>/manifest.json \
-         --project-dir <run>/work/ep<N> --route <run>/work/ep<N>/route.json
+         --project-dir <run>/work/ep<N> [--route <run>/work/ep<N>/route.json]
+
+   Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
+   `stabilize` this pays for one re-track on the re-stabilized segment (still far
+   cheaper than a reel re-render); for `pan` there is nothing to track either way,
+   so the flag would do nothing even if the file existed. Keep it only when both
+   printed falsy, exactly as before.
 
    The shape (integer window indices — or a `[i, j]` span — + editorial only, no timestamps):
 
