@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from scripts.lib import assembly, ffbin, look as look_lib, proc, provenance
+from scripts.lib import assembly, ffbin, look as look_lib, lookcheck, proc, provenance
 from scripts.lib.look import LookSpec
 from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Titles, build_filterchain
@@ -63,6 +63,37 @@ def _render_mask(master: str, out_dir: str, vignette: float) -> str:
     return mask
 
 
+def _verify_look(master: str, out: str, look: LookSpec | None,
+                 titles: str | None) -> list[lookcheck.LookFinding]:
+    """Prove the declared look reached the DELIVERED pixels (design 2026-08-15 §7).
+
+    check_reel measured the master; everything below rides this encode and nothing
+    else ever reads the result. Samples three interior frames from both files at the
+    same timestamps — and t=0 from both as well when a fade was declared.
+
+    Each file's own fps is probed separately rather than shared: a profile that
+    changed the rate would otherwise shift every frame number on one side only, and
+    compare two different moments as if they were one.
+
+    With nothing declared this makes no ffmpeg call at all, so a look-less delivery
+    costs exactly what it cost before this gate existed.
+    """
+    vig = look.vignette if look is not None else 0.0
+    fade = look.fade if look is not None else 0.0
+    if not (vig or fade or titles is not None):
+        return []
+    ts = [d * f for d in (assembly.probe_duration(out),) for f in (0.25, 0.5, 0.75)]
+    m_fps, d_fps = assembly.probe_stream(master).fps, assembly.probe_stream(out).fps
+    first_m = first_d = None
+    if fade:
+        first_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
+        first_d = assembly.frames_rgb(out, [0.0], d_fps)[0]
+    return lookcheck.evaluate(assembly.frames_rgb(master, ts, m_fps),
+                              assembly.frames_rgb(out, ts, d_fps),
+                              first_m, first_d,
+                              vignette=vig, fade=fade, titles=titles is not None)
+
+
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             report: ReelReport, *, audio: str | None = None, titles: str | None = None,
             platform: str = "", look: LookSpec | None = None,
@@ -92,7 +123,14 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     the check or assembled outside the pipeline. `run_provenance` carries what only the
     driver knows (the run's start stamp, the EDL's digest and state, the loosened
     thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
-    writes."""
+    writes.
+
+    A third refusal fires AFTER the encode: `_verify_look` (design 2026-08-15 §7)
+    samples the shipped file against the master and refuses when a declared vignette,
+    fade or titles did not reach the delivered pixels — check_reel never sees this
+    file, so nothing else would ever catch a filter silently dropped from the chain.
+    Unlike the two bindings above, the file is left on disk on failure; only the
+    attestation is withheld, which is what has no waiver."""
     if not report.overall:
         raise RuntimeError("reel failed check_reel — fix the flagged episodes and re-check; "
                            "deliver does not ship a failed reel (no fix-forward)")
@@ -155,6 +193,20 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, "-i", audio, *graph,
                   *_video_only_args(profile), *(vmap or ["-map", "0:v:0"]),
                   "-map", f"{aidx}:a:0", "-c:a", "copy", "-shortest", out])
+    # The look gate (design 2026-08-15 §7). AFTER the encode, because the honest
+    # subject is the file that shipped, not a prediction of it. On a failure the file
+    # stays on disk — deleting output nobody asked to delete is worse than leaving the
+    # evidence — but no attestation is written, which montage status already reports as
+    # an unattested delivery. No waiver (governance #8).
+    look_checks = _verify_look(master, out, look, titles)
+    bad = [f for f in look_checks if f.status == "fail"]
+    if bad:
+        raise RuntimeError(
+            f"{Path(out).name} does not carry the look it declared: "
+            + "; ".join(f"{f.check} — {f.detail}" for f in bad)
+            + f". The file is on disk to look at, but no attestation was written, so "
+              f"`montage status` reports it as unattested. Fix the look chain (EDL.look, "
+              f"or the titles file) and deliver again — this gate has no waiver")
     _log_version(out_dir, n, changelog)
     # The delivery's record (design §6). reel_digest binds it to the SHIPPED file, not
     # only to the master, so a reel swapped after delivery is detectable. A hand-run
@@ -168,6 +220,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         engine_at_deliver=provenance.engine_stamp(),
         edl=rp.get("edl") or {}, overrides=rp.get("overrides") or [],
         episode_qc=rp.get("episode_qc") or {},
+        look_checks=[f.to_dict() for f in look_checks],
         delivered_at=datetime.now().isoformat(timespec="seconds"),
     ).write(provenance.attest_path(out))
     return out

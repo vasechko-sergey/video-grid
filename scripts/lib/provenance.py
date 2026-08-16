@@ -133,6 +133,10 @@ class Attestation:
     episode_qc: dict = field(default_factory=dict)   # §10: "judged" + digests, or "absent"
     delivered_at: str = ""
     v: int = PROV_V
+    look_checks: list[dict] = field(default_factory=list)   # deliver's post-encode
+    # proof that the declared vignette/fade/titles reached the delivered pixels
+    # (design 2026-08-15 §7). A "not-checked" row is a real outcome: the source could
+    # not discriminate. An empty list means nothing was declared.
 
     def to_dict(self) -> dict:
         return {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
@@ -140,7 +144,7 @@ class Attestation:
                 "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
                 "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
                 "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
-                "delivered_at": self.delivered_at}
+                "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Attestation":
@@ -154,7 +158,8 @@ class Attestation:
                    engine_at_deliver=d.get("engine_at_deliver") or {},
                    edl=d.get("edl") or {}, overrides=d.get("overrides") or [],
                    episode_qc=d.get("episode_qc") or {},
-                   delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V))
+                   delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V),
+                   look_checks=d.get("look_checks") or [])
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))

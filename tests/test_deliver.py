@@ -1,7 +1,10 @@
+import json
 from pathlib import Path
 
+import pytest
+
 from scripts import deliver as deliver_mod
-from scripts.lib import provenance
+from scripts.lib import lookcheck, provenance
 from scripts.lib.assembly import StreamInfo
 from scripts.lib.look import LookSpec
 from scripts.lib.models import CheckResult, REEL_H264, ReelReport
@@ -46,6 +49,7 @@ def test_deliver_without_titles_has_no_vf(tmp_path, monkeypatch):
 
 def test_deliver_with_titles_injects_drawtext_vf(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
     f.write_text("x")
     tj = tmp_path / "TITLES.json"
@@ -59,6 +63,7 @@ def test_deliver_with_titles_injects_drawtext_vf(tmp_path, monkeypatch):
 
 def test_deliver_with_empty_titles_has_no_vf(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     tj = tmp_path / "TITLES.json"
     Titles().write(tj)
     master, rep = _bound(tmp_path)
@@ -68,6 +73,7 @@ def test_deliver_with_empty_titles_has_no_vf(tmp_path, monkeypatch):
 
 def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
     f.write_text("x")
     tj = tmp_path / "TITLES.json"
@@ -93,6 +99,7 @@ def test_no_look_argv_is_unchanged(tmp_path, monkeypatch):
 def test_fade_only_look_stays_on_the_vf_slot(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
                         look=LookSpec(fade=0.5))
@@ -106,6 +113,7 @@ def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypat
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
     f.write_text("x")
     tj = tmp_path / "TITLES.json"
@@ -151,6 +159,7 @@ def test_the_mask_is_sized_from_the_probed_master_not_a_constant(tmp_path, monke
                           vcodec="h264", color_range="tv")
 
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream", _probe)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
                         look=LookSpec(vignette=0.35))
@@ -162,6 +171,7 @@ def test_audio_input_index_shifts_when_a_mask_is_present(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     stem = tmp_path / "stem.aac"
     stem.write_bytes(b"aac-bytes")
@@ -186,6 +196,7 @@ def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, monkeypatch
     # titles first, fade last — the chain order look.chain owns
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
     f.write_text("x")
     tj = tmp_path / "TITLES.json"
@@ -195,3 +206,72 @@ def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, monkeypatch
                         titles=str(tj), look=LookSpec(fade=0.5))
     graph = calls[-1][calls[-1].index("-vf") + 1]
     assert graph.index("drawtext") < graph.index("fade=t=in")
+
+
+def _finding(check="vignette", status="fail"):
+    return lookcheck.LookFinding(check=check, status=status, detail="d",
+                                 measured=0.4, expected=2.0)
+
+
+def test_deliver_refuses_a_declared_look_that_changed_nothing(tmp_path, monkeypatch):
+    """The cinematic-look review found a filter-list drop that would have silently
+    killed the bookend and every title for three of four mood presets. This is the
+    gate for that class."""
+    master, rep = _bound(tmp_path)
+    _capture(monkeypatch)
+    # look=vignette>0 hits the pre-existing _render_mask path (assembly.probe_stream on
+    # the master) before _verify_look is ever reached — unrelated to this task's gate,
+    # but the fake "master-bytes" file needs the same probe_stream stub the pre-existing
+    # vignette tests above already use, or proc.run's stub-return None crashes it first.
+    monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
+                        lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [_finding()])
+    with pytest.raises(RuntimeError, match="does not carry the look it declared"):
+        deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep,
+                            look=LookSpec(vignette=0.3))
+
+
+def test_deliver_writes_no_attestation_when_the_look_gate_fails(tmp_path, monkeypatch):
+    master, rep = _bound(tmp_path)
+    _capture(monkeypatch)
+    # look=fade>0 hits the pre-existing `dur = assembly.probe_duration(master)` line
+    # before _verify_look is reached — same fixture gap as above, other constant.
+    monkeypatch.setattr(deliver_mod.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(deliver_mod, "_verify_look",
+                        lambda *a, **kw: [_finding(check="fade")])
+    out_dir = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        deliver_mod.deliver(master, REEL_H264, str(out_dir), "v", rep,
+                            look=LookSpec(fade=0.5))
+    assert list(out_dir.glob("REEL_v*.mp4"))                  # the file is left to look at
+    assert not list(out_dir.glob("*.attest.json"))            # but nothing attests it
+
+
+def test_deliver_records_the_look_checks_in_the_attestation(tmp_path, monkeypatch):
+    master, rep = _bound(tmp_path)
+    _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
+                        lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [
+        lookcheck.LookFinding(check="vignette", status="not-checked",
+                              detail="corners already black", measured=3.0,
+                              expected=8.0)])
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep,
+                              look=LookSpec(vignette=0.3))
+    att = json.loads(Path(provenance.attest_path(out)).read_text())
+    assert att["look_checks"] == [{"check": "vignette", "status": "not-checked",
+                                   "detail": "corners already black",
+                                   "measured": 3.0, "expected": 8.0}]
+
+
+def test_a_look_less_delivery_runs_no_look_check_at_all(tmp_path, monkeypatch):
+    """Zero cost and zero blast radius when nothing was declared."""
+    master, rep = _bound(tmp_path)
+    _capture(monkeypatch)
+    calls: list = []
+    monkeypatch.setattr(deliver_mod.assembly, "frames_rgb",
+                        lambda *a, **kw: calls.append(a) or [])
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep)
+    assert calls == []
+    att = json.loads(Path(provenance.attest_path(out)).read_text())
+    assert att["look_checks"] == []
