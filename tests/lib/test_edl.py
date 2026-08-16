@@ -1073,3 +1073,47 @@ def test_edl_outro_round_trips_the_brief_length():
                    moved=1.7, brief_len=30.0)
     back = EDL.from_dict(EDL(episodes=(_ep(),), outro=fit).to_dict()).outro
     assert back == fit and back.brief_len == 30.0
+
+
+# --- pacing-fixed-point Task 0: EDLEpisode.base_dur + base_play_dur() ---
+
+def test_base_dur_defaults_to_none_and_round_trips():
+    assert _ep().base_dur is None
+    assert _ep().to_dict()["base_dur"] is None
+    d = _ep(base_dur=2.0).to_dict()
+    assert d["base_dur"] == 2.0
+    assert EDLEpisode(**d).base_dur == 2.0
+
+
+def test_base_play_dur_falls_back_to_play_dur_without_a_base():
+    # A hand-authored SP1 EDL has no scenario behind it: `dur` IS the intent.
+    ep = _ramp_ep()
+    assert ep.base_dur is None
+    assert ep.base_play_dur() == ep.play_dur() == 4.0
+
+
+def test_base_play_dur_is_the_base_when_there_is_no_ramp():
+    ep = _ramp_ep(dur=4.25, base_dur=4.0)
+    assert ep.play_dur() == 4.25
+    assert ep.base_play_dur() == 4.0
+
+
+def test_base_play_dur_adds_the_same_ramp_extra_a_base_length_episode_would_have():
+    # The whole point of the subtraction: ramp_extra is constant in dur while the
+    # region stays enclosed, so base_play_dur() on a BOUND episode equals play_dur()
+    # on a fresh episode cut to the base length.
+    bound = _ramp_ep(dur=4.25, base_dur=4.0, ramp=RAMP)
+    fresh = _ramp_ep(dur=4.0, ramp=RAMP)
+    assert bound.base_play_dur() == pytest.approx(fresh.play_dur())
+    assert bound.base_play_dur() != pytest.approx(bound.play_dur())
+
+
+def test_base_dur_survives_the_replace_the_pacing_binding_uses():
+    ep = _ep(dur=2.0, base_dur=2.0)
+    assert dataclasses.replace(ep, dur=2.2, beat_slot=1).base_dur == 2.0
+
+
+@pytest.mark.parametrize("bad", [0, -1.0, True, "4.0"])
+def test_base_dur_refuses_a_non_positive_or_non_number(bad):
+    with pytest.raises(ValueError, match="base_dur must be a positive number"):
+        _ep(base_dur=bad)

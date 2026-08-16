@@ -114,6 +114,18 @@ class EDLEpisode:
     color_means: tuple = DEFAULT_COLOR
     processing_notes: str = ""       # authoring metadata → SP1b draft labels; not acted on here
     beat_slot: int | None = None     # authoring metadata → B4 pacing; not acted on here
+    base_dur: float | None = None    # the footage-projected SOURCE length, before any
+                                     # pacing snap or outro move (design 2026-08-16 §2).
+                                     # Written once by edit_plan.window_to_episode and
+                                     # never rewritten: _bind_pacing and _apply_outro both
+                                     # go through dataclasses.replace(ep, dur=...), which
+                                     # carries this across untouched. Authoring metadata,
+                                     # exactly like beat_slot and processing_notes —
+                                     # extract, to_manifest_dict and check_reel never read
+                                     # it, so it can never move a pixel. None = never
+                                     # projected (a hand-authored SP1 EDL, or one written
+                                     # before this slice); base_play_dur() then returns
+                                     # play_dur(), the pre-slice behaviour exactly.
 
     def __post_init__(self) -> None:
         if not (isinstance(self.source, str) and self.source):
@@ -151,6 +163,13 @@ class EDLEpisode:
                 f"EDLEpisode {self.source} @{self.start:.2f}s")
         if self.beat_slot is not None and (isinstance(self.beat_slot, bool) or not isinstance(self.beat_slot, int)):
             raise ValueError(f"EDLEpisode.beat_slot must be an int index or null, got {self.beat_slot!r}")
+        if self.base_dur is not None and (isinstance(self.base_dur, bool)
+                                          or not isinstance(self.base_dur, (int, float))
+                                          or self.base_dur <= 0):
+            raise ValueError(
+                f"EDLEpisode.base_dur must be a positive number of seconds or null — it is "
+                f"the footage-projected length this episode had before any pacing snap; got "
+                f"{self.base_dur!r}. Re-run edit_plan build to regenerate EDL.json")
         if not (isinstance(self.color_means, (tuple, list)) and len(self.color_means) == 3
                 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
                         for v in self.color_means)):
@@ -189,7 +208,7 @@ class EDLEpisode:
                 **({"tone_src": list(self.tone_src), "tone_dst": list(self.tone_dst)}
                    if self.tone_src is not None else {}),
                 "color_means": list(self.color_means), "processing_notes": self.processing_notes,
-                "beat_slot": self.beat_slot}
+                "beat_slot": self.beat_slot, "base_dur": self.base_dur}
 
     def play_dur(self) -> float:
         """How long this episode PLAYS, against `dur`'s how much SOURCE it consumes.
@@ -202,6 +221,24 @@ class EDLEpisode:
         if self.ramp is None:
             return self.dur
         return self.dur + ramp_mod.ramp_extra(RampSpec.from_dict(self.ramp), self.dur)
+
+    def base_play_dur(self) -> float:
+        """The PLAYED length the SCENARIO projected — what pacing fits its grid to, and
+        what _bind_pacing's half-beat guard compares a slot against (design 2026-08-16
+        §2.1).
+
+        `base_dur` plus this episode's own ramp extra. The extra is `play_dur() - dur`
+        and is CONSTANT in `dur` while the ramp region stays enclosed in the window
+        (speed-ramp design §2) — the identity _bind_pacing already relies on when it
+        writes `dur = slot.dur - extra` — so this is exact, not an approximation. The
+        enclosure holds for `base_dur` too: __post_init__ validates the region against
+        `dur`, and at construction `dur` IS `base_dur`; later binds move only `dur`.
+
+        No base_dur -> play_dur(), i.e. the pre-slice behaviour exactly. A hand-authored
+        SP1 EDL has no scenario behind it, so its `dur` IS the author's intent."""
+        if self.base_dur is None:
+            return self.play_dur()
+        return self.base_dur + (self.play_dur() - self.dur)
 
 
 @dataclass
