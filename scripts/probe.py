@@ -14,6 +14,7 @@ uncalibrated taste function invents a target — match_grade remains the determi
 lane. The agent looks, edits the EDL, probes again.
 """
 import argparse
+import dataclasses
 import json
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from scripts import process_episode, reframe
 from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
                          naturalness, orchestration as orch, proc, sheet)
 from scripts.lib.edl import EDL
-from scripts.lib.manifest import DEFAULT_COLOR, Manifest
+from scripts.lib.manifest import Manifest
 from scripts.lib.models import CropPath, Delivery, PathMeta, ReelManifest
 
 FRAMES = 3          # start / middle / end of the window, at (i+0.5)/N — never the
@@ -38,18 +39,25 @@ _COLOUR_KEYS = ("color_means", "white_balance", "black_point", "highlight",
                 "highlight_red", "saturation", "shadow_red", "mid_blue", "dip",
                 "tone_src", "tone_dst")
 
-# The identity value edl.to_manifest_dict falls back to when it OMITS a colour key
-# (see _COLOUR_KEYS above): highlight_red is dropped only when it is 0.0, tone_src/
-# tone_dst only when both are None, and the rest of the block is unconditional (so
-# to_manifest_dict never omits them, but the map is total here anyway — a caller
-# reading regrade's output should never need to know which of those two cases it
-# hit). Kept as a map, not re-derived from Manifest defaults at call time, so this
-# stays a pure lookup with no risk of reading a DIFFERENT default than the one
-# to_manifest_dict actually omits at.
-_COLOUR_IDENTITY = {"color_means": list(DEFAULT_COLOR), "white_balance": 0.0,
-                    "black_point": 0.0, "highlight": 1.0, "highlight_red": 0.0,
-                    "saturation": 1.0, "shadow_red": 0.0, "mid_blue": 1.0, "dip": 0.0,
-                    "tone_src": None, "tone_dst": None}
+# The value Manifest.from_dict falls back to for each of _COLOUR_KEYS when the JSON
+# key is absent or explicitly null — compare white_balance=float(d.get("white_balance")
+# or 0.0) in manifest.py against Manifest's own `white_balance: float = 0.0` field
+# declaration, and so on for all eleven: from_dict's fallback logic was written to
+# reproduce the field default, not to invent a second number. DERIVED from Manifest's
+# dataclass fields rather than hand-copied here, so this cannot drift the day someone
+# edits a default in manifest.py and forgets this file exists — reading the dataclass
+# IS agreeing with Manifest's own behaviour, not a second, independently-maintained
+# opinion about it. (Only 3 of the 11 are ever actually consulted below — regrade's
+# `fresh.get(k, ...)` — since to_manifest_dict emits the other 8 unconditionally; kept
+# total anyway so this map's meaning does not depend on to_manifest_dict's internals.)
+#
+# Safe only because every Manifest field uses a plain `= value` default, never
+# `field(default_factory=...)` (manifest.py imports `dataclass` but never `field`) — a
+# default_factory field's own .default is dataclasses.MISSING and would poison this
+# map silently. Verified empirically for all eleven names; re-check that invariant
+# before ever widening _COLOUR_KEYS to a field manifest.py declares differently.
+_COLOUR_IDENTITY = {f.name: f.default for f in dataclasses.fields(Manifest)
+                    if f.name in _COLOUR_KEYS}
 
 
 def source_for(md: dict, epdir: Path | str) -> str:
@@ -187,7 +195,10 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     rm = ReelManifest.from_json(episodes_path)
     if not 0 <= index < len(rm.episodes):
         raise IndexError(f"{episodes_path} has {len(rm.episodes)} episodes; index "
-                         f"{index} is out of range")
+                         f"{index} is out of range. The index is the episode's "
+                         f"position within EPISODES.json (and, when --edl is also "
+                         f"passed, must be that SAME episode's position in EDL.json "
+                         f"too) — pick an index in [0, {len(rm.episodes)})")
     ep = rm.episodes[index]
     epdir = Path(ep.path).parent
     md = dict(ep.manifest)
@@ -198,16 +209,17 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     if m.smooth_window_s is not None:
         params["smooth_window_s"] = m.smooth_window_s
     spec = process_episode.build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
-    plan = reframe.plan_render(spec, source_for(md, epdir), ep.route)
+    src = source_for(md, epdir)
+    plan = reframe.plan_render(spec, src, ep.route)
     _refuse_on_drift(plan, ep.path, ep.meta)
 
     d = Path(out_dir) if out_dir is not None else epdir / "probe"
     times = [((i + 0.5) / frames) * plan.dur for i in range(frames)]
-    imgs = _render(plan, source_for(md, epdir), times, d)
+    imgs = _render(plan, src, times, d)
     stats = naturalness.measure(imgs)
     report = {
         "episode": index, "episodes": episodes_path, "edl": edl_path,
-        "source": source_for(md, epdir), "frames": len(imgs),
+        "source": src, "frames": len(imgs),
         "times": [round(t, 3) for t in times],
         "grade": plan.grade,
         "colour": {k: md[k] for k in _COLOUR_KEYS if k in md},

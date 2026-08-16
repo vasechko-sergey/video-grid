@@ -56,6 +56,16 @@ def test_regrade_drops_a_colour_field_the_author_deleted(tmp_path):
     assert out["segment"] == "seg.mp4"          # non-colour keys survive
 
 
+def test_regrade_drops_a_deleted_tone_pair(tmp_path):
+    """to_manifest_dict emits tone_src/tone_dst only as a pair and only when authored,
+    so an author who deletes the pair (the EDL episode below authors neither) must see
+    it gone from the probe's grade too — not the tone pair `_md()` used to carry."""
+    p = tmp_path / "EDL.json"
+    p.write_text(json.dumps(_edl_dict()))       # no tone_src/tone_dst authored
+    out = probe.regrade(_md(), str(p), 0)
+    assert out["tone_src"] is None and out["tone_dst"] is None
+
+
 def test_regrade_refuses_an_index_past_the_edl(tmp_path):
     p = tmp_path / "EDL.json"
     p.write_text(json.dumps(_edl_dict()))
