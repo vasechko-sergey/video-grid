@@ -157,6 +157,21 @@ def test_a_short_low_fps_fade_out_needs_more_slack_but_still_catches_a_miss():
     assert bad["fade-out"].status == "fail"
 
 
+def test_a_short_fade_out_that_did_not_render_is_not_checked_not_passed():
+    """Coordinator re-review, second pass: at fade=0.1s/30fps, residual_frac clamps
+    to 1.0 (fade <= 3/fps) — the bar becomes the master's own brightness, and
+    d0 <= expected then holds for ANY fade-out, rendered or not, since a delivery
+    cannot be brighter than its master. Reproduced on the shipped code before this
+    fix: a completely UNRENDERED fade-out (d0 == m0 == 80) reported 'pass' with
+    measured=80.0, expected=80.0. This is the discriminator for the fix — a
+    regression back to reusing FADE_OUT_RESIDUAL_MARGIN alone, with no
+    FADE_OUT_MIN_POWER floor, turns this red."""
+    mid_m, mid_d = [_flat(100)] * 3, [_flat(60)] * 3
+    by = {f.check: f for f in lookcheck.evaluate(
+        mid_m, mid_d, _flat(80), _flat(0), _flat(80), _flat(80), fade=0.1, fps=30.0)}
+    assert by["fade-out"].status == "not-checked", by["fade-out"].detail
+
+
 def test_a_fade_declared_with_no_fps_refuses():
     """`fps` sizes the fade-out's quantization slack, so it is required whenever
     `fade` is, exactly like the four bookend frames — a caller that forgets it

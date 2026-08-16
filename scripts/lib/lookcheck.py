@@ -43,6 +43,23 @@ FADE_BLACK_MAX = 2.0
 # (residual ~= the full master brightness) still fails by a wide margin at any legal
 # fade/fps combination.
 FADE_OUT_RESIDUAL_MARGIN = 3.0
+# Below this, the bar computed from FADE_OUT_RESIDUAL_MARGIN has lost its
+# discriminating power (coordinator re-review, found on the shipped code): at
+# residual_frac == 1.0 the bar IS the master's own brightness, and d0 <= m0 holds
+# for any fade-out at all — a delivery cannot be brighter than its master — so a
+# COMPLETELY UNRENDERED fade-out (d0 == m0) would report "pass". Reproduced:
+# fade=0.1s/30fps clamps residual_frac to 1.0 (fade <= 3/fps triggers the outer
+# min in _fade_edge), and an unrendered delivery passes. Same "half" reasoning
+# VIGNETTE_MIN_FRACTION already uses two constants up: a bar demanding the
+# delivered frame lose at least half the master's brightness is still a real
+# predicate (a genuine non-render, d0 ~= m0, fails it by a wide margin); a bar
+# above that is not. Algebraically this fires whenever fade <= 6/fps, at ANY fps —
+# comfortably below every mood preset's own fade (>= 0.3s: at fps=24, the worst
+# realistic floor, the switch-over is 0.25s), so it changes nothing for a
+# realistically-authored reel and only guards a hand-authored fade shorter than
+# that. Does NOT change FADE_OUT_RESIDUAL_MARGIN itself, or any pass/fail verdict
+# where the bar still discriminates.
+FADE_OUT_MIN_POWER = 0.5
 # Below these the source cannot discriminate: a reel that opens on black is already
 # black at t=0, and corners that are already dark cannot be darkened. Both report
 # not-checked and pass — an honest hole, named in design §10.4.
@@ -119,6 +136,13 @@ def _fade_edge(m: np.ndarray, d: np.ndarray, *, check: str, edge: str,
     `fps` are unused for `edge == "first"` (t=0 is frame-exact, so FADE_BLACK_MAX
     alone is correct) but size the fade-out's own quantization slack for
     `edge == "last"` — see FADE_OUT_RESIDUAL_MARGIN.
+
+    `edge == "last"` carries a THIRD not-checked arm beyond the FADE_SOURCE_MIN one
+    below (design §7/§10, amended — coordinator re-review): at a short enough fade
+    relative to fps, the relative bar FADE_OUT_RESIDUAL_MARGIN computes approaches
+    the master's own brightness, and `d0 <= expected` would then hold for ANY
+    fade-out — rendered or not — since a delivery cannot be brighter than its
+    master. See FADE_OUT_MIN_POWER.
     """
     m0 = float(_rgb(m, f"{edge}_master").mean())
     d0 = float(_rgb(d, f"{edge}_delivered").mean())
@@ -147,6 +171,22 @@ def _fade_edge(m: np.ndarray, d: np.ndarray, *, check: str, edge: str,
                          f"fps > 0 to size its quantization slack, got fade={fade!r} "
                          f"fps={fps!r}")
     residual_frac = min(1.0, (1.0 / fps) / fade * FADE_OUT_RESIDUAL_MARGIN)
+    if residual_frac >= FADE_OUT_MIN_POWER:
+        # The bar itself has no discriminating power left (coordinator re-review):
+        # at residual_frac == 1.0 it is the master's own brightness, and d0 <= m0
+        # holds for ANY fade-out — a delivery cannot be brighter than its master —
+        # so a completely unrendered one would report "pass". Reported as
+        # not-checked instead, the same shape FADE_SOURCE_MIN's arm above already
+        # uses for a different reason a bar cannot discriminate.
+        return LookFinding(
+            check=check, status="not-checked",
+            detail=(f"at {fade}s and {fps:.4g}fps, one frame period is "
+                    f"{residual_frac:.2f} of the master's own last-frame "
+                    f"brightness — too large a share of the ramp for the last "
+                    f"decodable frame to prove anything either way (needs under "
+                    f"{FADE_OUT_MIN_POWER}); lengthen the fade or deliver at a "
+                    f"higher rate"),
+            measured=residual_frac, expected=FADE_OUT_MIN_POWER)
     expected = m0 * residual_frac
     ok = d0 <= expected
     detail = (f"a fade-out must reach black, but the delivery's last frame averages "

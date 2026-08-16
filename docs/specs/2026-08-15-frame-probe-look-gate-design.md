@@ -281,12 +281,31 @@ still fails by a wide margin at any legal fade/fps. `lookcheck.evaluate` gained 
 `fps` parameter (the delivered file's own rate) to carry this, required alongside
 the four bookend frames whenever a fade is declared.
 
+**Amended 2026-08-16 (coordinator re-review).** The relative bound above has its
+own edge: it is checked only while it still discriminates. `residual_frac =
+min(1.0, (1/fps)/fade * FADE_OUT_RESIDUAL_MARGIN)` reaches its clamp of 1.0
+whenever `fade <= 3/fps` — there `expected` becomes the master's own last-frame
+brightness, and `d0 <= expected` holds for ANY fade-out, rendered or not, since a
+delivery cannot be brighter than its master. Reproduced: at fade=0.1s/30fps a
+COMPLETELY UNRENDERED fade-out (`d0 == m0 == 80.0`) reported `status="pass"`. Fixed
+with a floor on the bar's own power, `FADE_OUT_MIN_POWER = 0.5` (the same "half"
+margin `VIGNETTE_MIN_FRACTION` already uses two constants up) — `residual_frac >=
+FADE_OUT_MIN_POWER` is now a third `not-checked` arm, naming the cause (one frame
+period is too large a share of THIS fade/fps to prove anything) and the remedy
+(lengthen the fade, or deliver at a higher rate). Algebraically this fires whenever
+`fade <= 6/fps`, at any fps — below every mood preset's own fade (≥ 0.3s: even at
+the 24fps floor the switch-over is 0.25s), so a realistically-authored reel is
+unaffected; it guards only a hand-authored fade shorter than that.
+`FADE_OUT_RESIDUAL_MARGIN` itself, and every pass/fail verdict where the bar still
+discriminates, are unchanged.
+
 **Not-checked arms, and they are real holes.** A titles-only delivery has no check at
 all this slice (§7.1). A master whose own first frame is
 already dark (`< FADE_SOURCE_MIN = 8.0`) cannot discriminate a fade-in, and the same
 test against the master's own LAST frame cannot discriminate a fade-out — the two are
-independent arms (a reel can open bright and already end dark, or the reverse). A
-master whose corners are already black (`< VIGNETTE_FLOOR = 8.0`) cannot discriminate
+independent arms (a reel can open bright and already end dark, or the reverse). Below
+`FADE_OUT_MIN_POWER`'s floor the fade-out bar has no power at all, regardless of
+brightness (above). A master whose corners are already black (`< VIGNETTE_FLOOR = 8.0`) cannot discriminate
 a vignette. Those report `not-checked` and pass. Reporting them as proven would be the
 lie this gate exists to stop.
 
@@ -325,7 +344,9 @@ bar.
 3. The look gate proves an effect **changed pixels**, not that it looks right. Depth,
    placement and taste are outside it.
 4. The three not-checked arms (§7 — vignette, fade-in, fade-out) pass without
-   evidence, by construction.
+   evidence, by construction. Fade-out carries a second, independent trigger for
+   the same status: below `FADE_OUT_MIN_POWER`, the relative bar itself has lost
+   its power regardless of brightness (coordinator re-review — see item 9).
 5. The cost figures in §5 are synthetic. No real 4K/60 surf footage has been probed;
    the tracking-share argument is structural, the ratios are not.
 6. The naturalness thresholds the probe reports against remain uncalibrated first
@@ -344,6 +365,15 @@ bar.
    never changes. The forward (`--edl`) claim is unaffected. Filed to the backlog:
    record the applied `color_correct` on `PathMeta` so the probe can see and
    reproduce it, or refuse.
+9. **The fade-out bound is checked only while the fade is long enough relative to
+   the delivered rate** (coordinator re-review, second pass). `residual_frac =
+   min(1.0, (1/fps)/fade * FADE_OUT_RESIDUAL_MARGIN)` clamps to 1.0 whenever
+   `fade <= 3/fps`, and there `d0 <= expected` holds for any fade-out at all — a
+   delivery cannot be brighter than its master. `FADE_OUT_MIN_POWER = 0.5` turns
+   that region into a `not-checked` arm instead of a false `pass` (see §7's
+   amendment); the boundary is `fade <= 6/fps`, below every mood preset's own
+   fade, so a realistically-authored reel never reaches it — only a hand-authored
+   fade shorter than ~0.25s does.
 
 ## §11 Deferred — must reach the backlog
 
