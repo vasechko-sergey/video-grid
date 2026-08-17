@@ -36,7 +36,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the
     color_correct passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
-            "targets": [], "deliver_platform": ""}
+            "targets": [], "deliver_platform": "", "outro": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -45,14 +45,16 @@ def _wire(monkeypatch, reports, pe_results=None):
     # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
     # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
-    # geometry=/platform= ARE captured into seen so a test can assert build_reel builds and
-    # forwards them to check_reel.run. outro= tolerated (and ignored) too — pacing-fixed-point
-    # Task 5 threads rm.outro through this same call; the outro_fixed DERIVATION it feeds is
-    # already exercised directly by the two tests below, not by anything reading check_reel's
-    # own outro check (that lives in test_check_reel.py).
+    # geometry=/platform=/outro= ARE captured into seen so a test can assert build_reel builds
+    # and forwards them to check_reel.run. outro_fixed (build_reel.py's OWN escalation gate,
+    # derived directly off rm.outro BEFORE check_reel.run is ever called, at line ~66) is a
+    # SEPARATE computation from this kwarg — the two tests below exercise outro_fixed, not this
+    # forward. Conflating the two left the outro= forward with no coverage at all: flipping
+    # build_reel.py's `outro=rm.outro` to `outro=None` changed nothing either test could see.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
+        seen["outro"] = outro
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
@@ -317,6 +319,12 @@ def test_a_within_band_shortfall_escalates_when_the_manifests_outro_chose_the_le
     assert res["status"] == "stop_and_report"
     assert res["finding"]["reason"] == "outro-length-chosen"
     assert seen["deliver"] == []
+    # THE FORWARD ITSELF: outro_fixed (asserted via the finding above) is derived from
+    # rm.outro directly and does not, by itself, prove build_reel hands rm.outro to
+    # check_reel.run — a caller could compute outro_fixed correctly and still pass
+    # outro=None into check_reel.run's own (separately advisory) outro check. This is
+    # the one place in the suite that would catch that.
+    assert seen["outro"] == outro
 
 
 def test_an_unchanged_rung_outro_does_not_block_the_absorb(monkeypatch, tmp_path):
