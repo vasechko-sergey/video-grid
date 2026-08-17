@@ -78,6 +78,12 @@ def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int 
     phase out of noise and looks like it works. Do not 'simplify' this to
     librosa.onset.
 
+    THE TWO ZERO CORNERS ARE OPPOSITES, and the first cut of this gate collapsed
+    them: a lone loud phase against three silent ones is an INFINITE lead — the
+    strongest evidence there is — while all four silent is no evidence at all. Only
+    the second is None. Exact zeros are reachable, not theoretical: digital silence
+    gives exactly 0.0 STFT magnitude.
+
     None when there are fewer than _MIN_BEATS_FOR_BARS beats. Assumes 4/4 (§11.3).
     `beat_times` are relative to the START of `y`, which is what analyze() passes."""
     import librosa                                    # lazy import: heavy optional dep (librosa)
@@ -96,8 +102,10 @@ def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int 
     vals = [peak(float(t)) for t in beat_times]
     means = [float(np.mean(vals[p::outro.BAR_BEATS])) for p in range(outro.BAR_BEATS)]
     ranked = sorted(means, reverse=True)
-    if ranked[1] <= 0.0 or ranked[0] / ranked[1] < _PHASE_MARGIN:
+    if ranked[0] <= 0.0:               # no bass anywhere — nothing to rank
         return None
+    if ranked[1] > 0.0 and ranked[0] / ranked[1] < _PHASE_MARGIN:
+        return None                    # ranked[1] == 0 is an INFINITE lead, not an absent one
     return int(np.argmax(means))
 
 

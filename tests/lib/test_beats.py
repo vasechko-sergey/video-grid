@@ -222,3 +222,31 @@ def test_downbeat_phase_margin_is_the_ranked_gap_not_the_spread():
         a = int(bt * sr)
         y[a:a + len(t)] += (amp * np.sin(2 * np.pi * 40 * t)).astype(np.float32)
     assert beats._downbeat_phase(y, sr, times) is None
+
+
+def test_downbeat_phase_accepts_a_lone_loud_phase():
+    """One phase carrying bass and the other three at digital silence is the
+    STRONGEST downbeat evidence possible, and the first cut of this gate refused
+    it: exact zeros are reachable (measured — silence gives exactly 0.0 STFT
+    magnitude, so ranked[1] == 0.0), and a guard written to avoid dividing by
+    zero swallowed the unambiguous case along with the empty one. An infinite
+    lead is above every margin; only an all-silent input has nothing to rank."""
+    sr = 22050
+    period = 0.5
+    times = [i * period for i in range(16)]
+    y = np.zeros(int(sr * (times[-1] + period)), dtype=np.float32)
+    t = np.arange(int(sr * 0.12)) / sr
+    thump = (0.9 * np.sin(2 * np.pi * 40 * t)).astype(np.float32)
+    for i, bt in enumerate(times):
+        if i % 4 == 2:                     # only phase 2 has any bass at all
+            a = int(bt * sr)
+            y[a:a + len(thump)] += thump
+    assert beats._downbeat_phase(y, sr, times) == 2
+
+
+def test_downbeat_phase_declines_silence():
+    """The other end of the same guard: no bass anywhere ranks nothing."""
+    sr = 22050
+    times = [i * 0.5 for i in range(16)]
+    y = np.zeros(int(sr * 8.5), dtype=np.float32)
+    assert beats._downbeat_phase(y, sr, times) is None
