@@ -77,3 +77,17 @@ keeps the design spec, the plan checkboxes, and `docs/build-status.md` in sync.
 .venv/bin/python -m pytest -q            # the whole suite
 .venv/bin/python -m pytest -q -m integration   # the real-ffmpeg / real-weights proofs
 ```
+
+## Licence
+
+AGPL-3.0 — see [LICENSE](LICENSE).
+
+Not a preference. `ultralytics` (the YOLO11 runtime footage-intake depends on)
+is AGPL-3.0, and `scripts/intake.py` imports it on the main path, so a
+permissive licence over this tree would be internally inconsistent. The model
+weights themselves are *not* redistributed here — `.gitignore` excludes
+`yolo11*.pt` and `setup.sh` downloads them at install time, which narrows the
+question to linking rather than redistribution.
+
+This declares a licence; it is not a licence audit. The transitive dependency
+tree has not been walked.

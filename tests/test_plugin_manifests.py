@@ -27,3 +27,19 @@ def test_marketplace_lists_the_plugin_from_repo_root():
 
 def test_claude_plugin_holds_only_manifests():
     assert {p.name for p in CP.iterdir()} == {"plugin.json", "marketplace.json"}
+
+
+def test_plugin_manifest_declares_the_agpl():
+    data = json.loads((CP / "plugin.json").read_text())
+    assert data["license"] == "AGPL-3.0-only"
+
+
+def test_repo_ships_the_agpl_text():
+    """The licence is constrained by a dependency, not chosen: ultralytics is
+    AGPL-3.0 and scripts/intake.py imports it on the main path (design
+    2026-08-17 §1). Pin the text's identity, not merely the file's existence —
+    an empty LICENSE would satisfy that and satisfy nobody else."""
+    text = (REPO / "LICENSE").read_text()
+    lines = text.splitlines()
+    assert lines[0].strip() == "GNU AFFERO GENERAL PUBLIC LICENSE"
+    assert lines[1].strip() == "Version 3, 19 November 2007"
