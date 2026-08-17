@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task.
-> Steps use checkbox (`- [ ]`) syntax for tracking.
+> Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close four cheap P2 backlog rows — a licence, the authoring skill's knob
 enumeration (#5), editorial constraints in `montage status`, and a test fixture
@@ -37,7 +37,7 @@ render path, no wire contract, no `CACHE_VERSION` bump, no golden moves.
 - Modify: `.claude-plugin/plugin.json`, `README.md`
 - Test: `tests/test_plugin_manifests.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_plugin_manifests.py`:
 
@@ -56,12 +56,12 @@ def test_repo_ships_the_agpl_text():
     assert "Version 3, 19 November 2007" in text.splitlines()[1]
 ```
 
-- [ ] **Step 2: Run them and watch both fail**
+- [x] **Step 2: Run them and watch both fail**
 
 Run: `.venv/bin/python -m pytest tests/test_plugin_manifests.py -v`
 Expected: `KeyError: 'license'` and `FileNotFoundError: LICENSE`.
 
-- [ ] **Step 3: Install the licence text from the dependency that forced it**
+- [x] **Step 3: Install the licence text from the dependency that forced it**
 
 The canonical AGPL-3.0 text is already on this machine, shipped by the very
 dependency that makes AGPL the necessary choice — 661 lines / 34523 bytes:
@@ -72,7 +72,7 @@ cp "$(.venv/bin/python -c 'import ultralytics,pathlib;print(pathlib.Path(ultraly
 
 Verify before continuing: `wc -lc LICENSE` must print `661` and `34523`.
 
-- [ ] **Step 4: Add the manifest field**
+- [x] **Step 4: Add the manifest field**
 
 In `.claude-plugin/plugin.json`, after `"description"`:
 
@@ -80,7 +80,7 @@ In `.claude-plugin/plugin.json`, after `"description"`:
   "license": "AGPL-3.0-only",
 ```
 
-- [ ] **Step 5: The README third-party note**
+- [x] **Step 5: The README third-party note**
 
 Add a short section so a reader learns *why* the licence is what it is without
 reverse-engineering it from `requirements.txt`:
@@ -100,13 +100,13 @@ This declares a licence; it is not a licence audit. The transitive dependency
 tree has not been walked.
 ```
 
-- [ ] **Step 6: Run the tests and the manifest suite**
+- [x] **Step 6: Run the tests and the manifest suite**
 
 Run: `.venv/bin/python -m pytest tests/test_plugin_manifests.py -v`
 Expected: 5 passed. `test_claude_plugin_holds_only_manifests` must still pass —
 `LICENSE` goes in the repo root, never in `.claude-plugin/`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add LICENSE .claude-plugin/plugin.json README.md tests/test_plugin_manifests.py
@@ -125,7 +125,7 @@ being redistributed is what narrows the question to linking alone.
 - Modify: `skills/edit-plan/SKILL.md`
 - Test: `tests/test_skill_convention.py`
 
-- [ ] **Step 1: Write the failing coverage test**
+- [x] **Step 1: Write the failing coverage test**
 
 Append to `tests/test_skill_convention.py` (adjust the repo-root constant to
 whatever that file already defines):
@@ -150,7 +150,7 @@ def test_edit_plan_skill_names_every_authorable_episode_field():
         f"knob nobody can find is the same as one that does not exist")
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -k every_authorable -v`
 Expected: FAIL naming exactly
@@ -158,7 +158,7 @@ Expected: FAIL naming exactly
 `['border_color', 'border_px', 'color_means', 'crop_aspect', 'crop_scale']`.
 If the failure names a different set, re-measure before writing prose.
 
-- [ ] **Step 3: Document the five, beside the knobs they belong with**
+- [x] **Step 3: Document the five, beside the knobs they belong with**
 
 In `skills/edit-plan/SKILL.md`, step 2's bullet list. The four geometry knobs go
 directly after the `background` / `background_color` bullet (they are the
@@ -183,7 +183,7 @@ directly after the `background` / `background_color` bullet (they are the
      to change how a clip looks.
 ```
 
-- [ ] **Step 4: Add the reference table at the end of step 2**
+- [x] **Step 4: Add the reference table at the end of step 2**
 
 The row asked for the full set "in one place". The prose stays — it carries the
 *why* and the refusals, which is what makes it worth its length. The table is an
@@ -220,7 +220,7 @@ index into it:
    `look`, `variety_waiver`.
 ```
 
-- [ ] **Step 5: The reverse scan — a named-but-missing tool**
+- [x] **Step 5: The reverse scan — a named-but-missing tool**
 
 The backlog row asked to check the other direction too: a tool the skill *names*
 that no field backs is a build-or-not decision, not a doc gap. Run:
@@ -241,18 +241,18 @@ EOF
 Report what it prints in the commit message. A name that is a real missing tool
 becomes a backlog row, not a fix in this task.
 
-- [ ] **Step 6: Run the test and watch it pass**
+- [x] **Step 6: Run the test and watch it pass**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -v`
 Expected: PASS, `missing == []`.
 
-- [ ] **Step 7: Mutation check — the test must be discriminating**
+- [x] **Step 7: Mutation check — the test must be discriminating**
 
 Delete the word `crop_scale` from the SKILL, re-run, watch it FAIL naming
 `['crop_scale']`, restore it. A green run after that deletion means the test
 matched the word somewhere incidental and must be tightened.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add skills/edit-plan/SKILL.md tests/test_skill_convention.py
@@ -271,7 +271,7 @@ presence only.
 - Modify: `scripts/montage.py`
 - Test: `tests/lib/test_montage.py`
 
-- [ ] **Step 1: Write the three failing tests**
+- [x] **Step 1: Write the three failing tests**
 
 Append to `tests/lib/test_montage.py`:
 
@@ -322,13 +322,13 @@ def test_the_gate_still_refuses_what_status_only_reports(tmp_path):
         c.Constraints.from_json(tmp_path / "CONSTRAINTS.json")
 ```
 
-- [ ] **Step 2: Run them and watch all four fail**
+- [x] **Step 2: Run them and watch all four fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -k constraints -v`
 Expected: three `KeyError: 'constraints'`; the fourth passes already (it pins
 existing behaviour that this task must not change — keep it).
 
-- [ ] **Step 3: Implement `_constraints`**
+- [x] **Step 3: Implement `_constraints`**
 
 In `scripts/montage.py`, add `constraints` to the `scripts.lib` import and a
 helper beside `_deliveries`:
@@ -357,7 +357,7 @@ def _constraints(run: Path) -> dict:
             "error": None}
 ```
 
-- [ ] **Step 4: Return it from `next_action`**
+- [x] **Step 4: Return it from `next_action`**
 
 Extend the return dict and its docstring's shape line:
 
@@ -366,18 +366,18 @@ Extend the return dict and its docstring's shape line:
             "deliveries": _deliveries(out), "constraints": _constraints(run)}
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_montage.py -v`
 Expected: all pass, including the pre-existing whole-object stage assertions.
 
-- [ ] **Step 6: Mutation check**
+- [x] **Step 6: Mutation check**
 
 Replace the `except ValueError` body with `raise`, re-run, and watch
 `test_a_broken_constraints_file_reports_rather_than_raises` FAIL. Restore. A
 green run there means the test is not exercising the broken path.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/montage.py tests/lib/test_montage.py
@@ -395,7 +395,7 @@ than raised OR silently emptied.
 - Modify: `tests/conftest.py`
 - Test: `tests/integration/test_intake.py`
 
-- [ ] **Step 1: Add the fixture**
+- [x] **Step 1: Add the fixture**
 
 In `tests/conftest.py`, beside `sample_clip` (which is NOT touched — 27 test
 files consume it and its goldens would move):
@@ -436,7 +436,7 @@ def multi_window_clip(tmp_path_factory):
     return out
 ```
 
-- [ ] **Step 2: Prove the fixture is what it claims, before using it**
+- [x] **Step 2: Prove the fixture is what it claims, before using it**
 
 Run this by hand and record the numbers in the commit message — a fixture whose
 scene cuts do not land where the docstring says makes every assertion below a
@@ -457,7 +457,7 @@ Expected: `dur` ≈ 12.0 and two interior cuts near 5.0 and 9.5. If PySceneDetec
 finds a different number of cuts, adjust the segments' colour contrast until it
 does — and update the docstring to whatever is actually measured.
 
-- [ ] **Step 3: Write the failing proof**
+- [x] **Step 3: Write the failing proof**
 
 Append to `tests/integration/test_intake.py`. The detection stream is faked, as
 every test in this file already fakes it and for the documented reason — a box
@@ -507,7 +507,7 @@ def test_a_long_clip_carves_a_real_window_pool(monkeypatch, tmp_path,
     assert len({(w.start, w.dur) for w in windows}) == len(windows)
 ```
 
-- [ ] **Step 4: Run it and watch it fail first for the right reason**
+- [x] **Step 4: Run it and watch it fail first for the right reason**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -k long_clip -v`
 Before the fixture exists it errors on the missing fixture. After Step 1 it must
@@ -515,19 +515,19 @@ pass. If it fails on the `CLIP_POOL_MIN` assertion, the peaks are not landing �
 print `fo.clips[0].scene_cuts` and the carved spans and fix the fake's pattern,
 not the assertion.
 
-- [ ] **Step 5: Vacuity check against the OLD fixture**
+- [x] **Step 5: Vacuity check against the OLD fixture**
 
 Swap `multi_window_clip` for `sample_clip` in the test, re-run, and watch it FAIL
 on the `CLIP_POOL_MIN` assertion with 1 window. Restore. This is the step that
 proves the new fixture is doing the work rather than the assertions being loose.
 
-- [ ] **Step 6: Confirm no existing golden moved**
+- [x] **Step 6: Confirm no existing golden moved**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_intake.py -v`
 Expected: the three pre-existing tests unchanged and passing — the fixture is
 additive and `sample_clip` was not touched.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/conftest.py tests/integration/test_intake.py
@@ -544,7 +544,7 @@ stream, as everywhere else in this file), and the measured cut positions.
 **Files:**
 - Modify: `docs/backlog.md`, `docs/build-status.md`, `CLAUDE.md`
 
-- [ ] **Step 1: Mark the four rows done**
+- [x] **Step 1: Mark the four rows done**
 
 In `docs/backlog.md`'s P2 table, flip to `✅` with a one-line what-and-when:
 the `#5` knob row, the `montage status` constraints row, the `sample_clip`
@@ -552,7 +552,7 @@ fixture row, and the LICENSE row. For `#5`, record the measurement — 30 of 35
 fields were already documented and five were not — so the next reader does not
 re-derive the row's size.
 
-- [ ] **Step 2: Correct the ramp row, do not close it**
+- [x] **Step 2: Correct the ramp row, do not close it**
 
 Change its size `S` → `M` and append the reason:
 
@@ -564,7 +564,7 @@ Change its size `S` → `M` and append the reason:
 > inside `edit_plan` (which decodes nothing today), and a `MIN_RAMP_FPS`
 > re-check. That is a slice with its own design.
 
-- [ ] **Step 3: File this slice's own deferrals**
+- [x] **Step 3: File this slice's own deferrals**
 
 Per the backlog's own rule, the design's honest limits become rows:
 
@@ -576,12 +576,12 @@ Per the backlog's own rule, the design's honest limits become rows:
   carve/pool plumbing, not the motion sensor's judgement (P3/S, design §4.1)
 - no licence audit of the transitive dependency tree (P4/S, design §1.1)
 
-- [ ] **Step 4: build-status + CLAUDE.md**
+- [x] **Step 4: build-status + CLAUDE.md**
 
 Add the Done entry to `docs/build-status.md` and the two registry rows (design +
 plan) to `CLAUDE.md`'s Quick Reference table, in the established format.
 
-- [ ] **Step 5: The whole suite, on a cleared bytecode cache**
+- [x] **Step 5: The whole suite, on a cleared bytecode cache**
 
 ```bash
 find . -name __pycache__ -type d -prune -not -path "./.venv/*" -exec rm -rf {} + && .venv/bin/python -m pytest -q
@@ -591,7 +591,7 @@ Expected: the pre-slice baseline (2951 passed / 2 skipped) plus this slice's new
 tests, zero failures, no golden moved. Report the real numbers; do not assume
 them.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/ CLAUDE.md

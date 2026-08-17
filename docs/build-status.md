@@ -12,6 +12,77 @@ _Last updated: 2026-08-17._
 
 ## Done
 
+- **Cheap P2 chores — a licence, the authoring skill's knob index, editorial
+  constraints in `montage status`, and a fixture long enough to carve a real
+  window pool DONE (2026-08-17)** — plan
+  `docs/plans/2026-08-17-cheap-p2-chores.md` + design
+  `docs/specs/2026-08-17-cheap-p2-chores-design.md`, Tasks 0–4 (branch
+  `chore/cheap-p2-chores`). Four independent P2 rows sharing nothing but their
+  size; no render path, no wire contract, no `CACHE_VERSION` bump, no golden
+  moved. A fifth was considered and **removed with its size corrected**.
+
+  **LICENSE — AGPL-3.0, constrained rather than chosen.** `requirements.txt`
+  pulls `ultralytics>=8.3`, which is AGPL-3.0, and `scripts/intake.py` imports
+  it on the main path, so a permissive licence over this tree would be
+  internally inconsistent. The weights are **not** redistributed —
+  `git ls-files` finds zero tracked `.pt` and `.gitignore` carries
+  `yolo11*.pt`, so `setup.sh` downloads them — which removes the
+  redistribution question and leaves only linking. The text is copied verbatim
+  from ultralytics' own dist-info (661 lines / 34523 bytes, sha256
+  `0d96a4ff…`) rather than retyped from memory, and the test pins the text's
+  identity rather than the file's existence. `plugin.json` gains
+  `"license": "AGPL-3.0-only"`; the README says why.
+
+  **The authoring skill's knobs (#5) — the row was smaller than it read.**
+  Measured first: `EDLEpisode` carries 35 fields and the skill already named
+  **30**. The five it never named — `crop_aspect`, `crop_scale`, `border_px`,
+  `border_color`, `color_means` — were authorable from `selection.json` and
+  documented nowhere. The row's other half also got an answer rather than an
+  assumption: scanning every backticked identifier against
+  `EDLEpisode`/`EDL`/`ReframeSpec`/`LayoutSpec` found **no** named-but-missing
+  tool (curves, shadows, contrast, gamma, lift, gain all return nothing), so
+  the build-or-not decision the row anticipated does not exist. The prose
+  stays — it carries the refusals — and a table at the end of step 2 is the
+  "one place". `tests/test_skill_convention.py` now asserts every field name
+  appears in the SKILL, watched red first and red again under a mutated name.
+
+  **`montage status` reports the editorial rules.** `next_action` gains a
+  `constraints` key with three named states. The third is the one that needed
+  deciding: `Constraints.from_json` refuses hard, correctly, but this is the
+  inspector the router calls constantly — letting the refusal escape replaces
+  the status report with a traceback over a typo in a rule file, and catching
+  it into `rules: []` answers "nothing binds this cut" when the truth is
+  "nobody can tell", which is worse because it is confident. So it is caught
+  with the message in `error`, and a fourth test pins that `write_edit_plan`'s
+  no-waiver gate is untouched. Mutation-checked by re-raising.
+
+  **A fixture longer than `WIN_MAX`.** `sample_clip` is 3s with no scene cut
+  and `carve.units_for_span` returns one whole unit for any in-band span, so
+  it can carve exactly **1** window — confirmed by running the carve over its
+  shape. That is why intake-motion-scoring §8 shipped the pool-relative
+  scoring with no real-bytes proof. New sibling `multi_window_clip` (NOT a
+  change to `sample_clip`, which 27 test files consume): 12s, three segments,
+  measured rather than assumed — ffprobe 12.0s / 30fps, PySceneDetect exactly
+  `[5.0, 9.5]`, spans 5.0 / 4.5 / 2.5, two into `units_for_span`'s peak branch
+  and one in-band, **9** windows against `CLIP_POOL_MIN = 5`. The vacuity
+  check ran: pointed at `sample_clip` the new test fails at once.
+
+  **The ramp row was re-sized, not carried.** `docs/backlog.md` sized
+  "auto-place a ramp's `at` from the action anchors" **S** because
+  `lib/anchors` already computes the curve. Measured while scoping: `anchors`
+  feeds **nothing** — `pacing --anchors` prints a table into `PACING.md` that
+  no code reads. Auto-placement needs a wire format for "you pick"
+  (`RampSpec.at` must be a number), an enclosure clamp, an ffmpeg pass inside
+  `edit_plan` (which decodes not one frame today), and a `MIN_RAMP_FPS`
+  re-check. Corrected to **M** with the reason, so nobody re-derives it.
+
+  **What none of it claims** (design §8): §1 declares a licence without
+  auditing one, §2's test proves a word is present and never that it is true,
+  §3 reports rules without checking them against a cut, §4's detection stream
+  is faked like every other intake integration test — so the window pool
+  proves the carve and pool-scoring plumbing on real bytes, not the motion
+  sensor's judgement. All four are filed in the backlog's P3/P4 tails.
+
 - **Pacing fixed point — make the fit-then-apply round trip a fixed point, and
   stop the length absorb from overwriting a length the outro fit chose DONE
   (2026-08-17)** — plan `docs/plans/2026-08-16-pacing-fixed-point.md` + design
