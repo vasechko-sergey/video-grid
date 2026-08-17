@@ -132,11 +132,34 @@ exactly. Two populations reach it:
 - **A hand-authored SP1 `EDL.json`** — the `edl_to_reel` front door, which has no scenario
   behind it. `dur` *is* the author's intent, so falling back to it is not a degradation.
 - **An `EDL.json` written before this slice.** It keeps today's behaviour, deadlock
-  included, and the documented detour keeps working. `_bind_pacing`'s refusal message says
-  which arm it is on, so a reader is never left guessing whether the fix applied.
+  included, and the documented detour keeps working.
 
 No refusal is added for the absent case. A blanket refusal would break the hand-authored
 front door, which is the one input this project has deliberately kept open.
+
+**Where that population is warned, and where it is NOT** *(corrected by the final
+whole-branch review, which reproduced it end to end)*. This section first said
+`_bind_pacing`'s refusal "says which arm it is on, so a reader is never left guessing".
+That was wrong, and wrong in a way worth recording: `_bind_pacing` is reached only from
+`build_edl`, whose episodes always come from `window_to_episode`, which always sets
+`base_dur` — so an episode with `base_dur is None` never arrives there in production, and
+the arm-specific sentence is unreachable outside a hand-built unit-test episode.
+
+The pre-slice population hits the deadlock through a **different door**. Measured on a
+`[6.0, 4.70]` EDL with `base_dur` stripped:
+
+```
+refit spine slots:  [6.0, 4.70]        <- pacing read the stale EDL and fell back to play_dur
+REFUSAL: pacing: slot 1 is 4.70s against a 4.00s episode …
+```
+
+`pacing` reads the stale artifact; `build_edl` then re-projects fresh episodes **with**
+`base_dur = 4.00`, so the guard compares a stale spine against a correct projection. Both
+sides are behaving as designed; only the diagnosis was in the wrong place.
+
+So the warning lives where the pre-slice artifact is actually read — `build_pacing` logs a
+named line when any episode lacks `base_dur` — and `_bind_pacing`'s refusal carries the
+rebuild-without-`--pacing` escape **unconditionally**, not behind the dead predicate.
 
 ---
 
@@ -320,7 +343,9 @@ the actual teeth live.
   produces 10/16/27.
 - **The deadlock, as a regression pin.** §1.1's fixture must bind instead of raising.
 - **The absent arm.** An `EDL.json` with no `base_dur` behaves exactly as today — same
-  spine, same bind, same refusal text plus the arm it is on.
+  spine, same bind. Two further pins the final review's correction added (§2.2): the
+  refusal that the pre-slice population actually reaches carries the escape detour, and
+  `build_pacing` emits its named warning when it reads a `base_dur`-less EDL.
 - **The digest ladder.** Three cases: equal → bound; different → refuse; missing on either
   side → not-checked plus the tempo fallback, including the case where the tempo fallback
   then refuses.
