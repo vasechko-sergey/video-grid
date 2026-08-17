@@ -158,3 +158,51 @@ def test_intake_resumes_from_cache_byte_identical(monkeypatch, tmp_path, sample_
                         lambda *a, **k: pytest.fail("resume recomputed a cached clip"))
     intake.intake(str(root), str(out))                 # must be all cache hits → no CV
     assert (out / "FOOTAGE.json").read_text() == first
+
+
+def _fake_ramped_frames(n: int, step: int):
+    """A person present throughout whose per-SAMPLE displacement alternates
+    slow, slow, fast — so subject_curve carries strict local maxima and
+    units_for_span reaches its PEAK branch rather than _flat_unit. Only every
+    `step`-th frame is sampled (intake._people_timeline), so the pattern is
+    authored on the sample index, not the frame index. Proxy (960x540)
+    coordinates, for the same reason _fake_frames documents."""
+    frames, x = [], 150.0
+    for i in range(n):
+        if i and i % step == 0 and (i // step) % 5 == 2:
+            x += 30.0
+        elif i and i % step == 0:
+            x += 3.0
+        frames.append(_FakeRes([_FakeBox([x, 250, 100, 150], 1)]))
+    return frames
+
+
+def test_a_long_clip_carves_a_real_window_pool(monkeypatch, tmp_path,
+                                               multi_window_clip):
+    """The proof `sample_clip` is structurally unable to give (design 2026-08-17
+    §4): enough windows to clear CLIP_POOL_MIN, so score_pool takes its
+    clip-relative branch and `score` can be read as the percentile it claims to
+    be. Real ffprobe + real PySceneDetect (cuts measured at [5.0, 9.5]) + real
+    phash; the detection stream is faked, as everywhere else in this file."""
+    root = tmp_path / "footage"; root.mkdir()
+    shutil.copy(multi_window_clip, root / "clip.mp4")
+    monkeypatch.setattr(intake, "_iter_seg",
+                        lambda src, **k: iter(enumerate(_fake_ramped_frames(360, 10))))
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "embed",
+                        lambda crops: [[0.0] * 512 for _ in crops])
+    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
+    monkeypatch.setattr(intake.vidstab, "detect", lambda *a, **k: [])
+    out = tmp_path / "run"; out.mkdir()
+    fo = intake.intake(str(root), str(out), jobs=1)
+    windows = fo.clips[0].windows
+    assert fo.clips[0].scene_cuts == [5.0, 9.5]
+    assert len(windows) >= intake.CLIP_POOL_MIN, (
+        f"{len(windows)} windows — the fixture must clear CLIP_POOL_MIN "
+        f"({intake.CLIP_POOL_MIN}) or score_pool never takes its clip-relative "
+        f"branch and this proof is vacuous")
+    assert all(0.0 <= w.score <= 1.0 for w in windows)
+    assert len({w.score for w in windows}) > 1, (
+        "every window scored identically — a percentile over a real pool must "
+        "separate its members, so this is a flat curve, not a ranking")
+    assert len({(w.start, w.dur) for w in windows}) == len(windows)
