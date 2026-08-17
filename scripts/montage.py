@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import provenance
+from scripts.lib import constraints, provenance
 
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
@@ -100,6 +100,30 @@ def _deliveries(out: Path, *, rehash: bool = False) -> list[dict]:
             for p in sorted(out.glob("REEL_v*")) if p.suffix != ".json"]
 
 
+def _constraints(run: Path) -> dict:
+    """The editorial rules binding a re-cut, so a human need not open
+    CONSTRAINTS.json to see them (design 2026-08-17 §3). Three states, each
+    named: absent, authored, or present-and-unreadable.
+
+    The load refusal is CAUGHT here, and that is not a softening of it. This is
+    the inspector the router calls constantly, so letting a typo in a rule file
+    replace the whole status report with a traceback helps nobody — and
+    reporting `rules: []` for an unreadable file would answer "nothing binds
+    this cut" when the truth is "nobody can tell", which is the worse of the two
+    lies. The enforcement point does not move: write_edit_plan still discovers
+    this file, still loads it through the same refusing constructor, and still
+    has no waiver."""
+    p = run / "CONSTRAINTS.json"
+    if not p.exists():
+        return {"present": False, "rules": [], "error": None}
+    try:
+        loaded = constraints.Constraints.from_json(p)
+    except ValueError as e:
+        return {"present": True, "rules": [], "error": str(e)}
+    return {"present": True, "rules": [r.to_dict() for r in loaded.rules],
+            "error": None}
+
+
 def next_action(run_dir: str, out_dir: str | None = None) -> dict:
     """Inspect a run dir -> the ordered v1 stages with each stage's state, the next
     required action, and whether the reel is delivered. out_dir defaults to
@@ -111,8 +135,10 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
       skip     - a deferred stage (trend-scan); named, not silent
     `deliveries` reports each delivered file's attestation state from the sidecar
     alone — cheap, because the router calls status constantly. `verify()` re-hashes.
+    `constraints` reports the editorial rules that bind a re-cut (see _constraints).
     Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
-             "next": <stage key | None>, "delivered": <bool>, "deliveries": [...]}."""
+             "next": <stage key | None>, "delivered": <bool>, "deliveries": [...],
+             "constraints": {present, rules, error}}."""
     run = Path(run_dir)
     out = Path(out_dir) if out_dir is not None else run / "out"
     stages: list[dict] = []
@@ -137,7 +163,7 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
         stages.append({"key": st.key, "artifact": st.artifact, "kind": st.kind,
                        "state": state, "checkpoint": st.checkpoint, "runner": st.runner})
     return {"stages": stages, "next": next_key, "delivered": delivered,
-            "deliveries": _deliveries(out)}
+            "deliveries": _deliveries(out), "constraints": _constraints(run)}
 
 
 def verify(run_dir: str, out_dir: str | None = None) -> dict:

@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from scripts import montage
+from scripts.lib import constraints
 from scripts.montage import Stage, V1_STAGES, next_action
 
 
@@ -415,3 +416,40 @@ def test_next_points_at_the_qc_stage_once_the_episodes_exist(tmp_path):
     (tmp_path / "out").mkdir()
     (tmp_path / "out" / "EPISODES.json").write_text("{}")
     assert next_action(str(tmp_path))["next"] == "episode-qc"
+
+
+# ---- editorial constraints (design 2026-08-17 §3) ----
+
+def test_status_reports_no_constraints_file(tmp_path):
+    res = next_action(str(tmp_path))
+    assert res["constraints"] == {"present": False, "rules": [], "error": None}
+
+
+def test_status_reports_the_authored_rules(tmp_path):
+    (tmp_path / "CONSTRAINTS.json").write_text(json.dumps(
+        {"rules": [{"kind": "open_with", "hero": "Mika", "stated": "open on Mika"}]}))
+    res = next_action(str(tmp_path))
+    assert res["constraints"] == {
+        "present": True,
+        "rules": [{"kind": "open_with", "stated": "open on Mika", "hero": "Mika"}],
+        "error": None}
+
+
+def test_a_broken_constraints_file_reports_rather_than_raises(tmp_path):
+    # The inspector is called constantly by the router. A refusal escaping here
+    # replaces the whole status report with a traceback; reporting an empty rule
+    # list instead would answer "nothing binds this cut" when the truth is
+    # "nobody can tell" (design §3.1). Neither: present, empty, and WHY.
+    (tmp_path / "CONSTRAINTS.json").write_text('{"rules": [{"kind": "bogus", "stated": "no idea"}]}')
+    res = next_action(str(tmp_path))                     # must not raise
+    assert res["constraints"]["present"] is True
+    assert res["constraints"]["rules"] == []
+    assert "bogus" in res["constraints"]["error"]
+
+
+def test_status_softens_nothing_the_gate_still_refuses(tmp_path):
+    # The load path keeps its refusal, so write_edit_plan's no-waiver gate — which
+    # stands on exactly this call — is untouched by status catching it.
+    (tmp_path / "CONSTRAINTS.json").write_text('{"rules": [{"kind": "bogus", "stated": "no idea"}]}')
+    with pytest.raises(ValueError, match="bogus"):
+        constraints.Constraints.from_json(tmp_path / "CONSTRAINTS.json")
