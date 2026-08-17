@@ -186,3 +186,39 @@ def test_cli_fills_vocal_spans_windowed_to_the_stem(monkeypatch, tmp_path):
     beats.main()
     ms = MusicSpec.from_json(out)
     assert ms.vocal_spans == ((7.0, 10.0),)     # (19,30) clipped; (3,4) is before the window
+
+
+def test_downbeat_phase_declines_a_flat_distribution():
+    """The four tracks measured on 2026-08-17 (design §3) put every phase within
+    ~3% of the others; argmax still returned one, confidently, and the outro fit
+    landed the reel on a beat it then called a bar line. A flat input is the
+    honest None — the same answer as too-few-beats, reached for the same reason."""
+    sr = 22050
+    period = 0.5
+    times = [i * period for i in range(16)]
+    y = np.zeros(int(sr * (times[-1] + period)), dtype=np.float32)
+    t = np.arange(int(sr * 0.12)) / sr
+    thump = (0.9 * np.sin(2 * np.pi * 40 * t)).astype(np.float32)
+    for bt in times:                       # every beat identical — no phase preference
+        a = int(bt * sr)
+        y[a:a + len(thump)] += thump
+    assert beats._downbeat_phase(y, sr, times) is None
+
+
+def test_downbeat_phase_margin_is_the_ranked_gap_not_the_spread():
+    """max/min does NOT discriminate (design §4): a track with one QUIET phase
+    scores a high spread while its winner barely leads. Build exactly that — one
+    silent phase, three near-equal loud ones — and the detector must decline
+    even though max/min is enormous."""
+    sr = 22050
+    period = 0.5
+    times = [i * period for i in range(16)]
+    y = np.zeros(int(sr * (times[-1] + period)), dtype=np.float32)
+    t = np.arange(int(sr * 0.12)) / sr
+    for i, bt in enumerate(times):
+        if i % 4 == 1:                     # phase 1 silent -> max/min is huge
+            continue
+        amp = 0.90 if i % 4 == 2 else 0.88  # winner leads by 2%, far under the margin
+        a = int(bt * sr)
+        y[a:a + len(t)] += (amp * np.sin(2 * np.pi * 40 * t)).astype(np.float32)
+    assert beats._downbeat_phase(y, sr, times) is None

@@ -16,8 +16,18 @@ from scripts.lib.models import MusicSpec
 _HOP = offset.HOP                                     # kept as a module name for analyze() below
 _downsample = offset.downsample                       # relocated to scripts/lib/offset.py
 
-_LOW_HZ = 150.0                # kick band edge — measured 2026-08-14 §3
+_LOW_HZ = 60.0                 # kick band edge. 2026-08-14 measured 150 on one cell of one
+                               # track; 2026-08-17 swept 8 edges x 4 windows over 5 tracks and
+                               # found 150 sits on a knife edge (hit-rate 32/88/59% across
+                               # +/-0.05/0.10/0.15) where 60 holds a plateau (91/93/93%) at a
+                               # higher margin (2.04 vs 1.67). Still tuned on ONE track — the
+                               # other four have no downbeat signal to vote with (design §2).
 _BAR_WIN = 0.10                # +/- seconds sampled around each beat
+_PHASE_MARGIN = 1.5            # winner/runner-up below this -> no bar grid. Measured over 124
+                               # sliding 30s+42s windows (design §5): of 97 windows from four
+                               # tracks with NO downbeat, none reaches 1.5 — but five reach
+                               # 1.31-1.35, so 1.3 would pass noise. Costs ~1 control window
+                               # in 6, which is the right side of the trade.
 _MIN_BEATS_FOR_BARS = 8        # below this a per-phase mean is one or two samples
 _NFFT = 2048
 
@@ -43,16 +53,30 @@ def analyze(track: str, start_offset: float = 0.0, duration: float | None = None
 
 
 def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int | None:
-    """Which of the four beat phases carries the bar's kick — the downbeat.
+    """Which of the four beat phases carries the bar's kick — the downbeat, or None.
 
     Peak STFT energy below _LOW_HZ in a +/-_BAR_WIN window around each beat, averaged
-    per phase; the loudest phase wins. Measured on a real track (design §3): phases
-    scored 48.01 / 54.65 / 42.03 / 79.31, a 1.887 max/min ratio, and the winner's beat
-    was the loudest of its own bar in 14 of 18 bars against 25% by chance.
+    per phase. The winner is returned only when it leads the runner-up by
+    _PHASE_MARGIN; otherwise the four phases are too close to tell apart and None is
+    the honest answer, which analyze() turns into an empty bar grid and the outro fit
+    reads as its 'unchanged' rung.
 
-    ONSET STRENGTH DOES NOT WORK HERE — the same track scored 4.313 / 4.285 / 4.267 /
-    4.309, all four phases inside 1%. A detector built on novelty picks a phase out of
-    noise and looks like it works. Do not 'simplify' this to librosa.onset.
+    THE GATE IS THE POINT (design 2026-08-17 §5). Measured across five real tracks,
+    this detector finds a downbeat on ONE: the other four score 38-50% against a 25%
+    chance level at their own best sweep cell, with margins of 1.00-1.03, and no band
+    edge or window in a 32-cell sweep recovers a signal. Four-on-the-floor house puts
+    a kick on every beat, so the premise — the downbeat carries the kick, the other
+    beats do not — is false by construction for a whole genre family. Ungated, argmax
+    returned a phase for all four, confidently.
+
+    MEASURE THE RANKED GAP, NOT THE SPREAD. max/min does not discriminate: one track
+    scored 1.782 against the control's 1.887 while landing 36% hit-rate, because one
+    of its phases was quiet rather than its winner loud (§4).
+
+    ONSET STRENGTH DOES NOT WORK HERE EITHER — the control scored 4.313 / 4.285 /
+    4.267 / 4.309, all four phases inside 1%. A detector built on novelty picks a
+    phase out of noise and looks like it works. Do not 'simplify' this to
+    librosa.onset.
 
     None when there are fewer than _MIN_BEATS_FOR_BARS beats. Assumes 4/4 (§11.3).
     `beat_times` are relative to the START of `y`, which is what analyze() passes."""
@@ -71,6 +95,9 @@ def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int 
 
     vals = [peak(float(t)) for t in beat_times]
     means = [float(np.mean(vals[p::outro.BAR_BEATS])) for p in range(outro.BAR_BEATS)]
+    ranked = sorted(means, reverse=True)
+    if ranked[1] <= 0.0 or ranked[0] / ranked[1] < _PHASE_MARGIN:
+        return None
     return int(np.argmax(means))
 
 
