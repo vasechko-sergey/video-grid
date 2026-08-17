@@ -11,12 +11,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from scripts.color_measure import measure_profile
-from scripts.lib import matchgrade
+from scripts.lib import matchgrade, moodpreset
 from scripts.lib.edl import EDL, write_edl
+from scripts.lib.spec import Spec
 
 
 def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
-            force: bool = False) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision]]:
+            force: bool = False, preset: moodpreset.MoodPreset | None = None
+            ) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision], float]:
     """Measure each episode's source at its window MIDPOINT (start + dur/2 — a settled,
     representative frame of the shipped window; a WHOLE frame, not the crop — see design §5),
     compute the common target, and return (enriched EDL, target, decisions). The decisions
@@ -29,24 +31,49 @@ def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
     profiles = [measure_profile(str(Path(footage_root) / e.source), at=e.start + e.dur / 2)
                 for e in edl.episodes]
     target = matchgrade.common_target(profiles)
+    # The mood displaces the common target (design 2026-08-17 §1). BALANCED is tested by
+    # name, exactly as write_edit_plan tests it for `look` and for the same reason: it is
+    # resolve()'s "nothing matched", and an unmatched brief must not have a taste imposed
+    # on it. No preset at all -> a zero bias -> biased_target hands the median straight
+    # back, so a run without --spec authors what it authored before this slice.
+    bias = preset.tone_bias if preset is not None and preset.name != "balanced" else (0.0, 0.0, 0.0)
+    target, scale = matchgrade.biased_target(target, bias)
     has_tone = [e.tone_src is not None for e in edl.episodes]
     decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force)
     new_episodes = tuple(
         e if d.reason == "hand-authored"                       # respect the human's pair
         else replace(e, tone_src=d.tone_src, tone_dst=d.tone_dst)  # set, or clear (None) a stale one
         for e, d in zip(edl.episodes, decisions))
-    return replace(edl, episodes=new_episodes), target, decisions
+    return replace(edl, episodes=new_episodes), target, decisions, scale
 
 
 def _report_md(sources: list[str], target: matchgrade.Profile,
-               decisions: list[matchgrade.ToneDecision], eps: float) -> str:
+               decisions: list[matchgrade.ToneDecision], eps: float, *,
+               preset: moodpreset.MoodPreset | None = None, k: float = 1.0) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
-    distance to the target, and what was decided."""
+    distance to the target, and what was decided.
+
+    The mood lines exist because a displacement the footage had no room for is invisible
+    in the pixels and has nowhere else to be seen (design 2026-08-17 §5). A scale under
+    the floor is the one thing in this report a human must act on."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
-    lines = [f"# Match-grade — target {_triple(target)} (p5/p50/p95), eps {eps:g}", "",
+    head = f"# Match-grade — target {_triple(target)} (p5/p50/p95), eps {eps:g}"
+    if preset is not None and preset.name != "balanced":
+        head += (f"\n\nMood **{preset.name}** displaced the target by "
+                 f"{tuple(preset.tone_bias)}")
+        if k < 1.0:
+            head += f", scaled to {k:.0%} (the reel's own range left no room for the rest)"
+        if matchgrade.bias_ineffective(preset.tone_bias, k):
+            head += (f"\n\n> **mood-bias-ineffective** — what survived is under "
+                     f"{matchgrade.MOOD_FLOOR:g} luma units, which is below this "
+                     f"conductor's own delivery error, so the mood will not be visible "
+                     f"in the grade.")
+    elif preset is not None:
+        head += "\n\nNo mood matched the brief — the target is the plain median."
+    lines = [head, "",
              f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
              "|---|--------|-----------------------|:-----:|-----------------|"]
@@ -57,19 +84,22 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
 
 
 def write_match(edl_path: str, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
-                force: bool = False) -> dict:
+                force: bool = False, spec: str | None = None) -> dict:
     """Read EDL.json → conduct → write the enriched EDL BACK IN PLACE (the stage enriches the
     EDL a human then reviews) + a sibling MATCH.md. One measure pass (inside conduct); the
     decisions carry the measured profiles the report needs. Returns a status dict."""
     edl = EDL.from_json(edl_path)
-    out, target, decisions = conduct(edl, footage_root, eps=eps, force=force)
+    preset = moodpreset.resolve(Spec.from_json(spec).mood) if spec else None
+    out, target, decisions, k = conduct(edl, footage_root, eps=eps, force=force, preset=preset)
     write_edl(out, edl_path)      # re-stamp: match_grade is a legitimate tool, and its
                                   # output is the tool's output (design §4)
     md_path = Path(edl_path).parent / "MATCH.md"
-    md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps))
+    md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
+                                  preset=preset, k=k))
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": str(edl_path), "md": str(md_path),
             "target": list(target), "eps": eps,
+            "mood": preset.name if preset is not None else None, "bias_scale": k,
             "authored": sum(1 for d in decisions if d.action == "author"),
             "skipped": dict(skipped)}
 
@@ -86,8 +116,11 @@ def main() -> None:
                         f"(default {matchgrade.MATCH_EPS})")
     b.add_argument("--force", action="store_true",
                    help="re-author even hand-authored/previously-conducted episodes")
+    b.add_argument("--spec", default=None,
+                   help="SPEC.json — its mood displaces the common tone target "
+                        "(absent: the plain median, exactly as before)")
     a = ap.parse_args()
-    result = write_match(a.edl, a.footage_root, eps=a.eps, force=a.force)
+    result = write_match(a.edl, a.footage_root, eps=a.eps, force=a.force, spec=a.spec)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)
 

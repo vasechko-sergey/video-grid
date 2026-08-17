@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from scripts import match_grade
-from scripts.lib import matchgrade, provenance
+from scripts.lib import matchgrade, moodpreset, provenance
 from scripts.lib.edl import EDLEpisode, EDL
 
 
@@ -33,7 +33,7 @@ def test_conduct_authors_deviating_and_leaves_near_median(monkeypatch):
              "m.mp4": (25.0, 110.0, 195.0)}
     monkeypatch.setattr(match_grade, "measure_profile", lambda clip, at=None: profs[clip.split("/")[-1]])
     edl = _edl(_ep("d.mp4"), _ep("b.mp4"), _ep("m.mp4"))
-    out, target, decisions = match_grade.conduct(edl, "/foot")
+    out, target, decisions, _ = match_grade.conduct(edl, "/foot")
     assert target == (25.0, 110.0, 195.0)            # per-anchor median of the three
     assert out.episodes[0].tone_src == (10.0, 90.0, 150.0) and out.episodes[0].tone_dst == target
     assert out.episodes[1].tone_src == (40.0, 130.0, 240.0)
@@ -44,7 +44,7 @@ def test_conduct_authors_deviating_and_leaves_near_median(monkeypatch):
 def test_conduct_leaves_a_hand_authored_pair(monkeypatch):
     monkeypatch.setattr(match_grade, "measure_profile", lambda clip, at=None: (10.0, 90.0, 150.0))
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)))
-    out, _, _ = match_grade.conduct(edl, "/foot")
+    out, _, _, _ = match_grade.conduct(edl, "/foot")
     assert out.episodes[0].tone_src == (5.0, 80.0, 140.0)     # untouched
     assert out.episodes[0] == edl.episodes[0]      # whole episode untouched, not just tone_src
 
@@ -54,7 +54,7 @@ def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
     profs = {"d.mp4": (25.0, 110.0, 195.0), "b.mp4": (25.0, 110.0, 195.0)}
     monkeypatch.setattr(match_grade, "measure_profile", lambda clip, at=None: profs[clip.split("/")[-1]])
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)), _ep("b.mp4"))
-    out, _, _ = match_grade.conduct(edl, "/foot", force=True)
+    out, _, _, _ = match_grade.conduct(edl, "/foot", force=True)
     assert out.episodes[0].tone_src is None and out.episodes[0].tone_dst is None
 
 
@@ -73,6 +73,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
     target = (25.0, 110.0, 195.0)                      # median of the two measured profiles
     assert status == {"status": "written", "edl": edl_path, "md": str(tmp_path / "MATCH.md"),
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
+                      "mood": None, "bias_scale": 1.0,     # no --spec: the plain median
                       "authored": 2, "skipped": {}}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
     # attested-run Task 2: match_grade now routes its rewrite through edl.write_edl,
@@ -130,4 +131,56 @@ def test_cli_build_threads_eps_and_force(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as e:
         match_grade.main()
     assert e.value.code == 0
-    assert seen == {"edl": "E.json", "footage_root": "F", "eps": 6.0, "force": True}
+    assert seen == {"edl": "E.json", "footage_root": "F", "eps": 6.0, "force": True,
+                    "spec": None}
+
+
+_MOOD_PROFS = {"d.mp4": (10.0, 90.0, 150.0), "b.mp4": (40.0, 130.0, 240.0)}
+
+
+def _mood_edl(monkeypatch):
+    monkeypatch.setattr(match_grade, "measure_profile",
+                        lambda clip, at=None: _MOOD_PROFS[clip.split("/")[-1]])
+    return _edl(_ep("d.mp4"), _ep("b.mp4"))
+
+
+def _plain_target():
+    return matchgrade.common_target(list(_MOOD_PROFS.values()))
+
+
+def test_conduct_without_a_spec_authors_the_plain_median(monkeypatch):
+    """The anti-regression pin for the off switch: no --spec must reproduce the
+    pre-mood conductor exactly, not approximately (design 2026-08-17 §1)."""
+    edl = _mood_edl(monkeypatch)
+    _, target, _, k = match_grade.conduct(edl, "/foot")
+    assert (target, k) == (_plain_target(), 1.0)
+
+
+def test_conduct_with_a_mood_displaces_the_target(monkeypatch):
+    edl = _mood_edl(monkeypatch)
+    _, target, _, k = match_grade.conduct(edl, "/foot", preset=moodpreset.resolve("moody"))
+    assert (target, k) == matchgrade.biased_target(_plain_target(), (-18.0, -16.0, -8.0))
+    assert target != _plain_target()          # the displacement is not a no-op on this fleet
+
+
+def test_a_balanced_brief_displaces_nothing(monkeypatch):
+    """resolve() returned the fallback, so no mood matched — and an unmatched brief
+    must not have a grade imposed on it (design §1)."""
+    edl = _mood_edl(monkeypatch)
+    _, target, _, k = match_grade.conduct(edl, "/foot", preset=moodpreset.BALANCED)
+    assert (target, k) == (_plain_target(), 1.0)
+
+
+def test_the_report_names_the_mood_and_flags_an_ineffective_bias():
+    d = matchgrade.ToneDecision(0, "author", "authored", measured=(10.0, 90.0, 150.0),
+                                tone_src=(10.0, 90.0, 150.0), tone_dst=(30.0, 80.0, 180.0))
+    md = match_grade._report_md(["a.mp4"], (30.0, 80.0, 180.0), [d], 4.0,
+                                preset=moodpreset.resolve("epic"), k=5.0 / 16.0)
+    assert "epic" in md and "mood-bias-ineffective" in md
+
+
+def test_the_report_says_when_no_mood_matched():
+    d = matchgrade.ToneDecision(0, "skip", "within-eps", measured=(30.0, 80.0, 180.0))
+    md = match_grade._report_md(["a.mp4"], (30.0, 80.0, 180.0), [d], 4.0,
+                                preset=moodpreset.BALANCED, k=1.0)
+    assert "No mood matched" in md and "mood-bias-ineffective" not in md

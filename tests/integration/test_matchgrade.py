@@ -39,7 +39,7 @@ def test_authored_tone_converges_two_exposures(tmp_path):
     bright = _three_band(tmp_path / "b.mp4", "0x505050", "0xA0A0A0", "0xE0E0E0")
     edl = EDL(episodes=(_ep("d.mp4"), _ep("b.mp4")))
 
-    out, target, decisions = match_grade.conduct(edl, str(tmp_path))
+    out, target, decisions, _ = match_grade.conduct(edl, str(tmp_path))
     assert all(d.action == "author" for d in decisions)   # both deviate from the median
 
     p_dark, p_bright = measure_profile(str(dark)), measure_profile(str(bright))
