@@ -145,6 +145,24 @@ it is the right side of it: a missed fit costs the ending the slice was already
 delivering before 2026-08-14; a false fit moves the reel's end onto a wrong line
 and reports it as a bar.
 
+### 5.1 · The two zero corners are opposites (as-built, found by this branch's review)
+
+A ratio needs a divide-by-zero guard, and the first cut wrote it as
+`ranked[1] <= 0.0 → None`. That is wrong in the direction that matters: a lone
+loud phase against three silent ones is an **infinite** lead — the strongest
+downbeat evidence the detector can see — and it was being refused, where the
+ungated `argmax` it replaced got it right. A regression this slice introduced,
+not one it inherited.
+
+The corners are opposites and only one is `None`:
+
+- `ranked[0] == 0` — no bass anywhere. No evidence. `None`.
+- `ranked[1] == 0`, `ranked[0] > 0` — one phase, infinite lead. Return it.
+
+**Reachable, not theoretical**: digital silence gives exactly 0.0 STFT magnitude,
+measured — `ranked[1] == 0.0` compares true, so this is not a float-epsilon
+argument. The mutation battery carries a row that reproduces the bug.
+
 ## 6 · What changes
 
 - `beats._LOW_HZ`: 150.0 → 60.0, with §2's plateau recorded beside it.

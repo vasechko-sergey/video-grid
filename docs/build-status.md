@@ -72,7 +72,17 @@ _Last updated: 2026-08-17._
   belonged to (Tainted Love, 140.625), and the earlier prose reads at a glance
   as though the detector was calibrated on Manson. It was not.
 
-  **Mutation battery, four rows, all watched.** Flipping the comparison → 3
+  **The branch's own review found a regression this slice introduced.** The
+  gate's divide-by-zero guard was written `ranked[1] <= 0.0 → None`, which
+  swallowed the case it should most want: one phase carrying bass against three
+  at digital silence is an **infinite** lead, the strongest evidence the detector
+  can see, and the gate refused it — where the ungated `argmax` it replaced got
+  it right. Reachable rather than theoretical: silence gives *exactly* 0.0 STFT
+  magnitude, so `ranked[1] == 0.0` compares true. The two corners are opposites
+  (`ranked[0] == 0` is no evidence; `ranked[1] == 0` is total evidence) and only
+  the first is `None`. A fifth mutation row reproduces the bug.
+
+  **Mutation battery, five rows, all watched.** Flipping the comparison → 3
   failed; deleting the gate → 2 failed; `ranked[-1]` instead of `ranked[1]` →
   exactly the one test written for §4's finding. The fourth is the honest one:
   setting the threshold to 1.3 leaves the suite **green**, so no test here
