@@ -184,3 +184,21 @@ def test_the_report_says_when_no_mood_matched():
     md = match_grade._report_md(["a.mp4"], (30.0, 80.0, 180.0), [d], 4.0,
                                 preset=moodpreset.BALANCED, k=1.0)
     assert "No mood matched" in md and "mood-bias-ineffective" not in md
+
+
+def test_the_balanced_guard_is_tested_by_name_not_by_a_zero_vector(monkeypatch):
+    """Found by this slice's own mutation battery: dropping the `name != "balanced"`
+    check changed NOTHING, because the shipped BALANCED.tone_bias is already zero — so
+    the test above proves the zero, not the guard. Hand a preset that is NAMED balanced
+    and carries a real displacement: the guard, and only the guard, keeps it out.
+
+    This is not hypothetical. BALANCED.look once carried a concrete fade and
+    write_edit_plan applied it unconditionally, which put a real picture bookend on
+    every autonomous reel (cinematic-look final review I-2). The guard exists so that
+    filling this field later cannot repeat it."""
+    edl = _mood_edl(monkeypatch)
+    loud = moodpreset.MoodPreset("balanced", None,
+                                 {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0),
+                                 tone_bias=(-18.0, -16.0, -8.0))
+    _, target, _, k = match_grade.conduct(edl, "/foot", preset=loud)
+    assert (target, k) == (_plain_target(), 1.0)
