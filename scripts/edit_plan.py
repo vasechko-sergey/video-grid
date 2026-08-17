@@ -693,9 +693,11 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     pacing = Spine.from_json(pacing_path) if pacing_path else None
     ms = MusicSpec.from_json(music) if music else None
     if ms is not None and not ms.bars:
-        _log(f"outro: {music} has no bar grid (beats found fewer than 8 beats, or the "
-             f"file predates the 2026-08-14 fields) — re-run beats to regenerate it; "
-             f"the reel keeps its footage-derived length")
+        _log(f"outro: {music} has no bar grid — beats found fewer than 8 beats, or no "
+             f"phase led the others by the confidence margin (this track's kick does "
+             f"not mark its bars — measured on 4 of 5 real tracks, design 2026-08-17 "
+             f"§3), or the file predates the 2026-08-14 fields; the reel keeps its "
+             f"footage-derived length")
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
                     platform=plat, look=fallback_look,
