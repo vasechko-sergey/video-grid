@@ -3,7 +3,7 @@ range, converge toward the median target once the authored tone_arg curve is ren
 import pytest
 from scripts import match_grade
 from scripts.color_measure import measure_profile
-from scripts.lib import color, ffbin, proc
+from scripts.lib import color, ffbin, matchgrade, moodpreset, proc
 from scripts.lib.edl import EDL, EDLEpisode
 
 pytestmark = pytest.mark.integration
@@ -63,3 +63,19 @@ def test_tone_arg_curve_is_actually_emitted():
     # the actuator the conductor feeds is a curves=all=... fragment
     frag = color.tone_arg((10.0, 90.0, 150.0), (20.0, 110.0, 210.0))
     assert frag.startswith("curves=all='") and frag.endswith("',")
+
+
+def test_a_moody_bias_renders_darker_than_the_plain_median(tmp_path):
+    """The visibility proof (design 2026-08-17 §7). Not 'the curve was built' — the
+    delivered frame's own percentiles must sit below the unbiased render's, in the
+    direction the preset asked for. Same clip, same source profile, two targets."""
+    clip = _three_band(tmp_path / "m.mp4", "0x101010", "0x404040", "0x808080")
+    prof = measure_profile(str(clip))
+    plain = matchgrade.common_target([prof, (60.0, 130.0, 220.0)])
+    moody, k = matchgrade.biased_target(plain, moodpreset.resolve("moody").tone_bias)
+    assert k == 1.0                      # the fixture leaves room; if not, the test lies
+
+    got_plain = _graded_profile(clip, prof, plain, tmp_path / "plain.mp4")
+    got_moody = _graded_profile(clip, prof, moody, tmp_path / "moody.mp4")
+    assert got_moody[0] < got_plain[0]   # shadows crushed
+    assert got_moody[1] < got_plain[1]   # midtones darker
