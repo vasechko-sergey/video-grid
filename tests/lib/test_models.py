@@ -5,6 +5,7 @@ from scripts.lib import manifest
 from scripts.lib import models as m
 from scripts.lib.look import LookSpec
 from scripts.lib.models import LayoutSpec, PanSpec, PathMeta, ReelCheckSpec, ZoomSpec
+from scripts.lib.outro import OutroFit
 
 
 def test_routepoint_roundtrip():
@@ -943,6 +944,36 @@ def test_reel_manifest_look_empty_object_is_authored_not_absent():
     # file had NO authored-no-look test at all before this fix round.
     rm = m.ReelManifest.from_dict(_reel_dict(look={}))
     assert rm.look == LookSpec()
+
+
+# --- pacing-fixed-point Task 4: ReelManifest.outro (design 2026-08-16 §5/§6) ---
+# NOTE: the task brief's snippet took a `reel_manifest_kwargs` fixture; this file has no
+# such fixture anywhere — its established idiom for a direct ReelManifest construction is
+# inline kwargs like `episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+# target_dur=10.0` (see test_reel_manifest_look_round_trips above). Reused here as a local
+# dict per test, so the brief's own `**reel_manifest_kwargs, "outro": ...}` merge shape
+# still works, without inventing a second harness beside the file's own.
+
+def test_reel_manifest_outro_defaults_to_none_and_round_trips():
+    kwargs = dict(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                 target_dur=10.0)
+    rm = m.ReelManifest(**kwargs)
+    assert rm.outro is None
+    assert rm.to_dict()["outro"] is None
+    fit = OutroFit(reel_dur=10.7, line=10.2, fade=0.5, tail=1.8, rung="gap", moved=0.7)
+    rm2 = m.ReelManifest(**{**kwargs, "outro": fit.to_dict()})
+    assert m.ReelManifest.from_dict(rm2.to_dict()).outro == fit.to_dict()
+
+
+def test_reel_manifest_refuses_a_malformed_outro():
+    # A bad rung must fail loud rather than read as "unchanged" and silently
+    # restore the length absorb it exists to block.
+    kwargs = dict(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                 target_dur=10.0)
+    with pytest.raises(ValueError, match="rung must be one of"):
+        m.ReelManifest(**{**kwargs, "outro": {"reel_dur": 10.7, "rung": "nope"}})
+    with pytest.raises(ValueError, match="ReelManifest.outro must be an object"):
+        m.ReelManifest(**{**kwargs, "outro": "gap"})
 
 
 def test_reelreport_overall_excludes_advisory_safe_zones():

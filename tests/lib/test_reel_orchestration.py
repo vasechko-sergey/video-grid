@@ -163,3 +163,35 @@ def test_shortfall_exactly_at_the_band_is_absorbed_the_edge_is_inclusive():
     # an off-by-one hides (the pacing _kind/_beats_per_slot band-boundary ethos).
     a = ro.next_action([_length(11.0, 12.0)], {}, cap=3, length_retime_max=1.0)
     assert a.kind == "retime" and a.retime == 11.0
+
+
+# --- pacing-fixed-point Task 4: outro_fixed refuses the absorb (design 2026-08-16 §5/§6) ---
+# NOTE: the task brief's snippet defined a new `_length_fail(dur, target)` helper whose body
+# is IDENTICAL to this file's own `_length` (above) — reused `_length` instead of adding a
+# duplicate beside it. `next_action` is called via the file's own `ro.` alias, not bare, for
+# the same reason.
+
+def test_a_within_band_shortfall_is_absorbed_without_an_outro():
+    a = ro.next_action([_length(9.4, 10.0)], {}, 3, 1.0, False)
+    assert (a.kind, a.retime) == ("retime", 9.4)
+
+
+def test_a_within_band_shortfall_escalates_when_the_outro_chose_the_length():
+    a = ro.next_action([_length(9.4, 10.0)], {}, 3, 1.0, True)
+    assert a.kind == "escalate"
+    assert a.finding["reason"] == "outro-length-chosen"
+    assert a.finding["escalate_to"] == "pacing"
+    assert a.finding["detail"]["dur"] == 9.4
+    assert "line + fade" in a.finding["detail"]["why"]
+
+
+def test_a_past_the_band_shortfall_still_reads_not_auto_fixable_with_an_outro():
+    # outro_fixed must not relabel a failure it did not cause.
+    a = ro.next_action([_length(8.0, 10.0)], {}, 3, 1.0, True)
+    assert a.finding["reason"] == "not-auto-fixable"
+
+
+def test_an_over_length_reel_is_unchanged_by_outro_fixed():
+    for fixed in (False, True):
+        a = ro.next_action([_length(11.0, 10.0)], {}, 3, 1.0, fixed)
+        assert a.finding["reason"] == "not-auto-fixable"

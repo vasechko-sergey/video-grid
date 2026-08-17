@@ -6,11 +6,11 @@ from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailu
                                 CheckResult, MusicSpec)
 
 
-def _rm(cap=3, n=2, platform="", look=None):
+def _rm(cap=3, n=2, platform="", look=None, outro=None):
     eps = [ReelEpisode(manifest={"segment": f"s{i}.mp4"}, clip=f"c{i}.mp4", route=f"r{i}.json")
            for i in range(n)]
     return ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=cap,
-                        platform=platform, look=look)
+                        platform=platform, look=look, outro=outro)
 
 
 def _pass():
@@ -299,6 +299,32 @@ def test_retime_rides_along_with_a_colour_reprocess(monkeypatch, tmp_path):
     assert res["status"] == "delivered"
     assert seen["targets"] == [6.0, 5.3]     # adopted on the REPROCESS round, not one round later
     assert len(seen["reprocess"]) == 1       # and the colour fix still ran
+
+
+# --- pacing-fixed-point Task 4: build_reel's own outro_fixed computation ----
+# reel_orchestration.next_action's tests already cover the pure decision exhaustively;
+# these two confirm build_reel actually DERIVES outro_fixed from rm.outro and threads
+# it through — this file was named as a Test target in the Task 4 brief, but the brief
+# gave no literal test snippet for it (unlike test_reel_orchestration.py/test_models.py).
+
+def test_a_within_band_shortfall_escalates_when_the_manifests_outro_chose_the_length(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch, [_length_fail(5.3, 6.0)])
+    outro = {"reel_dur": 6.0, "line": 5.5, "fade": 0.5, "tail": 1.0, "rung": "gap", "moved": 0.3}
+    res = build_reel.build_reel(_rm(outro=outro), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "outro-length-chosen"
+    assert seen["deliver"] == []
+
+
+def test_an_unchanged_rung_outro_does_not_block_the_absorb(monkeypatch, tmp_path):
+    # rung "unchanged" means the fit chose NOTHING — the reel kept its footage-derived
+    # length, so it must not block the absorb, exactly like a reel with outro=None.
+    seen = _wire(monkeypatch, [_length_fail(5.3, 6.0), _pass()])
+    outro = {"reel_dur": 6.0, "line": None, "fade": 0.5, "tail": 0.0,
+             "rung": "unchanged", "moved": 0.0}
+    res = build_reel.build_reel(_rm(outro=outro), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["targets"] == [6.0, 5.3]
 
 
 # --- music integration (Task 6) --------------------------------------------

@@ -50,14 +50,17 @@ def _shortfall(f: ReelFailure) -> float | None:
 
 
 def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: int,
-                length_retime_max: float = 0.0) -> ReelAction:
+                length_retime_max: float = 0.0, outro_fixed: bool = False) -> ReelAction:
     """One decision for the whole reel (design §3). Escalate wins the round: any
     non-auto-fixable or capped failure returns Escalate immediately, so we never
     spend reprocess rounds on a reel that also carries an unfixable fault. `length`
     is auto-fixable in exactly one shape — a shortfall inside length_retime_max,
-    absorbed by re-timing the target DOWN to the reel's real length; an over-length
-    reel and a shortfall past the band still escalate to pacing. The 0.0 default
-    reproduces the pre-slice behaviour for a caller that passes no band."""
+    absorbed by re-timing the target DOWN to the reel's real length — and only when
+    the length was not CHOSEN: an outro-fitted reel (outro_fixed=True) escalates
+    instead, with reason "outro-length-chosen", even for a shortfall that would
+    otherwise sit inside the band. An over-length reel and a shortfall past the band
+    still escalate to pacing regardless of outro_fixed. The 0.0/False defaults
+    reproduce the pre-slice behaviour for a caller that passes neither."""
     if not fail_reasons:
         return ReelAction("deliver")
     items: dict[int, ReprocessItem] = {}   # idx → ReprocessItem; colour wins over a bare black re-encode
@@ -65,13 +68,28 @@ def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: 
     for f in fail_reasons:
         if f.check == "length":
             gap = _shortfall(f)
-            if gap is not None and gap <= length_retime_max:
+            absorbable = gap is not None and gap <= length_retime_max
+            if absorbable and not outro_fixed:
                 retime = f.detail["dur"]   # the reel IS this long — make it the target
                 continue
-            return ReelAction("escalate", finding={
-                "reason": "not-auto-fixable", "check": f.check,
-                "episode_idx": f.episode_idx, "escalate_to": f.escalate_to,
-                "detail": f.detail})
+            finding = {"reason": "not-auto-fixable", "check": f.check,
+                       "episode_idx": f.episode_idx, "escalate_to": f.escalate_to,
+                       "detail": f.detail}
+            if absorbable and outro_fixed:
+                # The absorb's premise is "the reel IS that long, so the target was
+                # wrong". False when the target was CHOSEN: with an outro fit,
+                # target_dur is line + fade, a decision about where the music resolves.
+                # mix fades over [master_dur - fade, master_dur], so absorbing keeps the
+                # fade at the reel's end and moves the BAR LINE out from under it — and
+                # length_retime_max (1.0s) is as wide as the 0.96s miss the outro slice
+                # exists to fix (design 2026-08-16 §5).
+                finding["reason"] = "outro-length-chosen"
+                finding["detail"] = {**f.detail, "why": (
+                    "the reel's length was CHOSEN by the outro fit as line + fade, so "
+                    "absorbing this shortfall would move the fade off the bar line. Grow "
+                    "or re-cut the closing episode — edit-plan and pacing own the "
+                    "picture's length; the reel loop cannot invent picture")}
+            return ReelAction("escalate", finding=finding)
         if f.check not in _REPROCESS_CLASS:
             return ReelAction("escalate", finding={
                 "reason": "not-auto-fixable", "check": f.check,

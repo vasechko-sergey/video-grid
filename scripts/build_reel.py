@@ -59,6 +59,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
                 if all(e.path and e.meta for e in rm.episodes) else None)
     need_assemble = True
+    # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
+    # length — so it must not block the absorb. .get with a default rather than [] : the
+    # manifest's own validation already guarantees the key, and if that ever regresses,
+    # degrading to today's behaviour beats stopping a deliverable reel.
+    outro_fixed = (rm.outro is not None
+                   and rm.outro.get("rung", "unchanged") != "unchanged")
     for _ in range(rm.cap * len(rm.episodes) + 3):   # defensive bound; +3 leaves headroom for the
                                                      # once-after-picture mix `continue`, one
                                                      # length-retime `continue`, and the deliver pass
@@ -68,7 +74,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
         report = check_reel.run(master, clips, spec, report_path,
                                 music=music, audio=audio, geometry=geometry, platform=rm.platform)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
-                                                spec.length_retime_max)
+                                                spec.length_retime_max, outro_fixed)
         if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long
             _log(f"build_reel: reel is {action.retime:.2f}s against a {spec.target_dur:.2f}s target "
                  f"— inside the {spec.length_retime_max:.2f}s band, re-timing the target to the "

@@ -10,6 +10,7 @@ from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.look import LookSpec
 from scripts.lib.models import ReelEpisode, ReelManifest
+from scripts.lib.outro import OutroFit
 from scripts.lib.project import ProjectConfig
 
 
@@ -161,6 +162,28 @@ def test_edl_to_reel_leaves_the_reel_manifest_look_none_by_default(monkeypatch, 
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
                             str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
     assert seen["rm"].look is None
+
+
+def test_edl_to_reel_carries_the_outro_onto_the_reel_manifest(monkeypatch, tmp_path):
+    # mirrors the look pipe (test_edl_to_reel_passes_the_edls_look_to_the_reel_manifest
+    # above): the EDL is the attested artifact, so the fit that CHOSE this reel's length
+    # is recorded with the cut, and the reel loop can tell a chosen length from a
+    # derived one (design 2026-08-16 §5).
+    seen = _wire(monkeypatch)
+    fit = OutroFit(reel_dur=10.7, line=10.2, fade=0.5, tail=1.8, rung="gap", moved=0.7)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path, outro=fit.to_dict()), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].outro == fit.to_dict()
+
+
+def test_edl_to_reel_leaves_the_reel_manifest_outro_none_by_default(monkeypatch, tmp_path):
+    # mirrors the look default test above: a hand-authored EDL through this SP1 front
+    # door has no outro fit — None must reach the manifest untouched, so build_reel's
+    # within-band absorb behaves exactly as it did before this slice.
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path),
+                            str(tmp_path), str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].outro is None
 
 
 def test_color_delta_max_override_reaches_the_reel_manifest(monkeypatch, tmp_path):

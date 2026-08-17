@@ -9,6 +9,7 @@ from pathlib import Path
 from scripts.lib import color
 from scripts.lib.geometry import even
 from scripts.lib.look import LookSpec
+from scripts.lib.outro import OutroFit
 
 
 COMPOSITIONS = ("lead", "center", "break")
@@ -1365,6 +1366,11 @@ class ReelManifest:
     platform: str = ""                 # UI safe-zone table key (§5.13); "" → generic; from Spec.platform
     look: LookSpec | None = None       # reel finish rendered in deliver (design 2026-08-13);
                                        # None = none authored
+    outro: dict | None = None          # EDL.outro.to_dict() — the fit that CHOSE this
+                                       # reel's length as line + fade (design 2026-08-16
+                                       # §5). None = no fit ran, and build_reel's
+                                       # within-band length absorb behaves exactly as
+                                       # before.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1407,6 +1413,14 @@ class ReelManifest:
             raise ValueError(f"ReelManifest.look must be a LookSpec or None, got "
                              f"{type(self.look).__name__} — edl_to_reel builds it from "
                              f"EDL.look")
+        if self.outro is not None:
+            if not isinstance(self.outro, dict):
+                raise ValueError(f"ReelManifest.outro must be an object (EDL.outro.to_dict()) "
+                                 f"or None, got {type(self.outro).__name__} — edl_to_reel "
+                                 f"builds it from EDL.outro")
+            OutroFit.from_dict(self.outro)   # the shape/rung oracle. A malformed outro must
+                                             # fail loud here, not read as "unchanged" and
+                                             # silently restore the absorb it exists to block
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
@@ -1446,6 +1460,7 @@ class ReelManifest:
                    music=d.get("music"), ambient=d.get("ambient", True),
                    sfx=d.get("sfx", False), platform=d.get("platform", ""),
                    look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
+                   outro=d.get("outro"),
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1459,6 +1474,7 @@ class ReelManifest:
                 "changelog": self.changelog, "music": self.music,
                 "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
                 "look": self.look.to_dict() if self.look is not None else None,
+                "outro": self.outro,
                 "provenance": dict(self.provenance)}
 
     def write(self, path: str | Path) -> None:
