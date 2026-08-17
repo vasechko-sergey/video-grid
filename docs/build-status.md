@@ -12,6 +12,55 @@ _Last updated: 2026-08-17._
 
 ## Done
 
+- **Mood → grade — the conductor gains the brief's opinion DONE (2026-08-17)** —
+  plan `docs/plans/2026-08-17-mood-grade.md` + design
+  `docs/specs/2026-08-17-mood-grade-design.md`, Tasks 0–5 (branch
+  `feat/mood-grade`). One field on `MoodPreset`, one pure function in
+  `matchgrade`, one flag on the driver. No second colour stage, no LUT asset, no
+  extra encode, no contract field, no golden moved (2976 passed / 2 skipped).
+
+  **The carrier was decided by measurement.** `EDL.variety.preset` records the
+  preset the *cut* was planned against and is already on the EDL `match_grade`
+  reads — and it is **`None`** on the only real run on disk. A carrier absent
+  from real artifacts is a bad carrier, so the mood arrives by `--spec`, the same
+  flag and file `edit_plan build` takes. No `--spec` → the plain median, pinned.
+
+  **The floor, and it is not small.** Rendering the real run's darkest and
+  brightest episodes through the exact curve `color.tone_arg` authors and
+  re-measuring: the conductor lands **6.5–11.5 luma units** from the target it
+  asked for. Against a `MATCH_EPS` of **4.0** that decides whether to correct at
+  all — so the reel is matched to about ten units, not four. The correction still
+  does the bulk of the work (the darkest episode's p95 travels 106 → 185 toward
+  194.5); the residual is second-order but larger than the threshold. **This is
+  why the mood table is coarse**: 15–20 units, because anything less disappears
+  into the conductor's own error. Filed as its own P2 row — cause unknown.
+
+  **Out of headroom: scale the vector, never clamp an anchor.** Clamping `epic`'s
+  highlight lift leaves "crush the blacks" — a different mood, shipped silently.
+  Scanned over eight plausible reel medians: `k = 1.00` on five, nothing refused
+  anywhere, and scaling fires only on bright targets and only for the two presets
+  pushing p95 up. At a median of (110, 170, 250) `fun` keeps 0.62 and **`epic`
+  0.31 — five units, under the floor, therefore invisible**. Physical, not a
+  defect: `epic` is the only preset asking for *more* highlight headroom. Because
+  it cannot be seen in the pixels, `MATCH.md` says `mood-bias-ineffective`.
+
+  **The visibility proof.** Same clip, same source profile, two targets:
+  delivered (40, 97, 173) plain against (21, 80, 167) moody — deltas
+  **−19 / −17 / −6** for an asked bias of (−18, −16, −8).
+
+  **The mutation battery found a hole its own tests could not see.** Dropping the
+  `name != "balanced"` guard left the whole suite green, because the shipped
+  `BALANCED.tone_bias` is already zero — the test proved the zero, not the guard.
+  Closed with a preset *named* balanced carrying a real displacement. Not
+  hypothetical: `BALANCED.look` once held a concrete fade that was applied
+  unconditionally, putting a picture bookend on every autonomous reel.
+
+  **What it does not do.** The four vectors are a first cut and nobody has looked
+  at them — the mechanism is proven, the taste is not. The floor is two clips of
+  one shoot. And `check_reel`'s colour gate compares episodes to *each other*;
+  they all move together, so it passes exactly as before, which is correct and is
+  also why nothing checks the reel now matches the mood.
+
 - **Downbeat confidence — the detector now says when it is guessing DONE
   (2026-08-17)** — plan `docs/plans/2026-08-17-downbeat-confidence.md` + design
   `docs/specs/2026-08-17-downbeat-confidence-design.md`, Tasks 0–3 (branch

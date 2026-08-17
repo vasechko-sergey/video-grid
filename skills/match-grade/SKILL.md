@@ -62,17 +62,33 @@ say so rather than guessing a path.
    stage runs AFTER edit-plan and, if used, AFTER pacing's apply pass. No
    `EDL.json` -> run edit-plan first; there is no cut to grade.
 2. **Conduct.**
-   `"$VG" scripts.match_grade build --edl <run>/EDL.json --footage-root <footage_root> [--eps 4.0] [--force]`
+   `"$VG" scripts.match_grade build --edl <run>/EDL.json --footage-root <footage_root> [--spec <run>/SPEC.json] [--eps 4.0] [--force]`
    Measures every episode's source at its window midpoint, computes the one
    common target (the per-anchor median across episodes), and rewrites
    `EDL.json` IN PLACE — `tone_src`/`tone_dst` land on every episode that
    deviates past `--eps` (default 4 luma units). Also writes a sibling
    `MATCH.md`.
+
+   **Pass `--spec` when a brief exists.** Without it the conductor is pure
+   consistency: it makes the cameras agree and has no view on what they should
+   agree *to*. With it, `SPEC.mood` displaces the common target in the direction
+   the mood asks for — brighter and airier for `fun`, wider contrast for `epic`,
+   darker and crushed for `moody`, faded for `nostalgic` (design 2026-08-17 §4).
+   A brief whose mood matches nothing resolves to `balanced` and displaces
+   nothing, on purpose.
 3. **Read the report.** `MATCH.md` lists the target triple (p5/p50/p95), then
    one row per episode: its measured profile, its distance (max Δ) to the
    target, and the action taken (`author`/`skip`) with a reason (`authored` /
    `within-eps` / `flat-source` / `hand-authored`). Surface it at the CP3
    final review beside the reel.
+
+   **`mood-bias-ineffective` is the one line that needs a decision.** It means
+   the reel's own tonal range left no room for the mood's displacement, so what
+   survived is under the ~10-luma floor where a grade change becomes visible at
+   all — most often `epic` on footage whose highlights already sit near the top.
+   The stage does not refuse. Either accept a consistency-only grade, or choose a
+   mood that pulls inward (`moody`, `nostalgic`) instead of one that asks for
+   more highlight headroom than the footage has.
 4. **Nothing further to apply.** Unlike pacing, there is no second
    `edit_plan build` pass here — `write_match` already rewrote `EDL.json`.
    The next stage (`assemble-draft`/`edl_to_reel`) reads the enriched EDL
