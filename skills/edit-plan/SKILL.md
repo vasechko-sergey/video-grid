@@ -133,6 +133,17 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      it covers the canvas edge to edge, so there is nothing else to fill) +
      optional `background_color` (an ffmpeg colour name or hex, default `black`,
      `solid` only)
+   - `crop_aspect` (optional) — the crop rectangle's aspect, `"9:16"` or
+     `[9, 16]`. Omit it and the manifest picks: the canvas for `fill`, the
+     source's own aspect for `fit`/`insert`. Author it only to take a crop
+     shaped like neither.
+   - `crop_scale` (optional, default `1.0`) — the crop's size as a fraction of
+     the largest one that fits. Below `1.0` tightens the framing and buys the
+     tracker freedom to move within the source. A **still** choice, unlike
+     `zoom`, which changes the crop's width over time.
+   - `border_px` / `border_color` (optional, `insert` only, default `0` /
+     `white`) — the card's border in delivered pixels and its colour. `0` draws
+     none.
    - `motion` ∈ `lateral:right` / `lateral:left` / `head-on` / `static` (optional)
    - `hero` (optional) — a first-frame seed bbox `[x,y,w,h]` (centre-format,
      source px), a rule (`largest`/`leftmost`), an integer track id, or a cast
@@ -213,6 +224,43 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      `tone_dst` to the reel's common target — measure both with
      `python -m scripts.color_measure <clip>`. A banding `tone` curve fails loud at
      render (`verify_tone`), so trust the error and widen the anchors.
+   - `color_means` (optional) — the target channel means `[r, g, b]` that
+     `check_episode`'s colour check measures the DELIVERED clip against. Not a
+     grade: it changes what "correct" means, never how a pixel looks. Leave it
+     at its default unless a shot must match a specific reference — reach for
+     the grade knobs above to change how a clip looks, and for `tone_src`/
+     `tone_dst` to make several clips agree.
+
+   **Every knob, in one place.** The prose above is the explanation — it carries
+   the refusals and the reasons, and it is what you read before authoring. This
+   is the index into it. Anything absent from this table is not authorable from
+   `selection.json`.
+
+   | knob | what it sets |
+   |---|---|
+   | `source` / `start` / `dur` | which clip, from where, for how long |
+   | `base_dur` | the footage-projected length, recorded once at projection — never author it |
+   | `shot_type` | the label; the variety gate measures delivered geometry, not this |
+   | `composition` / `grid` | `lead`/`center`/`break` × `thirds`/`phi` |
+   | `layout` | `fill` / `fit` / `insert` |
+   | `background` / `background_color` | the filler behind a `fit`/`insert` frame |
+   | `crop_aspect` / `crop_scale` | the crop rectangle's shape and its size |
+   | `border_px` / `border_color` | the `insert` card's border |
+   | `motion` | the SUBJECT's travel, for intent scoring |
+   | `hero` | who to follow — bbox, rule, track id, or cast name |
+   | `pan` | a generated camera move; refused over a window holding people |
+   | `zoom` | a subject-anchored push-in/pull-out along the tracked route |
+   | `ramp` | a speed ramp down to a slow plateau and back |
+   | `stabilize` | the vidstab pre-stage; never on a wade-in/out shot |
+   | `smooth_window_s` | seconds of path smoothing |
+   | `white_balance` · `black_point` · `highlight` · `highlight_red` · `shadow_red` · `mid_blue` · `saturation` · `dip` | the colour grade, applied in that order |
+   | `tone_src` / `tone_dst` | the match-grade pair; `match_grade` authors these |
+   | `color_means` | the colour CHECK's reference means, not a grade |
+   | `processing_notes` | free text, rendered into `EDL.md` and the draft's labels |
+   | `beat_slot` | which grid line the cut lands on; `--pacing` writes it |
+
+   Two keys are **reel-level** and sit beside `episodes`, never inside one:
+   `look` and `variety_waiver`.
 
    **Converging a grade — do not re-render a reel to look at one episode.** Once
    `edl_to_reel --stop-after-episodes` has written `<run>/out/EPISODES.json`, edit

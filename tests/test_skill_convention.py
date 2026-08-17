@@ -5,8 +5,11 @@ Every pipeline command a skill issues must go through bin/vg, never a bare
 this slice removes). Lints the outcome so a reverted call-site fails loud, and
 catches line-wrapped invocations a text-replace would miss.
 """
+import dataclasses
 import re
 from pathlib import Path
+
+from scripts.lib.edl import EDLEpisode
 
 REPO = Path(__file__).resolve().parents[1]
 SKILLS = REPO / "skills"
@@ -68,3 +71,19 @@ def test_every_skill_description_leads_with_a_role_tag():
     assert offenders == [], (
         f"skills whose description doesn't lead with a role tag {ROLE_LEADS}: "
         f"{offenders}")
+
+
+def test_edit_plan_skill_names_every_authorable_episode_field():
+    """Every EDLEpisode field appears by name in the authoring skill.
+
+    The skill is the ONLY place an author learns a knob exists, and it drifted
+    silently once already: five fields were authorable and undocumented until
+    2026-08-17 (backlog #5). Proves PRESENCE of the name, never that the
+    explanation beside it is correct or current (design 2026-08-17 §2.2) — it
+    stops the silent half of the drift, not the whole of it."""
+    missing = sorted(f.name for f in dataclasses.fields(EDLEpisode)
+                     if f.name not in (SKILLS / "edit-plan" / "SKILL.md").read_text())
+    assert missing == [], (
+        f"{len(missing)} EDLEpisode field(s) the authoring skill never names: "
+        f"{missing}. Document them in skills/edit-plan/SKILL.md — an authorable "
+        f"knob nobody can find is the same as one that does not exist")
