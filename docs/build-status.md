@@ -12,6 +12,85 @@ _Last updated: 2026-08-17._
 
 ## Done
 
+- **Downbeat confidence — the detector now says when it is guessing DONE
+  (2026-08-17)** — plan `docs/plans/2026-08-17-downbeat-confidence.md` + design
+  `docs/specs/2026-08-17-downbeat-confidence-design.md`, Tasks 0–3 (branch
+  `fix/downbeat-confidence`). Two constants and one comparison; no contract
+  field, no stage, no driver, no golden moved (2961 passed / 2 skipped, the
+  2959 baseline plus this slice's two tests).
+
+  **The backlog row asked for a second genre and got an answer about the
+  feature.** Four unmeasured tracks were already sitting beside the measured one
+  in the 2026-08-03 run's own music cache. Swept 8 band edges × 4 window widths
+  over all five.
+
+  **The row named three first-cut constants; only two existed.**
+  `_downbeat_phase` was a bare `argmax` — it always returned a phase, however
+  flat the four per-phase means were, and `analyze` filled `bars` from it. On a
+  track with no downbeat that put the reel's end on a beat which `EDL.outro`
+  then reported as a bar line: the §12 silent-corruption shape, in a feature
+  built six weeks ago specifically to stop the music being chopped mid-phrase.
+
+  **`_LOW_HZ` 150 → 60.** Not a preference — 150 sits on a knife edge on the one
+  track it was measured on: across ±0.05/0.10/0.15 the control scores
+  **32 / 88 / 59%**, where 60 Hz holds **91 / 93 / 93%** at a higher margin
+  (2.04 vs 1.67). The plateau is the evidence; the spike was the fit. Still
+  tuned on one track, because the other four have no signal to vote with.
+
+  **Four of five tracks carry no downbeat at any of the 32 cells** — 38–50%
+  hit-rate against a 25% chance level, margins 1.00–1.03, and their best cells
+  scatter across the grid (80/0.20, 250/0.05, 200/0.20, 150/0.10), which is what
+  fitting noise looks like. For house the premise fails by construction:
+  four-on-the-floor puts a kick on every beat, so "the downbeat carries the
+  kick, the other beats do not" has nothing to discriminate. No band edge fixes
+  a premise failure.
+
+  **The statistic music-outro-fit §3 quotes as its evidence does not carry it.**
+  `max/min = 1.887` was the headline; God's Gonna Cut You Down scores **1.782**
+  — within 6% — at 36% hit-rate and a 1.032 margin, because one of its phases is
+  *quiet* rather than its winner *loud*. The ranked gap `max/2nd` separates
+  cleanly: control 2.04 against 1.01 / 1.03 / 1.07 / 1.09.
+
+  **`_PHASE_MARGIN = 1.5`, and the obvious 1.3 was measured wrong.** The
+  threshold cannot be read off whole tracks — `analyze` measures a
+  `duration`-long window, and fewer beats make the means noisier, which pushes a
+  no-signal track's margin *up* by luck. Measured over **124 sliding 30s and 42s
+  windows**: of **97** windows from the four signal-less tracks **none** reaches
+  1.5, but five reach **1.31–1.35**. Cost, measured not estimated: 2 of the
+  control's 13 windows at 42s and 4 of 14 at 30s fall below 1.5, so roughly one
+  window in six of genuinely-downbeated music is gated off and the outro fit
+  honestly does nothing.
+
+  **The control reproduces**, which is what makes the other four trustworthy:
+  the design's own §3 window gives 49.61 / 55.39 / 41.46 / 88.89 against the
+  recorded 48.01 / 54.65 / 42.03 / 79.31, same winning phase, 15/18 bars against
+  14/18 — reproduced in kind, not to the digit.
+
+  **A naming correction worth keeping.** The shipped track of the 2026-08-03 run
+  is **Katrina & The Waves — Walking On Sunshine** (`MUSIC.json`: 110.294 BPM,
+  offset 46.0, duration 42.0). Manson is the track the *stale* `PACING.json`
+  belonged to (Tainted Love, 140.625), and the earlier prose reads at a glance
+  as though the detector was calibrated on Manson. It was not.
+
+  **Mutation battery, four rows, all watched.** Flipping the comparison → 3
+  failed; deleting the gate → 2 failed; `ranked[-1]` instead of `ranked[1]` →
+  exactly the one test written for §4's finding. The fourth is the honest one:
+  setting the threshold to 1.3 leaves the suite **green**, so no test here
+  discriminates 1.5 from 1.3 — the only evidence is the 124-window measurement
+  over five real tracks that are not in this repo and never will be. Recorded
+  rather than papered over with a synthetic test that would defend a number it
+  does not measure.
+
+  **Where the material lives.** The whole 2026-08-03 run is on disk at
+  `~/Downloads/untitled folder/` — 99 cached clips, the delivered reel and its
+  8 episodes, every stage artifact, and the five music tracks this slice used.
+  Worth recording because three still-open calibration rows are blocked on
+  exactly that material. One caveat measured while looking: `.intake_cache` is
+  `version: 5` with **24-d** descriptors — the pre-OSNet colour histogram — so
+  the identity-threshold row's premise ("the distribution is already on disk in
+  any real cache") is **stale**; getting it needs a full re-intake at
+  `CACHE_VERSION` 8.
+
 - **Cheap P2 chores — a licence, the authoring skill's knob index, editorial
   constraints in `montage status`, and a fixture long enough to carve a real
   window pool DONE (2026-08-17)** — plan
