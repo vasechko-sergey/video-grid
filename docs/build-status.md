@@ -82,9 +82,11 @@ _Last updated: 2026-08-17._
   the earlier tasks' own reviews — every one watched red, then green after
   hand-reverting. One flagged row (`build_reel` dropping the outro rung test
   down to a bare `is not None`) turned out to already be closed by a test
-  added during Task 5's own review round. Two rows needed a genuinely new
-  test: the digest ladder's SILENT-SUCCESS leg (a pre-slice `PACING.json`
-  with an empty `music_digest`, plus a readable, tempo-matching `MUSIC.json`,
+  added during Task 4 itself (commit `89fdf52`), proactively covering a gap
+  the brief's own file list named but left unscripted — not a review-round
+  finding. Two rows needed a genuinely new test: the digest ladder's
+  SILENT-SUCCESS leg (a pre-slice `PACING.json` with an empty `music_digest`,
+  plus a readable, tempo-matching `MUSIC.json`,
   must still bind — every prior test only ever exercised the both-sides-empty
   leg) and `reel_orchestration`'s escalate-wins-the-round guarantee under a
   simultaneous reprocess-class failure with `outro_fixed=True` (a length
