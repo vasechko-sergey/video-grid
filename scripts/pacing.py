@@ -46,6 +46,9 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
         base = ep.base_dur if ep.base_dur is not None else ep.dur
         spec = None if ep.ramp is None else RampSpec.from_dict(ep.ramp)
         shrink = max(0.0, min(allow, base / 2.0, ramp_mod.tail_room(spec, base)))
+        # Outward: the speed is exactly 1 outside the ramp region, so extending the
+        # PLAYED length by d costs d of source — `room - base` is already the
+        # right bound in source seconds and needs no conversion.
         out.append((-shrink, min(allow, max(0.0, room - base))))
     return out
 
@@ -85,6 +88,24 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
                          "needs a beat grid (a silent reel skips this stage entirely)")
     edl = EDL.from_json(edl_json)
     footage = Footage.from_json(footage_json)
+    # Say so HERE, where a base_dur-less EDL.json is actually READ — not only inside
+    # edit_plan._bind_pacing's refusal three stages later (final review Finding 1).
+    # The population that deadlocks does not always carry the arm note there: a stale
+    # PACING.json fitted against a base_dur-less EDL (this branch, right now) is later
+    # re-applied against a FRESHLY projected episode list, and window_to_episode always
+    # sets base_dur — so the refusal's per-episode arm note never fires for exactly the
+    # run that needed it. Naming the cause at the point it is true fixes that.
+    no_base = [i for i, ep in enumerate(edl.episodes) if ep.base_dur is None]
+    if no_base:
+        _log(f"pacing: {edl_json} has {len(no_base)} of {len(edl.episodes)} episode(s) "
+             f"with no `base_dur` (index {no_base}) — this EDL.json predates the "
+             f"2026-08-16 fixed-point slice, or was hand-authored through the SP1 front "
+             f"door. The fit below falls back to each such episode's already-bound "
+             f"length instead of the scenario's (design §2.2) — legal on its own, but "
+             f"if this EDL.json ALSO carries an outro fit, re-applying the PACING.json "
+             f"this call writes will refuse. Escape: rebuild the EDL WITHOUT "
+             f"--pacing/--music first, re-run pacing against THAT EDL.json, then "
+             f"re-apply with --pacing --music")
     # The SCENARIO's played lengths, not what a previous bind or outro fit left in
     # EDL.json. Reading play_dur() here made the stage fit its own previous output:
     # a re-fit against a different window landed every cut a beat early, and after an

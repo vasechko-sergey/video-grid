@@ -1499,6 +1499,22 @@ def test_bind_pacing_names_the_arm_when_an_episode_has_no_base_dur():
         edit_plan._bind_pacing([ep], spine)
 
 
+def test_bind_pacing_refusal_always_carries_the_escape_detour():
+    # Final review Finding 1: the population that actually reaches this refusal from
+    # a STALE PACING.json is not the one the arm note alone would catch. pacing.py
+    # fits a base_dur-less EDL.json by falling back to play_dur() (correct, by
+    # design), but build_edl then re-projects FRESH episodes via window_to_episode,
+    # which ALWAYS sets base_dur — so `ep.base_dur is not None` is true right here,
+    # the arm note stays empty, and a reader trusting the arm alone would wrongly
+    # conclude no detour applies. The detour must appear regardless.
+    ep = _ep(dur=4.00, base_dur=4.00)
+    spine = Spine(slots=(Slot(0, 0.0, 4.70, 0.5, "hook", line=4.70, dev=0.0),),
+                  target_dur=4.70, tempo=120.0)
+    with pytest.raises(ValueError, match=r"rebuild the EDL WITHOUT --pacing/--music") as e:
+        edit_plan._bind_pacing([ep], spine)
+    assert "NOTE: this episode carries no `base_dur`" not in str(e.value)
+
+
 # --- music_digest: bind a spine to the music WINDOW it was fitted to (design
 # 2026-08-16-pacing-fixed-point-design.md §4). `_spine` (line ~943, a list-of-durations
 # binding helper) and `_footage` (line ~73, the two-clip A.mp4/B.mp4 fixture) already

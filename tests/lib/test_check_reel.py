@@ -6,7 +6,7 @@ import pytest
 
 from scripts import check_reel
 from scripts.lib import provenance
-from scripts.lib.models import ReelCheckSpec
+from scripts.lib.models import CheckResult, ReelCheckSpec
 
 
 class _Stub:
@@ -519,10 +519,12 @@ def test_the_residual_is_the_master_against_the_length_the_fit_asked_for(tmp_pat
     _Stub([10.68]).install(monkeypatch)
     rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=10.68),
                          str(tmp_path / "r.json"), outro=GAP)
-    assert rep.checks["outro"].detail["asked"] == 10.7
-    assert rep.checks["outro"].detail["delivered"] == 10.68
-    assert rep.checks["outro"].detail["residual"] == -0.02
-    assert rep.checks["outro"].passed is True
+    # Whole-object equality (project convention), not a subset of asked/delivered/
+    # residual — line/fade/rung/tol/advisory are real fields of the same detail dict
+    # and deserve the same protection against a silent regression.
+    assert rep.checks["outro"] == CheckResult("outro", True, {
+        "line": 10.2, "fade": 0.5, "rung": "gap", "asked": 10.7, "delivered": 10.68,
+        "residual": -0.02, "tol": check_reel._LENGTH_TOL, "advisory": True})
 
 
 def test_a_residual_past_the_reporting_tolerance_is_flagged_but_advisory(tmp_path, monkeypatch):

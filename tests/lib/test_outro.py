@@ -207,3 +207,28 @@ def test_non_positive_bar_is_refused():
     with pytest.raises(ValueError, match="bar_s must be"):
         outro.fit_outro(BARS, (), reel_dur=34.0, bar_s=0.0, fade=0.5, music_dur=42.0,
                         grow_max=1.0, shrink_max=1.0)
+
+
+# --- final review Finding 2: reel_dur required when rung != "unchanged" ---------------
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, None, "10.7", True])
+def test_reel_dur_must_be_a_positive_number_when_the_rung_chose_a_length(bad):
+    with pytest.raises(ValueError, match="reel_dur must be a positive number"):
+        OutroFit(reel_dur=bad, line=10.0, fade=0.5, tail=1.0, rung="gap", moved=0.0)
+
+
+def test_reel_dur_is_unconstrained_for_an_unchanged_rung():
+    # "unchanged" carries no promise about reel_dur; check_reel's own branch for it
+    # never reads the key, so 0.0 (from_dict's default) stays legitimate here.
+    OutroFit(reel_dur=0.0, line=None, fade=0.5, tail=0.0, rung="unchanged", moved=0.0)
+
+
+def test_from_dict_refuses_a_gap_rung_missing_reel_dur():
+    # The exact malformed shape from the final review: {"rung": "gap"} used to
+    # round-trip clean through OutroFit.from_dict (reel_dur silently defaulted to
+    # 0.0) and only crashed three stages later, inside check_reel, with a bare
+    # KeyError on outro["reel_dur"] — a fail-loud contract violation. Refusing it
+    # HERE, at the shape/rung oracle ReelManifest already calls, is what closes
+    # that gap instead of moving it.
+    with pytest.raises(ValueError, match="reel_dur must be a positive number"):
+        OutroFit.from_dict({"rung": "gap"})

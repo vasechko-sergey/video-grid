@@ -360,10 +360,15 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    resolve that tension silently, so read it rather than assume the length still
    matches the brief.
 
-   **Re-fitting a fitted EDL is safe** — see the **pacing** skill's step 1 for why
-   (design 2026-08-16 §3.1). Re-run pacing against the current `EDL.json` and
-   re-apply with `--pacing --music`; no detour needed, including when a
-   **reel-review** finding routes you back to `pacing`.
+   **Re-fitting a fitted EDL is safe when it carries `base_dur`** — see the
+   **pacing** skill's step 1 for why (design 2026-08-16 §3.1). Re-run pacing
+   against the current `EDL.json` and re-apply with `--pacing --music`; no detour
+   needed, including when a **reel-review** finding routes you back to `pacing`.
+   An `EDL.json` written before 2026-08-16, or hand-authored through the SP1
+   front door, has no `base_dur` — `pacing` warns on stderr when it reads one,
+   and if that EDL also carries an outro fit, re-applying deadlocks; follow the
+   escape the refusal names (rebuild WITHOUT `--pacing`/`--music`, re-fit,
+   re-apply).
 
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
    the registry the preflight resolves that name against. Pass `--spec` whenever

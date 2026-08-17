@@ -41,6 +41,23 @@ class OutroFit:
     def __post_init__(self) -> None:
         if self.rung not in RUNGS:
             raise ValueError(f"OutroFit.rung must be one of {RUNGS}, got {self.rung!r}")
+        # A "gap"/"no-gap" fit always CHOSE a real length (line + fade, always > 0);
+        # "unchanged" carries no such promise (from_dict defaults a missing key to
+        # 0.0, which stays legitimate there — nothing downstream ever reads reel_dur
+        # for that rung). Catching the other two here is what makes OutroFit.from_dict
+        # the oracle ReelManifest.__post_init__ already relies on it being (design §5.1)
+        # — without this, {"rung": "gap"} round-trips clean with reel_dur silently
+        # defaulted to 0.0, and check_reel's bare `outro["reel_dur"]` KeyErrors three
+        # stages later instead of failing loud where the malformed value was accepted.
+        if self.rung != "unchanged" and (
+                isinstance(self.reel_dur, bool)
+                or not isinstance(self.reel_dur, (int, float))
+                or self.reel_dur <= 0):
+            raise ValueError(
+                f"OutroFit.reel_dur must be a positive number of seconds when rung is "
+                f"{self.rung!r} — a 'gap'/'no-gap' fit always chose a real length "
+                f"(line + fade); got {self.reel_dur!r}. Re-run edit_plan build "
+                f"--pacing --music to regenerate EDL.outro")
 
     def to_dict(self) -> dict:
         return {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,

@@ -327,3 +327,17 @@ def test_build_pacing_says_so_when_the_track_cannot_be_hashed(tmp_path, capsys):
                                      _footage_json(tmp_path), [mj], str(tmp_path / "out"))
     assert res["spine"].music_digest == ""
     assert "records no music_digest" in capsys.readouterr().err
+
+
+def test_build_pacing_warns_when_the_edl_has_no_base_dur(tmp_path, capsys):
+    # Final review Finding 1: this is where a base_dur-less EDL.json is actually
+    # READ, so this is where the warning belongs — edit_plan._bind_pacing's arm
+    # note (see test_bind_pacing_names_the_arm_when_an_episode_has_no_base_dur) only
+    # fires for a directly hand-built no-base_dur episode, never for the population
+    # that reaches the refusal via a stale PACING.json like this one.
+    edl = _edl_json(tmp_path, dur=4.4, base_dur=None)
+    pacing_driver.build_pacing(edl, _footage_json(tmp_path), [_music_json(tmp_path)],
+                               str(tmp_path / "out"))
+    err = capsys.readouterr().err
+    assert "predates the 2026-08-16 fixed-point slice" in err
+    assert "rebuild the EDL WITHOUT --pacing/--music" in err

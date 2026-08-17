@@ -54,8 +54,14 @@ _Last updated: 2026-08-17._
   `tests/lib/test_pacing_fixed_point.py` — five real driver calls, EDL **A**
   and **B** byte-identical, no ffmpeg needed since neither driver decodes a
   frame). An `EDL.json` written before this slice has no `base_dur`; it keeps
-  the old deadlock, and the refusal message now names that arm by name rather
-  than leaving a reader to guess whether the fix applies.
+  the old deadlock. **Final-review correction:** the reachable population does
+  not run through the episode the refusal is comparing — a stale
+  `PACING.json` fitted against a base_dur-less EDL is re-applied against a
+  FRESHLY projected episode (`window_to_episode` always sets `base_dur`), so
+  the refusal's per-episode arm note never fired for it. `pacing.build_pacing`
+  now warns on stderr the moment it READS a base_dur-less `EDL.json` — the
+  actual point of contact — and `_bind_pacing`'s refusal carries the
+  three-command escape UNCONDITIONALLY rather than only alongside the arm.
 
   **`Spine.music_digest`.** A spine now binds to the music WINDOW it was
   fitted to — `music_identity()` hashes the track's own content plus
@@ -96,13 +102,17 @@ _Last updated: 2026-08-17._
   inspection. Whole suite: 2941 passed, 2 skipped (torchreid, no network) —
   the same skip count as before this branch.
 
-  **The three-skill detour, deleted.** `skills/pacing/SKILL.md`,
+  **The three-skill detour, narrowed, then partly restored.** `skills/pacing/SKILL.md`,
   `skills/edit-plan/SKILL.md` and `skills/reel-review/SKILL.md` all taught
   "rebuild WITHOUT `--pacing`/`--music` first, else the re-fit deadlocks" —
-  correct advice for code that no longer exists, so leaving it would have
-  sent a reader through a needless rebuild. Replaced with "re-fitting is safe
-  to repeat"; reel-review's routing table gains a row for the new
-  `outro-length-chosen` stop.
+  correct advice for the population the fix removes, but not for a
+  base_dur-less `EDL.json` (pre-slice, or hand-authored through the SP1 front
+  door), which the design's own §2.2 always meant to keep needing it.
+  Replaced with "re-fitting is safe to repeat"; reel-review's routing table
+  gains a row for the new `outro-length-chosen` stop. **Final-review
+  correction:** the first pass's "no detour needed" left no trace of the
+  escape anywhere a reader would find it for that one remaining arm —
+  `pacing`/`edit-plan` now name it again, conditioned on `base_dur`.
 
   **Deferred (design §10, backlog):** a migration for an `EDL.json` with no
   `base_dur` (still deadlocks, by design — no refusal, since that would close

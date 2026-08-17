@@ -60,9 +60,13 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                 if all(e.path and e.meta for e in rm.episodes) else None)
     need_assemble = True
     # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
-    # length — so it must not block the absorb. .get with a default rather than [] : the
-    # manifest's own validation already guarantees the key, and if that ever regresses,
-    # degrading to today's behaviour beats stopping a deliverable reel.
+    # length — so it must not block the absorb. .get with a default rather than [] :
+    # OutroFit.from_dict (the manifest's shape/rung oracle) DEFAULTS a missing "rung"
+    # to "unchanged" rather than refusing it, and never writes that normalized value
+    # back into the raw dict ReelManifest stores as rm.outro — so the stored dict can
+    # genuinely lack the key. The default here is load-bearing, not merely defensive:
+    # it is what makes a dict with no "rung" at all degrade to today's behaviour
+    # instead of raising a bare KeyError.
     outro_fixed = (rm.outro is not None
                    and rm.outro.get("rung", "unchanged") != "unchanged")
     for _ in range(rm.cap * len(rm.episodes) + 3):   # defensive bound; +3 leaves headroom for the

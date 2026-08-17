@@ -52,8 +52,13 @@ say so rather than guessing a path.
    length the scenario projected — not the length a previous bind or outro fit left
    behind, so fitting an already-fitted `EDL.json` produces the same spine and
    re-applying reproduces the same EDL (design 2026-08-16 §3.1). An `EDL.json`
-   written before 2026-08-16 has no `base_dur`: the old deadlock still applies there,
-   and `edit_plan build --pacing` says so by name in its refusal.
+   written before 2026-08-16 (or hand-authored through the SP1 front door) has no
+   `base_dur`: **this stage warns on stderr the moment it reads one**, naming the
+   file. If that `EDL.json` also carries an outro fit, re-applying the `PACING.json`
+   this writes deadlocks — `edit_plan build --pacing`'s refusal always carries the
+   escape, whether or not the episode it happens to be comparing carries `base_dur`
+   itself: rebuild the EDL WITHOUT `--pacing`/`--music` first, re-run pacing against
+   THAT `EDL.json`, then re-apply with `--pacing --music`.
 2. **Analyze the candidate windows.** `beats --auto-start` picks one; for a real choice
    ask it for more and analyze each into its own `MUSIC_<k>.json`. Shifting the window
    moves every grid line with it, so it is one of the two search axes.

@@ -370,6 +370,13 @@ the actual teeth live.
   computed in `edit_plan` and is not visible at the reel level, so the finding points at
   the stage that can see it rather than carrying the number. A reel whose closing shot has
   no room left will bounce between the two stages until a human changes the cut.
+- **§5's absorb refusal is proven at unit scope only.** §7 asks for a real-ffmpeg proof:
+  a reel whose master is short by more than `_LENGTH_TOL` and less than
+  `length_retime_max` — with `outro` absent it delivers (a control that must not move);
+  with `outro` present it stops-and-reports. The branch proved both cases only against a
+  monkeypatched `check_reel.run` in `tests/lib/test_build_reel.py`; no file under
+  `tests/integration/` exercises this absorb through real ffmpeg. Building that
+  integration test is its own slice (final-review Finding 6).
 - **The measured drift is one synthetic case, not a survey.** §1.2 is a real
   `pacing.fit_spine` run over hand-picked durations and two tempos. It proves the defect
   exists and that the fix removes it; it does not say how often the workflow hits it on

@@ -240,18 +240,31 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
         played = ep.play_dur()
         want = ep.base_play_dur()
         if abs(slot.dur - want) > allow:
+            # The arm NOTE names which population THIS EPISODE is in; the escape
+            # DETOUR is appended UNCONDITIONALLY, because the population that
+            # actually reaches this refusal from a stale PACING.json is not the one
+            # the arm note alone would catch (final review Finding 1): pacing.py
+            # falls back to play_dur() for a base_dur-less EDL.json (correct, by
+            # design), but build_edl then re-projects FRESH episodes through
+            # window_to_episode, which ALWAYS sets base_dur — so `ep.base_dur is
+            # not None` is true right here, the arm note stays empty, and a reader
+            # who trusted the arm alone would conclude no detour applies.
             arm = "" if ep.base_dur is not None else (
                 " NOTE: this episode carries no `base_dur`, so the guard is comparing the "
                 "BOUND length rather than the scenario's — the EDL was hand-authored through "
-                "the SP1 front door, or written before the 2026-08-16 fixed-point slice. If "
-                "it also carries an outro fit (a non-null `outro`), re-running pacing against "
-                "it LOOPS: rebuild the EDL WITHOUT --pacing first, re-run pacing against THAT "
+                "the SP1 front door, or written before the 2026-08-16 fixed-point slice.")
+            detour = (
+                " If this PACING.json was fitted against an EDL.json that carried no "
+                "`base_dur` (hand-authored through the SP1 front door, or written before "
+                "the 2026-08-16 fixed-point slice) and the EDL.json you are binding now "
+                "carries an outro fit (a non-null `EDL.outro`), re-applying LOOPS: rebuild "
+                "the EDL WITHOUT --pacing/--music first, re-run pacing against THAT "
                 "EDL.json, then re-apply with --pacing --music")
             raise ValueError(
                 f"pacing: slot {i} is {slot.dur:.2f}s against a {want:.2f}s episode — "
                 f"further apart than the {allow:.2f}s snap allows, so this PACING.json "
                 f"was fitted to a different edit. Re-run pacing against the current "
-                f"EDL.json before binding.{arm}")
+                f"EDL.json before binding.{arm}{detour}")
         # Assign the SOURCE window that plays for slot.dur. ramp_extra is constant
         # in dur while the region stays enclosed (design §2), so this is exact
         # rather than a solve — and dataclasses.replace re-runs __post_init__, so a

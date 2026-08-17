@@ -976,6 +976,17 @@ def test_reel_manifest_refuses_a_malformed_outro():
         m.ReelManifest(**{**kwargs, "outro": "gap"})
 
 
+def test_reel_manifest_refuses_an_outro_missing_reel_dur():
+    # Final review Finding 2: {"rung": "gap"} with no reel_dur used to pass this
+    # exact construction (OutroFit.from_dict silently defaults reel_dur to 0.0) and
+    # only crash later, inside check_reel, with a bare KeyError instead of a named
+    # ValueError here at the manifest's own shape/rung oracle.
+    kwargs = dict(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                 target_dur=10.0)
+    with pytest.raises(ValueError, match="reel_dur must be a positive number"):
+        m.ReelManifest(**{**kwargs, "outro": {"rung": "gap"}})
+
+
 def test_reelreport_overall_excludes_advisory_safe_zones():
     rr = m.ReelReport(checks={"safe_zones": m.CheckResult("safe_zones", False, {"advisory": True})})
     assert rr.overall is True          # advisory False never blocks the reel
