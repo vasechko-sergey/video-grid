@@ -5,8 +5,11 @@ import json
 import pytest
 
 from scripts import pacing as driver
-from scripts.lib.edl import EDL, EDLEpisode
-from scripts.lib.footage import Footage, FootageClip
+from scripts import pacing as pacing_driver
+from scripts.lib import pacing as pacing_lib
+from scripts.lib.edl import EDL, EDLEpisode, write_edl
+from scripts.lib.footage import Footage, FootageClip, FootageWindow
+from scripts.lib.models import MusicSpec
 
 
 def _write(path, obj):
@@ -215,3 +218,95 @@ def test_the_extend_bound_is_unchanged_by_a_ramp(tmp_path):
     _lo_r, hi_r = driver._bounds(_edl([ramped]), _footage_obj(room=4.5), allow=2.0)[0]
     _lo_p, hi_p = driver._bounds(_edl([plain]), _footage_obj(room=4.5), allow=2.0)[0]
     assert hi_r == pytest.approx(hi_p) == pytest.approx(0.5)
+
+
+def _grid(bpm, n=400):
+    return [i * 60.0 / bpm for i in range(n)]
+
+
+def _fit(durs, bpm):
+    spine, _f, _r = pacing_lib.fit_spine(durs, _grid(bpm), [0.5] * 800, 2.0, bpm,
+                                         [(-2.0, 2.0)] * len(durs))
+    return [round(s.dur, 4) for s in spine.slots], [s.line for s in spine.slots]
+
+
+def test_refitting_an_already_fitted_edit_lands_on_different_beats():
+    # design §1.2, the measurement this slice exists to remove. Kept as a pin on
+    # fit_spine itself: the function is NOT idempotent across windows, and it does
+    # not have to be — the fix is that nobody feeds it its own output any more.
+    scenario = [5.77, 3.41, 6.02, 4.88]
+    fitted_to_128, _ = _fit(scenario, 128.0)
+    assert fitted_to_128 == [5.625, 3.2812, 6.0938, 4.88]
+    from_fitted, lines_a = _fit(fitted_to_128, 110.0)
+    from_scenario, lines_b = _fit(scenario, 110.0)
+    beat = 60.0 / 110.0
+    assert [round(x / beat) for x in lines_a[:-1]] == [10, 16, 27]
+    assert [round(x / beat) for x in lines_b[:-1]] == [11, 17, 28]
+    assert round(sum(from_fitted) - sum(from_scenario), 4) == -0.5455
+
+
+def _edl_json(tmp_path, *, dur, base_dur, source="a.mp4"):
+    """Two episodes: the first out-point is a real CUT the grid can snap, the second
+    is the tail, which fit_spine never snaps (line=None). A single-episode EDL would
+    make every assertion below vacuous."""
+    def ep(d, b):
+        return EDLEpisode(source=source, start=0.0, dur=d, base_dur=b,
+                          shot_type="wide", composition="lead", grid="thirds")
+    p = tmp_path / "EDL.json"
+    write_edl(EDL(episodes=(ep(dur, base_dur), ep(3.0, 3.0 if base_dur else None))), p)
+    return str(p)
+
+
+def _footage_json(tmp_path, *, source="a.mp4", clip_dur=20.0, window_dur=4.0):
+    f = Footage(clips=[FootageClip(source=source, dur=clip_dur, res=(640, 360), fps=30.0,
+                                   windows=[FootageWindow(start=0.0, dur=window_dur,
+                                                          shot_type="wide", people=1,
+                                                          motion=0.3, shake=0.0)])])
+    p = tmp_path / "FOOTAGE.json"
+    p.write_text(json.dumps(f.to_dict()))
+    return str(p)
+
+
+def _music_json(tmp_path, tempo=120.0, duration=20.0, track=None):
+    # The beat count is DERIVED from the window, never hardcoded: MusicSpec refuses a
+    # beat outside [0, duration], and at 110 BPM a hardcoded 40 beats overruns a 20s
+    # window ("has 20.18… outside [0, 20.0]").
+    if track is None:
+        track = tmp_path / "t.wav"
+        track.write_bytes(b"not really audio, only hashed")
+    step = 60.0 / tempo
+    ms = MusicSpec(track=str(track), start_offset=0.0, duration=duration, tempo=tempo,
+                   beats=tuple(i * step for i in range(int(duration / step))),
+                   energy=(0.3,) * 10, energy_hz=2.0)
+    p = tmp_path / "MUSIC.json"
+    p.write_text(json.dumps(ms.to_dict()))
+    return str(p)
+
+
+def test_build_pacing_fits_the_scenario_length_not_the_bound_one(tmp_path):
+    # The opening episode was bound to 4.4 and the scenario said 4.0. At 120 BPM the
+    # grid has a line at exactly 4.0, so a spine fitted to the scenario needs no shift
+    # at all — while one fitted to 4.4 snaps up to 4.5.
+    edl = _edl_json(tmp_path, dur=4.4, base_dur=4.0)
+    res = pacing_driver.build_pacing(edl, _footage_json(tmp_path),
+                                     [_music_json(tmp_path)], str(tmp_path / "out"))
+    assert [s.dur for s in res["spine"].slots] == [4.0, 3.0]
+    assert res["spine"].target_dur == 7.0
+
+
+def test_build_pacing_falls_back_to_the_bound_length_without_a_base(tmp_path):
+    edl = _edl_json(tmp_path, dur=4.4, base_dur=None)
+    res = pacing_driver.build_pacing(edl, _footage_json(tmp_path),
+                                     [_music_json(tmp_path)], str(tmp_path / "out"))
+    assert [s.dur for s in res["spine"].slots] == [4.5, 3.0]
+    assert res["spine"].target_dur == 7.5
+
+
+def test_the_grow_bound_is_measured_from_the_scenario_length(tmp_path):
+    # room_after(0.0) is 4.1s, and the scenario window is 4.0 -> 0.1s of grow room.
+    # Reading the BOUND 4.4 instead would compute a NEGATIVE room and clamp to 0,
+    # forbidding a growth the shot actually has.
+    edl = _edl_json(tmp_path, dur=4.4, base_dur=4.0)
+    footage = _footage_json(tmp_path, clip_dur=4.1)
+    lo, hi = pacing_driver._bounds(EDL.from_json(edl), Footage.from_json(footage), 0.25)[0]
+    assert (round(lo, 4), round(hi, 4)) == (-0.25, 0.1)

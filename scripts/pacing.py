@@ -22,13 +22,14 @@ def _log(msg: str) -> None:
 
 def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float]]:
     """Per-episode (lo, hi) the snap may move an out-point by. `hi` is whichever is
-    smaller: the allowance, or the room the episode's own shot still has after it ends.
-    `lo` is the allowance, floored so the episode cannot vanish, and — for a ramped
-    episode — further capped by `ramp.tail_room` so the snap cannot shrink the window
-    into the still-slowed ramp region; that cap is itself floored at 0.0, because a
-    window whose end sits exactly at the region's own end makes `tail_room` a float
-    hair negative (rounding, not a real overhang already refused at validation), which
-    would otherwise turn `lo` POSITIVE and hand gridfit.fit_level an empty interval."""
+    smaller: the allowance, or the room the episode's own shot still has after the
+    SCENARIO's out-point. `lo` is the allowance, floored so the episode cannot vanish,
+    and — for a ramped episode — further capped by `ramp.tail_room` so the snap cannot
+    shrink the window into the still-slowed ramp region; that cap is itself floored at
+    0.0, because a window whose end sits exactly at the region's own end makes
+    `tail_room` a float hair negative (rounding, not a real overhang already refused at
+    validation), which would otherwise turn `lo` POSITIVE and hand gridfit.fit_level an
+    empty interval."""
     by_source = {c.source: c for c in footage.clips}
     out = []
     for i, ep in enumerate(edl.episodes):
@@ -37,20 +38,13 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
             raise ValueError(f"pacing: EDL episode {i} references {ep.source!r}, which is "
                              f"not in FOOTAGE.json — have {sorted(by_source)}")
         room = clip.room_after(ep.start)
-        # Outward: the speed is exactly 1 outside the ramp region, so extending the
-        # PLAYED length by d costs d of source — `room - ep.dur` is already the
-        # right bound in source seconds and needs no conversion.
-        #
-        # Inward is the asymmetric direction. The window may not shrink into the
-        # ramp region: a cut landing while the shot is still slowed is the artefact
-        # ramp.validate_window exists to refuse (design §2, §6). Floored at 0.0: a
-        # window flush with the ramp region's own end (validate_window already
-        # guarantees tail_room >= 0 up to float slop) can make tail_room a hair
-        # negative, which would otherwise make `lo` positive and empty the interval
-        # against a `hi` of 0.0 — exactly the case of a ramp on a clip's LAST window.
+        # The SCENARIO's source length, for the same reason build_pacing fits the
+        # scenario's played length: the room a cut may grow into is a property of the
+        # shot and the scenario's out-point, not of whatever a previous bind left behind.
+        base = ep.base_dur if ep.base_dur is not None else ep.dur
         spec = None if ep.ramp is None else RampSpec.from_dict(ep.ramp)
-        shrink = max(0.0, min(allow, ep.dur / 2.0, ramp_mod.tail_room(spec, ep.dur)))
-        out.append((-shrink, min(allow, max(0.0, room - ep.dur))))
+        shrink = max(0.0, min(allow, base / 2.0, ramp_mod.tail_room(spec, base)))
+        out.append((-shrink, min(allow, max(0.0, room - base))))
     return out
 
 
@@ -89,10 +83,12 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
                          "needs a beat grid (a silent reel skips this stage entirely)")
     edl = EDL.from_json(edl_json)
     footage = Footage.from_json(footage_json)
-    # PLAYED lengths, not source windows: the grid is fitted to what the viewer
-    # watches. Reading `dur` here is what let a ramped episode drift every later
-    # cut off its musical line (design §6).
-    durs = [ep.play_dur() for ep in edl.episodes]
+    # The SCENARIO's played lengths, not what a previous bind or outro fit left in
+    # EDL.json. Reading play_dur() here made the stage fit its own previous output:
+    # a re-fit against a different window landed every cut a beat early, and after an
+    # outro fit the re-apply deadlocked outright (design 2026-08-16 §1). base_play_dur()
+    # falls back to play_dur() for a hand-authored SP1 EDL, which has no scenario.
+    durs = [ep.base_play_dur() for ep in edl.episodes]
     best = None
     for path in music_jsons:
         m = MusicSpec.from_json(path)
