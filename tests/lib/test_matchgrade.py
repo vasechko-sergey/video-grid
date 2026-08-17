@@ -137,3 +137,35 @@ def test_plan_mixed_has_tone_pairs_per_index():
 def test_plan_refuses_mismatched_parallel_lists():
     with pytest.raises(ValueError, match="parallel lists"):
         matchgrade.plan([(10.0, 100.0, 150.0)], [False, True], TARGET)
+
+
+def test_biased_target_displaces_and_reports_a_full_scale():
+    """The real run's measured median, displaced by the moody vector. k == 1.0
+    means the whole displacement survived (design 2026-08-17 §5)."""
+    got, k = matchgrade.biased_target((49.5, 100.0, 194.5), (-18.0, -16.0, -8.0))
+    assert (got, k) == ((31.5, 84.0, 186.5), 1.0)
+
+
+def test_biased_target_scales_the_whole_vector_rather_than_clamping_one_anchor():
+    """Measured (design §5): at a median of (110, 170, 250) the epic vector cannot
+    have its +16 highlight lift, and clamping THAT anchor alone would leave
+    'crush the blacks' — a different mood. Scaling keeps the direction and loses
+    only magnitude, and k reports how much."""
+    got, k = matchgrade.biased_target((110.0, 170.0, 250.0), (-16.0, 0.0, 16.0))
+    assert k == pytest.approx(5.0 / 16.0)
+    assert got == pytest.approx((105.0, 170.0, 255.0))
+
+
+def test_biased_target_is_the_identity_at_a_zero_bias():
+    """The off switch: no mood -> the median is handed on untouched, so a run
+    without --spec authors exactly what it authored before this slice."""
+    t = (49.5, 100.0, 194.5)
+    assert matchgrade.biased_target(t, (0.0, 0.0, 0.0)) == (t, 1.0)
+
+
+def test_a_scaled_bias_below_the_floor_is_named_ineffective():
+    """5 luma units is under the conductor's own delivery error, so the grade
+    cannot show it. The stage does not refuse — it reports (design §5)."""
+    assert matchgrade.bias_ineffective((-16.0, 0.0, 16.0), 5.0 / 16.0) is True
+    assert matchgrade.bias_ineffective((-16.0, 0.0, 16.0), 1.0) is False
+    assert matchgrade.bias_ineffective((0.0, 0.0, 0.0), 1.0) is False

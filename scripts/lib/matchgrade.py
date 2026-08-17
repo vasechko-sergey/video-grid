@@ -48,6 +48,47 @@ def _repair_gaps(t: Profile, gap: float = color.TONE_MIN_GAP) -> Profile:
     return (p5, p50, p95)
 
 
+MOOD_FLOOR = 10.0      # luma units below which a displacement cannot be seen. Measured
+                       # (design 2026-08-17 §3): rendering an episode through the curve the
+                       # conductor authors lands 6.5-11.5 units from the target it asked
+                       # for, so a displacement smaller than that disappears into the
+                       # conductor's own error. Not a taste threshold — a resolution one.
+
+
+def biased_target(target: Profile, bias: tuple[float, float, float]) -> tuple[Profile, float]:
+    """Displace the common target by a mood's `bias`, scaled to stay inside 0-255.
+
+    Returns (displaced target, k) where k in [0, 1] is how much of the asked displacement
+    survived. SCALING THE WHOLE VECTOR is the contract, not clamping the offending anchor:
+    `epic` is "deep blacks AND bright highs", and clamping only its highlight lift would
+    silently ship "crush the blacks", which is a different mood (design §5). Scaling keeps
+    the direction and loses magnitude, and k lets the caller say so.
+
+    Measured across eight plausible reel medians: k == 1 on five, and scaling fires only on
+    bright targets and only for the two presets that push p95 up — at a median of
+    (110, 170, 250), fun keeps 0.62 and epic 0.31 of its vector. moody and nostalgic never
+    scale, because both pull inward.
+
+    A zero bias returns the target unchanged with k == 1.0 — the off switch a run without
+    --spec takes, identical to the pre-2026-08-17 conductor."""
+    if not any(bias):
+        return (tuple(float(v) for v in target), 1.0)
+    k = 1.0
+    for a, d in zip(target, bias):
+        if d and not (0.0 <= a + d <= 255.0):
+            limit = (255.0 - a) / d if d > 0 else (0.0 - a) / d
+            k = min(k, max(limit, 0.0))
+    return _repair_gaps(tuple(a + d * k for a, d in zip(target, bias))), k
+
+
+def bias_ineffective(bias: tuple[float, float, float], k: float,
+                     floor: float = MOOD_FLOOR) -> bool:
+    """True when scaling has taken the bias's LARGEST component under the floor — the grade
+    cannot show it, so the report must (design §5). Judged on the largest component because
+    a mood's smaller axes ride along with its dominant one."""
+    return bool(any(bias)) and max(abs(d) for d in bias) * k < floor
+
+
 def valid_src(profile: Profile, gap: float = color.TONE_MIN_GAP) -> bool:
     """Can this measured profile be a tone_src? color.tone_arg needs strictly increasing
     anchors >= `gap` apart. A low-contrast clip cannot, and its contrast cannot be invented
