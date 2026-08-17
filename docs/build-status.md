@@ -44,6 +44,17 @@ _Last updated: 2026-08-17._
   defect: `epic` is the only preset asking for *more* highlight headroom. Because
   it cannot be seen in the pixels, `MATCH.md` says `mood-bias-ineffective`.
 
+  **The branch's own review found a second bound the design had not looked at.**
+  Scaling handled the 0–255 ceiling and missed `color.TONE_MIN_GAP`: on a
+  **low-contrast** median, `nostalgic`'s +20 on p5 pushes past p50, `_repair_gaps`
+  quietly clamps it back, and `k` still reported **1.00** — 12–16 luma units lost
+  while the report claimed the displacement survived whole, which is exactly the
+  failure `k` exists to prevent. Both bounds now bind (one line of algebra: only a
+  pair whose bias *narrows* its gap can constrain `k`). Re-scanned over twelve
+  medians × four presets: **0 of 48 cells lose anything silently**, and where the
+  gap binds `k` falls and `mood-bias-ineffective` fires — a reel with no contrast
+  to spend cannot be given a faded look, and now it says so.
+
   **The visibility proof.** Same clip, same source profile, two targets:
   delivered (40, 97, 173) plain against (21, 80, 167) moody — deltas
   **−19 / −17 / −6** for an asked bias of (−18, −16, −8).

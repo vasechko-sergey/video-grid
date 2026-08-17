@@ -69,15 +69,26 @@ def biased_target(target: Profile, bias: tuple[float, float, float]) -> tuple[Pr
     (110, 170, 250), fun keeps 0.62 and epic 0.31 of its vector. moody and nostalgic never
     scale, because both pull inward.
 
+    TWO bounds bind, and the second was missed by this design's first cut: the 0-255
+    ceiling AND color.TONE_MIN_GAP between neighbouring anchors. On a low-contrast reel
+    median, nostalgic's +20 on p5 pushes past p50; _repair_gaps would quietly clamp it
+    back and k would still report 1.00, losing 12-16 luma units while claiming the bias
+    survived whole. Scaling against both means _repair_gaps has nothing left to fix here
+    and k speaks for the whole displacement.
+
     A zero bias returns the target unchanged with k == 1.0 — the off switch a run without
     --spec takes, identical to the pre-2026-08-17 conductor."""
     if not any(bias):
         return (tuple(float(v) for v in target), 1.0)
     k = 1.0
-    for a, d in zip(target, bias):
+    for a, d in zip(target, bias):                       # the 0-255 ceiling
         if d and not (0.0 <= a + d <= 255.0):
             limit = (255.0 - a) / d if d > 0 else (0.0 - a) / d
             k = min(k, max(limit, 0.0))
+    for (a0, d0), (a1, d1) in zip(zip(target, bias), list(zip(target, bias))[1:]):
+        delta = d1 - d0                                  # how the pair's gap changes per unit k
+        if delta < 0:                                    # only a NARROWING pair can bind
+            k = min(k, max(((a1 - a0) - color.TONE_MIN_GAP) / -delta, 0.0))
     return _repair_gaps(tuple(a + d * k for a, d in zip(target, bias))), k
 
 

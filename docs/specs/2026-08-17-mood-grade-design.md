@@ -131,6 +131,26 @@ sit near 250, `epic`'s bias is not merely weakened — it is invisible. The caus
 physical, not a defect: `epic` is the only preset asking for *more* highlight
 headroom, and that reel has none.
 
+### 5.1 · Two bounds, not one (as-built, found by this branch's review)
+
+The first cut scaled against the 0–255 ceiling alone and missed the second bound:
+`color.TONE_MIN_GAP` between neighbouring anchors. On a **low-contrast** reel
+median, `nostalgic`'s +20 on `p5` pushes past `p50`; `_repair_gaps` then quietly
+clamps it back to `p50 − 6` — and `k` still reported **1.00**. Measured: 12–16
+luma units lost while the report claimed the displacement survived whole. That is
+precisely the failure `k` exists to prevent, arriving through the door the design
+had not looked at.
+
+The pair constraint is one line of algebra. For adjacent anchors `(a₀, a₁)` with
+biases `(d₀, d₁)`, the displaced gap is `(a₁ − a₀) + k·(d₁ − d₀)`, so only a pair
+whose bias *narrows* it can bind, at `k ≤ ((a₁ − a₀) − gap) / −(d₁ − d₀)`.
+
+Scanned over twelve medians (the eight of §5 plus four low-contrast ones) × four
+presets: **0 of 48 cells lose anything silently.** Where the gap binds, `k` falls
+and `bias_ineffective` fires — on `(49.5, 60, 194.5)` `nostalgic` scales to 0.225,
+i.e. 4.5 units, and is correctly reported invisible. A reel with no contrast to
+spend cannot be given a faded look, and now it says so.
+
 Because it is invisible in the pixels, it must be visible in the report.
 `MATCH.md` gains the bias, the scale `k`, and — when `k` scales the largest
 component below the floor — a named `mood-bias-ineffective` note. The stage does

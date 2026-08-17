@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.lib import matchgrade
+from scripts.lib import color, matchgrade
 
 
 def test_common_target_is_the_per_anchor_median_odd_count():
@@ -169,3 +169,18 @@ def test_a_scaled_bias_below_the_floor_is_named_ineffective():
     assert matchgrade.bias_ineffective((-16.0, 0.0, 16.0), 5.0 / 16.0) is True
     assert matchgrade.bias_ineffective((-16.0, 0.0, 16.0), 1.0) is False
     assert matchgrade.bias_ineffective((0.0, 0.0, 0.0), 1.0) is False
+
+
+def test_biased_target_scales_for_the_GAP_bound_not_only_the_0_255_one():
+    """Found reviewing this slice's own diff. The first cut scaled only against
+    0-255, so on a LOW-CONTRAST reel median nostalgic's +20 on p5 pushed past p50,
+    _repair_gaps quietly clamped it back, and k still reported 1.00 — the bias lost
+    12-16 luma units while the report claimed it survived whole. Both bounds bind,
+    and k must speak for both."""
+    t = matchgrade._repair_gaps((49.5, 60.0, 194.5))     # p50-p5 is only 10.5
+    got, k = matchgrade.biased_target(t, (20.0, 0.0, -18.0))
+    assert k == pytest.approx((10.5 - color.TONE_MIN_GAP) / 20.0)     # the gap, not the ceiling
+    assert got[1] - got[0] == pytest.approx(color.TONE_MIN_GAP)       # lands exactly on it
+    assert got == pytest.approx((54.0, 60.0, 190.45))
+    # and because 20 * 0.225 = 4.5 is under the floor, the report must call it out
+    assert matchgrade.bias_ineffective((20.0, 0.0, -18.0), k) is True

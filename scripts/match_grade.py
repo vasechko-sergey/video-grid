@@ -21,7 +21,10 @@ def conduct(edl: EDL, footage_root: str, *, eps: float = matchgrade.MATCH_EPS,
             ) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision], float]:
     """Measure each episode's source at its window MIDPOINT (start + dur/2 — a settled,
     representative frame of the shipped window; a WHOLE frame, not the crop — see design §5),
-    compute the common target, and return (enriched EDL, target, decisions). The decisions
+    compute the common target, and return (enriched EDL, target, decisions, bias scale). The
+    scale is 1.0 unless a mood displacement had to be shrunk to fit (see biased_target); it
+    is returned rather than swallowed because a weakened displacement is invisible in the
+    pixels and the report is the only place it can be seen. The decisions
     carry each measured profile, so write_match writes the report with no second measure.
     Applying through dataclasses.replace rebuilds each EDLEpisode (re-coercing the tone
     pair to tuples). The pair's VALIDITY — ordering, gap, 0-255 range — is not gated here:
