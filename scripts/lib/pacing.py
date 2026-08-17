@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
 
-from scripts.lib import gridfit
+from scripts.lib import gridfit, provenance
 
 KINDS = ("hook", "build", "peak", "release")
 _TOL = 1e-6
@@ -93,6 +93,13 @@ class Spine:
     slots: tuple
     target_dur: float
     tempo: float
+    music_digest: str = ""   # identity of the analysed music WINDOW this spine was fitted
+                             # to (design 2026-08-16 §4): music_identity() of the track
+                             # file's own digest plus start_offset and duration. "" = not
+                             # recorded — a PACING.json written before this slice, or one
+                             # whose track file could not be read — and edit_plan then says
+                             # so by name and falls back to comparing tempo, which cannot
+                             # see a start_offset change at all.
 
     def __post_init__(self) -> None:
         if not isinstance(self.slots, tuple) or not self.slots:
@@ -120,11 +127,16 @@ class Spine:
                              f"{self.target_dur} — the spine must cover the fragment exactly")
         if isinstance(self.tempo, bool) or not isinstance(self.tempo, (int, float)) or self.tempo <= 0:
             raise ValueError(f"Spine.tempo must be a positive BPM, got {self.tempo!r}")
+        if not isinstance(self.music_digest, str):
+            raise ValueError(f"Spine.music_digest must be a string (the analysed music "
+                             f"window's identity, or '' when it was not recorded), got "
+                             f"{self.music_digest!r} — re-run pacing to regenerate PACING.json")
         object.__setattr__(self, "target_dur", float(self.target_dur))
         object.__setattr__(self, "tempo", float(self.tempo))
 
     def to_dict(self) -> dict:
         return {"target_dur": self.target_dur, "tempo": self.tempo,
+                "music_digest": self.music_digest,
                 "slots": [s.to_dict() for s in self.slots]}
 
     @classmethod
@@ -141,7 +153,8 @@ class Spine:
                 raise ValueError(f"Spine.from_dict missing key {k!r} — a spine needs "
                                  f"target_dur, tempo, slots")
         return cls(slots=tuple(Slot.from_dict(s) for s in d["slots"]),
-                   target_dur=d["target_dur"], tempo=d["tempo"])
+                   target_dur=d["target_dur"], tempo=d["tempo"],
+                   music_digest=d.get("music_digest", ""))
 
     @classmethod
     def from_json(cls, path) -> "Spine":
@@ -158,6 +171,28 @@ class Spine:
             lines.append(f"| {s.index} | {s.start:.2f}–{s.start + s.dur:.2f} | "
                          f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} | {line} | {dev} |")
         return "\n".join(lines) + "\n"
+
+
+def music_identity(track: str, start_offset: float, duration: float) -> str:
+    """Identity of an analysed music WINDOW — the digest a Spine records and edit_plan
+    checks (design 2026-08-16 §4).
+
+    The track file's CONTENT digest (so moving a run directory does not invalidate it)
+    plus the window's own in-point and length. Both halves are load-bearing: `tempo`
+    alone cannot tell two tracks at the same BPM apart, and neither tempo NOR a
+    track-only digest can see the same track analysed at a different `start_offset`,
+    which moves every reel-relative grid line while the BPM stays bit-identical.
+
+    Returns "" when the track file cannot be read — a NAMED not-checked, never a
+    coincidental match. The caller must say so and fall back rather than treat "" as
+    agreement."""
+    try:
+        track_digest = provenance.digest_file(track)
+    except OSError:
+        return ""
+    return provenance.digest_obj({"track": track_digest,
+                                  "start_offset": float(start_offset),
+                                  "duration": float(duration)})
 
 
 LOW_BAND, HIGH_BAND = 0.33, 0.66          # normalized-energy band thresholds

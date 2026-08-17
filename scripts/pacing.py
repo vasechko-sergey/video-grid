@@ -6,6 +6,7 @@ music windows, fit the cuts onto the coarsest reachable grid, write PACING.{json
 The stage runs AFTER edit-plan, not before it: the cuts are the input, the grid is the
 output. edit_plan then re-runs with --pacing to apply the fit."""
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from scripts.lib import anchors, gridfit, pacing, ramp as ramp_mod
 from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage
 from scripts.lib.models import MusicSpec, RampSpec
+from scripts.lib.pacing import music_identity
 
 
 def _log(msg: str) -> None:
@@ -99,8 +101,15 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
         # window that fits, and ties break on the smaller worst deviation.
         rank = (fit.level_n if fit.fits else 0, -fit.worst)
         if best is None or rank > best[0]:
-            best = (rank, spine, fit, rejected, path)
-    _rank, spine, fit, rejected, music_path = best
+            best = (rank, spine, fit, rejected, path, m)
+    _rank, spine, fit, rejected, music_path, music = best
+    # Bind the spine to the WINDOW it was fitted to, not merely to a BPM (design §4).
+    digest = music_identity(music.track, music.start_offset, music.duration)
+    if not digest:
+        _log(f"pacing: {music.track!r} could not be read, so PACING.json records no "
+             f"music_digest — edit_plan will fall back to comparing tempo, which cannot "
+             f"see a start_offset change. That is a not-checked, not a 'same track'")
+    spine = dataclasses.replace(spine, music_digest=digest)
     if not fit.fits:
         _log(f"pacing: no level fits — best is {fit.level} with a worst cut of "
              f"{fit.worst:.3f}s. Try another window (beats --auto-start), another "

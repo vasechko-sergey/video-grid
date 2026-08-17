@@ -248,7 +248,7 @@ def test_write_edit_plan_wrong_shaped_footage_raises_valueerror_not_attributeerr
 
 
 from scripts.lib import pacing
-from scripts.lib.pacing import Slot, Spine
+from scripts.lib.pacing import Slot, Spine, music_identity
 
 
 def _sel3():
@@ -1497,3 +1497,67 @@ def test_bind_pacing_names_the_arm_when_an_episode_has_no_base_dur():
                   target_dur=4.0, tempo=120.0)
     with pytest.raises(ValueError, match="carries no `base_dur`"):
         edit_plan._bind_pacing([ep], spine)
+
+
+# --- music_digest: bind a spine to the music WINDOW it was fitted to (design
+# 2026-08-16-pacing-fixed-point-design.md §4). `_spine` (line ~943, a list-of-durations
+# binding helper) and `_footage` (line ~73, the two-clip A.mp4/B.mp4 fixture) already
+# name unrelated fixtures elsewhere in this file, so the digest fixtures below are
+# `_digest_spine`/`_digest_footage` instead of shadowing them; `_music`/`_selection` are
+# free names, kept exactly as named in task-3-brief.md. -------------------------------
+
+
+def _digest_spine(tempo=120.0, digest=""):
+    return Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook", line=4.0, dev=0.0),),
+                 target_dur=4.0, tempo=tempo, music_digest=digest)
+
+
+def _music(tmp_path, tempo=120.0, offset=0.0, track=None):
+    # Beat count DERIVED from the window: MusicSpec refuses a beat outside
+    # [0, duration], and at 110 BPM a hardcoded 40 beats overruns a 20s window.
+    if track is None:
+        track = tmp_path / "t.wav"
+        track.write_bytes(b"bytes")
+    step = 60.0 / tempo
+    return MusicSpec(track=str(track), start_offset=offset, duration=20.0, tempo=tempo,
+                     beats=tuple(i * step for i in range(int(20.0 / step))),
+                     energy=(0.3,) * 10, energy_hz=2.0)
+
+
+def _digest_footage(tmp_path, window_dur=4.0):
+    return Footage(clips=[FootageClip(source="a.mp4", dur=20.0, res=(640, 360), fps=30.0,
+                                      windows=[FootageWindow(start=0.0, dur=window_dur,
+                                                             shot_type="wide", people=1,
+                                                             motion=0.3, shake=0.0)])])
+
+
+def _selection():
+    return {"episodes": [{"source": "a.mp4", "window": 0,
+                          "composition": "lead", "grid": "thirds"}]}
+
+
+def test_build_edl_refuses_a_spine_fitted_to_a_different_music_window(tmp_path):
+    # SAME track, SAME tempo, different in-point: the tempo check cannot see this.
+    m = _music(tmp_path, offset=147.772)
+    stale = music_identity(m.track, 46.0, m.duration)
+    with pytest.raises(ValueError, match="fitted to a different music window"):
+        edit_plan.build_edl(_digest_footage(tmp_path), _selection(),
+                            pacing=_digest_spine(digest=stale), music=m)
+
+
+def test_build_edl_binds_when_the_window_identity_matches(tmp_path):
+    m = _music(tmp_path)
+    good = music_identity(m.track, m.start_offset, m.duration)
+    edl = edit_plan.build_edl(_digest_footage(tmp_path), _selection(),
+                              pacing=_digest_spine(digest=good), music=m)
+    assert edl.episodes[0].beat_slot == 0
+
+
+def test_build_edl_names_the_not_checked_arm_and_falls_back_to_tempo(tmp_path, capsys):
+    m = _music(tmp_path, tempo=110.0)
+    with pytest.raises(ValueError, match="belongs to a DIFFERENT track"):
+        edit_plan.build_edl(_digest_footage(tmp_path), _selection(),
+                            pacing=_digest_spine(tempo=140.625), music=m)
+    err = capsys.readouterr().err
+    assert "music identity not-checked" in err
+    assert "records no music_digest" in err

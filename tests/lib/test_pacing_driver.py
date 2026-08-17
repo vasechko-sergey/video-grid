@@ -10,6 +10,7 @@ from scripts.lib import pacing as pacing_lib
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 from scripts.lib.models import MusicSpec
+from scripts.lib.pacing import music_identity
 
 
 def _write(path, obj):
@@ -310,3 +311,19 @@ def test_the_grow_bound_is_measured_from_the_scenario_length(tmp_path):
     footage = _footage_json(tmp_path, clip_dur=4.1)
     lo, hi = pacing_driver._bounds(EDL.from_json(edl), Footage.from_json(footage), 0.25)[0]
     assert (round(lo, 4), round(hi, 4)) == (-0.25, 0.1)
+
+
+def test_build_pacing_records_the_music_window_identity(tmp_path):
+    mj = _music_json(tmp_path)
+    res = pacing_driver.build_pacing(_edl_json(tmp_path, dur=4.0, base_dur=4.0),
+                                     _footage_json(tmp_path), [mj], str(tmp_path / "out"))
+    m = MusicSpec.from_json(mj)
+    assert res["spine"].music_digest == music_identity(m.track, m.start_offset, m.duration)
+
+
+def test_build_pacing_says_so_when_the_track_cannot_be_hashed(tmp_path, capsys):
+    mj = _music_json(tmp_path, track=tmp_path / "gone.wav")
+    res = pacing_driver.build_pacing(_edl_json(tmp_path, dur=4.0, base_dur=4.0),
+                                     _footage_json(tmp_path), [mj], str(tmp_path / "out"))
+    assert res["spine"].music_digest == ""
+    assert "records no music_digest" in capsys.readouterr().err

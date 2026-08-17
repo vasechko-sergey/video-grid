@@ -24,7 +24,7 @@ from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES,
 from scripts.lib.look import LookSpec
 from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
-from scripts.lib.pacing import Spine
+from scripts.lib.pacing import Spine, music_identity
 from scripts.lib.project import ProjectConfig
 from scripts.lib.spec import Spec
 
@@ -448,10 +448,16 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     it lets `_apply_outro` move the LAST episode's end so the reel's length resolves on a
     bar line, but ONLY when `pacing` is also supplied: the fit runs after `_bind_pacing`
     and reads the fade `look` resolves to (never through a slot — see `_apply_outro`'s own
-    docstring). Supplying both also raises ValueError when `pacing.tempo` and
-    `music.tempo` differ by more than `_TEMPO_TOL` (0.5 BPM) — this PACING.json was
-    fitted to a DIFFERENT track (design 2026-08-15 §2.2). Omitting `music` (the default)
-    leaves EDL.outro at None, same as a hand-authored SP1 EDL. `brief_len` is
+    docstring). Supplying both also runs the identity ladder (design 2026-08-16 §4.2):
+    when both `pacing.music_digest` and this MUSIC.json's own `music_identity()` are
+    recorded and they disagree, build_edl raises ValueError naming both digests — equal
+    tempo does not prove the same track, and the SAME track at a different start_offset
+    moves every grid line while the BPM stays identical. When either side has no digest
+    (a PACING.json written before this slice, or a track file that cannot be read), the
+    ladder logs a NAMED not-checked and falls back to the OLD proxy: ValueError when
+    `pacing.tempo` and `music.tempo` differ by more than `_TEMPO_TOL` (0.5 BPM) — this
+    PACING.json belongs to a DIFFERENT track (design 2026-08-15 §2.2). Omitting `music`
+    (the default) leaves EDL.outro at None, same as a hand-authored SP1 EDL. `brief_len` is
     SPEC.length_s, the tie-breaker `outro.fit_outro` prefers when two bar lines are
     equally reachable; None (no brief) breaks ties toward the smaller move instead."""
     eps_in = selection.get("episodes")
@@ -498,17 +504,33 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         _log("outro: --music was supplied without --pacing — the outro fit runs only "
              "after the pacing binding, so NOTHING was fitted and EDL.outro stays null. "
              "Run pacing first, then re-run this with --pacing AND --music")
-    if music is not None and pacing is not None and abs(pacing.tempo - music.tempo) > _TEMPO_TOL:
-        # The one live defect behind "the length figures do not reconcile" (design
-        # 2026-08-15 §2). _bind_pacing's half-beat guard is a DURATION guard: it fires only
-        # once a stale spine is actually bound, and it never says which track the spine
-        # came from. The 2026-08-03 run shipped a 140.625 BPM spine against a 110.294 BPM
-        # reel and no stage objected.
-        raise ValueError(
-            f"pacing: the spine was fitted at {pacing.tempo:.3f} BPM but this MUSIC.json is "
-            f"{music.tempo:.3f} BPM — further apart than the {_TEMPO_TOL} BPM two reads of "
-            f"one track can differ by, so this PACING.json belongs to a DIFFERENT track. "
-            f"Re-run pacing against this MUSIC.json before binding")
+    if music is not None and pacing is not None:
+        # Identity first, tempo only as a fallback rung (design 2026-08-16 §4.2). The
+        # tempo proxy shipped a 140.625 BPM spine against a 110.294 BPM reel in the
+        # 2026-08-03 run and no stage objected — but it also cannot see the SAME track
+        # at a different start_offset, which moves every grid line.
+        want = music_identity(music.track, music.start_offset, music.duration)
+        if pacing.music_digest and want and pacing.music_digest != want:
+            raise ValueError(
+                f"pacing: this PACING.json was fitted to a different music window — it "
+                f"records {pacing.music_digest[:12]}… and this MUSIC.json hashes to "
+                f"{want[:12]}…. Equal tempo does not prove the same track, and the SAME "
+                f"track at a different start_offset moves every grid line while the BPM "
+                f"stays identical. Re-run pacing against this MUSIC.json before binding")
+        if not (pacing.music_digest and want):
+            why = ("this PACING.json records no music_digest (written before the "
+                   "2026-08-16 fixed-point slice)" if not pacing.music_digest
+                   else f"{music.track!r} could not be read")
+            _log(f"pacing: music identity not-checked — {why}; falling back to the "
+                 f"{_TEMPO_TOL} BPM tempo comparison, which cannot see a start_offset "
+                 f"change")
+            if abs(pacing.tempo - music.tempo) > _TEMPO_TOL:
+                raise ValueError(
+                    f"pacing: the spine was fitted at {pacing.tempo:.3f} BPM but this "
+                    f"MUSIC.json is {music.tempo:.3f} BPM — further apart than the "
+                    f"{_TEMPO_TOL} BPM two reads of one track can differ by, so this "
+                    f"PACING.json belongs to a DIFFERENT track. Re-run pacing against "
+                    f"this MUSIC.json before binding")
     if pacing is not None:
         episodes = _bind_pacing(episodes, pacing)
         # Measured BEFORE the fit moves anything: the override below must be able to tell

@@ -1,8 +1,10 @@
 """pacing core — pure stdlib, no librosa/numpy; exact-slot asserts (bit-exact)."""
+import dataclasses
+
 import pytest
 
 from scripts.lib import pacing
-from scripts.lib.pacing import Slot, Spine
+from scripts.lib.pacing import Slot, Spine, music_identity
 
 
 def test_slot_round_trips():
@@ -251,3 +253,40 @@ def test_the_ladder_is_gone():
         assert not hasattr(pacing, dead), (
             f"{dead} survived: the 2/4/8 ladder generated cut LENGTHS, which the "
             "material now owns (design 2026-07-24 §5)")
+
+
+# --- music_digest: bind a spine to the music WINDOW it was fitted to (design
+# 2026-08-16-pacing-fixed-point-design.md §4) -----------------------------------------
+
+
+def test_spine_music_digest_defaults_to_empty_and_round_trips():
+    s = Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook"),), target_dur=4.0, tempo=120.0)
+    assert s.music_digest == ""
+    assert s.to_dict()["music_digest"] == ""
+    s2 = dataclasses.replace(s, music_digest="abc")
+    assert Spine.from_dict(s2.to_dict()) == s2
+
+
+def test_spine_from_dict_accepts_a_pacing_json_written_before_the_digest():
+    d = Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook"),), target_dur=4.0, tempo=120.0).to_dict()
+    d.pop("music_digest")
+    assert Spine.from_dict(d).music_digest == ""
+
+
+def test_spine_refuses_a_non_string_digest():
+    with pytest.raises(ValueError, match="music_digest must be a string"):
+        Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook"),), target_dur=4.0, tempo=120.0,
+              music_digest=7)
+
+
+def test_music_identity_separates_two_windows_of_the_same_track(tmp_path):
+    t = tmp_path / "t.wav"
+    t.write_bytes(b"same bytes both times")
+    a = music_identity(str(t), 46.0, 42.0)
+    b = music_identity(str(t), 147.772, 42.0)
+    assert a and b and a != b
+    assert music_identity(str(t), 46.0, 42.0) == a          # deterministic
+
+
+def test_music_identity_is_empty_when_the_track_cannot_be_read(tmp_path):
+    assert music_identity(str(tmp_path / "missing.wav"), 0.0, 42.0) == ""
