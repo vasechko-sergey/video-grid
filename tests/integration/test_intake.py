@@ -169,21 +169,28 @@ def _fake_ramped_frames(n: int, step: int):
     coordinates, for the same reason _fake_frames documents."""
     frames, x = [], 150.0
     for i in range(n):
-        if i and i % step == 0 and (i // step) % 5 == 2:
-            x += 30.0
-        elif i and i % step == 0:
-            x += 3.0
+        if i and i % step == 0:
+            x += 30.0 if (i // step) % 5 == 2 else 3.0
         frames.append(_FakeRes([_FakeBox([x, 250, 100, 150], 1)]))
     return frames
 
 
+@pytest.mark.skipif(not _has_vidstab(), reason="needs vidstab-enabled ffmpeg (bash setup.sh)")
 def test_a_long_clip_carves_a_real_window_pool(monkeypatch, tmp_path,
                                                multi_window_clip):
     """The proof `sample_clip` is structurally unable to give (design 2026-08-17
     §4): enough windows to clear CLIP_POOL_MIN, so score_pool takes its
     clip-relative branch and `score` can be read as the percentile it claims to
-    be. Real ffprobe + real PySceneDetect (cuts measured at [5.0, 9.5]) + real
-    phash; the detection stream is faked, as everywhere else in this file."""
+    be.
+
+    Real ffprobe + real PySceneDetect (cuts measured at [5.0, 9.5]) + real phash
+    + REAL vidstabdetect — the last one deliberately, and it is why this test
+    carries the skipif. score_pool blends TWO ranked inputs, motion and shake;
+    faking `detect` to return no magnitudes would give every window the same
+    shake, so the score separation asserted below would come from motion alone
+    and the proof would cover half of what it claims. The detection stream is
+    still faked, as everywhere else in this file and for the reason the module
+    docstring gives."""
     root = tmp_path / "footage"; root.mkdir()
     shutil.copy(multi_window_clip, root / "clip.mp4")
     monkeypatch.setattr(intake, "_iter_seg",
@@ -191,8 +198,6 @@ def test_a_long_clip_carves_a_real_window_pool(monkeypatch, tmp_path,
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake.reid, "embed",
                         lambda crops: [[0.0] * 512 for _ in crops])
-    monkeypatch.setattr(intake.vidstab, "require", lambda: None)
-    monkeypatch.setattr(intake.vidstab, "detect", lambda *a, **k: [])
     out = tmp_path / "run"; out.mkdir()
     fo = intake.intake(str(root), str(out), jobs=1)
     windows = fo.clips[0].windows

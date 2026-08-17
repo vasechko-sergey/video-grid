@@ -447,9 +447,12 @@ def test_a_broken_constraints_file_reports_rather_than_raises(tmp_path):
     assert "bogus" in res["constraints"]["error"]
 
 
-def test_status_softens_nothing_the_gate_still_refuses(tmp_path):
-    # The load path keeps its refusal, so write_edit_plan's no-waiver gate — which
-    # stands on exactly this call — is untouched by status catching it.
+def test_status_softens_nothing_the_loader_still_refuses(tmp_path):
+    # _constraints catches the refusal for its own report; the LOADER it calls
+    # must keep raising, because write_edit_plan's no-waiver gate stands on
+    # exactly this call. This pins the shared mechanism — the gate itself is
+    # proven separately by test_edit_plan.py's
+    # test_write_edit_plan_propagates_a_corrupt_rule_file.
     (tmp_path / "CONSTRAINTS.json").write_text('{"rules": [{"kind": "bogus", "stated": "no idea"}]}')
     with pytest.raises(ValueError, match="bogus"):
         constraints.Constraints.from_json(tmp_path / "CONSTRAINTS.json")

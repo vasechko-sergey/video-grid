@@ -66,6 +66,13 @@ _Last updated: 2026-08-17._
   `[5.0, 9.5]`, spans 5.0 / 4.5 / 2.5, two into `units_for_span`'s peak branch
   and one in-band, **9** windows against `CLIP_POOL_MIN = 5`. The vacuity
   check ran: pointed at `sample_clip` the new test fails at once.
+  **Real `vidstabdetect`, found by this slice's own review** — the first draft
+  faked `detect` to return no magnitudes, which gives every window the SAME
+  shake, and `score_pool` blends two ranked inputs. The proof would have
+  covered half of what it claims. With the real detector: **7** distinct shake
+  values, 4 distinct motion, 8 distinct scores spanning 0.0–1.0. It costs the
+  test a `skipif` on libvidstab, which the file already carries for its other
+  real-vidstab test.
 
   **The ramp row was re-sized, not carried.** `docs/backlog.md` sized
   "auto-place a ramp's `at` from the action anchors" **S** because
