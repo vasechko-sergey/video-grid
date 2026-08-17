@@ -32,6 +32,11 @@ class MoodPreset:
     shot_mix: dict[str, float]        # a distribution over SHOT_TYPES, summing to 1.0
     asl: tuple[float, float]          # (lo, hi) seconds — reported, never enforced
     look: LookSpec = field(default_factory=LookSpec)   # the reel's finish (design 2026-08-13 §6)
+    # (p5, p50, p95) luma-unit displacement of the reel's common tone target (design
+    # 2026-08-17 §4). Hand-authored FIRST CUT at ~15-20 units — above the conductor's
+    # own measured 6.5-11.5-unit delivery error (§3), which is the real floor and is
+    # why a subtle table cannot work here. Spent by match_grade, never by edit_plan.
+    tone_bias: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
         if not (isinstance(self.name, str) and self.name):
@@ -58,6 +63,11 @@ class MoodPreset:
         if not isinstance(self.look, LookSpec):
             raise ValueError(f"MoodPreset.look must be a LookSpec, got "
                              f"{type(self.look).__name__}")
+        if not (isinstance(self.tone_bias, (tuple, list)) and len(self.tone_bias) == 3
+                and all(_num(v) for v in self.tone_bias)):
+            raise ValueError(f"MoodPreset.tone_bias must be three numbers — a (p5, p50, p95) "
+                             f"luma displacement — got {self.tone_bias!r}")
+        self.tone_bias = tuple(float(v) for v in self.tone_bias)
 
 
 # Hand-tuned FIRST CUT. No footage has been cut against these numbers, so they live
@@ -66,16 +76,20 @@ class MoodPreset:
 PRESETS: tuple[MoodPreset, ...] = (
     MoodPreset("fun", mood.MoodVector(0.74, 0.84, 0.72),
                {"close": 0.35, "medium": 0.40, "wide": 0.25}, (1.2, 2.5),
-               look=LookSpec(vignette=0.00, fade=0.3)),
+               look=LookSpec(vignette=0.00, fade=0.3),
+               tone_bias=(10.0, 18.0, 8.0)),        # brighter and airier
     MoodPreset("epic", mood.MoodVector(0.80, 0.55, 0.55),
                {"close": 0.25, "medium": 0.35, "wide": 0.40}, (1.5, 3.5),
-               look=LookSpec(vignette=0.30, fade=0.8)),
+               look=LookSpec(vignette=0.30, fade=0.8),
+               tone_bias=(-16.0, 0.0, 16.0)),       # wider contrast, both ends
     MoodPreset("moody", mood.MoodVector(0.48, 0.22, 0.42),
                {"close": 0.30, "medium": 0.35, "wide": 0.35}, (2.5, 5.0),
-               look=LookSpec(vignette=0.40, fade=1.0)),
+               look=LookSpec(vignette=0.40, fade=1.0),
+               tone_bias=(-18.0, -16.0, -8.0)),     # darker and crushed, low key
     MoodPreset("nostalgic", mood.MoodVector(0.32, 0.45, 0.34),
                {"close": 0.35, "medium": 0.40, "wide": 0.25}, (2.0, 4.0),
-               look=LookSpec(vignette=0.25, fade=0.8)),
+               look=LookSpec(vignette=0.25, fade=0.8),
+               tone_bias=(20.0, 0.0, -18.0)),       # faded: lifted blacks, pulled highs
 )
 
 # The no-match fallback. Its close share is deliberately above WANT_FLOOR (a skipped
@@ -93,6 +107,12 @@ PRESETS: tuple[MoodPreset, ...] = (
 # corrected post-review 2026-08-13 (final-findings.md I-2); it used to read
 # LookSpec(vignette=0.0, fade=0.5) and write_edit_plan applied it unconditionally,
 # which put a real fade=t=in/fade=t=out pair on every autonomous reel's picture.
+#
+# tone_bias takes its zero default for exactly the reason spelled out above for look:
+# a brief that was skipped or matched nothing must not have a TASTE imposed on it. Here
+# the zero is safe in a way LookSpec()'s is not — match_grade tests preset.name against
+# "balanced" and never reads this field for the fallback, and a zero displacement is the
+# identity through matchgrade.biased_target either way (design 2026-08-17 §1).
 BALANCED = MoodPreset("balanced", None,
                       {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0),
                       look=LookSpec())

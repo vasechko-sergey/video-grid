@@ -172,3 +172,22 @@ def test_look_must_be_a_lookspec():
     with pytest.raises(ValueError, match="MoodPreset.look must be a LookSpec"):
         MoodPreset("x", None, {"close": 0.3, "medium": 0.4, "wide": 0.3}, (1.0, 2.0),
                    look={"vignette": 0.3})
+
+
+def test_every_preset_carries_a_tone_bias_and_balanced_carries_none():
+    """The bias is a taste, so the no-match fallback must not have one — the same
+    rule BALANCED.look already states: a skipped brief must not silently impose a
+    look (design 2026-08-17 §1)."""
+    assert moodpreset.BALANCED.tone_bias == (0.0, 0.0, 0.0)
+    assert {p.name: p.tone_bias for p in moodpreset.PRESETS} == {
+        "fun": (10.0, 18.0, 8.0),
+        "epic": (-16.0, 0.0, 16.0),
+        "moody": (-18.0, -16.0, -8.0),
+        "nostalgic": (20.0, 0.0, -18.0),
+    }
+
+
+def test_tone_bias_must_be_three_numbers():
+    with pytest.raises(ValueError, match="tone_bias"):
+        moodpreset.MoodPreset("x", None, {"close": 0.3, "medium": 0.4, "wide": 0.3},
+                              (1.0, 2.0), tone_bias=(1.0, 2.0))
