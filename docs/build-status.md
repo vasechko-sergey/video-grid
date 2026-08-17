@@ -4,13 +4,110 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-16._
+_Last updated: 2026-08-17._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Pacing fixed point — make the fit-then-apply round trip a fixed point, and
+  stop the length absorb from overwriting a length the outro fit chose DONE
+  (2026-08-17)** — plan `docs/plans/2026-08-16-pacing-fixed-point.md` + design
+  `docs/specs/2026-08-16-pacing-fixed-point-design.md`, Tasks 0–7 (branch
+  `feat/pacing-fixed-point`, commits `587fe8c`..`a4a68d8` + this docs sync).
+  Backlog P2 "Make pacing's round trip a fixed point again" and P2 "Reconcile
+  `build_reel`'s length re-time with the outro fit" both close; the P3 Music
+  row "measure the delivered fade's real distance from `EDL.outro.line`"
+  closes for free alongside them.
+
+  **Why it was broken, measured.** `pacing.build_pacing` fit
+  `[ep.play_dur() for ep in edl.episodes]` — the durations already written
+  into `EDL.json` by an earlier bind or outro fit, not the scenario's own
+  lengths — so the stage fit its own previous output. The already-queued half
+  of this was a hard deadlock: after an outro fit the closing episode's `dur`
+  is a length footage re-projection cannot reproduce, so re-applying a re-fit
+  spine raised `slot 1 is 4.70s against a 4.00s episode` and the documented
+  three-command detour was the only way out. A second, silent defect surfaced
+  only while designing the fix: re-fitting an already-fitted EDL against a
+  DIFFERENT music window does not converge on the scenario's own answer —
+  measured on the real `fit_spine`, a scenario `[5.77, 3.41, 6.02, 4.88]` fit
+  to 128 BPM and then re-fit to 110 BPM lands on beats `10/16/27`, where
+  fitting the SCENARIO straight to 110 BPM lands on `11/17/28` — the whole
+  reel **0.5455s short**. Not rounding: from the raw 5.77s the 6.0s line is
+  0.23s away, inside the 110 BPM allowance; from the already-snapped 5.625s
+  the same line is 0.375s away and unreachable. And it fires on precisely the
+  workflow `build_pacing`'s own report recommends when no grid level fits:
+  "Try another window (beats --auto-start)".
+
+  **The fix.** `EDLEpisode.base_dur` — the footage-projected length —
+  recorded ONCE by `window_to_episode` and never rewritten (`_bind_pacing`
+  and `_apply_outro` both go through `dataclasses.replace`, which carries it
+  across untouched). `base_play_dur()` adds back the ramp extra so a ramped
+  episode's SCENARIO played length stays exact. `pacing.build_pacing`,
+  `pacing._bounds`, and `edit_plan._bind_pacing`'s half-beat guard all read
+  through it instead of the bound `dur` — the spine becomes a pure function
+  of `(base, music)`, the bound `dur` a pure function of `(spine, ramp
+  extra)`, so fit → apply → fit → apply reproduces the same `EDL.json` for
+  any number of repetitions (design §3.1, proven end to end in
+  `tests/lib/test_pacing_fixed_point.py` — five real driver calls, EDL **A**
+  and **B** byte-identical, no ffmpeg needed since neither driver decodes a
+  frame). An `EDL.json` written before this slice has no `base_dur`; it keeps
+  the old deadlock, and the refusal message now names that arm by name rather
+  than leaving a reader to guess whether the fix applies.
+
+  **`Spine.music_digest`.** A spine now binds to the music WINDOW it was
+  fitted to — `music_identity()` hashes the track's own content plus
+  `start_offset` and `duration` — not merely its tempo, because the SAME
+  track analysed at a different in-point moves every reel-relative grid line
+  while the BPM stays bit-identical. `build_edl`'s ladder: matching digests
+  bind, disagreeing digests refuse naming both, and either side missing (an
+  old `PACING.json`, or an unreadable track) logs a NAMED not-checked and
+  falls back to the old `_TEMPO_TOL` tempo proxy — weaker, and says so rather
+  than reporting agreement it never measured.
+
+  **The absorb refusal.** `build_reel`'s within-band length absorb justifies
+  itself as "the reel IS that long, so the target was wrong" — false when an
+  outro fit CHOSE the target as `line + fade`. `reel_orchestration.next_action`
+  gains `outro_fixed`; a within-band shortfall now escalates to `pacing`
+  (reason `outro-length-chosen`) instead of silently moving the fade off the
+  bar line — `length_retime_max` is 1.0s, as wide as the 0.96s miss the whole
+  outro slice exists to fix. `check_reel` gains an advisory `outro` check
+  measuring the residual for free (`total` was already probed for the length
+  gate); its `passed` flag keys on `_LENGTH_TOL` (0.5s — not "a fraction of a
+  frame", the framing music-outro-fit's own deferral had assumed).
+
+  **The mutation battery.** 22 rows — the plan's 20 plus two folded in from
+  the earlier tasks' own reviews — every one watched red, then green after
+  hand-reverting. One flagged row (`build_reel` dropping the outro rung test
+  down to a bare `is not None`) turned out to already be closed by a test
+  added during Task 5's own review round. Two rows needed a genuinely new
+  test: the digest ladder's SILENT-SUCCESS leg (a pre-slice `PACING.json`
+  with an empty `music_digest`, plus a readable, tempo-matching `MUSIC.json`,
+  must still bind — every prior test only ever exercised the both-sides-empty
+  leg) and `reel_orchestration`'s escalate-wins-the-round guarantee under a
+  simultaneous reprocess-class failure with `outro_fixed=True` (a length
+  shortfall that would otherwise legitimately ride along with a colour
+  reprocess must not, once the outro fit chose the length). Both were
+  confirmed discriminating by actually running the mutation, not by
+  inspection. Whole suite: 2941 passed, 2 skipped (torchreid, no network) —
+  the same skip count as before this branch.
+
+  **The three-skill detour, deleted.** `skills/pacing/SKILL.md`,
+  `skills/edit-plan/SKILL.md` and `skills/reel-review/SKILL.md` all taught
+  "rebuild WITHOUT `--pacing`/`--music` first, else the re-fit deadlocks" —
+  correct advice for code that no longer exists, so leaving it would have
+  sent a reader through a needless rebuild. Replaced with "re-fitting is safe
+  to repeat"; reel-review's routing table gains a row for the new
+  `outro-length-chosen` stop.
+
+  **Deferred (design §10, backlog):** a migration for an `EDL.json` with no
+  `base_dur` (still deadlocks, by design — no refusal, since that would close
+  the hand-authored front door); the digest's audio-unreadable rung falling
+  back to a tempo-only comparison that cannot see a `start_offset` change;
+  calibrating the outro residual's reporting boundary against perception
+  (same class of open question as `TAIL_MIN`).
 
 - **Frame probe + look gate — converge a colour grade without a reel
   re-render, and catch a look that silently failed to render DONE

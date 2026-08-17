@@ -81,11 +81,12 @@ reel-review builds **no fixer** — each `route` names a stage that already exis
 | route | re-run | typical finding |
 |-------|--------|-----------------|
 | `edit-plan` | edit-plan SKILL (edit `selection.json`, rebuild `EDL`) | weak hook / weak ending / missing EDL element / classic↔trend lean |
-| `pacing` | pacing SKILL then `edit_plan build --pacing` — but if `EDL.json` carries an outro fit, rebuild WITHOUT `--pacing`/`--music` first, else the re-fit deadlocks (pacing SKILL step 1) | cuts drift off the energy spine |
+| `pacing` | pacing SKILL then `edit_plan build --pacing` | cuts drift off the energy spine |
 | `music` | music-match / music-source SKILL | mood mismatch / wrong track |
 | `reprocess` | process_episode on one episode (grade/layout redo) | one episode reads wrong vs the reel |
 | `titles` | titles SKILL | hook/ending wants on-screen text |
 | `none` | — (note only) | an observation to record, no action |
+| `outro-length-chosen` | pacing SKILL — grow or re-cut the closing episode, then re-apply | a mechanical stop, not an editorial finding: the reel loop refused to absorb a within-band shortfall because the outro fit CHOSE this reel's length as `line + fade`; it will not silently move the fade off the bar line |
 
 Same rule `using-montage` already applies to a mechanical `stop_and_report`:
 "route it to the culprit stage's skill." reel-review extends it to editorial findings.

@@ -195,3 +195,19 @@ def test_an_over_length_reel_is_unchanged_by_outro_fixed():
     for fixed in (False, True):
         a = ro.next_action([_length(11.0, 10.0)], {}, 3, 1.0, fixed)
         assert a.finding["reason"] == "not-auto-fixable"
+
+
+def test_outro_refusal_wins_over_a_simultaneous_reprocess_class_failure():
+    # mirrors test_within_band_shortfall_rides_along_with_a_colour_reprocess (above),
+    # which proves that WITHOUT an outro fit a within-band shortfall rides along with a
+    # colour reprocess (kind == "reprocess", retime carried on the action). With
+    # outro_fixed=True the same pairing must not merge into a reprocess round at all —
+    # the outro refusal escalates immediately, and nothing about the colour fail (which
+    # would otherwise be perfectly fixable on its own) leaks a retime into the result.
+    fails = [_length(9.4, 10.0),
+             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+    a = ro.next_action(fails, {}, 3, 1.0, True)
+    assert a.kind == "escalate"
+    assert a.finding["reason"] == "outro-length-chosen"
+    assert a.retime is None
+    assert a.reprocess == ()

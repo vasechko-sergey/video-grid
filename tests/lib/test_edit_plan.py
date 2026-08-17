@@ -1561,3 +1561,24 @@ def test_build_edl_names_the_not_checked_arm_and_falls_back_to_tempo(tmp_path, c
     err = capsys.readouterr().err
     assert "music identity not-checked" in err
     assert "records no music_digest" in err
+
+
+def test_build_edl_binds_silently_on_a_pre_slice_pacing_json_with_a_readable_track(tmp_path, capsys):
+    # The backward-compatibility claim the not-checked rung rests on: a PACING.json
+    # written before this slice has NO music_digest at all (_digest_spine's own ""
+    # default), but MUSIC.json's track is perfectly readable and the tempo agrees —
+    # the ladder must fall back to the tempo comparison and bind, not refuse.
+    #
+    # Every OTHER music+pacing test in this file (the ~1120-1450 block) passes a bare
+    # `MusicSpec(track="t.wav", ...)` with no file ever written at tmp_path, so
+    # music_identity() on IT also returns "" (OSError on a nonexistent path) — those
+    # tests only ever exercise the BOTH-SIDES-empty leg of the ladder. This is the one
+    # combination where the track is readable (want is non-empty) but the recorded
+    # digest still is not — nothing pinned it before this test.
+    m = _music(tmp_path)   # tempo=120.0, offset=0.0 — a REAL file under tmp_path
+    edl = edit_plan.build_edl(_digest_footage(tmp_path), _selection(),
+                              pacing=_digest_spine(), music=m)   # digest="" (the default)
+    assert edl.episodes[0].beat_slot == 0
+    err = capsys.readouterr().err
+    assert "music identity not-checked" in err
+    assert "records no music_digest" in err

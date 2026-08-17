@@ -1419,7 +1419,7 @@ not exercising the deadlock.
 - [ ] **Step 3: Run it to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_pacing_fixed_point.py -v`
-Expected: PASS, all four tests.
+Expected: PASS, all three tests.
 
 - [ ] **Step 4: Commit**
 

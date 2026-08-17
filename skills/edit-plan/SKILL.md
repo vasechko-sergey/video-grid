@@ -222,8 +222,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    own stamp, so a hand-edited `EDL.json` is refused on the probe's very first
    command, naming this exact remedy. Re-run the build (step 3 below, the SAME
    command with the SAME flags the earlier build used — omitting `--pacing`/
-   `--music` here silently discards the pacing binding and the outro fit; see "A
-   fitted EDL is not re-fittable in place" below):
+   `--music` here silently discards the pacing binding and the outro fit):
 
        python -m scripts.edit_plan build --footage FOOTAGE.json \
          --selection selection.json --project project.json --out-dir . \
@@ -361,15 +360,10 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    resolve that tension silently, so read it rather than assume the length still
    matches the brief.
 
-   **A fitted EDL is not re-fittable in place.** Once a fit has landed, the last
-   episode's `dur` is a length no re-projection from `FOOTAGE.json` can reproduce,
-   so re-running **pacing** against that `EDL.json` and applying the result
-   deadlocks: this build re-derives the episode from the footage, finds the slot
-   more than half a beat away and refuses — leaving `EDL.json` at the fitted length,
-   which the next pacing run reads again. The refusal message names the way out; it
-   is: rebuild here **without** `--pacing`/`--music` (footage-projected lengths
-   return), re-run pacing against that EDL, then re-apply with `--pacing --music`.
-   Same order whenever a **reel-review** finding routes you back to `pacing`.
+   **Re-fitting a fitted EDL is safe** — see the **pacing** skill's step 1 for why
+   (design 2026-08-16 §3.1). Re-run pacing against the current `EDL.json` and
+   re-apply with `--pacing --music`; no detour needed, including when a
+   **reel-review** finding routes you back to `pacing`.
 
    Pass `--cast` when any episode's `hero` is a cast name — it sets `EDL.cast`,
    the registry the preflight resolves that name against. Pass `--spec` whenever

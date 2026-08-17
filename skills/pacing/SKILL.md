@@ -48,17 +48,12 @@ say so rather than guessing a path.
 1. **Recon.** The EDL must already exist — pacing runs AFTER edit-plan (design
    2026-07-24 §1). No `EDL.json` -> run edit-plan first; this stage has nothing to fit.
 
-   **Re-fitting? Check for an outro fit first.** If the current `EDL.json` has a
-   non-null `outro` (equivalently: `EDL.md` carries a **Music outro** section whose
-   rung is not `unchanged`), its LAST episode's `dur` is a length the fit chose —
-   a number re-projecting from `FOOTAGE.json` cannot reproduce. Fitting a spine to
-   *that* length and then applying it **deadlocks**: `edit_plan build --pacing`
-   re-derives the episode from the footage, sees a slot more than half a beat away
-   and refuses, so `EDL.json` keeps the fitted length and the next pacing run refits
-   the same number forever. Rebuild the EDL **without** `--pacing`/`--music` first —
-   that restores the footage-projected lengths — then run this stage against THAT
-   `EDL.json`, then apply with `--pacing --music` (step 5). Verified end to end;
-   recorded in the outro design's §11.8.
+   **Re-fitting is safe to repeat.** The fit reads each episode's `base_dur` — the
+   length the scenario projected — not the length a previous bind or outro fit left
+   behind, so fitting an already-fitted `EDL.json` produces the same spine and
+   re-applying reproduces the same EDL (design 2026-08-16 §3.1). An `EDL.json`
+   written before 2026-08-16 has no `base_dur`: the old deadlock still applies there,
+   and `edit_plan build --pacing` says so by name in its refusal.
 2. **Analyze the candidate windows.** `beats --auto-start` picks one; for a real choice
    ask it for more and analyze each into its own `MUSIC_<k>.json`. Shifting the window
    moves every grid line with it, so it is one of the two search axes.
