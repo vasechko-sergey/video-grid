@@ -72,7 +72,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             assembly.assemble(clips, dims, fps, master)
             need_assemble = False
         report = check_reel.run(master, clips, spec, report_path,
-                                music=music, audio=audio, geometry=geometry, platform=rm.platform)
+                                music=music, audio=audio, geometry=geometry,
+                                platform=rm.platform, outro=rm.outro)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
                                                 spec.length_retime_max, outro_fixed)
         if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long

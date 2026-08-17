@@ -134,7 +134,8 @@ def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> Chec
 
 def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         music: MusicSpec | None = None, audio: str | None = None,
-        geometry: list[tuple[str, str, str]] | None = None, platform: str = "") -> ReelReport:
+        geometry: list[tuple[str, str, str]] | None = None, platform: str = "",
+        outro: dict | None = None) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -207,6 +208,29 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
             fails.append(fail)
     if music is not None:
         checks["beat"] = _beat_check(cuts, music.beats, spec.beat_tol)
+
+    if outro is not None:
+        # OUTRO — advisory. Three states, each named. No key at all means no fit ever
+        # ran; "n/a" means a fit ran and chose nothing; a measurement means a bar line
+        # was chosen and this is how far the delivered master sits from line + fade
+        # (design 2026-08-16 §6). mix fades over [master_dur - fade, master_dur], so
+        # this residual IS the distance between the fade's start and the bar line.
+        # `passed` keys on the length gate's own _LENGTH_TOL — a REPORTING boundary
+        # borrowed from a neighbouring check, not a claim about when an ending stops
+        # resolving. Nobody has measured that, and inventing it here would be
+        # inventing TAIL_MIN a second time.
+        if outro.get("rung", "unchanged") == "unchanged":
+            checks["outro"] = CheckResult("outro", None, {
+                "status": "n/a", "reason": "the fit chose no bar line (rung 'unchanged')",
+                "advisory": True})
+        else:
+            asked = float(outro["reel_dur"])
+            residual = total - asked
+            checks["outro"] = CheckResult("outro", abs(residual) <= _LENGTH_TOL, {
+                "line": outro.get("line"), "fade": outro.get("fade"),
+                "rung": outro.get("rung"), "asked": round(asked, 3),
+                "delivered": round(total, 3), "residual": round(residual, 3),
+                "tol": _LENGTH_TOL, "advisory": True})
 
     if geometry is not None:
         # metas FIRST: each carries the provenance bit the route-dependent checks

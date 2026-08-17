@@ -486,3 +486,48 @@ def test_run_stamps_the_master_digest(tmp_path, monkeypatch):
     rep = check_reel.run(str(master), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"))
     assert rep.master_digest == provenance.digest_file(master)
+
+
+# --- pacing-fixed-point Task 5: the advisory `outro` residual (design 2026-08-16 §6) ---
+# One episode is enough for all four: _Stub's install rule is master == sum(durations), so
+# a single-episode _Stub([X]) puts the master at exactly X seconds with no second number to
+# reconcile. No real ffmpeg — outro is a plain dict, untouched by any of the probes _Stub
+# reroutes. target_dur is pinned to the same X in every case so the (unrelated) length gate
+# stays trivially true and `overall` reflects only what each test means to exercise.
+
+GAP = {"reel_dur": 10.7, "line": 10.2, "fade": 0.5, "tail": 1.8,
+       "rung": "gap", "moved": 0.7, "brief_len": None}
+
+
+def test_no_outro_key_at_all_when_no_fit_ran(tmp_path, monkeypatch):
+    _Stub([10.7]).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=10.7),
+                         str(tmp_path / "r.json"), outro=None)
+    assert "outro" not in rep.checks
+
+
+def test_an_unchanged_rung_reports_n_a_not_a_measurement(tmp_path, monkeypatch):
+    _Stub([10.7]).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=10.7),
+                         str(tmp_path / "r.json"),
+                         outro={**GAP, "rung": "unchanged", "line": None})
+    assert rep.checks["outro"].passed is None
+    assert rep.checks["outro"].detail["status"] == "n/a"
+
+
+def test_the_residual_is_the_master_against_the_length_the_fit_asked_for(tmp_path, monkeypatch):
+    _Stub([10.68]).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=10.68),
+                         str(tmp_path / "r.json"), outro=GAP)
+    assert rep.checks["outro"].detail["asked"] == 10.7
+    assert rep.checks["outro"].detail["delivered"] == 10.68
+    assert rep.checks["outro"].detail["residual"] == -0.02
+    assert rep.checks["outro"].passed is True
+
+
+def test_a_residual_past_the_reporting_tolerance_is_flagged_but_advisory(tmp_path, monkeypatch):
+    _Stub([9.9]).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=9.9),
+                         str(tmp_path / "r.json"), outro=GAP)
+    assert rep.checks["outro"].passed is False
+    assert rep.overall is True

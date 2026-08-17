@@ -46,8 +46,11 @@ def _wire(monkeypatch, reports, pe_results=None):
     # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
     # geometry=/platform= ARE captured into seen so a test can assert build_reel builds and
-    # forwards them to check_reel.run.
-    def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform=""):
+    # forwards them to check_reel.run. outro= tolerated (and ignored) too — pacing-fixed-point
+    # Task 5 threads rm.outro through this same call; the outro_fixed DERIVATION it feeds is
+    # already exercised directly by the two tests below, not by anything reading check_reel's
+    # own outro check (that lives in test_check_reel.py).
+    def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds

@@ -1223,6 +1223,14 @@ def test_reelreport_overall_excludes_the_three_editorial_advisories():
     assert m.ReelReport(checks=checks).overall is True     # advisory Falses never block
 
 
+# --- pacing-fixed-point Task 5: the advisory `outro` residual (design 2026-08-16 §6) ---
+
+def test_a_failing_outro_residual_does_not_block_overall():
+    r = m.ReelReport(checks={"length": m.CheckResult("length", True, {}),
+                             "outro": m.CheckResult("outro", False, {"residual": -0.8})})
+    assert r.overall is True
+
+
 def test_reel_check_spec_length_retime_max_defaults_to_one_second():
     # the band build_reel may absorb as a SHORTFALL, on top of the gate's own 0.5s (design §3.1)
     assert ReelCheckSpec(target_dur=12.0).length_retime_max == 1.0
