@@ -119,7 +119,13 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
                                   f"{clip.source} window at {start:.2f}s")
     defaults = {"shot_type": window.shot_type, "processing_notes": window.description}
     try:
+        # base_dur is the projection's own answer, recorded where it is still the
+        # SCENARIO's length — before any pacing snap or outro move touches `dur`
+        # (design 2026-08-16 §2). Passed positionally alongside `dur` rather than
+        # through `defaults`, so an author who tries to set it in selection.json
+        # collides and gets the "unknown or missing editorial field" refusal.
         return EDLEpisode(source=clip.source, start=start, dur=window.dur,
+                          base_dur=window.dur,
                           **{**defaults, **editorial})
     except TypeError as ex:
         raise ValueError(f"window_to_episode: unknown or missing editorial field — {ex}") from ex
@@ -206,15 +212,19 @@ _TEMPO_TOL = 0.5      # BPM. A spine copies MusicSpec.tempo straight through, so
 
 
 def _bind_pacing(episodes: list, spine: Spine) -> list:
-    """Apply a FITTED spine: episode i's `play_dur()` — the PLAYED length, literally
-    true only of `play_dur()` once an episode may carry a ramp — takes slot i's
-    duration, and the episode gets `beat_slot=i`.
+    """Apply a FITTED spine: episode i's PLAYED length takes slot i's duration, and the
+    episode gets `beat_slot=i`.
 
-    The spine was fitted TO these episodes (scripts/pacing.py reads the same EDL), so a
-    slot may differ from its episode only by the snap the fit was allowed — half a beat.
-    A larger difference means this spine was fitted to a DIFFERENT edit, and copying its
-    length across would truncate a shot exactly the way the generator used to: a 7.3s
-    ride into a 4.6s slot, in silence. Refuse instead.
+    The guard compares the slot against `base_play_dur()` — the length the SCENARIO
+    projected — not against the length a previous bind or outro fit left behind. That is
+    what makes fit-then-apply a fixed point (design 2026-08-16 §3.1): the spine is a
+    function of (base, music), the bound `dur` is a function of (spine, ramp extra), and
+    neither reads the previous run's output.
+
+    A slot may differ from its episode's scenario length only by the snap the fit was
+    allowed — half a beat. A larger difference means this spine was fitted to a DIFFERENT
+    edit, and copying its length across would truncate a shot exactly the way the
+    generator used to: a 7.3s ride into a 4.6s slot, in silence. Refuse instead.
 
     Zip-to-min; an over/underflow is logged, never a silent drop (§4.1)."""
     allow = gridfit.allowance(spine.tempo) + _SNAP_TOL
@@ -222,23 +232,26 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     bound = []
     for i in range(n):
         slot, ep = spine.slots[i], episodes[i]
-        # PLAYED time on both sides: the spine was fitted to play_dur (pacing.py),
-        # so comparing the source window would refuse a correct fit on any ramped
-        # episode by exactly the ramp's added time.
+        # PLAYED time on both sides, and the SCENARIO's played time on the episode
+        # side: the spine was fitted to base_play_dur (scripts/pacing.py), so
+        # comparing the already-bound length would refuse a correct re-apply by
+        # exactly whatever the previous bind and the outro fit had added — the
+        # deadlock recorded as design 2026-08-14 §11.8.
         played = ep.play_dur()
-        if abs(slot.dur - played) > allow:
+        want = ep.base_play_dur()
+        if abs(slot.dur - want) > allow:
+            arm = "" if ep.base_dur is not None else (
+                " NOTE: this episode carries no `base_dur`, so the guard is comparing the "
+                "BOUND length rather than the scenario's — the EDL was hand-authored through "
+                "the SP1 front door, or written before the 2026-08-16 fixed-point slice. If "
+                "it also carries an outro fit (a non-null `outro`), re-running pacing against "
+                "it LOOPS: rebuild the EDL WITHOUT --pacing first, re-run pacing against THAT "
+                "EDL.json, then re-apply with --pacing --music")
             raise ValueError(
-                f"pacing: slot {i} is {slot.dur:.2f}s against a {played:.2f}s episode — "
+                f"pacing: slot {i} is {slot.dur:.2f}s against a {want:.2f}s episode — "
                 f"further apart than the {allow:.2f}s snap allows, so this PACING.json "
                 f"was fitted to a different edit. Re-run pacing against the current "
-                f"EDL.json before binding — BUT if that EDL.json already carries an "
-                f"outro fit (EDL.md's 'Music outro' section, or a non-null `outro` in "
-                f"EDL.json), re-running pacing against it LOOPS: pacing reads the "
-                f"fitted length while this projection re-derives the episode from "
-                f"FOOTAGE, so the two never agree. Break it by rebuilding the EDL "
-                f"WITHOUT --pacing first (`edit_plan build` with no --pacing/--music "
-                f"restores the footage-projected lengths), then re-run pacing against "
-                f"THAT EDL.json, then re-apply with --pacing --music")
+                f"EDL.json before binding.{arm}")
         # Assign the SOURCE window that plays for slot.dur. ramp_extra is constant
         # in dur while the region stays enclosed (design §2), so this is exact
         # rather than a solve — and dataclasses.replace re-runs __post_init__, so a

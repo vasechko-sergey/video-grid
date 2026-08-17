@@ -374,9 +374,10 @@ def offset_clip():
                                               description="a ride", score=0.8, best=True)])
 
 
-def _ep(dur):
-    return EDLEpisode(source="a.mp4", start=0.0, dur=dur, shot_type="wide",
-                      composition="center", grid="thirds")
+def _ep(**kw):
+    base = dict(source="a.mp4", start=0.0, dur=4.0, shot_type="wide",
+                composition="lead", grid="thirds")
+    return EDLEpisode(**{**base, **kw})
 
 
 def test_start_offset_moves_the_in_point_but_not_the_duration(offset_clip):
@@ -936,7 +937,7 @@ def _ramped_episode(dur, factor):
 def _plain_episode(dur):
     """An unramped EDLEpisode — _ep's own shape, named for parity with _ramped_episode
     so a test reads which kind of fixture it is building."""
-    return _ep(dur)
+    return _ep(dur=dur)
 
 
 def _spine(durs, tempo, target=None):
@@ -1445,3 +1446,54 @@ def test_build_edl_threads_the_authored_look_fade_into_the_outro_fit():
     edl = edit_plan.build_edl(footage, sel, pacing=spine, music=music)
     assert edl.outro.fade == 1.0
     assert edl.outro.reel_dur == pytest.approx(11.2)     # line 10.2 + the AUTHORED 1.0 fade
+
+
+# --- base_dur: the scenario's own length, the half-beat guard's fixed point (design
+# 2026-08-16-pacing-fixed-point-design.md §2/§3) --------------------------------------
+
+
+def test_window_to_episode_records_the_projected_length():
+    clip = FootageClip(source="a.mp4", dur=20.0, res=(640, 360), fps=30.0, windows=[
+        FootageWindow(start=1.0, dur=4.0, shot_type="wide", people=1, motion=0.3, shake=0.0)])
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="lead", grid="thirds")
+    assert ep.dur == 4.0
+    assert ep.base_dur == 4.0
+
+
+def test_base_dur_cannot_be_authored_from_selection():
+    # `dur` is passed positionally and editorial is forwarded as **kwargs, so an
+    # author trying to set either gets the same named refusal.
+    clip = FootageClip(source="a.mp4", dur=20.0, res=(640, 360), fps=30.0, windows=[
+        FootageWindow(start=1.0, dur=4.0, shot_type="wide", people=1, motion=0.3, shake=0.0)])
+    with pytest.raises(ValueError, match="unknown or missing editorial field"):
+        edit_plan.window_to_episode(clip, clip.windows[0], composition="lead",
+                                    grid="thirds", base_dur=9.0)
+
+
+def test_bind_pacing_accepts_a_slot_that_matches_the_SCENARIO_not_the_bound_length():
+    # The deadlock, in one assert: an episode already grown 0.70s by an outro fit
+    # binds against a spine fitted to its 4.00s scenario length. Half a beat at
+    # 120 BPM is 0.25s, so the OLD guard (comparing 4.70 against 4.00) refused.
+    ep = _ep(dur=4.70, base_dur=4.00)
+    spine = Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook", line=4.0, dev=0.0),),
+                  target_dur=4.0, tempo=120.0)
+    bound = edit_plan._bind_pacing([ep], spine)
+    assert bound[0].dur == 4.0
+    assert bound[0].base_dur == 4.0
+    assert bound[0].beat_slot == 0
+
+
+def test_bind_pacing_still_refuses_a_spine_fitted_to_a_different_edit():
+    ep = _ep(dur=4.0, base_dur=4.0)
+    spine = Spine(slots=(Slot(0, 0.0, 7.3, 0.5, "hook", line=7.3, dev=0.0),),
+                  target_dur=7.3, tempo=120.0)
+    with pytest.raises(ValueError, match="fitted to a different edit"):
+        edit_plan._bind_pacing([ep], spine)
+
+
+def test_bind_pacing_names_the_arm_when_an_episode_has_no_base_dur():
+    ep = _ep(dur=4.70)                       # no base_dur: pre-slice or hand-authored
+    spine = Spine(slots=(Slot(0, 0.0, 4.0, 0.5, "hook", line=4.0, dev=0.0),),
+                  target_dur=4.0, tempo=120.0)
+    with pytest.raises(ValueError, match="carries no `base_dur`"):
+        edit_plan._bind_pacing([ep], spine)
