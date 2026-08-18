@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.lib import titles as titles_mod
+from scripts.lib import safezones, titles as titles_mod
 from scripts.lib.spec import Spec
 from scripts.lib.titles import POSITIONS, STYLES, Title, Titles, build_filterchain
 from scripts.titles import build_titles, write_titles
@@ -439,3 +439,66 @@ def test_ink_extent_word_reveal_stays_on_one_line():
 def test_ink_extent_unknown_platform_takes_the_generic_zone():
     t = Title("hi", 0.0, 1.0, pos="bottom")
     assert titles_mod.ink_extent(t, "nope") == titles_mod.ink_extent(t, "")
+
+
+def test_zone_overflow_passes_an_ordinary_title_at_every_position():
+    # the ordinary bottom case sits EXACTLY on the zone edge — an off-by-an-epsilon
+    # comparison here would refuse every title this repo authors.
+    for pos in POSITIONS:
+        assert titles_mod.zone_overflow(Title("hi", 0.0, 1.0, pos=pos), "reels") == ""
+
+
+def test_zone_overflow_names_a_staircase_that_leaves_the_zone():
+    t = Title("salt\nsun\nand\nyou", 0.0, 4.0, pos="bottom", reveal="stair",
+              reveal_step=0.4)
+    why = titles_mod.zone_overflow(t, "reels")
+    assert "below" in why and "reels" in why
+    assert "0.16" in why                      # the margin it broke, quoted
+
+
+def test_zone_overflow_a_top_staircase_fits():
+    # the same four steps at the TOP have the whole frame to fall into.
+    t = Title("salt\nsun\nand\nyou", 0.0, 4.0, pos="top", reveal="stair",
+              reveal_step=0.4)
+    assert titles_mod.zone_overflow(t, "reels") == ""
+
+
+def test_zone_overflow_a_tall_centred_staircase_leaves_the_bottom():
+    assert titles_mod.zone_overflow(Title("hi", 0.0, 1.0, pos="center", scale=5.0),
+                                    "") == ""          # 5/18 of h still fits centred
+    tall = Title("a\nb\nc\nd\ne", 0.0, 5.0, pos="center", reveal="stair",
+                 reveal_step=0.5, scale=3.0)
+    assert "below" in titles_mod.zone_overflow(tall, "")
+
+
+def test_no_title_can_rise_above_a_zones_top_margin():
+    """Why zone_overflow guards only the BOTTOM. Scanned over every position x
+    platform x legal scale, the closest the ink's top ever comes to the top margin
+    is exactly 0 — `pos="top"` sits ON it by construction, `center` is pushed down
+    by half a font size, `bottom` by a whole one, and a stair only ever moves the
+    BOTTOM. A top guard would be a branch nothing can reach, which is the same dead
+    code this slice deletes elsewhere. If a future position or a wider scale range
+    makes it reachable, this reddens first."""
+    worst = 1.0
+    for pos in POSITIONS:
+        for key, z in safezones.SAFE_ZONES.items():
+            for scale in (0.001, 0.5, 1.0, 3.0, 5.0):
+                t = Title("hi", 0.0, 1.0, pos=pos, scale=scale)
+                worst = min(worst, titles_mod.ink_extent(t, key)[0] - z.top)
+    assert worst == pytest.approx(0.0) and worst >= -titles_mod.ZONE_EPS
+
+
+def test_build_filterchain_refuses_a_title_that_leaves_the_zone(tmp_path):
+    t = Title("salt\nsun\nand\nyou", 0.0, 4.0, pos="bottom", reveal="stair",
+              reveal_step=0.4)
+    with pytest.raises(ValueError, match="leaves the reels safe zone"):
+        build_filterchain(Titles(items=(t,)), str(tmp_path), resolve=_fake_resolve,
+                          platform="reels")
+
+
+def test_build_filterchain_still_builds_the_ordinary_titles(tmp_path):
+    # the anti-regression pin for the refusal: everything that used to build must
+    # still build, at every position.
+    ts = Titles(items=tuple(Title("hi", 0.0, 1.0, pos=p) for p in POSITIONS))
+    vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve, platform="reels")
+    assert vf.count("drawtext=") == len(POSITIONS)

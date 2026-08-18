@@ -235,6 +235,41 @@ def ink_extent(t: Title, platform: str = "") -> tuple[float, float]:
     return top, top + fs + drop
 
 
+# The ordinary bottom title's ink box ends EXACTLY on the zone's inner edge, so the
+# comparison needs slack for float arithmetic or the refusal fires on every title this
+# repo authors. Sized at the arithmetic's own noise, not at a real margin.
+ZONE_EPS = 1e-9
+
+
+def zone_overflow(t: Title, platform: str = "") -> str:
+    """"" if the title's ink stays inside the platform's safe zone, else the remedy.
+
+    A title is laid out AGAINST the zone (y_exprs), so a single line is inside by
+    construction. What is not: a `reveal="stair"`, whose per-step drop `_layers` adds
+    below the base y with nothing lifting the base to make room. Measured 2026-08-19
+    on the reels table at 1080x1920 — a four-step bottom staircase renders 244px into
+    the app's caption/button chrome, and nothing refused it (design §5).
+
+    Only the BOTTOM is guarded, and that is measured rather than assumed: over every
+    position x platform x legal scale the ink's top never comes closer to the top
+    margin than exactly 0 (`pos="top"` sits on it, the other two are pushed down by
+    half a font size and a whole one), and a stair moves only the bottom. A top guard
+    would be unreachable — see test_no_title_can_rise_above_a_zones_top_margin, which
+    reddens if a future position makes it reachable.
+
+    A string and not a bool so both readers quote the same sentence: the chokepoint
+    refusal in build_filterchain and the authoring preflight in scripts/titles.py."""
+    z = safezones.safe_zone_for(platform)
+    bottom = ink_extent(t, platform)[1]
+    if bottom <= 1.0 - z.bottom + ZONE_EPS:
+        return ""
+    return (f"a {t.pos!r} title{' staircase' if t.reveal == 'stair' else ''} at scale "
+            f"{t.scale:g} reaches {bottom:.4f} of frame height, below the "
+            f"{platform.strip().lower() or 'generic'} safe zone's inner edge at "
+            f"{1.0 - z.bottom:.4f} (bottom margin {z.bottom:g}) — the app draws its "
+            f"caption and buttons there")
+
+
 def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
                       platform: str = "", measure=None) -> str:
     """The drawtext chain deliver injects into its encode -vf. One drawtext per Title
@@ -254,6 +289,15 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
     y_expr = y_exprs(platform)
+    for i, t in enumerate(titles.items):
+        why = zone_overflow(t, platform)
+        if why:
+            raise ValueError(
+                f"TITLES.json item {i} ({t.text.splitlines()[0]!r}) leaves the "
+                f"{platform.strip().lower() or 'generic'} safe zone: {why}. Shorten the "
+                f"staircase, lower line_spacing, use pos='top', or reduce scale — the "
+                f"layout is not moved for you, because relocating a title the author "
+                f"positioned is an invisible creative change")
     measure = measure or _measure
     parts: list[str] = []
     for i, t in enumerate(titles.items):
