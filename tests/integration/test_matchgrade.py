@@ -158,7 +158,11 @@ def test_the_tone_map_renders_within_a_code_of_itself():
             * color.TV_SPAN / 255 for y in range(256)]
     worst = max(abs(g - w) for g, w in zip(got[16:236], want[16:236]))   # the legal range
     assert worst <= 1.0, f"the LUT is {worst:.2f} codes off its own map"
-    assert all(b >= a for a, b in zip(got[16:236], got[17:236])), "the transfer bands"
+    # Monotone over the WHOLE 0-255 plane, not only the legal 16-235: the expression
+    # extrapolates below the toe and holds a constant above the shoulder, and a wrap
+    # at either end would be real corruption in sub-black or super-white pixels.
+    # Measured on the shipped map: outputs span 2-198 and never step backwards.
+    assert all(b >= a for a, b in zip(got, got[1:])), "the transfer bands somewhere"
 
 
 def test_the_tone_transfer_leaves_chroma_byte_identical(tmp_path):

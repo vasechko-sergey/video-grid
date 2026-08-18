@@ -231,8 +231,14 @@ def _segments(src: tuple[float, float, float],
 
     Its own function because two readers need exactly these: the expression tone_arg
     emits, and the proof that renders a ramp through it and compares against _lerp
-    over the same points. The top endpoint is computed rather than pinned to 255 —
-    tone_arg's own docstring says why."""
+    over the same points.
+
+    The top endpoint is COMPUTED, not pinned to 255, and that is the whole trick.
+    Pinning it would force the segment above the shoulder anchor to climb from dst_p95
+    back to 255 — on the reel this was measured against, 221->148 followed by 255->255
+    is a slope of 3.1, so the brightest foam would be EXPANDED by the very filter asked
+    to tame it. Continuing the shoulder at a gentle fixed slope keeps the map monotone
+    (highlights stay separable, no plate) while spending little range on it."""
     top = min(255.0, dst[2] + (255.0 - src[2]) * TONE_TOP_SLOPE)
     return [(0.0, 0.0), *zip(src, dst), (255.0, top)]
 
@@ -299,7 +305,13 @@ def tone_arg(src: tuple[float, float, float], dst: tuple[float, float, float]) -
 
 
 def _lerp(knots: list[tuple[float, float]], x: float) -> float:
-    """Piecewise-linear interpolation through sorted (in, out) knots."""
+    """Piecewise-linear interpolation through sorted (in, out) knots.
+
+    No production caller since 2026-08-19, and kept deliberately: it is the tone map's
+    reference definition, and tone_arg's emitted expression is a SECOND, independent
+    implementation of the same arithmetic. The real-ffmpeg proof renders through one
+    and compares against the other, which is only a proof because they are not the same
+    code — a shared bug would cancel. Do not "simplify" by having tone_arg call this."""
     for (x0, y0), (x1, y1) in zip(knots, knots[1:]):
         if x <= x1:
             return y0 if x1 == x0 else y0 + (y1 - y0) * (x - x0) / (x1 - x0)
