@@ -12,6 +12,55 @@ _Last updated: 2026-08-18._
 
 ## Done
 
+- **Three deferred measurements — the outro floor, layer 3, and the conductor's
+  residual DONE (2026-08-18)** — plan
+  `docs/plans/2026-08-18-deferred-measurements.md` + design
+  `docs/specs/2026-08-18-deferred-measurements-design.md` (branch
+  `feat/deferred-measurements`). Three P2 rows, unrelated in subject, identical in
+  shape: each parked a number or a mechanism with "nobody measured this", and none
+  needed the deferred footage run — the track, the routes and the source frames from
+  the one real run are all on disk. **Two of the three overturned the question they
+  were asked.**
+  - **`outro.TAIL_MIN` is deleted, not re-tuned — it was wrong in KIND.** The reel is
+    `line + fade` long and `mix` fades over `[line, line + fade]`, so
+    `max(TAIL_MIN, fade)` at `fade < 0.5` demanded silence in audio the stem never
+    contains. Where it bit, the `no-gap` rung it fell to checks no tail at all:
+    measured, a clean 0.30s fade inside a 0.35s gap was traded for a **1.50s fade
+    over 1.15s of singing**. And 0.5 sits **above** `offset.vocal_gaps`' own
+    `min_gap = 0.35`, so it disqualified 4 of the real track's 25 gaps outright —
+    10.3% of the `fun` preset's legal landing zone, 23.1% at an authored `fade: 0`.
+    `need = fade + TAIL_MARGIN` now, with `TAIL_MARGIN = 0.05` **derived** as two
+    bins of the vocal envelope at `vocals._SPAN_HZ` and machine-checked against it
+    (the sum, not a max: at fade 0 they agree, but only the sum gives a positive fade
+    a margin, and at fade 0 the margin is the only thing keeping the line out of a
+    vocal). `OutroFit.need` rode along, because the constant was also what `EDL.md`'s
+    no-gap sentence quoted — already wrong for `epic`/`moody`/`nostalgic`, which
+    needed 0.80/1.00/0.80 while the artifact said 0.50.
+  - **§6.1a layer 3 vs `stitch_ids`: remainder real, build deferred on evidence.**
+    They are inverse (stitch joins *one person, two ids*; layer 3 splits *two people,
+    one id*), so neither subsumes the other — but the remainder over what ships is
+    narrower than the row assumed, since `checks.continuity` is already layer 3's
+    geometric detection half and already stops the episode. Seven real routes, zero
+    `continuity` failures, `stitched: []` on all, closest approach **5.5×** under the
+    gate, and exactly one episode across the shoot with two comparable people (ep3,
+    75% of the hero's area, `border: 1.0` for all 53 frames). Honest weakness filed
+    as its own P4 row: the 4%-of-`src_w` cap is a teleport gate, blind to a swap
+    between adjacent people.
+  - **The conductor's residual is diagnosed, and it is none of the three candidates
+    the row named.** Separated over one frame per camera, lossless FFV1 first.
+    Spline: **exactly 0.0** at all three anchors (256-code ramp; worst deviation
+    anywhere −1.0). Encode: ≤2 units. The 160-wide measurement: a real 9-unit p95
+    bias, but not the cause. **The cause is `curves=all` being a per-CHANNEL transfer
+    against a LUMA target** — the grayscale control lands **exactly `[0, 0, 0]`** on
+    both cameras where colour lands `[0, +5, −7]` (DJI) and `[0, +1, −3]` (Canon), so
+    "6.5–11.5" is content, not a system constant. **The trap, recorded because it is
+    the obvious next move:** dropping the downscale makes p95 *worse* (−1 → −7); the
+    two independent errors currently cancel.
+  - Nine-row mutation battery, all discriminating — including row 9, which only kept
+    discriminating because the plan's own self-review caught that the `_EPS`-boundary
+    test builds its tie from the need and had to be re-pointed at `fade + margin`.
+    **2995 passed / 2 skipped**, +6 tests, no golden moved.
+
 - **Episode-QC re-judge — a judged reel no longer ships over an unjudged render
   DONE (2026-08-18)** — plan `docs/plans/2026-08-18-episode-qc-rejudge.md` +
   design `docs/specs/2026-08-18-episode-qc-rejudge-design.md`, Tasks 0–5 (branch

@@ -467,6 +467,31 @@ repo already fakes everywhere.
   pieces). Different mechanism, different failure mode; the design assigns it to
   the process-episode plan. It becomes *buildable* after this slice, because
   `cast.json` will finally be read.
+
+  > **Re-assessed 2026-08-18 against `track.stitch_ids` — remainder real, build
+  > deferred on evidence.** The two are **inverse**, so neither can subsume the
+  > other: stitch handles *one person, two ids* (the tracker correctly opened a new
+  > id after an occlusion) and **joins**; layer 3 handles *two people, one id* (the
+  > tracker wrongly kept one) and **splits**. The remainder over what ships is
+  > narrower than the row assumed — the geometric half of the detection is already
+  > live as `checks.continuity`, sitting in `orchestration._UNFIXABLE` so a hit stops
+  > and reports. Missing: the descriptor/area corroboration, and the repair.
+  >
+  > The real run says do not build it yet: **seven routes, zero `continuity`
+  > failures, `stitched: []` on every one**, closest approach 5.5× under the gate.
+  > The failure mode needs two comparable people in one shot, and across the whole
+  > shoot exactly **one** episode offered that (ep3, a second body at 75% of the
+  > hero's area for 53 of 165 frames) — pinned at `border: 1.0` for every one of them.
+  >
+  > **The honest weakness in that evidence**, recorded rather than glossed: `4% of
+  > src_w` is a *physically impossible teleport* gate, not an ID-switch gate — 4603
+  > px/s on this footage, the subject crossing frame in 0.42s. It fires on a swap only
+  > when the two people are more than 4% of the frame apart at that moment, so "zero
+  > failures" is weaker than it reads.
+  >
+  > **Trigger to build:** a real run producing either a `continuity` stop or an
+  > episode-QC `hero` finding naming a mid-episode swap. Both signals already exist.
+  > See `docs/specs/2026-08-18-deferred-measurements-design.md` §2.
 - **Candidate crops in the stop-and-report** — §6.1a layer 2 specifies "what to
   show = the crops", and `TrackMeta` carries none today. Unchanged here: the
   finding stays text-only.

@@ -84,6 +84,50 @@ not a preference. (The residual's cause — spline fitting through `TONE_SAMPLES
 control points, the encode, the measurement itself — is not diagnosed here; it is
 a backlog row of its own, and if it shrinks, this table can get finer.)
 
+> **Diagnosed 2026-08-18 — and it is none of the three candidates named above.**
+> Separated over one frame from each of the run's two cameras, decoded to lossless
+> FFV1 first so the encode could not hide inside the answer:
+>
+> - **The spline: exactly 0.0.** A 256-code grayscale ramp through the same curve
+>   returns `T(73)=50`, `T(137)=100`, `T(196)=195` against asks of 50/100/195 on the
+>   DJI frame; worst deviation anywhere is −1.0 (Canon, p95). `TONE_SAMPLES = 13`
+>   plus the anchors leaves the fit no room to wander, exactly as `tone_arg`'s
+>   comment claims — now with a number.
+> - **The encode: ≤ 2 units** (lossless vs h264 crf 18, worst per-anchor).
+> - **The measurement: real, but not this.** `measure_profile` histograms a
+>   160-wide frame, which reads the drone's p95 **9 units low**. See the trap below.
+> - **The cause: `curves=all` is a per-CHANNEL transfer and the target is a LUMA
+>   statistic.** For non-affine `T`, `luma(T(R),T(G),T(B)) ≠ T(luma(R,G,B))` —
+>   Jensen — and the gap grows with channel spread. The control is the proof: the
+>   same frame, same curve builder, same measurement, differing only in whether the
+>   channels agree.
+>
+> | source | delivered (p5, p50, p95) | error |
+> |---|---|---|
+> | DJI, colour | (50, 105, 188) | [0, +5, −7] |
+> | DJI, **grayscale** | (50, 100, 195) | **[0, 0, 0]** |
+> | Canon, colour | (50, 101, 192) | [0, +1, −3] |
+> | Canon, **grayscale** | (50, 100, 194) | [0, 0, −1] |
+>
+> **So "6.5–11.5" is content, not a system constant** — it is the drone's channel
+> spread (a small blazing specular patch on dark water) seen through a 160-wide
+> ruler. On evenly-lit footage the same conductor lands inside 3 units.
+>
+> **The trap, recorded because it is the obvious next move and it is wrong:**
+> dropping the 160-wide downscale so the anchors describe the pixels the curve
+> transforms makes the delivered p95 **worse** — −1 with the shipped `@160` anchors,
+> **−7** with native ones. Measuring at 160 reads the p95 nine units low, so the
+> curve over-shoots by about as much as the channel effect under-shoots, and the two
+> independent errors happen to cancel on this footage. Anyone "fixing" the
+> measurement in isolation would degrade the conductor with no way to see why.
+>
+> **This section's conclusion is unchanged.** The floor is the worst case, the worst
+> case has not moved, and `tone_bias`'s 15–20-unit vectors stay as they are. The fix
+> (a luma-only transfer via `lutyuv` on Y) is a taste decision — a per-channel curve
+> on a lift also raises saturation — and carries its own design and its own landmine
+> assessment, so it is a backlog row, not a correction here. See
+> `docs/specs/2026-08-18-deferred-measurements-design.md` §3.
+
 ## 4 · The table
 
 Hand-authored FIRST CUT, in the same one place and with the same declared-guess

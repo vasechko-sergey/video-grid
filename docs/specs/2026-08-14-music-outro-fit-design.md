@@ -349,6 +349,27 @@ project owner's ear, not from the editing literature, and nothing here validates
 It is one named constant in one module precisely so re-tuning is a one-line change,
 and a backlog row (§12) carries the check.
 
+> **As-built 2026-08-18 — the row came back, and the constant is gone.** Not
+> re-tuned: **wrong in kind**. The reel is `line + fade` seconds long and `mix`
+> fades over `[line, line + fade]`, so `max(TAIL_MIN, fade)` at `fade < 0.5` was
+> demanding vocal-free space in audio the stem never contains. When it bit, the
+> `no-gap` rung it fell to checks no tail at all — measured, it traded a clean 0.30s
+> fade sitting entirely inside a gap for a 1.50s fade covering **1.15s of singing**.
+> It also disqualified the whole `[0.35, 0.5)` band that `offset.vocal_gaps`' own
+> `min_gap = 0.35` declares valid — **16% of the real track's 25 gaps**, and 10.3%
+> of the `fun` preset's legal landing zone (23.1% at an authored `fade: 0`).
+>
+> `need` is now `fade + TAIL_MARGIN`, with `TAIL_MARGIN = 0.05` **derived** as two
+> bins of the vocal envelope at `vocals._SPAN_HZ` and machine-checked against it.
+> `OutroFit` gained `need`, because the §11.1 constant this section named was also
+> what `EDL.md`'s no-gap sentence quoted — and under `max(TAIL_MIN, fade)` that
+> sentence was already wrong for `epic`/`moody`/`nostalgic`. See
+> `docs/specs/2026-08-18-deferred-measurements-design.md` §1.
+>
+> §11.2's `NO_GAP_FADE` is untouched and still taste — but note that this
+> measurement makes it *matter more*, not less: the rung it governs is now reached
+> only when the fade genuinely cannot land in silence.
+
 **§11.2 `NO_GAP_FADE = 1.5` is taste.** No measurement says a 1.5s fade disguises a
 mid-vocal cut better than a 0.5s one.
 
