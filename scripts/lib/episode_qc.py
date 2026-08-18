@@ -23,6 +23,13 @@ QC_CONFIDENCE = ("high", "medium", "low")
 # "complete" this tuple; there is nothing for a fourth entry to gate over.
 QC_STOPS = ("episode-qc-incomplete", "episode-qc-stale", "episode-qc-blocking")
 
+# NOT a fourth QC_STOPS entry, and the tuple's own docstring above says why: those three
+# are outcomes of comparing verdicts to digests inside gate(), applied in one place at one
+# moment. This one is discovered by BOOKKEEPING — build_reel knows which clips its own
+# retry loop rewrote — and it is raised by a different caller at the other end of the loop
+# (design 2026-08-18 §2). See reprocess_gate below.
+QC_REPROCESSED = "episode-qc-reprocessed"
+
 
 @dataclass
 class EpisodeFinding:
@@ -224,3 +231,30 @@ def gate(qc: ReelQC, digests: dict) -> tuple:
     if blocking:
         return QC_STOPS[2], blocking
     return None, []
+
+
+def reprocess_gate(state: str, reprocessed) -> tuple:
+    """(reason, problems) — reason is None iff this reel may be DELIVERED.
+
+    gate() runs once, before assembly. This runs at the other end of the loop, before
+    delivery, and answers the one thing that can change in between: did build_reel's
+    retry loop re-render a clip AFTER its verdict was stamped? The reprocess writes to
+    the episode manifest's own out_path, which IS the file ReelEpisode.clip names and
+    the file episode_qc digested — so the verdict describes bytes that no longer exist
+    (design 2026-08-18 §1.2).
+
+    Only on `state == "judged"`. With no verdict — build_reel's own CLI, or the
+    single-command edl_to_reel — there is nothing to invalidate, and refusing would
+    close the SP1 front door episode-qc §10 deliberately keeps open (§2.1). No waiver
+    on the judged side: no flag, no threshold, nothing that lets one through.
+
+    Bookkeeping, not hashing: the caller knows exactly which clips it rewrote, so this
+    needs no digest pass. That is also why QC_REPROCESSED is not a fourth QC_STOPS
+    entry — see the comment there."""
+    if state != "judged" or not reprocessed:
+        return None, []
+    return QC_REPROCESSED, [
+        f"episode {i} was re-rendered after it was judged — its verdict describes the "
+        f"previous render's bytes; re-judge it (episode_qc pack, dispatch a judge for "
+        f"episode {i} only, episode_qc build) and re-run edl_to_reel --from-episodes"
+        for i in sorted(reprocessed)]

@@ -2,6 +2,7 @@
 import json
 import pytest
 
+from scripts.lib import episode_qc
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC, gate
 
 
@@ -157,3 +158,31 @@ def test_reel_qc_from_json_corrupt_raises(tmp_path):
     p.write_text("{not json")
     with pytest.raises(ValueError, match="re-run episode_qc build"):
         ReelQC.from_json(p)
+
+
+# --- 2026-08-18 re-judge: the gate's twin at the other end of the loop ------------
+
+def test_reprocess_gate_refuses_a_judged_reel_that_re_rendered():
+    reason, problems = episode_qc.reprocess_gate("judged", [1, 3])
+    assert reason == episode_qc.QC_REPROCESSED
+    assert len(problems) == 2
+    assert problems[0].startswith("episode 1 was re-rendered after it was judged")
+    assert "episode 3" in problems[1]
+
+
+def test_reprocess_gate_passes_a_judged_reel_that_did_not():
+    assert episode_qc.reprocess_gate("judged", []) == (None, [])
+
+
+def test_reprocess_gate_passes_an_unjudged_reel_whatever_it_re_rendered():
+    """design 2026-08-18 §2.1: with no verdict there is nothing for a reprocess to
+    invalidate, and refusing here would close the SP1 front door episode-qc §10
+    deliberately keeps open."""
+    assert episode_qc.reprocess_gate("absent", [0]) == (None, [])
+    assert episode_qc.reprocess_gate("unknown", [0]) == (None, [])
+    assert episode_qc.reprocess_gate("", [0]) == (None, [])
+
+
+def test_reprocess_gate_names_the_remedy_not_just_the_problem():
+    _, problems = episode_qc.reprocess_gate("judged", [2])
+    assert "episode_qc build" in problems[0]      # the fix travels with the finding
