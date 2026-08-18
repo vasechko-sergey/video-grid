@@ -8,6 +8,13 @@ def _flat(v: int, h: int = 200, w: int = 100) -> np.ndarray:
     return np.full((h, w, 3), v, dtype=np.uint8)
 
 
+def _with_ink(v: int = 80) -> np.ndarray:
+    """A flat frame carrying a bright block inside the (30, 70) band used below."""
+    f = _flat(v)
+    f[40:60, 10:40] = 255
+    return f
+
+
 def _corners_dark(v: int, frac: float, h: int = 200, w: int = 100) -> np.ndarray:
     """A flat frame whose corner boxes are darkened by `frac` — a rendered vignette."""
     f = _flat(v, h, w)
@@ -38,12 +45,14 @@ def test_a_rendered_vignette_passes():
     assert by["vignette"].status == "pass"
 
 
-def test_titles_alone_report_not_checked_rather_than_nothing():
-    """Titles have no check this slice (design §11). Returning [] would read as "the
-    gate looked and was satisfied"; a not-checked finding records the absence."""
-    out = lookcheck.evaluate([_flat(100)] * 3, [_flat(100)] * 3, None, None, None, None,
-                             titles=True)
-    assert [(f.check, f.status) for f in out] == [("titles", "not-checked")]
+def test_titles_alone_are_judged_with_no_look_declared():
+    """Titles do not need a vignette or a fade beside them to be measured — a reel
+    whose only declared treatment is its text still gets a verdict."""
+    m = _flat(100)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, _with_ink(100)),
+                             witnesses=((m, m),))
+    out = lookcheck.evaluate([m] * 3, [m] * 3, None, None, None, None, titles=[p])
+    assert [(f.check, f.status) for f in out] == [("titles:hook", "pass")]
 
 
 def test_titles_are_reported_even_beside_a_rendered_vignette():
@@ -52,9 +61,12 @@ def test_titles_are_reported_even_beside_a_rendered_vignette():
     rendered would ship attested with no trace titles were ever declared."""
     master = [_flat(100)] * 3
     delivered = [_corners_dark(100, 0.3) for _ in range(3)]
+    m = _flat(100)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, m),
+                             witnesses=((m, m),))
     by = {f.check: f.status for f in lookcheck.evaluate(master, delivered, None, None, None, None,
-                                                        vignette=0.3, titles=True)}
-    assert by == {"vignette": "pass", "titles": "not-checked"}
+                                                        vignette=0.3, titles=[p])}
+    assert by == {"vignette": "pass", "titles:hook": "fail"}
 
 
 def test_a_vignette_too_shallow_to_be_the_declared_one_fails():
@@ -198,3 +210,96 @@ def test_a_declared_fade_without_a_last_frame_refuses():
     with pytest.raises(ValueError, match="last frame"):
         lookcheck.evaluate([_flat(100)] * 3, [_flat(60)] * 3, _flat(80), _flat(0), None, None,
                            fade=0.5)
+
+
+def test_title_evidence_finds_ink_the_master_does_not_explain():
+    m = _flat(80)
+    frac = lookcheck.title_evidence((m, _with_ink()), (m, m), (30, 70))
+    assert frac == pytest.approx(20 * 30 / (40 * 100))
+
+
+def test_title_evidence_is_zero_without_ink():
+    m = _flat(80)
+    assert lookcheck.title_evidence((m, m), (m, m), (30, 70)) == 0.0
+
+
+def test_title_evidence_ignores_a_multiplicative_darkening():
+    # the vignette case, and the reason this metric exists: a static transform
+    # applied at BOTH times can only shrink the delivery's own frame-to-frame
+    # change relative to the master's, so it scores <= 0 (design 2026-08-19 §2.3).
+    m_in, m_out = _flat(200), _flat(60)
+    d_in, d_out = _flat(100), _flat(30)                  # halved everywhere
+    assert lookcheck.title_evidence((m_in, d_in), (m_out, d_out), (30, 70)) == 0.0
+
+
+def test_title_evidence_ignores_picture_motion():
+    m_in, m_out = _flat(20), _flat(220)                  # a hard cut between the samples
+    assert lookcheck.title_evidence((m_in, m_in), (m_out, m_out), (30, 70)) == 0.0
+
+
+def test_title_evidence_reads_only_the_band():
+    m = _flat(80)
+    above = _flat(80)
+    above[0:20] = 255                                    # ink OUTSIDE the band
+    assert lookcheck.title_evidence((m, above), (m, m), (30, 70)) == 0.0
+
+
+def test_title_evidence_uses_the_worst_channel_not_their_mean():
+    # a title in a saturated colour moves ONE channel hard and the others barely;
+    # averaging the three would divide that evidence by three.
+    m = _flat(80)
+    one = _flat(80)
+    one[40:60, 10:40, 0] = 255                           # red only
+    assert lookcheck.title_evidence((m, one), (m, m), (30, 70)) > 0.0
+
+
+def test_title_evidence_refuses_a_band_outside_the_frame():
+    m = _flat(80)
+    with pytest.raises(ValueError, match="non-empty row range"):
+        lookcheck.title_evidence((m, m), (m, m), (70, 30))
+
+
+def test_evaluate_titles_passes_a_rendered_title():
+    m = _flat(80)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70),
+                             inside=(m, _with_ink()), witnesses=((m, m),))
+    f, = lookcheck.evaluate_titles([p])
+    assert (f.check, f.status) == ("titles:hook", "pass")
+    assert f.expected == pytest.approx(lookcheck.TITLE_MIN_FRACTION)
+
+
+def test_evaluate_titles_fails_a_title_that_never_rendered():
+    m = _flat(80)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, m),
+                             witnesses=((m, m),))
+    f, = lookcheck.evaluate_titles([p])
+    assert f.status == "fail" and "did not render" in f.detail
+
+
+def test_evaluate_titles_takes_the_best_witness():
+    # measured: one bold-box title scored 3.53% against a dark witness frame and
+    # 18.94% against a bright one, on the same in-window frame. ANY title-free
+    # moment is a valid witness, so the rule is best-of, not first-of.
+    m, ink = _flat(80), _with_ink()
+    blind = (_flat(255), _flat(255))          # a witness that hides the ink entirely
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, ink),
+                             witnesses=(blind, (m, m)))
+    assert lookcheck.evaluate_titles([p])[0].status == "pass"
+    alone = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, ink),
+                                 witnesses=(blind,))
+    assert lookcheck.evaluate_titles([alone])[0].status == "fail"   # blind alone cannot
+
+
+def test_evaluate_titles_reports_a_skipped_probe_as_not_checked():
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70),
+                             skipped="every instant carries a title")
+    f, = lookcheck.evaluate_titles([p])
+    assert f.status == "not-checked" and "every instant" in f.detail
+
+
+def test_evaluate_routes_title_probes_through():
+    m = _flat(80)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, _with_ink()),
+                             witnesses=((m, m),))
+    out = lookcheck.evaluate([m], [m], None, None, None, None, titles=[p])
+    assert [f.check for f in out] == ["titles:hook"]

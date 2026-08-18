@@ -13,6 +13,7 @@ Every threshold below is a module constant and NOT a parameter, for the reason
 naturalness.py states: a threshold a caller can pass is a threshold a subagent can
 pass, and a no-waiver gate whose bar is an argument has no bar.
 """
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -69,6 +70,23 @@ VIGNETTE_FLOOR = 8.0
 # is 0.55 of the CORNER radius, so a box 1/10 of each side sits well outside the
 # plateau and the 2/10 centre box well inside it — neither straddles the falloff.
 BOX_DIV = 10
+# Titles. The per-pixel bar, in codes, is what does the discriminating: measured over
+# 110 ordered frame pairs of a real delivered reel re-encoded with NO title, the worst
+# single pixel reached 30 without a look and 24 under a max-depth (0.60) vignette, and
+# not one pair produced a qualifying pixel. 40 sits 1.33x above that worst observation.
+# Real footage deliberately — the synthetic corpus peaked at 2, which would have
+# justified a far lower bar and a far weaker gate (design 2026-08-19 §3.1).
+TITLE_INK_DELTA = 40
+# With the no-title side at exactly zero, this floor is not separating signal from
+# noise — TITLE_INK_DELTA already did. It absorbs a stray cluster on footage rougher
+# than any measured. 0.02% is 51 pixels of the measured band; the smallest legitimate
+# title (one period) produced 0.0384%, "hi" 0.1717%, a full line 2.9966% (§3.2).
+TITLE_MIN_FRACTION = 0.0002
+# Padding around titles.ink_extent, in font sizes each side. Measured to contain every
+# style: bold-box's box and outline-bold's stroke run 9 rows above and 15 below the
+# predicted text box, well inside 0.6 font sizes. A band too TALL only dilutes the
+# fraction; a band that misses the ink is a false fail on a no-waiver gate (§3.3).
+TITLE_BAND_PAD = 0.6
 
 
 @dataclass(frozen=True)
@@ -85,6 +103,24 @@ class LookFinding:
     def to_dict(self) -> dict:
         return {"check": self.check, "status": self.status, "detail": self.detail,
                 "measured": round(self.measured, 4), "expected": round(self.expected, 4)}
+
+
+@dataclass(frozen=True)
+class TitleProbe:
+    """One title's sampling material, or `skipped` naming why there is none.
+
+    `inside` is the (master, delivered) pair at a time inside the title's window;
+    each `witnesses` entry is the same pair at a time NO title covers. Both come from
+    deliver, which owns the timestamps — this module never touches a path.
+
+    `band` is (lo, hi) row indices in the delivered frame, from titles.ink_extent
+    padded by TITLE_BAND_PAD. Rows and not fractions because by this point the frame's
+    real height is known and the arrays are about to be sliced by it."""
+    label: str
+    band: tuple[int, int]
+    inside: tuple[np.ndarray, np.ndarray] | None = None
+    witnesses: tuple[tuple[np.ndarray, np.ndarray], ...] = ()
+    skipped: str = ""
 
 
 def _rgb(f: object, what: str) -> np.ndarray:
@@ -198,11 +234,73 @@ def _fade_edge(m: np.ndarray, d: np.ndarray, *, check: str, edge: str,
                        measured=d0, expected=expected)
 
 
+def title_evidence(inside: tuple[np.ndarray, np.ndarray],
+                   witness: tuple[np.ndarray, np.ndarray],
+                   band: tuple[int, int]) -> float:
+    """Share of the band's pixels carrying ink the MASTER does not explain.
+
+    The delivered file is compared against ITSELF at two times, minus the master's own
+    change between the same two — not against the master at one time. That is not a
+    style choice, it is the only version that works: measured, a max-depth vignette
+    alone moves 9.58% of a bottom band's pixels past a 60-code master-vs-delivered bar,
+    MORE than a real title does (design 2026-08-19 §2.1/§2.2). Here a transform applied
+    at both times cancels, picture motion cancels, and ink present at one time and
+    absent at the other has no counterpart in the master and survives.
+
+    Worst channel, not their mean: a title in a saturated colour moves one channel hard
+    and the others barely, and averaging would divide that evidence by three."""
+    lo, hi = band
+    (m_in, d_in), (m_out, d_out) = inside, witness
+    for f, what in ((m_in, "a master frame"), (d_in, "a delivered frame"),
+                    (m_out, "a master frame"), (d_out, "a delivered frame")):
+        _rgb(f, what)
+    _same_shape(m_in, d_in)
+    _same_shape(m_out, d_out)
+    _same_shape(m_in, m_out)
+    if not 0 <= lo < hi <= m_in.shape[0]:
+        raise ValueError(f"lookcheck: a title band must be a non-empty row range inside "
+                         f"the frame's {m_in.shape[0]} rows, got {band}")
+    a = np.abs(d_in[lo:hi].astype(np.int16) - d_out[lo:hi].astype(np.int16))
+    b = np.abs(m_in[lo:hi].astype(np.int16) - m_out[lo:hi].astype(np.int16))
+    return float(((a - b).max(axis=2) > TITLE_INK_DELTA).mean())
+
+
+def evaluate_titles(probes: Sequence[TitleProbe]) -> list[LookFinding]:
+    """One finding per declared title. `not-checked` is a real outcome here for the
+    same reason it is for the vignette's black-corner floor: a reel whose titles cover
+    every instant has no witness frame, and a title lying entirely inside a bookend
+    fade has no in-window frame bright enough to read — measured, a sample at alpha
+    0.10 scores 0.0000% on a correctly rendered title (design 2026-08-19 §4). Saying so
+    beats a bar that pretends."""
+    out: list[LookFinding] = []
+    for p in probes:
+        if p.skipped or p.inside is None or not p.witnesses:
+            out.append(LookFinding(
+                check=f"titles:{p.label}", status="not-checked",
+                detail=(p.skipped or "no usable frame pair was sampled for this title"),
+                measured=0.0, expected=TITLE_MIN_FRACTION))
+            continue
+        # Best of the witnesses, not the first: measured, one bold-box title scored
+        # 3.53% against a dark witness frame and 18.94% against a bright one. Any
+        # title-free moment is a valid witness, so one that sees the ink is enough.
+        frac = max(title_evidence(p.inside, w, p.band) for w in p.witnesses)
+        ok = frac >= TITLE_MIN_FRACTION
+        out.append(LookFinding(
+            check=f"titles:{p.label}", status="pass" if ok else "fail",
+            detail=(f"{100 * frac:.4f}% of the title's band rows {p.band[0]}-{p.band[1]} "
+                    f"carry ink the master does not explain"
+                    + ("" if ok else
+                       f", under the {100 * TITLE_MIN_FRACTION:.2f}% floor — the title "
+                       f"did not render, or rendered where this band is not looking")),
+            measured=frac, expected=TITLE_MIN_FRACTION))
+    return out
+
+
 def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
              first_master: np.ndarray | None, first_delivered: np.ndarray | None,
              last_master: np.ndarray | None, last_delivered: np.ndarray | None,
              *, vignette: float = 0.0, fade: float = 0.0, fps: float = 0.0,
-             titles: bool = False) -> list[LookFinding]:
+             titles: Sequence[TitleProbe] = ()) -> list[LookFinding]:
     """Judge a delivery against its master. Empty list = nothing was declared, so
     there is nothing to prove and no ffmpeg was worth spending.
 
@@ -214,6 +312,12 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
     needed only alongside `fade`: it sizes how much of the fade-out's ramp the last
     decodable frame can still be short of (`FADE_OUT_RESIDUAL_MARGIN`) — fade-in's
     t=0 needs no such slack, since it is frame-exact regardless of fps.
+
+    `titles` is one TitleProbe per declared title, each carrying its own frames: a
+    title occupies a band and a window nothing else here shares, so it cannot be
+    judged from the interior samples the other two checks reuse. Empty = no titles
+    were declared, which is not the same as a title that could not be sampled — that
+    one arrives as a probe with `skipped` set and reports not-checked.
     """
     if not (vignette or fade or titles):
         return []
@@ -225,20 +329,7 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
         _same_shape(_rgb(m, "a master frame"), _rgb(d, "a delivered frame"))
     out: list[LookFinding] = []
 
-    if titles:
-        # Titles have no check this slice (design §11). Returning nothing would read as
-        # "the gate looked and was satisfied" — this records the absence instead.
-        # Unconditional, NOT `titles and not (vignette or fade)`: titles ride beside a
-        # vignette or a fade in the common case, and a defect that killed only the
-        # drawtext stage while the vignette still rendered would otherwise ship attested
-        # with no trace that titles were ever declared. That is the exact bug class this
-        # gate exists for.
-        out.append(LookFinding(
-            check="titles", status="not-checked",
-            detail="titles were declared and this slice has no check for them: locating "
-                   "a title's band needs titles.y_exprs plus the safe-zone table (design "
-                   "§11). Nothing here says whether the text rendered",
-            measured=0.0, expected=0.0))
+    out.extend(evaluate_titles(titles))
 
     if vignette:
         mid = len(mid_master) // 2
