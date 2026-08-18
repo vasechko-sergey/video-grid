@@ -157,11 +157,16 @@ a semantic version marker on `FOOTAGE.json` so `from_dict` can refuse a stale ar
 
 **Front-half sensors**
 a **subject-motion** anchor sensor — global frame difference cannot place a ramp
-(measured: 7 of 8 real episodes are a flat plateau to it), and two candidates already
-exist unwired: `carve.track_displacements` (median displacement across shared track
-ids — identity-consistent by construction) and a vidstab-subtracted curve. Only with
-one of those does auto-placing a ramp's `at` become a question about wire format and
-clamping rather than about whether there is any signal (deferred-measurements §4.5)
+(measured: 7 of 8 real episodes are a flat plateau to it). Two candidate sensors are
+already BUILT AND RUNNING, just not reachable from here: `carve.track_displacements`
+(median displacement across shared track ids — identity-consistent by construction)
+and a vidstab-subtracted curve, both of which `intake.py` calls today. What is
+missing is not the code, it is a route from intake's tracking data to `lib/anchors`,
+which runs at pacing time over an episode's source and has none. (This row said
+"exist unwired" until 2026-08-19, which read as dead code and is the opposite of the
+truth — it is a subsystem boundary.) Only with a route does auto-placing a ramp's
+`at` become a question about wire format and clamping rather than about whether
+there is any signal (deferred-measurements §4.5)
 
 **Identity**
 hero-conditioned re-scan — re-measure windows holding a named hero after cast naming; **blocked on a face detector** (mood-preset §14, playbook P3) ·
@@ -288,7 +293,6 @@ pixel/CV subject detection for safe zones, and a hard gate with a re-frame actua
 a reviewer panel instead of one subagent, and judging real playback rather than stills (reel-review §7) ·
 stamp the other six run artifacts with provenance (attested-run §12) ·
 multi-reel fan-out — `reel_count > 1` now refuses loudly instead of silently making one (reel-brief §7, reel-review §7) ·
-titles in the look gate — the only pixel coverage they have is the `not-checked` finding that says a title was declared, never that the drawtext stage actually rendered it; closing the gap needs the title's band geometry from `titles.y_exprs` plus the safe-zone table (frame-probe-look-gate §11) ·
 calibrate the look gate's constants (`VIGNETTE_MIN_FRACTION`/`FADE_BLACK_MAX`/`FADE_SOURCE_MIN`/`VIGNETTE_FLOOR` in `lib/lookcheck.py`) on real footage — measured, but on synthetic patterns and one encode profile (frame-probe-look-gate §11) ·
 generalize the frame probe to the other QC axes, composition and path smoothness — `RenderPlan` + `with_tail` are axis-agnostic, only colour is wired this slice (frame-probe-look-gate §11) ·
 record the applied `color_correct` on `PathMeta` so `probe_grade` can see and reproduce (or refuse against) a reel-level colour retry — its no-`--edl` baseline is silently wrong for any episode `build_reel`'s retry touched, because the pull lives only in `build_reel`'s own in-memory dict and `EPISODES.json` never carries it forward, so no later re-probe can recover the shipped grade either (frame-probe-look-gate, whole-branch review) ·
@@ -296,7 +300,22 @@ a titles-only delivery — and even an explicitly EMPTY `TITLES.json` (the predi
 `provenance.verify_delivery`'s detail for an unattested file reads "this file was not produced by deliver()" — literally false for the look-gate-withheld case (`deliver` DID run and DID write `REEL_v{n}` before refusing); and `look_checks` (the gate's own findings, present in a WRITTEN attestation) is never surfaced by `montage status`/`verify`, so a `not-checked` vignette or fade reads no differently from a passing one at either command (frame-probe-look-gate, whole-branch review)
 
 **Titles**
-libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate — **the same capability the Reel/QC group's "pixel/CV subject detection for safe zones" needs; one measurement, two consumers, so build it once** · cross-platform font install (titles §7)
+libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
+the **subject** — the titles half landed 2026-08-19 (`titles.zone_overflow` refuses a
+staircase that would render into the app's chrome, measured at 244px on the reels
+table), and what remains is **the same capability the Reel/QC group's "pixel/CV
+subject detection for safe zones" needs; one measurement, two consumers, so build it
+once** · `x`-axis containment for titles — the gate's band is rows only, so a very
+long line at a large `scale` can overflow the left/right margins unchecked
+(titles-pixel-gate §9) · the gate reads no TEXT: proving ink appeared is not proving
+the words are the author's, and any font puts ink in the band, so a WRONG FONT passes
+(§9; the glyph metrics `_layers` already computes would close the font half) · titles
+in the frame probe — they are burned at `deliver`, so converging a title's position
+still costs a reel encode (§9) · a ONE-CHARACTER title clears the evidence floor by
+only 1.9x, the thinnest legitimate margin in the table (§3.4) · calibrate
+`TITLE_INK_DELTA`/`TITLE_MIN_FRACTION`/`TITLE_BAND_PAD` on a second shoot — all three
+are measured against one delivered reel plus a synthetic corpus (§10) ·
+cross-platform font install (titles §7)
 
 **Docs / test scaffolding**
 the edit-plan knob-coverage test proves a field NAME is present, never that the

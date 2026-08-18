@@ -12,6 +12,85 @@ _Last updated: 2026-08-18._
 
 ## Done
 
+- **Titles pixel gate + the staircase that leaves the frame + three orphans DONE
+  (2026-08-19)** — plan `docs/plans/2026-08-19-titles-pixel-gate.md` + design
+  `docs/specs/2026-08-19-titles-pixel-gate-design.md` (branch
+  `feat/titles-pixel-gate`). Closes the look gate's last `not-checked` arm: a reel
+  whose declared titles never reached the pixels is now refused, with no waiver, at
+  the same post-encode gate that already judges the vignette and the fade.
+
+  **The queued approach does not work, and measuring it is what produced the slice.**
+  Every other check in `lookcheck` compares master against delivered at one
+  timestamp; for titles that cannot separate signal from look, because every
+  declared filter differs from the master. Measured on a 1080x1920 corpus, band
+  pixels past a 60-code bar: a plain title **5.71%**, a **0.45** vignette with no
+  title **5.82%**, a **0.60** vignette with no title **9.58%** — the vignette scores
+  HIGHER than the thing being looked for, and its effect is largest exactly where a
+  bottom title sits. The neighbour-strip control narrows the margin to 1.08 points at
+  depth 0.60, which a two-letter title falls through.
+
+  What works compares the delivered file **against itself** at two times and
+  subtracts the master's own change between the same two:
+  `ev = max_RGB(|d_in - d_out| - |m_in - m_out|)`. A transform applied at both times
+  cancels; picture motion cancels; ink present at one time and absent at the other
+  has no counterpart in the master. On the 2026-08-03 run's own delivered reel
+  (1080x1920, 59.94fps, 34.05s), best of five witnesses at threshold 40: no title
+  **0.0000%**, vignette 0.60 no title **0.0000%**, plain title 2.9966%, top title
+  7.0493%, bold-box 18.9443%, plain + vignette 0.60 3.2455% — the deepest legal
+  vignette moves the answer by **0.25 percentage points**. Over **110 ordered
+  title-free frame pairs** the fraction is exactly 0.00000% in every one, worst
+  single pixel 30 (24 under the vignette), which is what sets `TITLE_INK_DELTA = 40`
+  at 1.33x above the worst observation. `TITLE_MIN_FRACTION = 0.0002` sits under the
+  faintest thing measurable — a one-character title, 0.0384% — by 1.9x, the thinnest
+  margin in the slice and recorded as such.
+
+  **The fade breaks it at BOTH ends, and neither was on the queue.** Same reel, a
+  1.0s bookend fade: a `t_in` at alpha 0.10 scores **0.0000%** on a title that
+  rendered perfectly (a false FAIL), and a witness inside the fade-out inflates to
+  **30.69%** against a reference 6.69% (a false PASS on a delivery whose drawtext
+  never ran). Both ends are clamped into `[fade, dur - fade]`, and a title whose
+  whole window lies inside a ramp reports `not-checked` with that reason named.
+
+  **A live defect fell out of the band geometry.** `build_filterchain` lays a title
+  out against `y_exprs(platform)`, so one line sits exactly on the safe zone's inner
+  edge — but `_layers` adds a `reveal="stair"` step's drop BELOW the base y with
+  nothing lifting the base to make room. Measured on the reels table at 1080x1920, a
+  four-step bottom staircase reaches row 1857 against a zone edge at 1613: **244px
+  inside the app's caption/button chrome**, unrefused. `titles.zone_overflow` now
+  refuses it at the chokepoint every render passes through, and `titles check
+  --platform` runs the same predicate at authoring time (a subcommand, not a flag on
+  `build` — `build` only drafts single-line titles and structurally cannot author the
+  shape that overflows). Only the bottom is guarded, and that is measured: scanned
+  over every position x platform x legal scale, the ink's top never comes closer to
+  the top margin than exactly 0, so a top guard would be unreachable.
+
+  **The orphan audit.** An AST scan over `scripts/` for public functions, classes,
+  module constants and dataclass fields with no production reader found **three**:
+  `geometry.crop_size` (a one-line wrapper, four test callers, no production one) and
+  `safezones.default_zone` (whose docstring still claimed to be "titles' single margin
+  source", untrue since titles-animations replaced `_Y_EXPR` with `y_exprs`) are
+  deleted; `models.DEGRADED_LEVELS` is **wired instead** — a declared vocabulary
+  nothing validated against, so `TrackMeta.degraded` accepted any string while every
+  sibling vocabulary in the module is enforced by a `__post_init__`. Contract fields
+  with no reader: **zero**, before and after. The audit also corrected
+  `docs/backlog.md`'s claim that `carve.track_displacements` and `subject_curve`
+  "already exist unwired" — both are called from `intake.py` and have been the motion
+  sensor since 2026-08-06; what the row meant is that neither is reachable from
+  `lib/anchors`, a subsystem boundary that read as dead code.
+
+  **Proof.** Three real-ffmpeg goldens, each with a control that must not move — the
+  middle one delivers a sabotaged chain under a 0.60 vignette and requires the gate to
+  fail the titles while passing the vignette, which is the anti-regression pin for the
+  metric choice itself. An **18-row** mutation battery, run under
+  `PYTHONDONTWRITEBYTECODE=1`: **five rows survived the first pass**, every one a real
+  coverage hole — nothing pinned either constant's VALUE (both mechanism tests hold at
+  any threshold), the worst-channel test's 255-code delta passed the channel mean too,
+  and the fade-clamp test's title was wide enough that both clamps were no-ops. Closed
+  with four new tests (two constant-window pins, a straddling delta, and a
+  per-end clamp test each built so the clamp is load-bearing), plus two added rows for
+  the floor's own boundary. All 18 discriminate. Full suite from a cleared bytecode
+  cache: **3048 passed / 2 skipped**, no golden moved.
+
 - **Four deferred measurements — the outro floor, layer 3, the conductor's residual,
   and the ramp anchor DONE (2026-08-18)** — plan
   `docs/plans/2026-08-18-deferred-measurements.md` + design

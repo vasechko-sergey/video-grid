@@ -151,6 +151,28 @@ allowed set. A **font name** validates structurally the same way (non-empty
 string) but is only *resolved* — checked against what's actually installed —
 later, at `deliver` (Landmines, below).
 
+## Check the layout before you hand off
+
+After editing `TITLES.json`, run the preflight — it costs nothing and it fires
+at the one moment the fix is a one-line edit:
+
+```
+bin/vg titles check --titles <run>/TITLES.json --platform reels
+```
+
+It refuses a title whose ink would land outside the platform's safe zone. One
+line is safe by construction (the layout is computed AGAINST the zone), so in
+practice this catches a `reveal="stair"`: each step drops below the base
+position and nothing lifts the base to make room. Measured on the reels table
+at 1080x1920, a **four-step bottom staircase renders 244px into the app's
+caption and button strip**. Remedies, in the order to try them: shorten the
+staircase, lower `line_spacing`, move to `pos="top"` (a staircase there has the
+whole frame to fall into), or reduce `scale`. Nothing is moved for you —
+relocating a title you positioned would be an invisible creative change.
+
+`deliver` runs the same predicate and refuses too, so skipping this only means
+learning it after every episode has been rendered.
+
 ## Hand-off
 
 The render itself happens later, at `deliver` (5.14): pass `--titles
@@ -158,6 +180,25 @@ TITLES.json` to `edl_to_reel` — it threads the path to `build_reel` then
 `deliver`, which burns the drawtext chain into the ONE encode it already runs. No
 second pass, no titled intermediate file. Absent `--titles`, `deliver` encodes
 exactly as it does without this stage.
+
+**`deliver` then checks the pixels.** After the encode it samples each title's
+band and refuses the delivery if the text did not reach it — the class of defect
+where the chain builds fine and renders nothing (a dropped filter, an
+unresolvable font, a filtergraph split on a bare comma). No waiver. Two verdicts
+are worth recognising in the report:
+
+- **`fail`** — the band carries no ink the master does not explain. The title
+  did not render. Read the percentage in the finding: a real title scores 0.3%
+  and up, a missing one exactly 0.0000%.
+- **`not-checked`** — nothing was proven, and the finding says why. Either every
+  instant of the reel carries a title (so there is no title-free frame to compare
+  against), or this title's window lies entirely inside the bookend fade, where
+  even a correct render is too faint to measure. Both pass; neither is evidence.
+
+The gate proves ink arrived in the band. It does not read the words, judge the
+font, or notice a title that rendered correctly but illegibly — a white `plain`
+title over a white sky will report `fail`, which is honest about the pixels and
+misleading about the cause. `bold-box` carries its own background and is immune.
 
 ## Landmines (design §12)
 

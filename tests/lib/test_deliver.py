@@ -269,11 +269,36 @@ def test_the_version_note_is_the_reason_not_a_path(tmp_path, monkeypatch):
     assert "VERSIONS.md" not in text.split("\n", 2)[-1]
 
 
-def test_title_times_clamps_both_ends_out_of_the_fade():
-    # measured (design 2026-08-19 §4): a t_in at alpha 0.10 scores 0.0000% on a
-    # correctly rendered title (false FAIL) and a witness inside the fade-out
-    # inflates the evidence 4.6x on a delivery whose drawtext never ran (false
-    # PASS). Both ends are clamped into [fade, dur - fade].
+def test_title_times_clamps_the_in_window_sample_out_of_the_fade_in():
+    """measured (design 2026-08-19 §4): a t_in at alpha 0.10 scores 0.0000% on a
+    correctly rendered title — a false FAIL on a no-waiver gate.
+
+    The title has to STRADDLE the ramp for this to discriminate: with a window wide
+    enough to hold its own midpoint clear of the fade, the clamp is a no-op and
+    dropping it changes nothing (mutation battery row 10 survived that version).
+    Here [0.0, 1.2] against a 1.0s fade has an unclamped midpoint of 0.6, inside the
+    ramp; clamped, the window is [1.0, 1.2] and the midpoint 1.1."""
+    items = (Title("hook", 0.0, 1.2),)
+    t_in, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0)
+    assert skipped == ""
+    assert t_in == pytest.approx(1.1)
+
+
+def test_title_times_clamps_the_witness_out_of_the_fade_out():
+    """The other end, and the dangerous one: a witness faded toward black makes
+    |d_in - d_out| large with no title involved, which is a false PASS (measured 4.6x
+    inflation).
+
+    Same discrimination problem in reverse — the tail candidate is only ever sampled
+    when the titles cover everything before it, so the title runs to 31.0s of a 34s
+    reel. Unclamped, the last free instant is 33.31; clamped, 32.33."""
+    items = (Title("hook", 0.0, 31.0),)
+    _, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0)
+    assert skipped == "" and witnesses
+    assert max(witnesses) <= 33.0
+
+
+def test_title_times_keeps_every_sample_inside_the_legal_window():
     items = (Title("hook", 0.0, 3.0),)
     t_in, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0)
     assert skipped == "" and witnesses

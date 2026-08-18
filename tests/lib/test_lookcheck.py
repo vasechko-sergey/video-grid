@@ -1,3 +1,5 @@
+from unittest import mock
+
 import numpy as np
 import pytest
 
@@ -245,11 +247,17 @@ def test_title_evidence_reads_only_the_band():
 
 
 def test_title_evidence_uses_the_worst_channel_not_their_mean():
-    # a title in a saturated colour moves ONE channel hard and the others barely;
-    # averaging the three would divide that evidence by three.
+    """A title in a saturated colour moves ONE channel and leaves the others; the
+    mean of the three divides that evidence by three.
+
+    The delta is chosen to straddle the bar rather than merely to exist: 90 clears
+    TITLE_INK_DELTA on its own channel and 90/3 = 30 does not. A larger delta (255,
+    the first version of this test) passes either way and proved nothing — mutation
+    battery row 7 survived it."""
     m = _flat(80)
     one = _flat(80)
-    one[40:60, 10:40, 0] = 255                           # red only
+    one[40:60, 10:40, 0] = 80 + 90                       # red only, straddling the bar
+    assert 90 > lookcheck.TITLE_INK_DELTA > 30           # the premise, pinned
     assert lookcheck.title_evidence((m, one), (m, m), (30, 70)) > 0.0
 
 
@@ -303,3 +311,47 @@ def test_evaluate_routes_title_probes_through():
                              witnesses=((m, m),))
     out = lookcheck.evaluate([m], [m], None, None, None, None, titles=[p])
     assert [f.check for f in out] == ["titles:hook"]
+
+
+def test_the_ink_bar_sits_between_the_measured_noise_and_the_measured_ink():
+    """Rows 1 and 2 of this slice's mutation battery both SURVIVED: the mechanism
+    tests above hold at any threshold, so nothing pinned the constant's value. It is
+    justified by two measurements (design 2026-08-19 §3.1/§3.2) and this is where
+    they live in code.
+
+    Below: over 110 title-free frame pairs of a real delivered reel — plain
+    re-encode and a max-depth 0.60 vignette — the worst single-pixel evidence was 30.
+    Above: the faintest real title measured (two characters at the default size)
+    peaked at 106. A bar outside [31, 106] either admits encoder noise or refuses a
+    legitimate title, and neither is something a no-waiver gate may do quietly."""
+    assert 30 < lookcheck.TITLE_INK_DELTA < 106
+
+
+def test_the_fraction_floor_sits_between_zero_and_the_faintest_real_title():
+    """The floor's own bounds, same reasoning. Below: 110 title-free pairs produced
+    exactly 0.00000%. Above: a ONE-CHARACTER title — the faintest thing this repo can
+    author — measured 0.0384% on real footage, the thinnest legitimate margin there
+    is (design §3.4)."""
+    assert 0.0 < lookcheck.TITLE_MIN_FRACTION < 0.000384
+
+
+
+
+def test_a_fraction_exactly_on_the_floor_passes():
+    """`>=`, not `>`. No other test in this file puts a measurement exactly ON the
+    floor, so the boundary's direction was unguarded — the same hole the previous
+    slice's curve_contrast row found (2026-08-18 battery 2 row 5).
+
+    The band is 40 rows x 100 columns = 4000 pixels; TITLE_MIN_FRACTION * 4000 = 0.8,
+    so ONE qualifying pixel is already above it. The tie is built by shrinking the
+    floor to exactly what one pixel measures instead, which keeps the test honest if
+    the constant is ever re-tuned."""
+    m = _flat(80)
+    d = _flat(80)
+    d[45, 20] = 255                                       # exactly one ink pixel
+    frac = lookcheck.title_evidence((m, d), (m, m), (30, 70))
+    assert frac == pytest.approx(1 / 4000)
+    p = lookcheck.TitleProbe(label="hook", band=(30, 70), inside=(m, d),
+                             witnesses=((m, m),))
+    with mock.patch.object(lookcheck, "TITLE_MIN_FRACTION", frac):
+        assert lookcheck.evaluate_titles([p])[0].status == "pass"
