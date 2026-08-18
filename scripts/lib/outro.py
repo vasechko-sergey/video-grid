@@ -59,8 +59,18 @@ class OutroFit:
                                      # sentence quoted a module constant that was not
                                      # even the number that applied (design §1.6).
                                      # Defaults to 0.0 so an EDL written before
-                                     # 2026-08-18 still loads; "unchanged" keeps that
-                                     # default, because no rung ever ran.
+                                     # 2026-08-18 still loads.
+                                     #
+                                     # "unchanged" ALWAYS carries 0.0, and the reason is
+                                     # worth stating because it is not uniform: the
+                                     # early no-bars return never computed a need, while
+                                     # the final one is reached AFTER the gap rung ran
+                                     # and refused. Both report 0.0 deliberately — the
+                                     # field's one consumer is the no-gap sentence, and
+                                     # on "unchanged" a non-zero need would read as a
+                                     # requirement that was applied and met, which is
+                                     # the opposite of what happened. 0.0 there means
+                                     # "not applicable", not "nothing was asked".
 
     def __post_init__(self) -> None:
         if self.rung not in RUNGS:

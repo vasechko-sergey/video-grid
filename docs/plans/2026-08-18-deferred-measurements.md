@@ -237,8 +237,11 @@ In `OutroFit`, after `brief_len`:
 
 Add `"need": self.need` to `to_dict`, `need=d.get("need", 0.0)` to `from_dict`, and
 `need=need` to the two `OutroFit(...)` constructions inside `fit_outro` that follow
-the `need = ...` line (the `gap` and `no-gap` returns). The two `unchanged` fits
-keep the default — no rung ran, so no requirement applied.
+the `need = ...` line (the `gap` and `no-gap` returns). Both `unchanged` returns keep
+the default 0.0 — **and the field's docstring must say why, because the two are not
+alike**: the early no-bars return never computed a need, while the final one is
+reached after the gap rung ran and refused. 0.0 on that rung means "not applicable";
+a real number there would read as a requirement applied and met.
 
 - [ ] **Step 4: Fix the sentence**
 

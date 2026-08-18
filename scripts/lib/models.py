@@ -1117,7 +1117,16 @@ class MusicSpec:
                                           # relative and clipped to [0, duration]. From
                                           # the demucs stem at ~23 ms resolution, never
                                           # from `energy`: a 2 Hz curve has 0.5s bins and
-                                          # the outro rule asks about 0.5s (§8.1).
+                                          # the outro rule asked about 0.5s (§8.1) — it
+                                          # could not resolve its own question, and the
+                                          # first pass of that investigation reported the
+                                          # feature impossible because of exactly this.
+                                          # Since 2026-08-18 the rule asks about
+                                          # `fade + outro.TAIL_MARGIN`, whose 0.05s term
+                                          # is TWO BINS of this very envelope — so the
+                                          # requirement on this resolution is now tighter,
+                                          # not looser, and 23 ms is what makes the
+                                          # margin meaningful at all.
 
     def __post_init__(self) -> None:
         if not (isinstance(self.track, str) and self.track):
