@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import deliver
-from scripts.lib import provenance
+from scripts.lib import provenance, titles as titles_lib
+from scripts.lib.titles import Title
 from scripts.lib.models import CheckResult, ExportProfile, ReelReport, REEL_H264
 
 
@@ -266,3 +267,56 @@ def test_the_version_note_is_the_reason_not_a_path(tmp_path, monkeypatch):
     text = (out_dir / "VERSIONS.md").read_text()
     assert "regraded ep1" in text
     assert "VERSIONS.md" not in text.split("\n", 2)[-1]
+
+
+def test_title_times_clamps_both_ends_out_of_the_fade():
+    # measured (design 2026-08-19 §4): a t_in at alpha 0.10 scores 0.0000% on a
+    # correctly rendered title (false FAIL) and a witness inside the fade-out
+    # inflates the evidence 4.6x on a delivery whose drawtext never ran (false
+    # PASS). Both ends are clamped into [fade, dur - fade].
+    items = (Title("hook", 0.0, 3.0),)
+    t_in, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0)
+    assert skipped == "" and witnesses
+    assert 1.0 <= t_in <= 33.0
+    assert all(1.0 <= w <= 33.0 for w in witnesses)
+
+
+def test_title_times_skips_a_title_buried_in_the_fade():
+    items = (Title("hook", 0.0, 0.5),)
+    _, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0)
+    assert "bookend fade" in skipped
+
+
+def test_title_times_skips_when_the_fade_covers_the_whole_reel():
+    items = (Title("hook", 0.0, 3.0),)
+    _, _, skipped = deliver._title_times(items, 0, dur=4.0, fade=2.0)
+    assert "whole" in skipped
+
+
+def test_title_times_skips_when_no_instant_is_title_free():
+    items = (Title("a", 0.0, 20.0), Title("b", 19.0, 15.0))
+    _, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0)
+    assert "title-free" in skipped
+
+
+def test_title_times_witness_avoids_every_titles_window():
+    items = (Title("a", 0.0, 5.0), Title("b", 20.0, 5.0))
+    _, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0)
+    assert skipped == "" and witnesses
+    for w in witnesses:
+        assert not (0.0 <= w <= 5.0) and not (20.0 <= w <= 25.0)
+
+
+def test_title_band_pads_the_extent_and_clamps_to_the_frame():
+    t = Title("hi", 0.0, 1.0, pos="bottom")
+    lo, hi = deliver._title_band(t, 1920, "reels")
+    top, bottom = titles_lib.ink_extent(t, "reels")
+    assert lo < top * 1920 and hi > bottom * 1920      # padded on BOTH sides
+    assert 0 <= lo < hi <= 1920
+    # the clamps, at both ends. A big enough font pushes the padded top negative
+    # (pad 0.6*3/18 = 0.100 of h against the reels zone's 0.08 top margin), and a
+    # staircase pushes the padded bottom past the frame.
+    big_top = Title("hi", 0.0, 1.0, pos="top", scale=3.0)
+    assert deliver._title_band(big_top, 1920, "reels")[0] == 0
+    stair = Title("a\nb\nc\nd", 0.0, 4.0, pos="bottom", reveal="stair", reveal_step=0.4)
+    assert deliver._title_band(stair, 1920, "reels")[1] == 1920

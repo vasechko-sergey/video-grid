@@ -3,14 +3,16 @@ with a version log (design §5, montage §5.14 + §11 version-log binding). The 
 encode of the back half; a hard gate refuses a failed reel."""
 import argparse
 import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
 
-from scripts.lib import assembly, ffbin, look as look_lib, lookcheck, proc, provenance
+from scripts.lib import (assembly, ffbin, look as look_lib, lookcheck, proc,
+                         provenance, titles as titles_lib)
 from scripts.lib.look import LookSpec
 from scripts.lib.models import ExportProfile, ReelReport
-from scripts.lib.titles import Titles, build_filterchain
+from scripts.lib.titles import Title, Titles, build_filterchain
 
 
 def _next_version(out_dir: str, container: str) -> int:
@@ -63,8 +65,53 @@ def _render_mask(master: str, out_dir: str, vignette: float) -> str:
     return mask
 
 
+# How many title-free moments to compare a title against. Measured, the witness barely
+# matters for a single-shot title (2.9645%-2.9966% across five), but a bold-box one
+# swings 3.53%-18.94% on what the witness frame happens to show — so a handful,
+# best-of. Each costs one frame from each file (design 2026-08-19 §2.4).
+_TITLE_WITNESSES = 3
+_WITNESS_GRID = 24          # candidate instants scanned across the legal window
+
+
+def _title_band(t: Title, h: int, platform: str) -> tuple[int, int]:
+    """The delivered rows lookcheck measures for this title: titles.ink_extent padded
+    by lookcheck.TITLE_BAND_PAD font sizes each side, in pixels, clamped to the frame."""
+    top, bottom = titles_lib.ink_extent(t, platform)
+    pad = lookcheck.TITLE_BAND_PAD * t.scale / titles_lib.FONTSIZE_DIV
+    return (max(0, int((top - pad) * h)), min(h, int(math.ceil((bottom + pad) * h))))
+
+
+def _title_times(items: tuple[Title, ...], i: int, dur: float,
+                 fade: float) -> tuple[float, tuple[float, ...], str]:
+    """(in-window time, witness times, skip reason) for item `i`.
+
+    Both ends are clamped into [fade, dur - fade] because BOTH break inside a ramp, in
+    opposite directions and for different reasons (design 2026-08-19 §4): a title
+    sampled at alpha 0.10 has almost no ink left to find, and a witness faded toward
+    black makes |d_in - d_out| large with no title involved at all — a false fail and a
+    false pass respectively, and a no-waiver gate can afford neither."""
+    lo, hi = float(fade), float(dur) - float(fade)
+    t = items[i]
+    if hi - lo <= 0:
+        return 0.0, (), (f"the {fade:g}s bookend fade covers the whole {dur:g}s reel, so "
+                         f"there is no frame outside a ramp to measure")
+    w_lo, w_hi = max(t.start, lo), min(t.start + t.dur, hi)
+    if w_hi - w_lo <= 0:
+        return 0.0, (), (f"the title's window [{t.start:g}, {t.start + t.dur:g}] lies "
+                         f"entirely inside the {fade:g}s bookend fade, where a correctly "
+                         f"rendered title is drawn too faint to measure")
+    covered = [(it.start, it.start + it.dur) for it in items]
+    grid = [lo + (hi - lo) * (k + 0.5) / _WITNESS_GRID for k in range(_WITNESS_GRID)]
+    free = [x for x in grid if not any(a <= x <= b for a, b in covered)]
+    if not free:
+        return 0.0, (), ("every instant of the reel carries a title, so there is no "
+                         "title-free frame to compare against")
+    step = max(1, len(free) // _TITLE_WITNESSES)
+    return (w_lo + w_hi) / 2, tuple(free[::step][:_TITLE_WITNESSES]), ""
+
+
 def _verify_look(master: str, out: str, look: LookSpec | None,
-                 titles: str | None) -> list[lookcheck.LookFinding]:
+                 titles: str | None, platform: str = "") -> list[lookcheck.LookFinding]:
     """Prove the declared look reached the DELIVERED pixels (design 2026-08-15 §7).
 
     check_reel measured the master; everything below rides this encode and nothing
@@ -86,6 +133,11 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     costs nothing to compute and `evaluate` itself only ever reads it when `fade` is
     truthy.
 
+    Titles do not share those samples. A title occupies a band and a window nothing
+    else here does, so each gets its own in-window frame plus a pool of title-free
+    witnesses — all gathered into ONE extra `frames_rgb` per file, which selects them
+    in a single decode, so N titles do not cost N decodes.
+
     With nothing declared this makes no ffmpeg call at all, so a look-less delivery
     costs exactly what it cost before this gate existed.
     """
@@ -95,18 +147,31 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
         return []
     out_dur = assembly.probe_duration(out)
     ts = [out_dur * f for f in (0.25, 0.5, 0.75)]
-    m_fps, d_fps = assembly.probe_stream(master).fps, assembly.probe_stream(out).fps
+    m_si, d_si = assembly.probe_stream(master), assembly.probe_stream(out)
+    m_fps, d_fps = m_si.fps, d_si.fps
     first_m = first_d = last_m = last_d = None
     if fade:
         first_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
         first_d = assembly.frames_rgb(out, [0.0], d_fps)[0]
         last_m = assembly.last_frame_rgb(master, m_fps)
         last_d = assembly.last_frame_rgb(out, d_fps)
+    probes: list[lookcheck.TitleProbe] = []
+    if titles is not None:
+        items = Titles.from_json(titles).items
+        plan = [_title_times(items, i, out_dur, fade) for i in range(len(items))]
+        extra = sorted({t for t_in, ws, why in plan if not why for t in (t_in, *ws)})
+        m_extra = dict(zip(extra, assembly.frames_rgb(master, extra, m_fps))) if extra else {}
+        d_extra = dict(zip(extra, assembly.frames_rgb(out, extra, d_fps))) if extra else {}
+        for i, (t_in, ws, why) in enumerate(plan):
+            probes.append(lookcheck.TitleProbe(
+                label=items[i].text.splitlines()[0][:24] or f"item{i}",
+                band=_title_band(items[i], d_si.h, platform), skipped=why,
+                inside=None if why else (m_extra[t_in], d_extra[t_in]),
+                witnesses=() if why else tuple((m_extra[w], d_extra[w]) for w in ws)))
     return lookcheck.evaluate(assembly.frames_rgb(master, ts, m_fps),
                               assembly.frames_rgb(out, ts, d_fps),
                               first_m, first_d, last_m, last_d,
-                              vignette=vig, fade=fade, fps=d_fps,
-                              titles=titles is not None)
+                              vignette=vig, fade=fade, fps=d_fps, titles=probes)
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
@@ -213,7 +278,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     # stays on disk — deleting output nobody asked to delete is worse than leaving the
     # evidence — but no attestation is written, which montage status already reports as
     # an unattested delivery. No waiver (governance #8).
-    look_checks = _verify_look(master, out, look, titles)
+    look_checks = _verify_look(master, out, look, titles, platform)
     bad = [f for f in look_checks if f.status == "fail"]
     if bad:
         raise RuntimeError(
