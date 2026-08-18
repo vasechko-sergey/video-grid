@@ -8,9 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts import edl_to_reel, episode_qc, reframe
+from scripts import build_reel, edl_to_reel, episode_qc, reframe
 from scripts.lib import provenance
-from scripts.lib.models import Delivery, LayoutSpec, ReframeSpec, ReelEpisode, ReelManifest
+from scripts.lib.models import (CheckResult, Delivery, LayoutSpec, ReelEpisode,
+                                ReelFailure, ReelManifest, ReelReport, ReframeSpec)
 
 
 def _episode(sample_clip, tmp, x_const, name):
@@ -116,3 +117,71 @@ def test_an_unjudged_reel_never_reaches_assembly(tmp_path, sample_clip):
     p, _ = _episodes_json(tmp_path, sample_clip)
     res = edl_to_reel.assemble_reel(str(p), str(tmp_path / "work"))
     assert res["finding"]["reason"] == "episode-qc-missing"
+
+
+def _color_fail(idx):
+    """The one canned report in this module. check_reel's real colour check needs a real
+    tint on a real source; what this proof is about is the LOOP ARM the failure routes
+    to — see the design's §9 note that the two proofs are not joined."""
+    return ReelReport(
+        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
+        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", idx,
+                                  {"target": [120.0, 120.0, 120.0],
+                                   "culprit_mean": [150.0, 120.0, 120.0]})],
+        episode_count=2)
+
+
+@pytest.mark.integration
+def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_it(
+        tmp_path, sample_clip, monkeypatch):
+    """design 2026-08-18 §2/§2.2 end to end: loop-2 rewrites ep1's bytes AFTER
+    episode_qc digested them, so the delivery is refused; re-judging exactly ep1 and
+    re-running the same command delivers, with an empty reprocessed list.
+
+    The control that must not move is this module's own
+    test_a_clean_run_delivers_and_the_attestation_names_the_judged_bytes — a reel with
+    no reprocess still delivers in one pass. Run them together.
+
+    process_episode is faked (the real one runs YOLO) and so is the FIRST check_reel
+    round; everything else is real — real reframed clips, real digests, real pack/build,
+    real gate, real assemble + check_reel + deliver."""
+    p, rm = _episodes_json(tmp_path, sample_clip)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    _judge(tmp_path / "qc", 0)
+    _judge(tmp_path / "qc", 1)
+    episode_qc.build(str(p), str(tmp_path / "qc"), str(p.parent))
+    judged_ep0 = provenance.digest_file(rm.episodes[0].clip)
+
+    # the reprocess, faked at the boundary but writing where the real one writes: the
+    # manifest's out_path IS ReelEpisode.clip, which is what makes the verdict stale.
+    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+        Path(rm.episodes[1].clip).write_bytes(
+            Path(rm.episodes[1].clip).read_bytes() + b"\x00")   # a different render
+        return {"status": "mechanical_pass", "clip": rm.episodes[1].clip}
+    monkeypatch.setattr(build_reel.process_episode, "process_episode", fake_pe)
+    real_run = build_reel.check_reel.run
+    rounds = iter([_color_fail(1)])
+    monkeypatch.setattr(build_reel.check_reel, "run",
+                        lambda *a, **k: next(rounds, None) or real_run(*a, **k))
+
+    res = edl_to_reel.assemble_reel(str(p), str(tmp_path / "work"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "episode-qc-reprocessed"
+    assert res["reprocessed"] == [1]
+    assert "episode 1" in res["finding"]["problems"][0]
+    assert list(p.parent.glob("REEL_v*")) == []          # no version spent, no attestation
+
+    # the re-judge: ONLY ep1's findings are rewritten — ep0's verdict is about bytes
+    # that did not change, and episode_qc build re-stamps every digest from disk.
+    _judge(tmp_path / "qc", 1)
+    episode_qc.build(str(p), str(tmp_path / "qc"), str(p.parent))
+    monkeypatch.setattr(build_reel.check_reel, "run", real_run)
+    again = edl_to_reel.assemble_reel(str(p), str(tmp_path / "work2"))
+    assert again["status"] == "delivered"
+    assert again["reprocessed"] == []
+    att = json.loads(Path(str(provenance.attest_path(again["output"]))).read_text())
+    assert att["episode_qc"]["state"] == "judged"
+    assert att["episode_qc"]["reprocessed_after"] == []
+    # ep0 was never re-judged and never needed to be: its bytes are the judged ones
+    assert att["episode_qc"]["judged"]["0"] == judged_ep0
+    assert provenance.verify_delivery(again["output"])["episode_qc"] == "judged"
