@@ -265,9 +265,30 @@ def zone_overflow(t: Title, platform: str = "") -> str:
         return ""
     return (f"a {t.pos!r} title{' staircase' if t.reveal == 'stair' else ''} at scale "
             f"{t.scale:g} reaches {bottom:.4f} of frame height, below the "
-            f"{platform.strip().lower() or 'generic'} safe zone's inner edge at "
+            f"{safezones.zone_name(platform)} safe zone's inner edge at "
             f"{1.0 - z.bottom:.4f} (bottom margin {z.bottom:g}) — the app draws its "
             f"caption and buttons there")
+
+
+def refuse_zone_overflow(items: "tuple[Title, ...]", platform: str = "") -> None:
+    """Raise on the first title whose ink would leave the platform's safe zone.
+
+    ONE message, two callers — build_filterchain (the chokepoint, which runs at
+    deliver) and scripts/titles.py's `check` (the preflight, which runs at authoring).
+    They were two near-identical copies for one commit; a drift between them makes the
+    preflight either useless (passes what deliver refuses) or worse than useless (the
+    reverse). test_check_titles_is_the_same_verdict_build_filterchain_would_give pins
+    the agreement, and this is what makes it structural rather than lucky."""
+    for i, t in enumerate(items):
+        why = zone_overflow(t, platform)
+        if why:
+            raise ValueError(
+                f"TITLES.json item {i} ({t.text.splitlines()[0]!r}) leaves the "
+                f"{safezones.zone_name(platform)} safe zone: {why}. Shorten the "
+                f"staircase, lower line_spacing, use pos='top', or reduce scale — the "
+                f"layout is not moved for you, because relocating a title the author "
+                f"positioned is an invisible creative change. `titles check --titles "
+                f"TITLES.json --platform <p>` runs this before the encode")
 
 
 def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
@@ -289,15 +310,7 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
     y_expr = y_exprs(platform)
-    for i, t in enumerate(titles.items):
-        why = zone_overflow(t, platform)
-        if why:
-            raise ValueError(
-                f"TITLES.json item {i} ({t.text.splitlines()[0]!r}) leaves the "
-                f"{platform.strip().lower() or 'generic'} safe zone: {why}. Shorten the "
-                f"staircase, lower line_spacing, use pos='top', or reduce scale — the "
-                f"layout is not moved for you, because relocating a title the author "
-                f"positioned is an invisible creative change")
+    refuse_zone_overflow(titles.items, platform)
     measure = measure or _measure
     parts: list[str] = []
     for i, t in enumerate(titles.items):

@@ -164,7 +164,11 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
         d_extra = dict(zip(extra, assembly.frames_rgb(out, extra, d_fps))) if extra else {}
         for i, (t_in, ws, why) in enumerate(plan):
             probes.append(lookcheck.TitleProbe(
-                label=items[i].text.splitlines()[0][:24] or f"item{i}",
+                # Indexed, because two titles may legitimately share their opening
+                # line (a repeated caption) and a duplicated `check` name makes the
+                # attestation unreadable — any consumer keying findings by name
+                # silently keeps one of them.
+                label=f"{i} {items[i].text.splitlines()[0][:24]}".strip(),
                 band=_title_band(items[i], d_si.h, platform), skipped=why,
                 inside=None if why else (m_extra[t_in], d_extra[t_in]),
                 witnesses=() if why else tuple((m_extra[w], d_extra[w]) for w in ws)))

@@ -355,3 +355,17 @@ def test_a_fraction_exactly_on_the_floor_passes():
                              witnesses=((m, m),))
     with mock.patch.object(lookcheck, "TITLE_MIN_FRACTION", frac):
         assert lookcheck.evaluate_titles([p])[0].status == "pass"
+
+
+def test_two_titles_sharing_an_opening_line_get_distinct_check_names():
+    """A repeated caption is legitimate; a duplicated `check` name is not — the
+    attestation stores findings as a list, and any consumer keying them by name
+    (including this repo's own integration test) silently keeps one of them.
+    deliver indexes the label, and this pins that the names stay distinct."""
+    m = _flat(80)
+    probes = [lookcheck.TitleProbe(label=f"{i} same words", band=(30, 70),
+                                   inside=(m, m), witnesses=((m, m),))
+              for i in range(2)]
+    names = [f.check for f in lookcheck.evaluate_titles(probes)]
+    assert names == ["titles:0 same words", "titles:1 same words"]
+    assert len(set(names)) == 2

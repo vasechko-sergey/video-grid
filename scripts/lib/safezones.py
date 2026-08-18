@@ -48,6 +48,18 @@ def safe_zone_for(platform: str) -> SafeZone:
     return SAFE_ZONES.get(key, SAFE_ZONES["generic"])
 
 
+def zone_name(platform: str) -> str:
+    """The name of the zone `safe_zone_for` would resolve this label to.
+
+    Not cosmetic: `_ALIASES` maps "reel"/"ig"/"instagram" onto `reels` and
+    "yt"/"youtube" onto `shorts`, so a message that echoes the caller's own string
+    names one table while quoting another's margins. A refusal with no waiver should
+    say which table it applied."""
+    key = (platform or "").strip().lower()
+    key = _ALIASES.get(key, key)
+    return key if key in SAFE_ZONES else "generic"
+
+
 def known(platform: str) -> bool:
     """Does this label resolve to a zone of its own, rather than falling back?
 

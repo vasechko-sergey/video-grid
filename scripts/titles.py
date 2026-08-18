@@ -9,7 +9,8 @@ import math
 from pathlib import Path
 
 from scripts.lib.spec import Spec
-from scripts.lib.titles import Title, Titles, zone_overflow
+from scripts.lib import safezones
+from scripts.lib.titles import Title, Titles, refuse_zone_overflow
 
 
 def build_titles(spec: Spec, total_s: float) -> Titles:
@@ -42,16 +43,9 @@ def check_titles(titles: Titles, platform: str = "") -> dict:
     It has to be its own command rather than a flag on `build`: `build` only ever
     drafts single-line titles, which cannot overflow. The overflow arrives when the
     author hand-edits the JSON afterwards, exactly as the titles SKILL tells them to."""
-    for i, t in enumerate(titles.items):
-        why = zone_overflow(t, platform)
-        if why:
-            raise ValueError(
-                f"TITLES.json item {i} ({t.text.splitlines()[0]!r}) leaves the "
-                f"{platform.strip().lower() or 'generic'} safe zone: {why}. Shorten the "
-                f"staircase, lower line_spacing, use pos='top', or reduce scale. deliver "
-                f"refuses this too — refusing here saves the encode")
+    refuse_zone_overflow(titles.items, platform)
     return {"status": "ok", "count": len(titles.items),
-            "platform": platform.strip().lower() or "generic"}
+            "platform": safezones.zone_name(platform)}
 
 
 def write_titles(titles: Titles, out_dir: str) -> dict:

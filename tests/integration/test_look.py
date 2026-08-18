@@ -612,7 +612,7 @@ def test_a_max_depth_vignette_alone_does_not_read_as_a_title(sample_clip, tmp_pa
     _blank_chain(monkeypatch)
     with pytest.raises(RuntimeError) as ex:
         _deliver(tmp_path / "vig", sample_clip, look=LookSpec(vignette=0.60), titles=tj)
-    assert "titles:salt sun and you" in str(ex.value)
+    assert "titles:0 salt sun and you" in str(ex.value)
     assert "vignette" not in str(ex.value)          # the vignette itself rendered fine
 
 
@@ -626,5 +626,5 @@ def test_a_title_buried_in_the_bookend_fade_reports_not_checked(sample_clip, tmp
     out = _deliver(tmp_path / "faded", sample_clip, look=LookSpec(fade=1.0), titles=tj)
     attest = json.loads(Path(out).with_suffix(".attest.json").read_text())
     by = {f["check"]: f for f in attest["look_checks"]}
-    assert by["titles:hook"]["status"] == "not-checked"
-    assert "bookend fade" in by["titles:hook"]["detail"]
+    assert by["titles:0 hook"]["status"] == "not-checked"
+    assert "bookend fade" in by["titles:0 hook"]["detail"]
