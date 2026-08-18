@@ -637,3 +637,48 @@ def test_a_look_with_fade_zero_reaches_mix_as_zero_not_the_default(tmp_path, mon
     build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.0)),
                           str(tmp_path / "out"), str(tmp_path / "work"))
     assert "fade" in got and got["fade"] == 0.0
+
+
+# --- 2026-08-18 re-judge: a judged reel does not ship over a re-rendered episode ---
+
+def test_a_judged_reel_refuses_to_deliver_over_a_re_rendered_episode(monkeypatch, tmp_path):
+    """design 2026-08-18 §2: the retry loop rewrote ep1's bytes AFTER episode_qc
+    digested them, so the verdict is one render out of date and the reel must not ship."""
+    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    seen = _wire(monkeypatch, reports)
+    rm = _rm()
+    rm.provenance = {"episode_qc": {"state": "judged", "judged": {"0": "aa", "1": "bb"}}}
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "episode-qc-reprocessed"
+    assert res["reprocessed"] == [1]
+    assert "episode 1" in res["finding"]["problems"][0]
+    assert res["report"]["checks"]["length"]["pass"] is True    # the PICTURE passed
+    assert seen["deliver"] == []                                # nothing was delivered
+
+
+def test_the_stop_costs_no_mix(monkeypatch, tmp_path):
+    """The refusal sits at the TOP of the deliver arm, before the stem is built — a reel
+    that is not going to ship must not pay for an audio pass first (design §2)."""
+    mixed, delivered = [], []
+    _wire_music(monkeypatch, [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
+                              _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    monkeypatch.setattr(build_reel.process_episode, "process_episode",
+                        lambda m, d, route_path=None, color_correct=None:
+                        {"status": "mechanical_pass", "clip": d + "/ep.mp4"})
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"))
+    rm.provenance = {"episode_qc": {"state": "judged"}}
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["finding"]["reason"] == "episode-qc-reprocessed"
+    assert mixed == [] and delivered == []          # no stem built, nothing delivered
+
+
+def test_an_unjudged_reel_still_delivers_after_a_reprocess(monkeypatch, tmp_path):
+    """The other side of §2.1 — build_reel's own CLI has no verdict to invalidate, and
+    the SP1 front door must keep working exactly as it did before this slice."""
+    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    _wire(monkeypatch, reports)
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert res["reprocessed"] == [1]

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from scripts import check_reel, deliver, mix, process_episode
-from scripts.lib import assembly, reel_orchestration
+from scripts.lib import assembly, episode_qc as qc_lib, reel_orchestration
 from scripts.lib.color import corrected
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
@@ -89,6 +89,22 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             continue                       # re-check with the re-timed target; clips unchanged,
                                            # need_assemble stays False so nothing is re-assembled
         if action.kind == "deliver":
+            # design 2026-08-18 §2: the picture has converged, but loop-2 below may have
+            # rewritten a clip AFTER episode_qc stamped its digest — and it writes to the
+            # episode manifest's own out_path, which IS the file the verdict names, so
+            # that verdict is about bytes that no longer exist. Refuse HERE, at the top of
+            # the arm: before the stem, before deliver, before a version number is spent.
+            # The remedy is a re-judge of exactly the named episodes, and the SECOND pass
+            # delivers, because the corrected clips are already on disk where EPISODES.json
+            # points (§2.2). Judged reels only — with no verdict there is nothing to
+            # invalidate, and build_reel's own CLI must keep working (§2.1).
+            reason, problems = qc_lib.reprocess_gate(
+                (rm.provenance.get("episode_qc") or {}).get("state", ""), sorted(reprocessed))
+            if reason:
+                return {"status": "stop_and_report",
+                        "finding": {"reason": reason, "episode_idx": None,
+                                    "problems": problems},
+                        "report": report.to_dict(), "reprocessed": sorted(reprocessed)}
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
                 want = rm.ambient or rm.sfx
                 segments = ([(e.manifest["segment"], e.manifest["target_dur"]) for e in rm.episodes]
