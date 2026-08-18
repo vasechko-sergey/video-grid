@@ -130,6 +130,15 @@ Because §1.2's overwrite is what makes the loop converge rather than repeat:
 No version is wasted: the first run stops **before** `deliver`, so no `REEL_v{n}`
 and no attestation are written.
 
+The corollary is worth stating, because it is the same fact §4.1 states as a
+warning: `build_reel`'s compounded colour factor is not persisted anywhere, so the
+*only* thing carrying the loop's convergence between the two passes is the clip
+bytes. That is exactly why the second pass works — and exactly why re-running phase
+1 destroys it. Note also that pass 2 begins from a state pass 1 already proved
+passing, over the same bytes, and `check_reel` is deterministic on identical bytes:
+so pass 2 reproduces pass 1's verdict, does not reprocess, and never reaches the
+`cc`-reset that a fresh `build_reel` call would otherwise start from.
+
 ## 3 · The backstop: a fourth `episode_qc` state
 
 `_episode_qc_state` gains one arm: `state == "judged"` **and** a non-empty

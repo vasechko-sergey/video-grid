@@ -176,7 +176,8 @@ def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_
     _judge(tmp_path / "qc", 1)
     episode_qc.build(str(p), str(tmp_path / "qc"), str(p.parent))
     monkeypatch.setattr(build_reel.check_reel, "run", real_run)
-    again = edl_to_reel.assemble_reel(str(p), str(tmp_path / "work2"))
+    again = edl_to_reel.assemble_reel(str(p), str(tmp_path / "work"))   # the SAME
+    # work dir the router reuses — a fresh one would prove less than the real flow
     assert again["status"] == "delivered"
     assert again["reprocessed"] == []
     att = json.loads(Path(str(provenance.attest_path(again["output"]))).read_text())

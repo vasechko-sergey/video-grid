@@ -300,8 +300,9 @@ say so rather than guessing a path.
     assembled master *before* `deliver` applies either, the look is invisible
     in `draft.mp4` and in every check that ran before this point — Checkpoint
     3, right here, is the first place anyone actually sees it (design
-    2026-08-13 §11.1). **`episode-qc-reprocessed` is a stop, not a
-    warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop
+    2026-08-13 §11.1).
+
+    **`episode-qc-reprocessed` is a stop, not a warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop
     re-rendered an episode AFTER episode-qc judged it (design 2026-08-18 §2):
     the reprocess overwrites the very `ep{i}.mp4` the verdict was stamped
     against, so that verdict is about bytes that are gone. The picture passed
@@ -332,7 +333,9 @@ say so rather than guessing a path.
 
     A delivered reel's `reprocessed` list is therefore always empty on this
     path; if one ever comes back non-empty, something bypassed the refusal —
-    name it at Checkpoint 3 rather than passing over it. **Checkpoint 3 — final
+    name it at Checkpoint 3 rather than passing over it.
+
+    **Checkpoint 3 — final
     review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
     titles were authored) `TITLES.md` alongside them. Before presenting the
     reel as final, run `"$VG" scripts.montage verify --run-dir <run>` and
