@@ -5,7 +5,7 @@ import pytest
 from scripts.lib import safezones, titles as titles_mod
 from scripts.lib.spec import Spec
 from scripts.lib.titles import POSITIONS, STYLES, Title, Titles, build_filterchain
-from scripts.titles import build_titles, write_titles
+from scripts.titles import build_titles, check_titles, write_titles
 
 
 def test_title_defaults_and_roundtrip():
@@ -502,3 +502,38 @@ def test_build_filterchain_still_builds_the_ordinary_titles(tmp_path):
     ts = Titles(items=tuple(Title("hi", 0.0, 1.0, pos=p) for p in POSITIONS))
     vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve, platform="reels")
     assert vf.count("drawtext=") == len(POSITIONS)
+
+
+def test_check_titles_passes_a_clean_file(tmp_path):
+    ts = Titles(items=(Title("hi", 0.0, 1.0, pos="bottom"),))
+    out = check_titles(ts, "reels")
+    assert out == {"status": "ok", "count": 1, "platform": "reels"}
+
+
+def test_check_titles_refuses_a_zone_overflow(tmp_path):
+    # the case the chokepoint would catch at DELIVER, after every episode is
+    # rendered and the master assembled. Here it costs nothing.
+    ts = Titles(items=(Title("hi", 0.0, 1.0),
+                       Title("salt\nsun\nand\nyou", 2.0, 4.0, pos="bottom",
+                             reveal="stair", reveal_step=0.4)))
+    with pytest.raises(ValueError, match="item 1"):
+        check_titles(ts, "reels")
+
+
+def test_check_titles_is_the_same_verdict_build_filterchain_would_give(tmp_path):
+    # one predicate, two callers — a drift between them would make the preflight
+    # useless (passes here, refuses at deliver) or worse than useless (the reverse).
+    stair = Titles(items=(Title("salt\nsun\nand\nyou", 0.0, 4.0, pos="bottom",
+                                reveal="stair", reveal_step=0.4),))
+    for platform in ("", "reels", "tiktok"):
+        refused_here = refused_there = False
+        try:
+            check_titles(stair, platform)
+        except ValueError:
+            refused_here = True
+        try:
+            build_filterchain(stair, str(tmp_path / platform), resolve=_fake_resolve,
+                              platform=platform)
+        except ValueError:
+            refused_there = True
+        assert refused_here == refused_there

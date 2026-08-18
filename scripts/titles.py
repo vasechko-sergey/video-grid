@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 
 from scripts.lib.spec import Spec
-from scripts.lib.titles import Title, Titles
+from scripts.lib.titles import Title, Titles, zone_overflow
 
 
 def build_titles(spec: Spec, total_s: float) -> Titles:
@@ -31,6 +31,29 @@ def build_titles(spec: Spec, total_s: float) -> Titles:
     return Titles(items=tuple(items))
 
 
+def check_titles(titles: Titles, platform: str = "") -> dict:
+    """Refuse a TITLES.json whose ink would land outside the platform's safe zone.
+
+    `build_filterchain` is the chokepoint and keeps the refusal that matters, but it
+    runs at DELIVER — after every episode is rendered and the master assembled, so the
+    author learns at the most expensive possible moment. Same predicate, same message,
+    at the stage where the fix is a one-line edit.
+
+    It has to be its own command rather than a flag on `build`: `build` only ever
+    drafts single-line titles, which cannot overflow. The overflow arrives when the
+    author hand-edits the JSON afterwards, exactly as the titles SKILL tells them to."""
+    for i, t in enumerate(titles.items):
+        why = zone_overflow(t, platform)
+        if why:
+            raise ValueError(
+                f"TITLES.json item {i} ({t.text.splitlines()[0]!r}) leaves the "
+                f"{platform.strip().lower() or 'generic'} safe zone: {why}. Shorten the "
+                f"staircase, lower line_spacing, use pos='top', or reduce scale. deliver "
+                f"refuses this too — refusing here saves the encode")
+    return {"status": "ok", "count": len(titles.items),
+            "platform": platform.strip().lower() or "generic"}
+
+
 def write_titles(titles: Titles, out_dir: str) -> dict:
     """Write TITLES.json + TITLES.md together into out_dir. Returns a status dict."""
     Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -47,7 +70,15 @@ def main() -> None:
     b.add_argument("--spec", required=True, help="SPEC.json (from reel-brief) — hook/text/ending source")
     b.add_argument("--total", type=float, required=True, help="reel length, seconds (EDL sum / probed master)")
     b.add_argument("--out-dir", required=True, help="dir for TITLES.json + TITLES.md")
+    c = sub.add_parser("check", help="refuse a TITLES.json whose text leaves the safe zone")
+    c.add_argument("--titles", required=True, help="TITLES.json to validate")
+    c.add_argument("--platform", default="",
+                   help="tiktok|reels|shorts — the safe-zone table titles lay out "
+                        "against; unset takes the generic margins")
     a = ap.parse_args()
+    if a.cmd == "check":
+        print(json.dumps(check_titles(Titles.from_json(a.titles), a.platform), indent=2))
+        raise SystemExit(0)
     titles = build_titles(Spec.from_json(a.spec), a.total)
     print(json.dumps(write_titles(titles, a.out_dir), indent=2))
     raise SystemExit(0)
