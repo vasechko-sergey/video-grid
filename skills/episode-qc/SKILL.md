@@ -144,12 +144,18 @@ say so rather than guessing a path.
 - **`reviewer` is a record, not a prohibition.** An agent with a shell can
   re-run the judge until it comes back green; naming who judged does not
   stop that, it only makes the run auditable.
-- **A reprocessed episode ships judged one render out of date (design §8).**
-  `build_reel`'s own retry loop can still re-render a culprit episode
-  *after* this gate has run, and its verdict is stale the moment that
-  happens. This stage does not close that hole — the delivery's attestation
-  records which episodes were reprocessed after judgment
-  (`reprocessed_after`), so the gap is visible, not hidden.
+- **A reprocessed episode no longer ships — but only on the judged path
+  (design §8, closed 2026-08-18).** `build_reel`'s retry loop can still
+  re-render a culprit episode after this gate has run, and its verdict is
+  stale the moment that happens. Since 2026-08-18 the driver REFUSES to
+  deliver in that state (`episode-qc-reprocessed`): the router re-judges
+  exactly the named episodes and the second pass delivers. The attestation
+  still records `reprocessed_after`, and `montage verify` reads a judged
+  delivery with a non-empty one as **`stale`** — the backstop for any
+  producer that bypasses the refusal. **What survives:** the refusal fires
+  only when the manifest says `episode_qc.state == "judged"`. A reel with no
+  verdict has nothing to invalidate, so the `absent` paths below still
+  reprocess and still ship unjudged.
 - **The single-command `edl_to_reel` path ships with no QC at all (design
   §10).** This skill only gates the two-phase path
   (`--stop-after-episodes` / `--from-episodes`). A hand-authored EDL run

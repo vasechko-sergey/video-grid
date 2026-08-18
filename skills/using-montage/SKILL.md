@@ -300,13 +300,39 @@ say so rather than guessing a path.
     assembled master *before* `deliver` applies either, the look is invisible
     in `draft.mp4` and in every check that ran before this point — Checkpoint
     3, right here, is the first place anyone actually sees it (design
-    2026-08-13 §11.1). When the delivered result
-    carries a non-empty `reprocessed` list (design §8 — `build_reel`'s own
-    retry loop re-rendered those episode indices AFTER episode-qc judged
-    them, chasing a colour or length fix), name those episodes at Checkpoint
-    3 as judged one render out of date, and offer to re-run the
-    **episode-qc** skill on exactly those episodes before calling the reel
-    final. **Checkpoint 3 — final
+    2026-08-13 §11.1). **`episode-qc-reprocessed` is a stop, not a
+    warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop
+    re-rendered an episode AFTER episode-qc judged it (design 2026-08-18 §2):
+    the reprocess overwrites the very `ep{i}.mp4` the verdict was stamped
+    against, so that verdict is about bytes that are gone. The picture passed
+    every check — the report comes back with the stop — and no version number
+    was spent. The remedy, in order:
+
+    1. `"$VG" scripts.episode_qc pack --episodes <run>/out/EPISODES.json
+       --out-dir <run>/qc` — safe to re-run: it rewrites `strip.jpg` and
+       `evidence.json` and never touches a judge's `findings.json`.
+    2. Dispatch **one fresh judge for the named indices only**. The other
+       episodes' verdicts are about bytes that did not change; re-judging them
+       spends context for nothing.
+    3. `"$VG" scripts.episode_qc build …` — unchanged; it re-digests every clip
+       from disk, so the untouched verdicts stay valid and the re-judged one
+       binds the new bytes.
+    4. Re-run this step. The corrected clips are already on disk where
+       `EPISODES.json` points, so `check_reel` finds the picture fixed, nothing
+       reprocesses, and the reel delivers with an empty `reprocessed` list.
+
+    **Do NOT re-run phase 1 to clear this stop.** `build_reel`'s compounded
+    per-channel colour factor lives ONLY in the clip bytes on disk — not on
+    `Manifest`, not on `PathMeta`, not in `EPISODES.json` — so
+    `--stop-after-episodes` re-renders every episode from the manifest and
+    silently discards the correction the retry loop just converged on, putting
+    the reel back where it started (design 2026-08-18 §4.1). It is the same
+    unpersisted factor the `probe grade` note in step 13 warns about, biting a
+    second consumer.
+
+    A delivered reel's `reprocessed` list is therefore always empty on this
+    path; if one ever comes back non-empty, something bypassed the refusal —
+    name it at Checkpoint 3 rather than passing over it. **Checkpoint 3 — final
     review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
     titles were authored) `TITLES.md` alongside them. Before presenting the
     reel as final, run `"$VG" scripts.montage verify --run-dir <run>` and
@@ -315,11 +341,12 @@ say so rather than guessing a path.
     out of `deliver`) must be named plainly as such, never presented as a
     finished reel. Its `episode_qc` field needs the same treatment when it
     is not `judged` (`absent`: shipped via the single-command `edl_to_reel`
-    or `build_reel`'s own CLI, neither of which this router uses; `unknown`:
-    an old sidecar predating the field) — a reel this router delivered
-    itself should always read `judged`, so anything else means an unjudged
-    reel is about to be called final and must be named plainly, not passed
-    over. A `stop_and_report` (a failed gate) is surfaced verbatim —
+    or `build_reel`'s own CLI, neither of which this router uses; `stale`:
+    judged, then an episode was re-rendered after its verdict — which on this
+    path means something bypassed phase 2's own refusal above; `unknown`: an
+    old sidecar predating the field) — a reel this router delivered itself
+    should always read `judged`, so anything else means an unjudged reel is
+    about to be called final and must be named plainly, not passed over. A `stop_and_report` (a failed gate) is surfaced verbatim —
     never fixed forward; route it to the culprit stage's skill.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
