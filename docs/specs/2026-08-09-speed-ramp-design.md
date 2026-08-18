@@ -466,3 +466,24 @@ pixels.
 - **Auto-placing `at` from the action anchors** `lib/anchors` already computes.
   Tempting, and exactly the kind of guess #12 says to stop making without
   looking; it needs the QC judge's eyes, not a heuristic.
+
+  > **Measured 2026-08-18 — not buildable on this sensor, and the wariness above was
+  > right for a sharper reason than it knew.** The anchors do not carry the
+  > information. `measure_curve` is *global* frame-to-frame difference, so on a moving
+  > camera the camera's own motion is the signal and it is roughly constant: across the
+  > 2026-08-03 run's eight episodes, **seven have 100% of their samples above
+  > `ANCHOR_REL * peak`** (peak/min 1.23–1.64). The relative floor selects nothing, and
+  > what `anchors_from_curve` returned was its `min_gap` thinning grid.
+  >
+  > On ep5 — **the one episode of that run that actually carries a ramp**
+  > (`MVI_3998`, `at: 3.42`) — the finder returned five "anchors" in seven seconds
+  > (1.0/2.0/3.0/4.0/5.33), four of them inside the legal enclosure band. The nearest
+  > is 0.42s from the human's choice, which reads as agreement and is not: at that
+  > density **every** point in the band is within ~0.5s of one. The metric cannot fail,
+  > so it measures nothing.
+  >
+  > The slice built the honesty instead: `anchors.curve_contrast` + `ANCHOR_FLAT_FRAC`,
+  > and `PACING.md` now says *"flat — no moment is distinguishable"* where it used to
+  > list those five as advice. Auto-placement needs a sensor that separates subject from
+  > camera motion (`carve.track_displacements`, or a vidstab-subtracted curve) — filed.
+  > See `docs/specs/2026-08-18-deferred-measurements-design.md` §4.

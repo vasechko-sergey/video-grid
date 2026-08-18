@@ -12,15 +12,16 @@ _Last updated: 2026-08-18._
 
 ## Done
 
-- **Three deferred measurements — the outro floor, layer 3, and the conductor's
-  residual DONE (2026-08-18)** — plan
+- **Four deferred measurements — the outro floor, layer 3, the conductor's residual,
+  and the ramp anchor DONE (2026-08-18)** — plan
   `docs/plans/2026-08-18-deferred-measurements.md` + design
   `docs/specs/2026-08-18-deferred-measurements-design.md` (branch
   `feat/deferred-measurements`). Three P2 rows, unrelated in subject, identical in
   shape: each parked a number or a mechanism with "nobody measured this", and none
-  needed the deferred footage run — the track, the routes and the source frames from
-  the one real run are all on disk. **Two of the three overturned the question they
-  were asked.**
+  needed the deferred footage run — the track, the routes, the source frames and the
+  motion curves from the one real run are all on disk. **Three of the four overturned
+  the question they were asked**, and with these closed **P2 holds only the three rows
+  that genuinely need the run or a clean install.**
   - **`outro.TAIL_MIN` is deleted, not re-tuned — it was wrong in KIND.** The reel is
     `line + fade` long and `mix` fades over `[line, line + fade]`, so
     `max(TAIL_MIN, fade)` at `fade < 0.5` demanded silence in audio the stem never
@@ -56,10 +57,28 @@ _Last updated: 2026-08-18._
     "6.5–11.5" is content, not a system constant. **The trap, recorded because it is
     the obvious next move:** dropping the downscale makes p95 *worse* (−1 → −7); the
     two independent errors currently cancel.
-  - Nine-row mutation battery, all discriminating — including row 9, which only kept
-    discriminating because the plan's own self-review caught that the `_EPS`-boundary
-    test builds its tie from the need and had to be re-pointed at `fade + margin`.
-    **2995 passed / 2 skipped**, +6 tests, no golden moved.
+  - **Auto-placing a ramp's `at` is not buildable on the sensor that exists**, and the
+    measurement that shows it found a live defect. `anchors.measure_curve` is *global*
+    frame-to-frame difference, so on a moving camera the camera's own motion is the
+    signal and it is roughly constant: **seven of the run's eight episodes have 100% of
+    their samples above `ANCHOR_REL * peak`** (peak/min 1.23–1.64). The floor selects
+    nothing and `anchors_from_curve` returns its `min_gap` thinning grid. On ep5 — the
+    one episode of that run that actually carries a ramp (`MVI_3998`, `at: 3.42`) — it
+    returned five "anchors" in 7s, four inside the legal band; the nearest is 0.42s from
+    the human's pick, which the density guarantees rather than earns. **The live half:**
+    `pacing --anchors` was already printing that into `PACING.md` as editorial advice.
+    Built instead — `curve_contrast`, `ANCHOR_FLAT_FRAC = 0.5` (100% vs 33%, so anything
+    in [0.34, 0.99] separates), the flat guard, and a contrast column that says
+    *flat — no moment is distinguishable*.
+  - Two mutation batteries, 18 rows, 17 discriminating — the 18th (the driver's contrast
+    wiring) is recorded as uncovered with the reason, not papered over. Row 9 of the
+    first only kept discriminating because the plan's own self-review caught that the
+    `_EPS`-boundary test builds its tie from the need and had to be re-pointed at
+    `fade + margin`. **And the batteries themselves had a bug worth recording:** a
+    one-byte mutation can leave a file the same size and mtime-second as the previous
+    row's, so CPython reuses the stale `.pyc` and a row reads the LAST row's result —
+    both batteries were re-run under `PYTHONDONTWRITEBYTECODE=1`, which changed two
+    readings. **3005 passed / 2 skipped**, +16 tests, no golden moved.
 
 - **Episode-QC re-judge — a judged reel no longer ships over an unjudged render
   DONE (2026-08-18)** — plan `docs/plans/2026-08-18-episode-qc-rejudge.md` +
