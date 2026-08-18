@@ -4,13 +4,13 @@ from scripts.lib import geometry
 from scripts.lib import geometry as g
 from scripts.lib.models import RoutePoint, CropPath, PathMeta
 
-def test_crop_size_9x16_from_1080p():
+def test_crop_for_9x16_from_1080p():
     # 9:16 crop out of a 1920x1080 source: full height, width = int(1080*9/16)
     # = 607 (the session value). round() would give 608 — wrong on purpose here.
-    assert g.crop_size(9, 16, 1920, 1080) == (607, 1080)
+    assert g.crop_for((9, 16), 1.0, 1920, 1080) == (607, 1080)
 
-def test_crop_size_1x1_from_1080p():
-    assert g.crop_size(1, 1, 1920, 1080) == (1080, 1080)
+def test_crop_for_1x1_from_1080p():
+    assert g.crop_for((1, 1), 1.0, 1920, 1080) == (1080, 1080)
 
 def test_grid_lines_thirds():
     assert g.grid_lines("thirds") == (1/3, 2/3)
@@ -59,10 +59,9 @@ def test_crop_y_clamped():
     assert g.crop_y(subject_y=1070, crop_h=608, src_h=1080) == 1080 - 608
 
 
-def test_crop_for_canvas_aspect_matches_crop_size():
+def test_crop_for_canvas_aspect_at_full_scale():
     # the golden fixture: 9:16 out of 1280x720 -> 405 wide (odd, and that is correct)
     assert geometry.crop_for((9, 16), 1.0, 1280, 720) == (405, 720)
-    assert geometry.crop_for((9, 16), 1.0, 1280, 720) == geometry.crop_size(9, 16, 1280, 720)
 
 
 def test_crop_for_source_aspect_is_the_whole_frame():

@@ -51,11 +51,6 @@ def freedom(crop_w: int, src_w: int) -> int:
     return src_w - crop_w
 
 
-def crop_size(canvas_w: float, canvas_h: float, src_w: int, src_h: int) -> tuple[int, int]:
-    """Largest crop of canvas aspect that fits inside the source (fill mode)."""
-    return crop_for((int(canvas_w), int(canvas_h)), 1.0, src_w, src_h)
-
-
 def grid_lines(grid: str) -> tuple[float, float]:
     """(left, right) power-line fractions of frame width."""
     if grid == "thirds":

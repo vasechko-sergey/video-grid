@@ -1861,3 +1861,17 @@ def test_musicspec_spans_must_be_ascending_and_disjoint():
 def test_musicspec_span_must_be_inside_the_window():
     with pytest.raises(ValueError, match=r"outside \[0, 10.0\]"):
         _music(vocal_spans=[[9.0, 12.0]])
+
+
+def test_track_meta_refuses_a_degraded_rung_outside_the_vocabulary():
+    """DEGRADED_LEVELS existed from the tracking-ladder slice and nothing read it, so
+    `degraded` accepted any string and a typo'd rung name rode onto every
+    post-tracking result unchallenged. Its siblings — HERO_RULES, POSITIONS, STYLES,
+    REVEALS — are all enforced by a __post_init__; this one now is too."""
+    from scripts.lib.models import DEGRADED_LEVELS, TrackMeta
+    for good in (None, *DEGRADED_LEVELS):
+        assert TrackMeta(degraded=good).degraded == good
+    with pytest.raises(ValueError, match="degraded"):
+        TrackMeta(degraded="optical-flow")
+    with pytest.raises(ValueError, match="degraded"):
+        TrackMeta.from_dict({"degraded": "manual "})       # a stray space is a typo too

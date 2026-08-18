@@ -33,7 +33,7 @@ def test_safe_zone_for_known_alias_and_default():
 
 
 def test_default_zone_is_generic_and_matches_titles_presets():
-    z = safezones.default_zone()
+    z = safezones.SAFE_ZONES["generic"]
     assert z is SAFE_ZONES["generic"]
     assert (z.top, z.bottom) == (0.08, 0.12)      # == titles _Y_EXPR presets
 
@@ -97,4 +97,4 @@ def test_known_rejects_a_label_that_silently_falls_back_to_generic(label):
     # generic zone and says nothing, so the reel is checked against a table the
     # brief never asked for while the EDL records the label as authored.
     assert safezones.known(label) is False
-    assert safezones.safe_zone_for(label) == safezones.default_zone()
+    assert safezones.safe_zone_for(label) == safezones.SAFE_ZONES["generic"]

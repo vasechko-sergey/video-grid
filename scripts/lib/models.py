@@ -96,6 +96,15 @@ class TrackMeta:
     stitched: list[int] = field(default_factory=list)   # ids merged onto the route BEYOND the hero
                                                         # by an ID-switch stitch (design 2026-07-28 §6). [] = clean single id.
 
+    def __post_init__(self) -> None:
+        # DEGRADED_LEVELS existed from the tracking-ladder slice and nothing read it:
+        # `degraded` accepted any string, so a typo'd rung name rode onto every
+        # post-tracking result unchallenged. Its siblings (HERO_RULES, HERO_KINDS,
+        # POSITIONS, STYLES, REVEALS) are each enforced by a __post_init__; so is this.
+        if self.degraded is not None and self.degraded not in DEGRADED_LEVELS:
+            raise ValueError(f"TrackMeta.degraded {self.degraded!r} not in "
+                             f"{DEGRADED_LEVELS} (None = a clean YOLO route)")
+
     @classmethod
     def from_dict(cls, d: dict) -> "TrackMeta":
         # Top level checked FIRST, before d.get. No production reader today (track.py builds a

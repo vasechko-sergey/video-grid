@@ -61,11 +61,6 @@ def known(platform: str) -> bool:
     return _ALIASES.get(key, key) in SAFE_ZONES
 
 
-def default_zone() -> SafeZone:
-    """The generic zone — titles' single margin source (§5.16)."""
-    return SAFE_ZONES["generic"]
-
-
 _SAFE_SAMPLES = 5
 
 

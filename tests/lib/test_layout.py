@@ -141,6 +141,6 @@ def test_fill_out_dims_match_todays_delivery_on_a_non_golden_canvas():
     # resolve must agree with what reframe() computes today: dims(crop_w, crop_h)
     for canvas, src in (((9, 16), (1280, 720)), ((21, 9), (3840, 2160)),
                         ((4, 5), (1920, 1080)), ((1, 1), (1920, 1080))):
-        cw, ch = geometry.crop_size(canvas[0], canvas[1], src[0], src[1])
+        cw, ch = geometry.crop_for((canvas[0], canvas[1]), 1.0, src[0], src[1])
         rl = layout.resolve(LayoutSpec(mode="fill"), canvas, src, NATIVE)
         assert (rl.out_w, rl.out_h) == NATIVE.dims(cw, ch), canvas

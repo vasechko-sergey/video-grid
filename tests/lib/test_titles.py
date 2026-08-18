@@ -157,7 +157,7 @@ def test_write_titles_emits_pair(tmp_path):
 
 def test_y_exprs_generic_matches_the_default_zone():
     from scripts.lib import titles, safezones
-    z = safezones.default_zone()
+    z = safezones.SAFE_ZONES["generic"]
     assert titles.y_exprs("") == {"top": f"h*{z.top}", "center": "(h-th)/2",
                                   "bottom": f"h-th-h*{z.bottom}"}
     assert not hasattr(titles, "_Y_EXPR")      # the frozen constant is gone
