@@ -61,12 +61,12 @@ def _report(master: str, out_dir: Path):
     return rep
 
 
-def _deliver(out_dir, master, *, look=None, audio=None) -> str:
+def _deliver(out_dir, master, *, look=None, audio=None, titles=None, platform="") -> str:
     """Deliver `master` into a fresh out_dir → the REEL_v1.mp4 path."""
     out_dir = Path(out_dir)
     rep = _report(str(master), out_dir)
     return deliver_mod.deliver(str(master), REEL_H264, str(out_dir), "look proof", rep,
-                               look=look, audio=audio)
+                               look=look, audio=audio, titles=titles, platform=platform)
 
 
 # --- pixel measurement ------------------------------------------------------
@@ -562,3 +562,69 @@ def test_outline_bold_draws_a_heavier_glyph_than_outline(tmp_path, need_filter):
         f"outline-bold's ink count is {bn}px against outline's {pn}px — not enough "
         f"more ink for a heavier border plus an offset shadow (only a wider bbox "
         f"with the same fill would still pass the width/height checks above)")
+
+
+# --- the titles gate: design 2026-08-19 --------------------------------------
+
+def _titles_file(tmp_path, *items: Title) -> str:
+    """A TITLES.json on disk — the path deliver takes, not a Titles object."""
+    tj = tmp_path / "TITLES.json"
+    Titles(items=items).write(tj)
+    return str(tj)
+
+
+def _blank_chain(monkeypatch):
+    """Make deliver's encode carry NO drawtext while it still believes it declared
+    titles — the exact bug class the gate exists for. A dropped filter is how the
+    cinematic-look review found this once by hand; a bad font name, an empty text
+    file and a filtergraph split on a bare comma all land in the same place."""
+    monkeypatch.setattr(deliver_mod, "build_filterchain", lambda *a, **k: "")
+
+
+def test_the_gate_refuses_a_reel_whose_titles_never_rendered(sample_clip, tmp_path,
+                                                             need_filter, monkeypatch):
+    """The control is the SAME titles file delivered with the chain intact: without
+    it, "the gate refused" cannot be told from "the gate refuses everything"."""
+    need_filter("drawtext")
+    tj = _titles_file(tmp_path, Title("salt sun and you", 0.5, 2.0, pos="bottom"))
+
+    good = _deliver(tmp_path / "good", sample_clip, titles=tj)
+    assert Path(good).exists()
+
+    _blank_chain(monkeypatch)
+    with pytest.raises(RuntimeError, match="does not carry the look it declared"):
+        _deliver(tmp_path / "bad", sample_clip, titles=tj)
+
+
+def test_a_max_depth_vignette_alone_does_not_read_as_a_title(sample_clip, tmp_path,
+                                                             need_filter, monkeypatch):
+    """The anti-regression pin for the METRIC CHOICE, not for the code as written.
+
+    Measured (design 2026-08-19 §2.1/§2.2): a 0.60 vignette moves 9.58% of a bottom
+    band's pixels past a 60-code MASTER-VS-DELIVERED bar — more than a real title's
+    5.71%. So if anyone ever simplifies title_evidence into that comparison, this
+    delivery starts passing with no title in it, and this reddens.
+
+    The vignette check passing in the same run is what makes it a real
+    discrimination: the look DID reach the pixels, and the titles still did not."""
+    need_filter("drawtext")
+    tj = _titles_file(tmp_path, Title("salt sun and you", 0.5, 2.0, pos="bottom"))
+    _blank_chain(monkeypatch)
+    with pytest.raises(RuntimeError) as ex:
+        _deliver(tmp_path / "vig", sample_clip, look=LookSpec(vignette=0.60), titles=tj)
+    assert "titles:salt sun and you" in str(ex.value)
+    assert "vignette" not in str(ex.value)          # the vignette itself rendered fine
+
+
+def test_a_title_buried_in_the_bookend_fade_reports_not_checked(sample_clip, tmp_path,
+                                                                need_filter):
+    """Measured (design §4): a sample at alpha 0.10 scores 0.0000% on a title that
+    rendered perfectly, so the gate says "not checked" instead of failing a correct
+    render. Delivery succeeds, and the finding records that nothing was proven."""
+    need_filter("drawtext")
+    tj = _titles_file(tmp_path, Title("hook", 0.0, 0.8, pos="top"))
+    out = _deliver(tmp_path / "faded", sample_clip, look=LookSpec(fade=1.0), titles=tj)
+    attest = json.loads(Path(out).with_suffix(".attest.json").read_text())
+    by = {f["check"]: f for f in attest["look_checks"]}
+    assert by["titles:hook"]["status"] == "not-checked"
+    assert "bookend fade" in by["titles:hook"]["detail"]
