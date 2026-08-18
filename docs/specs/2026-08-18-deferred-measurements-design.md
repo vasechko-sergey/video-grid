@@ -1,11 +1,11 @@
-# Three deferred measurements — the outro floor, layer 3, and the conductor's residual
+# Four deferred measurements — the outro floor, layer 3, the conductor's residual, and the ramp anchor
 
 **Date:** 2026-08-18 · **Status:** design · **Size:** M
 
 ## 0. Why this slice exists
 
-Three P2 backlog rows, unrelated in subject, identical in shape: each parks a
-number or a mechanism with the note "nobody measured this". None of the three
+Four P2 backlog rows, unrelated in subject, identical in shape: each parks a
+number or a mechanism with the note "nobody measured this". None of the four
 needs the real footage run the project owner has deferred — the track, the routes
 and the source frames from the one real run are all already on disk.
 
@@ -14,12 +14,16 @@ and the source frames from the one real run are all already on disk.
 | Validate `outro.TAIL_MIN` against editing practice | is 0.5s right? | the run's own track, through the shipped sensor |
 | Re-assess §6.1a layer 3 against track-stitch | is there a real remainder? | the run's seven `route.json` + `route.meta.json` |
 | Diagnose the conductor's 6.5–11.5-unit residual | which of three candidates? | a four-way separation over two real source frames |
+| Auto-place a ramp's `at` from the action anchors | is it buildable? | the run's own eight motion curves |
 
-**Two of the three overturned the question they were asked.** `TAIL_MIN` is not
+**Three of the four overturned the question they were asked.** `TAIL_MIN` is not
 mis-tuned, it is wrong in kind. The conductor's residual is not one of the three
 candidates the row named — all three are eliminated by measurement, and the cause
-is a fourth nobody had listed. Only layer 3 came back with the answer its row
-expected, and even there the evidence points the opposite way from the framing.
+is a fourth nobody had listed. The ramp anchor is not buildable at all on the sensor that
+exists, and the measurement that shows it also exposed a live defect: that sensor is
+already printing its noise into `PACING.md` as editorial advice. Only layer 3 came
+back with the answer its row expected, and even there the evidence points the
+opposite way from the framing.
 
 ---
 
@@ -312,7 +316,104 @@ against the worst case, and the worst case is unchanged.
 
 ---
 
-## 4. What this slice builds
+## 4. The ramp anchor — the sensor has nothing to place a ramp with
+
+### 4.1 What the row assumed
+
+The row was sized S on "`lib/anchors` already computes the curve the author is
+eyeballing", re-sized M on 2026-08-17 when someone noticed nothing reads it. Both
+sizings assume the anchors carry the information. **They do not.**
+
+### 4.2 The one real ramp
+
+The 2026-08-03 run authored a ramp on exactly one of its eight episodes — so the
+feature has a real user, and a real answer to check against:
+
+```
+ep5  MVI_3998.MP4  start 12.48  dur 7.076   ramp {at: 3.42, factor: 0.5, ease: 1.0, hold: 0.8}
+```
+
+Running the shipped `measure_curve` → `anchors_from_curve` over exactly that window
+returns **five anchors in seven seconds: 1.0, 2.0, 3.0, 4.0, 5.33**. Four of them sit
+inside the enclosure band `[1.40, 5.68]` that `ramp.validate_window` allows.
+
+The nearest is 3.00, **0.42s** from the human's 3.42. That looks like agreement and is
+not: with anchors roughly every second, the farthest any point in the band can be from
+one is ~0.5s. **Every possible human choice scores under 0.5s.** The metric cannot
+fail, so it measures nothing — the vacuity check, and it fails.
+
+### 4.3 Why: the relative floor is inert on this footage
+
+The curve behind those five anchors:
+
+```
+peak 10.38   min 7.86   ratio 1.32
+every one of 21 samples sits between 0.76 and 1.00 of the peak
+```
+
+`ANCHOR_REL = 0.6` was chosen to adapt across shot scales — a telephoto and an aerial
+differ by an order of magnitude in frame-to-frame difference, so an absolute floor
+would find everything in one and nothing in the other. On a *flat* curve that same
+adaptivity admits **the whole curve**, and what `anchors_from_curve` returns is its
+`min_gap` thinning grid wearing the word "anchor".
+
+Not one clip. All eight episodes of the run, re-measured:
+
+| ep | source | dur | peak/min | % of samples ≥ 0.6·peak | anchors |
+|---|---|---:|---:|---:|---:|
+| 0 | DJI_…095840 | 4.71 | 1.64 | **100%** | 3 |
+| 1 | MVI_3939 | 2.18 | 1.45 | **100%** | 1 |
+| 2 | MVI_3922 | 3.29 | 1.60 | **100%** | 2 |
+| 3 | MVI_3871 | 2.75 | 2.78 | 33% | 2 |
+| 4 | MVI_3908 | 4.37 | 1.23 | **100%** | 3 |
+| 5 | MVI_3998 | 7.08 | 1.32 | **100%** | 5 |
+| 6 | MVI_3913 | 3.80 | 1.40 | **100%** | 2 |
+| 7 | DJI_…093601 | 4.27 | 1.55 | **100%** | 2 |
+
+**Seven of eight.** Raising `rel` does not rescue it: at 0.9 the ramped shot still
+yields three anchors, at 0.95 two, both still noise on a plateau.
+
+The cause is the one the module's own docstring already names and this measurement
+puts a number on: `measure_curve` is *global* frame-to-frame difference on a moving
+camera, so the camera's own motion is the signal and it is roughly constant. A subject
+event is a small perturbation on a large constant.
+
+### 4.4 The decision, and the live defect it exposed
+
+**Auto-placement is not built.** Not deferred on cost — the sensor cannot answer the
+question, and building a placement rule on top of it would put a number where there is
+no measurement, which is the exact failure mode §1 just finished removing from the
+outro.
+
+But the measurement found something that is not hypothetical: `pacing --anchors`
+**already prints those anchors into `PACING.md` as advice** — "Move an in-point onto
+one by setting `start_offset`". On the only real footage this project has, that advice
+points at noise seven times out of eight, and nothing in the artifact says so.
+
+So the slice builds the honesty instead of the feature:
+
+- `anchors.curve_contrast(curve, rel)` — the fraction of samples at or above
+  `rel · peak`. Near 1.0 the floor is admitting rather than selecting.
+- `ANCHOR_FLAT_FRAC = 0.5`, and `anchors_from_curve` returns **nothing** past it. The
+  separation is not close: 33% for the one textured shot against 100% for seven, so
+  anything in `[0.34, 0.99]` works and 0.5 is the midpoint. `flat_frac=1.0` still
+  yields the raw maxima, so the guard hides nothing from a caller who wants them.
+- `PACING.md`'s table gains a **contrast** column, and a flat row says
+  *"flat — no moment is distinguishable"* rather than printing an empty cell, which
+  would read as "measured, found nothing" instead of "the measurement cannot see".
+
+### 4.5 What would make it buildable
+
+A sensor that separates subject motion from camera motion. Two already exist in this
+repo and neither is wired here: `carve.track_displacements` (median displacement
+across shared track ids — identity-consistent by construction, the 2026-08-06 fix) and
+`vidstab`'s camera-motion estimate, which could be *subtracted* from the global
+difference rather than dominating it. Both need the ramped episode's window to have
+been through intake, which it has. That is a real slice; it is filed, not built.
+
+---
+
+## 5. What this slice builds
 
 1. `outro.TAIL_MARGIN` replaces `TAIL_MIN`; `need = fade + TAIL_MARGIN`.
 2. `OutroFit.need` carries the requirement; `EDL.to_markdown` quotes it instead of a
@@ -322,12 +423,16 @@ against the worst case, and the worst case is unchanged.
 4. `check_reel`'s "inventing `TAIL_MIN` a second time" comment loses its example —
    `TAIL_MIN` is measured now, and the comment's point (`_LENGTH_TOL` is a borrowed
    reporting boundary, not a measured one) survives without it.
-5. Docs: mood-grade §3's correction, cast-hero-pin §11's layer-3 disposition,
-   backlog rows closed and opened, build-status.
+5. `anchors.curve_contrast` + `ANCHOR_FLAT_FRAC` + the flat guard in
+   `anchors_from_curve`; `PACING.md`'s anchor table gains a contrast column and says
+   *flat* in words.
+6. Docs: mood-grade §3's correction, cast-hero-pin §11's layer-3 disposition,
+   speed-ramp §13's anchor disposition, backlog rows closed and opened, build-status.
 
-No change to `match_grade`, `color`, `check_episode`, `track`, or `checks`.
+No change to `match_grade`, `color`, `check_episode`, `track`, `checks`, `ramp`, or
+`RampSpec` — §4 builds no placement, so nothing in the ramp's own contract moves.
 
-## 5. Testing
+## 6. Testing
 
 - The inversion of §1.3 becomes a regression pin: fade 0.3, tail 0.35 → **gap**, and
   the delivered fade covers no singing.
@@ -340,8 +445,20 @@ No change to `match_grade`, `color`, `check_episode`, `track`, or `checks`.
   not the constant, and it constructs its tie from `need` rather than `0.5`.
 - `EDL.to_markdown`'s no-gap sentence asserts `o.need`, not `outro_mod.TAIL_MIN`.
 - A mutation battery over the new expression (§7 of the plan).
+- §4's plateau case is pinned with the **measured** curve from MVI_3998 (the 21 real
+  sample values, 0.76–1.00 of peak) rather than a synthetic flat line, with a control
+  that must not move: a genuine one-spike curve still yields its anchor.
+- `_report`'s contrast column gets its first test — the battery found that nothing
+  called `_report` at all, so hardcoding the driver's contrast to 0.0 changed nothing.
+  **That row still survives**, and §8 says why: the mutation is in `build_pacing`'s
+  wiring, and covering it needs real ffmpeg over real clips. The new test pins the
+  column's format, not the wiring.
+- **The batteries run with `PYTHONDONTWRITEBYTECODE=1`.** Found the hard way: a
+  one-byte mutation can leave the file the same size and mtime-second as the previous
+  row's, and CPython then reuses the stale `.pyc` — two rows of the first battery were
+  reading each other's result until the runner was hardened and re-run.
 
-## 6. Deferred → backlog rows
+## 7. Deferred → backlog rows
 
 - **Decide whether the tone transfer should be luma-only** (P3, M) — the fix §3.5
   identifies. Carries a taste trade-off (`curves` per-channel raises saturation on a
@@ -353,11 +470,15 @@ No change to `match_grade`, `color`, `check_episode`, `track`, or `checks`.
   changed alone; it is entangled with the row above and §3.4 says why.
 - **Build §6.1a layer 3 when a run trips its trigger** (P4) — §2.5's named
   condition, replacing the open re-assessment row.
+- **A subject-motion anchor sensor** (P3, M) — §4.5. Global frame difference cannot
+  place a ramp; `carve.track_displacements` or a vidstab-subtracted curve could. Only
+  then does auto-placing `at` become a question about wire format and clamping rather
+  than about whether there is a signal.
 - **`checks.continuity` cannot see a swap between adjacent people** (P4, S) — §2.4.
   The gate is a teleport gate; nothing claims otherwise in code, and now nothing
   claims otherwise in the docs either.
 
-## 7. Honest limits
+## 8. Honest limits
 
 - **§1's landing-zone table is one track.** Walking on Sunshine, one tempo, one
   genre — the same single-song basis the downbeat-confidence slice already flagged.
@@ -372,5 +493,15 @@ No change to `match_grade`, `color`, `check_episode`, `track`, or `checks`.
 - **§3's separation is two frames, one per camera, at t=1.0s.** The mechanism is
   exact (the grayscale control is zero by construction, not by luck), but the
   *magnitudes* are two frames' worth.
-- **Nothing here makes a reel better.** One rung of one fitter reaches more bar
-  lines; two open questions become one answered question and four narrower rows.
+- **§4's threshold is one shoot, like everything else here.** `ANCHOR_FLAT_FRAC = 0.5`
+  separates 1 from 7 with a gap so wide that the value barely matters — but "7 of 8
+  shots are flat" is a fact about drone-and-handheld surf footage, not about video.
+  A tripod-locked interview would sit near 0 and the guard would never fire.
+- **§4 removes advice; it does not add any.** After this slice a flat shot says
+  "no moment is distinguishable" where it used to list five. That is more honest and
+  strictly less useful — the editor who wanted a suggestion still has none.
+- **The driver's contrast wiring is untested** (§6). One mutation survives the battery
+  and is recorded rather than papered over.
+- **Nothing here makes a reel better.** One rung of one fitter reaches more bar lines;
+  one report stops lying; three open questions become answered ones and five narrower
+  rows.

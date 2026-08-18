@@ -1,12 +1,13 @@
-# Three deferred measurements — implementation plan
+# Four deferred measurements — implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace `outro.TAIL_MIN` with a sensor-derived margin, make the no-gap
-message quote the requirement that actually applied, and record two diagnoses
-(§6.1a layer 3, the conductor's residual) that close their rows without code.
+message quote the requirement that actually applied, stop `PACING.md` printing a flat
+curve's noise as editorial advice, and record two diagnoses (§6.1a layer 3, the
+conductor's residual) that close their rows without code.
 
 **Architecture:** One pure module changes (`scripts/lib/outro.py`), one wire
 contract gains an additive field (`OutroFit.need`), one markdown sentence stops
@@ -350,12 +351,48 @@ git commit -m "test(outro): the battery's coverage holes, closed"
 
 ---
 
-## Task 4: docs sync
+## Task 4: the anchor curve says when it has nothing to say
+
+**Files:**
+- Modify: `scripts/lib/anchors.py` (`ANCHOR_FLAT_FRAC`, `curve_contrast`, the guard)
+- Modify: `scripts/pacing.py` (`anchor_map` carries the contrast, `_report` prints it)
+- Test: `tests/lib/test_anchors.py`, `tests/lib/test_pacing.py`
+
+Design §4. Auto-placing a ramp's `at` is **not built** — the sensor cannot answer the
+question (7 of 8 real episodes have 100% of their curve above the anchor floor). What
+IS built is the honesty: the same measurement showed `pacing --anchors` printing that
+noise into `PACING.md` as advice with nothing qualifying it.
+
+- [ ] **Step 1:** `curve_contrast(curve, rel)` returns the fraction of samples at or
+      above `rel * peak`; `ANCHOR_FLAT_FRAC = 0.5`; `anchors_from_curve` gains a
+      `flat_frac` parameter and returns `[]` past it. `flat_frac=1.0` still yields the
+      raw maxima — the guard hides nothing.
+- [ ] **Step 2:** `build_pacing`'s `anchor_map[i]` becomes `(anchors, contrast)`;
+      `_report` gains a contrast column and says *"flat — no moment is
+      distinguishable"* instead of an empty cell.
+- [ ] **Step 3:** tests — the plateau case built from **the measured 21 samples of
+      MVI_3998**, a control that must not move (a real one-spike curve), the exact-on-
+      floor case that tells `>=` from `>`, and the first-ever `_report` test.
+- [ ] **Step 4:** a nine-row battery. **Run it with `PYTHONDONTWRITEBYTECODE=1`** — a
+      one-byte mutation can leave the file the same size and mtime-second as the
+      previous row's and CPython then reuses the stale `.pyc`. Row 7 (the driver's
+      contrast wiring) is expected to survive; rows 8 and 9 exist so the `_report` test
+      is not vacuous.
+
+```bash
+git add scripts/lib/anchors.py scripts/pacing.py tests/lib/test_anchors.py tests/lib/test_pacing.py
+git commit -m "fix(anchors): a flat curve reports that it is flat, instead of naming noise"
+```
+
+---
+
+## Task 5: docs sync
 
 **Files:**
 - Modify: `docs/specs/2026-08-17-mood-grade-design.md` (§3 correction)
 - Modify: `docs/specs/2026-08-14-music-outro-fit-design.md` (§11.1 disposition)
 - Modify: `docs/specs/2026-07-16-cast-hero-pin-design.md` (§11 layer-3 disposition)
+- Modify: `docs/specs/2026-08-09-speed-ramp-design.md` (§13 anchor disposition)
 - Modify: `docs/backlog.md`, `docs/build-status.md`, `CLAUDE.md`
 
 - [ ] **Step 1: mood-grade §3**

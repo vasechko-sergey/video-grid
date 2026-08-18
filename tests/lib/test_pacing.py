@@ -290,3 +290,25 @@ def test_music_identity_separates_two_windows_of_the_same_track(tmp_path):
 
 def test_music_identity_is_empty_when_the_track_cannot_be_read(tmp_path):
     assert music_identity(str(tmp_path / "missing.wav"), 0.0, 42.0) == ""
+
+
+def test_the_anchor_table_reports_the_curve_contrast_beside_the_anchors():
+    """design 2026-08-18 §4. The anchors table was advice with nothing qualifying it,
+    and on the real run seven of eight shots produced anchors that were the min_gap
+    thinning grid rather than events. The contrast column is what lets a reader tell
+    the two cases apart, and a flat row says so in words instead of printing an empty
+    cell that reads as "measured, nothing found".
+
+    Found by the mutation battery: hardcoding the driver's contrast to 0.0 changed no
+    test, because nothing called _report at all."""
+    from scripts import pacing as driver
+    from scripts.lib.gridfit import Fit
+    spine = Spine(slots=(Slot(index=0, start=0.0, dur=2.0, energy=0.5, kind="hook"),),
+                  target_dur=2.0, tempo=120.0)
+    fit = Fit(level="beat", level_n=1, phase=0, shifts=(0.0,), devs=(), needs=(),
+              worst=0.0, total=0.0, fits=True)
+    md = driver._report(spine, fit, [], "track.mp3",
+                        {0: ([1.5, 3.0], 0.08), 1: ([], 1.0), 2: ([], 0.10)})
+    assert "| 0 | 8% | 1.50, 3.00 |" in md
+    assert "| 1 | 100% | flat — no moment is distinguishable |" in md   # the plateau
+    assert "| 2 | 10% | – |" in md      # low contrast, genuinely no local maximum

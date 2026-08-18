@@ -70,10 +70,19 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
                   "A proxy — global frame difference, so a camera whip reads as an event "
                   "too. Move an in-point onto one by setting `start_offset` in "
                   "selection.json and re-running edit-plan.", "",
-                  "| episode | anchors (s from the in-point) |",
-                  "|--------:|-------------------------------|"]
-        for i, ts in sorted(anchor_map.items()):
-            lines.append(f"| {i} | {', '.join(f'{t:.2f}' for t in ts) or '–'} |")
+                  "**Read the contrast column first.** It is the fraction of the shot's "
+                  "motion curve that clears the anchor floor. Near 100% the floor is "
+                  "admitting the whole curve, there is no distinguished moment, and the "
+                  "row says *flat* rather than listing noise as advice — measured on the "
+                  "2026-08-03 run, seven of eight episodes were exactly that "
+                  "(design 2026-08-18 §4).", "",
+                  "| episode | contrast | anchors (s from the in-point) |",
+                  "|--------:|---------:|-------------------------------|"]
+        for i, (ts, contrast) in sorted(anchor_map.items()):
+            cell = ", ".join(f"{t:.2f}" for t in ts) or (
+                "flat — no moment is distinguishable" if contrast > anchors.ANCHOR_FLAT_FRAC
+                else "–")
+            lines.append(f"| {i} | {100 * contrast:.0f}% | {cell} |")
     return "\n".join(lines) + "\n"
 
 
@@ -136,12 +145,15 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
              f"{fit.worst:.3f}s. Try another window (beats --auto-start), another "
              f"scenario length, or accept an off-grid reel (check_reel's beat gate is "
              f"advisory)")
-    anchor_map: dict[int, list[float]] = {}
+    anchor_map: dict[int, tuple[list[float], float]] = {}
     if with_anchors:
         root = Path(footage_root or ".")
         for i, ep in enumerate(edl.episodes):
             curve = anchors.measure_curve(str(root / ep.source), ep.start, ep.dur)
-            anchor_map[i] = anchors.anchors_from_curve(curve)
+            # the contrast rides along: without it a `–` cannot be told apart from
+            # "the curve was a plateau and the floor selected nothing" (design §4)
+            anchor_map[i] = (anchors.anchors_from_curve(curve),
+                             anchors.curve_contrast(curve))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     json_path, md_path = out / "PACING.json", out / "PACING.md"

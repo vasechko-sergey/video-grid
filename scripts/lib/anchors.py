@@ -19,20 +19,64 @@ ANCHOR_REL = 0.6       # fraction of the curve's own peak a local max must reach
                        # not absolute: a telephoto shot and an aerial differ by an order of
                        # magnitude in frame-to-frame difference, and an absolute floor would
                        # find every moment in one and none in the other.
+ANCHOR_FLAT_FRAC = 0.5 # fraction of the curve that may sit at or above `rel * peak`
+                       # before the relative floor stops SELECTING and starts admitting
+                       # everything. Past it there is no distinguished moment and
+                       # anchors_from_curve returns nothing rather than the min_gap
+                       # thinning grid dressed as events.
+                       #
+                       # Measured 2026-08-18 over the real run's eight episodes: SEVEN
+                       # have 100% of their samples above 0.6*peak (peak/min ratios
+                       # 1.23-1.64 — the whole curve is a plateau), and the one shot
+                       # with real texture sits at 33% (ratio 2.78). The gap is so wide
+                       # that anything in [0.34, 0.99] separates them; 0.5 is the
+                       # midpoint. One shoot, and §7 of the design says so.
+                       #
+                       # What this is NOT: a claim that the flat shots contain no
+                       # action. It is a claim that global frame-difference on a moving
+                       # camera cannot find it — the camera's own motion is the signal,
+                       # and it is roughly constant. The docstring above always called
+                       # this a proxy; this constant is the proxy admitting when it has
+                       # nothing to say.
 ANCHOR_W, ANCHOR_H = 160, 90   # the analysis frame. Fixed, not aspect-preserving: this is
                                # a motion PROXY and a squeezed frame differences the same;
                                # a fixed size keeps the raw-frame arithmetic below exact.
 _FRAME_BYTES = ANCHOR_W * ANCHOR_H
 
 
+def curve_contrast(curve: Sequence[float], rel: float = ANCHOR_REL) -> float:
+    """Fraction of `curve`'s samples at or above `rel * peak` — 0.0 for an empty curve.
+
+    The number that says whether the relative floor is doing any work. Near 1.0 the
+    floor admits the whole curve, so whatever `anchors_from_curve` returns is the
+    min_gap thinning grid rather than a set of events; near 0 a few samples stand out.
+    Reported beside the anchors so a reader can see which case they are looking at
+    (design 2026-08-18 §4)."""
+    c = [float(x) for x in curve]
+    if not c:
+        return 0.0
+    peak = max(c)
+    if peak <= 0:
+        return 0.0
+    return sum(1 for v in c if v >= peak * float(rel)) / len(c)
+
+
 def anchors_from_curve(curve: Sequence[float], hz: float = ANCHOR_HZ,
                        min_gap: float = ANCHOR_MIN_GAP,
-                       rel: float = ANCHOR_REL) -> list[float]:
+                       rel: float = ANCHOR_REL,
+                       flat_frac: float = ANCHOR_FLAT_FRAC) -> list[float]:
     """Local maxima of `curve` above `rel` x its peak, thinned to one per `min_gap`.
 
     Returns seconds from the curve's start, ascending. Thinning keeps the STRONGER of two
     neighbours rather than the earlier one: a manoeuvre ramps up over several samples, and
-    keeping the first would anchor the cut before the action rather than on it."""
+    keeping the first would anchor the cut before the action rather than on it.
+
+    A curve whose `curve_contrast` exceeds `flat_frac` yields **nothing**. Measured
+    2026-08-18 (design §4): on seven of the real run's eight episodes the relative floor
+    admits 100% of the samples, and what came back was one "anchor" per `min_gap` across
+    the whole window — a grid, not a set of moments. Returning it invites a reader to
+    treat noise as an event, which is exactly what the one consumer (`PACING.md`'s
+    advisory table) was doing. Pass `flat_frac=1.0` to see the raw maxima anyway."""
     c = [float(x) for x in curve]
     if isinstance(hz, bool) or not isinstance(hz, (int, float)) or hz <= 0:
         raise ValueError(f"anchors_from_curve: hz must be a positive sample rate, got {hz!r}")
@@ -40,11 +84,17 @@ def anchors_from_curve(curve: Sequence[float], hz: float = ANCHOR_HZ,
         raise ValueError(f"anchors_from_curve: rel must be a fraction in (0, 1], got {rel!r}")
     if isinstance(min_gap, bool) or not isinstance(min_gap, (int, float)) or min_gap <= 0:
         raise ValueError(f"anchors_from_curve: min_gap must be > 0 seconds, got {min_gap!r}")
+    if isinstance(flat_frac, bool) or not isinstance(flat_frac, (int, float)) \
+            or not 0 < flat_frac <= 1:
+        raise ValueError(f"anchors_from_curve: flat_frac must be a fraction in (0, 1], "
+                         f"got {flat_frac!r}")
     if len(c) < 3:
         return []
     peak = max(c)
     floor = peak * rel
     if peak <= 0 or max(c) - min(c) <= 0:
+        return []
+    if curve_contrast(c, rel) > flat_frac:      # the floor is selecting nothing
         return []
     peaks = [i for i in range(1, len(c) - 1)
              if c[i] >= floor and c[i] >= c[i - 1] and c[i] > c[i + 1]]
