@@ -300,6 +300,26 @@ after its verdict is named in the delivery's record.** The alternative that woul
 make the stronger claim (§2, forbid auto-reprocess) trades away the colour
 convergence loop, which is a worse deal.
 
+> **As built, 2026-08-18 — this hole is closed on the judged path.** See
+> [the re-judge design](2026-08-18-episode-qc-rejudge-design.md). `build_reel`
+> now REFUSES to deliver (`episode-qc-reprocessed`) when its reprocessed set is
+> non-empty and the manifest says `episode_qc.state == "judged"`; the router
+> re-judges exactly the named episodes and the second pass delivers, because the
+> corrected clips are already on disk where `EPISODES.json` points. It cost no
+> new artifact and no new stage — and it needed neither of the two surgeries §13
+> below priced, because the loop's *intermediate* renders are never shipped, so
+> only the last one needs a verdict.
+>
+> Two things this paragraph got wrong are also corrected there: "the router
+> re-runs QC on exactly those episodes after delivery" was never built (the skill
+> said *offer to*, and after delivery is too late), and the `reprocessed_after`
+> record — which IS written — was being dropped by `provenance._episode_qc_state`,
+> so `montage verify` reported a clean `judged`. It now reads `stale`.
+>
+> **What survives:** the refusal fires only on `"judged"`. The `absent` paths —
+> `build_reel`'s own CLI, the single-command `edl_to_reel` — still reprocess and
+> still ship unjudged, which is §10's deliberate front door.
+
 ## 9. The router
 
 `montage.V1_STAGES`' single `deliver` row becomes three:

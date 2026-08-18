@@ -249,6 +249,13 @@ stops throwing it away on the way to the human.
 - **§1.4's cost measurement is one run.** The retry loop firing zero times on one
   reel is evidence that the friction is rare, not that it is rare in general. A
   reel cut from genuinely mixed exposure will fire it, and will pay a QC round.
+- **The end-to-end proof fakes both the reprocess and the first `check_reel`
+  round.** The real reprocess runs YOLO and the real colour check needs a real
+  tint, so §7's integration test shows that the loop's *arms* are wired —
+  reprocess → stop → re-judge → deliver — not that a real colour outlier drives it
+  there. `tests/integration/test_reel_retry.py` separately proves a real
+  `color_correct` moves real pixels. **The two proofs are not joined**, and no test
+  in this repo watches a real colour failure travel all the way to this stop.
 - **Nothing verifies that the re-judged verdict is about the *corrected* render
   rather than an accidental third one.** It verifies the digest matches the bytes
   on disk at build time — which is exactly the guarantee `build_qc` already gives,

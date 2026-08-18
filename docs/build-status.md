@@ -4,13 +4,83 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-17._
+_Last updated: 2026-08-18._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Episode-QC re-judge — a judged reel no longer ships over an unjudged render
+  DONE (2026-08-18)** — plan `docs/plans/2026-08-18-episode-qc-rejudge.md` +
+  design `docs/specs/2026-08-18-episode-qc-rejudge-design.md`, Tasks 0–5 (branch
+  `feat/episode-qc-rejudge`). One pure function, one refusal at the top of
+  `build_reel`'s deliver arm, one arm on the inspector. No new artifact, no new
+  stage, no CLI flag, no ffmpeg change, no golden moved (**2989 passed / 2
+  skipped**, +12 tests).
+
+  **Four measurements shaped it and two changed the design.**
+
+  **(1) The record existed and the inspector dropped it.** `deliver` has written
+  `episode_qc.reprocessed_after` into the attestation since the episode-qc slice
+  landed, but `provenance._episode_qc_state` read only `state` — so `montage
+  verify` reported a clean `judged` for a delivery carrying unjudged renders, and
+  `using-montage`'s CP3 text tells the human in so many words that `judged` is the
+  all-clear. The gap was recorded in the JSON and invisible at the one place the
+  design promised a human would see it. That is a second, smaller hole hiding
+  inside the mitigation, and it now reads **`stale`**.
+
+  **(2) The gate already knew how to catch this; nobody asked it twice.** The
+  reprocess calls `process_episode` with the episode's own manifest, whose
+  `out_path` IS `ReelEpisode.clip` and IS the file `episode_qc build` digested. So
+  a re-render overwrites the bytes the verdict was stamped against, and a *second*
+  phase-2 run would fire the existing `episode-qc-stale` unaided. The hole was
+  never that the gate is weak — it is that the FIRST run delivers before anything
+  asks again. That reframing is what made the fix five lines in the driver instead
+  of the agent-drivable retry loop episode-qc §13 had priced.
+
+  **(3) A partial re-judge needed no new `episode_qc` code.** `build_qc` re-reads
+  every `findings.json` and re-digests every clip from disk, and `pack` never
+  touches a judge's file — so re-judging exactly the reprocessed episodes is:
+  overwrite *their* findings, leave the rest, run `build` unchanged. This is why
+  the slice came in at M.
+
+  **(4) The cost is zero on a clean reel.** The 2026-08-03 run's
+  `work/reel/reel_report.json` reads `overall: true`, `fail_reasons: []` — the
+  retry loop never engaged. The stop costs one QC round exactly when an episode was
+  re-rendered, and **one** per phase-2 invocation however many reprocess rounds
+  happened inside (the loop converges internally and reaches the deliver arm once).
+
+  **What shipped.** `episode_qc.reprocess_gate(state, reprocessed)` returns
+  `gate`'s own `(reason, problems)` shape; `QC_REPROCESSED` sits *beside*
+  `QC_STOPS`, not in it, because that tuple's docstring correctly refuses a fourth
+  entry — its three are `gate()` outcomes from comparing digests, this one is
+  bookkeeping raised by a different caller. `build_reel` refuses at the TOP of the
+  deliver arm, before the stem and before a version number is spent. The second
+  pass delivers on its own: the corrected clips are already on disk where
+  `EPISODES.json` points. `using-montage` step 14's "offer to re-run episode-qc"
+  becomes a four-step routed remedy, with the phase-1 landmine beside it — the
+  compounded colour factor lives ONLY in the clip bytes, so
+  `--stop-after-episodes` would silently discard what the retry loop converged on.
+
+  **Also corrected:** episode-qc §8's claim that "the router re-runs QC on exactly
+  those episodes after delivery and routes any blocking finding as a fix" was never
+  built. The skill said *offer to*, and after delivery is too late for a blocking
+  finding to stop anything.
+
+  **Honest limits, recorded not hidden.** The refusal fires only on `"judged"`, so
+  the `absent` paths — `build_reel`'s own CLI, the single-command `edl_to_reel` —
+  still reprocess and still ship unjudged; that is episode-qc §10's deliberate
+  front door, and `stale` is the backstop for a producer that forges a judged
+  state. The gate still proves presence and digest binding, never that anyone
+  looked. And the end-to-end proof **fakes both** the reprocess and the first
+  `check_reel` round — `tests/integration/test_reel_retry.py` separately proves a
+  real `color_correct` moves real pixels, but the two proofs are not joined and no
+  test watches a real colour failure travel all the way to this stop.
+
+  All 8 mutation-battery rows discriminated, and the integration proof passed its
+  vacuity check (stub `reprocess_gate` to always pass → the test fails).
 
 - **Mood → grade — the conductor gains the brief's opinion DONE (2026-08-17)** —
   plan `docs/plans/2026-08-17-mood-grade.md` + design
