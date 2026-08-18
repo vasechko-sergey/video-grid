@@ -12,6 +12,69 @@ _Last updated: 2026-08-18._
 
 ## Done
 
+- **The tone transfer goes luma-only, and the ruler gets fixed DONE (2026-08-19)** —
+  plan `docs/plans/2026-08-19-luma-tone-transfer.md` + design
+  `docs/specs/2026-08-19-luma-tone-transfer-design.md` (branch `feat/luma-tone`).
+  Two paired P3 colour rows, and **the pairing was right for the opposite reason to
+  the one recorded under it.**
+
+  The row said the conductor's whole residual is `curves=all` applying a non-affine
+  map per CHANNEL while the target is a LUMA statistic. Measured end to end on the
+  run's own two cameras — same instrument used to measure, to target, to author and
+  to judge — worst \|residual\| over p5/p50/p95: shipped chain **9.0** (drone) / 3.0
+  (Canon), transfer alone 8.0 / 2.0, ruler alone 5.0 / 3.0, **both 2.0 / 1.0**. The
+  transfer buys one unit of the nine. The ruler buys four.
+
+  **The ruler.** `measure_profile` histogrammed `scale=160:-2`, a 12x area reduction,
+  and read the drone frame's p95 **nine units low** — 196 against 205. Specular
+  highlights are small and bright and averaging is what a downscale does; p5 and p50
+  are bulk statistics and did not move at all. Full width costs **66.9ms against
+  61.0ms** for 144x the samples: the decode was always the price.
+
+  **The transfer.** `lutyuv=y=` over four segments, and chroma comes out
+  **bit-identical** (mean radius 30.19 → 30.19 where `curves` moved it to 29.47).
+  Half the function retires with the spline: dense sampling, anchor-joining and the
+  minimum gap were three defences against ffmpeg fitting a cubic through the anchors,
+  and a LUT evaluates the expression once per code — measured against the map's own
+  arithmetic over all 256, worst deviation **0.98 codes**, monotone.
+
+  **The trap the row named wrongly.** It said luma-only is "not a free swap" because
+  a per-channel curve raises saturation. The saturation effect is real and its
+  direction is the opposite on these frames (the authored curves compress, so
+  per-channel LOWERS it). The actual trap is **range**: `format=gray` reads black as
+  0 and white as 255, the Y plane `lutyuv` writes holds 16 and 235, and `curves`
+  never had to care because it works in RGB and swscale converted both ways
+  invisibly. Feeding the anchors straight through would have put every one of them at
+  the wrong Y on every episode with nothing failing.
+
+  **Two corrections to prior records.** deferred-measurements §3.4 said fixing the
+  ruler alone made p95 go −1 → −7; it improves 9.0 → 5.0, and the earlier reading
+  changed the verification while leaving the authoring at 160 wide — a curve built
+  for one ruler judged by another. And the repo-wide `lutrgb` ban does not reproduce
+  in any spelling (identity exact to the code, 1.2x matching `colorchannelmixer`);
+  the ban **stays**, and `check_episode`'s own "seek/lutrgb corruption" phrasing is
+  filed as the candidate misdiagnosis.
+
+  **What the re-pins found.** The plan's Self-Review named golden re-pinning as the
+  weak point, and **three tests turned out to be passing on the resampler rather than
+  on the frame**: `test_measure_profile_two_bands` asserted `p5 < p50` on a 50/50
+  frame where they are equal by construction and only passed because the downscale
+  blurred the boundary; this slice's own first highlight fixture was a single patch at
+  0.25% of the area, which cannot reach p95 at any resolution; and both new fixtures
+  were 240px wide, where `scale=160:-2` is a 1.5x reduction rather than 12x — the
+  mutation battery put the downscale back and they both still passed.
+  `test_verify_tone_rejects_a_banding_curve` lost its premise with the spline and
+  became a proof that no legal transfer can band.
+
+  **Proof.** Three real-ffmpeg goldens each with a control — the ramp against the
+  map's own arithmetic, chroma byte-identical with the old per-channel shape as the
+  control that must move, and the four-combination pairing table from design §0 as a
+  test that reddens if anyone later fixes one half alone. A 10-row mutation battery
+  under `PYTHONDONTWRITEBYTECODE=1`: **9 discriminate**; row 7 (`lte` → `lt` at a
+  segment boundary) is recorded as a genuine no-op, since the map is continuous and
+  both branches return the same value at a knot. Full suite from a cleared bytecode
+  cache: **3059 passed / 2 skipped**.
+
 - **Titles pixel gate + the staircase that leaves the frame + three orphans DONE
   (2026-08-19)** — plan `docs/plans/2026-08-19-titles-pixel-gate.md` + design
   `docs/specs/2026-08-19-titles-pixel-gate-design.md` (branch

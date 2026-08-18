@@ -182,17 +182,22 @@ note fires often on real briefs (mood-grade §2/§8) ·
 mood as **chroma**, not only luma — a mood is warmth as much as contrast, and the
 2026-08-17 slice moves only the luma triple the conductor owns; the warm/cool half
 needs the cross-episode white-balance actuator already deferred below (mood-grade §8) ·
-make the tone transfer **luma-only** — the diagnosed cause of the conductor's whole
-residual is that `curves=all` is per-CHANNEL while the target is a luma statistic
-(a grayscale control lands **exactly** on target, `[0, 0, 0]`, on both cameras).
-The route is `lutyuv` on Y; the reason it is not a chore is that it is **not a free
-swap** — a per-channel curve on a lift also raises saturation, so luma-only ships a
-visibly different grade — and `lutyuv` needs its own landmine assessment, since
-`lutrgb` is already banned here for black frames (deferred-measurements §3.5/§6) ·
-`color_measure.measure_profile` histograms a **160-wide** frame, biasing the p95 of
-specular footage 9 units low. **Must not be changed alone** — that bias currently
-cancels part of the per-channel error above, and removing it in isolation made the
-delivered p95 go from −1 to −7 (deferred-measurements §3.4) ·
+✅ make the tone transfer **luma-only** AND ✅ fix the **160-wide** measurement —
+**both landed 2026-08-19, together, and the row's premise was wrong.** It claimed
+the per-channel transfer was the cause of the conductor's whole residual. Measured
+end to end on the run's two cameras, worst \|residual\|: shipped **9.0**/3.0, transfer
+alone 8.0/2.0, ruler alone 5.0/3.0, **both 2.0/1.0**. The transfer buys one unit of
+the nine; the ruler buys four; only the pair closes it — so the rows really were
+inseparable, for the opposite reason to the one recorded. deferred-measurements
+§3.4's warning (fixing the ruler alone made p95 go −1 → −7) does **not** reproduce:
+it changed the verification while leaving the authoring at 160 wide, comparing a
+curve built for one ruler against a reading taken with another. Two findings the
+row did not anticipate: the real "not a free swap" is a **range** mismatch, not
+saturation (`format=gray` is full range, the Y plane `lutyuv` writes is 16–235, and
+`curves` never had to know because swscale converted for it); and dropping the
+spline deleted half the function, since dense sampling, anchor-joining and the
+minimum gap were three defences against a cubic that a LUT does not fit
+([luma-tone-transfer](specs/2026-08-19-luma-tone-transfer-design.md)) ·
 reconcile the two neutralizers, white-balance vs normalize-gain, into one authority (colour-stage §11) ·
 crop-accurate / K-frame tone measuring instead of the whole frame at the midpoint (matchgrade §8) ·
 cross-episode white-balance / cast matching (matchgrade §8) ·
@@ -214,6 +219,25 @@ Unreachable today — the one production call site never passes `knee=`, and
 the default 0.60 is an exact 0.1 multiple — so it is filed, not fixed; the
 one-line fix is the constant that already exists (shadow-red-length-reconcile
 §1.2 M-2, found by that slice's whole-branch review)
+
+the `lutrgb` ban rests on a symptom with no recorded mechanism, and it does not
+reproduce — measured 2026-08-19, every spelling renders correctly and identity is
+exact to the code. The ban **stays** (one synthetic probe on one ffmpeg build does
+not overturn a landmine written from a real corrupted render), but a candidate
+misdiagnosis is on record: `check_episode.py` calls it "the seek/lutrgb
+corruption", so the two were seen together, and the `-ss`-after-`-i` landmine
+produces black frames on its own. Closing this needs the original render, which
+nobody kept (luma-tone-transfer §5) ·
+the tone shoulder's slope (`TONE_TOP_SLOPE = 0.35`) is what the remaining 1–2 units
+of residual are made of — the output's top percentile is not the map of the input's
+because the segment above the shoulder anchor is deliberately gentle. Working as
+written, and nobody has asked whether 0.35 is right (luma-tone-transfer §8) ·
+**nobody has looked at the new grade on a screen.** Chroma no longer rides the tone
+curve, so a graded reel is visibly different — more saturated where the curve
+compresses, less where it lifts. Correct for an operation named "tone", and still a
+change no human has judged (luma-tone-transfer §8) ·
+calibrate the luma transfer beyond two frames of one shoot — every number in its
+design comes from one drone frame and one Canon frame (luma-tone-transfer §8) ·
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.

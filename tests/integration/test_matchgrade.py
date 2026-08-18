@@ -86,12 +86,26 @@ def test_a_moody_bias_renders_darker_than_the_plain_median(tmp_path):
 
 # --- the ruler: design 2026-08-19 §1 -----------------------------------------
 
-def _grid(path, field: str, spark: str):
-    """The same idea built by geq, which can draw the grid in one pass."""
-    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
-              "-i", f"color=c={field}:s=240x240:d=1:r=25",
-              "-vf", f"format=gray,geq=lum='if(lt(mod(X,8),2)+lt(mod(Y,8),2),240,32)',"
-                     "format=yuv420p",
+def _grid(path, dark: int = 24, mid: int = 90, spark: int = 240):
+    """Two exposure bands carrying FINE bright structure — 1px lines on a 16px pitch,
+    so about 12% of pixels are bright and none of the bright regions is wider than a
+    single pixel.
+
+    Three levels because tone_arg needs p5 < p50 < p95 with a real gap between them,
+    and fine bright structure because that is the thing a downscale destroys. Both
+    constraints are arithmetic, not taste: p95 needs 5% of the frame above it (so a
+    patch smaller than that can never reach it at any resolution — this fixture's
+    first version was 0.25% and could not have worked), and what averaging removes is
+    bright DETAIL, not bright area.
+
+    1920 wide for the same kind of reason: `scale=160:-2` is a 12x linear reduction of
+    a 1920 frame and only 1.5x of a 240 one. At 240 the mutation battery put the
+    downscale back and both tests still passed — they were not measuring the
+    instrument at all (rows 9 and 10, first pass)."""
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "color=c=black:s=1920x1080:d=1:r=25",
+              "-vf", "format=gray,"
+                     f"geq=lum='if(lt(mod(X,16),1)+lt(mod(Y,16),1),{spark},"
+                     f"if(lt(X,W/2),{dark},{mid}))',format=yuv420p",
               "-frames:v", "1", str(path)])
     return path
 
@@ -103,7 +117,7 @@ def test_measure_profile_reads_the_frames_own_fine_highlights(tmp_path):
 
     The control is the same frame's p5: a bulk statistic, which never moved. Without
     it "p95 is high" cannot be told from "the whole frame got brighter"."""
-    clip = _grid(tmp_path / "grid.mp4", "0x202020", "0xF0F0F0")
+    clip = _grid(tmp_path / "grid.mp4")
     p5, _, p95 = measure_profile(str(clip), at=0.0)
     assert p95 > 200, f"the fine structure never reached p95 (got {p95}) — averaged away"
     assert p5 < 60, f"the dark bulk moved too ({p5}) — this is not a p95-only effect"
@@ -191,8 +205,13 @@ def test_both_halves_are_needed_to_close_the_residual(tmp_path):
 
     Four combinations of (instrument, transfer). The pair must beat both halves;
     if a later change fixes one alone, this reddens with the number saying which."""
-    a = _grid(tmp_path / "a.mp4", "0x202020", "0xF0F0F0")
-    b = _three_band(tmp_path / "b.mp4", "0x303030", "0x909090", "0xF0F0F0")
+    a = _grid(tmp_path / "a.mp4")
+    b = _grid(tmp_path / "b.mp4", dark=70, mid=140, spark=250)
+    # This test drives its own instrument so it can compare four combinations, which
+    # leaves it free to prove a claim about an instrument the pipeline does not use.
+    # The link: measure_profile must BE the full-width one (mutation battery row 10
+    # survived without this, because mutating measure_profile could not reach here).
+    assert measure_profile(str(a), at=0.0) == _pcts(a, None)
 
     def residual(width, luma: bool) -> float:
         srcs = [_pcts(c, width) for c in (a, b)]
