@@ -1,5 +1,7 @@
 """Real-ffmpeg proof of the conductor: two clips of different exposure, each with tonal
 range, converge toward the median target once the authored tone_arg curve is rendered."""
+from pathlib import Path
+
 import pytest
 from scripts import match_grade
 from scripts.color_measure import measure_profile
@@ -105,3 +107,118 @@ def test_measure_profile_reads_the_frames_own_fine_highlights(tmp_path):
     p5, _, p95 = measure_profile(str(clip), at=0.0)
     assert p95 > 200, f"the fine structure never reached p95 (got {p95}) — averaged away"
     assert p5 < 60, f"the dark bulk moved too ({p5}) — this is not a p95-only effect"
+
+
+# --- the transfer itself: design 2026-08-19 §2 -------------------------------
+
+def _ramp_y(frag: str) -> list[int]:
+    """A lossless 256-step ramp through `frag`, in and out as the raw Y PLANE — one
+    sample per input code, no encode and no pixel-format conversion anywhere.
+
+    yuv444p in and not gray-then-format, which is the harness's own version of the
+    trap this slice is about: `format=yuv444p` from a gray source runs swscale, and
+    swscale converts full range to tv on the way, so code 16 arrives at the filter
+    as 30 and every reading is shifted (measured while writing this test). Handing
+    ffmpeg the plane directly leaves nothing between the codes and the LUT."""
+    y = bytes(bytearray([x for x in range(256) for _ in range(8)]))
+    raw = y + bytes([128]) * (2 * len(y))          # U and V neutral
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-f", "rawvideo", "-pix_fmt", "yuv444p",
+                    "-s", "2048x1", "-i", "-", "-vf", frag,
+                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "yuv444p", "-"],
+                   input=raw).stdout
+    assert len(out) >= 2048, f"no frame out of {frag[:60]!r}"
+    return [out[i * 8] for i in range(256)]
+
+
+def test_the_tone_map_renders_within_a_code_of_itself():
+    """design §2.3. A LUT has no spline to overshoot, so the four segments ARE the
+    map — the only error left is the integer rounding of storing it.
+
+    The control is the map's own arithmetic: `_lerp` through the SAME knots, in
+    full range, converted at both ends exactly as the emitted expression does. A
+    test that compared the render only against itself would pass on any map."""
+    src, dst = (73.0, 137.0, 196.0), (61.0, 123.5, 192.0)
+    got = _ramp_y(color.tone_arg(src, dst).rstrip(","))
+    segs = color._segments(src, dst)
+    want = [color.TV_LO + color._lerp(segs, (y - color.TV_LO) * 255 / color.TV_SPAN)
+            * color.TV_SPAN / 255 for y in range(256)]
+    worst = max(abs(g - w) for g, w in zip(got[16:236], want[16:236]))   # the legal range
+    assert worst <= 1.0, f"the LUT is {worst:.2f} codes off its own map"
+    assert all(b >= a for a, b in zip(got[16:236], got[17:236])), "the transfer bands"
+
+
+def test_the_tone_transfer_leaves_chroma_byte_identical(tmp_path):
+    """design §2.2. lutyuv never writes U or V, so a tone move cannot shift a hue.
+
+    The CONTROL is the same knots emitted the old way — a curves=all spline over
+    RGB — which must move them. Without it, "chroma did not change" cannot be told
+    from "nothing rendered at all"."""
+    clip = _three_band(tmp_path / "c.mp4", "0x402010", "0x80A040", "0xC0E0F0")
+    src, dst = (30.0, 120.0, 200.0), (40.0, 130.0, 190.0)
+
+    def planes(frag):
+        a = [ffbin.ffmpeg(), "-v", "error", "-i", str(clip)]
+        out = proc.run(a + (["-vf", frag] if frag else []) +
+                       ["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "yuv444p", "-"]).stdout
+        n = len(out) // 3
+        return out[n:]                                    # U and V, as bytes
+
+    base = planes("")
+    assert planes(color.tone_arg(src, dst).rstrip(",")) == base, "lutyuv touched chroma"
+
+    segs = color._segments(src, dst)
+    pts = " ".join(f"{x/255:.4f}/{color._lerp(segs, x)/255:.4f}" for x in range(0, 256, 20))
+    assert planes(f"curves=all='{pts}'") != base, (
+        "the per-channel control did NOT move chroma — the comparison proves nothing")
+
+
+def _pcts(path, width) -> tuple[float, float, float]:
+    """(p5,p50,p95) of the gray histogram at `width`, or at the frame's own if None —
+    measure_profile's two instruments, side by side."""
+    vf = "format=gray" if width is None else f"scale={width}:-2,format=gray"
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", str(path), "-frames:v", "1",
+                    "-vf", vf, "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
+    hist = [0] * 256
+    for b in out:
+        hist[b] += 1
+    return color.percentiles(hist)
+
+
+def test_both_halves_are_needed_to_close_the_residual(tmp_path):
+    """design §0, as a test. The conductor MEASURES, targets, AUTHORS and is then
+    judged — so an instrument change has to change all four, which is what the
+    earlier §3.4 reading got wrong by changing only the last one.
+
+    Four combinations of (instrument, transfer). The pair must beat both halves;
+    if a later change fixes one alone, this reddens with the number saying which."""
+    a = _grid(tmp_path / "a.mp4", "0x202020", "0xF0F0F0")
+    b = _three_band(tmp_path / "b.mp4", "0x303030", "0x909090", "0xF0F0F0")
+
+    def residual(width, luma: bool) -> float:
+        srcs = [_pcts(c, width) for c in (a, b)]
+        tgt = tuple(sorted(s[i] for s in srcs)[len(srcs) // 2] for i in range(3))
+        worst = 0.0
+        for clip, src in zip((a, b), srcs):
+            if not (src[0] + color.TONE_MIN_GAP <= src[1] <= src[2] - color.TONE_MIN_GAP):
+                continue                       # tone_arg would refuse it; not this test's case
+            frag = color.tone_arg(src, tgt).rstrip(",")
+            if not luma:                       # the per-channel shape, from the same knots
+                segs = color._segments(src, tgt)
+                frag = "curves=all='" + " ".join(
+                    f"{x/255:.4f}/{color._lerp(segs, x)/255:.4f}"
+                    for x in range(0, 256, 20)) + "'"
+            out = tmp_path / f"o_{width or 'full'}_{luma}_{Path(clip).stem}.mkv"
+            proc.run([ffbin.ffmpeg(), "-y", "-v", "error", "-i", str(clip), "-vf", frag,
+                      "-c:v", "ffv1", "-pix_fmt", "yuv420p", str(out)])
+            worst = max(worst, max(abs(g - t) for g, t in zip(_pcts(out, width), tgt)))
+        return worst
+
+    shipped = residual(160, luma=False)
+    ruler_only = residual(None, luma=False)
+    transfer_only = residual(160, luma=True)
+    both = residual(None, luma=True)
+    assert both < shipped, f"the pair did not improve on the shipped chain ({both} vs {shipped})"
+    assert both <= ruler_only and both <= transfer_only, (
+        f"one half alone matched the pair — pair {both}, ruler {ruler_only}, "
+        f"transfer {transfer_only}. Each is a PARTIAL fix (design §0); if that has "
+        f"stopped being true, the design's table is what needs re-measuring")
