@@ -174,11 +174,23 @@ class Attestation:
 
 
 def _episode_qc_state(att: "Attestation") -> str:
-    """Returns judged / absent / unknown — the design §10 vocabulary, derived rather
-    than trusted verbatim: an old sidecar predating this field, or one whose block
-    holds neither word (a producer bug — see build_reel's own-CLI bypass), must read
-    as unknown, never silently as whichever of the two real states looks closer."""
+    """Returns judged / stale / absent / unknown — episode-qc §10's vocabulary plus the
+    2026-08-18 fourth arm, derived rather than trusted verbatim: an old sidecar
+    predating this field, or one whose block holds none of the words (a producer bug —
+    see build_reel's own-CLI bypass), must read as unknown, never silently as whichever
+    real state looks closest.
+
+    `stale` is judged-but-not-about-these-bytes: the delivery re-rendered an episode
+    AFTER its verdict was stamped. build_reel refuses that combination outright on the
+    router's two-phase path (design 2026-08-18 §2), so reaching this arm means a
+    producer that bypassed the refusal — which is exactly what a backstop is for. The
+    word is the gate's own, for the same meaning: a stale verdict describes other bytes.
+
+    `absent` never becomes `stale`. A reel with no verdict has no stale one to report,
+    and reprocessed_after on such a delivery is bookkeeping about a reel nobody judged."""
     state = att.episode_qc.get("state")
+    if state == "judged" and att.episode_qc.get("reprocessed_after"):
+        return "stale"
     return state if state in ("judged", "absent") else "unknown"
 
 
@@ -188,9 +200,10 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     the shipped file to prove it is the one that was delivered.
 
     `episode_qc` in the returned dict answers design §10's promise that a judged reel
-    is distinguishable from an unjudged one — "judged" / "absent" / "unknown" (no
-    sidecar at all, or one predating the field, both read as "unknown": there is no
-    QC record to report either way)."""
+    is distinguishable from an unjudged one — "judged" / "stale" / "absent" / "unknown"
+    (no sidecar at all, or one predating the field, both read as "unknown": there is no
+    QC record to report either way; "stale" is judged, then re-rendered — see
+    _episode_qc_state)."""
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
                  "engine_drift": False, "episode_qc": "unknown",

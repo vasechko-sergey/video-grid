@@ -217,3 +217,35 @@ def test_verify_delivery_reports_unknown_for_a_state_less_episode_qc_block(tmp_p
     _att(reel_digest=provenance.digest_file(reel),
          episode_qc={"reprocessed_after": []}).write(provenance.attest_path(reel))
     assert provenance.verify_delivery(reel)["episode_qc"] == "unknown"
+
+
+# --- 2026-08-18 re-judge: the fourth episode_qc state ----------------------------
+
+def test_a_judged_delivery_that_re_rendered_after_the_verdict_reads_stale():
+    """design 2026-08-18 §3: the record was always in the sidecar — the inspector used
+    to drop it, so a reel carrying unjudged renders reported a clean `judged` at the one
+    place CP3 tells a human to look."""
+    att = _att(episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [0]})
+    assert provenance._episode_qc_state(att) == "stale"
+
+
+def test_a_judged_delivery_that_re_rendered_nothing_stays_judged():
+    att = _att(episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": []})
+    assert provenance._episode_qc_state(att) == "judged"
+
+
+def test_an_unjudged_delivery_cannot_be_stale():
+    """A reel with no verdict has no stale one — `absent` is the honest answer and must
+    not be upgraded to a QC word it never earned."""
+    att = _att(episode_qc={"state": "absent", "reprocessed_after": [0, 1]})
+    assert provenance._episode_qc_state(att) == "absent"
+
+
+def test_verify_delivery_surfaces_the_stale_state(tmp_path):
+    """The arm has to reach the dict montage verify actually prints, not only the helper."""
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"reel")
+    _att(reel_digest=provenance.digest_file(reel),
+         episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [0]}).write(
+        provenance.attest_path(reel))
+    assert provenance.verify_delivery(reel)["episode_qc"] == "stale"
