@@ -8,11 +8,20 @@ from scripts.lib import color, ffbin, proc
 
 def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, float]:
     """(p5, p50, p95) luma of `clip` at time `at` (default: 1s in — a settled frame).
-    Decodes ONE 160-wide grayscale still to rawvideo, histograms it, and delegates the
-    percentiles to color.percentiles (numpy stays in this driver, out of lib/color)."""
+
+    Decodes ONE grayscale still at the clip's OWN resolution, histograms it, and
+    delegates the percentiles to color.percentiles (numpy stays in this driver, out of
+    lib/color).
+
+    Not downscaled, and that is measured (design 2026-08-19 §1): `scale=160:-2` reduced
+    the area 12x and read the run's drone frame's p95 NINE UNITS LOW — 196 against the
+    frame's real 205 — because specular highlights are small and bright and averaging is
+    what a downscale does. p5 and p50 are bulk statistics and did not move at all. The
+    full frame costs 66.9ms against 61.0ms for 144x the samples: the decode was always
+    the price and the scale filter never was."""
     t = 1.0 if at is None else at
     out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip, "-ss", f"{t:.3f}",
-                    "-frames:v", "1", "-vf", "scale=160:-2,format=gray",
+                    "-frames:v", "1", "-vf", "format=gray",
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout      # -ss AFTER -i (§12)
     if not out:
         raise RuntimeError(f"color_measure: no frame decoded from {clip} at {t:.2f}s")

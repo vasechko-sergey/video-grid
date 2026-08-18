@@ -630,14 +630,30 @@ def test_filter_args_fast_path_byte_identical_at_defaults():
 
 
 @pytest.mark.integration
-def test_verify_tone_rejects_a_banding_curve():
-    # (35,84,118)->(30,100,148) is tone_arg's own docstring example, but it no
-    # longer dips — TONE_SAMPLES=13 dense sampling is the fix that case motivated.
-    # (50,60,245)->(10,200,245) still does: a ~3.3x expansion crammed into the
-    # 50-60 input band forces the fitted spline into 24 real monotonicity
-    # violations (measured — see the exploration this test's triple came from).
-    with pytest.raises(RuntimeError):
-        reframe.verify_tone(color.tone_arg((50, 60, 245), (10, 200, 245)))
+def test_no_legal_tone_transfer_can_band(tmp_path):
+    """Replaces test_verify_tone_rejects_a_banding_curve, whose premise this slice
+    deleted (2026-08-19).
+
+    That test fed (50,60,245)->(10,200,245) — a ~3.3x expansion crammed into a
+    10-unit input band — and ffmpeg's fitted cubic answered with 24 real
+    monotonicity violations. There is no cubic now: tone_arg emits a lutyuv LUT
+    over knots that tone_arg itself validates as strictly increasing, so every
+    segment slope is positive and the map is monotone by construction.
+
+    An unreachable refusal is worth proving unreachable rather than deleting the
+    only test that exercised it, so this renders the SAME hostile triple plus a
+    scan of the legal domain, and requires all of them monotone. verify_tone keeps
+    its refusal: it is what catches a malformed expression producing no frame at
+    all, which is reachable and would otherwise surface in the delivered reel."""
+    hostile = [(50, 60, 245), (10, 20, 30), (0, 6, 12), (200, 220, 240),
+               (5, 130, 250), (60, 66, 72)]
+    for src in hostile:
+        for dst in ((10, 200, 245), (20, 110, 210), (5, 11, 17)):
+            try:
+                frag = color.tone_arg(src, dst)
+            except ValueError:
+                continue                       # refused before ffmpeg — a different guard
+            reframe.verify_tone(frag)          # raises on a dip or on no frame
 
 
 @pytest.mark.integration

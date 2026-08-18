@@ -59,10 +59,11 @@ def test_authored_tone_converges_two_exposures(tmp_path):
     assert abs(g_bright[1] - target[1]) < abs(p_bright[1] - target[1])
 
 
-def test_tone_arg_curve_is_actually_emitted():
-    # the actuator the conductor feeds is a curves=all=... fragment
+def test_tone_arg_transfer_is_actually_emitted():
+    # re-pinned 2026-08-19: the actuator the conductor feeds is a lutyuv LUT over
+    # the Y plane, not an RGB spline.
     frag = color.tone_arg((10.0, 90.0, 150.0), (20.0, 110.0, 210.0))
-    assert frag.startswith("curves=all='") and frag.endswith("',")
+    assert frag.startswith("lutyuv=y='") and frag.endswith("',")
 
 
 def test_a_moody_bias_renders_darker_than_the_plain_median(tmp_path):
@@ -79,3 +80,28 @@ def test_a_moody_bias_renders_darker_than_the_plain_median(tmp_path):
     got_moody = _graded_profile(clip, prof, moody, tmp_path / "moody.mp4")
     assert got_moody[0] < got_plain[0]   # shadows crushed
     assert got_moody[1] < got_plain[1]   # midtones darker
+
+
+# --- the ruler: design 2026-08-19 §1 -----------------------------------------
+
+def _grid(path, field: str, spark: str):
+    """The same idea built by geq, which can draw the grid in one pass."""
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+              "-i", f"color=c={field}:s=240x240:d=1:r=25",
+              "-vf", f"format=gray,geq=lum='if(lt(mod(X,8),2)+lt(mod(Y,8),2),240,32)',"
+                     "format=yuv420p",
+              "-frames:v", "1", str(path)])
+    return path
+
+
+def test_measure_profile_reads_the_frames_own_fine_highlights(tmp_path):
+    """design §1. `scale=160:-2` reduced the area 12x before histogramming and read
+    the run's drone frame's p95 NINE UNITS LOW (196 against 205) — specular
+    highlights are small and bright, and averaging is what a downscale does.
+
+    The control is the same frame's p5: a bulk statistic, which never moved. Without
+    it "p95 is high" cannot be told from "the whole frame got brighter"."""
+    clip = _grid(tmp_path / "grid.mp4", "0x202020", "0xF0F0F0")
+    p5, _, p95 = measure_profile(str(clip), at=0.0)
+    assert p95 > 200, f"the fine structure never reached p95 (got {p95}) — averaged away"
+    assert p5 < 60, f"the dark bulk moved too ({p5}) — this is not a p95-only effect"
