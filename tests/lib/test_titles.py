@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from scripts.lib import titles as titles_mod
 from scripts.lib.spec import Spec
 from scripts.lib.titles import POSITIONS, STYLES, Title, Titles, build_filterchain
 from scripts.titles import build_titles, write_titles
@@ -390,3 +391,51 @@ def test_build_filterchain_plain_style_emits_no_empty_fragment(tmp_path):
     ts = Titles(items=(Title("hi", 0.0, 2.0, style="plain"),))
     vf = build_filterchain(ts, str(tmp_path), resolve=_fake_resolve)
     assert "::" not in vf
+
+
+def test_ink_extent_bottom_sits_on_the_zone_edge():
+    # a single-line bottom title's ink box ends EXACTLY at the safe zone's inner
+    # edge — that is what y_exprs' `h-th-h*z.bottom` means, and the extent must
+    # agree or the overflow check refuses every ordinary title.
+    t = Title("salt sun and you", 0.0, 3.0, pos="bottom")
+    top, bottom = titles_mod.ink_extent(t, "reels")
+    assert bottom == pytest.approx(1.0 - 0.16)
+    assert top == pytest.approx(1.0 - 0.16 - 1.0 / titles_mod.FONTSIZE_DIV)
+
+
+def test_ink_extent_top_and_center():
+    top_t = Title("hi", 0.0, 1.0, pos="top")
+    assert titles_mod.ink_extent(top_t, "reels")[0] == pytest.approx(0.08)
+    mid = Title("hi", 0.0, 1.0, pos="center")
+    lo, hi = titles_mod.ink_extent(mid, "reels")
+    assert (lo + hi) / 2 == pytest.approx(0.5)
+    assert hi - lo == pytest.approx(1.0 / titles_mod.FONTSIZE_DIV)
+
+
+def test_ink_extent_scales_with_the_titles_own_scale():
+    small = Title("hi", 0.0, 1.0, pos="center", scale=0.5)
+    lo, hi = titles_mod.ink_extent(small, "reels")
+    assert hi - lo == pytest.approx(0.5 / titles_mod.FONTSIZE_DIV)
+
+
+def test_ink_extent_adds_the_staircases_drop():
+    # measured 2026-08-19: four steps at the default line_spacing drop the last
+    # one 3*1.15/18 of the frame below the base box (design §5).
+    t = Title("salt\nsun\nand\nyou", 0.0, 4.0, reveal="stair", reveal_step=0.4)
+    base_bottom = 1.0 - 0.16
+    assert titles_mod.ink_extent(t, "reels")[1] == pytest.approx(
+        base_bottom + 3 * 1.15 / titles_mod.FONTSIZE_DIV)
+
+
+def test_ink_extent_word_reveal_stays_on_one_line():
+    # a word reveal lays every step at the SAME y — only a stair drops lines, so
+    # a word reveal's extent must equal the plain title's.
+    plain = Title("salt sun and you", 0.0, 3.0, pos="bottom")
+    word = Title("salt sun and you", 0.0, 3.0, pos="bottom", reveal="word",
+                 reveal_step=0.3)
+    assert titles_mod.ink_extent(word, "reels") == titles_mod.ink_extent(plain, "reels")
+
+
+def test_ink_extent_unknown_platform_takes_the_generic_zone():
+    t = Title("hi", 0.0, 1.0, pos="bottom")
+    assert titles_mod.ink_extent(t, "nope") == titles_mod.ink_extent(t, "")

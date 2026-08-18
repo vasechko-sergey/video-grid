@@ -203,6 +203,38 @@ def y_exprs(platform: str = "") -> dict[str, str]:
             "bottom": f"h-th-h*{z.bottom}"}
 
 
+def ink_extent(t: Title, platform: str = "") -> tuple[float, float]:
+    """(top, bottom) of the rows this title's ink can occupy, as FRACTIONS of frame
+    height. Fractions and not pixels for the reason build_filterchain gives: the
+    drawtext chain is resolution-agnostic, and so is everything derived from it.
+
+    Two readers, one spelling (design 2026-08-19 §5): zone_overflow compares this
+    against the platform's safe zone, and deliver multiplies it by the delivered
+    frame's own height to get the band lookcheck measures. They cannot disagree.
+
+    The estimate is deliberately CONSERVATIVE — `th` (drawtext's own rendered text
+    height, which Python cannot know without rendering) is approximated by the font
+    size, and a staircase's drop is taken at its maximum step. Measured on real
+    footage it predicts [0.784, 1.032] of frame height where the ink reached
+    [0.799, 0.967]: over-estimating widens a band (harmless — it only dilutes the
+    evidence fraction) and refuses a title that would have just fitted (a loud
+    refusal carrying its own remedy). Under-estimating would ship the defect."""
+    z = safezones.safe_zone_for(platform)
+    fs = t.scale / FONTSIZE_DIV                     # font size as a fraction of h
+    if t.pos == "top":
+        top = z.top
+    elif t.pos == "center":
+        top = 0.5 - fs / 2
+    else:
+        top = 1.0 - z.bottom - fs
+    drop = 0.0
+    if t.reveal == "stair":
+        # _layers pushes step j down by j * line_spacing * scale / FONTSIZE_DIV of h,
+        # and NOTHING lifts the base y to make room — the last step is the extent.
+        drop = (len(_steps(t)) - 1) * t.line_spacing * t.scale / FONTSIZE_DIV
+    return top, top + fs + drop
+
+
 def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
                       platform: str = "", measure=None) -> str:
     """The drawtext chain deliver injects into its encode -vf. One drawtext per Title
