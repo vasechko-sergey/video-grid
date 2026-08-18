@@ -216,12 +216,29 @@ TONE_MIN_GAP = 6.0         # 0-255 units two anchors must differ by to stay orde
 TONE_TOP_SLOPE = 0.35      # how the curve continues ABOVE the shoulder anchor: gentle
                            # enough to compress specular foam, steep enough that the top
                            # 5% keeps its ordering instead of collapsing onto a ceiling
-TONE_SAMPLES = 13          # control points emitted; enough that the fitted spline tracks
-                           # the piecewise-linear map instead of overshooting between corners
+# The Y plane's range, MEASURED (design 2026-08-19 §3): black encodes to 16 and white
+# to 235 through this repo's own yuv420p h264, while color_measure's `format=gray` path
+# reads the same two as 0 and 255. `curves` never had to know — it works in RGB, so
+# swscale converted both ways for free and invisibly. lutyuv writes the plane as stored,
+# so the conversion is ours at both ends, or every anchor lands somewhere else with
+# nothing failing. Pinned by tests against a real encode, not against these literals.
+TV_LO, TV_SPAN = 16.0, 219.0
+
+
+def _segments(src: tuple[float, float, float],
+              dst: tuple[float, float, float]) -> list[tuple[float, float]]:
+    """The (in, out) knots of the tone map, in FULL-range luma.
+
+    Its own function because two readers need exactly these: the expression tone_arg
+    emits, and the proof that renders a ramp through it and compares against _lerp
+    over the same points. The top endpoint is computed rather than pinned to 255 —
+    tone_arg's own docstring says why."""
+    top = min(255.0, dst[2] + (255.0 - src[2]) * TONE_TOP_SLOPE)
+    return [(0.0, 0.0), *zip(src, dst), (255.0, top)]
 
 
 def tone_arg(src: tuple[float, float, float], dst: tuple[float, float, float]) -> str:
-    """A `curves` fragment carrying one source's tone profile onto a common one.
+    """A luma-transfer fragment carrying one source's tone profile onto a common one.
 
     This is the stage black_point_arg and highlight_arg could not reach BETWEEN them,
     and the reason is a small piece of algebra: a black subtraction followed by a gain
@@ -257,33 +274,28 @@ def tone_arg(src: tuple[float, float, float], dst: tuple[float, float, float]) -
             raise ValueError(f"tone {name} anchors must increase by at least "
                              f"{TONE_MIN_GAP} units each, got {v!r} — measure p5/p50/p95 "
                              "of luma on the episode's own crop")
-    # The top endpoint is COMPUTED, not pinned to 1/1, and that is the whole trick.
-    # Pinning it would force the segment above the shoulder anchor to climb from dst_p95
-    # back to 255 — on this reel's drone shot, 221->148 followed by 255->255 is a slope
-    # of 3.1, so the brightest foam would be EXPANDED by the very filter asked to tame
-    # it. Continuing the shoulder at a gentle fixed slope instead keeps the curve
-    # monotone (highlights stay separable, no plate) while spending little range on it.
-    top = min(255.0, dst[2] + (255.0 - src[2]) * TONE_TOP_SLOPE)
-    knots = [(0.0, 0.0), *zip(src, dst), (255.0, top)]
-    # Emit the piecewise-linear map SAMPLED, not just its corners. ffmpeg fits a natural
-    # cubic spline through whatever points it is given, and a spline through four corners
-    # whose segment slopes differ sharply overshoots between them: measured on this
-    # reel's telephoto (35/84/118 stretched onto 30/100/148) the fitted curve came back
-    # with a -1 slope, i.e. a brighter input mapping to a darker output — invisible as
-    # brightness, but it is banding waiting to happen in a smooth sky. Sampling the same
-    # map densely leaves the spline no room to wander off it.
-    # The anchors themselves join the grid: sampling ALONE pulls the fitted curve a few
-    # units off each anchor (measured 5 low at the toe), and the anchors are the whole
-    # point of this filter — the grid is only there to keep the spline honest between them.
-    # An anchor always wins its neighbourhood: a grid point landing a fraction of a unit
-    # away would hand the spline two near-coincident control points, and ffmpeg answers
-    # that with an empty output rather than an error (measured: anchor 106.1 against grid
-    # node 106.25 produced no frame at all).
-    xs = sorted(list(src) + [x for x in (i * 255.0 / (TONE_SAMPLES - 1)
-                                         for i in range(TONE_SAMPLES))
-                             if all(abs(x - a) >= TONE_MIN_GAP for a in src)])
-    pts = " ".join(f"{x/255:.4f}/{_lerp(knots, x)/255:.4f}" for x in xs)
-    return f"curves=all='{pts}',"
+    # A LUT, not a spline. `curves` fits a natural cubic through whatever points it is
+    # given, which is why this used to emit a TONE_SAMPLES grid, join the anchors to
+    # that grid, and keep a minimum gap so two control points never nearly coincided
+    # (ffmpeg answers that with no frame at all, not an error). lutyuv evaluates the
+    # expression once per input code and stores a table, so the four segments ARE the
+    # map: measured against _lerp over all 256 codes, worst deviation 0.98 codes —
+    # integer rounding, nothing else — and monotone (design 2026-08-19 §2.3).
+    #
+    # And it is LUMA-only, which is the point: U and V are never written, so chroma
+    # comes out bit-identical and the transfer finally acts on the same statistic the
+    # target is measured in (§2.1/§2.2).
+    v = f"(val-{TV_LO})*255/{TV_SPAN}"
+    segs = _segments(src, dst)
+    expr = f"{segs[-1][1]:.4f}"
+    for (x0, y0), (x1, y1) in reversed(list(zip(segs, segs[1:]))):
+        # x1 == x0 happens when p5 is 0: the origin and the toe anchor coincide, and
+        # the segment between them has no width to interpolate across. Its output is
+        # the anchor's, which is what a zero-width segment means.
+        piece = (f"{y1:.4f}" if x1 == x0 else
+                 f"({y0:.4f}+({v}-{x0:.4f})*{(y1 - y0) / (x1 - x0):.6f})")
+        expr = f"if(lte({v},{x1:.4f}),{piece},{expr})"
+    return f"lutyuv=y='{TV_LO}+({expr})*{TV_SPAN}/255',"
 
 
 def _lerp(knots: list[tuple[float, float]], x: float) -> float:

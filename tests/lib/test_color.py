@@ -82,9 +82,11 @@ def test_dip_fits_the_episode():
         color.dip_arg(0.5, 0.8)
 
 
-def test_tone_validates_anchors_and_emits_a_curve():
+def test_tone_validates_anchors_and_emits_a_transfer():
+    # re-pinned 2026-08-19: the actuator is a luma LUT, not an RGB spline. The
+    # refusal on near-coincident anchors is unchanged and pinned here too.
     frag = color.tone_arg((30, 100, 148), (35, 110, 150))
-    assert frag.startswith("curves=all='") and frag.endswith("',")
+    assert frag.startswith("lutyuv=y='") and frag.endswith("',")
     with pytest.raises(ValueError):
         color.tone_arg((30, 33, 148), (35, 110, 150))
 
@@ -285,3 +287,48 @@ def test_grade_chain_places_highlight_red_after_the_shoulder():
 def test_grade_chain_is_unchanged_at_the_highlight_red_default():
     assert (color.grade_chain((1.1, 1.0, 0.9), dur=3.0)
             == color.grade_chain((1.1, 1.0, 0.9), highlight_red=0.0, dur=3.0))
+
+
+def test_tv_range_constants_match_what_the_pipeline_encodes():
+    """Measured, not typed (design 2026-08-19 §3): black and white through this
+    repo's own yuv420p h264 land on 16 and 235 in the Y plane, while
+    measure_profile's format=gray path reads the same two as 0 and 255. If either
+    end changes, every tone anchor lands somewhere else and nothing else fails.
+    tests/integration/test_matchgrade.py proves the pair against a real encode."""
+    assert (color.TV_LO, color.TV_LO + color.TV_SPAN) == (16.0, 235.0)
+
+
+def test_segments_are_the_knots_the_map_was_given():
+    src, dst = (73.0, 137.0, 196.0), (61.0, 123.5, 192.0)
+    segs = color._segments(src, dst)
+    assert [x for x, _ in segs] == [0.0, 73.0, 137.0, 196.0, 255.0]
+    assert [y for _, y in segs][:4] == [0.0, 61.0, 123.5, 192.0]
+    top = min(255.0, dst[2] + (255.0 - src[2]) * color.TONE_TOP_SLOPE)
+    assert segs[-1] == (255.0, top)
+
+
+def test_segments_survive_a_zero_low_anchor():
+    # p5 == 0 is legal on a crushed source, and a naive first-segment slope would
+    # divide by zero. The knots stay; the emitter is what has to cope.
+    segs = color._segments((0.0, 100.0, 200.0), (10.0, 110.0, 210.0))
+    assert segs[0] == (0.0, 0.0) and segs[1] == (0.0, 10.0)
+
+
+def test_tone_arg_emits_a_luma_only_transfer():
+    frag = color.tone_arg((10.0, 90.0, 150.0), (20.0, 110.0, 210.0))
+    assert frag.startswith("lutyuv=y='") and frag.endswith("',")
+    assert "curves" not in frag          # chroma no longer rides the tone curve
+
+
+def test_tone_arg_converts_both_ends_of_the_range():
+    frag = color.tone_arg((10.0, 90.0, 150.0), (20.0, 110.0, 210.0))
+    assert f"val-{color.TV_LO}" in frag        # tv Y -> full-range value, going in
+    assert f"{color.TV_SPAN}/255" in frag      # full-range result -> tv Y, coming out
+
+
+def test_tone_arg_still_refuses_the_same_bad_anchors():
+    # unchanged by the actuator swap, and pinned so the rewrite cannot quietly drop
+    # a refusal along with the spline scaffolding it was tangled with.
+    for bad in ((150.0, 90.0, 10.0), (10.0, 10.5, 150.0)):
+        with pytest.raises(ValueError):
+            color.tone_arg(bad, (20.0, 110.0, 210.0))
