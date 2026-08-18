@@ -1019,14 +1019,18 @@ def test_markdown_reports_the_rung_and_the_move():
 
 
 def test_markdown_no_gap_rung_explains_the_longer_fade():
-    # The no-gap rung's markdown branch must be exercised: constructs an OutroFit
-    # with rung="no-gap" and asserts the else branch's actual sentence including TAIL_MIN.
-    fit = OutroFit(reel_dur=32.5, line=32.0, fade=1.5, tail=0.0, rung="no-gap", moved=-0.5)
+    # The no-gap rung's markdown branch must be exercised: constructs an OutroFit with
+    # rung="no-gap" and asserts the else branch's actual sentence including the need.
+    # `need` is 0.35 here and `fade` is 1.5 — deliberately different numbers, because
+    # on this rung `fade` has already become NO_GAP_FADE and quoting it (or a module
+    # constant) instead of the requirement is exactly the bug the field exists to stop
+    # (design 2026-08-18 §1.6).
+    fit = OutroFit(reel_dur=32.5, line=32.0, fade=1.5, tail=0.0, rung="no-gap",
+                   moved=-0.5, need=0.35)
     md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
     assert "## Music outro" in md
     assert "`no-gap`" in md
-    # Assert the exact TAIL_MIN value quoted in the branch
-    assert f"no bar line in range left {outro_mod.TAIL_MIN:.2f}s of vocal-free space" in md
+    assert f"no bar line in range left {fit.need:.2f}s of vocal-free space" in md
     assert "32.00s" in md and "1.50s" in md and "-0.50s" in md
 
 

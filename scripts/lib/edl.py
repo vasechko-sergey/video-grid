@@ -15,7 +15,6 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scripts.lib import outro as outro_mod
 from scripts.lib import provenance
 from scripts.lib import ramp as ramp_mod
 from scripts.lib.constraints import ConstraintReport
@@ -454,7 +453,11 @@ class EDL:
                 why = (f"the music resolves on a bar line at {o.line:.2f}s with "
                        f"{o.tail:.2f}s of vocal-free space after it")
             elif o.rung == "no-gap":
-                why = (f"no bar line in range left {outro_mod.TAIL_MIN:.2f}s of "
+                # o.need, not a module constant: the requirement is fade-dependent
+                # (fade + TAIL_MARGIN) and by this rung `o.fade` is already
+                # NO_GAP_FADE, so neither the constant nor the field can stand in for
+                # what the gap rung actually asked (design 2026-08-18 §1.6).
+                why = (f"no bar line in range left {o.need:.2f}s of "
                        f"vocal-free space, so the reel ends on the nearest line at "
                        f"{o.line:.2f}s under a longer fade")
             else:

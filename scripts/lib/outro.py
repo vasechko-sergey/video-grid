@@ -9,9 +9,22 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 BAR_BEATS = 4       # 4/4 assumed — beats.py's downbeat detector reads this too (§11.3)
-TAIL_MIN = 0.5      # vocal-free seconds a boundary must leave. THE PROJECT OWNER'S
-                    # ASSUMPTION, not a measurement or a citation (§11.1) — one constant
-                    # in one place precisely so re-tuning is a one-line change.
+TAIL_MARGIN = 0.05  # vocal-free seconds required ON TOP OF the fade. DERIVED, not
+                    # taste: two bins of the vocal envelope at vocals._SPAN_HZ (40 Hz,
+                    # ~23 ms each), which is the boundary quantization of the very
+                    # sensor that produced the spans this is compared against.
+                    # tests/lib/test_outro.py pins the identity so the two cannot drift;
+                    # outro.py itself stays free of the vocals import.
+                    #
+                    # It replaced TAIL_MIN = 0.5 on 2026-08-18 (design
+                    # docs/specs/2026-08-18-deferred-measurements-design.md §1). That
+                    # constant was wrong in KIND, not in value: the reel is
+                    # `line + fade` long, so `max(TAIL_MIN, fade)` at fade < 0.5
+                    # demanded silence in audio the stem never contains — and when it
+                    # bit, the no-gap rung it fell to checks no tail at all and shipped
+                    # a 1.5s fade over 1.15s of singing (§1.3). It also disqualified
+                    # every gap in [0.35, 0.5), a band offset.vocal_gaps' own
+                    # min_gap=0.35 declares valid — 16% of the real track's gaps.
 NO_GAP_FADE = 1.5   # the longer fade rung 2 falls back to. Taste, not a measurement (§11.2)
 MIN_LAST = 1.0      # the last episode may not be shrunk below this. A floor, not a
                     # finding (§11.7): without it a one-bar step down can leave a 2.5s
@@ -37,6 +50,17 @@ class OutroFit:
                                      # stderr line could say how far the reel drifted, and
                                      # EDL.md — the thing a later reader actually has —
                                      # could not. None = no brief was supplied.
+    need: float = 0.0                # vocal-free seconds the GAP rung required:
+                                     # fade + TAIL_MARGIN, at the fade the CALLER asked
+                                     # for. Recorded because on the "no-gap" rung `fade`
+                                     # has already been replaced by NO_GAP_FADE, so
+                                     # nothing else in the artifact can say what the
+                                     # refusal was measured against — and the old
+                                     # sentence quoted a module constant that was not
+                                     # even the number that applied (design §1.6).
+                                     # Defaults to 0.0 so an EDL written before
+                                     # 2026-08-18 still loads; "unchanged" keeps that
+                                     # default, because no rung ever ran.
 
     def __post_init__(self) -> None:
         if self.rung not in RUNGS:
@@ -62,7 +86,7 @@ class OutroFit:
     def to_dict(self) -> dict:
         return {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,
                 "tail": self.tail, "rung": self.rung, "moved": self.moved,
-                "brief_len": self.brief_len}
+                "brief_len": self.brief_len, "need": self.need}
 
     @classmethod
     def from_dict(cls, d: dict) -> "OutroFit":
@@ -72,7 +96,7 @@ class OutroFit:
         return cls(reel_dur=d.get("reel_dur", 0.0), line=d.get("line"),
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
                    rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
-                   brief_len=d.get("brief_len"))
+                   brief_len=d.get("brief_len"), need=d.get("need", 0.0))
 
 
 def bar_seconds(tempo: float) -> float:
@@ -132,7 +156,7 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
               brief_len: float | None = None) -> OutroFit:
     """Pick the reel length that makes the music resolve on a bar line.
 
-    The ladder (design §5): a line with `max(TAIL_MIN, fade)` of vocal-free space after
+    The ladder (design §5): a line with `fade + TAIL_MARGIN` of vocal-free space after
     it; else the nearest line with NO_GAP_FADE, re-filtered through the band so the
     longer fade cannot smuggle length past it; else nothing moves. There is no refusal
     rung — an awkward music tail is not worth blocking a delivery over, and the caller
@@ -156,7 +180,13 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         ref = brief_len if brief_len is not None else reel_dur
         return min(cands, key=lambda line: (abs((line + f) - ref), line))
 
-    need = max(TAIL_MIN, float(fade))
+    # The fade must land in silence — arithmetic, not taste: the stem is `line + fade`
+    # long and mix fades over [line, line + fade], so a vocal inside that span is the
+    # only one anyone hears. TAIL_MARGIN rides on top for the sensor's own +/-1-bin
+    # boundary error, and at fade == 0 it is the ONLY thing keeping the line out of a
+    # vocal: free_after returns 0.0 for a line outside every gap, and `0.0 >= 0.0 -
+    # _EPS` would accept it (design §1.5). Hence the SUM, not a max.
+    need = float(fade) + TAIL_MARGIN
     gapped = [line for line in _candidates(bars, reel_dur, bar_s, fade, music_dur,
                                            grow_max, shrink_max)
               if free_after(vocal_spans, line) >= need - _EPS]
@@ -164,7 +194,7 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         line = pick(gapped, fade)
         return OutroFit(reel_dur=line + fade, line=line, fade=float(fade),
                         tail=free_after(vocal_spans, line), rung="gap",
-                        moved=(line + fade) - reel_dur, brief_len=brief_len)
+                        moved=(line + fade) - reel_dur, brief_len=brief_len, need=need)
     long_fade = max(float(fade), NO_GAP_FADE)
     nearest = _candidates(bars, reel_dur, bar_s, long_fade, music_dur,
                           grow_max, shrink_max)
@@ -172,5 +202,6 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         line = pick(nearest, long_fade)
         return OutroFit(reel_dur=line + long_fade, line=line, fade=long_fade,
                         tail=free_after(vocal_spans, line), rung="no-gap",
-                        moved=(line + long_fade) - reel_dur, brief_len=brief_len)
+                        moved=(line + long_fade) - reel_dur, brief_len=brief_len,
+                        need=need)
     return unchanged

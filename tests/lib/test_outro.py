@@ -36,7 +36,8 @@ def test_gap_rung_picks_the_line_with_room_for_the_fade():
     fit = outro.fit_outro(BARS, ((line, line + 1.5),), reel_dur=34.044, bar_s=BAR,
                           fade=0.5, music_dur=42.0, grow_max=11.5, shrink_max=3.0)
     assert fit == OutroFit(reel_dur=line + 0.5, line=line, fade=0.5, tail=1.5,
-                           rung="gap", moved=pytest.approx(line + 0.5 - 34.044))
+                           rung="gap", moved=pytest.approx(line + 0.5 - 34.044),
+                           need=pytest.approx(0.5 + outro.TAIL_MARGIN))
 
 
 def test_no_gap_rung_lengthens_the_fade():
@@ -110,9 +111,9 @@ def test_the_brief_breaks_the_tie():
     assert outro.fit_outro(**kw, brief_len=36.0).line == 36.0   # |36.5-36| < |32.5-36|
 
 
-def test_fade_zero_needs_only_tail_min():
+def test_fade_zero_needs_only_the_margin():
     """A brief with no look leaves fade at mix's default, but an authored fade of 0 is
-    legal: the reel then ends exactly on the line and TAIL_MIN alone is the bar."""
+    legal: the reel then ends exactly on the line and TAIL_MARGIN alone is the bar."""
     line = 20.0
     fit = outro.fit_outro((line,), ((line, line + 0.6),), reel_dur=20.3, bar_s=BAR,
                           fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
@@ -127,24 +128,100 @@ def test_gap_rung_tail_exactly_at_the_epsilon_floor_still_counts():
     means an ordinary decimal tie (tail == need, e.g. both 0.5) passes under EITHER
     operator — `need > need - _EPS` always — so only a tail landing bit-exactly on
     `need - _EPS` tells `>=` apart from `>`. Constructed the SAME way the source
-    computes it (line=0.0 so `b - t` has no float cancellation), not a coincidence."""
-    tail = 0.5 - outro._EPS
+    computes it (line=0.0 so `b - t` has no float cancellation), not a coincidence.
+
+    Re-pointed 2026-08-18: the need is `fade + TAIL_MARGIN` now, so the tie has to be
+    built from THAT sum. Left at a bare 0.5 the tail sits 0.05 BELOW the need, the gap
+    rung refuses for an ordinary reason, and the row stops testing the operator at
+    all — the plan's own self-review caught this before the battery could."""
+    need = 0.5 + outro.TAIL_MARGIN
+    tail = need - outro._EPS
     fit = outro.fit_outro((0.0,), ((0.0, tail),), reel_dur=0.5, bar_s=BAR, fade=0.5,
                           music_dur=42.0, grow_max=99.0, shrink_max=99.0)
     assert fit.rung == "gap"
 
 
-def test_gap_rung_needs_tail_min_not_just_the_fade():
-    """Task 7 battery — new row, closing a coverage hole a review found:
-    test_fade_zero_needs_only_tail_min's 0.6s tail clears BOTH the real 0.5s TAIL_MIN
-    floor and a buggy `need = fade` (0.0), so it cannot discriminate `need = max(
-    TAIL_MIN, fade)` from `need = fade`. 0.2s of vocal-free space clears fade=0.0 but
-    not TAIL_MIN=0.5 — only the real floor refuses the gap rung here, so the ladder
-    must fall to no-gap instead."""
+def test_gap_rung_needs_the_margin_on_top_of_the_fade():
+    """Rewritten from test_gap_rung_needs_tail_min_not_just_the_fade (design §1.5): its
+    JOB is unchanged — tell the real rule apart from a bare `need = fade` — only the
+    scale moved. test_fade_zero_needs_only_the_margin's 0.6s tail clears both, so it
+    cannot discriminate; 0.02s of vocal-free space clears fade=0.0 and not the 0.05s
+    margin, so only the real floor refuses the gap rung here."""
     line = 20.0
-    fit = outro.fit_outro((line,), ((line, line + 0.2),), reel_dur=20.3, bar_s=BAR,
+    fit = outro.fit_outro((line,), ((line, line + 0.02),), reel_dur=20.3, bar_s=BAR,
                           fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
     assert fit.rung == "no-gap"
+
+
+def test_the_margin_is_all_a_zero_fade_needs():
+    """The companion that stops the margin being mistaken for the old 0.5s floor:
+    0.06s of vocal-free space clears it. Under TAIL_MIN=0.5 this same call answered
+    'no-gap' — the pair brackets the constant from both sides."""
+    line = 20.0
+    fit = outro.fit_outro((line,), ((line, line + 0.06),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.0, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.rung == "gap" and fit.reel_dur == line
+
+
+def test_a_short_fade_inside_a_short_gap_takes_the_gap_rung():
+    """design §1.3, the measured inversion, pinned as a regression. One bar line with
+    0.35s of vocal-free space after it — the SHORTEST gap offset.vocal_gaps can emit
+    (min_gap=0.35) — and the `fun` preset's 0.3s fade. The played tail is
+    [line, line+0.3], entirely inside the gap, so the gap rung must take it.
+
+    Under `max(TAIL_MIN, fade)` this fell to no-gap and shipped a 1.50s fade over
+    1.15s of singing: the floor made the outcome worse against the very thing it
+    protected, because the no-gap rung checks no tail at all."""
+    line = 30.0
+    fit = outro.fit_outro((line,), ((line, line + 0.35),), reel_dur=30.2, bar_s=BAR,
+                          fade=0.3, music_dur=60.0, grow_max=5.0, shrink_max=5.0)
+    assert fit.rung == "gap"
+    assert fit.fade == 0.3
+    assert fit.reel_dur == pytest.approx(line + 0.3)
+    assert fit.tail >= fit.fade      # nothing sings under the fade
+
+
+def test_the_fit_records_the_requirement_it_applied():
+    """A bare tail cannot say what it was measured against, and the requirement is no
+    longer a module constant a reader can look up: it depends on the fade (design
+    §1.6)."""
+    line = 20.0
+    fit = outro.fit_outro((line,), ((line, line + 3.0),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.8, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.rung == "gap" and fit.need == pytest.approx(0.85)
+
+
+def test_the_no_gap_rung_records_the_requirement_that_refused_it():
+    """On no-gap `fade` is already NO_GAP_FADE, so without `need` nothing in the
+    artifact can say how much space the gap rung wanted. It is the ORIGINAL fade's
+    requirement (0.3 + 0.05), not the long fade's."""
+    line = 20.0
+    fit = outro.fit_outro((line,), ((line, line + 0.02),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.3, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert fit.rung == "no-gap"
+    assert fit.fade == outro.NO_GAP_FADE
+    assert fit.need == pytest.approx(0.35)
+
+
+def test_need_round_trips_and_an_old_artifact_still_loads():
+    line = 20.0
+    fit = outro.fit_outro((line,), ((line, line + 3.0),), reel_dur=20.3, bar_s=BAR,
+                          fade=0.8, music_dur=42.0, grow_max=99.0, shrink_max=99.0)
+    assert outro.OutroFit.from_dict(fit.to_dict()) == fit
+    old = {"reel_dur": 30.0, "line": 29.5, "fade": 0.5, "tail": 1.0, "rung": "gap",
+           "moved": 0.0}                       # written before this slice: no `need`
+    assert outro.OutroFit.from_dict(old).need == 0.0
+
+
+def test_the_margin_is_two_bins_of_the_vocal_envelope():
+    """TAIL_MARGIN is not taste — it is the boundary quantization of the sensor that
+    produces the spans it is compared against (design §1.5). vocals._SPAN_HZ is 40 Hz,
+    so two bins is 0.05s. outro.py must NOT import vocals (its docstring promises no
+    audio IO), so the derivation lives here, machine-checked, instead of in a comment
+    that could go stale."""
+    from scripts.lib import vocals
+    assert outro.TAIL_MARGIN == pytest.approx(2.0 / vocals._SPAN_HZ)
+    assert not hasattr(outro, "TAIL_MIN"), "TAIL_MIN is deleted, not renamed in place"
 
 
 def test_the_earlier_line_wins_an_exact_tie():

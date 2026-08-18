@@ -193,7 +193,7 @@ def _pacing_json(tmp_path):
 
 def _music_json(tmp_path, track, *, bars):
     """bars=(LINE,) places the ONE qualifying bar line the reel's realized 10.0s is
-    0.2s short of, with a vocal-free tail well past TAIL_MIN/fade. bars=() (the
+    0.2s short of, with a vocal-free tail well past `fade + TAIL_MARGIN`. bars=() (the
     control, Step 2) is the SAME track/window with no detected grid at all —
     outro.fit_outro's honest 'unchanged' answer, never a weaker variant of the
     'gap' fixture."""

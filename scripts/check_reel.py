@@ -217,8 +217,10 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         # this residual IS the distance between the fade's start and the bar line.
         # `passed` keys on the length gate's own _LENGTH_TOL — a REPORTING boundary
         # borrowed from a neighbouring check, not a claim about when an ending stops
-        # resolving. Nobody has measured that, and inventing it here would be
-        # inventing TAIL_MIN a second time.
+        # resolving. Nobody has measured that, and a number invented here would be a
+        # third un-measured constant wearing a threshold's clothes. (The example this
+        # comment used to give was TAIL_MIN; that one WAS measured on 2026-08-18 and is
+        # gone — the point survives, the illustration did not.)
         if outro.get("rung", "unchanged") == "unchanged":
             checks["outro"] = CheckResult("outro", None, {
                 "status": "n/a", "reason": "the fit chose no bar line (rung 'unchanged')",
