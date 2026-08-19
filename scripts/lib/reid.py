@@ -45,8 +45,18 @@ def _get_extractor():
     global _extractor
     if _extractor is None:
         # lazy import: heavy optional dep (torchreid)
-        from torchreid.utils import FeatureExtractor
-        _extractor = FeatureExtractor(model_name=MODEL, device=_device())
+        import torchreid
+        # Reach FeatureExtractor as an ATTRIBUTE, never `from torchreid.utils import`.
+        # torchreid 0.2.5 lays its code out under torchreid/reid/ and re-exports the
+        # subpackages by NAME in its __init__ (`from torchreid.reid import ... utils`),
+        # so `torchreid.utils` is a bound attribute while `torchreid/utils/` does not
+        # exist on disk — the from-import raises ModuleNotFoundError. Upstream's layout
+        # has the real submodule AND the same attribute, so the attribute form is the
+        # one spelling that works on both. Measured 2026-08-19, on the first machine
+        # where torchreid ever imported: available() passed and every real embed died
+        # here. Same family as the find_spec-vs-import notes in vocals.has_demucs and
+        # test_reid's skip gate — a weaker question answered in place of the real one.
+        _extractor = torchreid.utils.FeatureExtractor(model_name=MODEL, device=_device())
     return _extractor
 
 

@@ -217,14 +217,21 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # OSNet weights download on the first reid.ensure_model() (like YOLO on first track).
 #
 # The explicit dep list is not decoration: torchreid 0.2.5 declares NO runtime
-# requirements at all (only test/dev extras), yet imports six packages. Measured
+# requirements at all (only test/dev extras), yet imports seven packages. Measured
 # 2026-08-14 on a real install — `pip install torchreid` reported success, `pip show`
 # listed it, and `import torchreid` raised ModuleNotFoundError for gdown. The
 # capability was missing with no printed reason, which is exactly what this script's
 # header promises never happens. Guard and verify on IMPORT, never on `pip show`.
+#
+# tensorboard joined the list on 2026-08-19, from a second real install, and it is the
+# one no scan of torchreid's OWN imports can find: engine.py says `from
+# torch.utils.tensorboard import SummaryWriter`, so the root name torchreid imports is
+# `torch` — present — and it is torch's submodule that needs the separate `tensorboard`
+# distribution. Found by walking all 189 torchreid modules and importing each of their
+# 63 external dotted names; tensorboard was the only genuine gap left.
 "$VENV/bin/python" -c 'import torchreid' >/dev/null 2>&1 || {
   echo "installing torchreid (person re-ID for cast identity; pulls torch)..."
-  "$VENV/bin/pip" install torchreid gdown tabulate Cython h5py imageio yacs \
+  "$VENV/bin/pip" install torchreid gdown tabulate Cython h5py imageio yacs tensorboard \
     || echo "WARNING: torchreid install failed (no torch wheel for this platform?) -> cast identity is unavailable; intake still produces windows & scoring. Re-run 'bash setup.sh' to retry."
   "$VENV/bin/python" -c 'import torchreid' >/dev/null 2>&1 \
     || echo "WARNING: torchreid INSTALLED BUT DOES NOT IMPORT — $("$VENV/bin/python" -c 'import torchreid' 2>&1 | tail -1). Cast identity is unavailable; intake still produces windows & scoring. pip-install the named module and re-run 'bash setup.sh'."; }
