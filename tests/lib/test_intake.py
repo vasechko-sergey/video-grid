@@ -863,12 +863,20 @@ def test_intake_refuses_an_out_dir_equal_to_the_footage_root(tmp_path):
         intake.intake(str(tmp_path), str(tmp_path))
 
 
-def test_intake_refuses_before_doing_any_work(tmp_path):
-    """The guard sits above out.mkdir() and above ensure_model(): pointed at the
-    footage root, intake must not create a directory or fetch weights first."""
+def test_intake_refuses_before_fetching_the_model(tmp_path, monkeypatch):
+    """The guard sits above ensure_model(), so the refusal costs no weights fetch.
+
+    ensure_model is the first step with a real cost, and therefore the only one
+    whose ordering a test can see: the out.mkdir() above it is UNOBSERVABLE for
+    this input, because out_dir IS the footage root, which already exists, so
+    exist_ok=True does nothing. The mutation battery caught that — the earlier
+    version of this test asserted the directory was unchanged and stayed green
+    with the guard moved below the mkdir."""
     root = tmp_path / "footage"
     root.mkdir()
-    before = set(p.name for p in root.iterdir())
+    called = []
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: called.append(a))
     with pytest.raises(ValueError):
         intake.intake(str(root), str(root))
-    assert set(p.name for p in root.iterdir()) == before
+    assert called == []
+    assert set(p.name for p in root.iterdir()) == set()   # and no artifact written

@@ -4,13 +4,61 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-18._
+_Last updated: 2026-08-25._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **The run gets its own folder DONE (2026-08-25)** — plan
+  `docs/plans/2026-08-25-run-dir-separation.md` + design
+  `docs/specs/2026-08-25-run-dir-separation-design.md` (branch
+  `feat/run-dir-separation`). Asked for as tidiness; **it is a silent-corruption
+  fix whose side effect is a clean folder.**
+
+  `intake` discovers footage by extension over a flat `root.iterdir()` and excludes
+  nothing, so anything the conveyor writes into the footage folder that happens to
+  be a video becomes source material on the next scan. Measured on the 2026-06 run:
+  **138 entries, 100 videos, 38 artifacts** — and `FOOTAGE.json` carries **99**
+  clips. The hundredth video is `draft.mp4`, the QA preview the conveyor itself
+  writes into the run dir. It escaped by timing, not design: the scan is dated
+  2026-08-19 13:07, the draft 2026-08-20 11:31. A re-scan today would carve windows
+  out of a montage of the user's own cuts, score them, and offer them for selection
+  — fired by the documented remedy, *shot more, re-run intake*.
+
+  **The split needed no plumbing, and that was checked before designing anything.**
+  Every driver path argument is explicit; of the five defaults, three derive from
+  another explicit path and two are `edl_to_reel` phase-2 markers — **none names the
+  footage root**; `project.json` records no footage root; `next_action` already
+  separates `run_dir` from `out_dir`. The only thing missing was the rule that
+  `<run>` must not BE the footage folder, which is why the router line that has said
+  "point every stage's output at one run dir" since §5.1 prevented none of the 38.
+
+  Built: `lib/runlayout.py` (`RUN_DIRNAME = "montage"` + one refusal), called at the
+  head of `intake()` and `build_draft()` — the two stages that know the footage root
+  and write into a caller-chosen directory. **Equality, never containment**:
+  `<footage_root>/montage` is inside the root and must pass, or the gate forbids the
+  layout it protects. Both ends `resolve()`, pinned by a three-way parametrize
+  (trailing slash / `..` / symlink). A refusal, not a warning — the advisory version
+  of this rule already failed once.
+
+  **The battery found a hole in the plan's own reasoning.** The plan said the intake
+  guard must sit above `out.mkdir()` because "below it would create the directory it
+  rejects". False: when `out_dir` IS the footage root that directory already exists,
+  so `exist_ok=True` is a no-op and nothing is observable. The test built on that
+  claim stayed green with the guard moved down. Re-aimed at `ensure_model` — the
+  first step with a real cost (a YOLO weights fetch) — and the row then discriminates.
+  7 of 7 rows red. Suite **3073 passed / 1 skipped**, up 13, no golden moved.
+
+  Honest limits, both filed as backlog rows: a rendered video hand-copied among the
+  footage is still scanned (an `.mp4` is an `.mp4`; no machine predicate here), and a
+  run predating the convention no longer resumes on its own — the router asks when
+  `<run>` is empty but `<footage_root>/project.json` exists, which is a prompt, not a
+  guarantee. Migrating such a run is **not** a `mv`: `out/EPISODES.json` alone
+  carries 57 absolute paths, and a move breaks exactly the QC digest bindings and
+  delivery attestation built to notice it.
 
 - **The tone transfer goes luma-only, and the ruler gets fixed DONE (2026-08-19)** —
   plan `docs/plans/2026-08-19-luma-tone-transfer.md` + design

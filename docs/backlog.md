@@ -356,6 +356,18 @@ no real-footage proof, which is the calibration row's territory
 (cheap-P2-chores §4.1)
 
 **Packaging / runtime**
+migrating a **pre-convention run** into `montage/` — not a `mv`: measured 2026-08-25,
+artifacts carry absolute paths to OTHER artifacts, not only to footage
+(`out/EPISODES.json` 57, `cast_candidates.json` 15, `cast.json` 10,
+`out/EPISODE_QC.json` 8, each `.intake_cache/*/clip.json` 52 — every crop PNG), so a
+move breaks the QC digest bindings and the delivery attestation built to notice
+exactly that. A path rewrite, if ever wanted; until then such a run stays readable
+where it is, because every driver takes explicit paths (run-dir-separation §5) ·
+a rendered video **hand-copied among the footage** is still scanned — the run-dir
+gate proves the run dir is not the footage dir, never that no `.mp4` beside the
+clips is pipeline output, because an `.mp4` is an `.mp4`. Would need content
+provenance at scan time (an attestation lookup, or a digest check against `out/`),
+which is a slice and not a guard (run-dir-separation §6) ·
 GitHub-remote marketplace (plugin-packaging §6) ·
 a leaner plugin root and relocating the ~12 MB of weights out of the tree (plugin-runtime-resolution §6) ·
 dependency **version** assertions in preflight (verify-runtime §9)
