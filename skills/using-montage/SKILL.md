@@ -29,8 +29,15 @@ run covers the whole conveyor for one project/aspect.
 
 Announce on entry: **"Using using-montage to conduct footage -> reel."**
 
-Point **every** stage's output at one **run dir** so the inspector sees a coherent
-run: `project_init --project-dir <run>`, `intake <root> <run>`,
+The **run dir** is `<footage_root>/montage` — always, and never the footage folder
+itself. The conveyor discovers footage by extension over a flat listing of the
+footage root, so an artifact written there that happens to be a video becomes
+source material on the next scan (`draft.mp4` did exactly this). `intake` and
+`draft` refuse a path that resolves to the footage root; the refusal names the
+remedy.
+
+Point **every** stage's output at that one run dir so the inspector sees a
+coherent run: `project_init --project-dir <run>`, `intake <footage_root> <run>`,
 `reel_brief build --project <run>/project.json --out-dir <run>`, `edit_plan build --out-dir <run>`,
 `edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
 
@@ -58,6 +65,9 @@ say so rather than guessing a path.
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from
    `next`** — a stage whose artifact already exists is done; do not redo it. Read
    the brief and parse intent into params (table below).
+   **A run from before the `montage/` convention** lives directly in the footage
+   folder. If `<run>` is empty but `<footage_root>/project.json` exists, say so and
+   ask which to use — starting fresh silently would re-scan every clip.
 
 2. **project-init** — if `next`. `"$VG" scripts.project_init
    --purpose <p> --quality <q> --project-dir <run>` (custom aspect:
