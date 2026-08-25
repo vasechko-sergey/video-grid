@@ -10,6 +10,19 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.2.2 — 2026-08-25
+
+- **Retro of the first real run** — six days, 99 clips, one delivered reel — written
+  to `docs/retro/2026-08-25-first-real-run.md` before the session transcripts are
+  deleted, and 29 backlog rows filed from it. No behaviour change; this release is
+  the record.
+- The headline is that capability was not the problem. `scripts.probe grade` ran
+  **0** times and `CONSTRAINTS` was mentioned **0** times in 831 tool calls, though
+  the installed plugin shipped both two hours before the run started — while the
+  agent rebuilt the colour probe by hand as a 2.0 GB private lab.
+- Four of the first pass's six findings were refuted on re-reading, and the wrong
+  versions are recorded beside the right ones.
+
 ## 0.2.1 — 2026-08-25
 
 - **Run artifacts move to `<footage_root>/montage/`.** The footage folder gets one

@@ -12,6 +12,43 @@ _Last updated: 2026-08-25._
 
 ## Done
 
+- **Retro of the first real run + 29 backlog rows DONE (2026-08-25, v0.2.2)** —
+  `docs/retro/2026-08-25-first-real-run.md` (branch `docs/first-run-retro`). Six days,
+  99 clips, 831 tool calls, 98 subagents, one delivered reel; written before the
+  ~240 MB of transcripts are deleted, so this is what survives.
+
+  **Capability was not the problem.** `scripts.probe grade` — built 2026-08-15 so a
+  grade converges without a reel re-render — ran **0** times; `CONSTRAINTS` appears
+  **0** times in 831 tool inputs. Both shipped in the 0.2.0 cache stamped two hours
+  before the run began, and `using-montage` names "no repeated episodes" as its own
+  worked example. The agent did not skip them, it **outcompeted** them: 82
+  `edl_to_reel` runs, 69 full 8-episode renders (~21 pure colour), and a 2.0 GB /
+  676-file hand-built colour lab whose skin sensor was wrong three ways.
+
+  **One root, two loudest complaints.** The brief resolves to `nostalgic`: `asl`
+  (2.0, 4.0) is the pull toward two seconds, `tone_bias` (+20, 0, −18) is literally
+  "washed out, shadows gone". All four presets ceil at ≤5.0 s, so a calm reel with
+  six-second shots is inexpressible. `variety` recorded the realized asl 4.37 —
+  outside its own band — and did nothing.
+
+  **Colour, six mechanisms deep:** drone `tv` vs Canon `pc` range never normalised;
+  `measure_profile` reads the raw source; `lutyuv` collapses everything above 235 on
+  full-range material; `color_across_cuts` compares whole-frame means and lifted
+  Lena's face above her own ungraded plate; `color_fidelity` scored a 28-code shift
+  as 0.8° against a 25° threshold, `null` on 2 of 8, `overall: true` throughout; the
+  ceiling was hand-widened 12 → 44 → 56. And `lib/naturalness.py` flagged
+  `colour_cast` on **7 of 8** shipped episodes — advisory by construction, thresholds
+  never calibrated.
+
+  **Records:** 47 wipes of `out/` left 2 surviving `VERSIONS.md` entries out of 14
+  delivering runs, and three different reels shipped as `REEL_v1.mp4`.
+
+  **§2 is the method half.** Four of six first-pass findings were refuted by an
+  adversarial re-reading: no-inspection-surface, mood-doesn't-bind-length,
+  score-determinism, and six-days-is-the-render-loop (80.6% of the span is human
+  absence). Counting shapes of activity locates a symptom; only the artifacts name a
+  cause. The wrong versions are recorded beside the right ones.
+
 - **The run gets its own folder DONE (2026-08-25)** — plan
   `docs/plans/2026-08-25-run-dir-separation.md` + design
   `docs/specs/2026-08-25-run-dir-separation-design.md` (branch

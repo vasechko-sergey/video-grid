@@ -138,7 +138,10 @@ Pre-1.0, so `MAJOR` stays at 0:
   A gate that refuses input which was already producing wrong results is a PATCH:
   nothing correct stops working.
 - **Every merged slice bumps one of the two.** No slice lands with the version
-  unmoved.
+  unmoved — including a **documentation-only** slice (a retro, a backlog refill, a
+  rule like this one), which is a PATCH. `CHANGELOG.md` and `CLAUDE.md` ride into
+  the plugin cache with everything else, and a change with no recorded version is a
+  change nobody can point at.
 
 The MINOR/PATCH line is a judgement, and the judgement is the point of writing it
 down. Run-dir separation (0.2.1) is the worked example: it moved where every
