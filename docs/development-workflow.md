@@ -121,6 +121,36 @@ this checklist.
 - After finishing a task: tick its checkboxes in the plan and update
   [build-status.md](./build-status.md); commit both.
 
+## Versioning
+
+The plugin's version is not a signature — it is part of the delivery mechanism.
+`/plugin install` unpacks into `cache/video-grid/video-grid/<version>/`, so a slice
+that lands without a bump lets a reinstall keep serving the old snapshot. That is
+how the required `episode-qc` stage stayed missing from the installed skill set for
+**316 commits** (2026-08-25).
+
+Pre-1.0, so `MAJOR` stays at 0:
+
+- **MINOR** (`0.X.0`) — a new capability, or a change in how the conveyor is
+  driven: a new stage, a new required artifact, a renamed or removed flag, a
+  changed default that alters the output.
+- **PATCH** (`0.x.Y`) — fixes and hardening that leave the driving unchanged.
+  A gate that refuses input which was already producing wrong results is a PATCH:
+  nothing correct stops working.
+- **Every merged slice bumps one of the two.** No slice lands with the version
+  unmoved.
+
+The MINOR/PATCH line is a judgement, and the judgement is the point of writing it
+down. Run-dir separation (0.2.1) is the worked example: it moved where every
+artifact lands, which sounds like MINOR — but it added no flag, renamed no
+signature, and its code change refuses a layout that was already corrupting the
+next scan. The convention itself moved in skill text, which the agent reads. PATCH.
+
+Bumping and saying what changed are **one act**: edit
+[../CHANGELOG.md](../CHANGELOG.md) and `.claude-plugin/plugin.json` together.
+`tests/test_plugin_manifests.py` asserts the changelog's top heading matches the
+manifest, so forgetting either one reddens the suite.
+
 ## Documentation Standards
 
 - Hierarchical headers; a `_Last updated:_` date near the top.
