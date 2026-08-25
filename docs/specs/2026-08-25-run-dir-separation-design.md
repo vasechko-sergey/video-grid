@@ -188,6 +188,15 @@ material by hand and intake will scan it, same as before. That case has no
 machine predicate here — an `.mp4` is an `.mp4` — and it is named rather than
 closed.
 
+**A hand-driven `deliver`, `build_reel` or `mix` has nothing to compare against.**
+Those three write video but take no `--footage-root`, so pointed at the footage
+folder by hand they cannot refuse. Audited: they are the only such stages, and all
+three are driven by `edl_to_reel`, which is guarded — while the stages that DO know
+the footage root but are not guarded (`contact_sheet`, `pacing`, `match_grade`)
+write only `.jpg`, `.json` and `.md`, which intake never reads. So the three
+guarded sites are exact coverage of "knows the footage root and writes a video",
+and this residual is the hand-driven path outside it.
+
 **One entry still appears in the footage folder.** `montage/` is the price of
 keeping the run self-contained and the deliverable findable.
 
