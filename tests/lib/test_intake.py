@@ -856,3 +856,19 @@ def test_intake_threads_the_real_reid_model_into_the_cache_key(monkeypatch, tmp_
     assert reid.MODEL == "osnet_x1_0"                                   # the value the key carries
     assert seen["load"] == [reid.MODEL, reid.MODEL]                     # real model on every load probe
     assert seen["store"] == [reid.MODEL, reid.MODEL]                    # ...and every store
+
+
+def test_intake_refuses_an_out_dir_equal_to_the_footage_root(tmp_path):
+    with pytest.raises(ValueError, match="footage folder itself"):
+        intake.intake(str(tmp_path), str(tmp_path))
+
+
+def test_intake_refuses_before_doing_any_work(tmp_path):
+    """The guard sits above out.mkdir() and above ensure_model(): pointed at the
+    footage root, intake must not create a directory or fetch weights first."""
+    root = tmp_path / "footage"
+    root.mkdir()
+    before = set(p.name for p in root.iterdir())
+    with pytest.raises(ValueError):
+        intake.intake(str(root), str(root))
+    assert set(p.name for p in root.iterdir()) == before

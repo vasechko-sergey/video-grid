@@ -18,7 +18,7 @@ import imagehash
 from PIL import Image
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
-from scripts.lib import assembly, carve, footage, intake_cache, reid, vidstab
+from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, vidstab
 from scripts.lib.appearance import crop_bbox, descriptor_dist
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
@@ -463,6 +463,9 @@ def _cast_from_original(path: str, best: dict, res: tuple[int, int],
 
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
            jobs: int = DEFAULT_JOBS, fresh: bool = False) -> footage.Footage:
+    # Before the mkdir and before the weights: a run dir equal to the footage root
+    # puts this scan's own outputs into the listing the NEXT scan reads (§0).
+    runlayout.refuse_output_in_footage(footage_root, out_dir, "intake's out_dir")
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"intake: jobs must be an integer >= 1, got {jobs!r} — "
                          f"default {DEFAULT_JOBS} is a reasonable knee; lower it on a "
