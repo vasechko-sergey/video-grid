@@ -14,8 +14,8 @@ file is the short "what changed for someone who installs it" list.
 
 - **Retro of the first real run** — six days, 99 clips, one delivered reel — written
   to `docs/retro/2026-08-25-first-real-run.md` before the session transcripts are
-  deleted, and 29 backlog rows filed from it. No behaviour change; this release is
-  the record.
+  deleted, and **42 backlog rows** filed from it (18 at P1). No behaviour change;
+  this release is the record.
 - The headline is that capability was not the problem. `scripts.probe grade` ran
   **0** times and `CONSTRAINTS` was mentioned **0** times in 831 tool calls, though
   the installed plugin shipped both two hours before the run started — while the
