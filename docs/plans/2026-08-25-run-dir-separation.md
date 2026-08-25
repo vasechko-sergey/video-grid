@@ -538,3 +538,26 @@ those exact names and argument orders in Tasks 1, 2 and the Task 4 battery. The
 guard could collide with an existing fixture that passes the footage root as its
 own out dir. If that happens the fixture is wrong, not the guard — the whole
 point is that this layout was never safe.
+
+
+---
+
+### Task 5: `edl_to_reel` — the third call site (found by the final review)
+
+**Files:**
+- Modify: `scripts/edl_to_reel.py` (`_build_manifest`, above the `jobs` check)
+- Test: `tests/lib/test_edl_to_reel.py`
+
+The whole-branch review found the design's §3 closure argument wrong: it asked
+which stages *scan* a directory, when the predicate is which stages *write an
+`.mp4` into one that will later be scanned*. `edl_to_reel` writes `ep{i}.mp4`
+and `REEL_v{n}.mp4` into `out_dir`, and segments plus the reel master into
+`work_dir`, and it takes `--footage-root`. Same exposure `draft` had.
+
+Guarded at `_build_manifest`, the chokepoint both `edl_to_reel()` and
+`process_episodes()` route through. Phase 2 needs no guard — it derives its out
+dir from the `EPISODES.json` path phase 1 validated.
+
+Three tests (both dirs, plus `process_episodes` proving the chokepoint covers
+the second entry) and two more battery rows, 8 and 9. Battery now 9 of 9 red;
+suite 3076 passed / 1 skipped.

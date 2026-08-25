@@ -1223,3 +1223,30 @@ def test_an_unramped_reel_target_is_unchanged_from_before_the_ramp_slice(monkeyp
     eps = [_plain_episode(dur=2.0), _plain_episode(dur=3.0)]
     rm = _manifest_for(monkeypatch, tmp_path, eps)
     assert rm.target_dur == pytest.approx(5.0)
+
+
+def test_edl_to_reel_refuses_an_out_dir_equal_to_the_footage_root(tmp_path):
+    """deliver writes ep{i}.mp4 and REEL_v{n}.mp4 into out_dir. Pointed at the
+    footage folder those become source clips for the next intake — the same
+    exposure draft.mp4 had, found reviewing this slice's own design, which had
+    reasoned about who SCANS a directory rather than who writes an .mp4 into one."""
+    with pytest.raises(ValueError, match="footage folder itself"):
+        edl_to_reel.edl_to_reel(str(tmp_path / "EDL.json"), str(tmp_path / "project.json"),
+                                str(tmp_path), str(tmp_path / "work"), str(tmp_path))
+
+
+def test_edl_to_reel_refuses_a_work_dir_equal_to_the_footage_root(tmp_path):
+    """work_dir holds the extracted segments and the reel master — also .mp4."""
+    with pytest.raises(ValueError, match="footage folder itself"):
+        edl_to_reel.edl_to_reel(str(tmp_path / "EDL.json"), str(tmp_path / "project.json"),
+                                str(tmp_path), str(tmp_path), str(tmp_path / "out"))
+
+
+def test_process_episodes_is_guarded_by_the_same_chokepoint(tmp_path):
+    """Phase 1 has two public entries; both route through _build_manifest, so one
+    call guards both. Phase 2 needs no guard — it derives out_dir from the
+    EPISODES.json path that phase 1 already validated."""
+    with pytest.raises(ValueError, match="footage folder itself"):
+        edl_to_reel.process_episodes(str(tmp_path / "EDL.json"),
+                                     str(tmp_path / "project.json"),
+                                     str(tmp_path), str(tmp_path / "work"), str(tmp_path))

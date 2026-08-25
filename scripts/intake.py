@@ -463,8 +463,11 @@ def _cast_from_original(path: str, best: dict, res: tuple[int, int],
 
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
            jobs: int = DEFAULT_JOBS, fresh: bool = False) -> footage.Footage:
-    # Before the mkdir and before the weights: a run dir equal to the footage root
-    # puts this scan's own outputs into the listing the NEXT scan reads (§0).
+    # Above ensure_model, so the refusal costs no YOLO weights fetch: a run dir equal
+    # to the footage root puts this scan's own outputs into the listing the NEXT scan
+    # reads (§0). The mkdir below it is NOT the reason — with out_dir equal to the
+    # footage root that directory already exists and exist_ok=True does nothing; the
+    # mutation battery is what corrected this comment's first version.
     runlayout.refuse_output_in_footage(footage_root, out_dir, "intake's out_dir")
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"intake: jobs must be an integer >= 1, got {jobs!r} — "

@@ -12,7 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import episode_qc as qc_lib, hero as hero_lib, provenance, reid
+from scripts.lib import (episode_qc as qc_lib, hero as hero_lib, provenance, reid,
+                        runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
@@ -60,6 +61,14 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     a bright beach — carries a real jump the grade cannot and should not flatten. Raise
     it only for such a reel, with the measured delta in hand, never to silence a grade
     that is genuinely wrong."""
+    # Both dirs receive .mp4 — out_dir the ep{i}/REEL_v{n} deliveries, work_dir the
+    # extracted segments and the reel master. In the footage folder those become
+    # source clips for the next intake, exactly as draft.mp4 did (design 2026-08-25
+    # §0). This is phase 1's chokepoint: edl_to_reel() and process_episodes() both
+    # route through here. Phase 2 needs no guard — it derives out_dir from the
+    # EPISODES.json path this call already validated.
+    runlayout.refuse_output_in_footage(footage_root, out_dir, "edl_to_reel's out_dir")
+    runlayout.refuse_output_in_footage(footage_root, work_dir, "edl_to_reel's work_dir")
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"edl_to_reel: jobs must be an integer >= 1, got {jobs!r} "
                          f"(default {DEFAULT_JOBS} is the measured knee; lower it on a "

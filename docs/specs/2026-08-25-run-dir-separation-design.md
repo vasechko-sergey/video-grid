@@ -88,20 +88,35 @@ wire-contract change this slice therefore does not make.
 
 One rule: **the conveyor never writes into the folder it scans.**
 
-Two call sites can enforce it, because two stages know the footage root and
-write into a directory chosen by the caller:
+Three stages can enforce it — the ones that know the footage root and write into
+a directory the caller chooses:
 
 | stage | refuses when |
 |---|---|
 | `intake` | `out_dir` resolves to `footage_root` |
 | `draft` | the parent of `--out` resolves to `footage_root` |
+| `edl_to_reel` | `out_dir` **or** `work_dir` resolves to `footage_root` |
 
 `draft` is not symmetry for its own sake — it is the stage that actually fired.
 
-Every other driver writes to a path derived from `<run>`, or to an explicit file
-the caller names; none of them scans a directory, so none of them can produce
-this collision. One predicate, two callers, one message — the shape
-`titles.refuse_zone_overflow` already uses.
+**The third row is a review finding against this section's first version, and the
+error is worth keeping.** That version listed two call sites and justified the
+closure with "none of the others scans a directory, so none can produce this
+collision". Wrong predicate. Scanning is not what causes the corruption — *writing
+an `.mp4` where intake will later scan* is, and the scanner and the writer are
+different stages by construction. Re-asked correctly — **which stages know the
+footage root and write a video into a caller-chosen directory?** — `edl_to_reel`
+joins immediately: `out_dir` receives every `ep{i}.mp4` and `REEL_v{n}.mp4`, and
+`work_dir` receives the extracted segments and the reel master.
+
+Both guards sit in `_build_manifest`, the private chokepoint `edl_to_reel()` and
+`process_episodes()` both route through, so one placement covers phase 1's two
+public entries. Phase 2 (`--from-episodes`) needs none: it derives `out_dir` from
+the `EPISODES.json` path phase 1 already validated.
+
+Every remaining driver writes to a path derived from `<run>` or to an explicit
+file the caller names, and none of those files is a video. One predicate, four
+call sites, one message — the shape `titles.refuse_zone_overflow` already uses.
 
 **Refusal, not a warning.** The advisory version of this rule has been in the
 router skill since §5.1 ("point every stage's output at one run dir") and it did
@@ -123,6 +138,7 @@ to protect.
 | 1 | `scripts/lib/runlayout.py` (new) | `RUN_DIRNAME = "montage"` and the shared refusal |
 | 2 | `scripts/intake.py` | the refusal at the top of `intake()` |
 | 3 | `scripts/draft.py` | the refusal at the top of `build_draft()` |
+| 3b | `scripts/edl_to_reel.py` | both refusals at the top of `_build_manifest()` (review finding) |
 | 4 | `skills/using-montage/SKILL.md` | `<run>` is defined as `<footage_root>/montage`, plus the resume note in §6 |
 | 5 | `skills/footage-intake/SKILL.md` | binds its `<out_dir>` to the same value |
 | 6 | `README.md:54`, `CLAUDE.md` | the convention, and the registry rows for this design + plan |

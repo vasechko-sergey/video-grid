@@ -50,7 +50,19 @@ _Last updated: 2026-08-25._
   so `exist_ok=True` is a no-op and nothing is observable. The test built on that
   claim stayed green with the guard moved down. Re-aimed at `ensure_model` — the
   first step with a real cost (a YOLO weights fetch) — and the row then discriminates.
-  7 of 7 rows red. Suite **3073 passed / 1 skipped**, up 13, no golden moved.
+
+  **The whole-branch review then found a third call site, by disproving the design's
+  own closure argument.** §3's first version listed two sites and closed with "none
+  of the others scans a directory, so none can produce this collision". Wrong
+  predicate: scanning does not cause the corruption — *writing an `.mp4` where intake
+  will later scan* does, and scanner and writer are different stages by construction.
+  Re-asked as "which stages know the footage root and write a video into a
+  caller-chosen directory", `edl_to_reel` joins at once — `out_dir` takes every
+  `ep{i}.mp4` and `REEL_v{n}.mp4`, `work_dir` the segments and the reel master. Both
+  guards went into `_build_manifest`, the chokepoint `edl_to_reel()` and
+  `process_episodes()` share; phase 2 needs none, deriving its out dir from the
+  `EPISODES.json` path phase 1 validated. Battery **9 of 9 red**, suite **3076 passed
+  / 1 skipped**, up 16, no golden moved.
 
   Honest limits, both filed as backlog rows: a rendered video hand-copied among the
   footage is still scanned (an `.mp4` is an `.mp4`; no machine predicate here), and a
