@@ -264,6 +264,16 @@ cleaned.
 
 ---
 
+## What worked, quietly
+
+Worth recording because nothing else in this document is good news. **The look gate
+and the titles-ink gate both did their job** and never had to be argued with — they
+are the run's quietest success, and they are also the two youngest gates in the
+tree, built with a control that must not move. `episode_qc`'s digest binding held
+all week and caught a stale evidence packet that had already been dispatched to
+three judges. The front half — intake, cast naming, contact sheets, the brief — ran
+once and never needed a second pass.
+
 ## What was looked for and NOT found
 
 Recorded so the next retro does not re-spend the time: no rubber-stamped QC
@@ -276,7 +286,7 @@ or `contact_sheet` run; and no `process-episode` subagent at all.
 
 ## Rows this produced
 
-29 backlog rows across R1–R12, filed in [../backlog.md](../backlog.md): 17 at P1,
-11 at P2, and the run-directory restructure (R9) sized L and scheduled as its own
+42 backlog rows across R1–R12, filed in [../backlog.md](../backlog.md): 18 at P1,
+24 at P2, and the run-directory restructure (R9) sized L and scheduled as its own
 minor release. The single largest theme is R2 — one root, six mechanisms, five of
 the six days.
