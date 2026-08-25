@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from scripts import extract, mix
-from scripts.lib import assembly, ffbin, geometry, proc
+from scripts.lib import assembly, ffbin, geometry, proc, runlayout
 from scripts.lib.draft import label_text, resolve_font, segment_filter
 from scripts.lib.edl import EDL
 from scripts.lib.models import Delivery, MusicSpec
@@ -32,6 +32,9 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
     canvas-fit + processing_notes label into every segment, concat, then mux a rough
     music bed (reusing mix.mix — one source of truth for laying music; absent -> a
     silent draft). Returns {"status": "written", "draft", "episodes", "music"}."""
+    # The stage that fired: draft.mp4 beside the footage becomes footage (§0).
+    runlayout.refuse_output_in_footage(footage_root, str(Path(out).parent),
+                                       "draft.mp4's directory")
     ensure_drawtext()
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
