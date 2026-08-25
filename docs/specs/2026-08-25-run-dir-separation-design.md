@@ -124,8 +124,13 @@ to protect.
 | 2 | `scripts/intake.py` | the refusal at the top of `intake()` |
 | 3 | `scripts/draft.py` | the refusal at the top of `build_draft()` |
 | 4 | `skills/using-montage/SKILL.md` | `<run>` is defined as `<footage_root>/montage`, plus the resume note in §6 |
-| 5 | five stage skills | the same path examples |
-| 6 | `README.md`, `docs/pipeline-map.md` | the convention |
+| 5 | `skills/footage-intake/SKILL.md` | binds its `<out_dir>` to the same value |
+| 6 | `README.md:54`, `CLAUDE.md` | the convention, and the registry rows for this design + plan |
+
+Two skills, not nine. `<run>` appears in nine `SKILL.md` files but only
+`using-montage` **defines** it — the other eight substitute a placeholder and stay
+correct for free. `footage-intake` is the exception because it writes an unbound
+`<out_dir>` instead, and it is the stage the gate refuses.
 
 Tens of lines of code; most of the diff is text.
 
