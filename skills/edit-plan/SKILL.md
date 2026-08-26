@@ -19,6 +19,13 @@ from `FOOTAGE.json`.
 
 ## Inputs
 
+These do NOT sit in one directory. A run is organised by lifetime, so an input's
+bucket says how long it stays true: `<run>/project.json` and `CONSTRAINTS.json` at
+the run root, everything derived from the raw clips under `<run>/footage/`, and
+everything editorial under `<run>/reels/<reel>/` — where `<reel>` is `main` unless
+the user asked for a variant. Pass every path fully qualified; no working
+directory resolves all three at once.
+
 - **`FOOTAGE.json` + `FOOTAGE.md`** (required, from footage-intake) — the ranked
   candidate windows. Read `FOOTAGE.md` for the human view; the window **index**
   you reference is the 0-based position within that clip's window list.
@@ -272,10 +279,13 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    command with the SAME flags the earlier build used — omitting `--pacing`/
    `--music` here silently discards the pacing binding and the outro fit):
 
-       python -m scripts.edit_plan build --footage FOOTAGE.json \
-         --selection selection.json --project project.json --out-dir . \
-         [--cast cast.json] [--spec SPEC.json] \
-         [--pacing PACING.json --music MUSIC.json]
+       python -m scripts.edit_plan build \
+         --footage <run>/footage/FOOTAGE.json \
+         --selection <run>/reels/<reel>/selection.json \
+         --project <run>/project.json \
+         --out-dir <run>/reels/<reel> \
+         [--cast <run>/footage/cast.json] [--spec <run>/reels/<reel>/SPEC.json] \
+         [--pacing <run>/reels/<reel>/PACING.json --music <run>/reels/<reel>/MUSIC.json]
 
    — a pure projection, no ffmpeg, that re-stamps `EDL.json` — then probe the
    freshly-written file:
@@ -377,10 +387,13 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
 3. **Build.** Run the authoring script (explicit args; the user never types flags):
 
-       python -m scripts.edit_plan build --footage FOOTAGE.json \
-         --selection selection.json --project project.json --out-dir . \
-         [--cast cast.json] [--spec SPEC.json] \
-         [--pacing PACING.json --music MUSIC.json]
+       python -m scripts.edit_plan build \
+         --footage <run>/footage/FOOTAGE.json \
+         --selection <run>/reels/<reel>/selection.json \
+         --project <run>/project.json \
+         --out-dir <run>/reels/<reel> \
+         [--cast <run>/footage/cast.json] [--spec <run>/reels/<reel>/SPEC.json] \
+         [--pacing <run>/reels/<reel>/PACING.json --music <run>/reels/<reel>/MUSIC.json]
 
    Pass `--music` together with `--pacing` on the pacing-apply re-run (step 5 of the
    **pacing** skill) to fit the reel's END to a bar line: `lib/outro.fit_outro`
