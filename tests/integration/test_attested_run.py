@@ -6,7 +6,7 @@ and stops verifying the moment the shipped file changes."""
 import pytest
 
 from scripts import check_reel, deliver, montage
-from scripts.lib import assembly, provenance
+from scripts.lib import assembly, provenance, runlayout
 from scripts.lib.models import REEL_H264, ReelCheckSpec
 
 from .test_reel_backhalf import _episode
@@ -44,12 +44,13 @@ def test_the_chain_holds_end_to_end(tmp_path, sample_clip):
     assert rep.overall is True
     assert rep.master_digest == provenance.digest_file(master)
 
-    out_dir = tmp_path / "out"
-    deliver.deliver(master, REEL_H264, str(out_dir), "golden first cut", rep,
+    run = tmp_path / "run"
+    lay = runlayout.RunLayout(run)
+    deliver.deliver(master, REEL_H264, str(lay.deliveries), "golden first cut", rep,
                     run_provenance={"engine_at_start": provenance.engine_stamp(),
                                     "edl": {"digest": "", "state": "unstamped"},
                                     "overrides": []})
-    assert montage.verify(str(tmp_path), str(out_dir))["deliveries"][0]["state"] == "attested"
+    assert montage.verify(str(run))["deliveries"][0]["state"] == "attested"
 
 
 @pytest.mark.integration
@@ -68,10 +69,11 @@ def test_a_reel_swapped_after_delivery_stops_verifying(tmp_path, sample_clip):
     eps, dims, fps, master = _assemble(tmp_path, sample_clip)
     rep = check_reel.run(master, eps, ReelCheckSpec(target_dur=_total(eps)),
                          str(tmp_path / "report.json"))
-    out_dir = tmp_path / "out"
-    out = deliver.deliver(master, REEL_H264, str(out_dir), "x", rep)
+    run = tmp_path / "run"
+    lay = runlayout.RunLayout(run)
+    out = deliver.deliver(master, REEL_H264, str(lay.deliveries), "x", rep)
 
     with open(out, "ab") as f:
         f.write(b"\x00")                 # the reel changed after delivery
 
-    assert montage.verify(str(tmp_path), str(out_dir))["deliveries"][0]["state"] == "digest-mismatch"
+    assert montage.verify(str(run))["deliveries"][0]["state"] == "digest-mismatch"

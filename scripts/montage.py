@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import constraints, provenance
+from scripts.lib import constraints, provenance, runlayout
 
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
@@ -18,15 +18,16 @@ _CHECKPOINTS = (None, "spec", "edl", "final")
 
 @dataclass(frozen=True)
 class Stage:
-    """One v1-conveyor stage the router sequences. `artifact` is a glob (under the
-    run dir, or the out dir when `in_out`) whose presence marks the stage done — the
-    resume-for-free marker (design line 510)."""
+    """One v1-conveyor stage the router sequences. `artifact` is a glob whose presence
+    inside `bucket` marks the stage done — the resume-for-free marker (design line
+    510). The bucket is the artifact's LIFETIME (design 2026-08-26 §1), which is why
+    an artifact written anywhere else is not seen and the stage re-runs."""
     key: str
     artifact: str
     kind: str
     runner: str
     checkpoint: str | None
-    in_out: bool = False
+    bucket: str = "reel"
 
     def __post_init__(self) -> None:
         if self.kind not in _KINDS:
@@ -34,13 +35,16 @@ class Stage:
         if self.checkpoint not in _CHECKPOINTS:
             raise ValueError(
                 f"Stage.checkpoint must be one of {_CHECKPOINTS}, got {self.checkpoint!r}")
+        if self.bucket not in runlayout.BUCKETS:
+            raise ValueError(f"Stage.bucket must be one of {runlayout.BUCKETS}, "
+                             f"got {self.bucket!r}")
 
 
 V1_STAGES: tuple[Stage, ...] = (
     Stage("project-init", "project.json", "required",
-          "project-init SKILL -> project_init CLI", "spec"),
+          "project-init SKILL -> project_init CLI", "spec", "run"),
     Stage("footage-intake", "FOOTAGE.json", "required",
-          "footage-intake SKILL -> intake CLI", None),
+          "footage-intake SKILL -> intake CLI", None, "footage"),
     # required, not optional (design 2026-08-05 §2.5): a run must not reach the cut
     # without a SHEETS.md on disk. It gates the PRESENCE of the artifact, not its
     # use, and not a guarantee it holds a frame (a genuinely empty selection still
@@ -48,40 +52,42 @@ V1_STAGES: tuple[Stage, ...] = (
     # honest limit.
     Stage("contact-sheet", "SHEETS.md", "required",
           "contact_sheet build CLI (run by using-montage; edit-plan reads the sheets)",
-          None),
-    Stage("reel-brief", "SPEC.json", "optional", "reel-brief SKILL -> reel_brief CLI", "spec"),
-    Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None),
+          None, "footage"),
+    Stage("reel-brief", "SPEC.json", "optional",
+          "reel-brief SKILL -> reel_brief CLI", "spec", "reel"),
+    Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None, "reel"),
     Stage("edit-plan", "EDL.json", "required",
-          "edit-plan SKILL -> edit_plan build CLI", "edl"),
+          "edit-plan SKILL -> edit_plan build CLI", "edl", "reel"),
     Stage("music-and-mood", "MUSIC.json", "optional",
-          "beats CLI (absent -> silent reel)", None),
+          "beats CLI (absent -> silent reel)", None, "reel"),
     Stage("pacing", "PACING.md", "optional",
           "pacing SKILL -> pacing CLI (fits the EDL's cuts; edit-plan re-runs with "
-          "--pacing to apply)", None),
+          "--pacing to apply)", None, "reel"),
     Stage("match-grade", "MATCH.md", "optional",
           "match-grade SKILL -> match_grade build CLI (opt-in; run AFTER pacing settles "
-          "the cut, before deliver)", None),
+          "the cut, before deliver)", None, "reel"),
     Stage("assemble-draft", "draft.mp4", "optional",
-          "draft CLI (optional QA preview)", "edl"),
+          "draft CLI (optional QA preview)", "edl", "reel"),
     Stage("titles", "TITLES.json", "optional",
-          "titles SKILL -> titles build CLI (optional on-screen text)", "final"),
+          "titles SKILL -> titles build CLI (optional on-screen text)", "final", "reel"),
     Stage("episodes", "EPISODES.json", "required",
           "edl_to_reel --stop-after-episodes (renders every episode, then stops at the "
-          "QC seam)", None, in_out=True),
+          "QC seam)", None, "episodes"),
     # required, not optional (design 2026-08-08 §1): a reel assembled over an episode
     # nobody judged is exactly what the 2026-08-03 run shipped. The stage gates the
     # artifact's presence and its digest binding — never proof that anyone looked (§12).
     Stage("episode-qc", "EPISODE_QC.json", "required",
           "episode-qc SKILL -> episode_qc pack, one judge per episode (cap 3), "
-          "episode_qc build", None, in_out=True),
+          "episode_qc build", None, "episodes"),
     Stage("deliver", "REEL_v*.*", "required",
           "edl_to_reel --from-episodes (gates on EPISODE_QC.json, then assembles)",
-          "final", in_out=True),
+          "final", "deliveries"),
     # required, not optional (design §8): the reviewer stage was skipped outright on
     # the 2026-08-03 run because `next` never pointed at it, and a gate that costs
     # nothing to skip is not a gate.
     Stage("reel-review", "REVIEW.json", "required",
-          "reel-review SKILL -> reel_review build CLI (editorial CP3 review)", "final"),
+          "reel-review SKILL -> reel_review build CLI (editorial CP3 review)",
+          "final", "reel"),
 )
 
 
@@ -124,10 +130,12 @@ def _constraints(run: Path) -> dict:
             "error": None}
 
 
-def next_action(run_dir: str, out_dir: str | None = None) -> dict:
+def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
     """Inspect a run dir -> the ordered v1 stages with each stage's state, the next
-    required action, and whether the reel is delivered. out_dir defaults to
-    <run_dir>/out (where deliver versions REEL_v{n}). State per stage:
+    required action, and whether the reel is delivered. Every artifact is resolved
+    through RunLayout, which is what makes this the enforcement point: a file written
+    outside the layout is not seen, the stage reads as not done, and the router runs
+    it again into the canonical path (design 2026-08-26 §5). State per stage:
       done     - artifact exists (resume-for-free, design line 510)
       next     - the FIRST required stage whose artifact is missing (run this)
       pending  - a required stage after `next` still missing its artifact
@@ -136,16 +144,19 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
     `deliveries` reports each delivered file's attestation state from the sidecar
     alone — cheap, because the router calls status constantly. `verify()` re-hashes.
     `constraints` reports the editorial rules that bind a re-cut (see _constraints).
-    Returns {"stages":[{key,artifact,kind,state,checkpoint,runner}, ...] in order,
+    `legacy_layout` marks a 0.2.x run whose artifacts sit at the run root: the skill
+    asks rather than re-scanning every clip into an apparently empty run (§7).
+    Returns {"stages":[{key,artifact,bucket,path,kind,state,checkpoint,runner}, ...],
              "next": <stage key | None>, "delivered": <bool>, "deliveries": [...],
-             "constraints": {present, rules, error}}."""
+             "constraints": {...}, "reel": <str>, "reels": [...],
+             "layout": {bucket: path}, "legacy_layout": <bool>}."""
     run = Path(run_dir)
-    out = Path(out_dir) if out_dir is not None else run / "out"
+    lay = runlayout.RunLayout(run, reel)
     stages: list[dict] = []
     next_key: str | None = None
     delivered = False
     for st in V1_STAGES:
-        base = out if st.in_out else run
+        base = lay.bucket(st.bucket)
         done = _exists(base, st.artifact)
         if st.kind == "deferred":
             state = "skip"
@@ -160,18 +171,21 @@ def next_action(run_dir: str, out_dir: str | None = None) -> dict:
             state = "pending"
         if st.key == "deliver":
             delivered = done
-        stages.append({"key": st.key, "artifact": st.artifact, "kind": st.kind,
+        stages.append({"key": st.key, "artifact": st.artifact, "bucket": st.bucket,
+                       "path": str(base / st.artifact), "kind": st.kind,
                        "state": state, "checkpoint": st.checkpoint, "runner": st.runner})
     return {"stages": stages, "next": next_key, "delivered": delivered,
-            "deliveries": _deliveries(out), "constraints": _constraints(run)}
+            "deliveries": _deliveries(lay.deliveries), "constraints": _constraints(run),
+            "reel": reel, "reels": runlayout.reel_names(run),
+            "layout": lay.to_dict(), "legacy_layout": runlayout.is_legacy_run(run)}
 
 
-def verify(run_dir: str, out_dir: str | None = None) -> dict:
+def verify(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
     """Re-hash every delivered reel against its attestation (design §6). Run once at
     CP3, where the cost is irrelevant and the answer matters: status answers "is there
     a record", verify answers "is this file the one the record describes"."""
-    out = Path(out_dir) if out_dir is not None else Path(run_dir) / "out"
-    return {"deliveries": _deliveries(out, rehash=True)}
+    return {"deliveries": _deliveries(
+        runlayout.RunLayout(Path(run_dir), reel).deliveries, rehash=True)}
 
 
 def main() -> None:
@@ -182,15 +196,16 @@ def main() -> None:
                        help="report which conveyor stage is next in a run dir")
     s.add_argument("--run-dir", required=True,
                    help="the project/run dir where stage artifacts land")
-    s.add_argument("--out-dir", default=None,
-                   help="delivery dir (default <run-dir>/out)")
+    s.add_argument("--reel", default=runlayout.DEFAULT_REEL,
+                   help=f"which reel variant to inspect (default {runlayout.DEFAULT_REEL})")
     v = sub.add_parser("verify",
                        help="re-hash delivered reels against their attestations (CP3)")
     v.add_argument("--run-dir", required=True,
                    help="the project/run dir where stage artifacts land")
-    v.add_argument("--out-dir", default=None, help="delivery dir (default <run-dir>/out)")
+    v.add_argument("--reel", default=runlayout.DEFAULT_REEL,
+                   help=f"which reel variant to inspect (default {runlayout.DEFAULT_REEL})")
     a = ap.parse_args()
-    result = next_action(a.run_dir, a.out_dir) if a.cmd == "status" else verify(a.run_dir, a.out_dir)
+    result = next_action(a.run_dir, a.reel) if a.cmd == "status" else verify(a.run_dir, a.reel)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)
 
