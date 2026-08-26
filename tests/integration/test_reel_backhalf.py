@@ -2,9 +2,12 @@
 encoder, the stage inside process-episode that writes the locked clip) →
 assemble → check_reel → deliver. Design §7."""
 import json
+from pathlib import Path
+
 import pytest
 from scripts import check_reel, deliver, reframe
 from scripts.lib import assembly, ffbin, proc
+from scripts.lib.look import LookSpec
 from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelCheckSpec, REEL_H264)
 
 
@@ -88,3 +91,54 @@ def test_assemble_normalizes_an_fps_outlier_then_concats(tmp_path):
     assert (info.w, info.h) == (606, 1080)
     assert abs(info.fps - 30.0) < 0.01                       # the 60fps outlier was normalized away
     assert abs(check_reel._probe_dur(master) - 4.0) < 0.2    # 2s + 2s, decodes cleanly
+
+
+@pytest.mark.integration
+def test_the_deliveries_dir_holds_nothing_but_deliveries(tmp_path, sample_clip):
+    """The leak this closes is real: the 2026-06 run's out/ carried look_mask.png
+    and title_0_0.txt beside the shipped reels (design §3). Titles and a vignette
+    are BOTH on, because each writes a different sidecar."""
+    eps = [_episode(sample_clip, tmp_path, x, f"ep{i}")
+           for i, x in enumerate((300.0, 845.0))]
+    master = str(tmp_path / "master.mp4")
+    assembly.concat(eps, master)
+    target = sum(check_reel._probe_dur(e) for e in eps)
+    report = check_reel.run(master, eps, ReelCheckSpec(target_dur=target), str(tmp_path / "r.json"))
+    assert report.overall
+    titles = tmp_path / "TITLES.json"
+    titles.write_text(json.dumps({"items": [
+        {"text": "HELLO", "start": 0.0, "dur": 1.0, "pos": "center"}]}))
+    deliveries, scratch = tmp_path / "deliveries", tmp_path / "build"
+    out = deliver.deliver(master, REEL_H264, str(deliveries), "first", report,
+                          scratch_dir=str(scratch), titles=str(titles),
+                          look=LookSpec(vignette=0.4, fade=0.0))
+    assert Path(out).parent == deliveries
+    names = sorted(p.name for p in deliveries.iterdir())
+    assert names == ["REEL_v1.attest.json", "REEL_v1.mp4", "VERSIONS.md"]
+    # the control: the sidecars exist, they are just next door
+    assert (scratch / "look_mask.png").exists()
+    assert any(p.name.startswith("title_") for p in scratch.iterdir())
+
+
+@pytest.mark.integration
+def test_a_version_survives_its_own_file_being_archived(tmp_path, sample_clip):
+    """R5.1 end to end: three different reels shipped as REEL_v1.mp4 because
+    _next_version counted files. Moving v1 away must still yield v2."""
+    eps = [_episode(sample_clip, tmp_path, x, f"ep{i}")
+           for i, x in enumerate((300.0, 845.0))]
+    master = str(tmp_path / "master.mp4")
+    assembly.concat(eps, master)
+    target = sum(check_reel._probe_dur(e) for e in eps)
+    report = check_reel.run(master, eps, ReelCheckSpec(target_dur=target), str(tmp_path / "r.json"))
+    deliveries, scratch = tmp_path / "deliveries", tmp_path / "build"
+    first = deliver.deliver(master, REEL_H264, str(deliveries), "first", report,
+                            scratch_dir=str(scratch))
+    assert Path(first).name == "REEL_v1.mp4"
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    Path(first).rename(archive / "REEL_v1.mp4")
+    second = deliver.deliver(master, REEL_H264, str(deliveries), "second", report,
+                             scratch_dir=str(scratch))
+    assert Path(second).name == "REEL_v2.mp4"
+    assert "- v1 |" in (deliveries / "VERSIONS.md").read_text()
+    assert "- v2 |" in (deliveries / "VERSIONS.md").read_text()
