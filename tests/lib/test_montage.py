@@ -95,6 +95,34 @@ def test_no_stage_lives_in_build():
     assert all(s.bucket != "build" for s in montage.V1_STAGES)
 
 
+def test_every_stage_lands_in_the_bucket_the_design_assigns_it():
+    """Written as a literal table, never derived from Stage.bucket.
+
+    The _touch helper takes the write location FROM the field under test, so a
+    suite built only from _touch calls proves self-consistency, not correctness:
+    a wrong bucket makes the test write to the wrong place and look there too.
+    Measured on this file — moving episode-qc to "deliveries" left all 50 tests
+    green, where the pre-layout suite caught the same mistake with 4 failures.
+    """
+    assert {s.key: s.bucket for s in V1_STAGES} == {
+        "project-init": "run",
+        "footage-intake": "footage",
+        "contact-sheet": "footage",
+        "reel-brief": "reel",
+        "trend-scan": "reel",
+        "edit-plan": "reel",
+        "music-and-mood": "reel",
+        "pacing": "reel",
+        "match-grade": "reel",
+        "assemble-draft": "reel",
+        "titles": "reel",
+        "episodes": "episodes",
+        "episode-qc": "episodes",
+        "deliver": "deliveries",
+        "reel-review": "reel",
+    }
+
+
 # ---- next_action inspector ----
 
 def _state(res, key):
@@ -235,6 +263,18 @@ def test_delivered_when_deliver_artifact_exists(tmp_path):
     assert _state(res, "deliver") == "done"
 
 
+def test_delivered_with_a_non_mp4_container(tmp_path):
+    """The deliver stage marks done on any REEL_v*.* file, not just .mp4."""
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+        _touch(tmp_path, key)
+    _touch(tmp_path, "episodes")
+    _touch(tmp_path, "episode-qc")
+    _touch(tmp_path, "deliver", name="REEL_v2.mkv")
+    res = next_action(str(tmp_path))
+    assert res["delivered"] is True
+    assert _state(res, "deliver") == "done"
+
+
 def test_broken_resume_surfaces_honestly(tmp_path):
     # EDL present but FOOTAGE missing -> footage-intake is next, edit-plan still 'done'
     _touch(tmp_path, "project-init")
@@ -255,6 +295,8 @@ def test_each_stage_reports_its_resolved_path(tmp_path):
     assert got["edit-plan"] == str(tmp_path / "reels" / "main" / "EDL.json")
     assert got["episodes"] == str(tmp_path / "reels" / "main" / "episodes"
                                   / "EPISODES.json")
+    assert got["episode-qc"] == str(tmp_path / "reels" / "main" / "episodes"
+                                    / "EPISODE_QC.json")
     assert got["deliver"] == str(tmp_path / "reels" / "main" / "deliveries"
                                  / "REEL_v*.*")
     assert got["project-init"] == str(tmp_path / "project.json")
