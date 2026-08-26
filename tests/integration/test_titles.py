@@ -46,10 +46,11 @@ def test_title_burns_into_the_silent_encode(sample_clip, tmp_path):
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("HELLO", 0.0, 3.0, pos="center", style="bold-box"),)).write(tj)
     rep = _passing_report(sample_clip)
+    scratch_dir = str(tmp_path / "scratch")
     titled = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "t"),
-                                 "titled", rep, titles=str(tj))
+                                 "titled", rep, scratch_dir=scratch_dir, titles=str(tj))
     plain = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "p"),
-                                "plain", rep)
+                                "plain", rep, scratch_dir=scratch_dir)
     assert Path(titled).exists() and Path(plain).exists()
     codec = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0", "-show_entries",
                       "stream=codec_type", "-of", "csv=p=0", titled]).stdout.decode()
@@ -69,10 +70,12 @@ def test_title_burns_into_the_mux_encode_with_audio(sample_clip, tmp_path):
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("HELLO", 0.0, 3.0, pos="center", style="bold-box"),)).write(tj)
     rep = _passing_report(sample_clip)
+    scratch_dir = str(tmp_path / "scratch")
     titled = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "t"),
-                                 "titled+audio", rep, audio=str(aac), titles=str(tj))
+                                 "titled+audio", rep, scratch_dir=scratch_dir,
+                                 audio=str(aac), titles=str(tj))
     plain = deliver_mod.deliver(str(sample_clip), REEL_H264, str(tmp_path / "p"),
-                                "plain", rep)
+                                "plain", rep, scratch_dir=scratch_dir)
     # the muxed output carries BOTH a video and an audio stream...
     types = proc.run([ffbin.ffprobe(), "-v", "error", "-show_entries", "stream=codec_type",
                       "-of", "csv=p=0", titled]).stdout.decode()

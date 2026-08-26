@@ -62,10 +62,17 @@ def _report(master: str, out_dir: Path):
 
 
 def _deliver(out_dir, master, *, look=None, audio=None, titles=None, platform="") -> str:
-    """Deliver `master` into a fresh out_dir → the REEL_v1.mp4 path."""
+    """Deliver `master` into a fresh out_dir → the REEL_v1.mp4 path.
+
+    scratch_dir is a SIBLING of out_dir (never inside it, never equal to it) — every
+    caller here names its own out_dir ("a", "b", "vig", "good"...), so deriving from
+    it keeps each delivery's scratch distinct without threading a second argument
+    through every one of this file's call sites."""
     out_dir = Path(out_dir)
+    scratch_dir = out_dir.parent / f"{out_dir.name}-scratch"
     rep = _report(str(master), out_dir)
     return deliver_mod.deliver(str(master), REEL_H264, str(out_dir), "look proof", rep,
+                               scratch_dir=str(scratch_dir),
                                look=look, audio=audio, titles=titles, platform=platform)
 
 

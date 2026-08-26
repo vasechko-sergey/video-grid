@@ -56,12 +56,15 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
     assert rep.checks["safe_zones"].detail["status"] == "not-checked"   # implemented; no geometry passed here
 
     out_dir = str(tmp_path / "out")
-    v1 = deliver.deliver(master, REEL_H264, out_dir, "golden first cut", rep)
+    scratch_dir = str(tmp_path / "scratch")
+    v1 = deliver.deliver(master, REEL_H264, out_dir, "golden first cut", rep,
+                         scratch_dir=scratch_dir)
     assert v1.endswith("REEL_v1.mp4")
     assert (assembly.probe_stream(v1).w, assembly.probe_stream(v1).h) == dims
     assert "- v1 |" in (tmp_path / "out" / "VERSIONS.md").read_text()
 
-    v2 = deliver.deliver(master, REEL_H264, out_dir, "golden second cut", rep)
+    v2 = deliver.deliver(master, REEL_H264, out_dir, "golden second cut", rep,
+                         scratch_dir=scratch_dir)
     assert v2.endswith("REEL_v2.mp4")
 
 

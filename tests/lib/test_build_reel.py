@@ -59,13 +59,17 @@ def _wire(monkeypatch, reports, pe_results=None):
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
 
-    def fake_deliver(m, prof, od, cl, rep, audio=None, titles=None, platform="",
-                     look=None, run_provenance=None):
+    def fake_deliver(m, prof, od, cl, rep, *, scratch_dir, audio=None, titles=None,
+                     platform="", look=None, run_provenance=None):
         # run_provenance= tolerated (and ignored): build_reel now always passes it (Task 4)
         # — not the subject of this fixture; see
         # test_build_reel_threads_the_manifest_provenance_into_deliver for the dedicated check.
         # look= similarly tolerated (and ignored) — Task 5; see
         # test_build_reel_hands_the_look_to_deliver for the dedicated check.
+        # scratch_dir= required with no default, mirroring the real deliver() (run-layout-
+        # lifetimes Task 2) — build_reel always passes its own work_dir; a caller that
+        # forgot to would TypeError here exactly as it would against the real function.
+        # Ignored otherwise: no test in this file asserts on where build_reel points it.
         seen["deliver"].append(od)
         seen["titles"].append(titles)
         seen["deliver_platform"] = platform

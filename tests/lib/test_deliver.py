@@ -75,7 +75,8 @@ def test_deliver_refuses_a_failed_reel(tmp_path, monkeypatch):
     monkeypatch.setattr(deliver.proc, "run",
                         lambda cmd, **k: SimpleNamespace(stdout=b""))
     with pytest.raises(RuntimeError, match="does not ship a failed reel"):
-        deliver.deliver("m.mp4", REEL_H264, str(tmp_path), "x", _red())
+        deliver.deliver("m.mp4", REEL_H264, str(tmp_path), "x", _red(),
+                        scratch_dir=str(tmp_path / "scratch"))
 
 
 def test_deliver_refuses_a_failed_reel_leaves_no_side_effects(tmp_path, monkeypatch):
@@ -86,7 +87,8 @@ def test_deliver_refuses_a_failed_reel_leaves_no_side_effects(tmp_path, monkeypa
                         lambda cmd, **k: calls.append(cmd) or SimpleNamespace(stdout=b""))
     out_dir = tmp_path / "would-be-created"
     with pytest.raises(RuntimeError, match="does not ship a failed reel"):
-        deliver.deliver("m.mp4", REEL_H264, str(out_dir), "x", _red())
+        deliver.deliver("m.mp4", REEL_H264, str(out_dir), "x", _red(),
+                        scratch_dir=str(tmp_path / "scratch"))
     assert not out_dir.exists()
     assert calls == []
 
@@ -95,7 +97,8 @@ def test_deliver_encodes_v1_and_logs(tmp_path, monkeypatch):
     calls = []
     _fake_encode(monkeypatch, calls)
     master, rep = _bound(tmp_path)
-    out = deliver.deliver(master, REEL_H264, str(tmp_path), "first cut", rep)
+    out = deliver.deliver(master, REEL_H264, str(tmp_path), "first cut", rep,
+                          scratch_dir=str(tmp_path / "scratch"))
     assert out.endswith("REEL_v1.mp4")
     cmd = calls[0]
     assert "-an" in cmd and cmd[-1].endswith("REEL_v1.mp4") and master in cmd
@@ -106,8 +109,10 @@ def test_deliver_encodes_v1_and_logs(tmp_path, monkeypatch):
 def test_deliver_second_run_is_v2(tmp_path, monkeypatch):
     _fake_encode(monkeypatch)
     master, rep = _bound(tmp_path)
-    deliver.deliver(master, REEL_H264, str(tmp_path), "a", rep)  # _fake_encode writes REEL_v1 for real
-    out2 = deliver.deliver(master, REEL_H264, str(tmp_path), "b", rep)
+    scratch_dir = str(tmp_path / "scratch")
+    deliver.deliver(master, REEL_H264, str(tmp_path), "a", rep,
+                    scratch_dir=scratch_dir)  # _fake_encode writes REEL_v1 for real
+    out2 = deliver.deliver(master, REEL_H264, str(tmp_path), "b", rep, scratch_dir=scratch_dir)
     assert out2.endswith("REEL_v2.mp4")
 
 
@@ -116,7 +121,7 @@ def test_deliver_muxes_audio_when_given(tmp_path, monkeypatch):
     _fake_encode(monkeypatch, calls)
     master, rep = _bound(tmp_path)
     deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "v1",
-                    rep, audio=str(tmp_path / "a.m4a"))
+                    rep, scratch_dir=str(tmp_path / "scratch"), audio=str(tmp_path / "a.m4a"))
     cmd = calls[0]
     assert str(tmp_path / "a.m4a") in cmd and cmd.count("-i") == 2
     assert "0:v:0" in cmd and "1:a:0" in cmd
@@ -129,7 +134,8 @@ def test_deliver_silent_when_no_audio(tmp_path, monkeypatch):
     calls = []
     _fake_encode(monkeypatch, calls)
     master, rep = _bound(tmp_path)
-    deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "v1", rep)
+    deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "v1", rep,
+                    scratch_dir=str(tmp_path / "scratch"))
     assert "-an" in calls[0] and "1:a:0" not in calls[0]
 
 
@@ -139,7 +145,7 @@ def test_deliver_mux_forces_copy_over_profile_acodec(tmp_path, monkeypatch):
     master, rep = _bound(tmp_path)
     prof = ExportProfile(acodec="aac", abitrate_kbps=192)
     deliver.deliver(master, prof, str(tmp_path / "out"), "v1",
-                    rep, audio=str(tmp_path / "a.m4a"))
+                    rep, scratch_dir=str(tmp_path / "scratch"), audio=str(tmp_path / "a.m4a"))
     cmd = calls[0]
     assert cmd.count("-c:a") == 1 and cmd[cmd.index("-c:a") + 1] == "copy"   # profile acodec overridden
     assert "-b:a" not in cmd                                                 # profile audio bitrate dropped
@@ -165,7 +171,7 @@ def test_deliver_threads_platform_into_the_filterchain(tmp_path, monkeypatch):
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("hi", 0.0, 2.0),)).write(tj)
     deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "v1",
-                    rep, titles=str(tj), platform="reel")
+                    rep, scratch_dir=str(tmp_path / "scratch"), titles=str(tj), platform="reel")
     assert seen["platform"] == "reel"
 
 
@@ -177,6 +183,7 @@ def test_deliver_cli_passes_platform(monkeypatch, tmp_path):
     rep.write_text('{"checks": {}, "episode_count": 0, "fail_reasons": []}')
     monkeypatch.setattr(sys, "argv",
                         ["deliver", "m.mp4", "--out-dir", str(tmp_path),
+                         "--scratch-dir", str(tmp_path / "scratch"),
                          "--report", str(rep), "--platform", "tiktok"])
     deliver.main()
     assert seen.get("platform") == "tiktok"
@@ -188,7 +195,8 @@ def test_deliver_refuses_a_report_with_no_master_digest(tmp_path, monkeypatch):
     master.write_bytes(b"x")
     rep = ReelReport(checks={"length": CheckResult("length", True, {})})   # unbound
     with pytest.raises(RuntimeError, match="did not come from check_reel"):
-        deliver.deliver(str(master), REEL_H264, str(tmp_path / "out"), "x", rep)
+        deliver.deliver(str(master), REEL_H264, str(tmp_path / "out"), "x", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
 
 
 def test_deliver_refuses_a_report_bound_to_a_different_master(tmp_path, monkeypatch):
@@ -196,13 +204,15 @@ def test_deliver_refuses_a_report_bound_to_a_different_master(tmp_path, monkeypa
     master, rep = _bound(tmp_path)
     Path(master).write_bytes(b"hand-assembled-instead")        # the #13 bypass
     with pytest.raises(RuntimeError, match="different file"):
-        deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep)
+        deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
 
 
 def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
     _fake_encode(monkeypatch)
     master, rep = _bound(tmp_path)
     out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "first cut", rep,
+                          scratch_dir=str(tmp_path / "scratch"),
                           run_provenance={"engine_at_start": {"sha": "aaa", "dirty": False},
                                           "edl": {"digest": "e", "state": "intact"},
                                           "overrides": [{"field": "color_delta_max",
@@ -229,7 +239,8 @@ def test_deliver_attests_without_run_provenance(tmp_path, monkeypatch):
     # build_reel may deliver a manifest that carries none — the sidecar still lands
     _fake_encode(monkeypatch)
     master, rep = _bound(tmp_path)
-    out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep)
+    out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                          scratch_dir=str(tmp_path / "scratch"))
     assert provenance.attest_path(out).exists()
 
 
@@ -240,6 +251,7 @@ def test_an_unjudged_delivery_says_so(tmp_path, monkeypatch):
     _fake_encode(monkeypatch)
     master, rep = _bound(tmp_path)
     out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                          scratch_dir=str(tmp_path / "scratch"),
                           run_provenance={"episode_qc": {"state": "absent"}})
     att = provenance.Attestation.from_json(provenance.attest_path(out))
     assert att.episode_qc == {"state": "absent"}
@@ -252,7 +264,8 @@ def test_the_failed_reel_gate_still_fires_before_any_hashing(tmp_path, monkeypat
     monkeypatch.setattr(deliver.proc, "run", lambda cmd, *a, **k: calls.append(cmd))
     rep = ReelReport(checks={"length": CheckResult("length", False, {})})
     with pytest.raises(RuntimeError, match="does not ship a failed reel"):
-        deliver.deliver("does-not-exist.mp4", REEL_H264, str(tmp_path / "out"), "x", rep)
+        deliver.deliver("does-not-exist.mp4", REEL_H264, str(tmp_path / "out"), "x", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
     assert calls == [] and not (tmp_path / "out").exists()
 
 
@@ -263,7 +276,8 @@ def test_the_version_note_is_the_reason_not_a_path(tmp_path, monkeypatch):
     _fake_encode(monkeypatch)
     master, rep = _bound(tmp_path)
     out_dir = tmp_path / "out"
-    deliver.deliver(master, REEL_H264, str(out_dir), "regraded ep1", rep)
+    deliver.deliver(master, REEL_H264, str(out_dir), "regraded ep1", rep,
+                    scratch_dir=str(tmp_path / "scratch"))
     text = (out_dir / "VERSIONS.md").read_text()
     assert "regraded ep1" in text
     assert "VERSIONS.md" not in text.split("\n", 2)[-1]
@@ -345,3 +359,43 @@ def test_title_band_pads_the_extent_and_clamps_to_the_frame():
     assert deliver._title_band(big_top, 1920, "reels")[0] == 0
     stair = Title("a\nb\nc\nd", 0.0, 4.0, pos="bottom", reveal="stair", reveal_step=0.4)
     assert deliver._title_band(stair, 1920, "reels")[1] == 1920
+
+
+def test_the_next_version_reads_the_log_when_the_file_is_gone(tmp_path):
+    """R5.1, measured: 14 delivering runs left 2 log records because _next_version
+    counted surviving files, so numbering restarted and three different reels
+    shipped as REEL_v1.mp4."""
+    (tmp_path / "VERSIONS.md").write_text(
+        "# Reel versions\n\n- v1 | 2026-08-25 | first\n- v2 | 2026-08-25 | second\n")
+    assert deliver._next_version(str(tmp_path), "mp4") == 3
+
+
+def test_the_next_version_takes_the_higher_of_log_and_files(tmp_path):
+    """The glob stays as a FLOOR: a log deleted by hand must not renumber over a
+    reel that is still on disk."""
+    (tmp_path / "VERSIONS.md").write_text("# Reel versions\n\n- v1 | 2026-08-25 | a\n")
+    (tmp_path / "REEL_v4.mp4").write_bytes(b"x")
+    assert deliver._next_version(str(tmp_path), "mp4") == 5
+
+
+def test_the_next_version_is_one_on_an_empty_directory(tmp_path):
+    assert deliver._next_version(str(tmp_path), "mp4") == 1
+
+
+def test_the_log_reader_ignores_prose(tmp_path):
+    (tmp_path / "VERSIONS.md").write_text(
+        "# Reel versions\n\nversion 7 was skipped\n- v2 | 2026-08-25 | real\n")
+    assert deliver._logged_versions(str(tmp_path)) == [2]
+
+
+def test_the_log_reader_is_empty_with_no_log(tmp_path):
+    assert deliver._logged_versions(str(tmp_path)) == []
+
+
+def test_deliver_requires_a_scratch_dir():
+    """deliveries/ is append-only; the mask and the title sidecars are scratch.
+    A default of out_dir would keep the leak one forgotten argument away."""
+    import inspect
+    p = inspect.signature(deliver.deliver).parameters["scratch_dir"]
+    assert p.kind is inspect.Parameter.KEYWORD_ONLY
+    assert p.default is inspect.Parameter.empty

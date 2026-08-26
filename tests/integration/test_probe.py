@@ -203,7 +203,8 @@ def test_a_delivered_vignette_and_fade_pass_the_gate(tmp_path):
     reframe.reframe(_spec(), src, None, master, str(tmp_path / "p.json"))
     rep = ReelReport(checks={}, master_digest=provenance.digest_file(master))
     out = deliver_mod.deliver(master, ExportProfile(), str(tmp_path / "out"), "look",
-                              rep, look=LookSpec(vignette=0.3, fade=0.5))
+                              rep, scratch_dir=str(tmp_path / "scratch"),
+                              look=LookSpec(vignette=0.3, fade=0.5))
     att = json.loads(Path(provenance.attest_path(out)).read_text())
     by = {c["check"]: c for c in att["look_checks"]}
     assert by["vignette"]["status"] == "pass"
@@ -230,7 +231,8 @@ def test_a_delivered_fade_out_truncated_by_a_short_audio_stem_is_refused(tmp_pat
               "-c:a", "aac", stem])
     with pytest.raises(RuntimeError, match="does not carry the look it declared"):
         deliver_mod.deliver(master, ExportProfile(), str(tmp_path / "out"), "look",
-                            rep, audio=stem, look=LookSpec(vignette=0.3, fade=0.5))
+                            rep, scratch_dir=str(tmp_path / "scratch"),
+                            audio=stem, look=LookSpec(vignette=0.3, fade=0.5))
     out_dir = tmp_path / "out"
     assert list(out_dir.glob("REEL_v*.mp4"))                  # left on disk to look at
     assert not list(out_dir.glob("*.attest.json"))             # but never attested
@@ -258,6 +260,6 @@ def test_a_vignette_that_renders_nothing_is_refused(tmp_path, monkeypatch):
     out_dir = tmp_path / "out"
     with pytest.raises(RuntimeError, match="does not carry the look it declared"):
         deliver_mod.deliver(master, ExportProfile(), str(out_dir), "look", rep,
-                            look=LookSpec(vignette=0.5))
+                            scratch_dir=str(tmp_path / "scratch"), look=LookSpec(vignette=0.5))
     assert list(out_dir.glob("REEL_v*.mp4"))
     assert not list(out_dir.glob("*.attest.json"))

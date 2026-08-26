@@ -47,6 +47,7 @@ def test_the_chain_holds_end_to_end(tmp_path, sample_clip):
     run = tmp_path / "run"
     lay = runlayout.RunLayout(run)
     deliver.deliver(master, REEL_H264, str(lay.deliveries), "golden first cut", rep,
+                    scratch_dir=str(lay.build),
                     run_provenance={"engine_at_start": provenance.engine_stamp(),
                                     "edl": {"digest": "", "state": "unstamped"},
                                     "overrides": []})
@@ -61,7 +62,8 @@ def test_a_hand_assembled_master_cannot_be_delivered(tmp_path, sample_clip):
                          str(tmp_path / "report.json"))
     assembly.assemble(list(reversed(eps)), dims, fps, master)   # re-made after the check
     with pytest.raises(RuntimeError, match="different file"):
-        deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep)
+        deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
 
 
 @pytest.mark.integration
@@ -71,7 +73,8 @@ def test_a_reel_swapped_after_delivery_stops_verifying(tmp_path, sample_clip):
                          str(tmp_path / "report.json"))
     run = tmp_path / "run"
     lay = runlayout.RunLayout(run)
-    out = deliver.deliver(master, REEL_H264, str(lay.deliveries), "x", rep)
+    out = deliver.deliver(master, REEL_H264, str(lay.deliveries), "x", rep,
+                          scratch_dir=str(lay.build))
 
     with open(out, "ab") as f:
         f.write(b"\x00")                 # the reel changed after delivery

@@ -15,10 +15,32 @@ from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Title, Titles, build_filterchain
 
 
+def _logged_versions(out_dir: str) -> list[int]:
+    """The version numbers VERSIONS.md records, in file order.
+
+    Parsed off the exact line _log_version writes ("- v{n} | {stamp} | {changelog}"),
+    so a heading or a hand-written note between entries is ignored rather than
+    misread."""
+    vf = Path(out_dir) / "VERSIONS.md"
+    if not vf.exists():
+        return []
+    return [int(m.group(1)) for line in vf.read_text().splitlines()
+            if (m := re.match(r"- v(\d+) \|", line))]
+
+
 def _next_version(out_dir: str, container: str) -> int:
+    """max(the log, the files) + 1.
+
+    The LOG is the source: it survives a delivery being archived, renamed or deleted,
+    which is what makes REEL_v{n} a monotone identity instead of a count of whatever
+    is in one directory today. Measured on the 2026-06 run, the file-glob-only version
+    shipped three different reels as REEL_v1.mp4 (design 2026-08-26 §0/§4.1). The glob
+    stays as a FLOOR, for a log deleted by hand; both being gone is named in §8, not
+    closed."""
     rx = re.compile(rf"REEL_v(\d+)\.{re.escape(container)}$")
     ns = [int(m.group(1)) for p in Path(out_dir).glob(f"REEL_v*.{container}")
           if (m := rx.match(p.name))]
+    ns += _logged_versions(out_dir)
     return max(ns) + 1 if ns else 1
 
 
@@ -49,7 +71,7 @@ def _log_version(out_dir: str, n: int, changelog: str) -> None:
         f.write(f"- v{n} | {stamp} | {changelog}\n")
 
 
-def _render_mask(master: str, out_dir: str, vignette: float) -> str:
+def _render_mask(master: str, scratch_dir: str, vignette: float) -> str:
     """Render the one-frame RGBA vignette mask at the MASTER's real pixels.
 
     Probed, never derived from a config: the delivery's dimensions are what the
@@ -58,7 +80,7 @@ def _render_mask(master: str, out_dir: str, vignette: float) -> str:
     stale mask keyed to the wrong dimensions is exactly the failure not caching
     avoids (design §11.6)."""
     si = assembly.probe_stream(master)
-    mask = str(Path(out_dir) / "look_mask.png")
+    mask = str(Path(scratch_dir) / "look_mask.png")
     proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
               "-i", f"nullsrc=s={si.w}x{si.h}:d=1:r=1",
               "-vf", look_lib.mask_expr(vignette), "-frames:v", "1", mask])
@@ -179,9 +201,9 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
-            report: ReelReport, *, audio: str | None = None, titles: str | None = None,
-            platform: str = "", look: LookSpec | None = None,
-            run_provenance: dict | None = None) -> str:
+            report: ReelReport, *, scratch_dir: str, audio: str | None = None,
+            titles: str | None = None, platform: str = "",
+            look: LookSpec | None = None, run_provenance: dict | None = None) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -189,6 +211,11 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     derives mix's dur from the probed master); -shortest only absorbs sub-second
     jitter — a grossly short stem would truncate the picture, so callers must keep
     them aligned.
+
+    `scratch_dir` receives the one-frame vignette mask and the per-title textfile
+    sidecars. It is required and separate from `out_dir` because out_dir is the
+    append-only deliveries bucket: writing scratch there is how look_mask.png and
+    title_0_0.txt ended up beside the shipped reels (design 2026-08-26 §3).
     With `titles` (a TITLES.json path), burn the drawtext chain into this one encode
     (design §5.16) — no second pass. `platform` is the same safe-zone table key
     check_reel judges the PICTURE against; it must reach here too, or a bottom title
@@ -242,21 +269,23 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             f"re-made after the check, or assembled outside the pipeline. Re-run "
             f"`check_reel` on THIS master and deliver with the report it writes")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    Path(scratch_dir).mkdir(parents=True, exist_ok=True)
     # Titles and the look share ONE video-filter slot (§5.16 + design 2026-08-13 §4):
-    # build_filterchain writes each title's text to a title_i.txt sidecar in out_dir
-    # and returns a drawtext chain; look.chain appends the bookend fade AFTER it, so
-    # a title goes to black with the picture. ExportProfile.args() emits no -vf/scale,
-    # so nothing clobbers this (last -vf wins in ffmpeg — the §12 silent-drop flavor).
+    # build_filterchain writes each title's text to a title_i.txt sidecar in
+    # scratch_dir and returns a drawtext chain; look.chain appends the bookend fade
+    # AFTER it, so a title goes to black with the picture. ExportProfile.args() emits
+    # no -vf/scale, so nothing clobbers this (last -vf wins in ffmpeg — the §12
+    # silent-drop flavor).
     title_chain = ""
     if titles is not None:
-        title_chain = build_filterchain(Titles.from_json(titles), out_dir, platform=platform)
+        title_chain = build_filterchain(Titles.from_json(titles), scratch_dir, platform=platform)
     dur = assembly.probe_duration(master) if (look is not None and look.fade) else 0.0
     parts = look_lib.chain(look, dur, title_chain)
     mask_in: list[str] = []
     graph: list[str] = []
     vmap: list[str] = []
     if look is not None and look.has_vignette:
-        mask_in = ["-loop", "1", "-i", _render_mask(master, out_dir, look.vignette)]
+        mask_in = ["-loop", "1", "-i", _render_mask(master, scratch_dir, look.vignette)]
         graph = ["-filter_complex",
                  ",".join(["[0:v][1:v]overlay=shortest=1", *parts]) + "[v]"]
         vmap = ["-map", "[v]"]
@@ -314,6 +343,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Deliver a checked reel master.")
     ap.add_argument("master")
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--scratch-dir", required=True,
+                    help="where the vignette mask and title sidecars go — NOT the "
+                         "deliveries dir, which is append-only")
     ap.add_argument("--report", required=True, help="ReelReport JSON from check_reel")
     ap.add_argument("--changelog", default="")
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the encode (§5.16)")
@@ -326,7 +358,7 @@ def main() -> None:
     a = ap.parse_args()
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
     out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report,
-                  titles=a.titles, platform=a.platform,
+                  scratch_dir=a.scratch_dir, titles=a.titles, platform=a.platform,
                   look=LookSpec(vignette=a.vignette, fade=a.fade))
     print(out)
 

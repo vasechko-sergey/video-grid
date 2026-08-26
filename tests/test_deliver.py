@@ -43,7 +43,8 @@ def _capture(monkeypatch):
 def test_deliver_without_titles_has_no_vf(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
     master, rep = _bound(tmp_path)
-    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
     assert "-vf" not in calls[0]
 
 
@@ -55,7 +56,8 @@ def test_deliver_with_titles_injects_drawtext_vf(tmp_path, monkeypatch):
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
-    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep, titles=str(tj))
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), titles=str(tj))
     cmd = calls[0]
     assert "-vf" in cmd
     assert "drawtext=" in cmd[cmd.index("-vf") + 1]
@@ -67,7 +69,8 @@ def test_deliver_with_empty_titles_has_no_vf(tmp_path, monkeypatch):
     tj = tmp_path / "TITLES.json"
     Titles().write(tj)
     master, rep = _bound(tmp_path)
-    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep, titles=str(tj))
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), titles=str(tj))
     assert "-vf" not in calls[0]
 
 
@@ -80,6 +83,7 @@ def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch):
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"),
                         audio="a.aac", titles=str(tj))
     cmd = calls[0]
     assert "-vf" in cmd and "drawtext=" in cmd[cmd.index("-vf") + 1]
@@ -89,7 +93,8 @@ def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch):
 def test_no_look_argv_is_unchanged(tmp_path, monkeypatch):
     calls = _capture(monkeypatch)
     master, rep = _bound(tmp_path)
-    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
     cmd = calls[-1]
     assert "-filter_complex" not in cmd
     assert "-vf" not in cmd
@@ -102,7 +107,7 @@ def test_fade_only_look_stays_on_the_vf_slot(tmp_path, monkeypatch):
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
-                        look=LookSpec(fade=0.5))
+                        scratch_dir=str(tmp_path / "scratch"), look=LookSpec(fade=0.5))
     cmd = calls[-1]
     assert "-filter_complex" not in cmd
     assert cmd[cmd.index("-vf") + 1].startswith("fade=t=in:st=0:d=0.500")
@@ -120,6 +125,7 @@ def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypat
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"),
                         titles=str(tj), look=LookSpec(vignette=0.35))
     mask_cmd, enc = calls[-2], calls[-1]
     # the mask is rendered at the MASTER's probed dims, one frame
@@ -162,7 +168,7 @@ def test_the_mask_is_sized_from_the_probed_master_not_a_constant(tmp_path, monke
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
-                        look=LookSpec(vignette=0.35))
+                        scratch_dir=str(tmp_path / "scratch"), look=LookSpec(vignette=0.35))
     assert seen == [master]                     # probed THE MASTER, not something else
     assert "nullsrc=s=606x1078:" in " ".join(calls[-2])   # and spent what it returned
 
@@ -176,6 +182,7 @@ def test_audio_input_index_shifts_when_a_mask_is_present(tmp_path, monkeypatch):
     stem = tmp_path / "stem.aac"
     stem.write_bytes(b"aac-bytes")
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"),
                         audio=str(stem), look=LookSpec(vignette=0.35))
     enc = calls[-1]
     # master=0, mask=1, audio=2 — mapping 1:a:0 here would mux the PNG
@@ -188,7 +195,8 @@ def test_audio_input_index_is_one_without_a_mask(tmp_path, monkeypatch):
     master, rep = _bound(tmp_path)
     stem = tmp_path / "stem.aac"
     stem.write_bytes(b"aac-bytes")
-    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep, audio=str(stem))
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), audio=str(stem))
     assert "1:a:0" in calls[-1]
 
 
@@ -203,6 +211,7 @@ def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, monkeypatch
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
     deliver_mod.deliver(master, REEL_H264, str(tmp_path), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"),
                         titles=str(tj), look=LookSpec(fade=0.5))
     graph = calls[-1][calls[-1].index("-vf") + 1]
     assert graph.index("drawtext") < graph.index("fade=t=in")
@@ -228,7 +237,7 @@ def test_deliver_refuses_a_declared_look_that_changed_nothing(tmp_path, monkeypa
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [_finding()])
     with pytest.raises(RuntimeError, match="does not carry the look it declared"):
         deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep,
-                            look=LookSpec(vignette=0.3))
+                            scratch_dir=str(tmp_path / "scratch"), look=LookSpec(vignette=0.3))
 
 
 def test_deliver_writes_no_attestation_when_the_look_gate_fails(tmp_path, monkeypatch):
@@ -242,7 +251,7 @@ def test_deliver_writes_no_attestation_when_the_look_gate_fails(tmp_path, monkey
     out_dir = tmp_path / "out"
     with pytest.raises(RuntimeError):
         deliver_mod.deliver(master, REEL_H264, str(out_dir), "v", rep,
-                            look=LookSpec(fade=0.5))
+                            scratch_dir=str(tmp_path / "scratch"), look=LookSpec(fade=0.5))
     assert list(out_dir.glob("REEL_v*.mp4"))                  # the file is left to look at
     assert not list(out_dir.glob("*.attest.json"))            # but nothing attests it
 
@@ -257,7 +266,7 @@ def test_deliver_records_the_look_checks_in_the_attestation(tmp_path, monkeypatc
                               detail="corners already black", measured=3.0,
                               expected=8.0)])
     out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep,
-                              look=LookSpec(vignette=0.3))
+                              scratch_dir=str(tmp_path / "scratch"), look=LookSpec(vignette=0.3))
     att = json.loads(Path(provenance.attest_path(out)).read_text())
     assert att["look_checks"] == [{"check": "vignette", "status": "not-checked",
                                    "detail": "corners already black",
@@ -271,7 +280,8 @@ def test_a_look_less_delivery_runs_no_look_check_at_all(tmp_path, monkeypatch):
     calls: list = []
     monkeypatch.setattr(deliver_mod.assembly, "frames_rgb",
                         lambda *a, **kw: calls.append(a) or [])
-    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep)
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "v", rep,
+                              scratch_dir=str(tmp_path / "scratch"))
     assert calls == []
     att = json.loads(Path(provenance.attest_path(out)).read_text())
     assert att["look_checks"] == []
