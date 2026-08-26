@@ -44,10 +44,14 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
 1. **Build the packet.** Resolve the paths above. Grab a cheap **thumbnail
    contact-sheet** to ground visual judgement (output-seek — `-ss` AFTER `-i`,
    design §12): the hook frame, the ending frame, and one mid-frame per episode.
-   Example (hook + ending stills; add per-episode mids from the EDL cut times):
+   Example (hook + ending stills; add per-episode mids from the EDL cut times).
+   The stills go under `build/`, not the reel dir: they are scratch, stale the
+   moment the reel is re-rendered, and `build/` is the one bucket the next render
+   clears — a real run left 14 MB of exactly these frames sitting where nothing
+   ever cleaned them.
 
-       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss 0.5 -frames:v 1 <run>/reels/<reel>/_review/hook.png
-       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss "$(python -c 'print(DUR-1)')" -frames:v 1 <run>/reels/<reel>/_review/ending.png
+       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss 0.5 -frames:v 1 <run>/reels/<reel>/build/_review/hook.png
+       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss "$(python -c 'print(DUR-1)')" -frames:v 1 <run>/reels/<reel>/build/_review/ending.png
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
    `reel-reviewer.md` template filled in — the packet paths + the axes/questions +

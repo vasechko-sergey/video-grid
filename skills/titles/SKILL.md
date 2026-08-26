@@ -50,7 +50,8 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
 3. **Build.** Run the authoring script (explicit args; the user never types
    flags):
 
-       python -m scripts.titles build --spec SPEC.json --total <reel-length-seconds> --out-dir <run>/reels/<reel>
+       python -m scripts.titles build --spec <run>/reels/<reel>/SPEC.json \
+         --total <reel-length-seconds> --out-dir <run>/reels/<reel>
 
    `--spec`/`--total`/`--out-dir` are its only flags: it projects `hook`/`text`/
    `ending` straight into a **sensible starting draft** — hook opens top for its

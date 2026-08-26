@@ -458,6 +458,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.
 
+   That is how you revise THIS cut. A genuinely different cut of the same footage
+   is a different reel: point `--out-dir` at a new directory under `<run>/reels/`
+   — `<run>/reels/upbeat` beside `<run>/reels/main` — and author its own
+   `selection.json` there. The editorial layer is about 120 KB, so forking it is
+   free, while `<run>/footage/` (194 MB on a real shoot) and `<run>/music/` stay
+   shared and are never re-scanned. Do NOT distinguish variants by filename:
+   `MUSIC_A.json`, `MUSIC_B.json`, `pacing_B/` and `MATCH_nostalgic.md` are real
+   names from a real run, and nothing in them records which is current or which
+   pacing fit belongs to which track. A directory does.
+
 ## Editorial rules the user stated (CONSTRAINTS.json)
 
 `edit_plan build` reads `CONSTRAINTS.json` from the folder holding `project.json`.
