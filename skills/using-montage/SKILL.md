@@ -184,7 +184,12 @@ say so rather than guessing a path.
 
 7. **music-and-mood (optional).** The cuts already exist (step 6), so the reel's
    length is the sum of `EDL.json`'s episode durations — analyse the track against
-   **that** length, not a SPEC target. If the brief names a **track**:
+   **that** length, not a SPEC target. Point music-source's fetch at the shared
+   bucket — `--cache-dir <run>/music/cache` — whenever it runs below: the
+   downloaded audio is a function of the *track*, not the cut, so it survives a
+   second `--reel` variant instead of re-fetching (`music-match` only ranks a
+   local folder already on disk, so it never downloads and never touches this
+   bucket). If the brief names a **track**:
    - a **local file path** -> analyse it directly, preferring the tool's own
      in-point pick: `"$VG" scripts.beats <track> --auto-start
      --duration <reel_len> --out <run>/reels/<reel>/MUSIC.json` — it starts the reel on the
