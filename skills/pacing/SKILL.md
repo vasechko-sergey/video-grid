@@ -63,15 +63,15 @@ say so rather than guessing a path.
    ask it for more and analyze each into its own `MUSIC_<k>.json`. Shifting the window
    moves every grid line with it, so it is one of the two search axes.
 3. **Fit.**
-   `"$VG" scripts.pacing --edl <run>/EDL.json --footage <run>/FOOTAGE.json --music <run>/MUSIC.json [--music <run>/MUSIC_2.json ...] --out-dir <run>`
+   `"$VG" scripts.pacing --edl <run>/reels/<reel>/EDL.json --footage <run>/footage/FOOTAGE.json --music <run>/reels/<reel>/MUSIC.json [--music <run>/reels/<reel>/MUSIC_2.json ...] --out-dir <run>/reels/<reel>`
    Add `--anchors --footage-root <root>` to also measure action anchors (one ffmpeg pass
    per episode).
 4. **Read the report.** `PACING.md` names the level chosen and every coarser level it
    rejected WITH the number that rejected it. A miss is actionable, not fatal: try
    another window, change a scenario length, or accept an off-grid reel (check_reel's
    beat gate is advisory).
-5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/PACING.json
-   [--spec <run>/SPEC.json] [--music <run>/MUSIC.json]` — this is what writes the
+5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/reels/<reel>/PACING.json
+   [--spec <run>/reels/<reel>/SPEC.json] [--music <run>/reels/<reel>/MUSIC.json]` — this is what writes the
    snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a
    brief exists: this pass re-stamps the EDL from scratch, so a dropped `--spec`
    re-resolves the variety preset to `balanced` **and wipes `EDL.platform` back to

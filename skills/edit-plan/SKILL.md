@@ -263,7 +263,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `look` and `variety_waiver`.
 
    **Converging a grade — do not re-render a reel to look at one episode.** Once
-   `edl_to_reel --stop-after-episodes` has written `<run>/out/EPISODES.json`, edit
+   `edl_to_reel --stop-after-episodes` has written `<run>/reels/<reel>/episodes/EPISODES.json`, edit
    the episode's colour fields in **`selection.json`** — never `EDL.json` directly.
    `EDL.json` is stamped (design 2026-08-04): `probe grade --edl` opens it through
    the same `EDL.from_json` that refuses a file whose contents no longer match its
@@ -280,10 +280,10 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    — a pure projection, no ffmpeg, that re-stamps `EDL.json` — then probe the
    freshly-written file:
 
-       python -m scripts.probe grade --episodes <run>/out/EPISODES.json \
+       python -m scripts.probe grade --episodes <run>/reels/<reel>/episodes/EPISODES.json \
          --index <N> --edl EDL.json
 
-   It writes `<run>/work/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
+   It writes `<run>/reels/<reel>/build/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
    (naturalness flags plus p5/p50/p95 per frame, which read straight into a
    `tone_src`/`tone_dst` pair). Look at the pixels, edit `selection.json`, rebuild,
    probe again. The probe **refuses** if the recomputed crop path differs from the
@@ -314,10 +314,10 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
        python -c "
        import json
        from scripts import probe
-       ep_path = '<run>/out/EPISODES.json'
+       ep_path = '<run>/reels/<reel>/episodes/EPISODES.json'
        rm = json.load(open(ep_path))
        regraded = probe.regrade(rm['episodes'][<N>]['manifest'], 'EDL.json', <N>)
-       json.dump(regraded, open('<run>/work/ep<N>/manifest.json', 'w'), indent=2)
+       json.dump(regraded, open('<run>/reels/<reel>/build/ep<N>/manifest.json', 'w'), indent=2)
        rm['episodes'][<N>]['manifest'] = regraded
        json.dump(rm, open(ep_path, 'w'), indent=2)
        print('stabilize:', regraded.get('stabilize'), '  pan:', regraded.get('pan'))
@@ -326,7 +326,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    **`EPISODES.json`'s own copy is not optional** (final review I-4): a later
    reel-level retry (`build_reel`, inside `deliver`) reprocesses a colour-culprit
    episode from `rm.episodes[idx].manifest` — the entry INSIDE `EPISODES.json`,
-   never the scratch `<run>/work/ep<N>/manifest.json` above. Skip the second
+   never the scratch `<run>/reels/<reel>/build/ep<N>/manifest.json` above. Skip the second
    `json.dump` and that retry silently re-renders this episode from the STALE
    pre-convergence grade — no error, no trace. The alternative is re-running phase 1
    (`edl_to_reel --stop-after-episodes`, step 3's driver) from the re-stamped
@@ -353,8 +353,8 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    in either case is wrong, not merely redundant. Read the `stabilize`/`pan` line
    the command above printed before choosing:
 
-       python -m scripts.process_episode <run>/work/ep<N>/manifest.json \
-         --project-dir <run>/work/ep<N> [--route <run>/work/ep<N>/route.json]
+       python -m scripts.process_episode <run>/reels/<reel>/build/ep<N>/manifest.json \
+         --project-dir <run>/reels/<reel>/build/ep<N> [--route <run>/reels/<reel>/build/ep<N>/route.json]
 
    Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
    `stabilize` this pays for one re-track on the re-stabilized segment (still far

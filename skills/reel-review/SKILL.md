@@ -1,6 +1,6 @@
 ---
 name: reel-review
-description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers out/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Optional — a final quality pass.
+description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers <run>/reels/<reel>/deliveries/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Optional — a final quality pass.
 ---
 
 # reel-review (stage 5.13, editorial half)
@@ -21,13 +21,13 @@ human's sign-off.
 
 ## When to Use
 
-At **Checkpoint 3**, once `out/REEL_v{n}.mp4` exists and `check_reel` has run. Not
+At **Checkpoint 3**, once `<run>/reels/<reel>/deliveries/REEL_v{n}.mp4` exists and `check_reel` has run. Not
 before delivery (there is no reel to judge). Re-run it after any fix round (a new
 cut is a new review).
 
 ## Inputs (the context packet — resolve paths under the run dir)
 
-- **`out/REEL_v{n}.mp4`** (required) — the delivered reel.
+- **`<run>/reels/<reel>/deliveries/REEL_v{n}.mp4`** (required) — the delivered reel.
 - **`report.json`** (required) — `check_reel`'s report: the mechanical gates + the
   **Slice A advisory signals** (`key_action`/`pad_bars`/`transitions`/`safe_zones`/
   `beat`) the reviewer cites as evidence.
@@ -46,21 +46,21 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
    design §12): the hook frame, the ending frame, and one mid-frame per episode.
    Example (hook + ending stills; add per-episode mids from the EDL cut times):
 
-       ffmpeg -y -i out/REEL_v1.mp4 -ss 0.5 -frames:v 1 <run>/_review/hook.png
-       ffmpeg -y -i out/REEL_v1.mp4 -ss "$(python -c 'print(DUR-1)')" -frames:v 1 <run>/_review/ending.png
+       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss 0.5 -frames:v 1 <run>/reels/<reel>/_review/hook.png
+       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss "$(python -c 'print(DUR-1)')" -frames:v 1 <run>/reels/<reel>/_review/ending.png
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
    `reel-reviewer.md` template filled in — the packet paths + the axes/questions +
-   the required output shape. It writes `<run>/review_findings.json` and returns.
+   the required output shape. It writes `<run>/reels/<reel>/review_findings.json` and returns.
    Do NOT review inline — the dispatch is the point (fresh, unanchored eyes).
 
 3. **Validate + write.** Turn the raw findings into the typed artifact:
 
        python -m scripts.reel_review build \
-         --findings <run>/review_findings.json \
-         --reel out/REEL_v{n}.mp4 \
-         --spec <run>/SPEC.json --platform <platform> \
-         --out-dir <run>
+         --findings <run>/reels/<reel>/review_findings.json \
+         --reel <run>/reels/<reel>/deliveries/REEL_v{n}.mp4 \
+         --spec <run>/reels/<reel>/SPEC.json --platform <platform> \
+         --out-dir <run>/reels/<reel>
 
    The driver validates every finding (a malformed one raises — fix the reviewer's
    output and re-run; never hand-write `REVIEW.json`) and writes `REVIEW.json` +

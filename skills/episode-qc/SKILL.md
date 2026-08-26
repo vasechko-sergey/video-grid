@@ -12,7 +12,7 @@ The **per-episode quality gate**. `check_episode` already judged each episode
 episode-qc judges it the other way — **against pixels**, by a fresh judge
 that never rendered the clip. It sits in the seam `edl_to_reel` splits itself
 around: every episode already exists as delivered-geometry pixels
-(`out/ep{i}.mp4`), and the reel does not exist yet. **A reel is never
+(`<run>/reels/<reel>/episodes/ep{i}.mp4`), and the reel does not exist yet. **A reel is never
 assembled over an episode that failed this gate.**
 
 **Core principle:** fresh eyes, one episode at a time, no waiver. Each judge
@@ -24,7 +24,7 @@ the episode, never by re-judging until it passes (design §7).
 
 ## When to Use
 
-Between `edl_to_reel --stop-after-episodes` (writes `<run>/out/EPISODES.json`)
+Between `edl_to_reel --stop-after-episodes` (writes `<run>/reels/<reel>/episodes/EPISODES.json`)
 and `edl_to_reel --from-episodes` (assembles and delivers). `using-montage`
 invokes it there on every conveyor run — it is **required**, but it is not one
 of the three §4.1 checkpoints: a clean verdict passes through with no approval
@@ -40,10 +40,10 @@ place of `check_episode`'s mechanical gates — those already ran, inside
 
 ## Inputs
 
-- **`<run>/out/EPISODES.json`** (required) — a serialized `ReelManifest`,
+- **`<run>/reels/<reel>/episodes/EPISODES.json`** (required) — a serialized `ReelManifest`,
   written by `edl_to_reel --stop-after-episodes`. Its schema IS `ReelManifest`;
   there is no separate contract. Each episode's `path` field names a file
-  inside that episode's own scratch dir (`<run>/work/ep{i}/`), which is where
+  inside that episode's own scratch dir (`<run>/reels/<reel>/build/ep{i}/`), which is where
   `pack` finds `report.json` / `route.meta.json` / `path.meta.json` /
   `storyboard.jpg` — a manifest with no `path` sidecar (legal in the contract;
   what a hand-built reel manifest may carry) is refused by name, not guessed
@@ -68,9 +68,9 @@ say so rather than guessing a path.
 
 1. **Pack the evidence.**
 
-       "$VG" scripts.episode_qc pack --episodes <run>/out/EPISODES.json --out-dir <run>/qc
+       "$VG" scripts.episode_qc pack --episodes <run>/reels/<reel>/episodes/EPISODES.json --out-dir <run>/reels/<reel>/episodes/qc
 
-   Writes `<run>/qc/ep{i}/` for every episode: `strip.jpg` (a frame strip
+   Writes `<run>/reels/<reel>/episodes/qc/ep{i}/` for every episode: `strip.jpg` (a frame strip
    sampled across the DELIVERED clip, in timeline order) and `evidence.json`
    (the episode's declared intent, the mechanical `report.json`, the tracker
    provenance, the `path.meta` geometry, and the naturalness sensor's numbers
@@ -79,9 +79,9 @@ say so rather than guessing a path.
 
 2. **Dispatch one fresh judge per episode — at most 3 concurrently.** For each
    episode `i`, fill `skills/episode-qc/episode-reviewer.md` with THAT
-   episode's own `<run>/qc/ep{i}/evidence.json`, `<run>/qc/ep{i}/strip.jpg`,
+   episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json`, `<run>/reels/<reel>/episodes/qc/ep{i}/strip.jpg`,
    and the storyboard path `evidence.json` names (inside
-   `<run>/work/ep{i}/`) — nothing else. A judge reads only its own episode:
+   `<run>/reels/<reel>/build/ep{i}/`) — nothing else. A judge reads only its own episode:
    never another's packet, never the EDL as a whole, never a comparison
    across episodes (adjacency and rhythm are reel-review's question, not
    this one). Dispatch with the Task tool (`general-purpose`), batching up
@@ -92,18 +92,18 @@ say so rather than guessing a path.
    in context and starts grading episode 10 relative to episodes 1-9 instead
    of against its own declared intent.
 
-3. **Each judge writes its own verdict.** `<run>/qc/ep{i}/findings.json`,
+3. **Each judge writes its own verdict.** `<run>/reels/<reel>/episodes/qc/ep{i}/findings.json`,
    shape `{"summary": str, "reviewer": str, "findings": [...]}`. Nothing else
    is expected there — in particular, never an `idx`, `clip`, or
    `clip_digest` (see Boundaries).
 
 4. **Validate + stamp.**
 
-       "$VG" scripts.episode_qc build --episodes <run>/out/EPISODES.json --packets <run>/qc --out-dir <run>/out
+       "$VG" scripts.episode_qc build --episodes <run>/reels/<reel>/episodes/EPISODES.json --packets <run>/reels/<reel>/episodes/qc --out-dir <run>/reels/<reel>/episodes
 
    Refuses (before writing anything) if any episode has no `findings.json`.
    Otherwise validates every finding and writes `EPISODE_QC.json` + `.md`
-   into `<run>/out` — beside `EPISODES.json`, by convention, which is where
+   into `<run>/reels/<reel>/episodes` — beside `EPISODES.json`, by convention, which is where
    phase 2 looks for it (no flag to forget).
 
 5. **Report the verdict.**

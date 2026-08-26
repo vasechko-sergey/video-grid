@@ -62,7 +62,7 @@ say so rather than guessing a path.
    stage runs AFTER edit-plan and, if used, AFTER pacing's apply pass. No
    `EDL.json` -> run edit-plan first; there is no cut to grade.
 2. **Conduct.**
-   `"$VG" scripts.match_grade build --edl <run>/EDL.json --footage-root <footage_root> [--spec <run>/SPEC.json] [--eps 4.0] [--force]`
+   `"$VG" scripts.match_grade build --edl <run>/reels/<reel>/EDL.json --footage-root <footage_root> [--spec <run>/reels/<reel>/SPEC.json] [--eps 4.0] [--force]`
    Measures every episode's source at its window midpoint, computes the one
    common target (the per-anchor median across episodes), and rewrites
    `EDL.json` IN PLACE — `tone_src`/`tone_dst` land on every episode that

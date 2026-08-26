@@ -38,18 +38,18 @@ directory. If that file is missing, the user has not run `bash setup.sh` — sto
 say so rather than guessing a path.
 
 2. **Rank** (you type the flags; the user never does):
-   `"$VG" scripts.mood --folder <dir> --spec <run>/SPEC.json --out-dir <run>`
+   `"$VG" scripts.mood --folder <dir> --spec <run>/reels/<reel>/SPEC.json --out-dir <run>/reels/<reel>`
    (or `--mood "energetic"` when there is no SPEC). It writes
-   `<run>/MUSIC_SHORTLIST.md` + `.json`.
+   `<run>/reels/<reel>/MUSIC_SHORTLIST.md` + `.json`.
    - An **unrecognized mood** is not an error — the tool logs it and ranks by drive
      (energy+pace); say so when you present the list.
    - An **empty / no-audio folder** fails loud — fix the path and re-run.
 3. **Present** the top few `MUSIC_SHORTLIST.md` rows (rank · track · fit · the three
    axes). The user picks one — or asks to hear them and picks by ear.
 4. **Lock the pick** into `MUSIC.json`:
-   `"$VG" scripts.beats <picked-track> --auto-start --duration <length_s> --out <run>/MUSIC.json`
+   `"$VG" scripts.beats <picked-track> --auto-start --duration <length_s> --out <run>/reels/<reel>/MUSIC.json`
    — the start-offset intelligence starts the reel on the strongest fragment, in a
-   vocal pause. Pass `<run>/MUSIC.json` on to edit-plan.
+   vocal pause. Pass `<run>/reels/<reel>/MUSIC.json` on to edit-plan.
 
 ## Not this skill
 

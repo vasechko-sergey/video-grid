@@ -38,9 +38,11 @@ are later stages.
    binary lacks the filter.
 
 2. **Scan.** `python -m scripts.intake <footage_root> <out_dir>`, where
-   `<out_dir>` is `<footage_root>/montage` — the run dir, never the footage folder
-   itself (intake refuses that outright: its own outputs would be read as source
-   clips by the next scan). This writes
+   `<out_dir>` is `<footage_root>/montage/footage` — the run dir's `footage/`
+   bucket, shared by every reel cut from this shoot; never the run root and never
+   the footage folder itself (intake refuses a path that resolves to the footage
+   root outright: its own outputs would be read as source clips by the next
+   scan). This writes
    `<out_dir>/FOOTAGE.json` + `FOOTAGE.md` (every clip logged: resolution, fps,
    shaky flag, scene cuts, and per clip a table of candidate windows with
    shot-type, people, motion, shake, score, and a `★` on the best moments), plus

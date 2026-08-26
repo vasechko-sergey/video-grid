@@ -8,7 +8,8 @@ description: Router — the montage conveyor's front door. Turns a folder of raw
 ## Overview
 
 You are the **conductor** of the montage conveyor. One invocation turns a footage
-folder + a brief into `out/REEL_v1.mp4`, by running the stages that are already
+folder + a brief into a delivered `REEL_v1.mp4` — `<run>/reels/<reel>/deliveries/`
+(see **The run directory**, below) — by running the stages that are already
 built — you never re-implement a stage, and you never silently skip one. The
 mechanical spans are CLIs; the judgment (what the brief means, which cut is right,
 does the reel read) is yours and the sub-skills'.
@@ -29,17 +30,40 @@ run covers the whole conveyor for one project/aspect.
 
 Announce on entry: **"Using using-montage to conduct footage -> reel."**
 
-The **run dir** is `<footage_root>/montage` — always, and never the footage folder
-itself. The conveyor discovers footage by extension over a flat listing of the
-footage root, so an artifact written there that happens to be a video becomes
-source material on the next scan (`draft.mp4` did exactly this). `intake` and
-`draft` refuse a path that resolves to the footage root; the refusal names the
-remedy.
+## The run directory
 
-Point **every** stage's output at that one run dir so the inspector sees a
-coherent run: `project_init --project-dir <run>`, `intake <footage_root> <run>`,
-`reel_brief build --project <run>/project.json --out-dir <run>`, `edit_plan build --out-dir <run>`,
-`edl_to_reel --work-dir <run>/work --out-dir <run>/out`.
+`<run>` is `<footage_root>/montage`. Inside it, **a folder is a lifetime** — how long
+what is in it stays true:
+
+    <run>/project.json  CONSTRAINTS.json      the project: canvas, delivery, standing rules
+    <run>/footage/                            a function of the raw clips; survives every re-cut
+    <run>/music/                              downloaded tracks, shared by every reel
+    <run>/reels/<reel>/                       one editorial variant; <reel> is `main` by default
+    <run>/reels/<reel>/episodes/              one render generation + its QC verdicts
+    <run>/reels/<reel>/deliveries/            append-only — nothing ever deletes this
+    <run>/reels/<reel>/build/                 wiped at the start of every render
+
+Never compose these paths from memory. `montage status --run-dir <run> --reel <reel>`
+returns each stage's resolved `path` alongside `next`, plus the whole `layout` block.
+A file written anywhere else is not seen by the router, and the stage runs again.
+
+A **second cut of the same footage** is a new `<reel>`, never a filename suffix: run
+edit-plan with `--out-dir <run>/reels/upbeat` and the whole editorial layer forks while
+`footage/` and `music/` stay shared. `MUSIC_A.json` / `pacing_B/` style names are what
+this replaces.
+
+**Never the footage folder itself, either** — a hazard distinct from the wrong
+bucket above. The conveyor discovers footage by extension over a flat listing of
+the footage root, so an artifact written there that happens to be a video becomes
+source material on the next scan (`draft.mp4` did exactly this). `intake` and
+`draft` refuse a path that resolves to the footage root outright; the refusal
+names the remedy.
+
+Point **every** stage's output at its own bucket in the layout above — never all
+at `<run>` itself: `project_init --project-dir <run>`, `intake <footage_root>
+<run>/footage`, `reel_brief build --project <run>/project.json --out-dir
+<run>/reels/<reel>`, `edit_plan build --out-dir <run>/reels/<reel>`,
+`edl_to_reel --work-dir <run>/reels/<reel>/build --out-dir <run>/reels/<reel>/episodes`.
 
 0. **Verify the runtime (gate).** After resolving `$VG` (below), run
    `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
@@ -53,6 +77,13 @@ coherent run: `project_init --project-dir <run>`, `intake <footage_root> <run>`,
    pre-venv layer, checked by the launcher preamble and `bin/vg` before this runs.
    The dedicated `verify-runtime` skill runs the same check on demand.
 
+   If `montage status` reports `"legacy_layout": true`, this run was written before the
+   0.3.0 layout: its artifacts sit directly in `<run>`. **Ask the user** whether to point
+   the conveyor at a fresh `<run>` (re-scanning every clip, hours on a 99-clip shoot) or
+   to keep driving the old run by passing the old paths explicitly. Do not move the tree:
+   `EPISODES.json` alone carries 57 absolute paths, and moving it breaks the QC digest
+   bindings and the delivery attestation.
+
 **Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
 bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
 at `${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so set
@@ -61,7 +92,7 @@ step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / 
 directory. If that file is missing, the user has not run `bash setup.sh` — stop and
 say so rather than guessing a path.
 
-1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run>` prints
+1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run> --reel <reel>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from
    `next`** — a stage whose artifact already exists is done; do not redo it. Read
    the brief and parse intent into params (table below).
@@ -85,10 +116,10 @@ say so rather than guessing a path.
 
 3. **footage-intake** — if `next`. Invoke the **footage-intake** skill (it scans ->
    `FOOTAGE.json`/`FOOTAGE.md` and, when people matter, runs the interactive
-   cast-naming -> `cast.json`). Point its out-dir at `<run>`.
+   cast-naming -> `cast.json`). Point its out-dir at `<run>/footage`.
 
 4. **contact-sheet** — if `next`. `"$VG" scripts.contact_sheet build
-   --footage <run>/FOOTAGE.json --footage-root <footage_root> --out-dir <run>`
+   --footage <run>/footage/FOOTAGE.json --footage-root <footage_root> --out-dir <run>/footage`
    (`<footage_root>` is the same raw-clips folder footage-intake scanned —
    `FOOTAGE.json`'s `source` is a bare filename, not a path, so the build needs
    the root to resolve it). Then **read every sheet it wrote** — `SHEETS.md`
@@ -104,7 +135,7 @@ say so rather than guessing a path.
 
 5. **reel-brief (optional).** If the brief deserves shaping (mood/hook/ending/
    style-lean beyond the bare aspect), invoke the **reel-brief** skill — it asks the
-   idea one question at a time and writes `SPEC.md` + `SPEC.json` into `<run>`.
+   idea one question at a time and writes `SPEC.md` + `SPEC.json` into `<run>/reels/<reel>`.
    `montage status` never points `next` here (it is optional); offer it proactively.
    **SPEC.md is CP1's richer artifact** — when it exists, it is what the user
    approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
@@ -112,7 +143,7 @@ say so rather than guessing a path.
 
 6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
    `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). Pass
-   `--spec <run>/SPEC.json` when reel-brief (step 5) ran — it carries two things:
+   `--spec <run>/reels/<reel>/SPEC.json` when reel-brief (step 5) ran — it carries two things:
    the mood that picks the shot-mix preset the variety gate holds the cut to, and
    `SPEC.platform`, which becomes `EDL.platform` and decides which safe-zone table
    `check_reel` judges the subject against and where a bottom title sits. Without
@@ -156,7 +187,7 @@ say so rather than guessing a path.
    **that** length, not a SPEC target. If the brief names a **track**:
    - a **local file path** -> analyse it directly, preferring the tool's own
      in-point pick: `"$VG" scripts.beats <track> --auto-start
-     --duration <reel_len> --out <run>/MUSIC.json` — it starts the reel on the
+     --duration <reel_len> --out <run>/reels/<reel>/MUSIC.json` — it starts the reel on the
      strongest fragment, in a vocal pause. The pauses come from demucs (installed
      by `bash setup.sh`, and required — step 0 already blocked if it is missing);
      there is no proxy fallback. Pass an explicit `--start-offset S` instead only
@@ -180,11 +211,11 @@ say so rather than guessing a path.
 
 8. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
    skill — it **fits** the cuts `EDL.json` already holds onto the music's beat grid
-   (`"$VG" scripts.pacing --edl <run>/EDL.json --footage <run>/FOOTAGE.json
-   --music <run>/MUSIC.json --out-dir <run>`) and writes `PACING.json` + `PACING.md`
-   into `<run>`. Then **apply the fit** by re-running edit-plan with the report:
-   `edit_plan build ... --pacing <run>/PACING.json [--spec <run>/SPEC.json]
-   --music <run>/MUSIC.json` — carry `--spec` through when reel-brief (step 5) ran,
+   (`"$VG" scripts.pacing --edl <run>/reels/<reel>/EDL.json --footage <run>/footage/FOOTAGE.json
+   --music <run>/reels/<reel>/MUSIC.json --out-dir <run>/reels/<reel>`) and writes `PACING.json` + `PACING.md`
+   into `<run>/reels/<reel>`. Then **apply the fit** by re-running edit-plan with the report:
+   `edit_plan build ... --pacing <run>/reels/<reel>/PACING.json [--spec <run>/reels/<reel>/SPEC.json]
+   --music <run>/reels/<reel>/MUSIC.json` — carry `--spec` through when reel-brief (step 5) ran,
    same as step 6's first build. This second pass re-stamps `EDL.json` from scratch,
    so a dropped `--spec` silently re-resolves the variety preset to `balanced` and
    re-stamps that instead of the brief's mood. `--music` here does a SECOND job
@@ -201,7 +232,7 @@ say so rather than guessing a path.
    mixed cameras or mixed lighting, invoke the **match-grade** skill — it
    measures every episode's source tone, computes one common reel target (the
    per-anchor median), and authors `tone_src`/`tone_dst` into the episodes that
-   deviate (`"$VG" scripts.match_grade build --edl <run>/EDL.json
+   deviate (`"$VG" scripts.match_grade build --edl <run>/reels/<reel>/EDL.json
    --footage-root <footage_root> [--eps 4.0] [--force]`), rewriting `EDL.json`
    IN PLACE plus a sibling `MATCH.md`. **Run it AFTER pacing (step 8)** —
    pacing's apply pass regenerates `EDL.json` and would wipe an authored tone,
@@ -211,9 +242,9 @@ say so rather than guessing a path.
 
 10. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
     process-episode render, offer a rough draft: "Want to see a rough cut first?"
-    If yes, `"$VG" scripts.draft build --edl <run>/EDL.json
-    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/work
-    --out <run>/draft.mp4 [--music <run>/MUSIC.json]`. `draft.mp4` concats the raw
+    If yes, `"$VG" scripts.draft build --edl <run>/reels/<reel>/EDL.json
+    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/reels/<reel>/build
+    --out <run>/reels/<reel>/draft.mp4 [--music <run>/reels/<reel>/MUSIC.json]`. `draft.mp4` concats the raw
     segments, scale-fit into the canvas, with `processing_notes` labels and a rough
     music bed — the user eyeballs layout / order / length / beat-landing and
     approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
@@ -225,14 +256,14 @@ say so rather than guessing a path.
 11. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
     exists) and the reel wants on-screen text, invoke the **titles** skill — it
     reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
-    font, and writes `TITLES.json` + `TITLES.md` into `<run>`. It needs the reel
+    font, and writes `TITLES.json` + `TITLES.md` into `<run>/reels/<reel>`. It needs the reel
     length (`--total`); compute it here — sum `EDL.json`'s episode durations, or
     probe `draft.mp4` if it exists; never guess it. `montage status` never points
     `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
     skips it and says so. **`TITLES.md` is reviewed together with the near-final
     reel at Checkpoint 3** — not standalone. When it exists, pass it to
     `edl_to_reel`'s **deliver** invocation at step 14 (`--from-episodes ... --titles
-    <run>/TITLES.json`) so the reel actually renders the text — never to step 12's
+    <run>/reels/<reel>/TITLES.json`) so the reel actually renders the text — never to step 12's
     `--stop-after-episodes` invocation, which takes no titles parameter at all and
     refuses the combination outright (titles are burned into the ONE encode at
     delivery, not the per-episode render).
@@ -240,22 +271,22 @@ say so rather than guessing a path.
 12. **episodes (edl_to_reel, phase 1).**
 
     ```bash
-    "$VG" scripts.edl_to_reel <run>/EDL.json --project <run>/project.json \
-      --footage-root <footage_root> --work-dir <run>/work --out-dir <run>/out \
-      [--music <run>/MUSIC.json] --stop-after-episodes
+    "$VG" scripts.edl_to_reel <run>/reels/<reel>/EDL.json --project <run>/project.json \
+      --footage-root <footage_root> --work-dir <run>/reels/<reel>/build --out-dir <run>/reels/<reel>/episodes \
+      [--music <run>/reels/<reel>/MUSIC.json] --stop-after-episodes
     ```
 
     Runs extract -> process-episode ×N, then **stops** — no reel is assembled
-    yet. Writes `<run>/out/EPISODES.json` (a serialized `ReelManifest`) beside
+    yet. Writes `<run>/reels/<reel>/episodes/EPISODES.json` (a serialized `ReelManifest`) beside
     the `ep{i}.mp4` clips it names. A `stop_and_report` here (an episode
     failed its own mechanical gate) is surfaced verbatim — never fixed
     forward; route it to the culprit stage's skill.
 
 13. **episode-qc (required, not a checkpoint).** Invoke the **episode-qc**
     skill — it packs one evidence directory per episode from
-    `<run>/out/EPISODES.json`, dispatches one fresh judge subagent per
+    `<run>/reels/<reel>/episodes/EPISODES.json`, dispatches one fresh judge subagent per
     episode (at most 3 concurrently) against composition/colour/impression/
-    path/hero, then validates their findings into `<run>/out/EPISODE_QC.json`
+    path/hero, then validates their findings into `<run>/reels/<reel>/episodes/EPISODE_QC.json`
     + `.md`, stamping each verdict's clip digest itself. This stage is
     **required** — a reel is never assembled over an episode nobody judged —
     but it is **not** one of the three §4.1 checkpoints: a clean verdict
@@ -290,14 +321,17 @@ say so rather than guessing a path.
 14. **deliver (edl_to_reel, phase 2).**
 
     ```bash
-    "$VG" scripts.edl_to_reel --from-episodes <run>/out/EPISODES.json \
-      --work-dir <run>/work [--titles <run>/TITLES.json]
+    "$VG" scripts.edl_to_reel --from-episodes <run>/reels/<reel>/episodes/EPISODES.json \
+      --work-dir <run>/reels/<reel>/build [--titles <run>/reels/<reel>/TITLES.json]
     ```
 
     No `--out-dir` here — phase 2 takes none and refuses one if given: it
-    derives its delivery dir from `EPISODES.json`'s OWN path and always
-    delivers beside it, so do not re-add the flag by analogy with phase 1.
-    Gates on `<run>/out/EPISODE_QC.json` beside `EPISODES.json` (missing /
+    derives the delivery dir from `EPISODES.json`'s OWN path — the episodes
+    directory's SIBLING `deliveries/` (`<run>/reels/<reel>/deliveries/`), never
+    the episodes directory itself, so clearing the render scratch can never take
+    a delivered reel with it (design 2026-08-25 §0) — so do not re-add the flag
+    by analogy with phase 1.
+    Gates on `<run>/reels/<reel>/episodes/EPISODE_QC.json` beside `EPISODES.json` (missing /
     incomplete / stale / blocking all refuse before a single ffmpeg call —
     episode-qc having just run should make this a formality, not a surprise),
     then runs assemble -> check_reel -> deliver. When `TITLES.json` is
@@ -319,8 +353,8 @@ say so rather than guessing a path.
     every check — the report comes back with the stop — and no version number
     was spent. The remedy, in order:
 
-    1. `"$VG" scripts.episode_qc pack --episodes <run>/out/EPISODES.json
-       --out-dir <run>/qc` — safe to re-run: it rewrites `strip.jpg` and
+    1. `"$VG" scripts.episode_qc pack --episodes <run>/reels/<reel>/episodes/EPISODES.json
+       --out-dir <run>/reels/<reel>/episodes/qc` — safe to re-run: it rewrites `strip.jpg` and
        `evidence.json` and never touches a judge's `findings.json`.
     2. Dispatch **one fresh judge for the named indices only**. The other
        episodes' verdicts are about bytes that did not change; re-judging them
@@ -346,9 +380,10 @@ say so rather than guessing a path.
     name it at Checkpoint 3 rather than passing over it.
 
     **Checkpoint 3 — final
-    review:** present `out/REEL_v1.mp4`, the `check_reel` report, and (when
-    titles were authored) `TITLES.md` alongside them. Before presenting the
-    reel as final, run `"$VG" scripts.montage verify --run-dir <run>` and
+    review:** present `<run>/reels/<reel>/deliveries/REEL_v1.mp4`, the `check_reel`
+    report, and (when titles were authored) `TITLES.md` alongside them. Before
+    presenting the reel as final, run
+    `"$VG" scripts.montage verify --run-dir <run> --reel <reel>` and
     show its result — a delivery whose state is not `attested` (most notably
     `unattested`: no `REEL_v{n}.attest.json`, meaning the file did not come
     out of `deliver`) must be named plainly as such, never presented as a
@@ -369,7 +404,7 @@ say so rather than guessing a path.
     routed stage (`edit-plan`/`pacing`/`music`/`titles`) — never fix the reel
     forward — then re-review the new cut. reel-review is **required**, not optional
     (§5.13 editorial half, design 2026-08-04 §8) — the run is not finished when
-    `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run>`
+    `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run> --reel <reel>`
     reports `next: null`; on a bare autonomous run reel-review still runs, judging
     against the `EDL`.
 

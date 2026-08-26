@@ -50,21 +50,21 @@ directory. If that file is missing, the user has not run `bash setup.sh` — sto
 say so rather than guessing a path.
 
 2. **Find** (you type the flags; the user never does):
-   `"$VG" scripts.music_find --mode <free|any> --spec <run>/SPEC.json --out-dir <run>`
+   `"$VG" scripts.music_find --mode <free|any> --spec <run>/reels/<reel>/SPEC.json --out-dir <run>/reels/<reel>`
    (or `--mood "energetic"`; add `--catalog itunes` / `--n 12` / `--query "..."` to steer).
-   It writes `<run>/MUSIC_SHORTLIST.md` + `.json`.
+   It writes `<run>/reels/<reel>/MUSIC_SHORTLIST.md` + `.json`.
    - An **unrecognized mood** is not an error — it logs and ranks by drive (energy+pace);
      say so when you present the list.
    - **No candidates / no network / yt-dlp missing** fail loud — fix and re-run.
 3. **Present** the top few `MUSIC_SHORTLIST.md` rows (rank · title · artist · source · fit ·
    axes · license). The user picks one — or asks to hear previews and picks by ear.
 4. **Fetch** the pick:
-   `"$VG" scripts.music_fetch --mode <free|any> --from-shortlist <run>/MUSIC_SHORTLIST.json --pick <row> --cache-dir <run>/music/cache --date $(date +%F)`
+   `"$VG" scripts.music_fetch --mode <free|any> --from-shortlist <run>/reels/<reel>/MUSIC_SHORTLIST.json --pick <row> --cache-dir <run>/music/cache --date $(date +%F)`
    — prints the cached file path.
 5. **Lock** it into `MUSIC.json`:
-   `"$VG" scripts.beats <cached-file> --auto-start --duration <length_s> --out <run>/MUSIC.json`
+   `"$VG" scripts.beats <cached-file> --auto-start --duration <length_s> --out <run>/reels/<reel>/MUSIC.json`
    — start-offset intelligence starts the reel on the strongest fragment, in a vocal
-   pause. Pass `<run>/MUSIC.json` on to edit-plan.
+   pause. Pass `<run>/reels/<reel>/MUSIC.json` on to edit-plan.
 
 **Explicit track already chosen?** When `SPEC.music` is a track name (not `auto`), skip
 Find/Present — `"$VG" scripts.music_fetch --mode <free|any> --track "<name>"

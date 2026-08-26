@@ -87,3 +87,44 @@ def test_edit_plan_skill_names_every_authorable_episode_field():
         f"{len(missing)} EDLEpisode field(s) the authoring skill never names: "
         f"{missing}. Document them in skills/edit-plan/SKILL.md — an authorable "
         f"knob nobody can find is the same as one that does not exist")
+
+
+def test_no_skill_spells_a_stage_artifact_outside_its_bucket():
+    """The layout had 74 `<run>` strings across nine SKILL.md files and no authority
+    (design §4). A skill writing <run>/EDL.json now writes somewhere the router does
+    not look, so the stage would re-run forever."""
+    from scripts import montage
+    offenders = []
+    for path in sorted(SKILLS.glob("*/SKILL.md")):
+        text = path.read_text()
+        for st in montage.V1_STAGES:
+            if st.bucket == "run":
+                continue
+            if f"<run>/{st.artifact}" in text:
+                offenders.append(f"{path.relative_to(REPO)}: <run>/{st.artifact}")
+    assert offenders == []
+
+
+def test_no_skill_still_names_the_retired_out_dir():
+    """`<run>/out` was the deliveries dir the workflow rm -rf'd 47 times."""
+    offenders = sorted(str(p.relative_to(REPO)) for p in SKILLS.glob("*/SKILL.md")
+                       if "<run>/out" in p.read_text())
+    assert offenders == []
+
+
+def test_using_montage_defines_every_bucket():
+    """Nine skills mention <run>; only using-montage defines it (design §4).
+
+    Each bucket has ONE spelling here on purpose: `<run>/reel` would be satisfied
+    by the substring of `<run>/reels/`, so the reel row would pass without the
+    variant level ever being documented."""
+    from scripts.lib import runlayout
+    spelling = {"footage": "<run>/footage/", "music": "<run>/music/",
+                "reel": "<run>/reels/<reel>/",
+                "episodes": "<run>/reels/<reel>/episodes/",
+                "deliveries": "<run>/reels/<reel>/deliveries/",
+                "build": "<run>/reels/<reel>/build/"}
+    assert set(spelling) == set(runlayout.BUCKETS) - {"run"}
+    text = (SKILLS / "using-montage" / "SKILL.md").read_text()
+    missing = sorted(b for b, sp in spelling.items() if sp not in text)
+    assert missing == []

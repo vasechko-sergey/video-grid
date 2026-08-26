@@ -26,7 +26,7 @@ step 3).
   titles: run reel-brief first, or skip this stage.
 - **the reel length, in seconds** — sum `EDL.json`'s episode durations (its own
   `EDL.md` header already prints the total), or probe an existing master/draft
-  (`draft.mp4`, a prior `out/REEL_v*.*`) with ffprobe. Whichever is at hand; never
+  (`draft.mp4`, a prior `<run>/reels/<reel>/deliveries/REEL_v*.*`) with ffprobe. Whichever is at hand; never
   guess or hardcode it — `--total` drives every title's timing.
 
 ## Procedure
@@ -50,7 +50,7 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
 3. **Build.** Run the authoring script (explicit args; the user never types
    flags):
 
-       python -m scripts.titles build --spec SPEC.json --total <reel-length-seconds> --out-dir <run-dir>
+       python -m scripts.titles build --spec SPEC.json --total <reel-length-seconds> --out-dir <run>/reels/<reel>
 
    `--spec`/`--total`/`--out-dir` are its only flags: it projects `hook`/`text`/
    `ending` straight into a **sensible starting draft** — hook opens top for its
@@ -69,7 +69,7 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    Validate-on-load is the safety net (a bad edit fails loud at `deliver`, never
    silently), not the reason you may edit it.
 4. **Review — CP3.** Titles are reviewed WITH the near-final reel, not
-   standalone: show `TITLES.md` alongside `out/REEL_v*.*` and the `check_reel`
+   standalone: show `TITLES.md` alongside `<run>/reels/<reel>/deliveries/REEL_v*.*` and the `check_reel`
    report at the final-review checkpoint. On changes, edit `TITLES.json` (or
    re-run step 3 for a clean restart), then re-review.
 
@@ -157,7 +157,7 @@ After editing `TITLES.json`, run the preflight — it costs nothing and it fires
 at the one moment the fix is a one-line edit:
 
 ```
-bin/vg titles check --titles <run>/TITLES.json --platform reels
+bin/vg titles check --titles <run>/reels/<reel>/TITLES.json --platform reels
 ```
 
 It refuses a title whose ink would land outside the platform's safe zone. One
