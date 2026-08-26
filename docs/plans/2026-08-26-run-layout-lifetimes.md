@@ -1221,7 +1221,7 @@ Every row below is a **step, not a suggestion**. For each: apply the mutation, r
 | 3 | `wipe_build`'s predicate becomes `work.name == "build"` | `pytest tests/lib/test_runlayout.py -q` | `test_the_build_wipe_does_not_fire_on_a_hand_driven_scratch` |
 | 4 | `wipe_build` returns `[]` instead of `None` on a non-match | `pytest tests/lib/test_runlayout.py -q` | the same test's `is None` |
 | 5 | `wipe_build` drops the trailing `work.mkdir(parents=True)` | `pytest tests/lib/test_runlayout.py -q` | `test_the_build_wipe_fires_on_the_canonical_pair`'s `build.is_dir()` |
-| 6 | `is_legacy_run` drops the `not (r / "footage").is_dir()` clause | `pytest tests/lib/test_runlayout.py -q` | `test_a_current_run_is_not_legacy` |
+| 6 | `is_legacy_run` drops the `not (r / "footage").is_dir()` clause | `pytest tests/lib/test_runlayout.py -q` | `test_a_root_with_both_legacy_file_and_footage_dir_is_not_legacy` — **not** `test_a_current_run_is_not_legacy`, which this plan first named and which Task 0's review proved sleeps through the mutation: with no `FOOTAGE.json` at the root the first clause is already False and `and` short-circuits before the second is ever evaluated |
 | 7 | `Stage.bucket`'s default changes from `"reel"` to `"run"` | `pytest tests/lib/test_montage.py -q` | `test_each_stage_reports_its_resolved_path` (defaults are not used by V1_STAGES, so if this row does NOT go red, delete the default and make bucket required) |
 | 8 | the `deliver` stage's bucket changes to `"episodes"` | `pytest tests/lib/test_montage.py -q` | `test_each_stage_reports_its_resolved_path` |
 | 9 | `next_action` drops `"path"` from each stage dict | `pytest tests/lib/test_montage.py -q` | `test_each_stage_reports_its_resolved_path` |
