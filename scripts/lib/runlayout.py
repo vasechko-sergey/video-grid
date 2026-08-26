@@ -10,9 +10,141 @@ So the run gets its own folder, `<footage_root>/montage/`, and the two stages
 that know the footage root and write into a caller-chosen directory refuse to
 be pointed at the footage root itself.
 """
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 RUN_DIRNAME = "montage"       # <footage_root>/montage — see the skills and the README
+
+DEFAULT_REEL = "main"         # a run has one reel unless the user names a variant
+
+# Every lifetime in the conveyor, in the order the design's §1 table lists them.
+# `build` is a bucket but never a Stage artifact's bucket — nothing a human is
+# meant to open lives there, and the router has nothing to look for in it.
+BUCKETS: tuple[str, ...] = ("run", "footage", "music", "reel", "episodes",
+                            "deliveries", "build")
+
+
+@dataclass(frozen=True)
+class RunLayout:
+    """Every path in a montage run, computed from (run root, reel name).
+
+    One authority, because the layout used to exist only as 74 `<run>` strings
+    across nine SKILL.md files — a second, unchecked copy (design §4).
+
+    The reel level sits BELOW footage/ and music/ on a measured ratio: the
+    editorial layer is 120 KB against footage's 194M, so a variant duplicates the
+    free half and shares the expensive one (design §0).
+    """
+    root: Path
+    reel: str = DEFAULT_REEL
+
+    def __post_init__(self) -> None:
+        # One path segment, or `reels/<name>` is not a directory name any more —
+        # `--reel ../..` would escape the run dir entirely.
+        if (not self.reel or self.reel.strip() != self.reel
+                or "/" in self.reel or "\\" in self.reel or self.reel in (".", "..")):
+            raise ValueError(
+                f"reel name must be a single path segment with no separators or "
+                f"surrounding space, got {self.reel!r} — use a plain name like "
+                f"{DEFAULT_REEL!r} or 'upbeat'")
+
+    @classmethod
+    def for_footage(cls, footage_root: str, reel: str = DEFAULT_REEL) -> "RunLayout":
+        """The run dir 0.2.1 established: <footage_root>/montage."""
+        return cls(Path(footage_root).resolve() / RUN_DIRNAME, reel)
+
+    @property
+    def footage(self) -> Path:
+        return self.root / "footage"
+
+    @property
+    def music(self) -> Path:
+        return self.root / "music"
+
+    @property
+    def reel_dir(self) -> Path:
+        return self.root / "reels" / self.reel
+
+    @property
+    def episodes(self) -> Path:
+        return self.reel_dir / "episodes"
+
+    @property
+    def deliveries(self) -> Path:
+        return self.reel_dir / "deliveries"
+
+    @property
+    def build(self) -> Path:
+        return self.reel_dir / "build"
+
+    @property
+    def project(self) -> Path:
+        # At the run root, not in a bucket: edit_plan discovers CONSTRAINTS.json
+        # beside project.json, so moving one moves the other (design §8).
+        return self.root / "project.json"
+
+    def bucket(self, name: str) -> Path:
+        if name not in BUCKETS:
+            raise ValueError(f"unknown bucket {name!r} — one of {BUCKETS}")
+        return {"run": self.root, "footage": self.footage, "music": self.music,
+                "reel": self.reel_dir, "episodes": self.episodes,
+                "deliveries": self.deliveries, "build": self.build}[name]
+
+    def to_dict(self) -> dict[str, str]:
+        return {b: str(self.bucket(b)) for b in BUCKETS}
+
+
+def reel_names(root: str | Path) -> list[str]:
+    """The reel variants that exist under a run root, sorted; [] before the first."""
+    d = Path(root) / "reels"
+    return sorted(p.name for p in d.iterdir() if p.is_dir()) if d.is_dir() else []
+
+
+def is_legacy_run(root: str | Path) -> bool:
+    """True for a run written under the 0.2.x flat convention.
+
+    The discriminator is FOOTAGE.json at the run root with no footage/ bucket
+    beside it. Without this the router sees an empty run and re-scans 99 4K clips
+    (design §7); with it, the skill asks.
+    """
+    r = Path(root)
+    return (r / "FOOTAGE.json").exists() and not (r / "footage").is_dir()
+
+
+def deliveries_for(episodes_dir: str) -> Path:
+    """The sibling deliveries/ of an episodes/ dir.
+
+    The same structural relationship wipe_build uses, and for the same reason: it
+    is true exactly for a canonical reel and for nothing else. Phase 1 fills
+    episodes/, phase 2 delivers next door — they must not share a directory, or a
+    human clearing the render output takes the deliveries with it, which is what
+    47 `rm -rf out/` did (design §0).
+    """
+    return Path(episodes_dir).resolve().parent / "deliveries"
+
+
+def wipe_build(work_dir: str, out_dir: str) -> list[str] | None:
+    """Delete this reel's scratch tree, leaving the directory empty.
+
+    Returns the entry names removed, [] when the canonical directory did not exist
+    yet, and **None** when the predicate did not hold — three outcomes, because the
+    caller reports "wiped X" and "did not wipe, not canonical" differently.
+
+    The predicate is STRUCTURAL, never name-based: under the layout `out_dir` is
+    reels/<name>/episodes and its sibling is reels/<name>/build, so a canonical run
+    always matches and nothing else can. "The directory is named build" would make
+    a hand-driven `--work-dir ~/build` a grenade (design §6).
+    """
+    work = Path(work_dir).resolve()
+    if work != Path(out_dir).resolve().parent / "build":
+        return None
+    if not work.is_dir():
+        return []
+    removed = sorted(p.name for p in work.iterdir())
+    shutil.rmtree(work)
+    work.mkdir(parents=True)
+    return removed
 
 
 def refuse_output_in_footage(footage_root: str, out_dir: str, what: str) -> None:
