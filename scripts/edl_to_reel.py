@@ -364,6 +364,11 @@ def main() -> None:
                      "into the ONE encode at delivery (phase 2), and process_episodes (phase "
                      "1) takes no titles parameter at all — pass --titles to the "
                      "--from-episodes invocation instead")
+        if a.stop_after_episodes and a.deliveries_dir:
+            ap.error("--deliveries-dir has no effect with --stop-after-episodes: REEL_v{n} "
+                     "lands there only at delivery (phase 2), and process_episodes (phase "
+                     "1) never delivers and takes no deliveries_dir parameter at all — pass "
+                     "--deliveries-dir to the --from-episodes invocation instead")
         jobs = a.jobs if a.jobs is not None else DEFAULT_JOBS
         fn = process_episodes if a.stop_after_episodes else edl_to_reel
         kw = ({} if a.stop_after_episodes

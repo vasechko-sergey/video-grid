@@ -1298,3 +1298,106 @@ def test_the_deliveries_dir_is_never_the_episodes_dir(tmp_path):
     eps = tmp_path / "montage" / "reels" / "main" / "episodes"
     eps.mkdir(parents=True)
     assert edl_to_reel._deliveries_dir(None, str(eps)) != str(eps)
+
+
+# --- Task 3 review, fix round 1: closing three coverage gaps ----------------------
+#
+# Finding 1: the wipe/refusal ORDER was never exercised at the level where reordering
+# would be observable — both _wipe_scratch tests above call the helper directly, and
+# the two pre-existing footage-refusal tests (test_edl_to_reel_refuses_a_work_dir_
+# equal_to_the_footage_root / test_process_episodes_is_guarded_by_the_same_chokepoint)
+# use work_dir/out_dir pairs where work_dir is not out_dir.parent/"build", so
+# wipe_build is a silent no-op there regardless of call order.
+#
+# Finding 2: the deliveries split itself — the reason this task exists — had no test
+# that inspected what build_reel.build_reel was actually called WITH; every existing
+# seen["build"] assertion in this file only checks == [] in stop-and-report scenarios.
+
+def test_a_footage_root_work_dir_is_refused_before_anything_is_wiped(tmp_path):
+    """The marker file surviving IS the whole assertion. footage_root == work_dir ==
+    out_dir's own canonical build-sibling, so this one setup is simultaneously (a)
+    something refuse_output_in_footage must reject and (b) something wipe_build would
+    otherwise wipe. Under the shipped order (refuse before wipe, _build_manifest lines
+    100-102) the ValueError fires first and the marker is untouched; if a future edit
+    moved _wipe_scratch above the two refuse_output_in_footage calls, the marker would
+    be gone before the refusal ever raised — and neither pre-existing footage-refusal
+    test in this file could catch that reordering, because their work_dir is never
+    out_dir.parent/"build", so wipe_build is a no-op for them no matter which line
+    runs first."""
+    footage_root = work_dir = tmp_path / "build"
+    work_dir.mkdir()
+    marker = work_dir / "keep.txt"
+    marker.write_text("scratch that must not be wiped before the refusal fires")
+    out_dir = tmp_path / "out"          # out_dir.parent/"build" == work_dir: canonical
+    with pytest.raises(ValueError, match="footage folder itself"):
+        edl_to_reel.process_episodes(str(tmp_path / "EDL.json"), str(tmp_path / "project.json"),
+                                     str(footage_root), str(work_dir), str(out_dir))
+    assert marker.exists()
+
+
+def test_edl_to_reel_delivers_to_the_episodes_sibling_deliveries_dir(monkeypatch, tmp_path):
+    """Finding 2, call site 1 (edl_to_reel()). Every seen["build"] assertion elsewhere
+    in this file only checks == [] in a stop-and-report scenario, so a revert to
+    passing raw out_dir instead of _deliveries_dir(deliveries_dir, out_dir) at this
+    call site would pass the whole suite untouched. This is the delivered happy path
+    that actually inspects the directory build_reel.build_reel was called with."""
+    seen = _wire(monkeypatch)
+    out_dir = tmp_path / "montage" / "reels" / "main" / "episodes"
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(out_dir))
+    assert res["status"] == "delivered"
+    delivered_to = seen["build"][0][0]
+    assert delivered_to == str(edl_to_reel.runlayout.deliveries_for(str(out_dir)))
+    assert delivered_to != str(out_dir.resolve())
+
+
+def test_assemble_reel_delivers_to_the_episodes_sibling_deliveries_dir(monkeypatch, tmp_path):
+    """Finding 2, call site 2 (assemble_reel()) — a SEPARATE line that can regress
+    independently of edl_to_reel()'s own call site above: that test never calls
+    assemble_reel at all, so a revert here would slip past it untouched."""
+    seen = _wire(monkeypatch)
+    episodes_dir = tmp_path / "montage" / "reels" / "main" / "episodes"
+    episodes_dir.mkdir(parents=True)
+    rm = _manifest(tmp_path)
+    episodes_path = episodes_dir / "EPISODES.json"
+    rm.write(episodes_path)
+    _qc(rm).write(episodes_dir / "EPISODE_QC.json")
+    res = edl_to_reel.assemble_reel(str(episodes_path), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    delivered_to = seen["build"][0][0]
+    assert delivered_to == str(edl_to_reel.runlayout.deliveries_for(str(episodes_dir)))
+    assert delivered_to != str(episodes_dir.resolve())
+
+
+def test_edl_to_reel_threads_an_explicit_deliveries_dir_to_build_reel(monkeypatch, tmp_path):
+    """The two tests above only prove the DEFAULT sibling path. An explicit
+    deliveries_dir= must reach build_reel.build_reel too — _deliveries_dir's own unit
+    test (test_an_explicit_deliveries_dir_wins) never calls the driver at all, so it
+    cannot catch deliveries_dir being accepted by edl_to_reel() and then dropped
+    before it reaches build_reel.build_reel."""
+    seen = _wire(monkeypatch)
+    explicit = str(tmp_path / "wherever-i-say")
+    res = edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                                  str(tmp_path / "w"), str(tmp_path / "out"),
+                                  deliveries_dir=explicit)
+    assert res["status"] == "delivered"
+    assert seen["build"][0][0] == explicit
+
+
+def test_cli_refuses_deliveries_dir_combined_with_stop_after_episodes(monkeypatch, tmp_path):
+    # Finding 3: --titles already refuses this combination (see
+    # test_cli_refuses_titles_combined_with_stop_after_episodes above) because
+    # process_episodes (phase 1) never delivers; --deliveries-dir has exactly the same
+    # property and was silently accepted-and-dropped via main()'s kw dict.
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--stop-after-episodes",
+                                      "--deliveries-dir", str(tmp_path / "elsewhere")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
