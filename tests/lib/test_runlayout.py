@@ -127,6 +127,13 @@ def test_an_empty_run_is_not_legacy(tmp_path):
     assert runlayout.is_legacy_run(tmp_path) is False
 
 
+def test_a_root_with_both_legacy_file_and_footage_dir_is_not_legacy(tmp_path):
+    """Discriminates: without it, a mutant dropping the `not (r / "footage").is_dir()` clause passes all tests."""
+    (tmp_path / "FOOTAGE.json").write_text("{}")
+    (tmp_path / "footage").mkdir()
+    assert runlayout.is_legacy_run(tmp_path) is False
+
+
 def test_deliveries_is_the_sibling_of_episodes(tmp_path):
     eps = tmp_path / "reels" / "main" / "episodes"
     assert runlayout.deliveries_for(str(eps)) == (tmp_path / "reels" / "main"
