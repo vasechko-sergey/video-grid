@@ -1083,13 +1083,21 @@ def test_no_skill_still_names_the_retired_out_dir():
 
 
 def test_using_montage_defines_every_bucket():
-    """Nine skills mention <run>; only using-montage defines it (design §4)."""
+    """Nine skills mention <run>; only using-montage defines it (design §4).
+
+    Each bucket has ONE spelling here on purpose: `<run>/reel` would be satisfied
+    by the substring of `<run>/reels/`, so the reel row would pass without the
+    variant level ever being documented."""
     from scripts.lib import runlayout
+    spelling = {"footage": "<run>/footage/", "music": "<run>/music/",
+                "reel": "<run>/reels/<reel>/",
+                "episodes": "<run>/reels/<reel>/episodes/",
+                "deliveries": "<run>/reels/<reel>/deliveries/",
+                "build": "<run>/reels/<reel>/build/"}
+    assert set(spelling) == set(runlayout.BUCKETS) - {"run"}
     text = (SKILLS / "using-montage" / "SKILL.md").read_text()
-    for b in runlayout.BUCKETS:
-        if b == "run":
-            continue
-        assert f"<run>/{b}" in text or f"reels/<reel>/{b}" in text, b
+    missing = sorted(b for b, sp in spelling.items() if sp not in text)
+    assert missing == []
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
