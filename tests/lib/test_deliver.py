@@ -81,15 +81,17 @@ def test_deliver_refuses_a_failed_reel(tmp_path, monkeypatch):
 
 def test_deliver_refuses_a_failed_reel_leaves_no_side_effects(tmp_path, monkeypatch):
     # the gate must fire BEFORE any mkdir/encode/version-bump: a failed reel
-    # produces no out dir, no file, no VERSIONS.md, and never calls proc.run.
+    # produces no out dir, no scratch dir, no file, no VERSIONS.md, and never calls proc.run.
     calls = []
     monkeypatch.setattr(deliver.proc, "run",
                         lambda cmd, **k: calls.append(cmd) or SimpleNamespace(stdout=b""))
     out_dir = tmp_path / "would-be-created"
+    scratch_dir = tmp_path / "scratch"
     with pytest.raises(RuntimeError, match="does not ship a failed reel"):
         deliver.deliver("m.mp4", REEL_H264, str(out_dir), "x", _red(),
-                        scratch_dir=str(tmp_path / "scratch"))
+                        scratch_dir=str(scratch_dir))
     assert not out_dir.exists()
+    assert not scratch_dir.exists()
     assert calls == []
 
 
@@ -383,8 +385,12 @@ def test_the_next_version_is_one_on_an_empty_directory(tmp_path):
 
 
 def test_the_log_reader_ignores_prose(tmp_path):
+    # The regex must require the pipe anchor to reject a line that starts with "- v"
+    # but isn't a log entry (e.g. a hand-written note between entries). Both "version 7
+    # was skipped" (no "- v" prefix) and "- v9 not a real entry" (no pipe anchor) must
+    # be ignored, only "[2]" returned.
     (tmp_path / "VERSIONS.md").write_text(
-        "# Reel versions\n\nversion 7 was skipped\n- v2 | 2026-08-25 | real\n")
+        "# Reel versions\n\nversion 7 was skipped\n- v9 not a real entry\n- v2 | 2026-08-25 | real\n")
     assert deliver._logged_versions(str(tmp_path)) == [2]
 
 
