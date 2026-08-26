@@ -347,8 +347,11 @@ def main() -> None:
                 or a.jobs is not None or a.color_delta_max is not None or a.changelog):
             ap.error("--from-episodes resumes a run whose episodes are already rendered; "
                      "the EDL / --project / --footage-root are not read again, --out-dir "
-                     "is not read at all — phase 2 delivers beside EPISODES.json (design "
-                     "§3) — and --music / --jobs / --color-delta-max / --changelog only "
+                     "is not read at all — phase 2 delivers into the episodes dir's "
+                     "SIBLING deliveries/, never beside EPISODES.json, so clearing the "
+                     "render output can never take a delivered reel with it (design "
+                     "2026-08-26 §0/§4) — and --music / --jobs / --color-delta-max / "
+                     "--changelog only "
                      "affect phase-1 rendering, already baked into EPISODES.json, so "
                      "passing any of them here would silently be discarded")
         result = assemble_reel(a.from_episodes, a.work_dir,
