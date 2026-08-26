@@ -70,9 +70,9 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    matters — the peak of a manoeuvre, the frame a person turns to camera —
    zoom in before deciding:
 
-       python -m scripts.contact_sheet strip --footage FOOTAGE.json \
+       python -m scripts.contact_sheet strip --footage <run>/footage/FOOTAGE.json \
          --footage-root <footage_root> --source MVI_3739.mp4 --window 2 \
-         --frames 12 --out w2.png
+         --frames 12 --out <run>/reels/<reel>/build/w2.png
 
    `--footage-root` is the same raw-clips folder footage-intake scanned —
    `FOOTAGE.json`'s `source` is a bare filename, not a path, so resolving a
@@ -291,7 +291,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    freshly-written file:
 
        python -m scripts.probe grade --episodes <run>/reels/<reel>/episodes/EPISODES.json \
-         --index <N> --edl EDL.json
+         --index <N> --edl <run>/reels/<reel>/EDL.json
 
    It writes `<run>/reels/<reel>/build/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
    (naturalness flags plus p5/p50/p95 per frame, which read straight into a

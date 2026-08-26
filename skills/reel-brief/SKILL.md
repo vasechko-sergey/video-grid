@@ -26,7 +26,7 @@ re-ask aspect.
 
 Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 
-1. **Recon.** Read `project.json` (note the canvas) and `cast.json` if present.
+1. **Recon.** Read `<run>/project.json` (note the canvas) and `<run>/footage/cast.json` if present — they sit in different buckets: the project's canvas outlives every re-cut, the cast is a function of the footage.
 2. **Ask one question at a time** — do not batch. Cover: reel count · platform ·
    target length (seconds) · mood · hook (the opening) · music (a track / "auto" /
    "none") + `music.mode` (local / free / any — default free, the safe distribution
@@ -38,11 +38,11 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 4. **Self-review** the assembled answers, then **build** (explicit args; the user
    never types flags):
 
-       python -m scripts.reel_brief build --project project.json \
+       python -m scripts.reel_brief build --project <run>/project.json \
          --length 30 --mood "…" --hook "…" \
          [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
          [--platform …] [--text …] [--ending …] [--cast NAME]... [--notes …] \
-         --out-dir .
+         --out-dir <run>/reels/<reel>
 
    It validates the fields and writes `SPEC.json` + `SPEC.md`. A `ValueError` names
    the offending field — fix it and re-run; never hand-write `SPEC.md`.
