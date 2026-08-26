@@ -8,6 +8,7 @@ thread scheduling. Canvas/delivery are resolved ONCE here and stored in each
 ReelEpisode, because build_reel's reprocess re-runs process_episode without project=."""
 import argparse
 import json
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -21,6 +22,34 @@ from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.project import ProjectConfig
 
 DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
+
+
+def _note(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def _wipe_scratch(work_dir: str, out_dir: str) -> None:
+    """Clear this reel's build/ before a phase-1 render, and report either way.
+
+    Phase 1 has no resume — every run re-renders every episode from scratch — so the
+    wipe discards nothing that would have been reused. It must NOT happen between the
+    phases: EPISODES.json carries absolute paths into build/ep{i}/ and phase 2's retry
+    loop reads the frozen route from there (design §6)."""
+    removed = runlayout.wipe_build(work_dir, out_dir)
+    if removed is None:
+        _note(f"edl_to_reel: {work_dir} is not the canonical build dir for {out_dir} "
+              f"— leaving it alone. Scratch there accumulates across runs.")
+    elif removed:
+        _note(f"edl_to_reel: wiped {len(removed)} entries from {work_dir}")
+
+
+def _deliveries_dir(explicit: str | None, out_dir: str) -> str:
+    """Where REEL_v{n} goes: the episodes dir's sibling deliveries/, unless named.
+
+    Phase 1 fills out_dir with ep{i}.mp4 and phase 2 delivers next door, because a
+    delivery inside the render output is a delivery a human deletes when clearing the
+    render output (design §0/§4)."""
+    return explicit if explicit is not None else str(runlayout.deliveries_for(out_dir))
 
 
 def _refuse_on_engine_drift(started: dict, now: dict) -> None:
@@ -61,14 +90,16 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     a bright beach — carries a real jump the grade cannot and should not flatten. Raise
     it only for such a reel, with the measured delta in hand, never to silence a grade
     that is genuinely wrong."""
-    # Both dirs receive .mp4 — out_dir the ep{i}/REEL_v{n} deliveries, work_dir the
-    # extracted segments and the reel master. In the footage folder those become
-    # source clips for the next intake, exactly as draft.mp4 did (design 2026-08-25
-    # §0). This is phase 1's chokepoint: edl_to_reel() and process_episodes() both
-    # route through here. Phase 2 needs no guard — it derives out_dir from the
+    # Both dirs receive .mp4 — out_dir the ep{i}.mp4 renders, work_dir the extracted
+    # segments and the reel master; REEL_v{n} now lands in the deliveries dir next
+    # door instead (see _deliveries_dir). In the footage folder these become source
+    # clips for the next intake, exactly as draft.mp4 did (design 2026-08-25 §0).
+    # This is phase 1's chokepoint: edl_to_reel() and process_episodes() both route
+    # through here. Phase 2 needs no guard — it derives out_dir from the
     # EPISODES.json path this call already validated.
     runlayout.refuse_output_in_footage(footage_root, out_dir, "edl_to_reel's out_dir")
     runlayout.refuse_output_in_footage(footage_root, work_dir, "edl_to_reel's work_dir")
+    _wipe_scratch(work_dir, out_dir)
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"edl_to_reel: jobs must be an integer >= 1, got {jobs!r} "
                          f"(default {DEFAULT_JOBS} is the measured knee; lower it on a "
@@ -183,9 +214,10 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
-                work_dir: str, out_dir: str, *, music: str | None = None,
-                titles: str | None = None, jobs: int = DEFAULT_JOBS,
-                color_delta_max: float | None = None, changelog: str = "") -> dict:
+                work_dir: str, out_dir: str, *, deliveries_dir: str | None = None,
+                music: str | None = None, jobs: int = DEFAULT_JOBS,
+                color_delta_max: float | None = None, changelog: str = "",
+                titles: str | None = None) -> dict:
     """The SP1 front door: a hand-authored EDL.json -> a delivered REEL_v1.mp4 in one
     command. No per-episode QC runs on this path — the delivery's attestation records
     `episode_qc: absent` so an unjudged reel is DISTINGUISHABLE from a judged one, which
@@ -196,7 +228,8 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
     if stop:
         return stop
     rm.provenance["episode_qc"] = {"state": "absent"}
-    return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
+    return build_reel.build_reel(rm, _deliveries_dir(deliveries_dir, out_dir),
+                                 str(Path(work_dir) / "reel"), titles=titles)
 
 
 def process_episodes(edl_path: str, project_path: str, footage_root: str,
@@ -217,7 +250,8 @@ def process_episodes(edl_path: str, project_path: str, footage_root: str,
             "clips": [e.clip for e in rm.episodes]}
 
 
-def assemble_reel(episodes_path: str, work_dir: str, *, titles: str | None = None) -> dict:
+def assemble_reel(episodes_path: str, work_dir: str, *, deliveries_dir: str | None = None,
+                  titles: str | None = None) -> dict:
     """Phase 2: the QC gate, then build_reel. The out dir is EPISODES.json's own
     directory — one fewer flag to point at the wrong place, and the gate's artifact is
     found there BY CONVENTION (design §3/§7).
@@ -262,7 +296,8 @@ def assemble_reel(episodes_path: str, work_dir: str, *, titles: str | None = Non
     prov["episode_qc"] = {"state": "judged",
                           "judged": {str(i): d for i, d in sorted(digests.items())}}
     rm.provenance = prov
-    return build_reel.build_reel(rm, out_dir, str(Path(work_dir) / "reel"), titles=titles)
+    return build_reel.build_reel(rm, _deliveries_dir(deliveries_dir, out_dir),
+                                 str(Path(work_dir) / "reel"), titles=titles)
 
 
 def main() -> None:
@@ -273,9 +308,12 @@ def main() -> None:
     ap.add_argument("--footage-root", default=None, help="dir the EDL 'source' paths resolve against")
     ap.add_argument("--work-dir", required=True, help="scratch for segments / per-episode / reel master")
     ap.add_argument("--out-dir", default=None,
-                    help="delivery dir for ep{i}.mp4 + REEL_v{n}.mp4 — required unless "
-                         "--from-episodes, which refuses it: phase 2 derives its out dir "
-                         "from the EPISODES.json path instead (design §3)")
+                    help="dir for ep{i}.mp4 renders — required unless --from-episodes, "
+                         "which refuses it: phase 2 derives its out dir from the "
+                         "EPISODES.json path instead (design §3)")
+    ap.add_argument("--deliveries-dir", default=None,
+                    help="where REEL_v{n} lands (default: the episodes dir's sibling "
+                         "deliveries/) — never the same dir as --out-dir")
     ap.add_argument("--music", default=None,
                     help="MUSIC.json path; overrides the EDL's music field — phase-1-only; "
                          "refused with --from-episodes (already baked into EPISODES.json)")
@@ -313,7 +351,8 @@ def main() -> None:
                      "§3) — and --music / --jobs / --color-delta-max / --changelog only "
                      "affect phase-1 rendering, already baked into EPISODES.json, so "
                      "passing any of them here would silently be discarded")
-        result = assemble_reel(a.from_episodes, a.work_dir, titles=a.titles)
+        result = assemble_reel(a.from_episodes, a.work_dir,
+                               deliveries_dir=a.deliveries_dir, titles=a.titles)
     else:
         missing = [n for n, v in (("edl", a.edl), ("--project", a.project),
                                   ("--footage-root", a.footage_root),
@@ -327,7 +366,8 @@ def main() -> None:
                      "--from-episodes invocation instead")
         jobs = a.jobs if a.jobs is not None else DEFAULT_JOBS
         fn = process_episodes if a.stop_after_episodes else edl_to_reel
-        kw = {} if a.stop_after_episodes else {"titles": a.titles}
+        kw = ({} if a.stop_after_episodes
+              else {"titles": a.titles, "deliveries_dir": a.deliveries_dir})
         result = fn(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
                     music=a.music, jobs=jobs, color_delta_max=a.color_delta_max,
                     changelog=a.changelog, **kw)

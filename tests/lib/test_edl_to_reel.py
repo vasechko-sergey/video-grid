@@ -771,7 +771,7 @@ def test_cli_from_episodes_dispatches_to_assemble_reel(monkeypatch, tmp_path):
     # is test_cli_from_episodes_refuses_an_out_dir_flag, above.
     seen = {}
 
-    def fake_assemble_reel(episodes_path, work_dir, *, titles=None):
+    def fake_assemble_reel(episodes_path, work_dir, *, deliveries_dir=None, titles=None):
         seen["episodes_path"] = episodes_path
         seen["work_dir"] = work_dir
         seen["titles"] = titles
@@ -827,8 +827,8 @@ def test_cli_default_dispatches_to_edl_to_reel_with_titles(monkeypatch, tmp_path
     seen = {}
 
     def fake_edl_to_reel(edl_path, project_path, footage_root, work_dir, out_dir, *,
-                         music=None, titles=None, jobs=edl_to_reel.DEFAULT_JOBS,
-                         color_delta_max=None, changelog=""):
+                         deliveries_dir=None, music=None, titles=None,
+                         jobs=edl_to_reel.DEFAULT_JOBS, color_delta_max=None, changelog=""):
         seen["called"] = "edl_to_reel"
         seen["titles"] = titles
         return {"status": "delivered", "output": "REEL_v1.mp4"}
@@ -1250,3 +1250,51 @@ def test_process_episodes_is_guarded_by_the_same_chokepoint(tmp_path):
         edl_to_reel.process_episodes(str(tmp_path / "EDL.json"),
                                      str(tmp_path / "project.json"),
                                      str(tmp_path), str(tmp_path / "work"), str(tmp_path))
+
+
+# --- Task 3: the guarded build wipe, and the deliveries split ---------------------
+
+def test_phase_one_wipes_the_canonical_build_dir(tmp_path, capsys, monkeypatch):
+    """17 work/ep* directories and 17 segments survived for an 8-episode reel
+    because nothing ever deleted scratch (design §0)."""
+    reel = tmp_path / "montage" / "reels" / "main"
+    build, eps = reel / "build", reel / "episodes"
+    (build / "ep99").mkdir(parents=True)
+    eps.mkdir(parents=True)
+    edl_to_reel._wipe_scratch(str(build), str(eps))
+    assert not (build / "ep99").exists()
+    assert "wiped" in capsys.readouterr().err
+
+
+def test_phase_one_leaves_a_hand_driven_scratch_alone_and_says_so(tmp_path, capsys):
+    """SP1's front door stays open — the cost named in design §8."""
+    scratch = tmp_path / "scratch"
+    (scratch / "keep").mkdir(parents=True)
+    eps = tmp_path / "somewhere" / "episodes"
+    eps.mkdir(parents=True)
+    edl_to_reel._wipe_scratch(str(scratch), str(eps))
+    assert (scratch / "keep").exists()
+    err = capsys.readouterr().err
+    assert "not the canonical" in err
+
+
+def test_the_deliveries_dir_defaults_to_the_episodes_sibling(tmp_path):
+    eps = tmp_path / "montage" / "reels" / "main" / "episodes"
+    eps.mkdir(parents=True)
+    assert edl_to_reel._deliveries_dir(None, str(eps)) == str(
+        (tmp_path / "montage" / "reels" / "main" / "deliveries").resolve())
+
+
+def test_an_explicit_deliveries_dir_wins(tmp_path):
+    eps = tmp_path / "episodes"
+    eps.mkdir()
+    assert edl_to_reel._deliveries_dir(str(tmp_path / "elsewhere"), str(eps)) == str(
+        tmp_path / "elsewhere")
+
+
+def test_the_deliveries_dir_is_never_the_episodes_dir(tmp_path):
+    """A human clearing the render output must not take the deliveries with it —
+    that is what 47 `rm -rf out/` did (design §0)."""
+    eps = tmp_path / "montage" / "reels" / "main" / "episodes"
+    eps.mkdir(parents=True)
+    assert edl_to_reel._deliveries_dir(None, str(eps)) != str(eps)
