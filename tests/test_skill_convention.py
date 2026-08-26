@@ -138,6 +138,37 @@ def test_using_montage_defines_every_bucket():
     assert missing == []
 
 
+# Flags whose value is a path INTO the run, so it must be spelled from `<run>`.
+# `--source` is deliberately absent: FOOTAGE.json's `source` really is a bare
+# filename, resolved against `--footage-root`, and the skills say so.
+_RUN_PATH_FLAGS = ("--edl", "--footage", "--selection", "--project", "--cast",
+                   "--spec", "--pacing", "--music", "--titles", "--episodes",
+                   "--packets", "--out-dir", "--work-dir", "--deliveries-dir",
+                   "--scratch-dir", "--findings", "--reel-path", "--out")
+_BARE_ARG = re.compile(
+    r"(" + "|".join(re.escape(f) for f in _RUN_PATH_FLAGS) + r")\s+"
+    r"(?!<)([A-Za-z_][A-Za-z0-9_]*\.(?:json|md|mp4|png|jpg)|\.)(?:\s|$)")
+
+
+def test_no_skill_example_passes_a_bare_path_into_the_run():
+    """A flag followed by a bare filename, or `--out-dir .`, worked while a run was
+    one flat directory. It cannot work now: an example's inputs span the run root,
+    footage/ and reels/<reel>/, so no working directory resolves them all, and the
+    drivers have required=True with no defaults to fall back on.
+
+    This is the class the other three checks cannot see — they look for a WRONG
+    `<run>/` prefix, and a bare name has no prefix at all. Three such examples
+    survived the layout migration precisely because they contained no `<run>`
+    string for a reader or a grep to catch on, and one whole skill (reel-brief)
+    was never in the migration's file list for the same reason."""
+    offenders = []
+    for path in sorted(SKILLS.glob("*/SKILL.md")):
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            for m in _BARE_ARG.finditer(line):
+                offenders.append(f"{path.relative_to(REPO)}:{i}: {m.group(1)} {m.group(2)}")
+    assert offenders == []
+
+
 def test_footage_intake_binds_its_out_dir_to_the_footage_bucket():
     """footage-intake is the one skill that never writes `<run>/` — it speaks
     `<out_dir>` — so all three checks above are blind to it, and it could drift back
