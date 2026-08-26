@@ -117,10 +117,18 @@ def test_using_montage_defines_every_bucket():
 
     Each bucket has ONE spelling here on purpose: `<run>/reel` would be satisfied
     by the substring of `<run>/reels/`, so the reel row would pass without the
-    variant level ever being documented."""
+    variant level ever being documented.
+
+    The `reel` row goes further and names a FILE. `<run>/reels/<reel>/` is a string
+    prefix of the episodes, deliveries and build spellings, so any one of those three
+    would satisfy a bare-directory check for free — and a regression that deleted
+    every reel-level citation (EDL.json, SPEC.json, MUSIC.json, PACING.json,
+    draft.mp4, TITLES.json) while leaving the child buckets intact would pass
+    undetected. EDL.json is the citation to hold: it is the artifact the whole
+    conveyor is driven from."""
     from scripts.lib import runlayout
     spelling = {"footage": "<run>/footage/", "music": "<run>/music/",
-                "reel": "<run>/reels/<reel>/",
+                "reel": "<run>/reels/<reel>/EDL.json",
                 "episodes": "<run>/reels/<reel>/episodes/",
                 "deliveries": "<run>/reels/<reel>/deliveries/",
                 "build": "<run>/reels/<reel>/build/"}
@@ -128,3 +136,14 @@ def test_using_montage_defines_every_bucket():
     text = (SKILLS / "using-montage" / "SKILL.md").read_text()
     missing = sorted(b for b, sp in spelling.items() if sp not in text)
     assert missing == []
+
+
+def test_footage_intake_binds_its_out_dir_to_the_footage_bucket():
+    """footage-intake is the one skill that never writes `<run>/` — it speaks
+    `<out_dir>` — so all three checks above are blind to it, and it could drift back
+    to the run root with nothing noticing. Pointing intake's out_dir at the footage
+    bucket is also the WHOLE move for the 93 MB `.intake_cache/`, `cast_crops/` and
+    `cast_candidates.json`: `intake_cache._dir` derives them from that one argument
+    (design 2026-08-26 §3), so a wrong binding here silently relocates all of it."""
+    text = (SKILLS / "footage-intake" / "SKILL.md").read_text()
+    assert "<footage_root>/montage/footage" in text
