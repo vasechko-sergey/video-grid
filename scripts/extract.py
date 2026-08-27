@@ -25,9 +25,14 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
         # lutyuv, whose TV_LO/TV_SPAN are written for 16..235.
         # in_range=auto reads the source's own tag (and ffmpeg's yuvj=>full
         # default when it has none), so this CONVERTS the samples; -color_range
-        # writes the matching tag. Both halves are needed, and it is the same
-        # pair assembly._normalize already uses at concat — moved to where it can
-        # still save the grade instead of arriving after it.
+        # writes the matching tag. It is the same pair assembly._normalize already
+        # uses at concat — moved to where it can still save the grade instead of
+        # arriving after it. Both are kept because it is free and because that is
+        # the established spelling, NOT because both are required: measured
+        # 2026-08-27, either alone converts, byte-identically, and only omitting
+        # both reverts anything. The consequence is that no check over rendered
+        # pixels can notice one of them going missing or going wrong — the argv
+        # test in tests/lib/test_extract.py is the sole guard on each half.
         # The scale carries NO dimensions: resolution stays native because
         # reframe crops from native pixels (design §3). Measured byte-identical
         # on untagged, tv-tagged and 10-bit sources, so no golden moves.

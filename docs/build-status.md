@@ -12,6 +12,69 @@ _Last updated: 2026-08-25._
 
 ## Done
 
+- **The segment format contract — R2.0 + R2.3 DONE (2026-08-27)** —
+  [design](specs/2026-08-27-segment-range-contract-design.md),
+  [plan](plans/2026-08-27-segment-range-contract.md), branch
+  `feat/segment-range-contract`. Three changes: `extract` normalizes every
+  segment's colour range, `color.tone_arg` continues its shoulder past the top
+  knot instead of flattening, and `reframe.plan_render` refuses pixels whose
+  depth or range the colour maths cannot read.
+
+  **The cost, measured.** One common target through the real `tone_arg`: the
+  transfer misses by (−1.0, −1.0, **−1.5**) on a tv source and (−4.0, −2.0,
+  **−8.5**) on a pc one, against a `matchgrade.MATCH_EPS` of **4.0** — the
+  threshold that decides whether to correct at all. Normalizing the pc source at
+  extract lands it on the tv one's numbers exactly. **67 of the pool's 99 clips
+  are full-range**, so this was two thirds of the footage, not "the Canon". The
+  price is real and permanent: pc→tv at 8 bits is max 1 code, mean 0.141, 36 of
+  256 levels, paid on every render from now on. One code to remove eight and a
+  half. Byte-identical on everything already correct — untagged, tv-tagged and
+  10-bit sources all produce the same md5 — so no golden moved.
+
+  **Four surprises, and every one changed something.**
+
+  1. **The retro was wrong about the measurement side.** It listed
+     `color_measure.measure_profile` as a defect ("no range handling"). Measured,
+     `format=gray` reads the source's own tag and converts — DJI mean |Δ| **4.59**,
+     Canon **0.41** — so both cameras always arrived in one common full-range
+     domain. A "fix" there would have broken the one half that worked.
+  2. **The depth hole was in no backlog row at all.** `TV_LO`/`TV_SPAN` are
+     constants of bit depth as much as range. A real 10-bit clip from the pool
+     through `tone_arg` returns a plane with **99.26% of its pixels pinned to one
+     code** — destroyed, not shifted. The conveyor was safe only because
+     `extract` requests `-pix_fmt yuv420p`; a hand run of `reframe` over raw
+     footage was not, and now is.
+  3. **The guard caught the repo's own golden fixture on its first day.**
+     `tests/fixtures/golden_ride.mp4` is `yuvj420p`/pc, and four integration
+     files fed it straight into `reframe`/`process_episode` — a path production
+     does not have, since `extract` always sits in between. 12 failures and 5
+     errors, every one the same refusal. Fixed with a `golden_ride_segment`
+     fixture that converts the whole clip (not `extract.extract`, which seeks and
+     trims, and `golden_route.json` is sampled against this clip's timeline);
+     dims, fps, 95 frames and 1.584917s all identical either side.
+  4. **The design's "both halves are needed" was an overclaim, and a mutation row
+     refused to confirm it.** Measured: `scale=…:out_range=tv` alone, `-color_range
+     tv` alone, both together, and even a *wrong* `out_range=pc` beside a correct
+     tag all produce byte-identical output with the same `tv` tag; only omitting
+     **both** reverts. Both are kept — free, and the spelling `assembly._normalize`
+     already uses — but the consequence is recorded in the code: **no check over
+     rendered pixels can notice one half going missing, so the argv-level unit
+     test is the sole guard on each half.**
+
+  **Battery: 19 rows plus 11b, 21 selections.** Every row discriminates except
+  two, and both greens are explained — row 12 by the ffmpeg property above (closed
+  with an argv test that does go red) and row 19 by design, since no test can
+  defend its own boundary. No unexplained coverage hole. Two harness traps are
+  written up in the report and are worth carrying: **zsh does not word-split an
+  unquoted variable**, so a selection passed as `$SEL` reaches pytest as one
+  argument and the run prints `no tests ran in 0.00s` — which reads exactly like a
+  row that failed to discriminate; and **replacing an empty string prepends**, so
+  a restore that maps `""` back to a line inserts it at the top of the file. The
+  second broke two production files and silently invalidated three rows, and was
+  caught only by the mandated `git diff` check after every restore.
+
+  Suite: **3178 passed, 1 skipped**. R2.0 and R2.3 both closed; five rows filed.
+
 - **Retro of the first real run + 29 backlog rows DONE (2026-08-25, v0.2.2)** —
   `docs/retro/2026-08-25-first-real-run.md` (branch `docs/first-run-retro`). Six days,
   99 clips, 831 tool calls, 98 subagents, one delivered reel; written before the

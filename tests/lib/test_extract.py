@@ -87,3 +87,19 @@ def test_extract_normalizes_the_range_and_keeps_the_seek_order(monkeypatch, tmp_
     # replace it with a looser digit scan: `"scale=640:360:in_range=auto:out_range=tv"
     # .split("=")` yields no element for which `.isdigit()` is true, so a scan
     # like that reads as a guard and catches nothing.
+
+
+def test_extract_names_tv_not_pc_in_the_scale_filter(monkeypatch, tmp_path):
+    """Mutation battery row 12 (2026-08-27): `out_range=tv` -> `out_range=pc`, the
+    filter half now asking for the WRONG range while `-color_range tv` still asks
+    for the right one. Measured: on the shipped ffmpeg this stays byte-identical at
+    the pixel level — raw Y-plane min/max/mean identical (16/234/124.9 both ways) on
+    a real full-range ramp, because the explicit `-color_range tv` output tag makes
+    ffmpeg auto-insert a matching conversion that overrides a conflicting `out_range`
+    in the `-vf` chain. So a wrong value here, like a missing one (§4.1), is
+    invisible to any assertion over rendered bytes; only the argv can catch it."""
+    seen = {}
+    monkeypatch.setattr(extract.proc, "run", lambda cmd, **kw: seen.setdefault("cmd", cmd))
+    extract.extract("a.mp4", 1.0, 2.0, str(tmp_path / "o.mp4"))
+    vf = seen["cmd"][seen["cmd"].index("-vf") + 1]
+    assert "out_range=tv" in vf and "out_range=pc" not in vf
