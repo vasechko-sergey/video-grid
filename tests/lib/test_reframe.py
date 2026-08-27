@@ -190,7 +190,7 @@ def test_reframe_refuses_a_zoom_together_with_a_pan():
 def test_reframe_emits_a_zoompan_with_every_default_overridden(tmp_path, monkeypatch):
     cmds = []
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: cmds.append(cmd))
-    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0, "yuv420p", "tv"))
     route = tmp_path / "route.json"
     route.write_text(json.dumps([
         {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
@@ -211,7 +211,7 @@ def test_reframe_emits_a_zoompan_with_every_default_overridden(tmp_path, monkeyp
 
 def test_reframe_writes_the_rect_arrays_into_the_sidecar(tmp_path, monkeypatch):
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: None)
-    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0, "yuv420p", "tv"))
     route = tmp_path / "route.json"
     route.write_text(json.dumps([
         {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
@@ -230,7 +230,7 @@ def test_reframe_writes_the_rect_arrays_into_the_sidecar(tmp_path, monkeypatch):
 
 def test_reframe_without_a_zoom_writes_no_arrays(tmp_path, monkeypatch):
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: None)
-    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.0, "yuv420p", "tv"))
     route = tmp_path / "route.json"
     route.write_text(json.dumps([
         {"t": 0.0, "x": 1900.0, "y": 1080.0, "w": 200.0, "h": 400.0},
@@ -258,7 +258,7 @@ def test_plan_render_and_reframe_build_the_same_filter_args(tmp_path, monkeypatc
     the probe stops describing the render, which is the one thing it is for."""
     seen: list[list[str]] = []
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **kw: seen.append(cmd) or _fake_ok())
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "tv"))
     spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                        color_means=(110.0, 120.0, 130.0),
                        delivery=Delivery.from_spec("short_edge:540"),
@@ -271,7 +271,7 @@ def test_plan_render_and_reframe_build_the_same_filter_args(tmp_path, monkeypatc
 def test_with_tail_appends_after_the_chain(tmp_path, monkeypatch):
     """The sink filter lands at the END of the chain — design §3.1: ahead of the
     tail's fps= it silently emits one frame N times."""
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "tv"))
     spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                        color_means=(110.0, 120.0, 130.0),
                        delivery=Delivery.from_spec("short_edge:540"),
@@ -281,3 +281,50 @@ def test_with_tail_appends_after_the_chain(tmp_path, monkeypatch):
     assert tailed[:-1] == plan.filter_args[:-1]
     assert tailed[-1] == plan.filter_args[-1] + ",select='eq(n\\,3)'"
     assert tailed[-1].index("fps=") < tailed[-1].index("select=")
+
+
+def _guard_spec(**kw):
+    base = dict(composition="lead", grid="thirds", canvas=(9, 16),
+                color_means=(110.0, 120.0, 130.0),
+                delivery=Delivery.from_spec("short_edge:540"),
+                pan=PanSpec(start=0.0, end=0.2))
+    return ReframeSpec(**{**base, **kw})
+
+
+def test_plan_render_refuses_a_full_range_source(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe",
+                        lambda src: (1920, 1080, 30.0, 2.0, "yuvj420p", "pc"))
+    with pytest.raises(ValueError, match="pc"):
+        reframe.plan_render(_guard_spec(), "src.mp4", None)
+
+
+def test_plan_render_refuses_a_ten_bit_source(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe",
+                        lambda src: (1920, 1080, 30.0, 2.0, "yuv420p10le", "tv"))
+    with pytest.raises(ValueError, match="10 bits"):
+        reframe.plan_render(_guard_spec(), "src.mp4", None)
+
+
+def test_plan_render_accepts_an_untagged_eight_bit_source(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe",
+                        lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "unknown"))
+    assert reframe.plan_render(_guard_spec(), "src.mp4", None).fps == 30.0
+
+
+def test_the_guard_runs_even_with_no_colour_knob_set(monkeypatch):
+    """The contract is about the segment, not about whether this episode happens
+    to grade: every knob in grade_chain reads the same plane, and check_episode
+    compares episodes to each other, so a pc episode is the wrong pixels even
+    ungraded."""
+    monkeypatch.setattr(reframe, "_probe",
+                        lambda src: (1920, 1080, 30.0, 2.0, "yuvj420p", "pc"))
+    spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
+                       color_means=(105, 122, 137),   # required by the dataclass (no
+                                                       # default) — left at the file's own
+                                                       # generic value; no OTHER grading
+                                                       # knob (tone_src/tone_dst/color_correct/
+                                                       # white_balance/...) is set
+                       delivery=Delivery.from_spec("short_edge:540"),
+                       pan=PanSpec(start=0.0, end=0.2))
+    with pytest.raises(ValueError, match="pc"):
+        reframe.plan_render(spec, "src.mp4", None)

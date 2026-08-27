@@ -202,17 +202,23 @@ def _xexpr(path: list[int], times: list[float], var: str = "t") -> str:
     return expr
 
 
-def _probe(src: str) -> tuple[int, int, float, float]:
-    """(width, height, fps, duration) — one ffprobe call, four numbers.
+def _probe(src: str) -> tuple[int, int, float, float, str, str]:
+    """(width, height, fps, duration, pix_fmt, color_range) — one ffprobe call.
 
     The duration is load-bearing engine input, not diagnostics: the `solid` filler
     bounds its synthesized background with `color=:d=<duration>` (design §4). Both
     the stream's and the container's duration are asked for in the same call, since
     some containers carry only the latter; the stream's is preferred.
+
+    pix_fmt and color_range ride the SAME call (design 2026-08-27 §4.3) — they are
+    what plan_render's colour guard reads, and asking for them here costs nothing.
+    color_range is "unknown" when the stream carries no tag, the same word
+    assembly.probe_stream uses for the same condition.
     """
     out = proc.run(
         [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height,avg_frame_rate,duration:format=duration",
+         "-show_entries",
+         "stream=width,height,avg_frame_rate,duration,pix_fmt,color_range:format=duration",
          "-of", "json", src], text=True)
     probe = json.loads(out.stdout)
     s = probe["streams"][0]
@@ -235,7 +241,8 @@ def _probe(src: str) -> tuple[int, int, float, float]:
             f"{src}: no usable duration (ffprobe gave {raw!r}) — the file may be "
             "truncated, durationless or streamed. reframe needs the source length to "
             "bound a solid background's synthesized `color` source; re-encode it first")
-    return int(s["width"]), int(s["height"]), fps, dur
+    return (int(s["width"]), int(s["height"]), fps, dur,
+            s.get("pix_fmt") or "", s.get("color_range") or "unknown")
 
 
 def _background_args(rl: ResolvedLayout, fps: float, dur: float) -> tuple[str, str, str]:
@@ -451,7 +458,13 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
             "the crop), or keep the pan and drop the zoom")
     # NEVER assume dims/fps: real footage is 4K/60. `dur` bounds a solid filler's
     # synthesized background so the render is exactly as long as the source (§4).
-    src_w, src_h, fps, dur = _probe(src)
+    src_w, src_h, fps, dur, pix_fmt, color_range = _probe(src)
+    # Before any geometry: the colour maths downstream is written for an 8-bit
+    # limited luma plane, and both halves of that fail SILENTLY when violated
+    # (design 2026-08-27 §4.3). Refused here rather than beside the grade because
+    # every knob reads the same plane and check_episode compares episodes to each
+    # other — an ungraded pc episode is still the wrong pixels.
+    color.refuse_ungradeable_plane(pix_fmt, color_range, src)
     rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
     crop_ws = crop_hs = crop_ys = None    # only a zoom fills all three. Under a pan (no route
                                           # to sample) all three stay None; under a plain

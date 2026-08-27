@@ -132,8 +132,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
 
     # probe the source ONCE and thread the real dims through the checks (contract
     # fix). This runs BEFORE tracking so a manifest the layout cannot satisfy
-    # fails in milliseconds, not after YOLO has walked the whole segment.
-    src_w, src_h, _fps, _dur = reframe._probe(m.segment)
+    # fails in milliseconds, not after YOLO has walked the whole segment. _probe
+    # now also reports pix_fmt/color_range (design 2026-08-27 §4.3); this preflight
+    # has no use for them — the colour guard lives in plan_render, exercised later
+    # when the real render runs — so they are unpacked and discarded, not read.
+    src_w, src_h, _fps, _dur, _pix_fmt, _color_range = reframe._probe(m.segment)
 
     # the layout is editorial intent, not a retry parameter: it does not change
     # between attempts, so build it once. validate() already proved it constructs.

@@ -136,7 +136,7 @@ def test_reframe_delivery_dims_native(monkeypatch, tmp_path):
     # native delivery on a 4K source → crop-native even dims, NOT 1080x1920
     route = [models.RoutePoint(i / 30, 1900 + i * 5, 1080, 200, 480) for i in range(10)]
     models.route_to_json(route, tmp_path / "r.json")
-    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.5))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (3840, 2160, 30.0, 2.5, "yuv420p", "tv"))
     captured = {}
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: captured.setdefault("cmd", cmd))
     spec = models.ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
@@ -152,7 +152,7 @@ def test_probe_returns_the_source_duration(sample_clip):
     # the solid filler bounds its synthesized background with `color=:d=<dur>`, so
     # the duration is now load-bearing engine input, not diagnostics. sample_clip is
     # 1920x1080 @ 30fps, 3.0s (tests/conftest.py).
-    src_w, src_h, fps, dur = reframe._probe(str(sample_clip))
+    src_w, src_h, fps, dur, _pix_fmt, _color_range = reframe._probe(str(sample_clip))
     assert (src_w, src_h) == (1920, 1080)
     assert fps == pytest.approx(30.0, abs=0.01)
     assert dur == pytest.approx(3.0, abs=0.05)
@@ -181,7 +181,7 @@ def test_probe_prefers_the_stream_duration_over_the_container(monkeypatch):
         stdout = ('{"streams": [{"width": 1280, "height": 720, "avg_frame_rate": "30/1", '
                   '"duration": "5.0"}], "format": {"duration": "9.0"}}')
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: _Out())
-    _, _, _, dur = reframe._probe("whatever.mp4")
+    _, _, _, dur, _, _ = reframe._probe("whatever.mp4")
     assert dur == pytest.approx(5.0)
 
 
@@ -211,7 +211,7 @@ def test_reframe_bounds_every_layout_to_the_source_length(tmp_path, monkeypatch,
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 3.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 3.0, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -245,7 +245,7 @@ def test_solid_and_blur_are_duration_symmetric_with_the_source(sample_clip, tmp_
     test would pass even with `-t` deleted (design §8) — an integer-rate source is
     the only kind that can see this class of failure at all.
     """
-    src_w, src_h, fps, src_probe_dur = reframe._probe(str(sample_clip))
+    src_w, src_h, fps, src_probe_dur, _pix_fmt, _color_range = reframe._probe(str(sample_clip))
     route_p = tmp_path / "route.json"
     models.route_to_json([models.RoutePoint(t=i / fps, x=900.0, y=540.0, w=80.0, h=200.0)
                           for i in range(int(src_probe_dur * fps))], route_p)
@@ -557,7 +557,7 @@ def test_reframe_applies_color_correct_onto_the_grade(tmp_path, monkeypatch):
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -571,7 +571,7 @@ def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -589,7 +589,7 @@ def test_reframe_forwards_highlight_red_onto_the_grade(tmp_path, monkeypatch):
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -605,7 +605,7 @@ def test_reframe_without_highlight_red_never_emits_the_red_shoulder_curve(tmp_pa
     route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
     rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
     cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                               color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
@@ -1046,7 +1046,7 @@ def test_reframe_records_that_its_source_was_stabilized(monkeypatch, tmp_path):
     by the caller that did. It flows to the sidecar and nowhere else; a
     ReframeSpec.stabilize would have been an instruction reframe cannot carry out
     (design 2026-07-20 §6.2)."""
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0))
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "tv"))
     monkeypatch.setattr(reframe.proc, "run", lambda cmd, **k: None)
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(1080, 1920),
                               color_means=(105, 122, 137), delivery=Delivery())
