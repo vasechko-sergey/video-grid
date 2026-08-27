@@ -1,5 +1,7 @@
 """Soft normalize-to-middle color (spec §10). lutrgb is banned; use mixer."""
 
+import re
+
 TARGET = (105, 122, 137)   # R, G, B middle tone
 STRENGTH = 0.55
 LO, HI = 0.7, 1.5
@@ -223,6 +225,66 @@ TONE_TOP_SLOPE = 0.35      # how the curve continues ABOVE the shoulder anchor: 
 # so the conversion is ours at both ends, or every anchor lands somewhere else with
 # nothing failing. Pinned by tests against a real encode, not against these literals.
 TV_LO, TV_SPAN = 16.0, 219.0
+
+_DEPTH_SUFFIX = re.compile(r"(\d+)(le|be)$")
+
+
+def plane_depth(pix_fmt: str) -> int:
+    """Bits per sample carried by an ffmpeg pixel-format name.
+
+    Read from the NAME, deliberately. ffprobe also reports `bits_per_raw_sample`
+    and it is not trustworthy here: measured 2026-08-27 against the footage this
+    slice was designed on, the one real 10-bit clip in the pool
+    (`DJI_20260625083848_0548_D.MP4`, HEVC) reports `N/A` for that field while
+    its `pix_fmt` says `yuv420p10le` — the exact file the guard exists to catch
+    is the file that field cannot describe.
+
+    An 8-bit format carries no depth marker at all (`yuv420p`, `yuvj420p`,
+    `nv12`, `gray`), so the ABSENCE of one is eight bits, not an unknown.
+    """
+    m = _DEPTH_SUFFIX.search(pix_fmt)
+    return int(m.group(1)) if m else 8
+
+
+def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
+    """Refuse pixels this module's colour maths cannot read (design §4.3).
+
+    TV_LO/TV_SPAN are constants of BOTH bit depth and range — together they say
+    "the stored luma plane runs 16..235 in eight bits" — and every knob in
+    grade_chain is written against that plane. Neither half is negotiable, and
+    both fail SILENTLY when violated:
+
+      * wrong range: measured, a full-range source lands 8.5 luma codes from the
+        target it was given, against a MATCH_EPS of 4.0;
+      * wrong depth: measured on a real 10-bit clip, tone_arg returns a plane
+        with 99.26% of its pixels pinned to a single code.
+
+    Only these two properties. Codec and resolution are nobody's assumption here,
+    and refusing on them would block legitimate hand runs for no reason.
+
+    An "unknown" range PASSES: untagged is the mp4/h264 convention for limited
+    and assembly.matches already reads it that way. A full-range file that lost
+    its tag is therefore still misread — a known gap, design §7, not an oversight.
+    """
+    depth = plane_depth(pix_fmt)
+    if depth != 8:
+        raise ValueError(
+            f"{src}: pixel format {pix_fmt} carries {depth} bits per sample, and this "
+            f"pipeline's colour maths is written for 8 (TV_LO={TV_LO:.0f}, "
+            f"TV_SPAN={TV_SPAN:.0f} describe an 8-bit limited luma plane). Rendering it "
+            f"anyway does not shift the picture, it destroys it — measured on a real "
+            f"10-bit clip, 99% of the pixels come back on one code. Cut this source "
+            f"through scripts.extract first: it re-encodes to 8-bit yuv420p at the "
+            f"source's own resolution.")
+    if color_range == "pc":
+        raise ValueError(
+            f"{src}: color_range is pc (full, 0-255) and this pipeline's colour maths "
+            f"is written for tv (limited, {TV_LO:.0f}-{TV_LO + TV_SPAN:.0f}). The grade "
+            f"would be evaluated at the wrong place on its own curve, and everything "
+            f"above code {TV_LO + TV_SPAN:.0f} would collapse onto one value — measured, "
+            f"8.5 luma codes off target against a MATCH_EPS of 4.0, with nothing "
+            f"failing. Cut this source through scripts.extract first: it normalizes "
+            f"the range.")
 
 
 def _segments(src: tuple[float, float, float],

@@ -332,3 +332,50 @@ def test_tone_arg_still_refuses_the_same_bad_anchors():
     for bad in ((150.0, 90.0, 10.0), (10.0, 10.5, 150.0)):
         with pytest.raises(ValueError):
             color.tone_arg(bad, (20.0, 110.0, 210.0))
+
+
+@pytest.mark.parametrize("pix_fmt, depth", [
+    ("yuv420p", 8), ("yuvj420p", 8), ("yuv422p", 8), ("yuv444p", 8), ("nv12", 8),
+    ("gray", 8),
+    ("yuv420p10le", 10), ("yuv420p10be", 10), ("p010le", 10),
+    ("yuv444p12le", 12), ("yuv420p16le", 16),
+])
+def test_plane_depth_reads_the_pixel_format_name(pix_fmt, depth):
+    assert color.plane_depth(pix_fmt) == depth
+
+
+def test_an_eight_bit_limited_plane_is_gradeable():
+    assert color.refuse_ungradeable_plane("yuv420p", "tv", "seg.mp4") is None
+
+
+def test_an_untagged_eight_bit_plane_is_gradeable():
+    # "unknown" is the mp4/h264 convention for limited and assembly.matches
+    # already reads it that way. A full-range file that lost its tag is
+    # therefore still misread — a KNOWN gap (design §7), pinned here so nobody
+    # later "fixes" it into a refusal that would reject every fixture in this
+    # repo and every episode reframe writes.
+    assert color.refuse_ungradeable_plane("yuv420p", "unknown", "seg.mp4") is None
+
+
+def test_a_full_range_plane_is_refused_and_names_extract():
+    with pytest.raises(ValueError) as e:
+        color.refuse_ungradeable_plane("yuvj420p", "pc", "/f/MVI_3678.MP4")
+    msg = str(e.value)
+    assert "pc" in msg and "/f/MVI_3678.MP4" in msg
+    assert "extract" in msg          # the remedy, not just the complaint
+
+
+def test_a_ten_bit_plane_is_refused_and_names_the_depth():
+    with pytest.raises(ValueError) as e:
+        color.refuse_ungradeable_plane("yuv420p10le", "tv", "/f/DJI_0548.MP4")
+    msg = str(e.value)
+    assert "10 bits" in msg and "yuv420p10le" in msg
+    assert "extract" in msg
+
+
+def test_depth_is_reported_before_range_when_both_are_wrong():
+    # A 10-bit full-range source is broken twice over, and the depth is the worse
+    # of the two — measured, 99.26% of pixels come back on one code — so it is
+    # the half the message must lead with.
+    with pytest.raises(ValueError, match="10 bits"):
+        color.refuse_ungradeable_plane("yuv420p10le", "pc", "x.mp4")
