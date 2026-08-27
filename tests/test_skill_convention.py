@@ -147,7 +147,7 @@ _RUN_PATH_FLAGS = ("--edl", "--footage", "--selection", "--project", "--cast",
                    "--scratch-dir", "--findings", "--reel-path", "--out")
 _BARE_ARG = re.compile(
     r"(" + "|".join(re.escape(f) for f in _RUN_PATH_FLAGS) + r")\s+"
-    r"(?!<)([A-Za-z_][A-Za-z0-9_]*\.(?:json|md|mp4|png|jpg)|\.)(?:\s|$)")
+    r"(?!<)([A-Za-z_][A-Za-z0-9_./-]*\.(?:json|md|mp4|png|jpg)|\.)(?:\s|`|$)")
 
 
 def test_no_skill_example_passes_a_bare_path_into_the_run():

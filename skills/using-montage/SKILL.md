@@ -433,7 +433,7 @@ The user speaks free text; you pass **explicit args** — the user never types f
 | "reel"/"shorts"/"9:16" · "youtube"/"16:9" · "square"/"1:1" · "cinema"/"21:9" | `project_init --purpose` |
 | "4k" · "1080"/"social" · "native"/(unstated) | `project_init --quality` |
 | a reel idea / mood / hook / ending / style-lean | reel-brief SKILL -> SPEC.md |
-| a track path / "with music" | `beats ... --out MUSIC.json` -> edit-plan `music` |
+| a track path / "with music" | `beats ... --out <run>/reels/<reel>/MUSIC.json` -> edit-plan `music` |
 | "no music" / "без музыки" | leave `MUSIC.json` unset (silent reel) |
 | "classic" <-> "trend" | edit-plan editorial guidance |
 
