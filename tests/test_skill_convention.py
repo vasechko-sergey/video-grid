@@ -150,6 +150,26 @@ _BARE_ARG = re.compile(
     r"(?!<)([A-Za-z_][A-Za-z0-9_./-]*\.(?:json|md|mp4|png|jpg)|\.)(?:\s|`|$)")
 
 
+def test_the_bare_path_pattern_matches_the_shapes_it_was_widened_for():
+    """The check below only ever runs against the CURRENT skills tree, so once that
+    tree is clean the pattern itself is unpinned: reverting the widening while keeping
+    the text fix leaves the suite green. Measured 2026-08-27 by the final re-review —
+    the same "fix with no discriminating test" shape the fix wave existed to close.
+
+    The backtick case is not hypothetical: `--out MUSIC.json` sat inside a markdown
+    table cell in using-montage, terminated by a backtick rather than whitespace, and
+    the original pattern walked past it."""
+    hits = lambda line: [m.group(0).strip() for m in _BARE_ARG.finditer(line)]
+    assert hits("| a track | `beats ... --out MUSIC.json` -> next |")     # backtick
+    assert hits("  --project project.json \\")                            # whitespace
+    assert hits("  --out-dir . \\")                                       # bare dot
+    assert hits("  --footage some/dir/FOOTAGE.json ")                     # has a dir part
+    # and the shapes it must NOT flag
+    assert not hits("  --footage <run>/footage/FOOTAGE.json \\")          # already qualified
+    assert not hits("  --source MVI_3739.mp4 \\")   # a real bare filename, by design
+    assert not hits("  `--pacing --music` together")                      # flag, not a value
+
+
 def test_no_skill_example_passes_a_bare_path_into_the_run():
     """A flag followed by a bare filename, or `--out-dir .`, worked while a run was
     one flat directory. It cannot work now: an example's inputs span the run root,

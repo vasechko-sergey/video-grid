@@ -133,8 +133,15 @@ def wipe_build(work_dir: str, out_dir: str) -> list[str] | None:
 
     The predicate is STRUCTURAL, never name-based: under the layout `out_dir` is
     reels/<name>/episodes and its sibling is reels/<name>/build, so a canonical run
-    always matches and nothing else can. "The directory is named build" would make
-    a hand-driven `--work-dir ~/build` a grenade (design §6).
+    always matches. "The directory is named build" would make a hand-driven
+    `--work-dir ~/build` a grenade (design §6).
+
+    It is NOT unique to the canonical run, and this docstring claimed it was until
+    2026-08-27. The predicate reads "work_dir is out_dir's sibling named build" — it
+    never checks reels/ or episodes — so `--work-dir <X>/build --out-dir <X>/notes`
+    matches too. What bounds it is that the directory wiped is always the one the
+    caller itself nominated as scratch, plus edl_to_reel's refusal of
+    `work_dir == out_dir`, which was the one arrangement where this was destructive.
     """
     work = Path(work_dir).resolve()
     if work != Path(out_dir).resolve().parent / "build":
