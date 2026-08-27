@@ -1212,7 +1212,7 @@ git commit -m "docs: the nine skills move onto the lifetime layout"
 
 Every row below is a **step, not a suggestion**. For each: apply the mutation, run the named command, confirm it goes RED, then restore. Run the whole battery under `PYTHONDONTWRITEBYTECODE=1` — a one-byte edit can match the previous file's size and mtime-second, and CPython then serves the stale `.pyc`.
 
-- [ ] **Step 1: Run every row**
+- [x] **Step 1: Run every row**
 
 | # | Mutation | Command | Must go RED because |
 |---|---|---|---|
@@ -1239,8 +1239,13 @@ Every row below is a **step, not a suggestion**. For each: apply the mutation, r
 | 19 | `_wipe_scratch` stays silent on the non-canonical branch | `pytest tests/lib/test_edl_to_reel.py -q` | `test_phase_one_leaves_a_hand_driven_scratch_alone_and_says_so` |
 | 20 | `skills/edit-plan/SKILL.md` gets one `<run>/EDL.json` back | `pytest tests/test_skill_convention.py -q` | `test_no_skill_spells_a_stage_artifact_outside_its_bucket` |
 | 21 | `skills/using-montage/SKILL.md` loses the `<run>/footage` line | `pytest tests/test_skill_convention.py -q` | `test_using_montage_defines_every_bucket` |
+| 22 | `skills/edit-plan/SKILL.md`'s `--out-dir <run>/reels/<reel>` becomes `--out-dir .` | `pytest tests/test_skill_convention.py -q` | `test_no_skill_example_passes_a_bare_path_into_the_run` — a check added during Task 5's fix round, for the class the other three cannot see: they look for a WRONG `<run>/` prefix, and a bare path has none |
+| 23 | `skills/footage-intake/SKILL.md`'s `<out_dir>` binding points at the run root | `pytest tests/test_skill_convention.py -q` | `test_footage_intake_binds_its_out_dir_to_the_footage_bucket` — that file never writes `<run>/`, so every other check is blind to it |
+| 24 | the four `<run>/reels/<reel>/EDL.json` citations in `using-montage` are blanked, child buckets left intact | `pytest tests/test_skill_convention.py -q` | `test_using_montage_defines_every_bucket` — before Task 5's fix the `reel` row was a bare directory, a string PREFIX of the episodes/deliveries/build rows, so any one of them satisfied it for free |
 
-- [ ] **Step 2: Close every hole**
+**Run 2026-08-27, controller-executed under `PYTHONDONTWRITEBYTECODE=1`: 26 mutations, 26 RED, zero holes.** Each row was caught by the test named for it; rows 18b and 18c produced disjoint failing sets, so the two `build_reel` call sites are independently covered. Row 7's conditional does not apply — the `Stage.bucket` default IS pinned, by `test_stage_accepts_good`.
+
+- [x] **Step 2: Close every hole**
 
 A row that does not go RED is a coverage hole, never a row to soften. Write the missing test, confirm it discriminates by re-applying the mutation, and record it in the Done entry.
 
