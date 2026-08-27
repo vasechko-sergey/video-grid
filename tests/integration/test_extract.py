@@ -132,3 +132,26 @@ def test_normalizing_leaves_the_resolution_alone(sample_clip, tmp_path):
     out = tmp_path / "seg.mp4"
     extract.extract(src=str(sample_clip), start=0.5, dur=1.0, out=str(out))
     assert (_stream(out, "width"), _stream(out, "height")) == (1920, 1080)
+
+
+@pytest.mark.integration
+def test_the_golden_fixture_is_raw_footage_and_its_segment_is_not(golden_ride_segment):
+    """The committed golden fixture is genuinely full-range camera footage, and
+    that is why reframe cannot be handed it directly. If someone ever normalizes
+    the committed file in place, this test says so out loud rather than letting
+    `golden_ride_segment` quietly become a no-op copy."""
+    raw = Path(__file__).parent.parent / "fixtures" / "golden_ride.mp4"
+    assert (_stream(raw, "pix_fmt"), _stream(raw, "color_range")) == ("yuvj420p", "pc")
+    assert (_stream(golden_ride_segment, "pix_fmt"),
+            _stream(golden_ride_segment, "color_range")) == ("yuv420p", "tv")
+
+
+@pytest.mark.integration
+def test_normalising_the_golden_fixture_preserves_its_timeline(golden_ride_segment):
+    """golden_route.json is sampled against this clip's own timeline, so the
+    normalization must move the range and nothing else. Measured: 1280x720,
+    60000/1001, 95 frames, 1.584917s — identical on both sides."""
+    raw = Path(__file__).parent.parent / "fixtures" / "golden_ride.mp4"
+    for field in ("width", "height", "r_frame_rate"):
+        assert _stream(raw, field) == _stream(golden_ride_segment, field), field
+    assert abs(_duration(raw) - _duration(golden_ride_segment)) < 0.001

@@ -491,9 +491,9 @@ FIX = Path(__file__).parent.parent / "fixtures"
 
 
 @pytest.mark.integration
-def test_golden_ride_through_orchestrator(tmp_path):
+def test_golden_ride_through_orchestrator(tmp_path, golden_ride_segment):
     # real 59.94fps clip + frozen route → the whole orchestrator, real ffmpeg
-    manifest = dict(segment=str(FIX / "golden_ride.mp4"),
+    manifest = dict(segment=str(golden_ride_segment),
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16],
                     target_dur=1.58,   # golden clip is ~1.585s; length check tol is ±0.5s
@@ -552,12 +552,12 @@ def test_project_from_json_path(monkeypatch, tmp_path):
 
 
 @pytest.mark.integration
-def test_project_native_delivery_end_to_end(tmp_path):
+def test_project_native_delivery_end_to_end(tmp_path, golden_ride_segment):
     # a reel (9:16) project with NATIVE delivery + an episode omitting canvas/delivery →
     # inherits → the golden ride renders at the source's native 9:16 crop, not a pinned
     # 1080×1920. Proves the project front-door drives the engine end-to-end through real ffmpeg.
     cfg = pj.resolve_project("reel")                    # (9,16), native
-    manifest = dict(segment=str(FIX / "golden_ride.mp4"), out_path=str(tmp_path / "ep.mp4"),
+    manifest = dict(segment=str(golden_ride_segment), out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", target_dur=1.58)   # no canvas/delivery
     result = pe.process_episode(manifest, project_dir=str(tmp_path),
                                 route_path=str(FIX / "golden_route.json"), project=cfg)

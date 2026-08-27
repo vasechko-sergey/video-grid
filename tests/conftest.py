@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from scripts.lib import ffbin, proc
@@ -139,6 +141,41 @@ def tenbit_clip(tmp_path_factory):
               "-vf", "format=gray,geq=lum='X*255/W',format=yuv420p10le",
               "-c:v", "libx264", "-crf", "18", "-preset", "medium",
               "-pix_fmt", "yuv420p10le", str(out)])
+    return out
+
+
+@pytest.fixture(scope="session")
+def golden_ride_segment(tmp_path_factory):
+    """`golden_ride.mp4` as a SEGMENT — the shape reframe actually consumes.
+
+    The committed fixture is raw camera footage: `yuvj420p` / `color_range=pc`.
+    In production nothing hands raw footage to reframe — `extract` cuts it into a
+    segment first, and since 2026-08-27 that segment is limited-range by
+    contract. Four integration files were feeding the raw file straight in, which
+    is why `color.refuse_ungradeable_plane` refuses them: they were exercising a
+    path production does not have.
+
+    NOT built with `extract.extract`, deliberately: that seeks and trims, and
+    `golden_route.json` is sampled against this clip's own timeline. This runs
+    the identical range conversion over the WHOLE clip instead. Measured: dims
+    1280x720, fps 60000/1001, 95 frames and duration 1.584917 are all bit-for-bit
+    unchanged, so the route still applies; only the range moves, pc -> tv.
+
+    All three arguments are load-bearing. `-pix_fmt yuv420p` alone does not
+    convert (libx264 keeps full range for a full-range input); `scale=out_range=tv`
+    alone does not either when the output format is `yuvj420p`, because that
+    format *means* full range and wins. Measured both ways while writing this.
+    """
+    try:
+        binary = ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
+    src = Path(__file__).parent / "fixtures" / "golden_ride.mp4"
+    out = tmp_path_factory.mktemp("media") / "golden_ride_segment.mp4"
+    proc.run([binary, "-y", "-i", str(src),
+              "-vf", "scale=in_range=auto:out_range=tv", "-color_range", "tv",
+              "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+              "-pix_fmt", "yuv420p", "-an", str(out)])
     return out
 
 

@@ -7,8 +7,8 @@ from scripts.lib import models
 FIX = Path(__file__).parent.parent / "fixtures"
 
 @pytest.mark.integration
-def test_golden_ride_pipeline(tmp_path):
-    src = FIX / "golden_ride.mp4"
+def test_golden_ride_pipeline(tmp_path, golden_ride_segment):
+    src = golden_ride_segment
     route = json.loads((FIX / "golden_route.json").read_text())
     rp = tmp_path / "route.json"; rp.write_text(json.dumps(route))
     ep = tmp_path / "ep.mp4"; pp = tmp_path / "path.json"

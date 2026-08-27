@@ -54,7 +54,7 @@ def _pixel(path, x, y):
     return tuple(out.stdout[:3])
 
 
-def _render(tmp_path, name, **layout_kw):
+def _render(tmp_path, name, src, **layout_kw):
     """fit + crop_aspect='source' render of the golden ride; hand back the clip
     path. Shared by the solid-pad pixel proof below, which renders the same
     layout under two fillers and needs both clips to compare pixels."""
@@ -62,11 +62,11 @@ def _render(tmp_path, name, **layout_kw):
     spec = ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
                        color_means=COLOR, delivery=NATIVE,
                        layout=LayoutSpec(mode="fit", crop_aspect="source", **layout_kw))
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(tmp_path / f"{name}_path.json"))
+    reframe.reframe(spec, src, ROUTE, str(out), str(tmp_path / f"{name}_path.json"))
     return out
 
 
-def _raw_first_frame(tmp_path, name, **layout_kw):
+def _raw_first_frame(tmp_path, name, src, **layout_kw):
     """Render the same composite as `_render`, but intercept reframe's own ffmpeg
     command instead of letting it run, then re-execute the IDENTICAL `-i`/filter/
     `-t` arguments with the tail swapped for a single-frame rawvideo dump. Reuses
@@ -90,7 +90,7 @@ def _raw_first_frame(tmp_path, name, **layout_kw):
 
     reframe.proc.run = _capture
     try:
-        _render(tmp_path, name, **layout_kw)
+        _render(tmp_path, name, src, **layout_kw)
     finally:
         reframe.proc.run = real_run
     cmd = captured["cmd"]
@@ -110,13 +110,13 @@ def _raw_pixel(buf: bytes, width: int, x: int, y: int) -> tuple[int, int, int]:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_fit_on_the_golden_ride(tmp_path):
+def test_fit_on_the_golden_ride(tmp_path, golden_ride_segment):
     out = tmp_path / "fitblur.mp4"
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="break", grid="thirds", canvas=(9, 16),
                        color_means=COLOR, delivery=NATIVE,
                        layout=LayoutSpec(mode="fit", crop_aspect="source"))
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
+    reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(out), str(path_out))
     assert _dims(out) == (1280, 2276)          # subject native, background upscaled
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
     assert (meta.crop_w, meta.crop_h) == (1280, 720)
@@ -125,7 +125,7 @@ def test_fit_on_the_golden_ride(tmp_path):
 
 
 @pytest.mark.integration
-def test_solid_background_is_recorded_in_the_sidecar(tmp_path):
+def test_solid_background_is_recorded_in_the_sidecar(tmp_path, golden_ride_segment):
     # Coverage-hole check (Task 5 mutation check): dropping `background=rl.background`
     # from reframe's PathMeta(...) call left every test in the suite green, because
     # every one of them renders the field's own default (`blur`) — a from_dict that
@@ -138,13 +138,13 @@ def test_solid_background_is_recorded_in_the_sidecar(tmp_path):
                        color_means=COLOR, delivery=NATIVE,
                        layout=LayoutSpec(mode="fit", crop_aspect="source",
                                          background="solid"))
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
+    reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(out), str(path_out))
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
     assert meta.background == "solid"
 
 
 @pytest.mark.integration
-def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path):
+def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path, golden_ride_segment):
     # The filtergraph pins (unit tests) prove which string is emitted, and the
     # duration tests prove the render terminates at the right length. Neither
     # looks at a pixel. This does, on real bytes.
@@ -152,8 +152,8 @@ def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path):
     # The content rect for a fit + crop_aspect="source" render of the golden
     # ride is (0, 778, 1280, 720) (test_fit_on_the_golden_ride above), so
     # y < 778 and y >= 1498 are pad.
-    solid = _render(tmp_path, "solid", background="solid", background_color="red")
-    blurred = _render(tmp_path, "blurred", background="blur")
+    solid = _render(tmp_path, "solid", str(golden_ride_segment), background="solid", background_color="red")
+    blurred = _render(tmp_path, "blurred", str(golden_ride_segment), background="blur")
 
     # 1. the pad is UNIFORM — three pad pixels across BOTH bars, one value. A
     #    blurred cover of a moving scene is not uniform; a solid pad is.
@@ -191,21 +191,21 @@ def test_the_solid_pad_is_uniform_and_the_colour_asked_for(tmp_path):
     #    ambiguity outright: the two composites differ only in the filler, so
     #    content pixels must match exactly, not approximately (confirmed by
     #    mutation: a simulated 2px overlay shift breaks this equality).
-    solid_raw = _raw_first_frame(tmp_path, "solid_raw", background="solid", background_color="red")
-    blurred_raw = _raw_first_frame(tmp_path, "blurred_raw", background="blur")
+    solid_raw = _raw_first_frame(tmp_path, "solid_raw", str(golden_ride_segment), background="solid", background_color="red")
+    blurred_raw = _raw_first_frame(tmp_path, "blurred_raw", str(golden_ride_segment), background="blur")
     raw_w = _dims(solid)[0]
     assert _raw_pixel(solid_raw, raw_w, 640, 1100) == _raw_pixel(blurred_raw, raw_w, 640, 1100)
 
 
 @pytest.mark.integration
-def test_insert_on_the_golden_ride(tmp_path):
+def test_insert_on_the_golden_ride(tmp_path, golden_ride_segment):
     out = tmp_path / "insert.mp4"
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                        color_means=COLOR, delivery=NATIVE,
                        layout=LayoutSpec(mode="insert", crop_aspect=(1, 1),
                                          rect=(0.05, 0.25, 0.90)))
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
+    reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(out), str(path_out))
     assert _dims(out) == (800, 1422)
     meta = PathMeta.from_json(path_out.with_suffix(".meta.json"))
     assert (meta.crop_w, meta.crop_h) == (720, 720)
@@ -214,14 +214,14 @@ def test_insert_on_the_golden_ride(tmp_path):
 
 
 @pytest.mark.integration
-def test_fill_on_the_golden_ride_is_unchanged(tmp_path):
+def test_fill_on_the_golden_ride_is_unchanged(tmp_path, golden_ride_segment):
     # The number this whole plan promised would not change. If this fails, the
     # fast path has drifted — stop, do not paper over it.
     out = tmp_path / "fill.mp4"
     path_out = tmp_path / "path.json"
     spec = ReframeSpec(composition="lead", grid="thirds", canvas=(9, 16),
                        color_means=COLOR, delivery=NATIVE)
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(path_out))
+    reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(out), str(path_out))
     assert _dims(out) == (404, 720)            # exactly what it produced before layouts
 
 
@@ -230,10 +230,10 @@ def test_fill_on_the_golden_ride_is_unchanged(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_fit_through_the_orchestrator(tmp_path):
+def test_fit_through_the_orchestrator(tmp_path, golden_ride_segment):
     # composition 'break': a 'lead' at zero freedom is refused by the manifest
     # gate, by design — there is nothing to lead with
-    manifest = dict(segment=RIDE,
+    manifest = dict(segment=str(golden_ride_segment),
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="break", grid="thirds", canvas=[9, 16],
                     target_dur=1.58,               # golden clip ~1.585s, tol +/-0.5s
@@ -252,7 +252,8 @@ def test_fit_through_the_orchestrator(tmp_path):
     (dict(rect=[0.05, 0.90, 0.90]), "overflows"),                # card runs off the bottom
     (dict(rect=[0.05, 0.25, 0.90], border_px=400), "narrower than its own two borders"),
 ])
-def test_a_layout_the_engine_cannot_build_comes_back_as_needs_input(tmp_path, extra, problem):
+def test_a_layout_the_engine_cannot_build_comes_back_as_needs_input(
+        tmp_path, extra, problem, golden_ride_segment):
     """manifest.validate() cannot judge these — every one depends on the source
     dims, which exist only after ffprobe. Before the preflight, each returned
     `validate() == []` and then escaped process_episode as a raw ValueError on
@@ -261,7 +262,7 @@ def test_a_layout_the_engine_cannot_build_comes_back_as_needs_input(tmp_path, ex
 
     Marked integration: the preflight runs after _probe, so ffprobe is called.
     """
-    manifest = dict(segment=RIDE, out_path=str(tmp_path / "ep.mp4"),
+    manifest = dict(segment=str(golden_ride_segment), out_path=str(tmp_path / "ep.mp4"),
                     composition="break", grid="thirds", canvas=[9, 16], target_dur=1.58,
                     layout="insert", crop_aspect=[1, 1], **extra)
     result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=ROUTE)
@@ -275,7 +276,10 @@ def test_lead_at_zero_freedom_never_reaches_the_engine(tmp_path):
     # UNMARKED on purpose: the soft manifest gate refuses this before ffprobe is
     # ever called, so no ffmpeg runs. (Confirmed: process_episode.validate()
     # returns needs_input before reframe._probe — see manifest.validate's
-    # lead/crop_scale/source gate.)
+    # lead/crop_scale/source gate.) Left on the raw RIDE constant, not
+    # golden_ride_segment, on purpose: the path is never opened (no ffprobe, no
+    # ffmpeg), so pulling in a session-scoped fixture that itself runs ffmpeg
+    # would cost this test its whole reason for being unmarked, for zero effect.
     manifest = dict(segment=RIDE,
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16], target_dur=1.58,
@@ -290,14 +294,14 @@ def test_lead_at_zero_freedom_never_reaches_the_engine(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_insert_through_the_orchestrator_insets_the_border(tmp_path):
+def test_insert_through_the_orchestrator_insets_the_border(tmp_path, golden_ride_segment):
     # A bordered insert: the 8px border sits OUTSIDE the content, so the sidecar's
     # rect_px — where the checks/storyboard place the hero marker — is the CONTENT
     # rect (48, 364, 704, 704), inset by the border, not the outer 720x720 card at
     # (40, 356). composition='lead' is a genuine numeric run: freedom is 560, so
     # on_line is a real check, and it passes on the golden route (ratio 1.0),
     # reaching mechanical_pass — verified before this assertion was written.
-    manifest = dict(segment=RIDE,
+    manifest = dict(segment=str(golden_ride_segment),
                     out_path=str(tmp_path / "ep.mp4"),
                     composition="lead", grid="thirds", canvas=[9, 16], target_dur=1.58,
                     layout="insert", crop_aspect=[1, 1], rect=[0.05, 0.25, 0.90],
@@ -322,16 +326,16 @@ def test_insert_through_the_orchestrator_insets_the_border(tmp_path):
     ((256, 1), LayoutSpec(mode="fit", crop_aspect=(256, 1)), NATIVE, (1280, 4)),
 ])
 def test_extreme_covers_render_at_the_capped_blur_radius(tmp_path, canvas, layout,
-                                                         delivery, expect):
+                                                         delivery, expect, golden_ride_segment):
     out = tmp_path / "cover.mp4"
     spec = ReframeSpec(composition="break", grid="thirds", canvas=canvas,
                        color_means=COLOR, delivery=delivery, layout=layout)
-    reframe.reframe(spec, RIDE, ROUTE, str(out), str(tmp_path / "path.json"))
+    reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(out), str(tmp_path / "path.json"))
     assert _dims(out) == expect            # it rendered at all — ffmpeg did not refuse
 
 
 @pytest.fixture(scope="module")
-def rendered(tmp_path_factory):
+def rendered(tmp_path_factory, golden_ride_segment):
     """Render each engine layout once against the golden ride and hand back its
     (clip_path, meta). Shared by the two parametrized tests below so ffmpeg runs
     three times, not six; module-scoped because the clips are read-only here."""
@@ -351,7 +355,7 @@ def rendered(tmp_path_factory):
     for name, spec in specs.items():
         clip = d / f"{name}.mp4"
         path_out = d / f"{name}.json"
-        reframe.reframe(spec, RIDE, ROUTE, str(clip), str(path_out))
+        reframe.reframe(spec, str(golden_ride_segment), ROUTE, str(clip), str(path_out))
         out[name] = (str(clip), PathMeta.from_json(path_out.with_suffix(".meta.json")))
     return out
 
