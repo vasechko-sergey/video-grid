@@ -254,6 +254,13 @@ def pc_ramp_clip(tmp_path_factory):
     stood before 2026-08-27 and graded to a common target, the achieved profile
     misses by (-38.1, 0.0, -9.0); cut through the normalizing extract it misses
     by (-2.1, -0.5, -1.0).
+
+    The bt709 description is NOT decoration. Measured 2026-08-27: ffmpeg writes
+    the VUI's range flag only when it also writes a colour description, so a
+    range-only source normalizes to `color_range=unknown` and no tag assertion
+    can discriminate. Real footage always carries the description — the Canon
+    this was designed against is bt709/bt709/bt709/pc — so a fixture without one
+    was the unrealistic thing, not the test.
     """
     try:
         binary = ffbin.ffmpeg()
@@ -263,7 +270,9 @@ def pc_ramp_clip(tmp_path_factory):
     proc.run([binary, "-y", "-f", "lavfi", "-i", "nullsrc=s=640x360:d=2:r=30",
               "-vf", "format=gray,geq=lum='X*255/W',format=yuvj420p",
               "-c:v", "libx264", "-crf", "18", "-preset", "medium",
-              "-color_range", "pc", "-pix_fmt", "yuvj420p", str(out)])
+              "-color_range", "pc", "-color_primaries", "bt709",
+              "-color_trc", "bt709", "-colorspace", "bt709",
+              "-pix_fmt", "yuvj420p", str(out)])
     return out
 
 
@@ -369,9 +378,12 @@ def test_normalizing_is_byte_identical_on_an_explicitly_limited_source(
     """Control 2 of 3: an untagged source and a tv-TAGGED source are different
     inputs to `in_range=auto`, and only one of them is covered above."""
     tagged = tmp_path / "tagged.mp4"
+    # the bt709 description is required for the tag to be written at all — see
+    # pc_ramp_clip's docstring; `-color_range tv` alone leaves ffprobe at "unknown"
     proc.run([ffbin.ffmpeg(), "-y", "-i", str(sample_clip), "-c:v", "libx264",
               "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
-              "-color_range", "tv", str(tagged)])
+              "-color_range", "tv", "-color_primaries", "bt709",
+              "-color_trc", "bt709", "-colorspace", "bt709", str(tagged)])
     assert _stream(tagged, "color_range") == "tv", "the control source is not tagged"
 
     old = extract_unnormalized(tagged, 0.5, 1.0, tmp_path / "old.mp4")
