@@ -52,7 +52,9 @@ The `using-montage` skill takes over: it sets the project aspect, scans the
 footage, plans the edit, renders and checks the reel, and stops at the three
 checkpoints (SPEC → EDL → final review) for your approval. Point it at any
 footage folder by absolute path; every artifact lands in one `montage/` folder
-beside the clips, and the finished reel in `montage/out/`.
+beside the clips, organised by lifetime: `footage/` survives every re-cut,
+`reels/<name>/` holds one cut, and the finished reel sits in
+`reels/<name>/deliveries/`, which nothing ever deletes.
 
 Individual stages have their own skills if you want to re-run just one
 (`project-init`, `footage-intake`, `edit-plan`, `process-episode`, `music-match`,

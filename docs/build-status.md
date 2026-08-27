@@ -4742,3 +4742,74 @@ resumability / Phase A.5 retry-state persistence.
   checks the magic on bytes so `_parse_trf`'s fail-loud promise is reachable at all,
   which it was not while `read_text()` raised `UnicodeDecodeError` several frames
   earlier. See design §12.
+
+- **Run-layout lifetimes — 0.3.0, the whole slice (2026-08-27)** — the run directory
+  gets an interior organised by lifetime: `footage/` (survives every re-cut),
+  `music/` (a download cache shared by every reel), `reels/<name>/` (one editorial
+  variant), and inside it `episodes/` (one render generation, digest-bound to its
+  verdicts), `deliveries/` (append-only, reachable by no wipe in the codebase) and
+  `build/` (wiped at the start of every phase-1 render). Suite **3136 passed / 1
+  skipped**.
+
+  The enforcement INVERTS 0.2.1's, and the reason is the design's §5: a refusal needs
+  a predicate for *wrong*, and a free-form `--out-dir` is not wrong — `edl_to_reel`
+  with a hand-authored EDL is a documented front door. So `montage.next_action`
+  resolves every stage artifact through `RunLayout` instead, and a file written
+  outside the layout simply does not count: the router reads the stage as not done
+  and runs it again into the canonical path, handing back that path in the same
+  answer. Two physical backstops sit under it rather than advice.
+
+  The wipe predicate is structural — `work_dir == out_dir.parent / "build"`, both
+  resolved — because "the directory is named `build`" makes a hand-driven
+  `--work-dir ~/build` a grenade. It fires in `_build_manifest` (phase 1's chokepoint,
+  shared by both public entries) strictly AFTER the two footage-root guards, and never
+  between the phases: `EPISODES.json` carries absolute paths into `build/ep{i}/` and
+  phase 2's retry loop reads the frozen route from there. Wiping loses nothing —
+  phase 1 has no resume.
+
+  `deliver._next_version` now reads `VERSIONS.md` with the file glob as a floor, and
+  takes a required keyword-only `scratch_dir`. On the real run, 14 delivering runs
+  left 2 log records because the workflow's remedy was `rm -rf out/` and `out/` held
+  both the log and the reels; three different reels shipped as `REEL_v1.mp4`.
+
+  **Every one of the six task reviews found a hole in the PROOF, never in the code.**
+  The `_touch` test helper took each artifact's location from the same `Stage.bucket`
+  field the assertion checked, so the suite proved self-consistency — moving
+  `episode-qc` to the wrong bucket left all 50 tests green where the pre-layout suite
+  had caught it with four failures. `is_legacy_run`'s three tests all short-circuited
+  on `and` before reaching the clause a mutant deleted. The log-parser fixture's
+  "prose" line never started with `- v`, so the anchored and unanchored regexes gave
+  the identical answer. Both `build_reel` call sites reverted to the episodes dir with
+  the suite still green. Three of these were rows the mutation battery had queued for
+  Task 6; they fired two to four tasks early, and the rows were re-aimed rather than
+  ticked.
+
+  A fourth machine check exists that the plan never anticipated. Sweeping every skill
+  for "a flag followed by a bare filename" — rather than re-reading the files the diff
+  touched — found three examples in `edit-plan` that the migration had walked past and
+  one whole skill, `reel-brief`, that had never been in its file list, both invisible
+  to the three checks that look for a WRONG `<run>/` prefix. A bare name has no prefix
+  at all.
+
+  Battery: **26 mutations, 26 red, zero holes**, under `PYTHONDONTWRITEBYTECODE=1`.
+  Rows 18b/18c produce disjoint failing sets, so the two `build_reel` call sites are
+  independently covered. Row 7's "if this does not go red, delete the default"
+  conditional did not fire — `Stage.bucket`'s default is pinned.
+
+  **Honest limits carried forward** (design §8, filed in the backlog): the inspector
+  binds only an agent that asks it; the wipe covers the canonical path only, which is
+  what keeps SP1's hand-driven door open; both version records can still be lost by
+  hand, since `deliveries/` is append-only by convention rather than by permission
+  bits; and nothing here makes a reel better — it stops the run losing the half worth
+  keeping. Deferred to the backlog: migrating the 2026-06 run (a path rewrite, not a
+  `mv` — `EPISODES.json` alone carries 57 absolute paths), per-reel
+  `CONSTRAINTS.json`, and a pre-existing stale-evidence path in `build_reel`'s
+  automatic retry loop that the layout review surfaced.
+
+  **Process note.** Task 5's review took twelve subagent dispatches, all killed by
+  machine sleeps or the harness watchdog. What made the difference was forcing
+  reviewers to `cat >>` each finding to disk the moment they reached it: agents that
+  buffered until a final message lost 100% of their work on every interruption, while
+  agents writing incrementally lost only the finding in flight. The residue was
+  finished controller-side and is marked as such in the ledger, so the final
+  whole-branch review knows which commits never got independent eyes.

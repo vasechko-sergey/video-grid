@@ -10,6 +10,28 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.3.0 — 2026-08-27
+
+- **The run directory gets an interior, organised by lifetime.** `montage/footage/`
+  survives every re-cut, `montage/reels/<name>/` holds one editorial variant, and
+  inside it `episodes/` is one render generation, `deliveries/` is append-only and
+  `build/` is wiped at the start of every render. Measured on the 2026-06 run:
+  **52.8 %** of 1119 MB was scratch nothing had ever deleted — 17 `work/ep*`
+  directories for an 8-episode reel — while the **16.0 %** that cannot be rebuilt
+  lived in the one directory the workflow `rm -rf`'d **47 times**.
+- **Version numbering survives.** `deliver` reads `VERSIONS.md` instead of counting
+  surviving files, so an archived or deleted reel no longer renumbers the next one —
+  three different reels had shipped as `REEL_v1.mp4`. Its scratch (the vignette mask,
+  the title sidecars) now takes an explicit `--scratch-dir` and never lands beside
+  the deliveries.
+- **A second cut is a directory, not a filename suffix.** `--reel <name>` forks the
+  120 KB editorial layer and shares the 194 MB footage layer, retiring `MUSIC_A/B/alt`
+  and `pacing_A/B`.
+- **`montage status` takes `--reel` in place of `--out-dir`** and returns each stage's
+  resolved path, the whole layout, the reels that exist, and whether the run predates
+  this layout. That resolution is also the enforcement: an artifact written outside
+  the layout is not seen, so the router runs its stage again into the canonical path.
+
 ## 0.2.2 — 2026-08-25
 
 - **Retro of the first real run** — six days, 99 clips, one delivered reel — written
