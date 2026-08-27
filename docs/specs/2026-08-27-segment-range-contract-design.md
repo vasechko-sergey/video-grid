@@ -160,9 +160,23 @@ route (2026-07-20 §1).
 Add `-vf "scale=in_range=auto:out_range=tv"` and `-color_range tv`. `in_range=auto`
 reads the source's own tag (and ffmpeg's yuvj⇒full default when it has none), so
 this **converts samples** rather than relabelling them; `-color_range` writes the
-matching tag. Both halves are needed, and this is the identical recipe
-`assembly._normalize` already uses at concat — moved to where it can still save
-the grade instead of arriving after it.
+matching tag. This is the identical recipe `assembly._normalize` already uses at
+concat — moved to where it can still save the grade instead of arriving after it.
+
+**"Both halves are needed" is what this section first said, and it is not true on
+the shipped ffmpeg.** Measured 2026-08-27 while a mutation row refused to go red:
+the filter alone, the tag alone, and both together all produce **byte-identical**
+output carrying the same `tv` tag (md5 `deb09207…`, four ways, on the pc fixture
+and on the real Canon); `out_range=auto` beside the tag lands there too. Only
+removing **both** reverts (`82f376b8…`, tag `pc`). Either half drives the
+conversion here, because ffmpeg's auto-inserted scaler honours `-color_range` and
+the explicit filter sets the frame metadata the encoder then tags from.
+
+Both are kept anyway — it costs nothing, it is the spelling `assembly._normalize`
+already uses, and the redundancy is cheap insurance against an ffmpeg where the
+auto-inserted path behaves differently. But the honest consequence is recorded in
+§6: no assertion over rendered bytes can pin either half individually, so the
+argv-level unit test is the only thing that does.
 
 **Measured byte-identical on everything that was already right**, three ways:
 
@@ -235,6 +249,10 @@ and can never make the grade right.
 
 Five real-ffmpeg proofs, each with a control that must not move.
 
+0. **The argv-level unit test is load-bearing in a way the other proofs are not.**
+   Because either half of the pair produces byte-identical pixels (§4.1), it is
+   the only check that can notice one of them going missing. Treat it as a proof,
+   not a spelling test.
 1. **The three byte-identity controls** of §4.1 — tv 1080, untagged fixture, tv
    4K 10-bit. The fix has no right to move what was already correct.
 2. **A pc source's transfer error, before and after.** The central claim. The

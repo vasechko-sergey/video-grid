@@ -1033,8 +1033,9 @@ the missing test, do not soften the row.**
 | 7 | `color.py` | `tone_arg`'s tail drops the `xt1 == xt0` arm | `tests/lib/test_color.py -k p95_is_255` |
 | 8 | `color.py` | `_lerp` reverts to `return knots[-1][1]` | `tests/lib/test_color.py -k lerp`, `tests/integration/test_matchgrade.py -k within_a_code` |
 | 9 | `color.py` | `_lerp`'s extrapolation uses `knots[0]`/`knots[1]`'s slope | `tests/lib/test_color.py -k lerp` |
-| 10 | `extract.py` | drop `"-vf", "scale=..."`, keep the tag | `tests/lib/test_extract.py`, `tests/integration/test_segment_range.py` |
-| 11 | `extract.py` | drop `"-color_range", "tv"`, keep the filter | `tests/lib/test_extract.py`, `tests/integration/test_segment_range.py` |
+| 10 | `extract.py` | drop `"-vf", "scale=..."`, keep the tag | `tests/lib/test_extract.py -k normalizes_the_range` **only** — see the note below |
+| 11 | `extract.py` | drop `"-color_range", "tv"`, keep the filter | `tests/lib/test_extract.py -k normalizes_the_range` **only** — see the note below |
+| 11b | `extract.py` | drop **BOTH** the filter and the tag — the real revert | `tests/lib/test_extract.py`, `tests/integration/test_segment_range.py -k lands_the_grade`, `-k concat_outlier`, `tests/integration/test_extract.py -k full_range` |
 | 12 | `extract.py` | `out_range=tv` → `out_range=pc` | `tests/integration/test_extract.py -k full_range` |
 | 13 | `extract.py` | add dimensions: `scale=640:360:in_range=auto:out_range=tv` | `tests/lib/test_extract.py`, `tests/integration/test_extract.py -k resolution` |
 | 14 | `extract.py` | move `-ss` before `-i` | `tests/lib/test_extract.py -k seek_order` |
@@ -1043,6 +1044,15 @@ the missing test, do not soften the row.**
 | 17 | `reframe.py` | `_probe` returns `"tv"` for `color_range` unconditionally | `tests/integration/test_segment_range.py -k guard` |
 | 18 | `reframe.py` | `_probe` drops `pix_fmt,color_range` from `-show_entries` | `tests/integration/test_segment_range.py -k guard` |
 | 19 | `test_matchgrade.py` | narrow the widened window back to `got[16:236]` | nothing — **expected GREEN**, and the row exists to say so: the widened window is coverage, and no test can defend its own boundary. Record the result. |
+
+**Rows 10 and 11 name the argv test and nothing else, and that is a measurement,
+not a weakening.** Measured 2026-08-27 on the shipped ffmpeg: the filter alone,
+the tag alone, and both together all produce **byte-identical** output carrying
+the same `tv` tag (md5 `deb09207…` four ways); only removing BOTH reverts it
+(`82f376b8…`, tag `pc`). So at the pixel level the two halves are interchangeable
+here, no assertion over rendered bytes can pin either one individually, and the
+argv test is the only thing that can. Row 11b is the mutation that does revert the
+change, and it is the one that proves the pixel-level proofs discriminate at all.
 
 Rows 16–18 exist because every other guard test stubs `_probe`; without a proof
 over real files, `_probe` could stop reporting either field and only
