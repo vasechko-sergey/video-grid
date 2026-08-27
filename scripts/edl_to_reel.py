@@ -99,6 +99,16 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # EPISODES.json path this call already validated.
     runlayout.refuse_output_in_footage(footage_root, out_dir, "edl_to_reel's out_dir")
     runlayout.refuse_output_in_footage(footage_root, work_dir, "edl_to_reel's work_dir")
+    # Never the same directory. The wipe's predicate is "work_dir is out_dir's sibling
+    # named build", and one arrangement satisfies it destructively: pass the same path
+    # for both and the wipe takes the episode output — a prior EPISODES.json included —
+    # before this run has written anything (measured by the final review, 2026-08-27).
+    if Path(work_dir).resolve() == Path(out_dir).resolve():
+        raise ValueError(
+            f"edl_to_reel's work_dir and out_dir are the same directory ({out_dir}) — "
+            f"work_dir is scratch this stage WIPES at the start of every render, and "
+            f"out_dir holds the ep{{i}}.mp4 clips episode-qc binds its verdicts to. "
+            f"Point them at the reel's build/ and episodes/ instead")
     _wipe_scratch(work_dir, out_dir)
     if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs < 1:
         raise ValueError(f"edl_to_reel: jobs must be an integer >= 1, got {jobs!r} "

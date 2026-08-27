@@ -1335,6 +1335,46 @@ def test_a_footage_root_work_dir_is_refused_before_anything_is_wiped(tmp_path):
     assert marker.exists()
 
 
+def test_phase_one_refuses_the_same_dir_for_work_and_out(tmp_path):
+    """The wipe's predicate is "work_dir is out_dir's sibling named build". One
+    arrangement satisfies it destructively: pass the same path for both, and the wipe
+    takes the episode output — a prior EPISODES.json included — before this run has
+    written a byte. Refused above the wipe, so nothing is deleted on the way to the
+    error."""
+    both = tmp_path / "build"
+    both.mkdir()
+    victim = both / "EPISODES.json"
+    victim.write_text("{}")
+    with pytest.raises(ValueError, match="same directory"):
+        edl_to_reel.process_episodes(str(tmp_path / "EDL.json"), str(tmp_path / "project.json"),
+                                     str(tmp_path / "footage"), str(both), str(both))
+    assert victim.exists()
+
+
+def test_phase_one_actually_wipes_the_build_dir_it_was_given(tmp_path):
+    """Deleting the `_wipe_scratch(work_dir, out_dir)` call from _build_manifest left
+    the whole suite byte-identical — measured by the final whole-branch review, which
+    is the only reader that could see it: both _wipe_scratch tests call the helper
+    DIRECTLY, and the one test that reaches _build_manifest asserts a marker SURVIVES,
+    which is exactly what a missing wipe produces. So the feature could stop shipping
+    in silence.
+
+    This drives the real _build_manifest with a canonical build/episodes pair and
+    asserts the scratch is gone. It stops at the EDL load — the wipe runs first, and
+    reaching further would need a whole valid project."""
+    reel = tmp_path / "montage" / "reels" / "main"
+    work_dir, out_dir = reel / "build", reel / "episodes"
+    (work_dir / "ep99").mkdir(parents=True)
+    stale = work_dir / "ep99" / "route.json"
+    stale.write_text("{}")
+    out_dir.mkdir()
+    with pytest.raises(Exception):        # the EDL does not exist; the wipe already ran
+        edl_to_reel.process_episodes(str(tmp_path / "EDL.json"), str(tmp_path / "project.json"),
+                                     str(tmp_path / "footage"), str(work_dir), str(out_dir))
+    assert not stale.exists(), "the build dir was not wiped — _build_manifest's _wipe_scratch call is gone"
+    assert work_dir.is_dir(), "the wipe must leave the directory in place, empty"
+
+
 def test_edl_to_reel_delivers_to_the_episodes_sibling_deliveries_dir(monkeypatch, tmp_path):
     """Finding 2, call site 1 (edl_to_reel()). Every seen["build"] assertion elsewhere
     in this file only checks == [] in a stop-and-report scenario, so a revert to

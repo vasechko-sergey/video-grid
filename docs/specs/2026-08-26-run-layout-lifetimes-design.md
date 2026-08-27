@@ -220,8 +220,18 @@ from scratch, so no completed work is discarded.
 directory is named `build`" — under that rule a hand-driven `--work-dir ~/build` is a
 grenade. The structural form asks a different question: *do these two paths belong to
 the same canonical reel?* Under the layout, `out_dir` is `reels/<name>/episodes` and
-its sibling is `reels/<name>/build`, so the canonical run always matches and no other
-arrangement can.
+its sibling is `reels/<name>/build`, so the canonical run always matches.
+
+**It is not, however, unique to the canonical run, and the first version of this
+section claimed it was.** The predicate reads "`work_dir` is `out_dir`'s sibling named
+`build`" — it never checks `reels/` or `episodes`, so any pair shaped that way
+matches: `--work-dir <X>/build --out-dir <X>/notes` wipes `<X>/build`. The final review
+measured this. Two things make the residue narrow rather than dangerous. The wiped
+directory is always the one the caller itself nominated as `--work-dir`, which is
+scratch by definition. And the one arrangement where that was destructive — the same
+path for both, where the wipe takes the episode output including a prior
+`EPISODES.json` — is now a refusal above the wipe. What remains is a caller who names
+a sibling `build` for scratch and gets it cleared, which is what the flag means.
 
 When it does not match, the wipe does not happen and one line says so. That keeps SP1's
 hand-driven door open at the cost named in §8.
@@ -247,9 +257,12 @@ composes its own paths and never calls `montage status` drifts exactly as before
 invariant is *no silent drift* — the router's own answer is always canonical — not *no
 drift*. The same shape as 0.2.1 §6 and the attested-run §11.
 
-**The wipe covers the canonical path only.** A hand-driven run with scratch elsewhere
-accumulates forever, exactly as today. Named, not closed — and deliberately, because
-the alternative refuses SP1.
+**The wipe covers a shape, not the canonical path only.** Scratch that is not a
+sibling of `out_dir` named `build` accumulates forever, exactly as today — named, not
+closed, and deliberately, because the alternative refuses SP1. The inverse is also
+true and was overclaimed here at first: a NON-canonical pair of that shape is wiped
+too (§6). The two guards above the wipe bound it — the footage root is refused, and so
+is `work_dir == out_dir`.
 
 **Both version records can still be lost.** `_next_version` reads the log with the
 file glob as a floor; delete both and numbering restarts at 1 with no way to know a v1

@@ -398,6 +398,20 @@ def test_the_log_reader_is_empty_with_no_log(tmp_path):
     assert deliver._logged_versions(str(tmp_path)) == []
 
 
+def test_deliver_refuses_a_scratch_dir_equal_to_the_out_dir(tmp_path):
+    """The required keyword proves a caller passed SOMETHING; only this proves it
+    passed a different directory. The final review measured that swapping
+    build_reel's `scratch_dir=work_dir` to `out_dir` left the whole suite
+    byte-identical — that call site is the one production line keeping the mask and
+    title sidecars out of the append-only bucket, and nothing failed when it broke."""
+    master, rep = _bound(tmp_path)
+    out_dir = tmp_path / "deliveries"
+    with pytest.raises(ValueError) as e:
+        deliver.deliver(master, REEL_H264, str(out_dir), "x", rep,
+                        scratch_dir=str(out_dir))
+    assert "same directory" in str(e.value)
+
+
 def test_deliver_requires_a_scratch_dir():
     """deliveries/ is append-only; the mask and the title sidecars are scratch.
     A default of out_dir would keep the leak one forgotten argument away."""

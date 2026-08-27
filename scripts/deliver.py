@@ -268,6 +268,21 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             f"(report {report.master_digest[:12]}…, master {actual[:12]}…) — the master was "
             f"re-made after the check, or assembled outside the pipeline. Re-run "
             f"`check_reel` on THIS master and deliver with the report it writes")
+    # The two must be different directories, and this is a refusal rather than a
+    # convention because `scratch_dir` being separate is the ONLY thing keeping
+    # look_mask.png and the title_i.txt sidecars out of the append-only deliveries
+    # bucket — and the caller that passes them (build_reel) had no test proving it
+    # passed the right one: the final review measured that swapping it to out_dir
+    # left the whole suite byte-identical (2026-08-27). A runtime refusal makes that
+    # mutation raise wherever it happens, including from a caller nobody has written
+    # yet.
+    if Path(scratch_dir).resolve() == Path(out_dir).resolve():
+        raise ValueError(
+            f"deliver's scratch_dir and out_dir are the same directory ({out_dir}) — "
+            f"out_dir is the append-only deliveries bucket, and the vignette mask and "
+            f"per-title textfile sidecars would land beside the shipped reels, which is "
+            f"exactly what the 2026-06 run did. Point scratch_dir at the reel's build/ "
+            f"dir instead")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     Path(scratch_dir).mkdir(parents=True, exist_ok=True)
     # Titles and the look share ONE video-filter slot (§5.16 + design 2026-08-13 §4):
