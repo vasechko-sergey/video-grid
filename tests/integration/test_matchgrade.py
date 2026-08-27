@@ -156,13 +156,32 @@ def test_the_tone_map_renders_within_a_code_of_itself():
     segs = color._segments(src, dst)
     want = [color.TV_LO + color._lerp(segs, (y - color.TV_LO) * 255 / color.TV_SPAN)
             * color.TV_SPAN / 255 for y in range(256)]
-    worst = max(abs(g - w) for g, w in zip(got[16:236], want[16:236]))   # the legal range
+    worst = max(abs(g - w) for g, w in zip(got[16:256], want[16:256]))
     assert worst <= 1.0, f"the LUT is {worst:.2f} codes off its own map"
-    # Monotone over the WHOLE 0-255 plane, not only the legal 16-235: the expression
-    # extrapolates below the toe and holds a constant above the shoulder, and a wrap
-    # at either end would be real corruption in sub-black or super-white pixels.
-    # Measured on the shipped map: outputs span 2-198 and never step backwards.
+    # Monotone over the WHOLE 0-255 plane, not only the legal 16-235: the
+    # expression extrapolates below the toe and CONTINUES THE SHOULDER'S SLOPE
+    # above it (2026-08-27), and a wrap at either end would be real corruption in
+    # sub-black or super-white pixels. Measured on the shipped map: outputs span
+    # 2-205 and never step backwards.
     assert all(b >= a for a, b in zip(got, got[1:])), "the transfer bands somewhere"
+
+
+def test_the_shoulder_carries_the_superwhite_band():
+    """Above the top knot the map continues instead of flattening — and the band
+    BELOW it does not move, which is what separates a fix from a rescale.
+
+    Measured 2026-08-27 on this exact (src, dst): codes 236..255 came back as ONE
+    output value and now come back as eight. reframe.verify_tone cannot see any
+    of this — it feeds rgb24 and rgb 255 converts to stored Y 235."""
+    src, dst = (71.0, 133.0, 203.0), (61.0, 123.0, 198.5)
+    lut = _ramp_y(color.tone_arg(src, dst).rstrip(","))
+
+    tail = lut[236:256]
+    assert len(set(tail)) == 8, sorted(set(tail))          # was 1
+    assert (min(tail), max(tail)) == (202, 209)
+
+    band = lut[200:236]                                     # the control
+    assert (len(set(band)), min(band), max(band)) == (14, 189, 202)
 
 
 def test_the_tone_transfer_leaves_chroma_byte_identical(tmp_path):

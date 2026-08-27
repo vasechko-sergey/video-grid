@@ -355,7 +355,21 @@ def tone_arg(src: tuple[float, float, float], dst: tuple[float, float, float]) -
     # target is measured in (§2.1/§2.2).
     v = f"(val-{TV_LO})*255/{TV_SPAN}"
     segs = _segments(src, dst)
-    expr = f"{segs[-1][1]:.4f}"
+    # ABOVE the top knot the map CONTINUES at the shoulder's own slope instead of
+    # flattening onto a constant. Measured 2026-08-27 through the per-code ramp
+    # harness: the constant put every stored code 236..255 onto ONE output (202)
+    # — twenty codes to one, which is exactly the plate TONE_TOP_SLOPE's own
+    # docstring exists to prevent — while continuing the slope spreads them over
+    # 202..209 and leaves 200..235 untouched (14 distinct codes either way).
+    # Bounded without clipping in every legal case: the largest `v` a stored code
+    # can produce is (255-16)*255/219 = 278.3, `top` is at most 255 and this
+    # slope at most TONE_TOP_SLOPE = 0.35 by construction of _segments, so the
+    # extended output tops out at 242 — thirteen codes below the ceiling.
+    # A zero-width final segment (p95 == 255) has no shoulder to continue and
+    # keeps the constant, which is what "the map ends here" means.
+    (xt0, yt0), (xt1, yt1) = segs[-2], segs[-1]
+    expr = (f"{yt1:.4f}" if xt1 == xt0 else
+            f"({yt1:.4f}+({v}-{xt1:.4f})*{(yt1 - yt0) / (xt1 - xt0):.6f})")
     for (x0, y0), (x1, y1) in reversed(list(zip(segs, segs[1:]))):
         # x1 == x0 happens when p5 is 0: the origin and the toe anchor coincide, and
         # the segment between them has no width to interpolate across. Its output is
@@ -367,17 +381,24 @@ def tone_arg(src: tuple[float, float, float], dst: tuple[float, float, float]) -
 
 
 def _lerp(knots: list[tuple[float, float]], x: float) -> float:
-    """Piecewise-linear interpolation through sorted (in, out) knots.
+    """Piecewise-linear interpolation through sorted (in, out) knots, CONTINUING
+    the final segment's slope above the last knot.
 
-    No production caller since 2026-08-19, and kept deliberately: it is the tone map's
-    reference definition, and tone_arg's emitted expression is a SECOND, independent
-    implementation of the same arithmetic. The real-ffmpeg proof renders through one
-    and compares against the other, which is only a proof because they are not the same
-    code — a shared bug would cancel. Do not "simplify" by having tone_arg call this."""
+    No production caller since 2026-08-19, and kept deliberately: it is the tone
+    map's reference definition, and tone_arg's emitted expression is a SECOND,
+    independent implementation of the same arithmetic. The real-ffmpeg proof
+    renders through one and compares against the other, which is only a proof
+    because they are not the same code — a shared bug would cancel. Do not
+    "simplify" by having tone_arg call this, and do not factor the extrapolation
+    below into a helper both call: that is the same mistake wearing a hat.
+    """
     for (x0, y0), (x1, y1) in zip(knots, knots[1:]):
         if x <= x1:
             return y0 if x1 == x0 else y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-    return knots[-1][1]
+    (x0, y0), (x1, y1) = knots[-2], knots[-1]
+    if x1 == x0:
+        return y1
+    return y1 + (x - x1) * (y1 - y0) / (x1 - x0)
 
 
 def corrected(gains: tuple[float, ...], correction: tuple[float, ...],

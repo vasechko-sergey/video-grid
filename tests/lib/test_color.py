@@ -379,3 +379,34 @@ def test_depth_is_reported_before_range_when_both_are_wrong():
     # the half the message must lead with.
     with pytest.raises(ValueError, match="10 bits"):
         color.refuse_ungradeable_plane("yuv420p10le", "pc", "x.mp4")
+
+
+def test_lerp_continues_the_last_segment_above_the_final_knot():
+    knots = [(0.0, 0.0), (100.0, 50.0), (200.0, 100.0)]      # last slope 0.5
+    assert color._lerp(knots, 200.0) == pytest.approx(100.0)
+    assert color._lerp(knots, 240.0) == pytest.approx(120.0)
+    assert color._lerp(knots, 278.3) == pytest.approx(139.15, abs=0.01)
+
+
+def test_lerp_stays_flat_above_a_zero_width_final_segment():
+    # p95 == 255 makes the final segment zero-width: there is no shoulder to
+    # continue, so the map ends at its value rather than dividing by zero.
+    knots = [(0.0, 0.0), (100.0, 50.0), (255.0, 120.0), (255.0, 120.0)]
+    assert color._lerp(knots, 270.0) == pytest.approx(120.0)
+
+
+def test_tone_arg_extends_the_shoulder_in_the_emitted_expression():
+    frag = color.tone_arg((30.0, 100.0, 200.0), (40.0, 110.0, 190.0))
+    # The final else-branch is now an expression anchored at the TOP knot
+    # (x = 255) instead of a bare constant. No other segment subtracts 255 —
+    # they subtract their own left anchor (0, 30, 100, 200) — so this substring
+    # exists only when the extension is emitted.
+    assert "-255.0000)*" in frag, frag
+
+
+def test_tone_arg_keeps_a_constant_tail_when_p95_is_255():
+    # zero-width final segment: the extension must not divide by zero, and must
+    # not emit a slope it does not have
+    frag = color.tone_arg((30.0, 100.0, 255.0), (40.0, 110.0, 200.0))
+    assert "-255.0000)*" not in frag, frag
+    assert frag.startswith("lutyuv=y='") and frag.endswith("',")
