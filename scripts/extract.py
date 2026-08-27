@@ -17,6 +17,21 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     cmd = [
         ffbin.ffmpeg(), "-y", "-i", src,
         "-ss", f"{start}", "-t", f"{dur}",
+        # The segment is the pipeline's canonical form and its range is part of
+        # that contract (design 2026-08-27 §2). `-pix_fmt yuv420p` alone READS as
+        # a normalization and is not one: measured, libx264 keeps full range for
+        # a full-range input, so a Canon window — 67 of the 99 clips this was
+        # designed against — shipped `yuvj420p`/pc the whole way into reframe's
+        # lutyuv, whose TV_LO/TV_SPAN are written for 16..235.
+        # in_range=auto reads the source's own tag (and ffmpeg's yuvj=>full
+        # default when it has none), so this CONVERTS the samples; -color_range
+        # writes the matching tag. Both halves are needed, and it is the same
+        # pair assembly._normalize already uses at concat — moved to where it can
+        # still save the grade instead of arriving after it.
+        # The scale carries NO dimensions: resolution stays native because
+        # reframe crops from native pixels (design §3). Measured byte-identical
+        # on untagged, tv-tagged and 10-bit sources, so no golden moves.
+        "-vf", "scale=in_range=auto:out_range=tv", "-color_range", "tv",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
     ]

@@ -69,3 +69,21 @@ def test_extract_edl_refuses_a_juddering_ramp_at_the_probed_rate(monkeypatch, tm
         extract.extract_edl(
             _edl(ramp={"at": 2.0, "factor": 0.4, "ease": 0.5, "hold": 1.0}),
             str(tmp_path), str(tmp_path / "seg"))
+
+
+def test_extract_normalizes_the_range_and_keeps_the_seek_order(monkeypatch, tmp_path):
+    """Both halves are emitted. Converting without tagging leaves a player
+    re-expanding an already-expanded image; tagging without converting IS the
+    corruption this exists to stop. And -ss still lands after -i (§12)."""
+    seen = {}
+    monkeypatch.setattr(extract.proc, "run", lambda cmd, **kw: seen.setdefault("cmd", cmd))
+    extract.extract("a.mp4", 1.0, 2.0, str(tmp_path / "o.mp4"))
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("-vf") + 1] == "scale=in_range=auto:out_range=tv"
+    assert cmd[cmd.index("-color_range") + 1] == "tv"
+    assert cmd.index("-ss") > cmd.index("-i")
+    # The equality above is what pins "no dimensions in the scale" — resolution
+    # stays native because reframe crops from native pixels (design §3). Do not
+    # replace it with a looser digit scan: `"scale=640:360:in_range=auto:out_range=tv"
+    # .split("=")` yields no element for which `.isdigit()` is true, so a scan
+    # like that reads as a guard and catches nothing.

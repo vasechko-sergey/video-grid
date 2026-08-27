@@ -1,7 +1,8 @@
-import json, subprocess
+import hashlib, json, subprocess
+from pathlib import Path
 import pytest
 from scripts import extract
-from scripts.lib import assembly, ffbin
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.edl import EDL
 
 def _duration(path):
@@ -9,6 +10,19 @@ def _duration(path):
         [ffbin.ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "json", str(path)], capture_output=True, text=True, check=True)
     return float(json.loads(out.stdout)["format"]["duration"])
+
+
+def _md5(path):
+    return hashlib.md5(Path(path).read_bytes()).hexdigest()
+
+
+def _stream(path, field):
+    out = subprocess.run(
+        [ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+         "-show_entries", f"stream={field}", "-of", "json", str(path)],
+        capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)["streams"][0].get(field)
+
 
 @pytest.mark.integration
 def test_extract_window_duration(sample_clip, tmp_path):
@@ -50,3 +64,71 @@ def test_extract_edl_missing_source_names_the_resolved_path(tmp_path):
     edl = _edl([_row("nope.mp4", 0.0, 1.0)])
     with pytest.raises(ValueError, match="source not found"):
         extract.extract_edl(edl, str(tmp_path), str(tmp_path / "segments"))
+
+
+@pytest.mark.integration
+def test_normalizing_is_byte_identical_on_an_untagged_source(
+        sample_clip, extract_unnormalized, tmp_path):
+    """Control 1 of 3, and the one that protects every golden in this repo:
+    every fixture here is untagged, ffmpeg reads untagged as limited, so the
+    conversion is a no-op and the bytes must not move."""
+    old = extract_unnormalized(sample_clip, 0.5, 1.0, tmp_path / "old.mp4")
+    new = tmp_path / "new.mp4"
+    extract.extract(src=str(sample_clip), start=0.5, dur=1.0, out=str(new))
+    assert _md5(new) == _md5(old)
+
+
+@pytest.mark.integration
+def test_normalizing_is_byte_identical_on_an_explicitly_limited_source(
+        sample_clip, extract_unnormalized, tmp_path):
+    """Control 2 of 3: an untagged source and a tv-TAGGED source are different
+    inputs to `in_range=auto`, and only one of them is covered above."""
+    tagged = tmp_path / "tagged.mp4"
+    # the bt709 description is required for the tag to be written at all — see
+    # pc_ramp_clip's docstring; `-color_range tv` alone leaves ffprobe at "unknown"
+    proc.run([ffbin.ffmpeg(), "-y", "-i", str(sample_clip), "-c:v", "libx264",
+              "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
+              "-color_range", "tv", "-color_primaries", "bt709",
+              "-color_trc", "bt709", "-colorspace", "bt709", str(tagged)])
+    assert _stream(tagged, "color_range") == "tv", "the control source is not tagged"
+
+    old = extract_unnormalized(tagged, 0.5, 1.0, tmp_path / "old.mp4")
+    new = tmp_path / "new.mp4"
+    extract.extract(src=str(tagged), start=0.5, dur=1.0, out=str(new))
+    assert _md5(new) == _md5(old)
+
+
+@pytest.mark.integration
+def test_normalizing_is_byte_identical_on_a_ten_bit_source(
+        tenbit_clip, extract_unnormalized, tmp_path):
+    """Control 3 of 3: the depth conversion `-pix_fmt yuv420p` already performs
+    must not change because a range filter joined the chain."""
+    old = extract_unnormalized(tenbit_clip, 0.2, 0.5, tmp_path / "old.mp4")
+    new = tmp_path / "new.mp4"
+    extract.extract(src=str(tenbit_clip), start=0.2, dur=0.5, out=str(new))
+    assert _stream(new, "pix_fmt") == "yuv420p"
+    assert _md5(new) == _md5(old)
+
+
+@pytest.mark.integration
+def test_a_full_range_source_comes_out_limited(
+        pc_ramp_clip, extract_unnormalized, tmp_path):
+    """The change itself. Note what the control proves: today's command READS as
+    a normalization and is not one — libx264 keeps full range for a full-range
+    input. That is the entire defect."""
+    old = extract_unnormalized(pc_ramp_clip, 0.2, 1.0, tmp_path / "old.mp4")
+    new = tmp_path / "new.mp4"
+    extract.extract(src=str(pc_ramp_clip), start=0.2, dur=1.0, out=str(new))
+    assert (_stream(old, "color_range"), _stream(old, "pix_fmt")) == ("pc", "yuvj420p")
+    assert (_stream(new, "color_range"), _stream(new, "pix_fmt")) == ("tv", "yuv420p")
+    assert _md5(new) != _md5(old)
+
+
+@pytest.mark.integration
+def test_normalizing_leaves_the_resolution_alone(sample_clip, tmp_path):
+    """The scale filter carries no dimensions on purpose: reframe crops from
+    native pixels, so a downscale here would discard exactly the detail a 4K
+    source was shot for (design §3)."""
+    out = tmp_path / "seg.mp4"
+    extract.extract(src=str(sample_clip), start=0.5, dur=1.0, out=str(out))
+    assert (_stream(out, "width"), _stream(out, "height")) == (1920, 1080)

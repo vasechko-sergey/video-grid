@@ -86,6 +86,82 @@ def ramp_clip(tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="session")
+def pc_ramp_clip(tmp_path_factory):
+    """2s 640x360 30fps FULL-RANGE clip: a horizontal luma ramp, tagged
+    yuvj420p / color_range=pc.
+
+    A ramp and not a flat field, because the defect it must reproduce is a tone
+    transfer landing on the wrong place of a curve — a fixture with one luma
+    value has no curve to be wrong about. MEASURED that it discriminates, which
+    is the only reason it is worth having: cut with extract's arguments as they
+    stood before 2026-08-27 and graded to a common target, the achieved profile
+    misses by (-38.1, 0.0, -9.0); cut through the normalizing extract it misses
+    by (-2.1, -0.5, -1.0).
+
+    The bt709 description is NOT decoration. Measured 2026-08-27: ffmpeg writes
+    the VUI's range flag only when it also writes a colour description, so a
+    range-only source normalizes to `color_range=unknown` and no tag assertion
+    can discriminate. Real footage always carries the description — the Canon
+    this was designed against is bt709/bt709/bt709/pc — so a fixture without one
+    was the unrealistic thing, not the test.
+    """
+    try:
+        binary = ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
+    out = tmp_path_factory.mktemp("media") / "pc_ramp.mp4"
+    proc.run([binary, "-y", "-f", "lavfi", "-i", "nullsrc=s=640x360:d=2:r=30",
+              "-vf", "format=gray,geq=lum='X*255/W',format=yuvj420p",
+              "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+              "-color_range", "pc", "-color_primaries", "bt709",
+              "-color_trc", "bt709", "-colorspace", "bt709",
+              "-pix_fmt", "yuvj420p", str(out)])
+    return out
+
+
+@pytest.fixture(scope="session")
+def tenbit_clip(tmp_path_factory):
+    """1s 320x180 30fps TEN-BIT clip (yuv420p10le): a horizontal luma ramp.
+
+    Carries no range tag, on purpose. The pool this slice was designed against
+    holds three 10-bit HEVC clips and the real one reports
+    `bits_per_raw_sample=N/A` with an unremarkable range — so depth is the only
+    property that can catch it, and the fixture is shaped to make that the only
+    property under test.
+    """
+    try:
+        binary = ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
+    out = tmp_path_factory.mktemp("media") / "tenbit.mp4"
+    proc.run([binary, "-y", "-f", "lavfi", "-i", "nullsrc=s=320x180:d=1:r=30",
+              "-vf", "format=gray,geq=lum='X*255/W',format=yuv420p10le",
+              "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+              "-pix_fmt", "yuv420p10le", str(out)])
+    return out
+
+
+@pytest.fixture
+def extract_unnormalized():
+    """extract.extract's command as it stood BEFORE the range normalization.
+
+    A deliberate duplicate of production argv, and the only kind this repo
+    allows, because it is the CONTROL: without it the byte-identity proofs would
+    assert that two runs of the same command agree, which proves nothing, and the
+    transfer-error proof would have no broken path to compare against.
+
+    Do not "DRY" this against extract.extract. The day it tracks the production
+    command is the day every proof built on it stops discriminating.
+    """
+    def _run(src, start, dur, out):
+        proc.run([ffbin.ffmpeg(), "-y", "-i", str(src), "-ss", f"{start}", "-t", f"{dur}",
+                  "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+                  "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", str(out)])
+        return out
+    return _run
+
+
 @pytest.fixture
 def need_filter():
     """Skip unless the RESOLVED ffmpeg carries `name`.
