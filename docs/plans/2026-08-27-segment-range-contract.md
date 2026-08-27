@@ -1092,12 +1092,26 @@ the record.
 - Add to **P3**: *Nobody has looked at the extended shoulder.* Eight codes
   instead of one is strictly more information; whether it looks better is
   unmeasured, and it touches 0.1247% of pixels on the frame it was measured on.
+- Add to **P2**: *`tests/fixtures/golden_ride.mp4` is raw full-range footage and
+  four integration files were feeding it straight into `reframe`.* Found by the
+  new guard on its first day. Worked around with a `golden_ride_segment` fixture
+  that normalizes it per test session; the committed fixture is still raw, which
+  is correct for a footage fixture but means the workaround must stay.
+- Add to **P3**: *`process_episode`'s preflight `_probe` discards the two new
+  fields*, so on the tracked path YOLO walks a segment before `plan_render`
+  refuses it. Wasted compute only — nothing ships wrong.
 
 - [ ] **Step 4: Update `docs/build-status.md` and `CLAUDE.md`**
 
 - `docs/build-status.md`: a Done entry dated 2026-08-27 naming the three changes,
-  the measured before/after, and the two surprises — the retro's
-  measurement-side claim was wrong, and the depth hole was in no row at all.
+  the measured before/after, and the **four** surprises — the retro's
+  measurement-side claim was wrong (`format=gray` was always range-correct); the
+  depth hole was in no row at all (a real 10-bit clip returns 99.26% of its
+  pixels on one code); the guard caught the repo's OWN golden fixture on day one
+  (`golden_ride.mp4` is `yuvj420p`/pc and four integration files fed it straight
+  to `reframe`); and the design's "both halves are needed" was an overclaim that
+  a mutation row refused to confirm — either half converts, only omitting both
+  reverts, so the argv test is the sole guard on each half.
 - `CLAUDE.md`: two rows in the Quick Reference table, one for the design and one
   for this plan, matching the existing rows' shape and density. The design row
   must carry the load-bearing half: that `-pix_fmt yuv420p` reads as a
@@ -1108,12 +1122,16 @@ the record.
 
   > `-pix_fmt yuv420p` on an encode does **not** normalize the colour range —
   > libx264 keeps full range for a full-range input, and ffprobe then reports the
-  > output as `yuvj420p`/`pc`. Converting takes
-  > `scale=in_range=auto:out_range=tv` **and** `-color_range tv`: the filter
-  > without the tag leaves a player re-expanding an already-expanded image, and
-  > the tag without the filter is the corruption itself. `TV_LO`/`TV_SPAN` are
-  > constants of **bit depth** as well as range — a 10-bit plane through the same
-  > LUT comes back with 99% of its pixels on one code.
+  > output as `yuvj420p`/`pc`. What does convert is `-color_range tv`, or
+  > `scale=in_range=auto:out_range=tv`, or both: measured 2026-08-27, all three
+  > spellings produce byte-identical output, and only omitting **both** leaves
+  > the range untouched. `extract` carries both because it is free and it is the
+  > spelling `assembly._normalize` already uses — but the redundancy means no
+  > check over rendered pixels can notice one of them going missing, so the
+  > argv-level test is the only guard on each half individually.
+  > And `TV_LO`/`TV_SPAN` are constants of **bit depth** as well as range — a
+  > 10-bit plane through the same LUT comes back with 99% of its pixels on one
+  > code.
 
 - [ ] **Step 5: Run the whole suite one last time and commit**
 
