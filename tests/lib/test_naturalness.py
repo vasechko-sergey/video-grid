@@ -78,8 +78,22 @@ def test_no_frames_is_refused():
 def test_evaluate_reports_only_the_two_absolute_flags():
     """A cast, a flat frame and a saturated one are properties of the FOOTAGE, not of
     the grade: on the reference run 6 of 8 SOURCES already exceeded the old CAST_MAX
-    before any grade ran (design §0.5). Only destroyed information stays absolute."""
-    flags = naturalness.evaluate(naturalness.measure([_flat(220, 40, 40)]))
+    before any grade ran (design §0.5). Only destroyed information stays absolute.
+
+    This is also the only fixture left in the suite that exercises _frame_stats' cast
+    and saturation formulas against a genuinely colourful, saturated frame — the
+    red-cast test that used to cover them (indirectly, through colour_cast/
+    oversaturated) was deleted along with those two flags. So pin the numbers
+    themselves, not just the surviving flag set. _flat(220, 40, 40) is one constant
+    colour, so both are exact fractions by hand:
+      means = [220, 40, 40] -> neutral = (220+40+40)/3 = 100
+      cast = max(|220/100-1|, |40/100-1|, |40/100-1|) = max(1.2, 0.6, 0.6) = 1.2
+      saturation = (max-min)/max = (220-40)/220 = 180/220 = 9/11 = 0.81818... -> 0.8182
+    """
+    stats = naturalness.measure([_flat(220, 40, 40)])
+    assert stats["cast"] == pytest.approx(1.2)
+    assert stats["saturation"] == pytest.approx(0.8182)
+    flags = naturalness.evaluate(stats)
     assert set(flags) == {"blown_highlights", "crushed_blacks"}
 
 
