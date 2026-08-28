@@ -58,17 +58,26 @@ def test_rgb_to_lab_anchors():
     assert L == pytest.approx(53.585, abs=0.01) and abs(a) < 1e-3 and abs(b) < 1e-3
 
 
-def test_a_saturated_red_has_strongly_positive_a_and_positive_b():
-    """Pins the XYZ matrix's columns to their actual R/G/B channels, not just their
-    magnitudes. A grey input is symmetric under swapping the R and B columns (r == b),
-    so `test_rgb_to_lab_anchors` cannot see a column swap, and the published reference
-    table (`test_ciede2000_matches_the_published_reference`) never calls `rgb_to_lab` at
-    all. Saturated red is the case where R and B genuinely differ: swapping the R and B
-    columns leaves a* still positive (~79 either way) but flips b* from strongly positive
-    (~+67, the textbook sRGB-red Lab value) to strongly negative (~-108)."""
+def test_saturated_red_and_green_pin_all_three_xyz_columns():
+    """Pins the XYZ matrix's three columns to their actual R/G/B channels, not just
+    their magnitudes. A grey input is symmetric under ANY column exchange (r == g == b),
+    so `test_rgb_to_lab_anchors` cannot see one, and the published reference table
+    (`test_ciede2000_matches_the_published_reference`) never calls `rgb_to_lab` at all.
+
+    Saturated red (G = B = 0) pins the R column against G and B: swapping the R and B
+    columns leaves a* still positive (~79 either way) but flips b* from the textbook
+    sRGB-red value (+67.20) to strongly negative (-107.86). It CANNOT pin G against B,
+    though — with G = B = 0, exchanging two coefficient columns that both multiply zero
+    is invisible: measured, a G/B column swap reproduces (53.24, 80.09, 67.20) for red
+    bit-for-bit identically to the unmutated matrix. Saturated green closes that gap —
+    G = 200, B = 100, distinct and both nonzero — where a G/B swap flips BOTH a*
+    (-63.75 to +14.96) and b* (+38.29 to -58.58)."""
     L, a, b = colordiff.rgb_to_lab((255.0, 0.0, 0.0))
     assert a > 50.0
     assert b > 0.0
+    L2, a2, b2 = colordiff.rgb_to_lab((0.0, 200.0, 100.0))
+    assert a2 < 0.0
+    assert b2 > 0.0
 
 
 def test_a_pure_luma_lift_lands_in_dL_only():
