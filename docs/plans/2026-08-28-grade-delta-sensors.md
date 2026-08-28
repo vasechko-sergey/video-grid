@@ -1334,8 +1334,8 @@ which reads exactly like a non-discriminating row.
 
 | # | mutation | must turn red |
 |---|---|---|
-| 1 | `colordiff.ciede2000`: drop the `rt` term from the final sqrt | `tests/lib/test_colordiff.py` — the 7.1792 row |
-| 2 | `colordiff.ciede2000`: use `(h1p + h2p) / 2` unconditionally for `hbar` | the 1.0000 discontinuity rows |
+| 1 | `colordiff.ciede2000`: drop the `rt` term from the final sqrt | `tests/lib/test_colordiff.py` — 10 of the reference rows. **NOT** the 7.1792 row, which this plan originally named and which does not discriminate: that pair has `a2 = -a1` exactly, so `dC'` is 2.5e-8 and the `rt * dC' * dH'` cross-term vanishes whatever `rt` holds (measured during the battery). |
+| 2 | `colordiff.ciede2000`: use `(h1p + h2p) / 2` unconditionally for `hbar` | the two wraparound-hue rows. **NOT** the seven 1.0000 rows this plan originally named: every one of them already satisfies `\|h1p - h2p\| <= 180`, so the correct code takes the naive-average branch for them anyway and deleting the other branches cannot move them (measured during the battery). |
 | 3 | `colordiff._linearize`: use `v ** 2.2` instead of the piecewise curve | `test_rgb_to_lab_anchors` (mid-grey) |
 | 4 | `colordiff.rgb_to_lab`: swap the R and B columns of the XYZ matrix | `test_a_pure_luma_lift_lands_in_dL_only` stays green (grey is symmetric) — `test_ciede2000_matches_the_published_reference` does not cover it either. **Expected to need a new test**: add one asserting a saturated red's `a*` is strongly positive and its `b*` positive, and re-run. |
 | 5 | `color_fidelity.evaluate`: `statistics.median` → `max` | `test_the_verdict_is_the_median_not_the_worst` |
