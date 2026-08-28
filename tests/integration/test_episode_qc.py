@@ -67,6 +67,31 @@ def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
 
 
 @pytest.mark.integration
+def test_the_evidence_packet_carries_the_pre_grade_reading(tmp_path, sample_clip):
+    """R2.5: the judge must be able to see what the GRADE did, not only what the
+    footage is. The segment has always been in the manifest and was never read."""
+    p, _ = _episodes_json(tmp_path, sample_clip)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
+    assert set(nat) == {"stats", "flags", "source", "delta"}
+    assert nat["source"]["frames"] == episode_qc.SENSOR_FRAMES
+    assert set(nat["delta"]) == {"cast_shift", "saturation_shift", "contrast_drop"}
+
+
+@pytest.mark.integration
+def test_a_manifest_with_no_segment_reports_absent_not_empty(tmp_path, sample_clip):
+    """Absent is reported as absent, never as a clean reading — the same rule the rest
+    of _evidence already applies to the sidecars."""
+    p, rm = _episodes_json(tmp_path, sample_clip)
+    for ep in rm.episodes:
+        ep.manifest.pop("segment")
+    rm.write(p)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
+    assert nat["source"] is None and nat["delta"] is None
+
+
+@pytest.mark.integration
 def test_a_clean_run_delivers_and_the_attestation_names_the_judged_bytes(tmp_path, sample_clip):
     p, rm = _episodes_json(tmp_path, sample_clip)
     episode_qc.pack(str(p), str(tmp_path / "qc"))

@@ -61,6 +61,24 @@ def _evidence(ep, i: int, clip_stats: dict) -> dict:
     return out
 
 
+def _source_reading(ep, graded: dict) -> dict:
+    """The pre-grade segment's own naturalness, and the delta against the delivered
+    clip. The segment has always been in the manifest and was never read, so the judge
+    was shown what the FOOTAGE is and asked about what the GRADE did (design §5).
+
+    A manifest with no segment on disk reports both as None — absent is reported as
+    absent, never as a clean reading, the same rule the rest of _evidence applies to
+    the sidecars."""
+    seg = ep.manifest.get("segment")
+    if not seg or not Path(seg).exists():
+        return {"source": None, "delta": None}
+    info = assembly.probe_stream(seg)
+    dur = assembly.probe_duration(seg)
+    times = [dur * (k + 0.5) / SENSOR_FRAMES for k in range(SENSOR_FRAMES)]
+    src = naturalness.measure(assembly.frames_rgb(seg, times, info.fps))
+    return {"source": src, "delta": naturalness.evaluate_delta(src, graded)}
+
+
 def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
     """Write one evidence directory per episode under out_dir. Returns a status dict."""
     rm = ReelManifest.from_json(episodes_path)
@@ -77,8 +95,9 @@ def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
                                   frames=frames, fps=info.fps)
         times = [dur * (k + 0.5) / SENSOR_FRAMES for k in range(SENSOR_FRAMES)]
         stats = naturalness.measure(assembly.frames_rgb(ep.clip, times, info.fps))
-        (d / "evidence.json").write_text(json.dumps(
-            _evidence(ep, i, {"stats": stats, "flags": naturalness.evaluate(stats)}), indent=2))
+        clip_stats = {"stats": stats, "flags": naturalness.evaluate(stats),
+                      **_source_reading(ep, stats)}
+        (d / "evidence.json").write_text(json.dumps(_evidence(ep, i, clip_stats), indent=2))
         packets.append(str(d))
     return {"status": "packed", "episodes": len(packets), "packets": packets}
 
