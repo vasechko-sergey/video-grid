@@ -110,8 +110,10 @@ def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
 @pytest.mark.integration
 def test_color_fidelity_not_checked_without_source(tmp_path, sample_clip):
     """No source= at all (the process_episode wiring is a later task) → the
-    advisory check reports honestly instead of silently skipping, and — being
-    advisory — never moves `overall`, which stays driven by the real gates."""
+    check reports honestly instead of silently skipping. Blocking since Task 3,
+    but a not-checked result is still `passed=None`, and — like `framing`'s
+    editorial-only branch — never moves `overall`, which stays driven by real
+    pass/fail verdicts."""
     rp, pp = _fill(tmp_path)
     spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))

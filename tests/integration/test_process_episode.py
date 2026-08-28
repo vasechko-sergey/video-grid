@@ -589,7 +589,7 @@ def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
     # colour-as-a-stage Task 10 (+ highlight_red, 2026-08-13 cinematic-look Task 7
     # fix round 2 item 2): the manifest's ten colour fields must reach ReframeSpec,
     # and the pre-grade segment (`src`, reframe's own input) must reach
-    # check_episode.run as source= — the advisory color_fidelity check's only
+    # check_episode.run as source= — the blocking color_fidelity check's only
     # ingredient. validate() structurally cannot catch a drop here (same shape as
     # test_the_manifests_filler_reaches_the_reframe_spec above): it never builds a
     # ReframeSpec of its own to compare against, so a regression would pass the

@@ -10,6 +10,33 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.4.0 — 2026-08-28
+
+- **A damaged colour grade now stops an episode instead of shipping it
+  unnoticed.** `color_fidelity` replaces its old hue-angle metric — blind to
+  exposure and saturation, the two things a grade actually moves, and prone to
+  discarding a sample outright near grey — with the median CIEDE2000 colour
+  difference over five source-vs-delivered samples of the tracked subject. It
+  now **fails the episode** above `CheckSpec.grade_delta_max = 5.0` (the field
+  replaces `hue_drift_max`), and a colour failure escalates immediately to
+  `edit-plan` as `grade-damage` instead of burning three full-resolution
+  re-renders on reframe knobs that cannot move a colour. Measured on one
+  reference shoot: every episode that graded cleanly stayed under the bar
+  (4.29 at most), with simulated damage starting at 5.04 — a gap of 0.75 dE00,
+  17% of that healthy maximum.
+- **The per-episode QC judge now sees what the grade changed, not what the
+  footage already was.** The colour-naturalness sensor drops three flags that
+  were measuring the scene rather than the grade — one fired on most source
+  clips before any grade touched them, two never reached their own bars on
+  real footage. In their place: two flags for information a grade can destroy
+  (`blown_highlights`, `crushed_blacks`), plus a new source-relative reading
+  (`cast_shift` / `saturation_shift` / `contrast_drop`) measured against the
+  pre-grade footage, which the QC evidence packet now carries alongside the
+  delivered clip's own numbers.
+- Both checks answer "did the colour move, and by how much" — neither says the
+  result looks good. That judgment still belongs to the QC judge and the CP3
+  reviewer.
+
 ## 0.3.1 — 2026-08-28
 
 - **Two thirds of the footage was being graded in the wrong colour range, silently.**

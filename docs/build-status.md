@@ -4,13 +4,80 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-25._
+_Last updated: 2026-08-28._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Grade-damage sensors — R2.2 + R2.5 DONE (2026-08-28)** — design
+  [2026-08-28-grade-delta-sensors-design.md](specs/2026-08-28-grade-delta-sensors-design.md),
+  plan [2026-08-28-grade-delta-sensors.md](plans/2026-08-28-grade-delta-sensors.md),
+  Tasks 0–6 (branch `feat/grade-delta-sensors`; Task 7's mutation battery is
+  still open). `color_fidelity` swaps its hue-angle metric for the median of a
+  five-sample CIEDE2000 (`lib/colordiff.py`, pinned to 21 published reference
+  pairs) and becomes **blocking** (`CheckSpec.grade_delta_max = 5.0`, replacing
+  `hue_drift_max`); `naturalness` drops the three flags that measured the
+  footage (`colour_cast` / `oversaturated` / `flat`) for two absolute clipping
+  flags plus a source-relative `evaluate_delta`
+  (`cast_shift`/`saturation_shift`/`contrast_drop`), which the QC evidence
+  packet now carries beside the pre-grade `source` reading.
+
+  **R2.2's own numbers were the first casualty of measuring them.** Its
+  "0.8°" / "null on 2 of 8" / "129.4° on another" come from two different
+  directories: `out/EPISODES.json` names `work/ep{i}/` (2026-08-25, the
+  shipped set, with the zoom fields), while a second, stale `work/reel/ep{i}/`
+  set (2026-08-20/21, no zoom) sits beside it. The shipped reel's own readings
+  were **1.2°–13.4°, every one under the 25° threshold**, with 2 of 8
+  not-checked — the row's near-complementary "false positives" all belong to
+  the stale set, and its "28-code shift" does not reproduce anywhere: the
+  largest whole-frame per-channel change across the eight shipped episodes is
+  **18.3** (ep2's blue), the largest subject-box change **9.6**. This does not
+  weaken the row — the check was not noisy on the shipped reel, it was
+  **silent**: 9 of 24 real samples returned `None` from a grey floor that
+  CIEDE2000 does not need, including one sample where the grade **halved**
+  the subject's chroma and one where it **quadrupled** it.
+
+  **R2.5's count corrects the same way.** The retro's "`colour_cast` on 7 of
+  8" reads **6 of 8** from the run's own packed evidence (ep1 at 0.0282, ep3
+  at 0.0580, both under the 0.08 bar) — moot regardless, since **6 of the 8
+  sources already exceeded the bar before any grade touched them**: a
+  grey-world cast assumption cannot hold on a seascape. `flat` and
+  `oversaturated` never reached their bars on this footage at all — two of the
+  five flags were simply unreachable.
+
+  **The blocking bar sits in a measured but narrow gap.** Through the
+  production sampling path (five samples at 0.1/0.3/0.5/0.7/0.9 of the route
+  span), the eight shipped episodes' per-episode median ΔE00 tops out at
+  **4.29**; the tightest of the retro's own simulated damage magnitudes (a
+  33.8 R−B swing) starts at **5.04** — a gap of just **0.75 dE00, 17% of the
+  healthy maximum**. `grade_delta_max = 5.0` sits inside that gap,
+  deliberately closer to the damage side than the midpoint, because for a
+  bar calibrated on one shoot a false stop is the expensive error. The same
+  damage at gentler magnitudes separates far less cleanly — a 30%
+  desaturation clears the bar on **0 of 8** episodes (design §2.4) — which is
+  the trade-off that placement costs.
+
+  **Flipping the check to blocking needed an `orchestration` change, not just
+  a threshold.** `process_episode` feeds `report.fail_reasons` to
+  `orch.escalation`/`adjust_reframe_params`, and neither knew
+  `color_fidelity` — so an unescalated colour failure would have been
+  **re-rendered up to three times at full resolution** while the retry ladder
+  nudged `max_speed`/`smooth_window_s`, geometry knobs that cannot move a
+  colour by construction. `color_fidelity` now joins `_UNFIXABLE` beside
+  `length`/`continuity`/`black_frames`, and a colour failure escalates
+  immediately to `edit-plan` with its own reason (`grade-damage`) instead of
+  the generic `unfixable-by-reframe`.
+
+  Suite: **3226 passed, 1 skipped** (full run, after this task's own docs/test-
+  prose changes; Task 7's mutation battery has not run yet). Five deferred
+  rows filed in the backlog (design §10): re-derive the two advisory bars once
+  R1.1 lands a baseline that is not itself the complaint, the right sample
+  count/placement, a second calibration shoot for the blocking bar, the two
+  absolute clipping flags remain uncalibrated, and the mostly-background
+  sampling box folds into R2.1.
 
 - **The segment format contract — R2.0 + R2.3 DONE (2026-08-27)** —
   [design](specs/2026-08-27-segment-range-contract-design.md),

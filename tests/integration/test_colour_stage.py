@@ -11,10 +11,10 @@ anything here — this file exists to fill the GAP, not to repeat these):
     test_verify_tone_accepts_a_gentle_monotone_curve prove verify_tone's OWN
     accept/reject boundary on a bare fragment string returned by color.tone_arg
     — never wired through a real ReframeSpec + reframe.reframe() render.
-  - tests/integration/test_color_fidelity.py proves check_episode's ADVISORY
-    hue-drift check (source vs graded) — a different script's gate, and its
-    "graded" fixture is rendered with a raw ffmpeg `hue=` filter directly, never
-    through ReframeSpec's colour fields / reframe.reframe.
+  - tests/integration/test_color_fidelity.py proves check_episode's BLOCKING
+    color_fidelity check (source vs graded median dE00) — a different script's
+    gate, and its "graded" fixture is rendered with a raw ffmpeg `hue=` filter
+    directly, never through ReframeSpec's colour fields / reframe.reframe.
   - tests/integration/test_color_measure.py proves scripts/color_measure.py's
     measure_profile on synthesized clips — an authoring aid, unrelated to
     reframe's render path.

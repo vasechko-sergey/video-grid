@@ -73,9 +73,9 @@ say so rather than guessing a path.
    Writes `<run>/reels/<reel>/episodes/qc/ep{i}/` for every episode: `strip.jpg` (a frame strip
    sampled across the DELIVERED clip, in timeline order) and `evidence.json`
    (the episode's declared intent, the mechanical `report.json`, the tracker
-   provenance, the `path.meta` geometry, and the naturalness sensor's numbers
-   + flags). This refuses in milliseconds, before any decode, if some episode
-   has no scratch dir to read.
+   provenance, the `path.meta` geometry, and the naturalness sensor's
+   stats/flags plus its source-relative delta). This refuses in milliseconds,
+   before any decode, if some episode has no scratch dir to read.
 
 2. **Dispatch one fresh judge per episode — at most 3 concurrently.** For each
    episode `i`, fill `skills/episode-qc/episode-reviewer.md` with THAT
@@ -162,10 +162,22 @@ say so rather than guessing a path.
   through `edl_to_reel` in one shot is still the SP1 front door, and it
   ships unjudged — its attestation says `episode_qc: {"state": "absent"}`
   rather than pretend otherwise.
-- **The naturalness sensor's flags are uncalibrated first cuts (design §5).**
-  `blown_highlights` / `crushed_blacks` / `colour_cast` / `oversaturated` /
-  `flat` are advisory in both directions — ground a finding in them, never
-  defer to them. No footage has been graded against these thresholds yet.
+- **`naturalness`'s flags are two, not five (design 2026-08-28 §4).** `flags`
+  carries only `blown_highlights` and `crushed_blacks` — information the
+  grade destroyed, true regardless of the source. `delta` carries
+  `cast_shift` / `saturation_shift` / `contrast_drop` — what the grade
+  **changed**, measured against the pre-grade segment; `source` is that
+  segment's own reading. Both `source` and `delta` are `null` when the
+  manifest has no `segment` or the file is gone. A strong cast, a flat frame
+  or a saturated one in `stats` alone is a fact about the footage, not a
+  defect — only a `delta` flag says the grade did something. Still advisory
+  in both directions: ground a finding in them, never defer to them.
+- **The colour axis's mechanical companion now stops the episode.**
+  `report.json`'s `color_fidelity` (in the mechanical checks) reports a
+  median `delta_e` plus `dominant` (`luma` / `chroma` / `hue`) and fails the
+  episode above its threshold before this gate ever sees it — so an episode
+  that reached you already passed the mechanical colour check. Judge the
+  pixels regardless; a passing number is not a verdict on taste.
 - **QC is per-episode and blind to neighbours.** Never comment on how one
   episode sits next to another, on pacing, or on repetition — that is
   reel-review's question, asked after delivery, over the assembled reel.

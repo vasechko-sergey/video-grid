@@ -1,4 +1,4 @@
-"""Real-ffmpeg proof for the advisory colour-fidelity check (design 2026-08-28
+"""Real-ffmpeg proof for the blocking colour-fidelity check (design 2026-08-28
 §2): real bytes through the batched `assembly.frames_rgb` sampling
 (`check_episode._box_mean_rgb`) + evaluate (`color_fidelity.evaluate`) path,
 driven by `check_episode.run(..., source=)`.

@@ -24,10 +24,14 @@ read by a human; your deliverable is the file you write.
  degraded / stitched / ambiguous) and "geometry" object (path.meta.json:
  freedom / pan / stabilized), or "none recorded" if either is null.}
 
-## The colour-naturalness sensor (advisory first cuts — see Rules)
+## The colour-naturalness sensor (advisory — see Rules)
 {NATURALNESS — paste evidence.json's "naturalness" object: stats (means /
- cast / saturation / contrast / clip_high / clip_low) and flags
- (blown_highlights / crushed_blacks / colour_cast / oversaturated / flat).}
+ cast / saturation / contrast / clip_high / clip_low — a fact about the
+ footage on its own, not a defect); flags (blown_highlights / crushed_blacks
+ — information the grade destroyed, true regardless of source); source (the
+ pre-grade segment's own stats, or null if there is none) and delta
+ (cast_shift / saturation_shift / contrast_drop — what the grade CHANGED,
+ against source; null alongside it).}
 
 ## What shipped
 Frame strip: {STRIP_PATH} (frames sampled across the DELIVERED clip, in
@@ -40,10 +44,15 @@ both — this is the pixel evidence itself, not a summary of it.
   never a global thirds rule? A `break` episode ignoring the thirds is
   correct; the same frame under `lead` is not. Judge against
   `intent.composition`, not a rule of thumb.
-- **colour** — does the grade read natural? The naturalness flags above are
-  advisory FIRST CUTS, not a verdict — a `crushed_blacks` flag on a
-  deliberately dark/night shot is not a finding. Look at the strip and decide
-  for yourself; cite the flag as evidence only when the pixels agree with it.
+- **colour** — does the grade read natural? The mechanical `color_fidelity`
+  check (in "The mechanical checks" above) already STOPPED this episode if
+  the grade moved the tracked subject's colour past its threshold — so if you
+  are looking at this episode, that already passed, and its `delta_e` /
+  `dominant` say how much headroom remained. The naturalness flags above are
+  advisory context, not a verdict — a `crushed_blacks` flag on a deliberately
+  dark/night shot, or a `saturation_shift` on a scene that was meant to pop,
+  is not a finding by itself. Look at the strip and decide for yourself; cite
+  a flag as evidence only when the pixels agree with it.
 - **impression** — does the episode read, overall, as an intentional and
   usable shot?
 - **path** — is the crop's motion smooth across the strip, or does it jitter
