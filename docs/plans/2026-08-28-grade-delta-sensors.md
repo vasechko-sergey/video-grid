@@ -1211,10 +1211,17 @@ git commit -m "feat: the QC judge sees the pre-grade reading it was always owed"
 
 - [ ] **Step 0: One stale docstring outside every task's file list**
 
-`tests/integration/test_colour_stage.py`'s module docstring still describes
-`check_episode`'s colour check as an advisory **hue-drift** check. It is neither
-advisory nor hue-based after Task 3. Update that sentence. (Found by the Task 2
-implementer, which correctly refused to edit a file outside its own scope.)
+Three test files still call `check_episode`'s colour check **advisory**, and one
+still calls it a **hue-drift** check. It is neither after Task 3. Fix the prose in
+each; the assertions themselves are correct and must not change:
+
+- `tests/integration/test_colour_stage.py` — module docstring ("ADVISORY", "hue-drift")
+- `tests/integration/test_check_episode.py:113` — "the advisory check reports honestly"
+- `tests/integration/test_process_episode.py:592` — "the advisory color_fidelity check's
+  only ingredient"
+
+(All three found by implementers or reviewers that correctly refused to edit a file
+outside their own scope.)
 
 - [ ] **Step 1: Update the judge's two skill files**
 
