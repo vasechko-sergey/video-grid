@@ -1202,6 +1202,13 @@ git commit -m "feat: the QC judge sees the pre-grade reading it was always owed"
 - Modify: `docs/build-status.md`, `docs/backlog.md`
 - Modify: `CHANGELOG.md`, `.claude-plugin/plugin.json`
 
+- [ ] **Step 0: One stale docstring outside every task's file list**
+
+`tests/integration/test_colour_stage.py`'s module docstring still describes
+`check_episode`'s colour check as an advisory **hue-drift** check. It is neither
+advisory nor hue-based after Task 3. Update that sentence. (Found by the Task 2
+implementer, which correctly refused to edit a file outside its own scope.)
+
 - [ ] **Step 1: Update the judge's two skill files**
 
 In `skills/episode-qc/SKILL.md` and `skills/episode-qc/episode-reviewer.md`,
