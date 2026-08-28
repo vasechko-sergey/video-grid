@@ -26,6 +26,13 @@ BOX = (220, 100, 200, 160)           # x0, y0, w, h of the colour box in the sou
 SUBJECT_COLOR = "0xC85028"           # RGB (200, 80, 40) — saturated orange, hue ~15°
 DUR = 2.0
 
+# A route's timestamps and the delivered clip's duration are independent facts —
+# a trim or a retime changes one without rewriting the other. This route spans
+# past DUR on purpose: SAMPLE_FRACS' top fraction (0.9) * ROUTE_OVERRUN_T (2.4)
+# = 2.16s, past the ~1.967s last-decodable-frame boundary (DUR - 1/30fps) of a
+# DUR=2.0s clip — the exact disagreement _last_sampleable_t's clamp exists for.
+ROUTE_OVERRUN_T = 2.4
+
 # The "graded" clip is a real crop of the source: 480x360 starting at x=80 —
 # freedom = 640 - 480 = 160, a non-zero crop offset so the sidecar's projection
 # genuinely has to place the subject, not just echo an identity mapping.
@@ -112,11 +119,21 @@ def test_the_check_takes_five_samples(tmp_path, source_clip, faithful_clip):
 
 def test_sampling_survives_a_route_that_reaches_the_last_frame(tmp_path, source_clip,
                                                                faithful_clip):
-    """frames_rgb raises past the stream end; a route whose last point sits at the
-    clip's duration must be clamped, not crash. Without the clamp this raises
-    RuntimeError from frames_rgb."""
+    """A route's timestamps and the delivered clip's own duration are independent
+    facts — a trim or a retime changes the delivered length without rewriting the
+    route that was measured against the pre-trim footage. This route spans
+    0..ROUTE_OVERRUN_T (2.4s) while both clips are only DUR (2.0s) long, so
+    SAMPLE_FRACS' top fraction (0.9) asks for t=2.16s — past the ~1.967s
+    last-decodable-frame boundary (DUR - 1/fps at 30fps).
+
+    Verified empirically (task-2-report.md, fix round 1): with
+    _last_sampleable_t's `min(..., last)` clamp removed, this raises
+    `RuntimeError: frames_rgb: chunk requested 5 frames [7, 22, 36, 50, 65] but
+    ffmpeg emitted 4 — a frame number is past the stream end` from
+    assembly.frames_rgb; with the clamp in place (as shipped), it passes and
+    still reports 5 samples."""
     n = 5
-    route = [dict(t=round(i * DUR / (n - 1), 3), x=SUBJECT_X, y=SUBJECT_Y,
+    route = [dict(t=round(i * ROUTE_OVERRUN_T / (n - 1), 3), x=SUBJECT_X, y=SUBJECT_Y,
                   w=SUBJECT_W, h=SUBJECT_H) for i in range(n)]
     (tmp_path / "route.json").write_text(json.dumps(route))
     (tmp_path / "path.json").write_text(json.dumps([CROP_X] * n))
