@@ -206,6 +206,17 @@ def evaluate(stats: dict) -> dict:
     oversaturated, flat. Never a pass/fail — the agent judges, these ground it."""
 ```
 
+> **Amended 2026-08-28 — `evaluate` returns TWO flags, not five.** See
+> [grade-delta-sensors](2026-08-28-grade-delta-sensors-design.md) §4:
+> `colour_cast` / `oversaturated` / `flat` are **deleted**, along with
+> `CAST_MAX` / `SAT_MAX` / `FLAT_SPREAD`. Measured on the reference run, one of
+> them was reading the scene rather than the grade (6 of 8 **sources** already
+> exceeded `CAST_MAX` before any grade) and two were unreachable. What replaces
+> them is source-relative and lives in a new function,
+> `evaluate_delta(src, grd)` → `cast_shift` / `saturation_shift` /
+> `contrast_drop`, which `episode_qc.pack` feeds from the pre-grade segment.
+> The two absolute clipping flags this snippet names first are unchanged.
+
 No spec object and no caller-tunable thresholds: they live as module constants in
 this one file. A threshold a caller can pass is a threshold a subagent can pass, and
 §7's no-waiver rule would be worth nothing if the sensor's own bar were an argument.

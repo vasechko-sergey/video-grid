@@ -190,6 +190,9 @@ an override, not a bug.
 | ✅ | **Make pacing's round trip a fixed point again — fixed 2026-08-17 (`pacing-fixed-point`).** `EDLEpisode.base_dur` records the footage-projected length ONCE, at projection; `pacing.build_pacing`/`_bounds` and `edit_plan._bind_pacing`'s half-beat guard all read it through `base_play_dur()` instead of the already-bound `dur`, so the spine becomes a pure function of `(base, music)` and fit → apply → fit → apply reproduces the same `EDL.json` (proven byte-identical, five real driver calls, no ffmpeg needed). **The measurement found more than the queued deadlock**: re-fitting an already-fitted EDL against a DIFFERENT music window landed every cut a beat early even with NO outro anywhere near it — a scenario `[5.77, 3.41, 6.02, 4.88]` fit to 128 BPM then re-fit to 110 BPM lands on beats 10/16/27, where fitting the scenario straight to 110 BPM lands on 11/17/28, the whole reel 0.5455s short — and it fires on the stage's own recommended remedy ("Try another window"). The folded-in digest idea shipped too: `Spine.music_digest` + `music_identity()` binds a spine to the analysed music WINDOW, not just its tempo, closing the case a tempo-only check cannot see — the same track at a different `start_offset`. | M | music-outro-fit §11.8, final review I-1, shadow-red-length-reconcile §6/§7, [pacing-fixed-point design](specs/2026-08-16-pacing-fixed-point-design.md) |
 | ✅ | **Reconcile `build_reel`'s length re-time with the outro fit — fixed 2026-08-17 (`pacing-fixed-point`).** `ReelManifest.outro` carries `EDL.outro.to_dict()` (round-tripped through `OutroFit.from_dict`, so a malformed outro fails loud rather than reading as `"unchanged"` and silently restoring the absorb); `reel_orchestration.next_action` gains `outro_fixed`, and a within-band shortfall now escalates to `pacing` (reason `outro-length-chosen`) instead of silently absorbing — `length_retime_max` (1.0s) is as wide as the 0.96s miss the whole outro slice exists to fix. | S | music-outro-fit §11.10, [pacing-fixed-point design](specs/2026-08-16-pacing-fixed-point-design.md) |
 | ○ | **Re-derive `SAT_DELTA_MAX`/`CONTRAST_DROP_MAX` on a run whose baseline is not the complaint.** Both bars are set to zero false positives against the shipped reel — the very "washed out" run the operator complained about — so they are, if anything, too loose. Blocked on R1.1: needs a reel graded after mood stops silently ordering a grade. | S | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §9.4, blocked on R1.1 |
+| ○ | **A rejected colour-convergence re-render blames the EDL, and nothing tests the interaction.** On a `color_across_cuts` failure `build_reel` compounds a per-channel pull into its in-memory `cc[idx]` and re-renders; `check_episode` then measures that render against the pre-grade segment, so the loop's own pull counts as grade movement. Measured through the branch's own `colordiff` on ep2's box mean `(75, 85, 99)`: 1.02x = 0.60 dE00, 1.05x = 1.51, 1.10x = 3.04, 1.10x on one channel = 3.92, 1.50x (`color.corrected`'s clamp) = 16.22 — against **0.71 dE00** of headroom at the healthy maximum. It is a stop, not a deadlock (colour is `_UNFIXABLE`, so it escalates on attempt 1 and `build_reel` returns `reprocess-failed`). Three parts: the finding routes to `edit-plan` and an EDL colour block that is unchanged and correct — it needs its own kind (`colour-correction-rejected`, routed to `match-grade`); Phase A.5 colour convergence is thereby disabled for the mixed-camera reels it exists for; and the rejected render has already overwritten `ep{i}.mp4` while `reprocessed` stays unset, which `episode_qc.gate`'s stale-digest arm catches on the next `--from-episodes` but the stop report never mentions. **There is no test for this interaction at all.** | M | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §3.1, final review I-1 |
+| ○ | **`probe grade` is the one tool in the convergence loop that cannot predict the gate that stops the run.** `skills/edit-plan/SKILL.md` hands the operator `probe grade` precisely so a grade converges without a full render — and since `color_fidelity` became blocking, an operator can converge on `probe.jpg` and still have the full render escalate as `grade-damage`. The machinery is already there: `scripts/probe.py:265` does `src = source_for(md, epdir)`, which is exactly the file `check_episode` compares against (and handles the stabilized case more carefully than `episode_qc` does). Add a `color_fidelity` reading to `probe.json` over the probe's own frames against `src`. | S | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §5, final review I-5 |
+| ○ | **`naturalness.evaluate_delta` compares a whole source frame against a *cropped* delivered frame.** `episode_qc._source_reading` measures the whole segment; `pack` measures the whole delivered frame, which is a reframed crop of it (often 9:16 out of 16:9). The difference between those regions is not the grade. The branch's own test records **source contrast 0.0 vs graded 123.6 with no grade at all**, against `CONTRAST_DROP_MAX = 20.0` — it reads `False` only because `contrast_drop` is signed and this crop happened to *gain* contrast; invert the geometry (a crop onto flat sky out of a contrasty source) and it fires on a crop. Same class as the `CAST_MAX` defect §0.5 diagnosed: a bar measuring something other than what it names. Fix: measure the source over the episode's crop rect. Advisory-only, so it is a limitation and not a live stop. | S | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §9.7, final review I-3 |
 
 ## P3 — someday
 
@@ -301,14 +304,37 @@ samples — five is a guess, and the batched decode makes each extra one just
 one more PNG to measure it properly (grade-delta-sensors §9.5) ·
 a second calibration shoot for `CheckSpec.grade_delta_max` — every number
 behind the 5.0 dE00 bar comes from one shoot, one grade, and simulated
-damage, and the whole healthy-to-damage gap is **0.75 dE00** (grade-delta-sensors §9.1) ·
+damage, and the whole healthy-to-damage gap is **0.75 dE00**. And those
+artifacts were rendered by an engine that no longer exists: they predate the
+segment-range contract (R2.0/R2.3, 2026-08-27, released as 0.3.1), which
+removed a transfer error of **8.5 → 1.5 codes** on the 67-of-99 full-range
+clips. The source side should decode near-identically, but the delivered side
+of every pc-sourced episode moves by ~7 codes — measured through the branch's
+own `colordiff`, **2.10–2.65 dE00** on a mid tone (2.48 on ep2's box mean),
+more than 3x the whole gap the bar sits in. `5.0` does not move on that
+inference; what settles it is re-running `check_episode._colour_fidelity` over
+the eight episodes **re-extracted under the 0.3.1 contract** and comparing the
+per-episode medians against 0.89–4.29
+(grade-delta-sensors §9.1, final review I-2) ·
 `naturalness.BLOWN_FRAC`/`CRUSHED_FRAC` remain uncalibrated — one data point
 (`blown_highlights` fired once, plausibly) and zero (`crushed_blacks` never
 fired on footage that never crushed) (grade-delta-sensors §6) ·
 the `color_fidelity` sampling box is mostly background, not the subject — a
 person's bbox over water is water; the inner-50% candidate was measured and
 rejected (improves \|ΔH*\| 4.93→3.49 but worsens \|ΔL*\| 2.72→3.57). Folded
-into R2.1 (grade-delta-sensors §6)
+into R2.1 (grade-delta-sensors §6) ·
+the two colour sensors do not share a baseline on a **stabilized** episode —
+`check_episode` compares against `<project_dir>/stabilized.mp4` (the file
+reframe consumed), `episode_qc._source_reading` always reads
+`ep.manifest["segment"]`. `probe.source_for` already resolves this correctly;
+routing `episode_qc` through it fixes it (grade-delta-sensors §9.8, final
+review M-1) ·
+`check_episode._last_sampleable_t` clamps to `probe_duration - 1/fps`, and
+`assembly._LAST_FRAME_MARGIN_S` records a measured case where a probed
+container duration overstated the true last frame by a **full frame** — the
+exact margin this clamp leaves. A suspicion, not a confirmed defect: reachable
+only when the route span exceeds the clip, and it fails loud. **Measure before
+moving the constant** (grade-delta-sensors §10, final review M-6)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
