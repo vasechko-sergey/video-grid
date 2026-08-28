@@ -10,6 +10,28 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.3.1 — 2026-08-28
+
+- **Two thirds of the footage was being graded in the wrong colour range, silently.**
+  `extract` re-encoded with `-pix_fmt yuv420p`, which reads as a normalization and
+  is not one — libx264 keeps full range for a full-range input. Of the 99 clips in
+  the reference shoot **67 are full-range**, so most of the footage reached the tone
+  transfer, whose constants describe a *limited* 8-bit plane, in a range those
+  constants are not written for. Measured against one common target, the transfer
+  missed by **8.5 luma codes** on a full-range source and **1.5** on a limited one,
+  against a threshold of 4.0 that decides whether to correct at all. Segments are
+  now normalized at the cut, and the two land on the same numbers. Byte-identical
+  on everything already correct, so nothing that looked right has moved.
+- **The tone map no longer flattens the highlights.** Above its top anchor the curve
+  fell through to a constant, so twenty stored codes arrived as one — a plate
+  exactly where the shoulder exists to prevent one. It now continues the shoulder's
+  own slope.
+- **Raw camera footage is refused where it cannot be graded.** A 10-bit source
+  through the same transfer came back with **99.26 %** of its pixels on a single
+  code — destroyed, not shifted — and nothing said so. `reframe` now refuses a
+  source whose bit depth or colour range its colour maths cannot read, naming the
+  remedy. It caught this repo's own test fixture on its first day.
+
 ## 0.3.0 — 2026-08-27
 
 - **The run directory gets an interior, organised by lifetime.** `montage/footage/`

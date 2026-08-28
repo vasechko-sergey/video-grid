@@ -161,10 +161,14 @@ def golden_ride_segment(tmp_path_factory):
     1280x720, fps 60000/1001, 95 frames and duration 1.584917 are all bit-for-bit
     unchanged, so the route still applies; only the range moves, pc -> tv.
 
-    All three arguments are load-bearing. `-pix_fmt yuv420p` alone does not
-    convert (libx264 keeps full range for a full-range input); `scale=out_range=tv`
-    alone does not either when the output format is `yuvj420p`, because that
-    format *means* full range and wins. Measured both ways while writing this.
+    `-pix_fmt yuv420p` is the load-bearing argument, and it is not sufficient on
+    its own. Measured over all seven combinations: `-pix_fmt yuv420p` alone
+    converts nothing (libx264 keeps full range for a full-range input), and
+    `scale=out_range=tv` alone does not either when the output format is
+    `yuvj420p`, because that format *means* full range and wins. With the pix_fmt
+    present, the filter alone, the tag alone and both together are byte-identical
+    and all convert — so the pair is sufficient given it, and either half will
+    do.
     """
     try:
         binary = ffbin.ffmpeg()

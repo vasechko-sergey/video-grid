@@ -168,9 +168,21 @@ the shipped ffmpeg.** Measured 2026-08-27 while a mutation row refused to go red
 the filter alone, the tag alone, and both together all produce **byte-identical**
 output carrying the same `tv` tag (md5 `deb09207…`, four ways, on the pc fixture
 and on the real Canon); `out_range=auto` beside the tag lands there too. Only
-removing **both** reverts (`82f376b8…`, tag `pc`). Either half drives the
-conversion here, because ffmpeg's auto-inserted scaler honours `-color_range` and
-the explicit filter sets the frame metadata the encoder then tags from.
+removing **both** reverts (`82f376b8…`, tag `pc`).
+
+**Every one of those measurements held `-pix_fmt yuv420p` fixed, and the first
+version of this correction did not say so.** Caught by the final whole-branch
+review, which varied the one argument nobody had varied. Over all **seven**
+combinations on this repo's own pc fixture: without `-pix_fmt yuv420p` **nothing
+converts** — filter alone, tag alone and both together all return `yuvj420p`/`pc`,
+byte-identical (`a6ca8b59…`) — and `-pix_fmt yuv420p` alone returns those same
+bytes. With it, all three spellings converge on `yuv420p`/`tv` (`fc9ea33a…`). The
+true relation is **`-pix_fmt yuv420p` AND (filter OR tag)**: the pix_fmt is
+individually necessary and not sufficient, the pair is sufficient given it, and
+either half of the pair will do. Saying "the filter or the tag converts" without
+that clause is itself the silent-corruption shape this repo files as a landmine —
+a reader drops the pix_fmt, keeps the pair, and ships an unconverted `pc` file
+believing it normalized.
 
 Both are kept anyway — it costs nothing, it is the spelling `assembly._normalize`
 already uses, and the redundancy is cheap insurance against an ffmpeg where the

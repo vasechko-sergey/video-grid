@@ -56,7 +56,11 @@ _Last updated: 2026-08-25._
      refused to confirm it.** Measured: `scale=…:out_range=tv` alone, `-color_range
      tv` alone, both together, and even a *wrong* `out_range=pc` beside a correct
      tag all produce byte-identical output with the same `tv` tag; only omitting
-     **both** reverts. Both are kept — free, and the spelling `assembly._normalize`
+     **both** reverts. The final review then found that correction itself
+     incomplete: every one of those runs held `-pix_fmt yuv420p` fixed, and
+     varying it shows **nothing converts without it**. The true relation is
+     `-pix_fmt yuv420p` AND (filter OR tag) — the pix_fmt individually necessary
+     and not sufficient. Both are kept — free, and the spelling `assembly._normalize`
      already uses — but the consequence is recorded in the code: **no check over
      rendered pixels can notice one half going missing, so the argv-level unit
      test is the sole guard on each half.**

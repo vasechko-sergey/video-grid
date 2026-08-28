@@ -94,9 +94,11 @@ def _normalize(src: str, dims: tuple[int, int], fps: float, out: str,
     # outlier ONLY — matched episodes are copied untouched.
     # in_range=auto reads the source's own tag (and ffmpeg's yuvj⇒full default when
     # it has none), so this CONVERTS the samples rather than relabelling them;
-    # -color_range then writes the matching tag. Both halves are needed: convert
-    # without tagging and the player re-expands an already-expanded image; tag
-    # without converting and you get the very bug this function exists to stop.
+    # -color_range then writes the matching tag. Both are spelled out because it
+    # costs nothing, NOT because both are required — measured 2026-08-27
+    # (segment-range-contract §4.1), either half alone converts byte-identically
+    # once the output pix_fmt is yuv420p, and that pix_fmt is the individually
+    # necessary member: without it nothing here converts at all.
     vf = (f"scale={dims[0]}:{dims[1]}:in_range=auto:out_range={color_range},"
           f"fps={fps},format=yuv420p")
     proc.run([ffbin.ffmpeg(), "-y", "-i", src, "-vf", vf, "-color_range", color_range,

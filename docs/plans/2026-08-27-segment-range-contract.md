@@ -456,9 +456,12 @@ In `scripts/extract.py`, replace the `cmd` list inside `extract()`:
         # lutyuv, whose TV_LO/TV_SPAN are written for 16..235.
         # in_range=auto reads the source's own tag (and ffmpeg's yuvj=>full
         # default when it has none), so this CONVERTS the samples; -color_range
-        # writes the matching tag. Both halves are needed, and it is the same
-        # pair assembly._normalize already uses at concat — moved to where it can
-        # still save the grade instead of arriving after it.
+        # writes the matching tag. It is the same pair assembly._normalize already
+        # uses at concat — moved to where it can still save the grade instead of
+        # arriving after it. (Corrected post-review: `-pix_fmt yuv420p` is the
+        # individually necessary member; the pair is sufficient given it and
+        # either half will do. The shipped comment in scripts/extract.py is the
+        # authority.)
         # The scale carries NO dimensions: resolution stays native because
         # reframe crops from native pixels (design §3). Measured byte-identical
         # on untagged, tv-tagged and 10-bit sources, so no golden moves.

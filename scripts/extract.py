@@ -27,12 +27,15 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
         # default when it has none), so this CONVERTS the samples; -color_range
         # writes the matching tag. It is the same pair assembly._normalize already
         # uses at concat — moved to where it can still save the grade instead of
-        # arriving after it. Both are kept because it is free and because that is
-        # the established spelling, NOT because both are required: measured
-        # 2026-08-27, either alone converts, byte-identically, and only omitting
-        # both reverts anything. The consequence is that no check over rendered
-        # pixels can notice one of them going missing or going wrong — the argv
-        # test in tests/lib/test_extract.py is the sole guard on each half.
+        # arriving after it. Measured 2026-08-27 over all seven combinations:
+        # `-pix_fmt yuv420p` is individually NECESSARY and not sufficient (alone it
+        # converts nothing, and without it neither the filter nor the tag nor both
+        # convert anything either); the filter/tag pair is sufficient GIVEN it, and
+        # either half of the pair is byte-identical to both. Both halves are kept
+        # because it costs nothing — but the redundancy inside the pair means no
+        # check over rendered pixels can notice one of them going missing or going
+        # wrong, so the argv test in tests/lib/test_extract.py is the sole guard
+        # there.
         # The scale carries NO dimensions: resolution stays native because
         # reframe crops from native pixels (design §3). Measured byte-identical
         # on untagged, tv-tagged and 10-bit sources, so no golden moves.

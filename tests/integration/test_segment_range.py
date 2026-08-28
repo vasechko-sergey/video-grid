@@ -68,9 +68,15 @@ def test_normalizing_does_not_move_the_profile_the_grade_is_measured_from(
 
 def test_a_normalized_segment_no_longer_reads_as_a_concat_outlier(
         pc_ramp_clip, extract_unnormalized, tmp_path):
-    """The quiet win: assembly.matches classified a full-range episode as an
-    outlier and re-encoded it whole before concat — a full extra generation for
-    two thirds of the pool. It matches now, and concat copies it."""
+    """The quiet win: a full-range file reads as a concat outlier and gets
+    re-encoded whole, and a normalized one does not — a full extra generation
+    saved for two thirds of the pool.
+
+    Honest about what it measures (final review, 2026-08-27): these are SEGMENTS,
+    and `assemble` receives EPISODES. The consequence for episodes is real — a
+    reframe-shaped chain over pc footage emits `yuvj420p`/pc, and over a
+    normalized segment emits `yuv420p`/tv — but this test does not establish that
+    step; it establishes that `matches` separates the two range tags."""
     old, new = _both_ways(pc_ramp_clip, extract_unnormalized, tmp_path)
     assert not assembly.matches(assembly.probe_stream(str(old)), (W, H), 30.0)
     assert assembly.matches(assembly.probe_stream(str(new)), (W, H), 30.0)

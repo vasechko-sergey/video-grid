@@ -72,9 +72,12 @@ def test_extract_edl_refuses_a_juddering_ramp_at_the_probed_rate(monkeypatch, tm
 
 
 def test_extract_normalizes_the_range_and_keeps_the_seek_order(monkeypatch, tmp_path):
-    """Both halves are emitted. Converting without tagging leaves a player
-    re-expanding an already-expanded image; tagging without converting IS the
-    corruption this exists to stop. And -ss still lands after -i (§12)."""
+    """Both halves are emitted — and this test is why that can be checked at all.
+
+    Measured 2026-08-27: given `-pix_fmt yuv420p`, the filter alone, the tag alone
+    and both together produce byte-identical output, so no assertion over rendered
+    pixels can notice one of them going missing or going wrong. The argv IS the
+    only place the difference exists. And -ss still lands after -i (§12)."""
     seen = {}
     monkeypatch.setattr(extract.proc, "run", lambda cmd, **kw: seen.setdefault("cmd", cmd))
     extract.extract("a.mp4", 1.0, 2.0, str(tmp_path / "o.mp4"))
@@ -97,7 +100,15 @@ def test_extract_names_tv_not_pc_in_the_scale_filter(monkeypatch, tmp_path):
     a real full-range ramp, because the explicit `-color_range tv` output tag makes
     ffmpeg auto-insert a matching conversion that overrides a conflicting `out_range`
     in the `-vf` chain. So a wrong value here, like a missing one (§4.1), is
-    invisible to any assertion over rendered bytes; only the argv can catch it."""
+    invisible to any assertion over rendered bytes; only the argv can catch it.
+
+    NOT a coverage hole this closed, and the branch's first write-up said it was.
+    The final review pointed out that `test_extract_normalizes_the_range_and_keeps_
+    the_seek_order` asserts full string equality on the `-vf` value, so it already
+    goes red under this mutation. Row 12 was declared a hole from a PIXEL-level
+    selection alone; at the argv level it was covered before this test existed.
+    Kept because it names the specific failure in its own right, but it is a
+    second lock on one door, not a new one."""
     seen = {}
     monkeypatch.setattr(extract.proc, "run", lambda cmd, **kw: seen.setdefault("cmd", cmd))
     extract.extract("a.mp4", 1.0, 2.0, str(tmp_path / "o.mp4"))

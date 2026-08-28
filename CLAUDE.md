@@ -198,17 +198,19 @@ contract, scripts-as-modules, `pythonpath = .`, typing) live in
   them toward 0 (measured mean |ΔU| 63.44). Use `overlay` through alpha, or
   restrict the blend to the luma plane. **Machine-checked**: the landmine
   lint's sixth `check_argv` check refuses it outright (2026-08-13 §8.1).
-- `-pix_fmt yuv420p` on an encode does **not** normalize the colour range —
-  libx264 keeps full range for a full-range input, and ffprobe then reports the
-  output as `yuvj420p`/`pc`. What does convert is `-color_range tv`, or
-  `scale=in_range=auto:out_range=tv`, or both: measured 2026-08-27, all three
-  spellings produce byte-identical output, and only omitting **both** leaves the
-  range untouched. `extract` carries both because it is free and it is the
-  spelling `assembly._normalize` already uses — but the redundancy means no check
-  over rendered pixels can notice one of them going missing, so the argv-level
-  test is the only guard on each half individually. And `TV_LO`/`TV_SPAN` are
-  constants of **bit depth** as well as range: a 10-bit plane through the same
-  LUT comes back with 99% of its pixels on one code.
+- Converting an encode's colour range takes **`-pix_fmt yuv420p` AND at least one
+  of** `-color_range tv` / `scale=in_range=auto:out_range=tv`. Measured 2026-08-27
+  over all seven combinations on a real `pc` source: **without `-pix_fmt yuv420p`
+  nothing converts** — filter alone, tag alone and both together all come back
+  `yuvj420p`/`pc`, byte-identical — and `-pix_fmt yuv420p` **alone** does not
+  convert either. With it, filter alone, tag alone and both are byte-identical and
+  all convert. So `-pix_fmt` is individually necessary and not sufficient; the
+  pair is sufficient given it, and either half will do. `extract` carries all
+  three because it costs nothing, but the redundancy inside the pair means no
+  check over rendered pixels can notice one half going missing — the argv-level
+  test is the only guard there. And `TV_LO`/`TV_SPAN` are constants of **bit
+  depth** as well as range: a 10-bit plane through the same LUT comes back with
+  99% of its pixels on one code.
 - `select` placed **before** a chain's `fps=` emits the SAME frame once per
   requested frame: `fps` re-interpolates the dropped frames back up to rate by
   duplicating the survivor, and the output frame count is still right, so nothing
