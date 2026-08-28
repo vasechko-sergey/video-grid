@@ -958,7 +958,11 @@ class CheckSpec:
     attempt: int = 1
     black_floor: float = 6.0
     black_rel: float = 0.35
-    hue_drift_max: float = 25.0   # deg: advisory subject hue-drift ceiling (color_fidelity, §7)
+    # The largest median subject dE00 (source vs delivered) an episode may carry.
+    # 5.0 is measured, not chosen: on the reference run the eight shipped episodes
+    # reach 4.29 and the retro's own recorded damage magnitudes start at 5.04
+    # (design 2026-08-28 §0.4/§2.4).
+    grade_delta_max: float = 5.0
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
@@ -967,10 +971,11 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
             raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
-        if (isinstance(self.hue_drift_max, bool) or not isinstance(self.hue_drift_max, (int, float))
-                or self.hue_drift_max <= 0):
-            raise ValueError(f"CheckSpec.hue_drift_max must be a positive number of degrees, "
-                             f"got {self.hue_drift_max!r}")
+        if (isinstance(self.grade_delta_max, bool)
+                or not isinstance(self.grade_delta_max, (int, float))
+                or self.grade_delta_max <= 0):
+            raise ValueError(f"CheckSpec.grade_delta_max must be a positive dE00 ceiling, "
+                             f"got {self.grade_delta_max!r}")
 
 
 @dataclass

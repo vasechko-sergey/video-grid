@@ -254,13 +254,14 @@ def test_check_spec_no_longer_carries_canvas_or_src_dims():
     assert not hasattr(spec, "src_dims")
 
 
-def test_checkspec_hue_drift_max():
-    from scripts.lib.models import CheckSpec
-    assert CheckSpec(composition="center", grid="thirds", target_dur=3.0).hue_drift_max == 25.0
-    with pytest.raises(ValueError, match="positive number of degrees"):
-        CheckSpec(composition="center", grid="thirds", target_dur=3.0, hue_drift_max=-1)
-    with pytest.raises(ValueError, match="positive number of degrees"):
-        CheckSpec(composition="center", grid="thirds", target_dur=3.0, hue_drift_max=True)  # bool-reject
+def test_checkspec_grade_delta_max():
+    assert m.CheckSpec(composition="center", grid="thirds", target_dur=3.0).grade_delta_max == 5.0
+    with pytest.raises(ValueError, match="positive dE00 ceiling"):
+        m.CheckSpec(composition="center", grid="thirds", target_dur=3.0, grade_delta_max=-1)
+    with pytest.raises(ValueError, match="positive dE00 ceiling"):
+        m.CheckSpec(composition="center", grid="thirds", target_dur=3.0, grade_delta_max=True)  # bool-reject
+    assert not hasattr(m.CheckSpec(composition="center", grid="thirds", target_dur=3.0),
+                       "hue_drift_max")
 
 
 def test_storyboardspec_validation():

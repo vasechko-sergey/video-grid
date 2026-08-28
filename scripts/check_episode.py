@@ -83,8 +83,8 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
     Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at
     the route bbox in source px) and in the graded `clip` (at the subject's
     projected location, via geometry.extent_at_times) at K times, and delegate
-    to the pure color_fidelity.evaluate for the hue-angle verdict. `passed` is
-    always None — hue drift never fails an episode, it is reported."""
+    to the pure color_fidelity.evaluate for the median-dE00 verdict. `passed` is
+    always None for now — Task 3 of the grade-delta slice makes it blocking."""
     if source is None or not route_pts:
         return CheckResult("color_fidelity", None,
                            {"status": "not-checked",
@@ -101,7 +101,7 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
         gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
         pairs.append((_region_mean_rgb(source, t, sbox), _region_mean_rgb(clip, t, gbox)))
     return CheckResult("color_fidelity", None,
-                       color_fidelity.evaluate(pairs, spec.hue_drift_max))
+                       color_fidelity.evaluate(pairs, spec.grade_delta_max))
 
 
 ROUTE_SMOOTH_S = 0.08     # the span over which a crop reversal becomes visible (~5 frames @60fps)
