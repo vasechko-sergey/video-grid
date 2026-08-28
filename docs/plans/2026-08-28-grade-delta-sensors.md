@@ -1353,7 +1353,7 @@ which reads exactly like a non-discriminating row.
 | 17 | `naturalness.evaluate_delta`: `saturation_shift` drops the `abs(...)` (one-sided, like the old `SAT_MAX`) | `test_saturation_shift_is_two_sided_and_catches_a_desaturation` |
 | 18 | `naturalness.CAST_DELTA_MAX` → `0.20` | `test_cast_shift_is_two_sided_and_bars_at_the_measured_value` |
 | 19 | `episode_qc._source_reading`: return `{"source": None, "delta": None}` unconditionally | `test_the_evidence_packet_carries_the_pre_grade_reading` |
-| 20 | `episode_qc._source_reading`: drop the `Path(seg).exists()` guard | `test_a_manifest_with_no_segment_reports_absent_not_empty` |
+| 20 | `episode_qc._source_reading`: drop the `Path(seg).exists()` guard | `test_a_segment_path_missing_from_disk_reports_absent_not_empty`. **NOT** `test_a_manifest_with_no_segment_reports_absent_not_empty`, which this plan originally named: it POPS the key, so `seg` is `None` and the `not seg` half short-circuits before the dropped half is reached (measured during the battery). The right test is the sibling added in Task 5's fix round, which is purpose-built for a present key pointing at a missing file. |
 
 - [ ] **Step 1: Record the baseline**
 
