@@ -33,8 +33,8 @@ file is the short "what changed for someone who installs it" list.
   (`cast_shift` / `saturation_shift` / `contrast_drop`) measured against the
   pre-grade footage, which the QC evidence packet now carries alongside the
   delivered clip's own numbers.
-- Both checks answer "did the colour move, and by how much" — neither says the
-  result looks good. That judgment still belongs to the QC judge and the CP3
+- Both checks answer whether the colour moved and by how much — neither says
+  the result looks good. That judgment still belongs to the QC judge and the CP3
   reviewer.
 
 ## 0.3.1 — 2026-08-28
