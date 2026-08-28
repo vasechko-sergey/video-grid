@@ -936,14 +936,19 @@ def test_evaluate_reports_only_the_two_absolute_flags():
     the grade: on the reference run 6 of 8 SOURCES already exceeded the old CAST_MAX
     before any grade ran (design §0.5). Only destroyed information stays absolute.
 
-    The two stats are pinned here as well, and not loosely: deleting the red-frame
-    flag test removes the only place `cast` and `saturation` were exercised on a
-    colourful frame, and a `> 0.3` bar would survive every regression this is for.
-    Both are exact on a flat synthetic frame — means (220, 40, 40) give a neutral of
-    100.0 and cast max(1.2, 0.6, 0.6) = 1.2; saturation is (220 - 40) / 220."""
+    This is also the only fixture left in the suite that exercises _frame_stats' cast
+    and saturation formulas against a genuinely colourful, saturated frame — the
+    red-cast test that used to cover them (indirectly, through colour_cast/
+    oversaturated) was deleted along with those two flags. So pin the numbers
+    themselves, not just the surviving flag set. _flat(220, 40, 40) is one constant
+    colour, so both are exact fractions by hand:
+      means = [220, 40, 40] -> neutral = (220+40+40)/3 = 100
+      cast = max(|220/100-1|, |40/100-1|, |40/100-1|) = max(1.2, 0.6, 0.6) = 1.2
+      saturation = (max-min)/max = (220-40)/220 = 180/220 = 9/11 = 0.81818... -> 0.8182
+    """
     stats = naturalness.measure([_flat(220, 40, 40)])
-    assert stats["cast"] == pytest.approx(1.2, abs=1e-4)
-    assert stats["saturation"] == pytest.approx(180 / 220, abs=1e-4)
+    assert stats["cast"] == pytest.approx(1.2)
+    assert stats["saturation"] == pytest.approx(0.8182)
     flags = naturalness.evaluate(stats)
     assert set(flags) == {"blown_highlights", "crushed_blacks"}
 
