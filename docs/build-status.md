@@ -83,12 +83,40 @@ _Last updated: 2026-08-28._
   still caught — by other rows or by a sibling test — but only *running* them
   revealed the pointers were wrong.
 
-  Suite: **3227 passed, 1 skipped** (full run). Five deferred
-  rows filed in the backlog (design §10): re-derive the two advisory bars once
-  R1.1 lands a baseline that is not itself the complaint, the right sample
-  count/placement, a second calibration shoot for the blocking bar, the two
-  absolute clipping flags remain uncalibrated, and the mostly-background
-  sampling box folds into R2.1.
+  **The whole-branch review's one fix wave** then found what the per-task
+  reviews could not. Nothing measured moved — `5.0`, the five fractions, 0.08,
+  0.12 and 20.0 all stand — but four of the design's own claims did not
+  survive it, and each is now corrected in place:
+  §3.1 (new) analyses the interaction with `build_reel`'s colour convergence
+  (its compounded `cc` pull IS grade movement to this sensor: **0.71 dE00** of
+  headroom at the healthy maximum, about a 1.02x pull — a stop and not a
+  deadlock, but routed to `edit-plan` and an EDL colour block that is unchanged
+  and correct, and leaving a rejected render on disk that only the QC
+  stale-digest gate catches); §5's "`probe.py` gains nothing, it has no
+  pre-grade side" was **false** — it already resolves one via `source_for`, so
+  the operator's own convergence tool is the one thing that cannot predict the
+  gate that now stops the run; §9.1 gains the sharper limitation that the
+  calibration artifacts predate the 0.3.1 segment-range contract, whose ~7-code
+  move on a pc-sourced delivery is **2.10–2.65 dE00** — over 3x the whole
+  0.75-unit gap the bar sits in; and §9.7 records that `evaluate_delta`
+  compares a whole source frame against a *cropped* delivered one, which the
+  branch's own fixture reads as **source contrast 0.0 vs graded 123.6 with no
+  grade at all**. One test was added: design §2.4's live control had no
+  reproducible form in CI, so a real authored tone pair of ep1's magnitude now
+  renders through `reframe.reframe` and lands at **ΔE00 1.59** against the 5.0
+  bar, with an identity control at **0.79** proving the pair is not a no-op.
+
+  Suite: **3228 passed, 1 skipped** (full run, after the fix wave). Ten
+  deferred rows in the backlog — design §10's original five (re-derive the two
+  advisory bars once R1.1 lands a baseline that is not itself the complaint,
+  the right sample count/placement, a second calibration shoot for the blocking
+  bar, the two uncalibrated absolute clipping flags, and the mostly-background
+  sampling box folding into R2.1), plus five the review added (the misrouted
+  colour-convergence stop **and the fact that nothing tests that interaction at
+  all**, a `color_fidelity` reading in `probe.json`, measuring the source over
+  the episode's crop rect, one baseline for both colour sensors on a stabilized
+  episode, and a measure-before-moving row on
+  `_last_sampleable_t`'s one-frame clamp).
 
 - **The segment format contract — R2.0 + R2.3 DONE (2026-08-27)** —
   [design](specs/2026-08-27-segment-range-contract-design.md),
