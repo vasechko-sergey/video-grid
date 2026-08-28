@@ -72,11 +72,19 @@ SAMPLE_FRACS = (0.1, 0.3, 0.5, 0.7, 0.9)
 
 def _box_mean_rgb(frame: np.ndarray, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
     """Mean (R, G, B) of a pixel box in one HxWx3 uint8 RGB frame. box = (x0,y0,x1,y1),
-    clamped into the frame and never empty — a route point can sit partly outside the
-    frame it was measured on, and an empty slice would mean() to NaN in silence."""
+    clamped into the frame and never empty — a route point can sit partly or wholly
+    outside the frame it was measured on (a subject that has left the delivered
+    crop), and an empty slice would mean() to NaN in silence.
+
+    x0/y0 are clamped into [0, w-1]/[0, h-1] FIRST — never just lower-bounded — so a
+    box that starts past the right or bottom edge cannot leave x0/y0 sitting beyond
+    the frame; x1/y1 are then clamped into (x0, w]/(y0, h] as before. A box with no
+    overlap with the frame at all therefore collapses to a single pixel at the
+    nearest edge: a poor measurement of a subject no longer in frame, but a defined
+    one, never a NaN."""
     x0, y0, x1, y1 = box
     h, w = frame.shape[:2]
-    x0, y0 = max(0, x0), max(0, y0)
+    x0, y0 = max(0, min(x0, w - 1)), max(0, min(y0, h - 1))
     x1, y1 = min(w, max(x1, x0 + 1)), min(h, max(y1, y0 + 1))
     px = frame[y0:y1, x0:x1].reshape(-1, 3)
     return tuple(float(px[:, c].mean()) for c in range(3))
