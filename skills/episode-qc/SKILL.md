@@ -170,14 +170,22 @@ say so rather than guessing a path.
   segment's own reading. Both `source` and `delta` are `null` when the
   manifest has no `segment` or the file is gone. A strong cast, a flat frame
   or a saturated one in `stats` alone is a fact about the footage, not a
-  defect — only a `delta` flag says the grade did something. Still advisory
-  in both directions: ground a finding in them, never defer to them.
+  defect — a `delta` flag is the one that can say the grade did something.
+  **`contrast_drop` is the exception and cannot be read that way**: the source
+  is measured over the WHOLE segment frame while the graded side is a reframed
+  crop of it, so the difference between two regions reads as a grade. On one
+  real fixture that is source contrast 0.0 against graded 123.6 with no grade
+  at all (design 2026-08-28 §9.7). Still advisory in both directions: ground a
+  finding in them, never defer to them.
 - **The colour axis's mechanical companion now stops the episode.**
   `report.json`'s `color_fidelity` (in the mechanical checks) reports a
   median `delta_e` plus `dominant` (`luma` / `chroma` / `hue`) and fails the
   episode above its threshold before this gate ever sees it — so an episode
-  that reached you already passed the mechanical colour check. Judge the
-  pixels regardless; a passing number is not a verdict on taste.
+  that reached you already passed the mechanical colour check, **unless that
+  check reports `{"status": "not-checked"}` with `passed: null`**. A scenery
+  pan has no tracked subject and no route, so nothing measured its colour at
+  all; there, you are the only colour check the episode gets. Judge the pixels
+  regardless; a passing number is not a verdict on taste.
 - **QC is per-episode and blind to neighbours.** Never comment on how one
   episode sits next to another, on pacing, or on repetition — that is
   reel-review's question, asked after delivery, over the assembled reel.

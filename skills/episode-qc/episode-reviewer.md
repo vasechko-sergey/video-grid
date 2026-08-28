@@ -48,7 +48,10 @@ both — this is the pixel evidence itself, not a summary of it.
   check (in "The mechanical checks" above) already STOPPED this episode if
   the grade moved the tracked subject's colour past its threshold — so if you
   are looking at this episode, that already passed, and its `delta_e` /
-  `dominant` say how much headroom remained. The naturalness flags above are
+  `dominant` say how much headroom remained. **Unless it reads
+  `{"status": "not-checked"}` with `passed: null`** — a scenery pan has no
+  tracked subject, so nothing measured its colour and you are the only check
+  it gets. The naturalness flags above are
   advisory context, not a verdict — a `crushed_blacks` flag on a deliberately
   dark/night shot, or a `saturation_shift` on a scene that was meant to pop,
   is not a finding by itself. Look at the strip and decide for yourself; cite

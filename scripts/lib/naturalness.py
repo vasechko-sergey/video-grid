@@ -11,6 +11,11 @@ Pure: numpy arrays in, one dict out. No ffmpeg, no file paths — the caller dec
 are advisory in both directions (design §5)."""
 import numpy as np
 
+# Every bar in this module lives here and ONLY here — none is a parameter: a
+# threshold a caller can pass is a threshold a subagent can pass, and the gate's
+# no-waiver rule (episode-qc design §7) would be worth nothing if the sensor's bar
+# were an argument. lookcheck.py cites this sentence for its own constants.
+#
 # Absolute bars, for destroyed information only. A blown sky is blown whatever the
 # source held, so these two do not need a source to compare against. Still first
 # cuts: BLOWN_FRAC fired once on the reference run and plausibly; CRUSHED_FRAC never

@@ -18,6 +18,10 @@ from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.models import ReelManifest
 
 FRAMES = 9           # strip cells per episode — enough to read a path across a 2-4s cut
+# (k+0.5)/5 happens to produce check_episode.SAMPLE_FRACS' five fractions, but of a
+# different quantity — clip duration here, route span there — and NOTHING ties the two.
+# Either can move without the other noticing; no code depends on the agreement
+# (design 2026-08-28 §9.9).
 SENSOR_FRAMES = 5    # frames the naturalness sensor averages over
 
 
@@ -68,7 +72,14 @@ def _source_reading(ep, graded: dict) -> dict:
 
     A manifest with no segment on disk reports both as None — absent is reported as
     absent, never as a clean reading, the same rule the rest of _evidence applies to
-    the sidecars."""
+    the sidecars.
+
+    NOT the same baseline check_episode's color_fidelity uses on a STABILIZED episode:
+    that one compares against the file reframe actually consumed
+    (<project_dir>/stabilized.mp4), this always reads ep.manifest["segment"], the raw
+    one. So on a stabilized episode the two colour sensors describe changes from two
+    different starting points. probe.source_for already resolves this correctly and
+    routing through it would fix it (design 2026-08-28 §9.8, backlog row)."""
     seg = ep.manifest.get("segment")
     if not seg or not Path(seg).exists():
         return {"source": None, "delta": None}

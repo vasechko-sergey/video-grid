@@ -140,7 +140,11 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
         gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
         pairs.append((_box_mean_rgb(sf, sbox), _box_mean_rgb(gf, gbox)))
     d = color_fidelity.evaluate(pairs, spec.grade_delta_max)
-    return CheckResult("color_fidelity", not d["exceeded"], d)
+    # evaluate documents a {"status", "reason"} return for an empty pair list, which
+    # carries no "exceeded". Unreachable from here — the guard above requires route_pts
+    # and the loop always builds five pairs — but reading a key the callee says may be
+    # absent is a contract mismatch, not a safe assumption about today's caller.
+    return CheckResult("color_fidelity", None if "status" in d else not d["exceeded"], d)
 
 
 ROUTE_SMOOTH_S = 0.08     # the span over which a crop reversal becomes visible (~5 frames @60fps)

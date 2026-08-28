@@ -164,6 +164,22 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             route = None if manifest.get("stabilize") else rm.episodes[item.idx].route
             res = process_episode.process_episode(
                 manifest, epdir, route_path=route, color_correct=cc.get(item.idx))
+            # A REJECTED re-render is already on disk. reframe writes m.out_path before
+            # check_episode.run reads it (process_episode.py), so this early return
+            # leaves ep{i}.mp4 overwritten by the render that just failed, and skips the
+            # reprocessed.add() below — the run stops with a clip nobody recorded as
+            # touched. Not a silent bypass: episode_qc.gate's stale-digest arm refuses on
+            # the next --from-episodes, because the clip no longer hashes to what was
+            # judged. But nothing in this finding says a clip was rewritten (design
+            # 2026-08-28 §3.1, backlog row).
+            #
+            # Since color_fidelity became blocking this arm has a second, likelier
+            # trigger: the cc pull compounded just above IS grade movement to that
+            # sensor, and an episode at the healthy maximum has ~0.71 dE00 of headroom
+            # — about a 1.02x pull. Colour is _UNFIXABLE, so process_episode escalates
+            # on attempt 1 rather than looping, and the reason routed out of here names
+            # edit-plan and the EDL's colour block, which is unchanged and correct. The
+            # real remedy is match-grade / --color-delta-max / accepting the mismatch.
             if res["status"] != "mechanical_pass":
                 return {"status": "stop_and_report",
                         "finding": {"reason": "reprocess-failed", "episode_idx": item.idx,
