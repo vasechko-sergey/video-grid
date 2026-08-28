@@ -934,8 +934,17 @@ flags, and add:
 def test_evaluate_reports_only_the_two_absolute_flags():
     """A cast, a flat frame and a saturated one are properties of the FOOTAGE, not of
     the grade: on the reference run 6 of 8 SOURCES already exceeded the old CAST_MAX
-    before any grade ran (design §0.5). Only destroyed information stays absolute."""
-    flags = naturalness.evaluate(naturalness.measure([_flat(220, 40, 40)]))
+    before any grade ran (design §0.5). Only destroyed information stays absolute.
+
+    The two stats are pinned here as well, and not loosely: deleting the red-frame
+    flag test removes the only place `cast` and `saturation` were exercised on a
+    colourful frame, and a `> 0.3` bar would survive every regression this is for.
+    Both are exact on a flat synthetic frame — means (220, 40, 40) give a neutral of
+    100.0 and cast max(1.2, 0.6, 0.6) = 1.2; saturation is (220 - 40) / 220."""
+    stats = naturalness.measure([_flat(220, 40, 40)])
+    assert stats["cast"] == pytest.approx(1.2, abs=1e-4)
+    assert stats["saturation"] == pytest.approx(180 / 220, abs=1e-4)
+    flags = naturalness.evaluate(stats)
     assert set(flags) == {"blown_highlights", "crushed_blacks"}
 
 
