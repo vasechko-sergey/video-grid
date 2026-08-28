@@ -15,13 +15,13 @@ _Last updated: 2026-08-28._
 - **Grade-damage sensors — R2.2 + R2.5 DONE (2026-08-28)** — design
   [2026-08-28-grade-delta-sensors-design.md](specs/2026-08-28-grade-delta-sensors-design.md),
   plan [2026-08-28-grade-delta-sensors.md](plans/2026-08-28-grade-delta-sensors.md),
-  Tasks 0–6 (branch `feat/grade-delta-sensors`; Task 7's mutation battery is
-  still open). `color_fidelity` swaps its hue-angle metric for the median of a
-  five-sample CIEDE2000 (`lib/colordiff.py`, pinned to 21 published reference
-  pairs) and becomes **blocking** (`CheckSpec.grade_delta_max = 5.0`, replacing
-  `hue_drift_max`); `naturalness` drops the three flags that measured the
-  footage (`colour_cast` / `oversaturated` / `flat`) for two absolute clipping
-  flags plus a source-relative `evaluate_delta`
+  Tasks 0–7 (branch `feat/grade-delta-sensors`). `color_fidelity` swaps its
+  hue-angle metric for the median of a five-sample CIEDE2000
+  (`lib/colordiff.py`, pinned to 21 published reference pairs) and becomes
+  **blocking** (`CheckSpec.grade_delta_max = 5.0`, replacing `hue_drift_max`);
+  `naturalness` drops the three flags that measured the footage
+  (`colour_cast` / `oversaturated` / `flat`) for two absolute clipping flags
+  plus a source-relative `evaluate_delta`
   (`cast_shift`/`saturation_shift`/`contrast_drop`), which the QC evidence
   packet now carries beside the pre-grade `source` reading.
 
@@ -71,8 +71,19 @@ _Last updated: 2026-08-28._
   immediately to `edit-plan` with its own reason (`grade-damage`) instead of
   the generic `unfixable-by-reframe`.
 
-  Suite: **3226 passed, 1 skipped** (full run, after this task's own docs/test-
-  prose changes; Task 7's mutation battery has not run yet). Five deferred
+  **Task 7's mutation battery: 20 rows, all RED.** One coverage hole (row 4)
+  closed with a new test, and one fix round closed a docstring overclaim.
+  Its most transferable finding is about the battery itself: **three of the
+  twenty rows named a test that structurally cannot discriminate their own
+  mutation** — row 1's 7.1792 reference pair has `a2 = -a1`, so `dC'` is
+  2.5e-8 and the `rt` cross-term vanishes; row 2's seven 1.0000 pairs all
+  satisfy `|h1p - h2p| <= 180`, so the correct code already takes the naive
+  branch; row 20's named test pops the `segment` key, so `not seg`
+  short-circuits before the dropped guard is reached. All three mutations were
+  still caught — by other rows or by a sibling test — but only *running* them
+  revealed the pointers were wrong.
+
+  Suite: **3227 passed, 1 skipped** (full run). Five deferred
   rows filed in the backlog (design §10): re-derive the two advisory bars once
   R1.1 lands a baseline that is not itself the complaint, the right sample
   count/placement, a second calibration shoot for the blocking bar, the two
