@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from scripts import build_reel, edl_to_reel, episode_qc, reframe
-from scripts.lib import provenance
+from scripts.lib import naturalness, provenance
 from scripts.lib.models import (CheckResult, Delivery, LayoutSpec, ReelEpisode,
                                 ReelFailure, ReelManifest, ReelReport, ReframeSpec)
 
@@ -75,6 +75,17 @@ def test_the_evidence_packet_carries_the_pre_grade_reading(tmp_path, sample_clip
     nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
     assert set(nat) == {"stats", "flags", "source", "delta"}
     assert nat["source"]["frames"] == episode_qc.SENSOR_FRAMES
+    # A source reading that happens to equal the graded reading is what a `seg`/`ep.clip`
+    # mixup in _source_reading would produce (both would sample the SAME file) — the two
+    # files really do differ (a 1920x1080 segment vs a cropped/reframed delivered clip),
+    # so a correct implementation can never land here by coincidence.
+    assert nat["source"] != nat["stats"]
+    # Recomputation, not just a key-set check: catches an evaluate_delta(src, graded)
+    # argument-order swap. cast_shift/saturation_shift are abs()-symmetric and cannot see
+    # a swap; contrast_drop is signed and is what discriminates here. MEASURED (not
+    # assumed) on this fixture: source contrast 0.0 vs graded 123.6, |Δ| = 123.6 — well
+    # past CONTRAST_DROP_MAX (20.0), so a swap really does flip contrast_drop's boolean.
+    assert nat["delta"] == naturalness.evaluate_delta(nat["source"], nat["stats"])
     assert set(nat["delta"]) == {"cast_shift", "saturation_shift", "contrast_drop"}
 
 
@@ -85,6 +96,21 @@ def test_a_manifest_with_no_segment_reports_absent_not_empty(tmp_path, sample_cl
     p, rm = _episodes_json(tmp_path, sample_clip)
     for ep in rm.episodes:
         ep.manifest.pop("segment")
+    rm.write(p)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
+    assert nat["source"] is None and nat["delta"] is None
+
+
+@pytest.mark.integration
+def test_a_segment_path_missing_from_disk_reports_absent_not_empty(tmp_path, sample_clip):
+    """The other half of the guard: the manifest names a segment (the key is present,
+    unlike the sibling test above), but the file it points at is gone — a stale manifest
+    referencing scratch that has since been cleaned up. Absent is reported as absent
+    here too, not a clean reading and not a crash."""
+    p, rm = _episodes_json(tmp_path, sample_clip)
+    for ep in rm.episodes:
+        ep.manifest["segment"] = str(tmp_path / "no-such-segment.mp4")
     rm.write(p)
     episode_qc.pack(str(p), str(tmp_path / "qc"))
     nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
