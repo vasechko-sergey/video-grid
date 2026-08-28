@@ -1,6 +1,7 @@
-"""Real-ffmpeg proof for the advisory colour-fidelity check (design 2026-07-26
-§7): real bytes through the sampling (`_region_mean_rgb`) + evaluate
-(`color_fidelity.evaluate`) path, driven by `check_episode.run(..., source=)`.
+"""Real-ffmpeg proof for the advisory colour-fidelity check (design 2026-08-28
+§2): real bytes through the batched `assembly.frames_rgb` sampling
+(`check_episode._box_mean_rgb`) + evaluate (`color_fidelity.evaluate`) path,
+driven by `check_episode.run(..., source=)`.
 
 Fixture shape: a coloured subject box on a dark-grey field (`source.mp4`), and
 a "graded" clip that is a REAL crop of it (`crop=480:360:80:0` — a non-trivial
@@ -9,14 +10,13 @@ x offset, not an identity pass-through) so the route/path/meta sidecar's
 satisfied. `faithful.mp4` re-runs the identical recipe (no colour change);
 `broken.mp4` adds a strong `hue=h=120` rotation after the crop — the
 "simplest" grade-breaker the task names, verified empirically (see below) to
-land the subject's hue ~118° away from source, far past both the 25° default
-threshold and any plausible grading move.
+land the subject's median dE00 well past `CheckSpec.grade_delta_max` and any
+plausible grading move.
 """
 import json
 import pytest
 from scripts import check_episode
-from scripts.check_episode import _region_mean_rgb
-from scripts.lib import ffbin, proc
+from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import CheckSpec, PathMeta
 
 pytestmark = pytest.mark.integration
@@ -90,11 +90,44 @@ def _sidecar(tmp_path):
     return str(tmp_path / "route.json"), str(tmp_path / "path.json")
 
 
-def test_region_mean_rgb_reads_the_synthesized_colour(source_clip):
-    # SUBJECT_COLOR 0xC85028 = (200, 80, 40); sampled well inside the box.
-    sbox = (240, 120, 400, 240)
-    r, g, b = _region_mean_rgb(str(source_clip), 1.0, sbox)
+def test_box_mean_rgb_reads_the_synthesized_colour(source_clip):
+    """One decode, five frames, box means — the production sampling path.
+    SUBJECT_COLOR 0xC85028 = (200, 80, 40); sampled well inside the box."""
+    fps = assembly.probe_stream(str(source_clip)).fps
+    frames = assembly.frames_rgb(str(source_clip), [0.5, 1.0, 1.5], fps)
+    assert len(frames) == 3
+    r, g, b = check_episode._box_mean_rgb(frames[1], (240, 120, 400, 240))
     assert abs(r - 200) < 15 and abs(g - 80) < 15 and abs(b - 40) < 15
+
+
+def test_the_check_takes_five_samples(tmp_path, source_clip, faithful_clip):
+    """The sample count is the statistic's own denominator — the median of five is
+    what the design's thresholds were measured on (§0.4/§2.2)."""
+    rp, pp = _sidecar(tmp_path)
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
+    report = check_episode.run(str(faithful_clip), rp, pp, spec,
+                               str(tmp_path / "report.json"), source=str(source_clip))
+    assert report.checks["color_fidelity"].detail["samples"] == 5
+
+
+def test_sampling_survives_a_route_that_reaches_the_last_frame(tmp_path, source_clip,
+                                                               faithful_clip):
+    """frames_rgb raises past the stream end; a route whose last point sits at the
+    clip's duration must be clamped, not crash. Without the clamp this raises
+    RuntimeError from frames_rgb."""
+    n = 5
+    route = [dict(t=round(i * DUR / (n - 1), 3), x=SUBJECT_X, y=SUBJECT_Y,
+                  w=SUBJECT_W, h=SUBJECT_H) for i in range(n)]
+    (tmp_path / "route.json").write_text(json.dumps(route))
+    (tmp_path / "path.json").write_text(json.dumps([CROP_X] * n))
+    PathMeta(mode="fill", crop_w=CROP_W, crop_h=H, crop_y=0, src_dims=(W, H),
+             canvas=(CROP_W, H), out_dims=(CROP_W, H), rect_px=(0, 0, CROP_W, H),
+             freedom=W - CROP_W).write(tmp_path / "path.meta.json")
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
+    report = check_episode.run(str(faithful_clip), str(tmp_path / "route.json"),
+                               str(tmp_path / "path.json"), spec,
+                               str(tmp_path / "report.json"), source=str(source_clip))
+    assert report.checks["color_fidelity"].detail["samples"] == 5
 
 
 def test_faithful_grade_does_not_exceed(tmp_path, source_clip, faithful_clip):

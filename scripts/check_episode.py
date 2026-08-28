@@ -2,8 +2,9 @@
 import argparse
 import tempfile
 from pathlib import Path
+import numpy as np
 from PIL import Image, ImageStat
-from scripts.lib import checks as checks_mod, color_fidelity, ffbin, geometry, proc
+from scripts.lib import assembly, checks as checks_mod, color_fidelity, ffbin, geometry, proc
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify, travel_direction
 
@@ -63,43 +64,69 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
             "body_median": round(ref, 1)}
 
 
-def _region_mean_rgb(clip: str, t: float, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
-    """Mean (R,G,B) of a pixel box in one grabbed frame at time t. box = (x0,y0,x1,y1)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        f = f"{tmp}/f.png"
-        proc.run([ffbin.ffmpeg(), "-y", "-i", clip, "-ss", f"{t:.3f}",
-                  "-frames:v", "1", f])          # -ss AFTER -i (§12 seek order)
-        im = Image.open(f).convert("RGB")
-        x0, y0, x1, y1 = box
-        x0, y0 = max(0, x0), max(0, y0)
-        x1, y1 = min(im.width, max(x1, x0 + 1)), min(im.height, max(y1, y0 + 1))
-        return tuple(ImageStat.Stat(im.crop((x0, y0, x1, y1))).mean[:3])
+# Where in the route's own span the subject is sampled. Five, not three: the
+# batched decode below makes the marginal cost of a sample one PNG, and every
+# threshold in the design was measured through exactly these fractions (§2.2).
+SAMPLE_FRACS = (0.1, 0.3, 0.5, 0.7, 0.9)
+
+
+def _box_mean_rgb(frame: np.ndarray, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
+    """Mean (R, G, B) of a pixel box in one HxWx3 uint8 RGB frame. box = (x0,y0,x1,y1),
+    clamped into the frame and never empty — a route point can sit partly outside the
+    frame it was measured on, and an empty slice would mean() to NaN in silence."""
+    x0, y0, x1, y1 = box
+    h, w = frame.shape[:2]
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(w, max(x1, x0 + 1)), min(h, max(y1, y0 + 1))
+    px = frame[y0:y1, x0:x1].reshape(-1, 3)
+    return tuple(float(px[:, c].mean()) for c in range(3))
+
+
+def _last_sampleable_t(*clips: str) -> tuple[list[float], float]:
+    """Per-clip fps, and the latest time every one of `clips` can still decode.
+    frames_rgb selects frame round(t*fps) and raises when that frame is past the
+    stream end, so the times are clamped ONCE against the shortest clip, before the
+    geometry is projected — clamping afterwards would sample the pixels at one time
+    and the crop rect at another."""
+    fpses, lasts = [], []
+    for c in clips:
+        fps = assembly.probe_stream(c).fps
+        fpses.append(fps)
+        lasts.append(max(0.0, assembly.probe_duration(c) - 1.0 / fps))
+    return fpses, min(lasts)
 
 
 def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
                      path_obj: CropPath, meta: PathMeta, spec: CheckSpec) -> CheckResult:
-    """Advisory subject hue-drift, source vs graded (design 2026-07-26 §7).
+    """Advisory subject grade-delta, source vs graded (design 2026-08-28 §2).
 
-    Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at
-    the route bbox in source px) and in the graded `clip` (at the subject's
-    projected location, via geometry.extent_at_times) at K times, and delegate
-    to the pure color_fidelity.evaluate for the median-dE00 verdict. `passed` is
-    always None for now — Task 3 of the grade-delta slice makes it blocking."""
+    Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at the
+    route bbox in source px) and in the graded `clip` (at the subject's projected
+    location, via geometry.extent_at_times) at SAMPLE_FRACS of the route's span, and
+    delegate to the pure color_fidelity.evaluate for the median-dE00 verdict.
+
+    One decode per file, not one per sample: assembly.frames_rgb batches the whole
+    set through a single select pass, so five samples cost two decodes where three
+    used to cost six. `passed` is always None for now — Task 3 makes it blocking.
+    """
     if source is None or not route_pts:
         return CheckResult("color_fidelity", None,
                            {"status": "not-checked",
                             "reason": "no source clip or no tracked subject"})
     ts = [p.t for p in route_pts]
-    times = [ts[0] + (ts[-1] - ts[0]) * f for f in (0.25, 0.5, 0.75)]
+    (s_fps, g_fps), last = _last_sampleable_t(source, clip)
+    times = [min(ts[0] + (ts[-1] - ts[0]) * f, last) for f in SAMPLE_FRACS]
     extents = geometry.extent_at_times(route_pts, path_obj, meta, times)   # output fractions
     out_w, out_h = meta.out_dims
+    s_frames = assembly.frames_rgb(source, times, s_fps)
+    g_frames = assembly.frames_rgb(clip, times, g_fps)
     pairs = []
-    for t, (fx0, fy0, fx1, fy1) in zip(times, extents):
+    for t, (fx0, fy0, fx1, fy1), sf, gf in zip(times, extents, s_frames, g_frames):
         p = min(route_pts, key=lambda q: abs(q.t - t))          # nearest source bbox
         sbox = (round(p.x - p.w / 2), round(p.y - p.h / 2),
                 round(p.x + p.w / 2), round(p.y + p.h / 2))
         gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
-        pairs.append((_region_mean_rgb(source, t, sbox), _region_mean_rgb(clip, t, gbox)))
+        pairs.append((_box_mean_rgb(sf, sbox), _box_mean_rgb(gf, gbox)))
     return CheckResult("color_fidelity", None,
                        color_fidelity.evaluate(pairs, spec.grade_delta_max))
 
