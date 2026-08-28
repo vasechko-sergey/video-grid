@@ -143,8 +143,17 @@ DEFAULT_PARAMS = {"max_speed": 750.0,             # px/s (§6.1: 25 px/frame @30
 SMOOTH_WINDOW_S_MAX = 0.7   # past this the crop stops following the subject at all and
                             # lags visibly through a real direction change
 
-# reframe can't fix these by re-cropping — the fault is upstream (window/segment)
-_UNFIXABLE = ("length", "continuity", "black_frames")
+# reframe can't fix these by re-cropping — the fault is upstream (window/segment),
+# or, for color_fidelity, in the episode's colour block: max_speed and
+# smooth_window_s are geometry knobs and no value of either moves a colour, so
+# without this entry the ladder re-renders 4K three times before giving up
+# (design 2026-08-28 §3). Order matters — see _UNFIXABLE_REASON.
+_UNFIXABLE = ("length", "continuity", "black_frames", "color_fidelity")
+
+# The escalation reason for a specific unfixable failure, where the generic one
+# would name only what CANNOT fix the problem. The first entry of _UNFIXABLE
+# present in fail_reasons wins, so an upstream fault outranks a colour one.
+_UNFIXABLE_REASON = {"color_fidelity": "grade-damage"}
 
 
 def _lags_line(fail_reasons: list[str]) -> bool:
@@ -209,9 +218,13 @@ def escalation(attempt: int, fail_reasons: list[str], max_attempts: int = 3) -> 
 
     Escalate immediately when the failure can't be fixed by reframe params
     (unfixable reasons, or a line-lag + jitter combo which pull speed in
-    opposite directions); otherwise after max_attempts (§4.1: 3× → up)."""
-    if any(r in _UNFIXABLE for r in fail_reasons):
-        return {"escalate_to": "edit-plan", "reason": "unfixable-by-reframe",
+    opposite directions); otherwise after max_attempts (§4.1: 3× → up). An
+    unfixable reason with an entry in _UNFIXABLE_REASON reports that instead of
+    the generic "unfixable-by-reframe", which names only what cannot help."""
+    hit = next((r for r in _UNFIXABLE if r in fail_reasons), None)
+    if hit:
+        return {"escalate_to": "edit-plan",
+                "reason": _UNFIXABLE_REASON.get(hit, "unfixable-by-reframe"),
                 "fail_reasons": fail_reasons}
     if _lags_line(fail_reasons) and "jitter" in fail_reasons:
         return {"escalate_to": "edit-plan", "reason": "conflicting-framing-fails",

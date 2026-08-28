@@ -153,21 +153,22 @@ def test_faithful_grade_does_not_exceed(tmp_path, source_clip, faithful_clip):
     report = check_episode.run(str(faithful_clip), rp, pp, spec,
                                str(tmp_path / "report.json"), source=str(source_clip))
     cf = report.checks["color_fidelity"]
-    assert cf.passed is None                     # still advisory in this task
+    assert cf.passed is True                     # blocking, and this grade is clean
     assert cf.detail.get("status") != "not-checked", cf.detail
     assert cf.detail["exceeded"] is False
     assert cf.detail["delta_e"] < 5.0
     assert report.overall is True
 
 
-def test_hue_broken_grade_is_flagged(tmp_path, source_clip, broken_clip):
+def test_hue_broken_grade_fails_the_episode(tmp_path, source_clip, broken_clip):
     rp, pp = _sidecar(tmp_path)
     spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
     report = check_episode.run(str(broken_clip), rp, pp, spec,
                                str(tmp_path / "report.json"), source=str(source_clip))
     cf = report.checks["color_fidelity"]
-    assert cf.passed is None                     # Task 3 flips this
+    assert cf.passed is False                    # a damaged grade now stops the episode
     assert cf.detail["exceeded"] is True
     assert cf.detail["delta_e"] > 20.0           # hue=h=120 on a saturated orange
     assert cf.detail["dominant"] == "hue"
-    assert report.overall is True
+    assert report.overall is False
+    assert "color_fidelity" in report.fail_reasons

@@ -342,3 +342,28 @@ def test_jitter_still_refuses_to_widen_past_the_ceiling_on_its_own():
     # The ladder's own initiative is still capped at 0.7 — only an author may exceed it.
     p = orch.adjust_reframe_params({"smooth_window_s": 0.5}, ["jitter"])
     assert p["smooth_window_s"] == orch.SMOOTH_WINDOW_S_MAX == 0.7
+
+
+# --- Task 3 (design 2026-08-28 §3): color_fidelity becomes unfixable-by-reframe ---
+
+def test_a_colour_failure_escalates_immediately_with_its_own_reason():
+    """Reframe params are geometry knobs; no value of max_speed or smooth_window_s
+    moves a colour. Without this the episode is re-rendered at full resolution three
+    times before escalating, and then escalates naming only what cannot fix it."""
+    esc = orch.escalation(attempt=1, fail_reasons=["color_fidelity"])
+    assert esc is not None
+    assert esc["reason"] == "grade-damage"
+    assert esc["escalate_to"] == "edit-plan"
+
+
+def test_an_upstream_failure_still_outranks_the_colour_reason():
+    """A segment that is the wrong length is the more upstream fault; reporting
+    'grade-damage' there would send the author to the colour block for a problem
+    the colour block cannot fix. The order of _UNFIXABLE decides, not the order the
+    checks happened to run in."""
+    esc = orch.escalation(attempt=1, fail_reasons=["color_fidelity", "length"])
+    assert esc["reason"] == "unfixable-by-reframe"
+
+
+def test_colour_is_listed_as_unfixable():
+    assert "color_fidelity" in orch._UNFIXABLE

@@ -106,7 +106,7 @@ def _last_sampleable_t(*clips: str) -> tuple[list[float], float]:
 
 def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
                      path_obj: CropPath, meta: PathMeta, spec: CheckSpec) -> CheckResult:
-    """Advisory subject grade-delta, source vs graded (design 2026-08-28 §2).
+    """Subject grade-delta, source vs graded (design 2026-08-28 §2, blocking as of §3).
 
     Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at the
     route bbox in source px) and in the graded `clip` (at the subject's projected
@@ -115,7 +115,11 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
 
     One decode per file, not one per sample: assembly.frames_rgb batches the whole
     set through a single select pass, so five samples cost two decodes where three
-    used to cost six. `passed` is always None for now — Task 3 makes it blocking.
+    used to cost six.
+
+    `passed` is False when the median dE00 exceeds CheckSpec.grade_delta_max —
+    the episode stops and escalates to edit-plan as `grade-damage`, because the
+    remedy is its colour block and no reframe parameter can reach it.
     """
     if source is None or not route_pts:
         return CheckResult("color_fidelity", None,
@@ -135,8 +139,8 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
                 round(p.x + p.w / 2), round(p.y + p.h / 2))
         gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
         pairs.append((_box_mean_rgb(sf, sbox), _box_mean_rgb(gf, gbox)))
-    return CheckResult("color_fidelity", None,
-                       color_fidelity.evaluate(pairs, spec.grade_delta_max))
+    d = color_fidelity.evaluate(pairs, spec.grade_delta_max)
+    return CheckResult("color_fidelity", not d["exceeded"], d)
 
 
 ROUTE_SMOOTH_S = 0.08     # the span over which a crop reversal becomes visible (~5 frames @60fps)
@@ -167,9 +171,10 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     `fill`. Under fit it returns the canvas-aspect width, and on_line then
     divides by a width that was never cut.
 
-    `source` (the pre-grade segment) feeds the advisory color_fidelity check
-    only — None (the default) reports that check `not-checked` and changes
-    nothing else; process_episode passes the reframe input segment here.
+    `source` (the pre-grade segment) feeds the color_fidelity check only — None
+    (the default) reports that check `not-checked` (non-blocking, `passed` stays
+    None) and changes nothing else; process_episode passes the reframe input
+    segment here, which is what makes the check blocking in practice.
     """
     path = CropPath.from_json(path_path).xs
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
