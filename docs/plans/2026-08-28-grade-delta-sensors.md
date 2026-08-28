@@ -490,10 +490,15 @@ def evaluate(pairs: list[tuple], delta_max: float) -> dict:
     if not pairs:
         return {"status": "not-checked", "reason": "no samples to compare"}
     rows = sample_deltas(pairs)
-    de = statistics.median(r[0] for r in rows)
     comps = tuple(statistics.median(r[i] for r in rows) for i in (1, 2, 3))
     dominant = _COMPONENTS[max(range(3), key=lambda i: abs(comps[i]))]
-    return {"delta_e": round(de, 2),
+    # Round once, then judge the ROUNDED value against delta_max — not the raw
+    # median. `exceeded` must agree with the `delta_e` the report actually shows;
+    # comparing the unrounded median instead can flag a report that reads
+    # "delta_e: 11.07, threshold: 11.07, exceeded: true", which is a
+    # contradiction no reader can act on.
+    de = round(statistics.median(r[0] for r in rows), 2)
+    return {"delta_e": de,
             "delta_l": round(comps[0], 2),
             "delta_c": round(comps[1], 2),
             "delta_h": round(comps[2], 2),
