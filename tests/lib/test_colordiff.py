@@ -58,6 +58,19 @@ def test_rgb_to_lab_anchors():
     assert L == pytest.approx(53.585, abs=0.01) and abs(a) < 1e-3 and abs(b) < 1e-3
 
 
+def test_a_saturated_red_has_strongly_positive_a_and_positive_b():
+    """Pins the XYZ matrix's columns to their actual R/G/B channels, not just their
+    magnitudes. A grey input is symmetric under swapping the R and B columns (r == b),
+    so `test_rgb_to_lab_anchors` cannot see a column swap, and the published reference
+    table (`test_ciede2000_matches_the_published_reference`) never calls `rgb_to_lab` at
+    all. Saturated red is the case where R and B genuinely differ: swapping the R and B
+    columns leaves a* still positive (~79 either way) but flips b* from strongly positive
+    (~+67, the textbook sRGB-red Lab value) to strongly negative (~-108)."""
+    L, a, b = colordiff.rgb_to_lab((255.0, 0.0, 0.0))
+    assert a > 50.0
+    assert b > 0.0
+
+
 def test_a_pure_luma_lift_lands_in_dL_only():
     """The component split is the report's whole explanatory value: a grey lift
     must not leak into chroma or hue."""
