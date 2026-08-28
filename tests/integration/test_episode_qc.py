@@ -62,8 +62,7 @@ def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
     assert (tmp_path / "qc" / "ep0" / "strip.jpg").exists()
     assert ev["intent"]["composition"] == "center"
     assert ev["naturalness"]["stats"]["frames"] == episode_qc.SENSOR_FRAMES
-    assert set(ev["naturalness"]["flags"]) == {"blown_highlights", "crushed_blacks",
-                                               "colour_cast", "oversaturated", "flat"}
+    assert set(ev["naturalness"]["flags"]) == {"blown_highlights", "crushed_blacks"}
     assert ev["geometry"] is not None          # the path.meta sidecar reframe wrote
 
 

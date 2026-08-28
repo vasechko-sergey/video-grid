@@ -16,13 +16,6 @@ def test_a_neutral_mid_grey_frame_reads_clean():
     flags = naturalness.evaluate(stats)
     assert stats["cast"] < 0.02
     assert flags["blown_highlights"] is False and flags["crushed_blacks"] is False
-    assert flags["colour_cast"] is False and flags["oversaturated"] is False
-
-
-def test_a_red_frame_reads_as_a_cast_and_oversaturated():
-    flags = naturalness.evaluate(naturalness.measure([_flat(220, 40, 40)]))
-    assert flags["colour_cast"] is True
-    assert flags["oversaturated"] is True
 
 
 def test_white_pixels_read_as_blown_and_black_ones_as_crushed():
@@ -30,14 +23,6 @@ def test_white_pixels_read_as_blown_and_black_ones_as_crushed():
     crushed = np.concatenate([_flat(0, 0, 0, h=16), _flat(120, 120, 120, h=48)])
     assert naturalness.evaluate(naturalness.measure([blown]))["blown_highlights"] is True
     assert naturalness.evaluate(naturalness.measure([crushed]))["crushed_blacks"] is True
-
-
-def test_a_single_tone_frame_reads_flat_and_a_full_ramp_does_not():
-    flat = naturalness.measure([_flat(120, 120, 120)])
-    ramp = np.repeat(np.arange(256, dtype=np.uint8).reshape(1, 256, 1), 3, axis=2)
-    ramp = np.repeat(ramp, 64, axis=0)
-    assert naturalness.evaluate(flat)["flat"] is True
-    assert naturalness.evaluate(naturalness.measure([ramp]))["flat"] is False
 
 
 def test_frames_are_averaged_not_concatenated():
@@ -55,8 +40,8 @@ def test_frames_are_averaged_not_concatenated():
 
 def test_channel_order_is_pinned_by_hand_computed_bt601_contrast():
     """clip_high/clip_low/cast/saturation are all order-invariant: none of them move if
-    a channel's data is relabeled to a different index. contrast (and therefore `flat`)
-    is the only order-sensitive output, and a grey or two-colour fixture can't pin it:
+    a channel's data is relabeled to a different index. contrast is the only
+    order-sensitive output, and a grey or two-colour fixture can't pin it:
     with two colours, |luma(a) - luma(b)| == |luma(b) - luma(a)|, so a bug that swaps
     which channel gets which BT.601 weight can still land on the same spread. Three
     single-channel colours against a FIXED black baseline avoid that: each patch is 25%
@@ -88,3 +73,64 @@ def test_a_float_frame_is_refused():
 def test_no_frames_is_refused():
     with pytest.raises(ValueError, match="at least one frame"):
         naturalness.measure([])
+
+
+def test_evaluate_reports_only_the_two_absolute_flags():
+    """A cast, a flat frame and a saturated one are properties of the FOOTAGE, not of
+    the grade: on the reference run 6 of 8 SOURCES already exceeded the old CAST_MAX
+    before any grade ran (design §0.5). Only destroyed information stays absolute."""
+    flags = naturalness.evaluate(naturalness.measure([_flat(220, 40, 40)]))
+    assert set(flags) == {"blown_highlights", "crushed_blacks"}
+
+
+def _stats(cast, saturation, contrast):
+    return {"cast": cast, "saturation": saturation, "contrast": contrast}
+
+
+def test_a_grade_that_changed_nothing_raises_no_delta_flag():
+    d = naturalness.evaluate_delta(_stats(0.30, 0.45, 100.0), _stats(0.30, 0.45, 100.0))
+    assert d == {"cast_shift": False, "saturation_shift": False, "contrast_drop": False}
+
+
+def test_a_strong_source_cast_alone_raises_nothing():
+    """0.30 is four times the old absolute bar and is simply what a seascape looks
+    like. The grade left it where it was, so nothing fires."""
+    d = naturalness.evaluate_delta(_stats(0.30, 0.45, 100.0), _stats(0.32, 0.45, 100.0))
+    assert d["cast_shift"] is False
+
+
+def test_cast_shift_is_two_sided_and_bars_at_the_measured_value():
+    hi = naturalness.evaluate_delta(_stats(0.10, 0.30, 100.0), _stats(0.19, 0.30, 100.0))
+    lo = naturalness.evaluate_delta(_stats(0.19, 0.30, 100.0), _stats(0.10, 0.30, 100.0))
+    assert hi["cast_shift"] is True and lo["cast_shift"] is True
+    near = naturalness.evaluate_delta(_stats(0.10, 0.30, 100.0), _stats(0.177, 0.30, 100.0))
+    assert near["cast_shift"] is False           # 0.077 — the shipped run's own maximum
+    assert naturalness.CAST_DELTA_MAX == 0.08
+
+
+def test_saturation_shift_is_two_sided_and_catches_a_desaturation():
+    assert naturalness.SAT_DELTA_MAX == 0.12
+    lost = naturalness.evaluate_delta(_stats(0.10, 0.40, 100.0), _stats(0.10, 0.24, 100.0))
+    gained = naturalness.evaluate_delta(_stats(0.10, 0.24, 100.0), _stats(0.10, 0.40, 100.0))
+    assert lost["saturation_shift"] is True and gained["saturation_shift"] is True
+    ok = naturalness.evaluate_delta(_stats(0.10, 0.40, 100.0), _stats(0.10, 0.297, 100.0))
+    assert ok["saturation_shift"] is False       # 0.103 — the shipped run's own maximum
+
+
+def test_contrast_drop_is_signed_because_a_gain_is_not_a_defect():
+    """The reference run's ep6 GAINED 24.5 of luma spread legitimately; testing the
+    magnitude would flag it. Only a loss counts."""
+    assert naturalness.CONTRAST_DROP_MAX == 20.0
+    lost = naturalness.evaluate_delta(_stats(0.1, 0.3, 120.0), _stats(0.1, 0.3, 90.0))
+    gained = naturalness.evaluate_delta(_stats(0.1, 0.3, 90.0), _stats(0.1, 0.3, 120.0))
+    assert lost["contrast_drop"] is True
+    assert gained["contrast_drop"] is False
+    near = naturalness.evaluate_delta(_stats(0.1, 0.3, 120.0), _stats(0.1, 0.3, 103.4))
+    assert near["contrast_drop"] is False        # 16.6 — the shipped run's own maximum
+
+
+def test_the_absolute_style_bars_are_gone():
+    """Deleted, not lowered: each measured either the scene rather than the grade, or
+    sat where its own footage could never reach (design §0.5)."""
+    for name in ("CAST_MAX", "SAT_MAX", "FLAT_SPREAD"):
+        assert not hasattr(naturalness, name)

@@ -1,26 +1,34 @@
 """Colour-naturalness measurement (design docs/specs/2026-08-08-episode-qc-design.md §5).
 
-check_episode's color_fidelity answers "did the grade move the SUBJECT's hue away from
-the source" and is blind to the four things that actually make a graded frame read
-unnatural: blown highlights, crushed blacks, a global colour cast, and oversaturation.
-This measures those, so the QC judge argues from numbers instead of impressions.
+check_episode's color_fidelity answers "how far did the grade move the SUBJECT's
+colour" and says nothing about the frame around it. This measures the frame: two
+absolute flags for information the grade destroyed (blown highlights, crushed
+blacks) and three source-relative ones for what it changed (cast, saturation,
+contrast), so the QC judge argues from numbers instead of impressions.
 
 Pure: numpy arrays in, one dict out. No ffmpeg, no file paths — the caller decodes
 (assembly.frames_rgb) and the caller decides. Nothing here fails an episode: the flags
 are advisory in both directions (design §5)."""
 import numpy as np
 
-# First cuts, declared as first cuts — no footage has been graded against them. They
-# live here and ONLY here: a threshold a caller can pass is a threshold a subagent can
-# pass, and the gate's no-waiver rule (§7) would be worth nothing if the sensor's bar
-# were an argument. Calibrate on the first real run that uses them.
+# Absolute bars, for destroyed information only. A blown sky is blown whatever the
+# source held, so these two do not need a source to compare against. Still first
+# cuts: BLOWN_FRAC fired once on the reference run and plausibly; CRUSHED_FRAC never
+# fired on footage that never crushed.
 CLIP_HIGH = 250       # a channel value at/above this counts as "at white"
 CLIP_LOW = 5          # ...and at/below this as "at black"
 BLOWN_FRAC = 0.02     # >2% of pixels at white in ANY channel → blown_highlights
 CRUSHED_FRAC = 0.05   # >5% at black → crushed_blacks (shadows legitimately cover more area)
-CAST_MAX = 0.08       # grey-world channel deviation above this reads as a colour cast
-SAT_MAX = 0.60        # mean relative saturation above this reads oversaturated
-FLAT_SPREAD = 40.0    # p95-p5 luma below this reads flat
+
+# Source-relative bars (design docs/specs/2026-08-28-grade-delta-sensors-design.md §4).
+# The absolute versions of these three were DELETED, not retuned: CAST_MAX read the
+# ocean (6 of 8 SOURCES exceeded it before any grade), and SAT_MAX/FLAT_SPREAD sat at
+# 0.60 and 40.0 against footage measuring 0.11-0.50 and 86-189 — unreachable. Each bar
+# below is set where the reference run's OWN source-to-graded range stops, so nothing
+# the shipped grade did would fire it.
+CAST_DELTA_MAX = 0.08        # |Δ grey-world deviation|; run's max was 0.0766
+SAT_DELTA_MAX = 0.12         # |Δ mean relative saturation|; run's range −0.1026…+0.0316
+CONTRAST_DROP_MAX = 20.0     # LOSS of p95−p5 luma only; run's worst loss was 16.61
 
 
 def _frame_stats(f: np.ndarray) -> dict:
@@ -71,10 +79,20 @@ def measure(frames: list) -> dict:
 
 
 def evaluate(stats: dict) -> dict:
-    """Named advisory flags. Never a pass/fail — the judge weighs them against the
-    episode's intent (a deliberately crushed night shot is not a defect)."""
+    """The absolute flags: information the grade destroyed. Never a pass/fail — the
+    judge weighs them against the episode's intent (a deliberately crushed night shot
+    is not a defect)."""
     return {"blown_highlights": max(stats["clip_high"]) > BLOWN_FRAC,
-            "crushed_blacks": max(stats["clip_low"]) > CRUSHED_FRAC,
-            "colour_cast": stats["cast"] > CAST_MAX,
-            "oversaturated": stats["saturation"] > SAT_MAX,
-            "flat": stats["contrast"] < FLAT_SPREAD}
+            "crushed_blacks": max(stats["clip_low"]) > CRUSHED_FRAC}
+
+
+def evaluate_delta(src: dict, grd: dict) -> dict:
+    """What the grade DID: `src` and `grd` are two `measure` readings, pre- and
+    post-grade. Advisory in both directions.
+
+    `contrast_drop` is signed and the other two are not: a gain in luma spread is not
+    a defect (the reference run's ep6 gained 24.5 legitimately), while a cast or a
+    saturation move is worth reporting whichever way it went."""
+    return {"cast_shift": abs(grd["cast"] - src["cast"]) > CAST_DELTA_MAX,
+            "saturation_shift": abs(grd["saturation"] - src["saturation"]) > SAT_DELTA_MAX,
+            "contrast_drop": (src["contrast"] - grd["contrast"]) > CONTRAST_DROP_MAX}
