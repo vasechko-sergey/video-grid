@@ -658,11 +658,18 @@ SAMPLE_FRACS = (0.1, 0.3, 0.5, 0.7, 0.9)
 
 def _box_mean_rgb(frame: np.ndarray, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
     """Mean (R, G, B) of a pixel box in one HxWx3 uint8 RGB frame. box = (x0,y0,x1,y1),
-    clamped into the frame and never empty — a route point can sit partly outside the
-    frame it was measured on, and an empty slice would mean() to NaN in silence."""
+    clamped into the frame at BOTH ends and never empty — a route point can sit partly
+    or wholly outside the frame it was measured on, and an empty slice would mean() to
+    NaN in silence."""
     x0, y0, x1, y1 = box
     h, w = frame.shape[:2]
-    x0, y0 = max(0, x0), max(0, y0)
+    # BOTH bounds, both ends. Raising only the lower bound leaves a box that starts
+    # past w or h with an empty slice, and mean() then returns NaN with nothing but a
+    # RuntimeWarning — the deleted PIL path raised on the same coordinates, so a
+    # one-sided clamp is a silent regression. A box with no overlap at all collapses
+    # to a one-pixel sample at the nearest edge: a poor measurement, but a defined one,
+    # and the composition checks already judge a subject that has left the frame.
+    x0, y0 = max(0, min(x0, w - 1)), max(0, min(y0, h - 1))
     x1, y1 = min(w, max(x1, x0 + 1)), min(h, max(y1, y0 + 1))
     px = frame[y0:y1, x0:x1].reshape(-1, 3)
     return tuple(float(px[:, c].mean()) for c in range(3))
