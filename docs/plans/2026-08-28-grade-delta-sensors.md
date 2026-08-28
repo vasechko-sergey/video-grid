@@ -159,7 +159,11 @@ def test_a_pure_luma_lift_lands_in_dL_only():
     must not leak into chroma or hue."""
     _, dL, dC, dH = colordiff.ciede2000(colordiff.rgb_to_lab((100.0, 100.0, 100.0)),
                                         colordiff.rgb_to_lab((128.0, 128.0, 128.0)))
-    assert dL > 10.0 and abs(dC) < 1e-6 and abs(dH) < 1e-6
+    # 1e-5, not 0: the sRGB->XYZ matrix rows do not sum to the D65 white point in
+    # double precision, so a pure grey lands at a* = -8.4e-06 and the lift carries
+    # dC = 2.50e-06 through. Measured, not guessed — and still four orders of
+    # magnitude under any real chroma leak.
+    assert dL > 10.0 and abs(dC) < 1e-5 and abs(dH) < 1e-5
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
