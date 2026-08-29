@@ -74,9 +74,9 @@ def test_spec_overrides_is_empty_for_a_default_spec():
 
 
 def test_spec_overrides_names_the_loosened_field():
-    spec = ReelCheckSpec(target_dur=10.0, color_delta_max=20.0)
+    spec = ReelCheckSpec(target_dur=10.0, variety_min=4)
     assert provenance.spec_overrides(spec) == [
-        {"field": "color_delta_max", "value": 20.0, "default": 12.0}]
+        {"field": "variety_min", "value": 4, "default": 8}]
 
 
 def test_spec_overrides_covers_a_field_the_spec_gains_later():
@@ -105,7 +105,7 @@ def test_attestation_round_trips_through_json(tmp_path):
     a = _att(engine_at_start={"sha": "aaa", "dirty": False},
              engine_at_deliver={"sha": "aaa", "dirty": False},
              edl={"digest": "e", "state": "intact"},
-             overrides=[{"field": "color_delta_max", "value": 20.0, "default": 12.0}],
+             overrides=[{"field": "variety_min", "value": 4, "default": 8}],
              episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]},
              delivered_at="2026-08-04T10:00:00")
     p = tmp_path / "REEL_v1.attest.json"

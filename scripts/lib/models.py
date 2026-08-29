@@ -1072,7 +1072,6 @@ class ReelCheckSpec:
     """Thresholds for the whole-reel mechanical gate (design §4), mirrors CheckSpec."""
     target_dur: float
     variety_min: int = 8               # min phash Hamming distance between adjacent episodes
-    color_delta_max: float = 12.0      # §9 across-cut mean-RGB delta ceiling
     beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
     loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
     loudness_tol: float = 1.0          # ± band around the target
@@ -1087,8 +1086,6 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
         if isinstance(self.variety_min, bool) or not isinstance(self.variety_min, int) or self.variety_min < 0:
             raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
-        if not isinstance(self.color_delta_max, (int, float)) or self.color_delta_max <= 0:
-            raise ValueError(f"ReelCheckSpec.color_delta_max must be a positive number, got {self.color_delta_max!r}")
         if not isinstance(self.beat_tol, (int, float)) or self.beat_tol <= 0:
             raise ValueError(f"ReelCheckSpec.beat_tol must be a positive number of seconds, got {self.beat_tol!r}")
         if not isinstance(self.loudness_target, (int, float)):
@@ -1380,7 +1377,6 @@ class ReelManifest:
     episodes: list[ReelEpisode]
     target_dur: float
     variety_min: int = 8
-    color_delta_max: float = 12.0
     cap: int = 3
     changelog: str = ""
     music: str | None = None           # MUSIC.json path (design §6); None → a silent reel, as Phase A.5
@@ -1447,11 +1443,11 @@ class ReelManifest:
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
-        self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min/color_delta_max
+        self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min
 
     @property
     def check_spec(self) -> ReelCheckSpec:
-        return ReelCheckSpec(self.target_dur, self.variety_min, self.color_delta_max)
+        return ReelCheckSpec(self.target_dur, self.variety_min)
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelManifest":
@@ -1478,7 +1474,6 @@ class ReelManifest:
                for e in eps_in]
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
-                   color_delta_max=d.get("color_delta_max", 12.0),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
                    music=d.get("music"), ambient=d.get("ambient", True),
                    sfx=d.get("sfx", False), platform=d.get("platform", ""),
@@ -1493,7 +1488,7 @@ class ReelManifest:
     def to_dict(self) -> dict:
         return {"episodes": [e.to_dict() for e in self.episodes],
                 "target_dur": self.target_dur, "variety_min": self.variety_min,
-                "color_delta_max": self.color_delta_max, "cap": self.cap,
+                "cap": self.cap,
                 "changelog": self.changelog, "music": self.music,
                 "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
                 "look": self.look.to_dict() if self.look is not None else None,

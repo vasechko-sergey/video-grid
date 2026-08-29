@@ -65,7 +65,7 @@ def test_build_reel_delivers_reel_with_audio_stream(tmp_path, sample_clip):
     rm = ReelManifest(
         episodes=[ReelEpisode(manifest={"segment": ep0, "target_dur": d0}, clip=ep0, route=str(tmp_path / "r0.json")),
                   ReelEpisode(manifest={"segment": ep1, "target_dur": d1}, clip=ep1, route=str(tmp_path / "r1.json"))],
-        target_dur=dur, variety_min=4, color_delta_max=40.0, music=str(music_json))
+        target_dur=dur, variety_min=4, music=str(music_json))
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
     assert res["status"] == "delivered"
     r = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a", "-show_entries",

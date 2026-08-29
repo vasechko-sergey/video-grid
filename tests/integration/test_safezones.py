@@ -48,7 +48,7 @@ def test_safe_zones_flags_low_subject_without_blocking_delivery(tmp_path):
     # distance is always 0, and red-vs-blue's mean-RGB delta (~170) clears the default
     # color ceiling (12.0). Loosen just those two so only safe_zones — this test's
     # actual subject — can fail (mirrors test_reel_backhalf.py's variety_min override).
-    spec = ReelCheckSpec(target_dur=2.0, variety_min=0, color_delta_max=260.0)
+    spec = ReelCheckSpec(target_dur=2.0, variety_min=0)
     rep = check_reel.run(master, clips, spec,
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
     assert rep.checks["safe_zones"].passed is False                 # ep1 subject under UI chrome

@@ -9,7 +9,7 @@ from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailu
 def _rm(cap=3, n=2, platform="", look=None, outro=None):
     eps = [ReelEpisode(manifest={"segment": f"s{i}.mp4"}, clip=f"c{i}.mp4", route=f"r{i}.json")
            for i in range(n)]
-    return ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=cap,
+    return ReelManifest(episodes=eps, target_dur=6.0, cap=cap,
                         platform=platform, look=look, outro=outro)
 
 
@@ -159,7 +159,7 @@ def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(mon
     eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json"),
            ReelEpisode(manifest={"segment": "s1.mp4", "stabilize": True},
                        clip="c1.mp4", route="r1.json")]
-    rm = ReelManifest(episodes=eps, target_dur=6.0, color_delta_max=12.0, cap=3)
+    rm = ReelManifest(episodes=eps, target_dur=6.0, cap=3)
     reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
     seen = _wire(monkeypatch, reports)
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))

@@ -217,8 +217,8 @@ def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
                           scratch_dir=str(tmp_path / "scratch"),
                           run_provenance={"engine_at_start": {"sha": "aaa", "dirty": False},
                                           "edl": {"digest": "e", "state": "intact"},
-                                          "overrides": [{"field": "color_delta_max",
-                                                         "value": 20.0, "default": 12.0}],
+                                          "overrides": [{"field": "variety_min",
+                                                         "value": 4, "default": 8}],
                                           "episode_qc": {"state": "judged",
                                                          "judged": {"0": "aa"},
                                                          "reprocessed_after": [1]}})
@@ -230,7 +230,7 @@ def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
     assert att.engine_at_start == {"sha": "aaa", "dirty": False}
     assert att.engine_at_deliver["sha"] == provenance.engine_stamp()["sha"]
     assert att.edl == {"digest": "e", "state": "intact"}
-    assert att.overrides == [{"field": "color_delta_max", "value": 20.0, "default": 12.0}]
+    assert att.overrides == [{"field": "variety_min", "value": 4, "default": 8}]
     # design §8/§10: which clips were judged and which left the gate behind, verbatim
     assert att.episode_qc == {"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]}
     assert att.delivered_at                                     # non-empty ISO stamp

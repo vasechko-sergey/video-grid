@@ -579,18 +579,25 @@ def test_export_profile_color_range():
 
 def test_reel_check_spec_defaults():
     s = m.ReelCheckSpec(target_dur=6.0)
-    assert s.variety_min == 8 and s.color_delta_max == 12.0
+    assert s.variety_min == 8
 
 
 @pytest.mark.parametrize("kw, msg", [
     (dict(target_dur=0), "target_dur"),
     (dict(target_dur=6.0, variety_min=-1), "variety_min"),
     (dict(target_dur=6.0, variety_min=True), "variety_min"),
-    (dict(target_dur=6.0, color_delta_max=0), "color_delta_max"),
 ])
 def test_reel_check_spec_rejects_bad(kw, msg):
     with pytest.raises(ValueError, match=msg):
         m.ReelCheckSpec(**kw)
+
+
+def test_reel_check_spec_no_longer_accepts_color_delta_max():
+    """The across-cut ceiling is retired with the check it bounded (design
+    2026-08-29 §6). Pinned as a TypeError so a re-added field is caught by the
+    contract, not by a check that silently starts running again."""
+    with pytest.raises(TypeError):
+        m.ReelCheckSpec(target_dur=6.0, color_delta_max=12.0)
 
 
 def test_reelcheckspec_audio_thresholds_default_and_validate():
@@ -676,7 +683,7 @@ def test_reframe_spec_rejects_wrong_length_color_correct():
 def _reel_dict(**over):
     d = dict(episodes=[{"manifest": {"segment": "s0.mp4"}, "clip": "c0.mp4", "route": "r0.json"},
                        {"manifest": {"segment": "s1.mp4"}, "clip": "c1.mp4", "route": "r1.json"}],
-             target_dur=6.0, variety_min=4, color_delta_max=10.0, cap=3, changelog="cut")
+             target_dur=6.0, variety_min=4, cap=3, changelog="cut")
     d.update(over)
     return d
 
@@ -688,14 +695,14 @@ def test_reel_manifest_from_dict_round_trip():
     assert rm.episodes[1].manifest == {"segment": "s1.mp4"}
     cs = rm.check_spec
     assert isinstance(cs, m.ReelCheckSpec)
-    assert cs.target_dur == 6.0 and cs.variety_min == 4 and cs.color_delta_max == 10.0
+    assert cs.target_dur == 6.0 and cs.variety_min == 4
 
 
 def test_reel_manifest_defaults():
     rm = m.ReelManifest.from_dict(dict(
         episodes=[{"manifest": {}, "clip": "c.mp4", "route": "r.json"}], target_dur=3.0))
     assert rm.cap == 3 and rm.changelog == ""
-    assert rm.check_spec.variety_min == 8 and rm.check_spec.color_delta_max == 12.0
+    assert rm.check_spec.variety_min == 8
 
 
 def test_reel_manifest_rejects_empty_episodes():
@@ -778,9 +785,13 @@ def test_reel_manifest_rejects_bad_variety_min():
         m.ReelManifest.from_dict(_reel_dict(variety_min=-1))
 
 
-def test_reel_manifest_rejects_bad_color_delta_max():
-    with pytest.raises(ValueError, match="color_delta_max"):
-        m.ReelManifest.from_dict(_reel_dict(color_delta_max=-5.0))
+def test_reel_manifest_ignores_a_legacy_color_delta_max_key():
+    """A pre-0.5.0 EPISODES.json carries the key. from_dict reads named keys, so an
+    unknown one is dropped — deliberate (design §6): it recorded a ceiling for a check
+    that no longer exists, so ignoring it cannot mislead about anything that runs."""
+    rm = m.ReelManifest.from_dict(_reel_dict(color_delta_max=56.0))
+    assert not hasattr(rm, "color_delta_max")
+    assert rm.check_spec.variety_min == 4
 
 
 def test_reel_manifest_rejects_null_manifest():
