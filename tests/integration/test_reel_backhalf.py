@@ -14,8 +14,10 @@ from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelCheckSpec
 def _episode(sample_clip, tmp, x_const, name):
     # center composition (no lateral requirement); a constant route x fixes a
     # static crop window. The moving box (white, src-x≈845 at clip t=1.5) lands at
-    # a DIFFERENT in-frame position in ep0 vs ep1 → distinct phash (variety passes),
-    # while both cut-boundary frames are pure grey → equal mean (color passes).
+    # a DIFFERENT in-frame position in ep0 vs ep1 → distinct phash (variety passes).
+    # Both cut-boundary frames are also pure grey (equal mean), which used to matter
+    # for a now-deleted across-cut colour check (design 2026-08-29,
+    # colour-convergence-retire) — harmless to leave as-is, but no longer load-bearing.
     route = [dict(t=i / 10, x=float(x_const), y=540.0, w=140.0, h=320.0) for i in range(30)]
     rp = tmp / f"{name}.route.json"
     rp.write_text(json.dumps(route))

@@ -484,12 +484,14 @@ aspect (project-init's own "ask, don't guess").
   tool-generated `EDL.json`, even to fix a small thing; revise `selection.json` and
   re-run the build instead.
 - **You may not disable, lower, or downgrade any quality gate.** A gate that
-  blocks is routed back to its stage's skill, never loosened to pass.
-  `--color-delta-max` exists for a reel that deliberately cuts between scenes of
-  different exposure, with the measured delta in hand — never to silence a grade
-  that is genuinely wrong — and every use of it is recorded in the delivery's
-  attestation and shown at CP3. `episode-qc` carries no override at all (§7) —
-  not even a measured one.
+  blocks is routed back to its stage's skill, never loosened to pass. There is
+  currently no CLI flag on any conveyor stage for loosening a reel-level check
+  threshold — the last one, `--color-delta-max`, was retired with the check it
+  bounded (design 2026-08-29, colour-convergence-retire) rather than kept as
+  an escape hatch. If a `ReelCheckSpec` field is ever hand-loosened through a
+  manifest, `provenance.spec_overrides` still records it, never silently, and
+  shows it at CP3. `episode-qc` carries no override at all (§7) — not even a
+  measured one.
 - **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
   2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
   (`jobs`, default 3, the measured knee) inside its own loop; you never drive

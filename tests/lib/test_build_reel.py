@@ -17,12 +17,12 @@ def _pass():
     return ReelReport(checks={"length": CheckResult("length", True, {})}, episode_count=2)
 
 
-def _color_fail(idx, target, culprit):
-    # The colour corrector is retired (design 2026-08-29): every canned report this
-    # factory used to build as an across-cut colour fail is now a black hit instead —
-    # the failure class that still reprocesses. target/culprit are accepted but no
-    # longer used: every call site below still passes them (only the failure's SHAPE
-    # changed), which is why they are unused rather than deleted from the signature.
+def _black_fail(idx):
+    # A black-frame hit — the only failure class the reel-retry loop still
+    # reprocesses now that the colour corrector is retired (design 2026-08-29,
+    # colour-convergence-retire). Was _color_fail(idx, target, culprit): the
+    # across-cut colour fail this factory used to build is gone, and so are the
+    # target/culprit args every call site passed it to describe that pull.
     return ReelReport(
         checks={"black": CheckResult("black", False, {"black_start": [1.0]})},
         fail_reasons=[ReelFailure("black", "reprocess", idx, {"t": 1.0})],
@@ -107,7 +107,7 @@ def test_build_reel_forwards_titles_to_deliver(monkeypatch, tmp_path):
 def test_color_fail_then_pass_reprocesses_then_delivers(monkeypatch, tmp_path):
     # round 0: ep1 fails (black hit — the colour corrector is retired) → reprocess;
     # round 1: passes → deliver
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    reports = [_black_fail(1), _pass()]
     seen = _wire(monkeypatch, reports)
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
@@ -119,7 +119,7 @@ def test_a_delivered_reel_reports_which_episodes_were_reprocessed(monkeypatch, t
     """build_reel's loop-2 re-renders culprits AFTER the QC gate ran, so which ones
     it touched has to leave the loop (design §8) — a verdict on ep1 is one render out
     of date the moment ep1 is rebuilt."""
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    reports = [_black_fail(1), _pass()]
     _wire(monkeypatch, reports)
     result = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert result["status"] == "delivered"
@@ -157,7 +157,7 @@ def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(mon
            ReelEpisode(manifest={"segment": "s1.mp4", "stabilize": True},
                        clip="c1.mp4", route="r1.json")]
     rm = ReelManifest(episodes=eps, target_dur=6.0, cap=3)
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    reports = [_black_fail(1), _pass()]
     seen = _wire(monkeypatch, reports)
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"                   # reprocess did NOT dead-end
@@ -178,7 +178,7 @@ def test_variety_fail_stops_and_reports_without_delivering(monkeypatch, tmp_path
 
 
 def test_reprocess_failure_propagates(monkeypatch, tmp_path):
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+    reports = [_black_fail(1)]
     seen = _wire(monkeypatch, reports,
                  pe_results=[{"status": "needs_input", "problems": ["bad manifest"]}])
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
@@ -188,8 +188,7 @@ def test_reprocess_failure_propagates(monkeypatch, tmp_path):
 
 def test_capped_episode_escalates(monkeypatch, tmp_path):
     # cap=1: round 0 reprocesses ep1 (attempts→1); round 1 still fails → capped escalate
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
-               _color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+    reports = [_black_fail(1), _black_fail(1)]
     seen = _wire(monkeypatch, reports)
     res = build_reel.build_reel(_rm(cap=1), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "stop_and_report"
@@ -382,12 +381,13 @@ def test_build_reel_silent_path_unchanged_without_music(tmp_path, monkeypatch):
     assert mixed == [] and delivered == [None]           # no music → no mix, deliver stays silent (A.5)
 
 
-def _color_fail_music():
-    # a fresh (no-arg) reprocessable-fail report — NOT named _color_fail: the module
-    # already defines _color_fail(idx, target, culprit) for the A.5 tests above; a
-    # same-named redefinition would shadow it and break every caller. The colour
-    # corrector is retired (design 2026-08-29): this now builds a black hit, same as
-    # _color_fail above — only the name is legacy.
+def _black_fail_music():
+    # a fresh (no-arg) reprocessable-fail report — NOT named _black_fail: the module
+    # already defines _black_fail(idx) for the A.5 tests above; a same-named
+    # redefinition would shadow it and break every caller. Kept as its own tiny
+    # factory rather than calling _black_fail(0) because the two build slightly
+    # different reports (episode_count, check detail) and no test here depends on
+    # them matching — sharing one would be coincidence, not intent.
     r = ReelReport(checks={"black": CheckResult("black", False, {})})
     r.fail_reasons = [ReelFailure("black", "reprocess", 0, {"t": 1.0})]
     return r
@@ -399,7 +399,7 @@ def test_build_reel_music_delivers_after_full_reprocess_budget(tmp_path, monkeyp
     ep = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 6.0}, clip="c0.mp4", route="r0.json")
     rm = ReelManifest(episodes=[ep], target_dur=6.0, cap=3, music=str(tmp_path / "MUSIC.json"))
     mixed, delivered = [], []
-    reports = [_color_fail_music(), _color_fail_music(), _color_fail_music(), _passing(), _passing()]
+    reports = [_black_fail_music(), _black_fail_music(), _black_fail_music(), _passing(), _passing()]
     monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
     monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 6.0)
@@ -494,7 +494,7 @@ def test_build_reel_music_delivers_after_full_budget_plus_a_length_retime(tmp_pa
     ep = ReelEpisode(manifest={"segment": "s0.mp4", "target_dur": 6.0}, clip="c0.mp4", route="r0.json")
     rm = ReelManifest(episodes=[ep], target_dur=6.0, cap=3, music=str(tmp_path / "MUSIC.json"))
     mixed, delivered = [], []
-    reports = [_color_fail_music(), _color_fail_music(), _color_fail_music(),
+    reports = [_black_fail_music(), _black_fail_music(), _black_fail_music(),
                _length_fail(5.3, 6.0), _passing(), _passing()]
     monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
@@ -615,7 +615,7 @@ def test_a_look_with_fade_zero_reaches_mix_as_zero_not_the_default(tmp_path, mon
 def test_a_judged_reel_refuses_to_deliver_over_a_re_rendered_episode(monkeypatch, tmp_path):
     """design 2026-08-18 §2: the retry loop rewrote ep1's bytes AFTER episode_qc
     digested them, so the verdict is one render out of date and the reel must not ship."""
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    reports = [_black_fail(1), _pass()]
     seen = _wire(monkeypatch, reports)
     rm = _rm()
     rm.provenance = {"episode_qc": {"state": "judged", "judged": {"0": "aa", "1": "bb"}}}
@@ -632,8 +632,7 @@ def test_the_stop_costs_no_mix(monkeypatch, tmp_path):
     """The refusal sits at the TOP of the deliver arm, before the stem is built — a reel
     that is not going to ship must not pay for an audio pass first (design §2)."""
     mixed, delivered = [], []
-    _wire_music(monkeypatch, [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
-                              _passing()], mixed, delivered)
+    _wire_music(monkeypatch, [_black_fail(1), _passing()], mixed, delivered)
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     monkeypatch.setattr(build_reel.process_episode, "process_episode",
                         lambda m, d, route_path=None:
@@ -648,7 +647,7 @@ def test_the_stop_costs_no_mix(monkeypatch, tmp_path):
 def test_an_unjudged_reel_still_delivers_after_a_reprocess(monkeypatch, tmp_path):
     """The other side of §2.1 — build_reel's own CLI has no verdict to invalidate, and
     the SP1 front door must keep working exactly as it did before this slice."""
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
+    reports = [_black_fail(1), _pass()]
     _wire(monkeypatch, reports)
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"

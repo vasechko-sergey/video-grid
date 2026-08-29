@@ -4,13 +4,43 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-28._
+_Last updated: 2026-08-29._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Colour-convergence loop retired — R2.6 DONE (2026-08-29)** — design
+  [2026-08-29-colour-convergence-retire-design.md](specs/2026-08-29-colour-convergence-retire-design.md),
+  plan [2026-08-29-colour-convergence-retire.md](plans/2026-08-29-colour-convergence-retire.md),
+  Tasks 0–6 (branch `feat/colour-convergence-retire`). Deleted, not repaired:
+  `check_reel`'s `color_across_cuts` compared two frames straddling a cut — two
+  different shots — so measured against the preserved 2026-06 run, **6 of the
+  shipped reel's 7 cuts** already exceed its 12.0 default (the operator raised
+  the ceiling to 56.0 to switch it off), and its corrector optimised a
+  reel-wide median the gate never reads, demanding pulls up to **1.75x**
+  against **0.71 dE00** of `color_fidelity` headroom. No threshold separates a
+  grade mismatch from an ordinary cut in a whole-frame mean, so the check, its
+  lever (`_REPROCESS_CLASS`'s colour arm), and the `color_correct` cascade it
+  was the only consumer of (`ReframeSpec.color_correct`,
+  `process_episode`'s parameter, `reframe`'s compose branch,
+  `color.corrected`) are removed outright — `color.LO`/`color.HI` stay,
+  `gain` reads them. `ReelCheckSpec.color_delta_max`,
+  `ReelManifest.color_delta_max`, and `edl_to_reel --color-delta-max` are
+  breaking removals; a pre-0.5.0 `EPISODES.json` carrying the key is silently
+  ignored, deliberately, since it bounded a check that no longer exists.
+  Replaces it with a `colour` axis on `reel-review`, routed to `match-grade`
+  — a reader judging the per-episode stills the packet already carries,
+  because no whole-frame statistic can separate content from grade. Task 6's
+  six-row mutation battery (one revert per deletion) held on every row.
+  **Version 0.5.0.** Honest limit named in the design's own §5: after this
+  slice nothing automated measures whether the rendered episodes agree with
+  each other — the fix filed for that (grading the pixels that ship, P1/L)
+  absorbs backlog R2.1 and R3.1. **Full suite: 3208 passed, 1 skipped**
+  (3207 before this task's one new cross-check test,
+  `test_colour_axis_spelling_matches_episode_qc`).
 
 - **Grade-damage sensors — R2.2 + R2.5 DONE (2026-08-28)** — design
   [2026-08-28-grade-delta-sensors-design.md](specs/2026-08-28-grade-delta-sensors-design.md),

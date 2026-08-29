@@ -43,11 +43,13 @@ def test_safe_zones_flags_low_subject_without_blocking_delivery(tmp_path):
     assembly.assemble(clips, (320, 568), 30.0, master)               # a genuinely assembled master
     geom = [_write_geom(tmp_path / "ep0", 900.0),                    # fy 0.45 — safe
             _write_geom(tmp_path / "ep1", 1960.0)]                   # fy 0.98 — under the caption band
-    # flat-color fixtures trip two HARD gates that are irrelevant to this test: phash
-    # of any solid color collapses to the same hash (no texture to key on) so variety's
-    # distance is always 0, and red-vs-blue's mean-RGB delta (~170) clears the default
-    # color ceiling (12.0). Loosen just those two so only safe_zones — this test's
+    # a flat-color fixture trips one HARD gate that is irrelevant to this test: phash
+    # of any solid color collapses to the same hash (no texture to key on), so variety's
+    # distance is always 0. Loosen just that one so only safe_zones — this test's
     # actual subject — can fail (mirrors test_reel_backhalf.py's variety_min override).
+    # The reel-level colour ceiling this comment used to also loosen (`color_delta_max`,
+    # default 12.0) is retired — there is no check left to raise it against (design
+    # 2026-08-29, colour-convergence-retire).
     spec = ReelCheckSpec(target_dur=2.0, variety_min=0)
     rep = check_reel.run(master, clips, spec,
                          str(tmp_path / "r.json"), geometry=geom, platform="tiktok")

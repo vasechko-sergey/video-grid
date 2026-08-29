@@ -395,8 +395,9 @@ explicitly). What that bypass cannot forge is the rest of the record —
 `REEL_v{n}.attest.json` carries `engine_at_start: {}`, `edl: {}`,
 `overrides: []` next to a driver run's populated fields, which is the tell at
 CP3, not a blocked delivery. `EDL.from_json` refuses a tampered EDL, and every
-legitimate gate loosening still available (`--color-delta-max`) is recorded —
-never silently — in the delivery's `REEL_v{n}.attest.json` via
+legitimate gate loosening still available (there is no longer a CLI flag for
+one — `--color-delta-max` was retired 2026-08-29 with the check it bounded) is
+recorded — never silently — in the delivery's `REEL_v{n}.attest.json` via
 `provenance.spec_overrides`, a diff against the default spec so a future
 threshold is covered the day it is added. `using-montage`, `process-episode`,
 and `edit-plan` each gained an explicit brief line: a worker may not disable,

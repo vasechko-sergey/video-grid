@@ -1,6 +1,9 @@
 """Real-ffmpeg proof for the reel retry loop (design §6): build_reel wires probe →
 assemble → check_reel → deliver end-to-end on real files. Clips are built with the
-real reframe encoder, matching test_reel_backhalf.py's precedent.
+real reframe encoder, matching test_reel_backhalf.py's precedent. Two further real
+proofs live here: a within-band length shortfall absorbed by re-timing the target
+to the reel's real length, and one past the band escalating instead of absorbing
+(the length re-time design, 2026-07-18).
 
 The colour half of this file is retired with the corrector it proved (design
 2026-08-29). A reprocess-then-pass proof cannot honestly be rebuilt on the black arm:

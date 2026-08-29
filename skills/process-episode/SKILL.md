@@ -72,7 +72,7 @@ Ask the user (or the dispatching orchestrator) a clarifying question ONLY when t
 
 ## Stop-and-report (§4.1: no improvising past the manifest)
 
-When the orchestrator returns `stop_and_report`, the tracker's reality contradicts the brief (declared motion reversed; hero ambiguous with no pin; empty track). Return the finding verbatim to the orchestrator — the answer is a manifest edit (a `hero` pin, a corrected `motion`, a better model), not a workaround you invent. When it returns `escalate`, the fault is upstream — pass the `escalate_to` + `fail_reasons` up. Usually that means the same failure survived the retry budget and the culprit is the episode's window/composition in the EDL. One reason escalates on attempt 1 instead, with no retry at all: `grade-damage` (`color_fidelity`), because no reframe parameter can move a colour. Its culprit is normally the episode's colour block — but not when a driver supplied `color_correct` (`build_reel`'s convergence loop does), in which case the EDL is correct and the pull is the cause. Read the `reason`, not just the `escalate_to`. Fixing forward is banned: a bad crop is never masked downstream.
+When the orchestrator returns `stop_and_report`, the tracker's reality contradicts the brief (declared motion reversed; hero ambiguous with no pin; empty track). Return the finding verbatim to the orchestrator — the answer is a manifest edit (a `hero` pin, a corrected `motion`, a better model), not a workaround you invent. When it returns `escalate`, the fault is upstream — pass the `escalate_to` + `fail_reasons` up. Usually that means the same failure survived the retry budget and the culprit is the episode's window/composition in the EDL. One reason escalates on attempt 1 instead, with no retry at all: `grade-damage` (`color_fidelity`), because no reframe parameter can move a colour. Its culprit is the episode's colour block. (Before 2026-08-29 a driver-supplied `color_correct` could also be the cause, since `build_reel`'s retired convergence loop pulled a delivered episode toward a reel-wide target after the fact — that pull no longer exists, so the EDL's own colour block is the only source of a `grade-damage` finding now.) Read the `reason`, not just the `escalate_to`. Fixing forward is banned: a bad crop is never masked downstream.
 
 ## Editorial gate (the half the orchestrator cannot do)
 
@@ -123,10 +123,11 @@ Both hold → the episode is done. Either fails → `stop_and_report` with which
 blocks is routed back to its stage's skill (here: `stop_and_report` /
 `escalate`, upstream to the EDL), never loosened to pass. This is structural,
 not a courtesy — `check_episode`'s thresholds are not parameters this skill's
-invocation can reach, and a reel-level override such as `--color-delta-max`
-belongs to `edl_to_reel`, is recorded in the delivery's attestation, and is
-never something a per-episode worker reaches for to make a failing episode
-pass.
+invocation can reach. A reel-level check's threshold belongs to `edl_to_reel`
+(there is currently no CLI flag exposing one — the last, `--color-delta-max`,
+was retired with the check it bounded, 2026-08-29), and any hand-loosening of
+one is recorded in the delivery's attestation regardless — never something a
+per-episode worker reaches for to make a failing episode pass.
 
 ## Red Flags
 

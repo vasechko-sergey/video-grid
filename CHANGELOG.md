@@ -10,6 +10,27 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.5.0 — 2026-08-29
+
+**Retired the reel's colour-convergence loop.** `check_reel`'s `color_across_cuts`
+compared two frames straddling a cut — two different shots — so six of the only real
+reel's seven cuts exceeded its 12.0 default and the operator raised the ceiling to
+56.0 to switch it off. Its corrector then optimised a different quantity than the gate
+read, demanding pulls of 1.41x and 1.75x against 0.71 dE00 of fidelity headroom. Both
+are deleted, along with the `color_correct` cascade they were the only consumers of:
+`ReframeSpec.color_correct`, `process_episode`'s parameter, `reframe`'s compose branch
+and `color.corrected`.
+
+**Breaking:** `ReelCheckSpec.color_delta_max`, `ReelManifest.color_delta_max`,
+`ReframeSpec.color_correct` and `edl_to_reel --color-delta-max` are removed. A
+pre-0.5.0 `EPISODES.json` carrying `color_delta_max` is silently ignored; the CLI flag
+fails loud.
+
+**Added:** a `colour` axis on `reel-review`, routed to `match-grade`. Reel-level colour
+agreement is now judged by a reader over the per-episode stills the packet already
+carries, because no whole-frame statistic separates a grade mismatch from a content
+change. Nothing automated measures it — see the design's §5.
+
 ## 0.4.0 — 2026-08-28
 
 - **A damaged colour grade now stops an episode instead of shipping it

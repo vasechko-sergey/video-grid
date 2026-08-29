@@ -134,14 +134,20 @@ already ships with — the honest MVP, not hidden.
   design §10's other half. match-grade only pulls episodes toward each
   OTHER, never toward an outside target.
 - **White balance, black point, saturation, or any other grade knob** →
-  hand/agent-authored on the EDL episode directly (or `edl_to_reel
-  --color-delta-max` for the across-cut ceiling); this stage is tone (luma)
+  hand/agent-authored on the EDL episode directly; this stage is tone (luma)
   only.
-- **A deliberate exposure cut** (open water -> bright beach) → an editorial
-  choice `edl_to_reel --color-delta-max` still honors; match-grade pulls
-  toward one reel-wide target, it does not detect a scene-cut that means to
-  change exposure.
-- **Fixing a reel that already shipped** → `build_reel`'s in-loop colour
-  reprocess (Phase A.5) corrects a *delivered-space* outlier against the
-  reel's median after render; this stage runs earlier, on the EDL, before
-  any pixel is cut.
+- **A deliberate exposure cut** (open water -> bright beach) → still an
+  editorial choice this stage does not detect — match-grade pulls every
+  episode toward one reel-wide target, it does not read intent into a
+  scene-cut. Nothing mechanical checks this anymore either: the reel-level
+  `color_across_cuts` ceiling (`--color-delta-max`) is retired (2026-08-29),
+  since it could not tell "deliberate cut" from "wrong grade" in the first
+  place. `reel-review`'s `colour` axis is where a human now makes that call.
+- **Fixing a reel that already shipped** → there is no automatic in-loop
+  colour reprocess anymore. `build_reel`'s Phase A.5 colour arm (which pulled
+  a *delivered-space* outlier toward the reel's median after render) is
+  retired with the check that drove it (2026-08-29) — it optimised a
+  different quantity than any gate read. The path now is editorial:
+  `reel-review`'s `colour` axis names the episode that drifted, routed back
+  to THIS skill — re-run match-grade (`--force` if the episode already
+  carries a tone pair) and then `edl_to_reel`.

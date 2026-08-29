@@ -1,6 +1,7 @@
 import pytest
 
 from scripts.lib import review
+from scripts.lib.episode_qc import QC_AXES
 from scripts.lib.review import (REVIEW_AXES, REVIEW_CONFIDENCE, REVIEW_ROUTES,
                                 REVIEW_SEVERITY, Finding)
 
@@ -72,11 +73,24 @@ def test_a_colour_finding_routed_to_match_grade_round_trips():
 
 
 def test_the_american_spelling_is_not_an_axis():
-    """One spelling only — 'colour', matching episode_qc.QC_AXES. Two spellings would
-    split findings across two axes nobody could aggregate."""
+    """Guards against the American spelling ever being ACCEPTED as a second axis
+    value alongside 'colour'. This does NOT by itself confirm REVIEW_AXES spells
+    the axis the same way episode_qc.QC_AXES does — it would pass identically even
+    if 'colour' were never added to REVIEW_AXES at all, because Finding.__post_init__
+    validates axis before route and 'color' was never a valid axis either way. That
+    cross-check is test_colour_axis_spelling_matches_episode_qc below."""
     with pytest.raises(ValueError, match="not in"):
         review.Finding(axis="color", severity="minor", evidence="e",
                        route="match-grade", suggestion="s")
+
+
+def test_colour_axis_spelling_matches_episode_qc():
+    """The cross-check the test above does not perform: REVIEW_AXES and
+    episode_qc.QC_AXES must agree on ONE spelling of the colour axis, or a finding
+    routed between reel-review and episode-qc silently splits into two axes
+    nobody aggregates."""
+    assert "colour" in REVIEW_AXES and "colour" in QC_AXES
+    assert "color" not in REVIEW_AXES and "color" not in QC_AXES
 
 
 def test_vocab_constants_are_the_allowed_sets():

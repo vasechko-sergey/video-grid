@@ -189,7 +189,9 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # window (design §6).
     target = (edl.target_dur if edl.target_dur is not None
               else sum(ep.play_dur() for ep in edl.episodes))
-    extra: dict = {}
+    extra: dict = {}  # deliberate seam for a future ReelManifest field a caller could
+                      # override — the retired --color-delta-max used to populate this
+                      # one (design 2026-08-29 §2); no current CLI flag fills it
     # #16: this argument is the version-log NOTE, not the log's path. Passing
     # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's
     # VERSIONS.md log the file's own path instead of the reason for the version.
