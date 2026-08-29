@@ -76,20 +76,13 @@ def _refuse_on_engine_drift(started: dict, now: dict) -> None:
 
 def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                     work_dir: str, out_dir: str, *, music: str | None = None,
-                    jobs: int = DEFAULT_JOBS, color_delta_max: float | None = None,
+                    jobs: int = DEFAULT_JOBS,
                     changelog: str = "") -> tuple[ReelManifest | None, dict | None]:
     """Everything up to the ReelManifest: preflight, extract, the loop-1 fan-out, the
     run provenance. Returns (rm, None) or (None, stop_and_report).
 
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
-    raise ValueError instead (a hard setup error, not an editorial finding to route).
-
-    `color_delta_max` overrides the across-cut mean-RGB ceiling (ReelCheckSpec's own
-    default stands when None). The default guards GRADE consistency within one scene;
-    a reel that deliberately cuts between scenes of different exposure — open water to
-    a bright beach — carries a real jump the grade cannot and should not flatten. Raise
-    it only for such a reel, with the measured delta in hand, never to silence a grade
-    that is genuinely wrong."""
+    raise ValueError instead (a hard setup error, not an editorial finding to route)."""
     # Both dirs receive .mp4 — out_dir the ep{i}.mp4 renders, work_dir the extracted
     # segments and the reel master; REEL_v{n} now lands in the deliveries dir next
     # door instead (see _deliveries_dir). In the footage folder these become source
@@ -196,7 +189,7 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # window (design §6).
     target = (edl.target_dur if edl.target_dur is not None
               else sum(ep.play_dur() for ep in edl.episodes))
-    extra = {} if color_delta_max is None else {"color_delta_max": color_delta_max}
+    extra: dict = {}
     # #16: this argument is the version-log NOTE, not the log's path. Passing
     # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's
     # VERSIONS.md log the file's own path instead of the reason for the version.
@@ -226,14 +219,14 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
                 work_dir: str, out_dir: str, *, deliveries_dir: str | None = None,
                 music: str | None = None, jobs: int = DEFAULT_JOBS,
-                color_delta_max: float | None = None, changelog: str = "",
+                changelog: str = "",
                 titles: str | None = None) -> dict:
     """The SP1 front door: a hand-authored EDL.json -> a delivered REEL_v1.mp4 in one
     command. No per-episode QC runs on this path — the delivery's attestation records
     `episode_qc: absent` so an unjudged reel is DISTINGUISHABLE from a judged one, which
     is the honest half of the gate (design §10): no silent bypass, not no bypass."""
     rm, stop = _build_manifest(edl_path, project_path, footage_root, work_dir, out_dir,
-                               music=music, jobs=jobs, color_delta_max=color_delta_max,
+                               music=music, jobs=jobs,
                                changelog=changelog)
     if stop:
         return stop
@@ -244,13 +237,13 @@ def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
 
 def process_episodes(edl_path: str, project_path: str, footage_root: str,
                      work_dir: str, out_dir: str, *, music: str | None = None,
-                     jobs: int = DEFAULT_JOBS, color_delta_max: float | None = None,
+                     jobs: int = DEFAULT_JOBS,
                      changelog: str = "") -> dict:
     """Phase 1: render every episode, then STOP. Writes EPISODES.json (a serialized
     ReelManifest) beside the ep{i}.mp4 it describes, so the verdicts and the judged
     clips cannot be separated (design §3)."""
     rm, stop = _build_manifest(edl_path, project_path, footage_root, work_dir, out_dir,
-                               music=music, jobs=jobs, color_delta_max=color_delta_max,
+                               music=music, jobs=jobs,
                                changelog=changelog)
     if stop:
         return stop
@@ -335,11 +328,6 @@ def main() -> None:
                     help=f"episodes to process concurrently (default {DEFAULT_JOBS} — the "
                          f"measured knee; lower on a memory-constrained box); refused with "
                          f"--from-episodes (phase 2 renders nothing)")
-    ap.add_argument("--color-delta-max", type=float,
-                    help="across-cut mean-RGB ceiling (default 12.0). Raise ONLY for a reel "
-                         "that deliberately cuts between scenes of different exposure "
-                         "(open water -> bright beach), with the measured delta in hand; "
-                         "refused with --from-episodes (already baked into EPISODES.json)")
     ap.add_argument("--changelog", default="",
                     help="version-log note for this delivery — the REASON for the version "
                          "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'; "
@@ -354,14 +342,13 @@ def main() -> None:
     a = ap.parse_args()
     if a.from_episodes:
         if (a.edl or a.project or a.footage_root or a.out_dir or a.music
-                or a.jobs is not None or a.color_delta_max is not None or a.changelog):
+                or a.jobs is not None or a.changelog):
             ap.error("--from-episodes resumes a run whose episodes are already rendered; "
                      "the EDL / --project / --footage-root are not read again, --out-dir "
                      "is not read at all — phase 2 delivers into the episodes dir's "
                      "SIBLING deliveries/, never beside EPISODES.json, so clearing the "
                      "render output can never take a delivered reel with it (design "
-                     "2026-08-26 §0/§4) — and --music / --jobs / --color-delta-max / "
-                     "--changelog only "
+                     "2026-08-26 §0/§4) — and --music / --jobs / --changelog only "
                      "affect phase-1 rendering, already baked into EPISODES.json, so "
                      "passing any of them here would silently be discarded")
         result = assemble_reel(a.from_episodes, a.work_dir,
@@ -387,7 +374,7 @@ def main() -> None:
         kw = ({} if a.stop_after_episodes
               else {"titles": a.titles, "deliveries_dir": a.deliveries_dir})
         result = fn(a.edl, a.project, a.footage_root, a.work_dir, a.out_dir,
-                    music=a.music, jobs=jobs, color_delta_max=a.color_delta_max,
+                    music=a.music, jobs=jobs,
                     changelog=a.changelog, **kw)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] in ("delivered", "episodes_ready") else 1)

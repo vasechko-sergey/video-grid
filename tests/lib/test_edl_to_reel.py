@@ -186,24 +186,6 @@ def test_edl_to_reel_leaves_the_reel_manifest_outro_none_by_default(monkeypatch,
     assert seen["rm"].outro is None
 
 
-def test_color_delta_max_override_reaches_the_reel_manifest(monkeypatch, tmp_path):
-    seen = _wire(monkeypatch)
-    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
-                            str(tmp_path / "w"), str(tmp_path / "out"), color_delta_max=20.0)
-    rm = seen["rm"]
-    assert rm.color_delta_max == 20.0
-    assert rm.check_spec.color_delta_max == 20.0    # the value actually enforced by check_reel
-
-
-def test_color_delta_max_omitted_keeps_the_reel_check_spec_default(monkeypatch, tmp_path):
-    seen = _wire(monkeypatch)
-    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
-                            str(tmp_path / "w"), str(tmp_path / "out"))
-    rm = seen["rm"]
-    assert rm.color_delta_max == 12.0               # ReelCheckSpec's own default, untouched
-    assert rm.check_spec.color_delta_max == 12.0
-
-
 def test_titles_forwarded_to_build_reel(monkeypatch, tmp_path):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
@@ -497,44 +479,6 @@ def test_cli_jobs_defaults_to_the_knee(monkeypatch, tmp_path):
     assert seen_jobs["jobs"] == edl_to_reel.DEFAULT_JOBS
 
 
-def test_cli_threads_color_delta_max(monkeypatch, tmp_path):
-    import sys
-    seen_kw = {}
-
-    def fake_driver(*a, **kw):
-        seen_kw["color_delta_max"] = kw.get("color_delta_max")
-        return {"status": "delivered", "output": "REEL_v1.mp4"}
-    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
-    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
-                                      "--project", _project(tmp_path),
-                                      "--footage-root", str(tmp_path),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out"),
-                                      "--color-delta-max", "20.0"])
-    with pytest.raises(SystemExit) as ei:
-        edl_to_reel.main()
-    assert ei.value.code == 0
-    assert seen_kw["color_delta_max"] == 20.0        # float, not the string "20.0"
-
-
-def test_cli_color_delta_max_defaults_to_none(monkeypatch, tmp_path):
-    import sys
-    seen_kw = {}
-
-    def fake_driver(*a, **kw):
-        seen_kw["color_delta_max"] = kw.get("color_delta_max")
-        return {"status": "delivered", "output": "REEL_v1.mp4"}
-    monkeypatch.setattr(edl_to_reel, "edl_to_reel", fake_driver)
-    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
-                                      "--project", _project(tmp_path),
-                                      "--footage-root", str(tmp_path),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--out-dir", str(tmp_path / "out")])
-    with pytest.raises(SystemExit):
-        edl_to_reel.main()
-    assert seen_kw["color_delta_max"] is None        # unset CLI flag -> ReelCheckSpec's own default
-
-
 # --- Task 6 fix round 1: the two-phase CLI dispatch itself -----------------------
 #
 # Everything above patches edl_to_reel.edl_to_reel and only ever exercises the
@@ -636,7 +580,7 @@ def test_cli_from_episodes_refuses_an_out_dir_flag(monkeypatch, tmp_path):
 # --- Final review fix: the four phase-1-only flags --from-episodes silently dropped ---
 #
 # Before this fix only edl/--project/--footage-root/--out-dir were refused on
-# --from-episodes; --music/--jobs/--color-delta-max/--changelog were parsed and simply
+# --from-episodes; --music/--jobs/--changelog were parsed and simply
 # never passed to assemble_reel — accepted, and silently discarded, exactly the class
 # the mutex/out-dir refusals above exist to prevent for the other four flags.
 
@@ -667,16 +611,19 @@ def test_cli_from_episodes_refuses_a_jobs_flag(monkeypatch, tmp_path):
     assert called == []
 
 
-def test_cli_from_episodes_refuses_a_color_delta_max_flag(monkeypatch, tmp_path):
-    called = _no_dispatch(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
-                                      "--from-episodes", str(tmp_path / "EPISODES.json"),
-                                      "--work-dir", str(tmp_path / "w"),
-                                      "--color-delta-max", "20.0"])
-    with pytest.raises(SystemExit) as ei:
+def test_cli_refuses_a_color_delta_max_flag(monkeypatch, tmp_path):
+    """The flag is retired with the check it tuned (design 2026-08-29 §2). argparse
+    fails loud on an unrecognised argument, so a stale script or skill line stops the
+    run rather than silently setting a ceiling nothing reads."""
+    monkeypatch.setattr(sys, "argv",
+                        ["edl_to_reel", str(tmp_path / "e.json"),
+                         "--project", str(tmp_path / "p.json"),
+                         "--footage-root", str(tmp_path),
+                         "--work-dir", str(tmp_path / "w"),
+                         "--out-dir", str(tmp_path / "o"),
+                         "--color-delta-max", "20.0"])
+    with pytest.raises(SystemExit):
         edl_to_reel.main()
-    assert ei.value.code == 2
-    assert called == []
 
 
 def test_cli_from_episodes_refuses_a_changelog_flag(monkeypatch, tmp_path):
@@ -798,7 +745,7 @@ def test_cli_stop_after_episodes_dispatches_to_process_episodes_without_titles(m
 
     def fake_process_episodes(edl_path, project_path, footage_root, work_dir, out_dir, *,
                               music=None, jobs=edl_to_reel.DEFAULT_JOBS,
-                              color_delta_max=None, changelog=""):
+                              changelog=""):
         # NO titles= parameter at all: if main() leaked titles= through on the
         # --stop-after-episodes arm (the real difference between the two dispatch
         # kwargs the coordinator flagged), Python raises TypeError right here,
@@ -828,7 +775,7 @@ def test_cli_default_dispatches_to_edl_to_reel_with_titles(monkeypatch, tmp_path
 
     def fake_edl_to_reel(edl_path, project_path, footage_root, work_dir, out_dir, *,
                          deliveries_dir=None, music=None, titles=None,
-                         jobs=edl_to_reel.DEFAULT_JOBS, color_delta_max=None, changelog=""):
+                         jobs=edl_to_reel.DEFAULT_JOBS, changelog=""):
         seen["called"] = "edl_to_reel"
         seen["titles"] = titles
         return {"status": "delivered", "output": "REEL_v1.mp4"}
@@ -945,10 +892,12 @@ def test_the_run_provenance_reaches_build_reel(tmp_path, monkeypatch):
     edl_path = tmp_path / "EDL.json"
     write_edl(edl, edl_path)
     edl_to_reel.edl_to_reel(str(edl_path), str(project), str(tmp_path),
-                            str(tmp_path / "w"), str(tmp_path / "o"), color_delta_max=20.0)
+                            str(tmp_path / "w"), str(tmp_path / "o"))
     prov = seen["rm"].provenance
     assert prov["edl"]["state"] == "intact"
-    assert prov["overrides"] == [{"field": "color_delta_max", "value": 20.0, "default": 12.0}]
+    # --color-delta-max is gone (design 2026-08-29 §2) and nothing else on this path
+    # overrides a ReelCheckSpec field, so a plain run's provenance carries none.
+    assert prov["overrides"] == []
     assert prov["engine_at_start"] == {"sha": "aaaaaaa", "dirty": False}
 
 
