@@ -653,31 +653,15 @@ def test_reelreport_overall_blocks_on_loudness_false():
     assert m.ReelReport(checks={"loudness": m.CheckResult("loudness", False, {"measured": -9.0})}).overall is False
 
 
-def test_reframe_spec_accepts_color_correct():
-    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
-                      color_correct=(1.1, 1.0, 0.9))
-    assert s.color_correct == (1.1, 1.0, 0.9)
-
-
-def test_reframe_spec_color_correct_defaults_none():
-    s = m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"))
-    assert s.color_correct is None
-
-
-def test_reframe_spec_rejects_nonpositive_color_correct():
-    with pytest.raises(ValueError, match="color_correct"):
+def test_reframe_spec_no_longer_accepts_color_correct():
+    """color_correct existed only for the reel loop's colour pull (design §3). With
+    the pull retired it is dead everywhere, and pinned dead here: re-adding the field
+    would let a caller compose a per-channel factor onto the grade with nothing
+    measuring the damage."""
+    with pytest.raises(TypeError):
         m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                       color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
-                      color_correct=(0.0, 1.0, 1.0))
-
-
-def test_reframe_spec_rejects_wrong_length_color_correct():
-    with pytest.raises(ValueError, match="color_correct"):
-        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                      color_means=(105.0, 122.0, 137.0), delivery=m.Delivery("native"),
-                      color_correct=(1.1, 1.0))
+                      layout=m.LayoutSpec(mode="fill"), color_correct=(0.9, 1.0, 1.0))
 
 
 def _reel_dict(**over):

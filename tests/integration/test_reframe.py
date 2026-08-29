@@ -551,35 +551,6 @@ def test_reframe_writes_a_truthful_sidecar(sample_clip, tmp_path):
     assert meta.out_dims == _dims(out)
 
 
-def test_reframe_applies_color_correct_onto_the_grade(tmp_path, monkeypatch):
-    # color_means == TARGET → base gains are all 1.0, so the emitted mixer shows
-    # the color_correct factors verbatim. Proves the override reaches the filter.
-    route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
-    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
-    cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
-    monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
-    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
-                              layout=models.LayoutSpec(mode="fill"), color_correct=(1.2, 1.0, 0.9))
-    reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
-    joined = " ".join(cmd["v"])
-    assert "colorchannelmixer=rr=1.200:gg=1.000:bb=0.900" in joined
-
-
-def test_reframe_without_color_correct_is_unit_grade(tmp_path, monkeypatch):
-    route = [dict(t=i / 30, x=900.0, y=540.0, w=140.0, h=320.0) for i in range(10)]
-    rp = tmp_path / "r.json"; rp.write_text(json.dumps(route))
-    cmd = {}
-    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.5, "yuv420p", "tv"))
-    monkeypatch.setattr(reframe.proc, "run", lambda c, **k: cmd.setdefault("v", c))
-    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery("native"),
-                              layout=models.LayoutSpec(mode="fill"))
-    reframe.reframe(spec, "src.mp4", str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
-    assert "colorchannelmixer=rr=1.000:gg=1.000:bb=1.000" in " ".join(cmd["v"])
-
-
 def test_reframe_forwards_highlight_red_onto_the_grade(tmp_path, monkeypatch):
     # 2026-08-13 cinematic-look Task 7 fix round 1: highlight_red validated and
     # rode ReframeSpec/Manifest correctly but this call never forwarded it to

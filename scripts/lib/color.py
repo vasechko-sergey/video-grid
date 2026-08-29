@@ -401,14 +401,6 @@ def _lerp(knots: list[tuple[float, float]], x: float) -> float:
     return y1 + (x - x1) * (y1 - y0) / (x1 - x0)
 
 
-def corrected(gains: tuple[float, ...], correction: tuple[float, ...],
-              lo: float = LO, hi: float = HI) -> tuple[float, ...]:
-    """Compose an external per-channel correction onto base grade gains and
-    re-clamp to [lo, hi] (design 2026-07-11 §4). The reel retry loop passes an absolute
-    factor here to pull one episode's delivered mean toward the reel median;
-    the clamp keeps the total correction inside the same soft band as the grade."""
-    return tuple(max(lo, min(hi, g * corr)) for g, corr in zip(gains, correction))
-
 MID_BLUE_MIN = 0.80        # below this the midtones go visibly yellow, not just un-blued
 MID_BLUE_MAX = 1.20
 MID_BLUE_BAND = (0.45, 0.65)     # the midtone window skin sits in on this footage

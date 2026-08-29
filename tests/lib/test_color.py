@@ -33,19 +33,12 @@ def test_gain_rejects_nonpositive_measured():
     with pytest.raises(ValueError, match="not positive"):
         c.gain(measured=0, target=105)
 
-def test_corrected_composes_and_leaves_unit_factor_alone():
-    # base gains unchanged where the correction is 1.0; scaled where it is not
-    assert c.corrected((1.0, 1.0, 1.0), (1.2, 1.0, 0.9)) == (1.2, 1.0, 0.9)
-
-
-def test_corrected_clamps_high():
-    # 1.4 * 1.4 = 1.96 → clamped to the grade ceiling HI=1.5
-    assert c.corrected((1.4, 1.0, 1.0), (1.4, 1.0, 1.0)) == (1.5, 1.0, 1.0)
-
-
-def test_corrected_clamps_low():
-    # 0.8 * 0.8 = 0.64 → clamped to the grade floor LO=0.7
-    assert c.corrected((0.8, 1.0, 1.0), (0.8, 1.0, 1.0)) == (0.7, 1.0, 1.0)
+def test_corrected_is_gone():
+    """color.corrected composed the reel loop's external pull onto the grade gains and
+    re-clamped. The loop is retired and reframe's branch with it, so the primitive has
+    no caller (design §3). LO/HI stay — color.gain reads them."""
+    assert not hasattr(color, "corrected")
+    assert (color.LO, color.HI) == (0.7, 1.5)
 
 
 def test_black_point_identity_and_value():

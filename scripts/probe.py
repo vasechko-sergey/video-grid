@@ -227,23 +227,6 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     With `edl_path`, the colour block comes from that (edited) EDL through the same
     bridge the real run uses, so what converges is exactly what ships. Without it, the
     grade that WAS rendered — the baseline to compare against.
-
-    **The baseline claim is false, silently, for an episode a reel-level colour retry
-    touched** (final review I-2). `build_reel`'s per-channel `color_correct` pull is
-    never persisted anywhere this function can see it — not on `Manifest`, not on
-    `PathMeta`, not in `report.json`, only in `build_reel`'s own in-memory `cc` dict —
-    and `spec` below is always built with `color_correct=None`, because `md` (from
-    `EPISODES.json`) is phase-1's manifest and phase 2 never rewrites that file. So
-    for any episode `edl_to_reel`'s colour retry actually pulled, this baseline
-    reproduces the PRE-retry grade, not the shipped one, no matter when you run it —
-    probing again after `deliver` does not fix this, since `EPISODES.json` itself
-    never changes. Check the delivered `REEL_v{n}.attest.json`'s
-    `episode_qc.reprocessed_after` list before trusting a baseline probe on an
-    episode that appears there. The forward (`edl_path`) claim is unaffected — a
-    fresh `edl_to_reel` run restarts `color_correct` at `None` regardless. See
-    backlog (`frame-probe-look-gate`, whole-branch review) for the durable fix:
-    record the applied `color_correct` on `PathMeta` so this function can see and
-    reproduce it, or refuse instead of silently showing the wrong grade.
     """
     if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
         raise ValueError(f"probe: frames must be an integer >= 1, got {frames!r}")

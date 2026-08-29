@@ -29,8 +29,7 @@ from scripts.lib.models import (TrackSpec, ReframeSpec, CheckSpec, StoryboardSpe
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
-def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dict,
-                       color_correct: tuple[float, ...] | None = None) -> ReframeSpec:
+def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dict) -> ReframeSpec:
     """The ONE place a Manifest becomes a ReframeSpec.
 
     Extracted so the frame probe (scripts/probe.py, design 2026-08-15) renders from
@@ -39,7 +38,7 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
     than the next render is worse than no probe: it converges on pixels nobody gets.
 
     `params` is the retry-parameter dict (orchestration.DEFAULT_PARAMS, possibly
-    adjusted). `color_correct` is the reel loop's per-channel pull, None outside it.
+    adjusted).
     """
     lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
                        rect=m.rect, background=m.background,
@@ -49,7 +48,6 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
                        color_means=m.color_means, delivery=delivery, layout=lspec,
                        max_speed=params["max_speed"],
                        smooth_window_s=params["smooth_window_s"],
-                       color_correct=color_correct,
                        white_balance=m.white_balance, black_point=m.black_point,
                        highlight=m.highlight, highlight_red=m.highlight_red,
                        saturation=m.saturation,
@@ -74,7 +72,6 @@ def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
 def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: str | None = None,
                     max_attempts: int = 3,
                     project: ProjectConfig | str | Path | None = None,
-                    color_correct: tuple | None = None,
                     keyframes_path: str | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
@@ -392,7 +389,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     path_out = str(Path(project_dir) / "path.json")
     report = None
     for attempt in range(1, max_attempts + 1):
-        rspec = build_reframe_spec(m, delivery, params, color_correct)
+        rspec = build_reframe_spec(m, delivery, params)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
                                                   stabilized=m.stabilize))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,

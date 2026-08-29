@@ -1,42 +1,22 @@
-"""Real-ffmpeg proof for the reel retry loop (design §6). (A) color_correct moves
-real pixels toward the target; (B) build_reel wires probe → assemble → check_reel
-→ deliver end-to-end on real files. Clips are built with the real reframe encoder,
-matching test_reel_backhalf.py's precedent."""
+"""Real-ffmpeg proof for the reel retry loop (design §6): build_reel wires probe →
+assemble → check_reel → deliver end-to-end on real files. Clips are built with the
+real reframe encoder, matching test_reel_backhalf.py's precedent.
+
+The colour half of this file is retired with the corrector it proved (design
+2026-08-29). A reprocess-then-pass proof cannot honestly be rebuilt on the black arm:
+a black hit that is IN the source survives a clean re-encode, so the loop would
+exhaust rather than converge. The reprocess path keeps its unit coverage in
+tests/lib/test_build_reel.py."""
 import json
-import tempfile
 
 import pytest
-from PIL import Image, ImageStat
 
 from scripts import build_reel, check_reel, reframe
-from scripts.lib import assembly, ffbin, proc
+from scripts.lib import assembly
 from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelEpisode, ReelManifest)
 
 
-def _tinted(sample_clip, tmp):
-    """A warm copy of the grey sample clip — its red channel is boosted so its
-    delivered mean sits off any neutral reference."""
-    out = str(tmp / "warm.mp4")
-    proc.run([ffbin.ffmpeg(), "-y", "-i", str(sample_clip),
-              "-vf", "colorchannelmixer=rr=1.4", "-pix_fmt", "yuv420p",
-              "-c:v", "libx264", "-crf", "18", "-an", out])
-    return out
-
-
-def _frame_mean(video: str, t: float) -> tuple[float, float, float]:
-    """Mean (R, G, B) of one grabbed frame at time t. check_reel used to expose this
-    (it was the across-cut colour check's own probe), but that check — and the
-    helper — were retired 2026-08-29 (design 2026-08-29 §2: the sensor compared two
-    different SHOTS, not a grade). This test's own claim is about color_correct
-    (scripts/reframe.py), a live, unrelated feature, so it keeps its own copy of the
-    probe rather than losing coverage of a real-pixel effect."""
-    with tempfile.TemporaryDirectory() as d:
-        f = f"{d}/f.png"
-        proc.run([ffbin.ffmpeg(), "-y", "-i", video, "-ss", f"{t}", "-frames:v", "1", f])
-        return tuple(ImageStat.Stat(Image.open(f).convert("RGB")).mean[:3])
-
-
-def _reframe(src, tmp, x_const, name, color_correct=None):
+def _reframe(src, tmp, x_const, name):
     """Build a clip via the real reframe encoder with a constant-x crop route. A
     different x_const frames sample_clip's moving box at a different in-frame
     position → distinct phash, so two clips at 645 vs 1045 pass the variety check."""
@@ -44,23 +24,10 @@ def _reframe(src, tmp, x_const, name, color_correct=None):
     rp = tmp / f"{name}.route.json"; rp.write_text(json.dumps(route))
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                        color_means=(105.0, 122.0, 137.0), delivery=Delivery("native"),
-                       layout=LayoutSpec(mode="fill"), color_correct=color_correct)
+                       layout=LayoutSpec(mode="fill"))
     out = str(tmp / f"{name}.mp4")
     reframe.reframe(spec, str(src), str(rp), out, str(tmp / f"{name}.path.meta.json"))
     return out
-
-
-@pytest.mark.integration
-def test_color_correct_pulls_delivered_mean_toward_target(tmp_path, sample_clip):
-    warm = _tinted(sample_clip, tmp_path)
-    uncorrected = _reframe(warm, tmp_path, 900, "u")
-    corrected = _reframe(warm, tmp_path, 900, "c", color_correct=(0.75, 1.0, 1.0))
-    r_u = _frame_mean(uncorrected, 1.0)[0]
-    r_c = _frame_mean(corrected, 1.0)[0]
-    # rr=1.4 warms the grey source's red; the warm clip's delivered mean red measures
-    # ~76 uncorrected and the 0.75 correction pulls it to ~57 — a ~19pt fall on real
-    # pixels, so the 5-unit margin is generous, not tuned.
-    assert r_c < r_u - 5          # the correction visibly lowered the red channel on real pixels
 
 
 @pytest.mark.integration

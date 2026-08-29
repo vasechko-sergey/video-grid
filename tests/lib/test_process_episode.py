@@ -22,4 +22,3 @@ def test_build_reframe_spec_carries_every_colour_field():
         0.4, 0.1, 0.8, 0.2, 1.2, 0.05, 0.95, 0.3)
     assert spec.tone_src == (18.0, 110.0, 220.0)
     assert spec.tone_dst == (26.0, 118.0, 210.0)
-    assert spec.color_correct is None

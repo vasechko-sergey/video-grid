@@ -260,7 +260,7 @@ def _fake_track_pe(monkeypatch):
     module comment above for why the mechanical middle is faked at all."""
     from scripts import edl_to_reel
 
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         (Path(project_dir) / "route.json").write_text(
             json.dumps([{"t": 0.0, "x": W // 2, "y": H // 2, "w": 40, "h": 80, "id": 1}]))

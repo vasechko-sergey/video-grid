@@ -83,7 +83,7 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
                         f"hollows out the test; write {{0: result}}, not [result]")
     canned = dict(pe_results or {})     # {episode_idx: result}; absent → mechanical_pass
 
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         # key off project_dir's ep{i} suffix — the one per-call value that names the
         # episode. Call ORDER is not usable: under the pool (design §7.1) it is a race.
         idx = int(Path(project_dir).name.removeprefix("ep"))
@@ -277,7 +277,7 @@ def test_the_pool_reaches_the_cap_and_never_exceeds_it(monkeypatch, tmp_path):
     lock = threading.Lock()
     state = {"live": 0, "peak": 0}
 
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         with lock:
             state["live"] += 1
             state["peak"] = max(state["peak"], state["live"])
@@ -407,7 +407,7 @@ def test_the_lowest_raising_episode_escapes_with_its_own_type(monkeypatch, tmp_p
     # Two episodes raise; the one that escapes must be the LOWER index — the same
     # one the sequential loop would have hit first — and it must keep its type,
     # because edl_to_reel's docstring contracts setup failures as ValueError.
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         idx = int(Path(project_dir).name.removeprefix("ep"))
         if idx in (1, 4):
             raise ValueError(f"boom {idx}")
@@ -426,7 +426,7 @@ def test_a_raise_beats_a_failing_status_from_a_later_episode(monkeypatch, tmp_pa
     # A raise at a LOWER index than the failing status wins — not because the
     # exception channel has priority (it does not; see the inverted twin below),
     # but because 2 < 5. The sequential loop aborted at 2 for the same reason.
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         idx = int(Path(project_dir).name.removeprefix("ep"))
         if idx == 2:
             raise RuntimeError("ffmpeg died")
@@ -802,7 +802,7 @@ def test_a_routable_finding_at_a_lower_index_beats_a_raise_above_it(monkeypatch,
     # Draining every exception first would surface ep2's raise and lose ep0's routable
     # stop_and_report — which the sequential loop returned before it ever reached ep2.
     # A caller branching on result["status"] would get a traceback instead of a finding.
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         idx = int(Path(project_dir).name.removeprefix("ep"))
         if idx == 2:
             raise RuntimeError("ffmpeg died")

@@ -50,7 +50,7 @@ def _fake_track_pe(monkeypatch):
     dims, not the project canvas. That the resolved canvas flows into each manifest is
     pinned by the Task 4 unit test; crop-to-canvas is covered by process_episode's own
     real-footage goldens (test_process_episode / test_golden)."""
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         (Path(project_dir) / "route.json").write_text(
             json.dumps([{"t": 0.0, "x": 960, "y": 540, "w": 120, "h": 120, "id": 1}]))
@@ -118,7 +118,7 @@ def _fake_track_or_pan_pe(monkeypatch):
     absence of route.json on disk, rather than a stand-in that always writes
     one — tests/lib/test_edl_to_reel.py's canned {"status": ...} results never
     touch the filesystem, so they cannot see this class of bug at all."""
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         is_pan = manifest.get("pan") is not None
         if not is_pan:

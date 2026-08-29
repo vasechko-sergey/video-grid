@@ -322,7 +322,7 @@ def test_the_guard_runs_even_with_no_colour_knob_set(monkeypatch):
                        color_means=(105, 122, 137),   # required by the dataclass (no
                                                        # default) — left at the file's own
                                                        # generic value; no OTHER grading
-                                                       # knob (tone_src/tone_dst/color_correct/
+                                                       # knob (tone_src/tone_dst/
                                                        # white_balance/...) is set
                        delivery=Delivery.from_spec("short_edge:540"),
                        pan=PanSpec(start=0.0, end=0.2))

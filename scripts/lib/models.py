@@ -837,7 +837,6 @@ class ReframeSpec:
                                    # so damping speed cannot touch it. Seconds and not frames
                                    # because it is a filter cutoff — see pathsmooth.window_frames,
                                    # resolved against the clip's own fps at render time.
-    color_correct: tuple | None = None
     white_balance: float = 0.0  # grey-world neutralize toward the common channel average,
                                 # FIRST in the chain; 0 = off (identity), so an episode
                                 # authored before this renders byte-identically — see
@@ -935,9 +934,6 @@ class ReframeSpec:
                              "transfer; set both or neither")
         if self.tone_src is not None:
             color.tone_arg(tuple(self.tone_src), tuple(self.tone_dst))   # validates both
-        if self.color_correct is not None and not _positive_seq(self.color_correct, 3):
-            raise ValueError(f"ReframeSpec.color_correct must be 3 positive per-channel "
-                             f"factors or None, got {self.color_correct!r}")
         if self.pan is not None and not isinstance(self.pan, PanSpec):
             raise ValueError(
                 f"ReframeSpec.pan must be a PanSpec or None, got {type(self.pan).__name__} — "

@@ -19,7 +19,7 @@ def _pass():
 
 def _color_fail(idx, target, culprit):
     # The colour corrector is retired (design 2026-08-29): every canned report this
-    # factory used to build as a "color_across_cuts" fail is now a black hit instead —
+    # factory used to build as an across-cut colour fail is now a black hit instead —
     # the failure class that still reprocesses. target/culprit are accepted but no
     # longer used: every call site below still passes them (only the failure's SHAPE
     # changed), which is why they are unused rather than deleted from the signature.
@@ -38,10 +38,7 @@ def _length_fail(dur, target):
 
 def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the route
-    passed to each process_episode reprocess. color_correct is captured too — the
-    mock mirrors process_episode's real signature, which still accepts the keyword
-    (design 2026-08-29 Task 1 only stops build_reel from SUPPLYING it) — but no
-    caller in this file asserts on it any more, since build_reel never passes it."""
+    passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None}
     rq = list(reports)
@@ -84,8 +81,8 @@ def _wire(monkeypatch, reports, pe_results=None):
     monkeypatch.setattr(build_reel.deliver, "deliver", fake_deliver)
     results = iter(pe_results or [])
 
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
-        seen["reprocess"].append({"correct": color_correct, "route": route_path})
+    def fake_pe(manifest, project_dir, route_path=None):
+        seen["reprocess"].append({"route": route_path})
         return next(results, {"status": "mechanical_pass", "clip": project_dir + "/ep.mp4"})
     monkeypatch.setattr(build_reel.process_episode, "process_episode", fake_pe)
     return seen
@@ -639,7 +636,7 @@ def test_the_stop_costs_no_mix(monkeypatch, tmp_path):
                               _passing()], mixed, delivered)
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     monkeypatch.setattr(build_reel.process_episode, "process_episode",
-                        lambda m, d, route_path=None, color_correct=None:
+                        lambda m, d, route_path=None:
                         {"status": "mechanical_pass", "clip": d + "/ep.mp4"})
     rm = _rm_music(music=str(tmp_path / "MUSIC.json"))
     rm.provenance = {"episode_qc": {"state": "judged"}}

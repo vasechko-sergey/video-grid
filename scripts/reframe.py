@@ -506,8 +506,6 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
                                 spec.smooth_window_s, fps))
 
     gains = color.gains_for_means(spec.color_means)
-    if spec.color_correct is not None:  # reel retry loop; see docstring
-        gains = color.corrected(gains, spec.color_correct)
     wb = color.white_balance_arg(spec.color_means, spec.white_balance)
     tone = ""
     if spec.tone_src is not None:
@@ -550,11 +548,9 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     crop/scale/color per `spec`.
 
     spec: a ReframeSpec (scripts/lib/models.py) — composition/grid/canvas/color_means/
-    delivery/layout/max_speed/color_correct/pan/zoom. src/route_path/out/path_out stay
+    delivery/layout/max_speed/pan/zoom. src/route_path/out/path_out stay
     explicit per-call I/O paths, not config. spec.max_speed: crop-x speed cap in px/sec — frame-rate
-    independent (25 px/frame at the session's 30fps ≡ 750 px/s). spec.color_correct: an
-    optional per-channel factor the reel retry loop composes onto the grade to pull one
-    episode toward the reel median (None = base grade only). Stabilization is a
+    independent (25 px/frame at the session's 30fps ≡ 750 px/s). Stabilization is a
     PRE-STAGE, not part of this chain: the caller runs vidstab.stabilize and hands
     its output in as `src`, and `stabilized` (below) records that it did (design
     2026-07-20 §1).

@@ -173,8 +173,8 @@ def _black_fail(idx):
     """The one canned report in this module. check_reel's real black check needs a real
     black frame in a real source; what this proof is about is the LOOP ARM the failure
     routes to — see the design's §9 note that the two proofs are not joined. (The colour
-    corrector is retired, design 2026-08-29 — this used to build a color_across_cuts fail;
-    the LOOP ARM under test is the same reprocess arm either way.)"""
+    corrector is retired, design 2026-08-29 — this used to build an across-cut colour
+    fail; the LOOP ARM under test is the same reprocess arm either way.)"""
     return ReelReport(
         checks={"black": CheckResult("black", False, {})},
         fail_reasons=[ReelFailure("black", "reprocess", idx, {"t": 1.0})],
@@ -204,7 +204,7 @@ def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_
 
     # the reprocess, faked at the boundary but writing where the real one writes: the
     # manifest's out_path IS ReelEpisode.clip, which is what makes the verdict stale.
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         Path(rm.episodes[1].clip).write_bytes(
             Path(rm.episodes[1].clip).read_bytes() + b"\x00")   # a different render
         return {"status": "mechanical_pass", "clip": rm.episodes[1].clip}

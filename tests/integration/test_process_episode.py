@@ -82,7 +82,6 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
     def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
         calls["reframe_delivery"] = spec.delivery
         calls["reframe_canvas"] = spec.canvas
-        calls["reframe_color_correct"] = spec.color_correct
         calls["reframe_background"] = (spec.layout.background, spec.layout.background_color)
         calls["reframe_src"] = src
         calls["reframe_stabilized"] = stabilized
@@ -569,20 +568,6 @@ def test_project_native_delivery_end_to_end(tmp_path, golden_ride_segment):
         text=True).stdout)["streams"][0]
     # golden source 1280×720 → 9:16 crop 405×720 → even native → 404×720
     assert (probe["width"], probe["height"]) == (404, 720)
-
-
-def test_color_correct_is_threaded_into_the_reframe_spec(monkeypatch, tmp_path):
-    calls = _stub_engine(monkeypatch, tmp_path)
-    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path),
-                                color_correct=(1.2, 1.0, 0.9))
-    assert result["status"] == "mechanical_pass"
-    assert calls["reframe_color_correct"] == (1.2, 1.0, 0.9)
-
-
-def test_color_correct_defaults_to_none(monkeypatch, tmp_path):
-    calls = _stub_engine(monkeypatch, tmp_path)
-    pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
-    assert calls["reframe_color_correct"] is None
 
 
 def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):

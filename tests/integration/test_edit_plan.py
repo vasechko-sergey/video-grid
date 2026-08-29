@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 
 def _fake_track_pe(monkeypatch):
-    def fake_pe(manifest, project_dir, route_path=None, color_correct=None):
+    def fake_pe(manifest, project_dir, route_path=None):
         Path(project_dir).mkdir(parents=True, exist_ok=True)
         (Path(project_dir) / "route.json").write_text(
             json.dumps([{"t": 0.0, "x": 960, "y": 540, "w": 120, "h": 120, "id": 1}]))
