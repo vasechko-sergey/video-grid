@@ -1,22 +1,25 @@
 """Pure reel-loop decisions (design §3, §4) — the montage §4.1 escalation ladder
 one level up from process-episode. `next_action` maps a check_reel report's
 `fail_reasons` to exactly one action; build_reel (the shell) executes it. No
-ffmpeg, no state: the driver owns per-episode attempt counts and the compounded
-colour factor. Mirrors scripts/lib/orchestration.py."""
+ffmpeg, no state: the driver owns per-episode attempt counts. Mirrors
+scripts/lib/orchestration.py."""
 from dataclasses import dataclass
 
 from scripts.lib.models import ReelFailure
 
-_REPROCESS_CLASS = ("black", "color_across_cuts")
+_REPROCESS_CLASS = ("black",)      # the only reel failure a re-render can fix. The
+                                   # colour arm is retired (design 2026-08-29): its
+                                   # lever pulled an episode's whole-frame mean toward
+                                   # the reel median, which is an exposure change on a
+                                   # reel with legitimately dark and bright shots.
 
 
 @dataclass(frozen=True)
 class ReprocessItem:
-    """Reprocess one episode. color_correct is the per-round ratio med/d_i for a
-    colour fail (the driver compounds + clamps it), or None for a black clean
-    re-encode."""
+    """Reprocess one episode: a clean re-encode for a black hit. Nothing is tuned —
+    the route is frozen and the grade is the EDL's, so the only thing a reprocess can
+    change is a transient encode artifact."""
     idx: int
-    color_correct: tuple[float, float, float] | None
 
 
 @dataclass(frozen=True)
@@ -30,14 +33,6 @@ class ReelAction:
     reprocess: tuple[ReprocessItem, ...] = ()
     finding: dict | None = None
     retime: float | None = None        # new target_dur when a within-band shortfall is absorbed (§3)
-
-
-def _correction(f: ReelFailure) -> tuple[float, float, float]:
-    """Per-channel per-round ratio med/d_i from the colour fail detail (§4). Raw
-    ratio only — the driver compounds onto the stored factor and clamps."""
-    target = f.detail["target"]
-    culprit = f.detail["culprit_mean"]
-    return tuple(t / d if d > 0 else 1.0 for t, d in zip(target, culprit))
 
 
 def _shortfall(f: ReelFailure) -> float | None:
@@ -63,7 +58,7 @@ def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: 
     reproduce the pre-slice behaviour for a caller that passes neither."""
     if not fail_reasons:
         return ReelAction("deliver")
-    items: dict[int, ReprocessItem] = {}   # idx → ReprocessItem; colour wins over a bare black re-encode
+    items: dict[int, ReprocessItem] = {}   # idx → ReprocessItem; a repeated idx just re-collapses to one entry
     retime: float | None = None
     for f in fail_reasons:
         if f.check == "length":
@@ -101,9 +96,7 @@ def next_action(fail_reasons: list[ReelFailure], attempts: dict[int, int], cap: 
                 "escalate_to": "edit-plan",
                 "detail": (f"episode {f.episode_idx} still fails {f.check} after {cap} "
                            "reprocesses — the source window or grade is wrong; fix the segment/EDL")})
-        corr = _correction(f) if f.check == "color_across_cuts" else None
-        if f.episode_idx not in items or corr is not None:
-            items[f.episode_idx] = ReprocessItem(f.episode_idx, corr)
+        items[f.episode_idx] = ReprocessItem(f.episode_idx)
     if items:
         return ReelAction("reprocess", reprocess=tuple(items[k] for k in sorted(items)), retime=retime)
     if retime is not None:

@@ -169,15 +169,15 @@ def test_an_unjudged_reel_never_reaches_assembly(tmp_path, sample_clip):
     assert res["finding"]["reason"] == "episode-qc-missing"
 
 
-def _color_fail(idx):
-    """The one canned report in this module. check_reel's real colour check needs a real
-    tint on a real source; what this proof is about is the LOOP ARM the failure routes
-    to — see the design's §9 note that the two proofs are not joined."""
+def _black_fail(idx):
+    """The one canned report in this module. check_reel's real black check needs a real
+    black frame in a real source; what this proof is about is the LOOP ARM the failure
+    routes to — see the design's §9 note that the two proofs are not joined. (The colour
+    corrector is retired, design 2026-08-29 — this used to build a color_across_cuts fail;
+    the LOOP ARM under test is the same reprocess arm either way.)"""
     return ReelReport(
-        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
-        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", idx,
-                                  {"target": [120.0, 120.0, 120.0],
-                                   "culprit_mean": [150.0, 120.0, 120.0]})],
+        checks={"black": CheckResult("black", False, {})},
+        fail_reasons=[ReelFailure("black", "reprocess", idx, {"t": 1.0})],
         episode_count=2)
 
 
@@ -210,7 +210,7 @@ def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_
         return {"status": "mechanical_pass", "clip": rm.episodes[1].clip}
     monkeypatch.setattr(build_reel.process_episode, "process_episode", fake_pe)
     real_run = build_reel.check_reel.run
-    rounds = iter([_color_fail(1)])
+    rounds = iter([_black_fail(1)])
     monkeypatch.setattr(build_reel.check_reel, "run",
                         lambda *a, **k: next(rounds, None) or real_run(*a, **k))
 

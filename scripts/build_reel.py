@@ -4,12 +4,12 @@ process_episode → until the reel passes and delivers, or stops with a precise
 machine-readable finding. Mirrors process_episode.py: the editorial judgment ran
 per-episode in loop-1; this shell owns only the mechanical reel loop.
 Deterministic for a non-stabilized episode — a reprocess reuses its frozen
-route, so the only thing that changes between rounds is the compounded colour
-factor. A stabilized episode re-tracks instead: its frozen route's pixel
-provenance cannot be proven (nothing yet records whether a route was measured
-on raw or stabilized pixels), so process_episode refuses the combination and
-this module withholds the route rather than risk replaying it against the
-wrong coordinate system (design 2026-07-20 §1)."""
+route, so nothing changes between rounds. A stabilized episode re-tracks
+instead: its frozen route's pixel provenance cannot be proven (nothing yet
+records whether a route was measured on raw or stabilized pixels), so
+process_episode refuses the combination and this module withholds the route
+rather than risk replaying it against the wrong coordinate system
+(design 2026-07-20 §1)."""
 import argparse
 import dataclasses
 import json
@@ -18,20 +18,11 @@ from pathlib import Path
 
 from scripts import check_reel, deliver, mix, process_episode
 from scripts.lib import assembly, episode_qc as qc_lib, reel_orchestration
-from scripts.lib.color import corrected
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
 
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
-
-
-def _compound(prev: tuple[float, float, float], ratio: tuple[float, float, float]) -> tuple[float, float, float]:
-    """Compound a per-round colour ratio onto the stored absolute factor, clamped to
-    the grade's soft band [LO, HI] (design §4). Compounding (not per-round-relative)
-    is what makes the correction converge instead of revert. Delegates to
-    color.corrected — the same clamp-compose primitive the base grade uses."""
-    return corrected(prev, ratio)
 
 
 def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None = None) -> dict:
@@ -53,7 +44,6 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                          f"(beats --auto-start --duration {rm.target_dur:.0f}) or lower the target")
     attempts: dict[int, int] = {}
     reprocessed: set[int] = set()          # design §8: which clips left the gate behind
-    cc: dict[int, tuple[float, float, float]] = {}
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
     audio: str | None = None
     geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
@@ -146,10 +136,6 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                                      # has little to bite on here. Parallelising loop-2
                                                      # is deferred — NOT because one process_episode
                                                      # saturates the box; measured, it takes three.
-            # black item (ratio None) adds no new correction but must NOT reset cc — the episode
-            # keeps its standing colour factor, else a black fix reverts colour and flip-flops
-            if item.color_correct is not None:
-                cc[item.idx] = _compound(cc.get(item.idx, (1.0, 1.0, 1.0)), item.color_correct)
             epdir = str(Path(work_dir) / f"ep{item.idx}")
             manifest = rm.episodes[item.idx].manifest
             # A stabilized episode's frozen route was measured on loop-1's stabilized
@@ -162,24 +148,14 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # populated regardless — check_reel reads it, and raises for a tracked
             # (pan=false) episode whose route is None.
             route = None if manifest.get("stabilize") else rm.episodes[item.idx].route
-            res = process_episode.process_episode(
-                manifest, epdir, route_path=route, color_correct=cc.get(item.idx))
+            res = process_episode.process_episode(manifest, epdir, route_path=route)
             # A REJECTED re-render is already on disk. reframe writes m.out_path before
             # check_episode.run reads it (process_episode.py), so this early return
             # leaves ep{i}.mp4 overwritten by the render that just failed, and skips the
             # reprocessed.add() below — the run stops with a clip nobody recorded as
             # touched. Not a silent bypass: episode_qc.gate's stale-digest arm refuses on
             # the next --from-episodes, because the clip no longer hashes to what was
-            # judged. But nothing in this finding says a clip was rewritten (design
-            # 2026-08-28 §3.1, backlog row).
-            #
-            # Since color_fidelity became blocking this arm has a second, likelier
-            # trigger: the cc pull compounded just above IS grade movement to that
-            # sensor, and an episode at the healthy maximum has ~0.71 dE00 of headroom
-            # — about a 1.02x pull. Colour is _UNFIXABLE, so process_episode escalates
-            # on attempt 1 rather than looping, and the reason routed out of here names
-            # edit-plan and the EDL's colour block, which is unchanged and correct. The
-            # real remedy is match-grade / --color-delta-max / accepting the mismatch.
+            # judged. But nothing in this finding says a clip was rewritten (backlog row).
             if res["status"] != "mechanical_pass":
                 return {"status": "stop_and_report",
                         "finding": {"reason": "reprocess-failed", "episode_idx": item.idx,

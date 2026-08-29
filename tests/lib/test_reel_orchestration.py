@@ -2,11 +2,6 @@ from scripts.lib import reel_orchestration as ro
 from scripts.lib.models import ReelFailure
 
 
-def _color(idx, target, culprit):
-    return ReelFailure("color_across_cuts", "reprocess", idx,
-                       {"target": target, "culprit_mean": culprit})
-
-
 def test_no_failures_delivers():
     a = ro.next_action([], {}, cap=3)
     assert a.kind == "deliver"
@@ -16,17 +11,7 @@ def test_black_fail_reprocesses_with_no_correction():
     a = ro.next_action([ReelFailure("black", "reprocess", 1, {"t": 4.0})], {}, cap=3)
     assert a.kind == "reprocess"
     assert len(a.reprocess) == 1
-    assert a.reprocess[0].idx == 1 and a.reprocess[0].color_correct is None
-
-
-def test_color_fail_reprocesses_with_the_ratio():
-    a = ro.next_action([_color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 100.0])], {}, cap=3)
-    item = a.reprocess[0]
-    assert item.idx == 1
-    # per-channel med/d_i
-    assert item.color_correct[0] == 120.0 / 150.0
-    assert item.color_correct[1] == 1.0
-    assert item.color_correct[2] == 120.0 / 100.0
+    assert a.reprocess[0].idx == 1
 
 
 def test_variety_escalates_to_edit_plan():
@@ -44,16 +29,16 @@ def test_length_escalates_to_pacing():
 
 def test_capped_episode_escalates():
     # episode 1 already reprocessed `cap` times → escalate, don't loop forever
-    a = ro.next_action([_color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])],
+    a = ro.next_action([ReelFailure("black", "reprocess", 1, {"t": 1.0})],
                        {1: 3}, cap=3)
     assert a.kind == "escalate"
     assert a.finding["reason"] == "reprocess-capped" and a.finding["episode_idx"] == 1
 
 
 def test_escalate_beats_reprocess_in_a_mixed_round():
-    # a fixable colour fail AND an unfixable variety fail in the same report →
-    # escalate immediately (fixing colour won't fix the near-duplicate)
-    fails = [_color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
+    # a fixable black fail AND an unfixable variety fail in the same report →
+    # escalate immediately (fixing black won't fix the near-duplicate)
+    fails = [ReelFailure("black", "reprocess", 1, {"t": 1.0}),
              ReelFailure("variety", "edit-plan", 2, {"distance": 1})]
     a = ro.next_action(fails, {}, cap=3)
     assert a.kind == "escalate" and a.finding["check"] == "variety"
@@ -61,48 +46,20 @@ def test_escalate_beats_reprocess_in_a_mixed_round():
 
 def test_two_distinct_culprits_batch():
     fails = [ReelFailure("black", "reprocess", 0, {"t": 1.0}),
-             _color(2, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+             ReelFailure("black", "reprocess", 2, {"t": 1.0})]
     a = ro.next_action(fails, {}, cap=3)
     assert a.kind == "reprocess"
     assert sorted(i.idx for i in a.reprocess) == [0, 2]
 
 
-def test_black_and_colour_same_episode_dedupe_to_colour():
-    # a colour reprocess also re-encodes, so it subsumes the bare black re-encode
-    fails = [ReelFailure("black", "reprocess", 1, {"t": 1.0}),
-             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
-    a = ro.next_action(fails, {}, cap=3)
-    assert len(a.reprocess) == 1
-    assert a.reprocess[0].idx == 1 and a.reprocess[0].color_correct is not None
-
-
 def test_capped_episode_named_even_when_a_fresh_fixable_fail_precedes_it():
-    # a fresh fixable colour (ep2) listed before a capped black (ep0): the accumulated
+    # a fresh fixable black (ep2) listed before a capped black (ep0): the accumulated
     # ep2 item is discarded and the finding names the CAPPED episode, not ep2.
-    fails = [_color(2, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
+    fails = [ReelFailure("black", "reprocess", 2, {"t": 1.0}),
              ReelFailure("black", "reprocess", 0, {"t": 1.0})]
     a = ro.next_action(fails, {0: 3}, cap=3)
     assert a.kind == "escalate"
     assert a.finding["reason"] == "reprocess-capped" and a.finding["episode_idx"] == 0
-
-
-def test_correction_guards_a_zero_culprit_channel():
-    # a fully-black culprit channel (mean 0) can't be lifted by any gain → 1.0 no-op, not a crash
-    a = ro.next_action([_color(1, [120.0, 120.0, 120.0], [150.0, 0.0, 120.0])], {}, cap=3)
-    item = a.reprocess[0]
-    assert item.color_correct[0] == 120.0 / 150.0
-    assert item.color_correct[1] == 1.0          # 0-mean channel → no-op, guarded
-    assert item.color_correct[2] == 1.0
-
-
-def test_colour_then_black_same_episode_still_dedupes_to_colour():
-    # reverse of the black-then-colour test: colour first, then a bare black on the same
-    # episode must NOT overwrite the colour item (a black re-encode is subsumed).
-    fails = [_color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
-             ReelFailure("black", "reprocess", 1, {"t": 1.0})]
-    a = ro.next_action(fails, {}, cap=3)
-    assert len(a.reprocess) == 1
-    assert a.reprocess[0].idx == 1 and a.reprocess[0].color_correct is not None
 
 
 def _length(dur, target):
@@ -131,20 +88,20 @@ def test_over_length_reel_is_never_absorbed_even_inside_the_band():
     assert a.kind == "escalate" and a.finding["check"] == "length"
 
 
-def test_within_band_shortfall_rides_along_with_a_colour_reprocess():
+def test_within_band_shortfall_rides_along_with_a_black_reprocess():
     fails = [_length(11.3, 12.0),
-             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+             ReelFailure("black", "reprocess", 1, {"t": 1.0})]
     a = ro.next_action(fails, {}, cap=3, length_retime_max=1.0)
     assert a.kind == "reprocess"
     assert a.reprocess[0].idx == 1
-    assert a.retime == 11.3          # adopted first so length stops re-firing while colour converges
+    assert a.retime == 11.3          # adopted first so length stops re-firing while the black fix converges
 
 
 def test_escalate_still_wins_over_an_absorbable_shortfall():
-    # a capped colour fail alongside a within-band shortfall → escalate; the pending
+    # a capped black fail alongside a within-band shortfall → escalate; the pending
     # re-time is discarded with the round (the reel never delivers on an unfixable fault)
     fails = [_length(11.3, 12.0),
-             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+             ReelFailure("black", "reprocess", 1, {"t": 1.0})]
     a = ro.next_action(fails, {1: 3}, cap=3, length_retime_max=1.0)
     assert a.kind == "escalate"
     assert a.finding["reason"] == "reprocess-capped"
@@ -197,15 +154,38 @@ def test_an_over_length_reel_is_unchanged_by_outro_fixed():
         assert a.finding["reason"] == "not-auto-fixable"
 
 
+def test_a_colour_failure_is_no_longer_reprocessable():
+    """The colour corrector is retired (design 2026-08-29 §2). Anything that is not a
+    black hit escalates instead of being handed a per-channel pull: the pull moved each
+    episode's whole-frame mean toward the reel median, which on real footage demanded
+    1.41x on one episode's red and 1.75x on all three of another's — against 0.71 dE00
+    of headroom, where 1.10x on one channel already costs 3.92."""
+    # NOTE: called via the file's own `ro.` alias, not bare `reel_orchestration.` — see the
+    # pacing-fixed-point NOTE above; the brief's snippet uses the bare name, but this file
+    # imports it as `ro`.
+    f = ReelFailure("color_across_cuts", "reprocess", 0,
+                    {"target": [130.0, 120.0, 130.0], "culprit_mean": [160.0, 120.0, 130.0]})
+    a = ro.next_action([f], {}, 3, 1.0, False)
+    assert a.kind == "escalate"
+    assert a.reprocess == ()
+
+
+def test_a_black_failure_still_reprocesses_and_carries_only_an_index():
+    b = ReelFailure("black", "reprocess", 1, {"t": 2.0})
+    a = ro.next_action([b], {}, 3, 1.0, False)
+    assert a.kind == "reprocess"
+    assert a.reprocess == (ro.ReprocessItem(1),)
+
+
 def test_outro_refusal_wins_over_a_simultaneous_reprocess_class_failure():
-    # mirrors test_within_band_shortfall_rides_along_with_a_colour_reprocess (above),
+    # mirrors test_within_band_shortfall_rides_along_with_a_black_reprocess (above),
     # which proves that WITHOUT an outro fit a within-band shortfall rides along with a
-    # colour reprocess (kind == "reprocess", retime carried on the action). With
+    # black reprocess (kind == "reprocess", retime carried on the action). With
     # outro_fixed=True the same pairing must not merge into a reprocess round at all —
-    # the outro refusal escalates immediately, and nothing about the colour fail (which
+    # the outro refusal escalates immediately, and nothing about the black fail (which
     # would otherwise be perfectly fixable on its own) leaks a retime into the result.
     fails = [_length(9.4, 10.0),
-             _color(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0])]
+             ReelFailure("black", "reprocess", 1, {"t": 1.0})]
     a = ro.next_action(fails, {}, 3, 1.0, True)
     assert a.kind == "escalate"
     assert a.finding["reason"] == "outro-length-chosen"

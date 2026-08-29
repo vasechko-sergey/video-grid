@@ -18,10 +18,14 @@ def _pass():
 
 
 def _color_fail(idx, target, culprit):
+    # The colour corrector is retired (design 2026-08-29): every canned report this
+    # factory used to build as a "color_across_cuts" fail is now a black hit instead —
+    # the failure class that still reprocesses. target/culprit are accepted but no
+    # longer used: every call site below still passes them (only the failure's SHAPE
+    # changed), which is why they are unused rather than deleted from the signature.
     return ReelReport(
-        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
-        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", idx,
-                                  {"target": target, "culprit_mean": culprit})],
+        checks={"black": CheckResult("black", False, {"black_start": [1.0]})},
+        fail_reasons=[ReelFailure("black", "reprocess", idx, {"t": 1.0})],
         episode_count=2)
 
 
@@ -33,8 +37,11 @@ def _length_fail(dur, target):
 
 
 def _wire(monkeypatch, reports, pe_results=None):
-    """Feed check_reel.run a queue of canned reports; record deliver + the
-    color_correct passed to each process_episode reprocess."""
+    """Feed check_reel.run a queue of canned reports; record deliver + the route
+    passed to each process_episode reprocess. color_correct is captured too — the
+    mock mirrors process_episode's real signature, which still accepts the keyword
+    (design 2026-08-29 Task 1 only stops build_reel from SUPPLYING it) — but no
+    caller in this file asserts on it any more, since build_reel never passes it."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None}
     rq = list(reports)
@@ -101,13 +108,13 @@ def test_build_reel_forwards_titles_to_deliver(monkeypatch, tmp_path):
 
 
 def test_color_fail_then_pass_reprocesses_then_delivers(monkeypatch, tmp_path):
-    # round 0: ep1 warm → reprocess with med/d_i; round 1: passes → deliver
+    # round 0: ep1 fails (black hit — the colour corrector is retired) → reprocess;
+    # round 1: passes → deliver
     reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]), _pass()]
     seen = _wire(monkeypatch, reports)
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
     assert len(seen["reprocess"]) == 1
-    assert seen["reprocess"][0]["correct"][0] == pytest.approx(120.0 / 150.0)
     assert seen["reprocess"][0]["route"] == "r1.json"     # frozen route reused
 
 
@@ -127,14 +134,12 @@ def test_reprocessed_accumulates_across_rounds_for_different_episodes(monkeypatc
     # ep0 reprocessed in round 0 and ep2 reprocessed in round 1 (a DIFFERENT episode)
     # must BOTH survive into the final sorted list, not just the most recent culprit.
     round0 = ReelReport(
-        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
-        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", 0,
-                                  {"target": [120.0, 120.0, 120.0], "culprit_mean": [150.0, 120.0, 120.0]})],
+        checks={"black": CheckResult("black", False, {})},
+        fail_reasons=[ReelFailure("black", "reprocess", 0, {"t": 1.0})],
         episode_count=3)
     round1 = ReelReport(
-        checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})},
-        fail_reasons=[ReelFailure("color_across_cuts", "reprocess", 2,
-                                  {"target": [120.0, 120.0, 120.0], "culprit_mean": [150.0, 120.0, 120.0]})],
+        checks={"black": CheckResult("black", False, {})},
+        fail_reasons=[ReelFailure("black", "reprocess", 2, {"t": 1.0})],
         episode_count=3)
     round2 = ReelReport(checks={"length": CheckResult("length", True, {})}, episode_count=3)
     seen = _wire(monkeypatch, [round0, round1, round2])
@@ -162,20 +167,6 @@ def test_stabilized_episode_reprocess_withholds_the_route_and_still_delivers(mon
     assert len(seen["reprocess"]) == 1
     assert seen["reprocess"][0]["route"] is None          # route WITHHELD — the episode stabilizes
     assert rm.episodes[1].route == "r1.json"              # model field untouched — check_reel reads it
-
-
-def test_color_correct_compounds_across_rounds(monkeypatch, tmp_path):
-    # two failing rounds then pass: the 2nd reprocess factor is compounded onto
-    # the 1st and clamped — the reversion bug (per-round-relative) would NOT compound
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),   # ratio1 = .8
-               _color_fail(1, [120.0, 120.0, 120.0], [130.0, 120.0, 120.0]),   # ratio2 = .923
-               _pass()]
-    seen = _wire(monkeypatch, reports)
-    build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
-    r0 = seen["reprocess"][0]["correct"][0]
-    r1 = seen["reprocess"][1]["correct"][0]
-    assert r0 == pytest.approx(0.8)
-    assert r1 == pytest.approx(0.8 * (120.0 / 130.0))     # compounded, not 120/130 alone
 
 
 def test_variety_fail_stops_and_reports_without_delivering(monkeypatch, tmp_path):
@@ -209,33 +200,13 @@ def test_capped_episode_escalates(monkeypatch, tmp_path):
     assert seen["deliver"] == []
 
 
-def test_black_reprocess_reuses_the_standing_colour_correction(monkeypatch, tmp_path):
-    # round 0 colour fail on ep1 sets cc[1]≈0.8 on red; round 1 BLACK fail on ep1 must
-    # reprocess with the SAME standing cc (ratio itself None, but cc reused, NOT reverted
-    # to None); round 2 passes → deliver. Inverse bug: if black reset cc→None, correct[1]
-    # would be None and this asserts fail.
-    def _black_fail(idx):
-        return ReelReport(checks={"black": CheckResult("black", False, {})},
-                          fail_reasons=[ReelFailure("black", "reprocess", idx, {"t": 1.0})],
-                          episode_count=2)
-    reports = [_color_fail(1, [120.0, 120.0, 120.0], [150.0, 120.0, 120.0]),
-               _black_fail(1), _pass()]
-    seen = _wire(monkeypatch, reports)
-    res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
-    assert res["status"] == "delivered"
-    assert seen["reprocess"][0]["correct"][0] == pytest.approx(0.8)   # round 0 colour set it
-    assert seen["reprocess"][1]["correct"][0] == pytest.approx(0.8)   # round 1 black reused it, unchanged
-
-
 def test_multi_culprit_round_second_failure_propagates_without_delivering(monkeypatch, tmp_path):
-    # one round names TWO culprits (ep0 black, ep2 colour); ep0 reprocess succeeds, ep2's
+    # one round names TWO culprits (ep0, ep2 — both black); ep0 reprocess succeeds, ep2's
     # fails → stop_and_report names ep2, deliver never called, both items were attempted.
     rep = ReelReport(
-        checks={"black": CheckResult("black", False, {}),
-                "color_across_cuts": CheckResult("color_across_cuts", False, {})},
+        checks={"black": CheckResult("black", False, {})},
         fail_reasons=[ReelFailure("black", "reprocess", 0, {"t": 1.0}),
-                      ReelFailure("color_across_cuts", "reprocess", 2,
-                                  {"target": [120.0, 120.0, 120.0], "culprit_mean": [150.0, 120.0, 120.0]})],
+                      ReelFailure("black", "reprocess", 2, {"t": 2.0})],
         episode_count=3)
     seen = _wire(monkeypatch, [rep],
                  pe_results=[{"status": "mechanical_pass", "clip": "ep0.mp4"},
@@ -289,25 +260,23 @@ def test_shortfall_past_the_band_still_stops_and_reports(monkeypatch, tmp_path):
     assert seen["deliver"] == []
 
 
-def test_retime_rides_along_with_a_colour_reprocess(monkeypatch, tmp_path):
+def test_retime_rides_along_with_a_black_reprocess(monkeypatch, tmp_path):
     # The adopt block runs BEFORE the kind dispatch, so a re-time CARRIED BY a reprocess
     # round lands in that same round. Folding the adopt into the `kind == "retime"` branch
     # would still pass every other test in this file — and Task 1's pure next_action test,
     # which only inspects the returned action — while silently regressing this path: the
-    # length failure would re-fire every round while the colour correction converged.
+    # length failure would re-fire every round while the black fix converged.
     both = ReelReport(
         checks={"length": CheckResult("length", False, {"dur": 5.3, "target": 6.0}),
-                "color_across_cuts": CheckResult("color_across_cuts", False, {})},
+                "black": CheckResult("black", False, {})},
         fail_reasons=[ReelFailure("length", "pacing", None, {"dur": 5.3, "target": 6.0}),
-                      ReelFailure("color_across_cuts", "reprocess", 1,
-                                  {"target": [120.0, 120.0, 120.0],
-                                   "culprit_mean": [150.0, 120.0, 120.0]})],
+                      ReelFailure("black", "reprocess", 1, {"t": 1.0})],
         episode_count=2)
     seen = _wire(monkeypatch, [both, _pass()])
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
     assert seen["targets"] == [6.0, 5.3]     # adopted on the REPROCESS round, not one round later
-    assert len(seen["reprocess"]) == 1       # and the colour fix still ran
+    assert len(seen["reprocess"]) == 1       # and the black fix still ran
 
 
 # --- pacing-fixed-point Task 4: build_reel's own outro_fixed computation ----
@@ -417,12 +386,13 @@ def test_build_reel_silent_path_unchanged_without_music(tmp_path, monkeypatch):
 
 
 def _color_fail_music():
-    # a fresh (no-arg) colour-fail report — NOT named _color_fail: the module already
-    # defines _color_fail(idx, target, culprit) for the A.5 tests above; a same-named
-    # redefinition would shadow it and break every caller.
-    r = ReelReport(checks={"color_across_cuts": CheckResult("color_across_cuts", False, {})})
-    r.fail_reasons = [ReelFailure("color_across_cuts", "reprocess", 0,
-                                  {"target": [100.0, 100.0, 100.0], "culprit_mean": [120.0, 100.0, 100.0]})]
+    # a fresh (no-arg) reprocessable-fail report — NOT named _color_fail: the module
+    # already defines _color_fail(idx, target, culprit) for the A.5 tests above; a
+    # same-named redefinition would shadow it and break every caller. The colour
+    # corrector is retired (design 2026-08-29): this now builds a black hit, same as
+    # _color_fail above — only the name is legacy.
+    r = ReelReport(checks={"black": CheckResult("black", False, {})})
+    r.fail_reasons = [ReelFailure("black", "reprocess", 0, {"t": 1.0})]
     return r
 
 
