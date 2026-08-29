@@ -12,22 +12,16 @@ from scripts.lib.models import CheckResult, ReelCheckSpec
 class _Stub:
     """Stub the ffmpeg-touching helpers so check_reel logic is unit-testable.
     durations: per-episode seconds. blacks: black_start times on the master.
-    means: {t: (r,g,b)}. hashes: {t: int} used as a fake ImageHash distance base."""
-    def __init__(self, durations, blacks=(), means=None, hashes=None):
+    hashes: {t: int} used as a fake ImageHash distance base."""
+    def __init__(self, durations, blacks=(), hashes=None):
         self.durations = durations
         self.blacks = list(blacks)
-        self.means = means or {}
         self.hashes = hashes or {}
 
     def install(self, monkeypatch):
         eps_dur = iter(self.durations + [sum(self.durations)])  # episodes..., then master
-        # raising=False: _frame_mean/_phash_bits/_hamming do not exist on the module
-        # until Tasks 6-7, but _Stub is written once in Task 5 and reused there.
         monkeypatch.setattr(check_reel, "_probe_dur", lambda v: next(eps_dur))
         monkeypatch.setattr(check_reel, "_black_hits", lambda m: self.blacks)
-        monkeypatch.setattr(check_reel, "_frame_mean",
-                            lambda v, t: self.means.get(round(t, 3), (100.0, 120.0, 130.0)),
-                            raising=False)
         monkeypatch.setattr(check_reel, "_phash_bits",
                             lambda v, t: self.hashes.get(round(t, 3), 0), raising=False)
         monkeypatch.setattr(check_reel, "_hamming", lambda a, b: abs(a - b), raising=False)
@@ -83,86 +77,21 @@ def test_beat_loudness_safe_zones_not_checked_when_silent(tmp_path, monkeypatch)
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 
 
-def test_color_across_cuts_passes_when_neighbours_match(tmp_path, monkeypatch):
-    # one cut at t=3.0; both sides ~equal → delta 0 → pass
-    _Stub([3.0, 3.0], means={2.95: (100.0, 120.0, 130.0), 3.05: (101.0, 121.0, 131.0),
-                             1.5: (100.0, 120.0, 130.0), 4.5: (101.0, 121.0, 131.0)}
-          ).install(monkeypatch)
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
-                         str(tmp_path / "r.json"))
-    assert rep.checks["color_across_cuts"].passed is True
-
-
-def test_color_across_cuts_blames_the_episode_farther_from_the_reel_median(tmp_path, monkeypatch):
-    # 3 episodes, cut 1 at t=6.0 has a big jump; ep2 (span mid t=7.5) is the outlier
-    means = {5.95: (100.0, 120.0, 130.0), 6.05: (160.0, 120.0, 130.0),  # cut 1 sides
-             2.95: (100.0, 120.0, 130.0), 3.05: (100.0, 120.0, 130.0),  # cut 0 sides (match)
-             1.5: (100.0, 120.0, 130.0), 4.5: (100.0, 120.0, 130.0), 7.5: (160.0, 120.0, 130.0)}
-    _Stub([3.0, 3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"], ReelCheckSpec(target_dur=9.0),
-                         str(tmp_path / "r.json"))
-    assert rep.checks["color_across_cuts"].passed is False
-    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
-    assert f.episode_idx == 2 and f.escalate_to == "reprocess"
-
-
-def test_color_across_cuts_is_not_applicable_for_a_single_episode(tmp_path, monkeypatch):
-    _Stub([3.0]).install(monkeypatch)
-    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
-                         str(tmp_path / "r.json"))
-    assert rep.checks["color_across_cuts"].passed is None      # no cut to judge
-
-
-def test_color_across_cuts_two_episode_tie_blames_the_later_episode(tmp_path, monkeypatch):
-    # N=2: the 2-value median is equidistant from both spans, so attribution is a
-    # defined default — blame the later episode (episode 1), matching variety.
-    means = {2.95: (100.0, 120.0, 130.0), 3.05: (200.0, 120.0, 130.0),   # cut sides: delta 33.3 → fail
-             1.5: (100.0, 120.0, 130.0), 4.5: (200.0, 120.0, 130.0)}     # span midpoints
-    _Stub([3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
-                         str(tmp_path / "r.json"))
-    assert rep.checks["color_across_cuts"].passed is False
-    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
-    assert f.episode_idx == 1
-
-
-def test_color_across_cuts_uses_median_not_mean_so_a_far_outlier_does_not_mislead(tmp_path, monkeypatch):
-    # 5 episodes; failing cut 0 is between ep0(100) and ep1(200). ep4 is a far,
-    # unrelated outlier (9999). A MEAN center is dragged by ep4 and would mis-blame
-    # ep0; the MEDIAN center keeps ep1 (the truly-shifted span) as the culprit.
-    means = {2.95: (100.0, 120.0, 130.0), 3.05: (200.0, 120.0, 130.0),   # cut 0 sides → delta 33.3, fail
-             5.95: (100.0, 120.0, 130.0), 6.05: (100.0, 120.0, 130.0),   # cut 1 sides → pass
-             8.95: (100.0, 120.0, 130.0), 9.05: (100.0, 120.0, 130.0),   # cut 2 sides → pass
-             11.95: (100.0, 120.0, 130.0), 12.05: (100.0, 120.0, 130.0),  # cut 3 sides → pass
-             1.5: (100.0, 120.0, 130.0), 4.5: (200.0, 120.0, 130.0),      # span mids 0,1
-             7.5: (100.0, 120.0, 130.0), 10.5: (100.0, 120.0, 130.0),     # span mids 2,3
-             13.5: (9999.0, 120.0, 130.0)}                                # span mid 4 — far outlier
-    _Stub([3.0, 3.0, 3.0, 3.0, 3.0], means=means).install(monkeypatch)
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"],
-                         ReelCheckSpec(target_dur=15.0), str(tmp_path / "r.json"))
-    assert rep.checks["color_across_cuts"].passed is False
-    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts" and x.detail["cut"] == 0][0]
-    assert f.episode_idx == 1     # median → ep1 (correct); a mean would say ep0
-
-
-def test_color_fail_detail_carries_target_and_culprit_mean(tmp_path, monkeypatch):
-    # ep0 grey ~(100,120,130), ep1 warm ~(160,120,130): the cut delta trips the
-    # ceiling. ep0/ep1 are equidistant from the median (100/160 straddle 130), so
-    # the later-episode tie-break picks ep1 (see the two-episode tie test above). The
-    # driver reads detail["target"] (reel median) and detail["culprit_mean"] to build med/d_i.
-    _Stub([3.0, 3.0],
-          means={2.95: (100.0, 120.0, 130.0), 3.05: (160.0, 120.0, 130.0),
-                 1.5: (100.0, 120.0, 130.0), 4.5: (160.0, 120.0, 130.0)}
-          ).install(monkeypatch)
+def test_no_across_cut_colour_check_is_reported(tmp_path, monkeypatch):
+    """The across-cut colour check is retired (design 2026-08-29 §2). It compared two
+    frames straddling a cut — two different SHOTS — so six of the only real reel's
+    seven cuts exceeded the 12.0 default and the operator raised the ceiling to 56.0
+    to switch it off. Its absence is pinned here: re-adding the key would make this
+    fail, and would also silently re-arm a corrector that can only damage the grade."""
+    # distinct hashes so the variety check passes — this test's overall=True is about
+    # the retired colour check, not an incidental variety failure (see the identical
+    # fix, with the same comment, on test_beat_loudness_safe_zones_not_checked_when_silent).
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
-                         ReelCheckSpec(target_dur=6.0, color_delta_max=12.0),
-                         str(tmp_path / "r.json"))
-    f = [x for x in rep.fail_reasons if x.check == "color_across_cuts"][0]
-    assert f.episode_idx == 1
-    # median of the two span means, per channel
-    assert f.detail["target"] == [130.0, 120.0, 130.0]
-    # ep1 (the culprit) span mean
-    assert f.detail["culprit_mean"] == [160.0, 120.0, 130.0]
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"))
+    assert "color_across_cuts" not in rep.checks
+    assert not [f for f in rep.fail_reasons if f.check == "color_across_cuts"]
+    assert rep.overall is True
 
 
 def test_variety_flags_a_near_duplicate_pair(tmp_path, monkeypatch):
@@ -196,7 +125,6 @@ def test_variety_failure_report_is_json_serializable_with_real_hamming(tmp_path,
     durs = iter([3.0, 3.0, 6.0])                       # ep0, ep1, then master
     monkeypatch.setattr(check_reel, "_probe_dur", lambda v: next(durs))
     monkeypatch.setattr(check_reel, "_black_hits", lambda m: [])
-    monkeypatch.setattr(check_reel, "_frame_mean", lambda v, t: (100.0, 120.0, 130.0))
     same = imagehash.hex_to_hash("0000000000000000")   # identical → distance 0 < variety_min → fail
     monkeypatch.setattr(check_reel, "_phash_bits", lambda v, t: same)
     # _hamming is intentionally NOT stubbed → the real numpy-returning path runs

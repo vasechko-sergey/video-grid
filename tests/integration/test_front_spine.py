@@ -160,7 +160,7 @@ def _edl_all_pan(tmp_path, source):
 
 def _edl_mixed(tmp_path, source):
     # same two far-apart windows _edl() uses above — distinct phash keeps the
-    # variety/color_across_cuts checks meaningful, not merely non-crashing
+    # variety check meaningful, not merely non-crashing
     tracked = dict(source=source, start=0.2, dur=1.0, shot_type="wide",
                    composition="lead", grid="thirds", crop_scale=0.8)
     panned = dict(source=source, start=1.8, dur=1.0, shot_type="wide",

@@ -16,9 +16,8 @@ def _synth_clip(tmp_path, sample_clip, i):
     """Two crops of the shared `sample_clip` at the SAME x-offsets
     `test_backhalf_assembles_checks_and_delivers` already proves pass every
     mechanical gate: the moving box lands at a different in-frame position at
-    each episode's midpoint (distinct phash -> `variety` passes) while both
-    cut-boundary frames show pure background (equal mean -> `color_across_cuts`
-    passes). Reuses `_episode` verbatim rather than a second clip synthesizer."""
+    each episode's midpoint (distinct phash -> `variety` passes). Reuses
+    `_episode` verbatim rather than a second clip synthesizer."""
     x_const = 645 if i == 0 else 1045
     return _episode(sample_clip, tmp_path, x_const, f"ep{i}")
 

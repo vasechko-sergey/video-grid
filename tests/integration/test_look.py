@@ -50,9 +50,9 @@ def _report(master: str, out_dir: Path):
     mismatched master_digest), and it is 0.18s on this fixture — cheap enough to run
     per delivery rather than fake. Same shape as
     tests/integration/test_reel_backhalf.py, with the master standing in as its own
-    single episode: one episode makes color_across_cuts/variety "n/a" rather than
-    failing, and target_dur comes from the master's own probe because nothing here
-    is testing the length gate.
+    single episode: one episode makes variety "n/a" rather than failing, and
+    target_dur comes from the master's own probe because nothing here is testing the
+    length gate.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     spec = ReelCheckSpec(target_dur=check_reel._probe_dur(master))

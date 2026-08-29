@@ -3,7 +3,11 @@ real pixels toward the target; (B) build_reel wires probe → assemble → check
 → deliver end-to-end on real files. Clips are built with the real reframe encoder,
 matching test_reel_backhalf.py's precedent."""
 import json
+import tempfile
+
 import pytest
+from PIL import Image, ImageStat
+
 from scripts import build_reel, check_reel, reframe
 from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import (Delivery, LayoutSpec, ReframeSpec, ReelEpisode, ReelManifest)
@@ -17,6 +21,19 @@ def _tinted(sample_clip, tmp):
               "-vf", "colorchannelmixer=rr=1.4", "-pix_fmt", "yuv420p",
               "-c:v", "libx264", "-crf", "18", "-an", out])
     return out
+
+
+def _frame_mean(video: str, t: float) -> tuple[float, float, float]:
+    """Mean (R, G, B) of one grabbed frame at time t. check_reel used to expose this
+    (it was the across-cut colour check's own probe), but that check — and the
+    helper — were retired 2026-08-29 (design 2026-08-29 §2: the sensor compared two
+    different SHOTS, not a grade). This test's own claim is about color_correct
+    (scripts/reframe.py), a live, unrelated feature, so it keeps its own copy of the
+    probe rather than losing coverage of a real-pixel effect."""
+    with tempfile.TemporaryDirectory() as d:
+        f = f"{d}/f.png"
+        proc.run([ffbin.ffmpeg(), "-y", "-i", video, "-ss", f"{t}", "-frames:v", "1", f])
+        return tuple(ImageStat.Stat(Image.open(f).convert("RGB")).mean[:3])
 
 
 def _reframe(src, tmp, x_const, name, color_correct=None):
@@ -38,8 +55,8 @@ def test_color_correct_pulls_delivered_mean_toward_target(tmp_path, sample_clip)
     warm = _tinted(sample_clip, tmp_path)
     uncorrected = _reframe(warm, tmp_path, 900, "u")
     corrected = _reframe(warm, tmp_path, 900, "c", color_correct=(0.75, 1.0, 1.0))
-    r_u = check_reel._frame_mean(uncorrected, 1.0)[0]
-    r_c = check_reel._frame_mean(corrected, 1.0)[0]
+    r_u = _frame_mean(uncorrected, 1.0)[0]
+    r_c = _frame_mean(corrected, 1.0)[0]
     # rr=1.4 warms the grey source's red; the warm clip's delivered mean red measures
     # ~76 uncorrected and the 0.75 correction pulls it to ~57 — a ~19pt fall on real
     # pixels, so the 5-unit margin is generous, not tuned.

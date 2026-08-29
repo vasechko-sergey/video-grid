@@ -50,7 +50,6 @@ def test_backhalf_assembles_checks_and_delivers(tmp_path, sample_clip):
     assert rep.overall is True
     assert rep.checks["black"].passed is True
     assert rep.checks["length"].passed is True
-    assert rep.checks["color_across_cuts"].passed is True
     assert rep.checks["variety"].passed is True
     for name in ("beat", "loudness"):
         assert rep.checks[name].passed is None
