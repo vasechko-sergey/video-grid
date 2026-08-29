@@ -1,5 +1,6 @@
 import pytest
 
+from scripts.lib import review
 from scripts.lib.review import (REVIEW_AXES, REVIEW_CONFIDENCE, REVIEW_ROUTES,
                                 REVIEW_SEVERITY, Finding)
 
@@ -57,11 +58,33 @@ def test_finding_roundtrip_to_from_dict():
     assert Finding.from_dict(f.to_dict()).to_dict() == f.to_dict()
 
 
+def test_a_colour_finding_routed_to_match_grade_round_trips():
+    """Reel-level colour agreement is no longer measured by a machine (design §4-§5):
+    a whole-frame mean cannot separate 'different shot' from 'different grade', but a
+    reader looking at the per-episode stills the packet already carries can. The axis
+    is spelled as episode_qc.QC_AXES spells it."""
+    f = review.Finding(axis="colour", severity="important",
+                       evidence="ep3's mid still reads markedly bluer than ep2's and ep4's",
+                       route="match-grade",
+                       suggestion="re-run match-grade so every episode takes one common target",
+                       confidence="medium")
+    assert review.Finding.from_dict(f.to_dict()) == f
+
+
+def test_the_american_spelling_is_not_an_axis():
+    """One spelling only — 'colour', matching episode_qc.QC_AXES. Two spellings would
+    split findings across two axes nobody could aggregate."""
+    with pytest.raises(ValueError, match="not in"):
+        review.Finding(axis="color", severity="minor", evidence="e",
+                       route="match-grade", suggestion="s")
+
+
 def test_vocab_constants_are_the_allowed_sets():
     assert REVIEW_AXES == ("idea", "mood", "hook", "ending", "spine",
-                           "edl_completeness", "trend_flavor")
+                           "edl_completeness", "trend_flavor", "colour")
     assert REVIEW_SEVERITY == ("blocking", "important", "minor")
-    assert REVIEW_ROUTES == ("edit-plan", "pacing", "music", "reprocess", "titles", "none")
+    assert REVIEW_ROUTES == ("edit-plan", "pacing", "music", "reprocess", "titles",
+                             "match-grade", "none")
     assert REVIEW_CONFIDENCE == ("high", "medium", "low")
 
 

@@ -1,6 +1,6 @@
 ---
 name: reel-review
-description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers <run>/reels/<reel>/deliveries/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Optional — a final quality pass.
+description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers <run>/reels/<reel>/deliveries/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine/colour. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Optional — a final quality pass.
 ---
 
 # reel-review (stage 5.13, editorial half)
@@ -89,6 +89,7 @@ reel-review builds **no fixer** — each `route` names a stage that already exis
 | `music` | music-match / music-source SKILL | mood mismatch / wrong track |
 | `reprocess` | process_episode on one episode (grade/layout redo) | one episode reads wrong vs the reel |
 | `titles` | titles SKILL | hook/ending wants on-screen text |
+| `match-grade` | match-grade SKILL then `edl_to_reel` | one episode reads as a different grade from the rest |
 | `none` | — (note only) | an observation to record, no action |
 | `outro-length-chosen` | pacing SKILL — grow or re-cut the closing episode, then re-apply | a mechanical stop, not an editorial finding: the reel loop refused to absorb a within-band shortfall because the outro fit CHOSE this reel's length as `line + fade`; it will not silently move the fade off the bar line |
 

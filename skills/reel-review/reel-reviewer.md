@@ -35,12 +35,18 @@ say so in your summary.
 - spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; beat advisory)
 - edl_completeness — anything from the EDL missing/weak?         (EDL episodes vs SPEC; variety/transitions signals)
 - trend_flavor     — classic base AND trend flavor?              (general knowledge — NO source of truth)
+- colour           — do the episodes read as ONE grade?          (the per-episode mid stills side by side + EDL.md's shot descriptions)
 
 ## Rules
 - severity ∈ (blocking, important, minor). blocking = the reel does NOT deliver the brief.
-- route ∈ (edit-plan, pacing, music, reprocess, titles, none) — the fixer stage to re-run.
+- route ∈ (edit-plan, pacing, music, reprocess, titles, match-grade, none) — the fixer stage to re-run.
 - confidence ∈ (high, medium, low).
 - trend_flavor: ALWAYS confidence "low", NEVER blocking, and name §5.4 (no TRENDS.md source) in evidence.
+- colour: judge the episodes side by side, and read EDL.md first — a shot of open
+  water SHOULD look different from a shot of bright sand. Flag only a difference the
+  content does not explain. You have ONE frame per episode: a wave, a cloud or a
+  specular flash can read as a grade shift, so say `confidence: "low"` when the
+  evidence is a single frame you cannot corroborate.
 - evidence must cite a concrete anchor (episode idx / timestamp / which signal).
 
 ## Write your output to {FINDINGS_PATH} as JSON, then stop:

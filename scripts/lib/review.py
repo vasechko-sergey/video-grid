@@ -10,10 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REVIEW_AXES = ("idea", "mood", "hook", "ending", "spine",       # the §5.13 editorial questions
-               "edl_completeness", "trend_flavor")
+               "edl_completeness", "trend_flavor",
+               "colour")                                        # design 2026-08-29 §4: no machine
+                                                                # measures reel-level colour agreement,
+                                                                # so the reader who can does
 REVIEW_SEVERITY = ("blocking", "important", "minor")             # blocking ⇒ verdict "revise"
 REVIEW_ROUTES = ("edit-plan", "pacing", "music",                # the fixer stage the human re-runs
-                 "reprocess", "titles", "none")
+                 "reprocess", "titles", "match-grade", "none")
 REVIEW_CONFIDENCE = ("high", "medium", "low")                   # trend_flavor is forced "low" (no §5.4 source)
 
 
