@@ -24,8 +24,11 @@ read by a human; your deliverable is the file you write.
 
 ## The reel + stills
 The reel is at {REEL_PATH}. Contact-sheet stills: {STILL_PATHS} (hook, ending,
-per-episode mids). You judge over the plan + signals + stills, NOT full playback —
-say so in your summary.
+per-episode mids). Open and look at every still — this is the pixel evidence
+itself, not a summary of it, and for the `colour` axis below it is the ONLY
+evidence there is: no mechanical check measures whether the episodes agree in
+grade. You judge over the plan + signals + stills, NOT full playback — say so
+in your summary.
 
 ## Judge each axis; emit a finding ONLY where the reel falls short
 - idea             — delivers the brief's original idea?         (SPEC.idea vs the EDL arc)
@@ -57,5 +60,7 @@ say so in your summary.
      "suggestion": "...", "confidence": "high"}
   ]
 }
-An empty "findings" list means the reel delivers the brief.
+An empty "findings" list is a claim that the reel delivers the brief on every
+axis, including `colour` — it is not proof you opened the stills. Your summary
+is where you show what you actually looked at.
 ```

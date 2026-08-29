@@ -1,5 +1,20 @@
 # Reel Retry Loop — Design Spec (Phase A.5)
 
+> **Amended 2026-08-29 — read the whole document through this.** The colour arm
+> this design built is deleted, not repaired — see
+> [colour-convergence-retire](2026-08-29-colour-convergence-retire-design.md),
+> whose §0 measures why: the check fired on 6 of 7 ordinary cuts in the only
+> real reel, and the corrector optimised a reel-wide median the check itself
+> never read. Gone with it: rule 2 below ("Color correction is a relative gain
+> in delivered space"), rule 3's `color_across_cuts` half, §2's
+> `color_delta_max` field, all of §4, §5's `cc`/`color_correct` driver state and
+> the `Reprocess(i, color_correct from §4)` ladder row in §3, and the §6/§7
+> bullets that test or argue about any of it. What is UNCHANGED and still
+> current: the loop's shape (`assemble → check_reel → next_action → reprocess →
+> deliver | stop_and_report`), `next_action`'s black/variety/length rows, and
+> `build_reel`'s reuse of the frozen route on a reprocess — `black` is now the
+> loop's only reprocess class.
+
 The loop that closes the reel back half: drive `assemble → check_reel →
 auto-fix the culprit episode → reassemble → recheck` until the reel passes,
 then `deliver` — or stop with a precise, machine-readable finding when the

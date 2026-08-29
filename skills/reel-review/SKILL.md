@@ -8,9 +8,11 @@ description: Conveyor stage — the reel's final editorial review. using-montage
 ## Overview
 
 The **final editorial gate**. `check_reel` already judged the reel *mechanically*
-(black/loudness/colour/variety/length + the advisory safe_zones/key_action/
-pad_bars/transitions/beat). reel-review judges it *editorially*: does it deliver
-the brief? This is the `requesting-code-review` pattern one level up — you
+(black/loudness/variety/length + the advisory safe_zones/key_action/
+pad_bars/transitions/beat). Colour agreement across episodes has no mechanical
+check of its own — that is what this stage's own `colour` axis exists to judge
+(design 2026-08-29, colour-convergence-retire §4-§5). reel-review judges the
+reel *editorially*: does it deliver the brief? This is the `requesting-code-review` pattern one level up — you
 dispatch a **fresh reviewer subagent** with a crafted packet, it returns typed
 findings, and the **human** decides what to act on at Checkpoint 3.
 
@@ -44,14 +46,40 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
 1. **Build the packet.** Resolve the paths above. Grab a cheap **thumbnail
    contact-sheet** to ground visual judgement (output-seek — `-ss` AFTER `-i`,
    design §12): the hook frame, the ending frame, and one mid-frame per episode.
-   Example (hook + ending stills; add per-episode mids from the EDL cut times).
    The stills go under `build/`, not the reel dir: they are scratch, stale the
    moment the reel is re-rendered, and `build/` is the one bucket the next render
    clears — a real run left 14 MB of exactly these frames sitting where nothing
    ever cleaned them.
 
-       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss 0.5 -frames:v 1 <run>/reels/<reel>/build/_review/hook.png
-       ffmpeg -y -i <run>/reels/<reel>/deliveries/REEL_v1.mp4 -ss "$(python -c 'print(DUR-1)')" -frames:v 1 <run>/reels/<reel>/build/_review/ending.png
+   Clamp every grab OUT of the reel's own bookend fade — a frame taken inside it
+   is darkened by the picture's own fade, not by anything the `colour` axis
+   should read as a grade difference, and three of the four mood presets carry
+   `fade >= 0.8` (`moodpreset.py`). This is the same reason `deliver.py`'s own
+   look-gate sampling clamps into `[fade, dur-fade]` (`scripts/deliver.py:110-115`)
+   — follow that precedent rather than inventing a new one. One pass computes
+   every timestamp and grabs every frame — hook, ending, and every episode's
+   mid — reading the fade and the per-episode clip lengths off the same
+   `EPISODES.json` phase 1 already wrote (swap in whichever `REEL_v{n}.mp4`
+   `montage status` names as latest):
+
+       python -c "
+       import json
+       from itertools import accumulate
+       from pathlib import Path
+       from scripts.lib import assembly, proc, ffbin
+       rm = json.load(open('<run>/reels/<reel>/episodes/EPISODES.json'))
+       durs = [assembly.probe_duration(e['clip']) for e in rm['episodes']]
+       dur, fade = sum(durs), (rm.get('look') or {}).get('fade', 0.0)
+       starts = [0.0] + list(accumulate(durs))[:-1]
+       mids = [s + d / 2 for s, d in zip(starts, durs)]
+       shots = {'hook': max(0.5, fade + 0.1), 'ending': dur - max(1.0, fade + 0.1),
+                **{f'mid{i}': m for i, m in enumerate(mids)}}
+       out = Path('<run>/reels/<reel>/build/_review'); out.mkdir(parents=True, exist_ok=True)
+       for name, t in shots.items():
+           proc.run([ffbin.ffmpeg(), '-y', '-i',
+                     '<run>/reels/<reel>/deliveries/REEL_v1.mp4', '-ss', f'{t:.3f}',
+                     '-frames:v', '1', str(out / f'{name}.png')])
+       "
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
    `reel-reviewer.md` template filled in — the packet paths + the axes/questions +

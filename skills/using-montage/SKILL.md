@@ -305,18 +305,15 @@ say so rather than guessing a path.
     When a blocking finding is on the **colour** axis, run the probe
     convergence loop (**edit-plan** skill, colour-grade section) against
     `EDL.json` before spending a re-render on it — look at the pixels, edit,
-    probe again, and only re-render the episode once it converges. **This is
-    safe here specifically because `deliver` has not run yet** — final review
-    I-2: `probe grade`'s no-`--edl` baseline is silently WRONG for an episode
-    a reel-level colour retry already touched, because `build_reel`'s
-    per-channel pull is never persisted anywhere the probe reads (not on
-    `Manifest`, not on `PathMeta`, not in `EPISODES.json`, which phase 2 never
-    rewrites) — and no later re-probe fixes it, since that file stays frozen
-    at phase 1's grade forever. So on a SECOND pass through this step — after
-    step 14 already delivered once and named episodes in a `reprocessed` list
-    — do not trust a bare `probe grade` baseline on one of those episode
-    indices; it will show the pre-retry grade, not what shipped. Separately:
-    `deliver` (step 14) hard-refuses a reel whose declared vignette/fade did
+    probe again, and only re-render the episode once it converges. `probe
+    grade`'s baseline is faithful to what was actually rendered **by
+    construction** (design 2026-08-29, colour-convergence-retire §3): there is
+    no reel-level colour correction left anywhere — not on `deliver`, not
+    inside `build_reel`'s retry loop — that could make a baseline stale, so the
+    same baseline is just as trustworthy on a SECOND pass through this step
+    (after step 14 already delivered once and named episodes in a
+    `reprocessed` list) as on the first. Separately: `deliver` (step 14)
+    hard-refuses a reel whose declared vignette/fade did
     not reach the delivered pixels (design 2026-08-15 §7 — a declared titles
     track has no pixel check yet, only a `not-checked` finding) — that failure
     is a broken look chain (a filter silently dropped from the encode), never
@@ -371,14 +368,19 @@ say so rather than guessing a path.
        `EPISODES.json` points, so `check_reel` finds the picture fixed, nothing
        reprocesses, and the reel delivers with an empty `reprocessed` list.
 
-    **Do NOT re-run phase 1 to clear this stop.** `build_reel`'s compounded
-    per-channel colour factor lives ONLY in the clip bytes on disk — not on
-    `Manifest`, not on `PathMeta`, not in `EPISODES.json` — so
-    `--stop-after-episodes` re-renders every episode from the manifest and
-    silently discards the correction the retry loop just converged on, putting
-    the reel back where it started (design 2026-08-18 §4.1). It is the same
-    unpersisted factor the `probe grade` note in step 13 warns about, biting a
-    second consumer.
+    **Do NOT re-run phase 1 to clear this stop.** The reason this was first
+    written for — `build_reel`'s compounded per-channel colour factor living
+    only in the clip bytes on disk (design 2026-08-18 §4.1) — is gone along
+    with the colour retry loop itself (design 2026-08-29,
+    colour-convergence-retire): there is no unpersisted correction left for a
+    fresh phase 1 to discard. The instruction still holds, on a plainer
+    ground: `--stop-after-episodes` re-renders **every** episode from the
+    manifest, not only the one this stop names, so it pays the full
+    N-episode render cost again and invalidates every OTHER episode's
+    still-good QC verdict along with the stale one — exactly the waste the
+    remedy above (steps 1-4, re-judge the named indices only) exists to avoid.
+    Use that remedy; reach for phase 1 only when you are already re-cutting
+    the EDL for other reasons.
 
     A delivered reel's `reprocessed` list is therefore always empty on this
     path; if one ever comes back non-empty, something bypassed the refusal —
@@ -403,10 +405,10 @@ say so rather than guessing a path.
     never fixed forward; route it to the culprit stage's skill.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
-    that judges the reel against `SPEC` (idea/mood/hook/ending/spine) and writes
+    that judges the reel against `SPEC` (idea/mood/hook/ending/spine/colour) and writes
     `REVIEW.json` + `REVIEW.md`; present `REVIEW.md` alongside the reel and the
     `check_reel` report. For each finding the user chooses to act on, re-run the
-    routed stage (`edit-plan`/`pacing`/`music`/`titles`) — never fix the reel
+    routed stage (`edit-plan`/`pacing`/`music`/`titles`/`match-grade`) — never fix the reel
     forward — then re-review the new cut. reel-review is **required**, not optional
     (§5.13 editorial half, design 2026-08-04 §8) — the run is not finished when
     `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run> --reel <reel>`
