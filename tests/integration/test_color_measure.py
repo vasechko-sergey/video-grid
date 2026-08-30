@@ -125,6 +125,40 @@ def test_crop_percentiles_discriminates_at_a_realistic_gap(tmp_path):
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
 
 
+def _pan_episode(tmp_path, left=40, right=220):
+    """(src, manifest_dict): a 640x360 (16:9) source split left/right, cropped by a
+    9:16 `fill` layout — crop_w = 360*9/16 = 202 against a 640-wide source, so
+    freedom (640-202=438px) exists for generate_pan_path to travel across (design
+    2026-07-19 §4). `pan` replaces the route: reframe.plan_render's pan branch
+    GENERATES the path and never reads route_path (design §2.1)."""
+    src = tmp_path / "pan_src.mp4"
+    proc.run([ffbin.ffmpeg(), "-y",
+              "-f", "lavfi", "-i", f"color=c=0x{left:02x}{left:02x}{left:02x}:s=320x360:d=2:r=30",
+              "-f", "lavfi", "-i", f"color=c=0x{right:02x}{right:02x}{right:02x}:s=320x360:d=2:r=30",
+              "-filter_complex", "hstack=inputs=2", "-frames:v", "60",
+              "-pix_fmt", "yuv420p", "-color_range", "tv", str(src)])
+    md = {"segment": str(src), "out_path": "ep.mp4", "composition": "center",
+          "grid": "thirds", "canvas": [9, 16], "target_dur": 2.0,
+          "pan": {"from": 0.0, "to": 1.0}}
+    return str(src), md
+
+
+def test_measure_crop_works_on_a_pan_episode(tmp_path):
+    """A pan episode's route is legitimately None (design 2026-07-19): reframe.
+    plan_render GENERATES the crop path instead of reading one. match_grade's
+    conductor measures every EDL episode's crop, so a pan riding the reel must
+    not crash the whole stage — nothing exercised measure_crop(route=None) before
+    this (design 2026-08-30 task 4).
+
+    The two bands are far enough apart (40 vs 220) that a crop sweeping across
+    the boundary over the clip's 2s reads BOTH — proof this went through the
+    generated pan path and actually sampled moving content, not a frozen crop
+    that happened not to crash."""
+    src, md = _pan_episode(tmp_path)
+    p5, p50, p95 = color_measure.measure_crop(md, src, None)
+    assert p5 < 100 and p95 > 160, f"expected the pan to cross both bands, got {(p5, p50, p95)}"
+
+
 def test_percentiles_from_gray_refuses_a_short_buffer_the_old_check_missed():
     """60x60 makes w*h (3600) divisible by 3, so the OLD `len(raw) % want` guard
     would have silently accepted two frames' worth of bytes while three were

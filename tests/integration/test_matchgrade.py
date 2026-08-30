@@ -1,5 +1,6 @@
 """Real-ffmpeg proof of the conductor: two clips of different exposure, each with tonal
 range, converge toward the median target once the authored tone_arg curve is rendered."""
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from scripts import match_grade
 from scripts.color_measure import measure_profile
 from scripts.lib import color, ffbin, matchgrade, moodpreset, proc
 from scripts.lib.edl import EDL, EDLEpisode
+from scripts.lib.models import EpisodeGeometry, ReelGeometry
 
 pytestmark = pytest.mark.integration
 
@@ -36,12 +38,34 @@ def _graded_profile(clip, src, dst, out):
     return measure_profile(str(out))
 
 
+def _whole_frame_geometry(tmp_path, sources, dur):
+    """A GEOMETRY.json-shaped fixture whose crop IS the whole frame: canvas [4, 3]
+    matches _three_band's own 320x240 aspect exactly, so a `fill` layout's freedom is
+    0 and measure_crop reads the identical pixels measure_profile does (design
+    2026-08-30 §1 pattern, mirroring tests/integration/test_color_measure.py's
+    _banded_episode). This test's business is the REAL tone_arg curve converging real
+    footage once conduct measures the crop, not the crop-vs-frame discrimination
+    itself (test_color_measure.py owns that)."""
+    eps = []
+    for i, src in enumerate(sources):
+        route = [dict(t=0.0, x=160.0, y=120.0, w=10.0, h=10.0),
+                 dict(t=dur, x=160.0, y=120.0, w=10.0, h=10.0)]
+        route_path = tmp_path / f"route{i}.json"
+        route_path.write_text(json.dumps(route))
+        manifest = {"segment": str(src), "out_path": f"ep{i}.mp4", "composition": "center",
+                    "grid": "thirds", "canvas": [4, 3], "target_dur": dur}
+        eps.append(EpisodeGeometry(manifest=manifest, route=str(route_path),
+                                   source=str(src), project_dir=str(tmp_path / f"p{i}")))
+    return ReelGeometry(episodes=tuple(eps), edl=str(tmp_path / "EDL.json"))
+
+
 def test_authored_tone_converges_two_exposures(tmp_path):
     dark = _three_band(tmp_path / "d.mp4", "0x101010", "0x404040", "0x808080")
     bright = _three_band(tmp_path / "b.mp4", "0x505050", "0xA0A0A0", "0xE0E0E0")
     edl = EDL(episodes=(_ep("d.mp4"), _ep("b.mp4")))
+    geo = _whole_frame_geometry(tmp_path, [dark, bright], dur=2.0)
 
-    out, target, decisions, _ = match_grade.conduct(edl, str(tmp_path))
+    out, target, decisions, _ = match_grade.conduct(geo, edl)
     assert all(d.action == "author" for d in decisions)   # both deviate from the median
 
     p_dark, p_bright = measure_profile(str(dark)), measure_profile(str(bright))
