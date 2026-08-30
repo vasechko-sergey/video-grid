@@ -52,19 +52,27 @@ def _select(times: list[float], fps: float) -> str:
     return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
 
 
-def _percentiles_from_gray(raw: bytes, want: int, where: str) -> tuple[float, float, float]:
+def _percentiles_from_gray(raw: bytes, want: int, w: int, h: int,
+                           where: str) -> tuple[float, float, float]:
     """(p5, p50, p95) of a pooled gray rawvideo buffer — the ONE ruler.
 
     Pooled, not averaged per frame: the three frames describe one distribution,
-    which is what a tone profile is. `want` frames are demanded so a select that
-    silently returned fewer fails here instead of reporting a profile of whatever
-    arrived (§12's select landmine, in the form it takes when nothing crashes)."""
+    which is what a tone profile is. Checked against `want * w * h` bytes EXACTLY,
+    not merely divisibility by `want`: a divisibility-only check is vacuous at
+    production frame sizes — 1920x1080 and 1080x1920 both have frame_bytes % 3 == 0,
+    so for want=3 (the only value FRAMES takes) a select that silently returned 1,
+    2, 4 or 7 frames instead of 3 would still pass it. Only the exact byte count
+    catches the §12 select landmine this guard exists for, in the form it takes
+    when nothing crashes."""
     if not raw:
         raise RuntimeError(f"{where}: ffmpeg decoded no frames")
-    if len(raw) % want:
-        raise RuntimeError(f"{where}: {len(raw)} bytes is not divisible by the "
-                           f"{want} frames requested — a frame is missing or "
-                           f"duplicated; check the select expression's position")
+    frame_bytes = w * h
+    if len(raw) != want * frame_bytes:
+        got = len(raw) / frame_bytes if frame_bytes else float("nan")
+        raise RuntimeError(
+            f"{where}: asked for {want} frames of {w}x{h} gray ({want * frame_bytes} "
+            f"bytes), got {len(raw)} bytes ({got:g} frames) — a frame is missing or "
+            f"duplicated; check the select expression's position")
     hist = np.bincount(np.frombuffer(raw, dtype=np.uint8), minlength=256)[:256]
     return color.percentiles([int(c) for c in hist])
 
@@ -76,7 +84,8 @@ def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float
                     "-vf", f"{_select(times, info.fps)},format=gray",
                     "-vsync", "0", "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
-    return _percentiles_from_gray(out, len(times), f"clip_percentiles({clip})")
+    return _percentiles_from_gray(out, len(times), info.w, info.h,
+                                  f"clip_percentiles({clip})")
 
 
 def crop_percentiles(plan: "reframe.RenderPlan", src: str,
@@ -90,7 +99,8 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
                     "-t", f"{plan.dur:.6f}", "-vsync", "0",
                     "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
-    return _percentiles_from_gray(out, len(times), f"crop_percentiles({src})")
+    return _percentiles_from_gray(out, len(times), plan.rl.out_w, plan.rl.out_h,
+                                  f"crop_percentiles({src})")
 
 
 def plan_ungraded(manifest_dict: dict, src: str,

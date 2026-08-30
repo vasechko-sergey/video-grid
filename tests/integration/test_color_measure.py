@@ -56,21 +56,27 @@ def _two_band_clip(tmp_path, dark=40, bright=200):
     return clip
 
 
-def _banded_episode(tmp_path):
-    """(src, manifest_dict, route_json): a 640x1280 source stacking a blown-out
-    band over a mid-grey one, plus a minimal `fill` episode at a 1:1 canvas whose
-    route sits in the bottom (mid-grey) band.
+def _banded_episode(tmp_path, top=240, bottom=100):
+    """(src, manifest_dict, route_json): a 640x1280 source stacking a bright
+    band over a darker one, plus a minimal `fill` episode at a 1:1 canvas whose
+    route sits in the bottom (darker) band.
 
     layout `fill` + crop_aspect "canvas" (fill's own default) + canvas [1, 1] crops
     the largest SQUARE that fits the 640x1280 source — 640x640 — and geometry.crop_y
     places it against the route's mean y. A route pinned at y=960 (the bottom
     band's own centre) lands the crop at y=640..1280 exactly: the top band is
     excluded, not merely down-weighted, which is what makes the two readings
-    (whole frame vs. crop) disagree by more than a resampling nudge."""
+    (whole frame vs. crop) disagree.
+
+    Defaults (240/100) are the design's own dramatic case — the top band blown
+    out, the bottom mid-grey. A caller can pass a smaller, realistic gap (e.g.
+    top=120, bottom=100 — near the 14-unit median and 36-unit maximum the design
+    measured against real footage) to prove the discrimination survives at
+    production scale, not only at a 35x margin."""
     src = tmp_path / "banded.mp4"
     proc.run([ffbin.ffmpeg(), "-y",
-              "-f", "lavfi", "-i", "color=c=0xF0F0F0:s=640x640:d=2:r=30",   # top: blown out
-              "-f", "lavfi", "-i", "color=c=0x646464:s=640x640:d=2:r=30",   # bottom: mid-grey
+              "-f", "lavfi", "-i", f"color=c=0x{top:02x}{top:02x}{top:02x}:s=640x640:d=2:r=30",
+              "-f", "lavfi", "-i", f"color=c=0x{bottom:02x}{bottom:02x}{bottom:02x}:s=640x640:d=2:r=30",
               "-filter_complex", "vstack=inputs=2", "-frames:v", "60",
               "-pix_fmt", "yuv420p", "-color_range", "tv", str(src)])
     md = {"segment": str(src), "out_path": "ep.mp4", "composition": "center",
@@ -93,11 +99,41 @@ def test_crop_percentiles_reads_the_crop_not_the_frame(tmp_path):
     """The design's §0.1 finding, as a test: a frame whose TOP half is blown out
     and whose bottom half is mid-grey reads very differently once the crop
     excludes the top. If these ever agree, the measuring path has stopped going
-    through the render plan."""
+    through the render plan.
+
+    Asserts the crop's exact value too (whole-object assert, docs/testing-guide.md):
+    a bare `> MATCH_EPS` diff alone cannot tell "excludes the top band" from "reads
+    the wrong band" — a sign flip in geometry.crop_y that read the TOP band instead
+    would show the same ~140-unit difference and pass a diff-only assertion."""
     src, md, route = _banded_episode(tmp_path)                # helper below
     whole = color_measure.measure_profile(str(src), at=0.5)
     crop = color_measure.measure_crop(md, str(src), str(route))
+    assert crop == pytest.approx((100.0, 100.0, 100.0))
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
+
+
+def test_crop_percentiles_discriminates_at_a_realistic_gap(tmp_path):
+    """The design measured a 14-unit median and 36-unit maximum gap between the
+    whole-frame and crop readings on real footage — a test that only passes at the
+    240/100 fixture's 35x margin does not exercise the threshold that actually
+    matters in production. 20 units, near that median, is not a margin any
+    resampling or codec noise could manufacture by accident."""
+    src, md, route = _banded_episode(tmp_path, top=120, bottom=100)
+    whole = color_measure.measure_profile(str(src), at=0.5)
+    crop = color_measure.measure_crop(md, str(src), str(route))
+    assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
+
+
+def test_percentiles_from_gray_refuses_a_short_buffer_the_old_check_missed():
+    """60x60 makes w*h (3600) divisible by 3, so the OLD `len(raw) % want` guard
+    would have silently accepted two frames' worth of bytes while three were
+    asked for — exactly the failure mode production frame sizes (1920x1080,
+    1080x1920: frame_bytes % 3 == 0 for both) hit for want=3. The new guard checks
+    the byte count against want*w*h exactly, so a short buffer is caught here
+    regardless of whether it happens to be divisible by the frame count."""
+    raw = bytes(60 * 60 * 2)          # two frames' worth, not the three asked for
+    with pytest.raises(RuntimeError, match="asked for 3"):
+        color_measure._percentiles_from_gray(raw, 3, 60, 60, "test")
 
 
 def test_sample_times_never_touches_the_ends():
