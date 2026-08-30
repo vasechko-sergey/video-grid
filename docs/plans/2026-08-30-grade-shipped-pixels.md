@@ -190,19 +190,31 @@ def _select(times: list[float], fps: float) -> str:
     return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
 
 
-def _percentiles_from_gray(raw: bytes, want: int, where: str) -> tuple[float, float, float]:
+def _percentiles_from_gray(raw: bytes, want: int, dims: tuple[int, int],
+                           where: str) -> tuple[float, float, float]:
     """(p5, p50, p95) of a pooled gray rawvideo buffer — the ONE ruler.
 
     Pooled, not averaged per frame: the three frames describe one distribution,
-    which is what a tone profile is. `want` frames are demanded so a select that
-    silently returned fewer fails here instead of reporting a profile of whatever
-    arrived (§12's select landmine, in the form it takes when nothing crashes)."""
+    which is what a tone profile is. Exactly `want` frames are demanded so a select
+    that silently returned fewer fails here instead of reporting a profile of
+    whatever arrived (§12's select landmine, in the form it takes when nothing
+    crashes).
+
+    The count is checked against the frame SIZE, not by divisibility. `len(raw) %
+    want` reads as a frame-count check and is not one: len(raw) is always
+    N_actual * frame_bytes, so whenever frame_bytes divides `want` the test passes
+    for every N_actual — and at want=3 a 1920x1080 frame, this project's own
+    default delivery, does exactly that. Both callers hold the real dimensions
+    (StreamInfo.w/h; ResolvedLayout.out_w/out_h), so the exact check is free."""
     if not raw:
         raise RuntimeError(f"{where}: ffmpeg decoded no frames")
-    if len(raw) % want:
-        raise RuntimeError(f"{where}: {len(raw)} bytes is not divisible by the "
-                           f"{want} frames requested — a frame is missing or "
-                           f"duplicated; check the select expression's position")
+    w, h = dims
+    got, rem = divmod(len(raw), w * h)
+    if got != want or rem:
+        raise RuntimeError(f"{where}: asked for {want} frames and got {got}"
+                           f"{' plus a partial frame' if rem else ''} at {w}x{h} — "
+                           f"a frame is missing or duplicated; check the select "
+                           f"expression sits at the END of the chain, after any fps=")
     hist = np.bincount(np.frombuffer(raw, dtype=np.uint8), minlength=256)[:256]
     return color.percentiles([int(c) for c in hist])
 
@@ -214,7 +226,8 @@ def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float
                     "-vf", f"{_select(times, info.fps)},format=gray",
                     "-vsync", "0", "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
-    return _percentiles_from_gray(out, len(times), f"clip_percentiles({clip})")
+    return _percentiles_from_gray(out, len(times), (info.w, info.h),
+                                  f"clip_percentiles({clip})")
 
 
 def crop_percentiles(plan: "reframe.RenderPlan", src: str,
@@ -228,7 +241,9 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
                     "-t", f"{plan.dur:.6f}", "-vsync", "0",
                     "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
-    return _percentiles_from_gray(out, len(times), f"crop_percentiles({src})")
+    return _percentiles_from_gray(out, len(times),
+                                  (plan.rl.out_w, plan.rl.out_h),
+                                  f"crop_percentiles({src})")
 
 
 def plan_ungraded(manifest_dict: dict, src: str,
@@ -1129,7 +1144,7 @@ should move** — nothing in this slice changes an existing render's pixels.
 |---|---|---|
 | 1 | `measure_crop` reads `measure_profile(src)` instead of the plan | Task 0 crop-vs-frame |
 | 2 | `strip_colour` returns `md` unchanged | Task 3 cut guard (and Task 0's measure) |
-| 3 | `_percentiles_from_gray` drops the `len(raw) % want` check | a new test feeding a short buffer |
+| 3 | `_percentiles_from_gray`'s exact size check becomes `len(raw) % want` | the short-buffer test at dims divisible by `want` |
 | 4 | `crop_percentiles` uses `plan.filter_args` + a leading `select` instead of `with_tail` | Proof 7 (one frame three times) |
 | 5 | the stabilize refusal loses `and prepared_source is None` | Task 2 |
 | 6 | `elif m.stabilize` → `if m.stabilize` | Task 2 |
