@@ -111,11 +111,13 @@ def test_the_probes_frames_are_the_frames_the_render_ships_under_stabilize(tmp_p
     report = probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / "probe_out"))
 
     assert report["source"] == stabilized
-    for p5, p50, p95 in report["tone"]:
-        assert p50 > 150, (
-            f"probe reported p50={p50}, which reads as raw.mp4's dark content (~32) "
-            f"rather than stabilized.mp4's bright one (~224) — probe_grade rendered "
-            f"md['segment'] instead of source_for()'s output")
+    p5, p50, p95 = report["tone_profile"]      # one pooled reading for the episode
+                                               # (design 2026-08-30 §4/§0.5), not a
+                                               # list of per-frame readings
+    assert p50 > 150, (
+        f"probe reported p50={p50}, which reads as raw.mp4's dark content (~32) "
+        f"rather than stabilized.mp4's bright one (~224) — probe_grade rendered "
+        f"md['segment'] instead of source_for()'s output")
 
 
 def test_a_select_ahead_of_the_tail_collapses_to_one_frame(tmp_path):

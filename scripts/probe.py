@@ -20,15 +20,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from scripts import process_episode, reframe
-from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
+from scripts import color_measure, process_episode, reframe
+from scripts.lib import (assembly, edl as edl_lib, ffbin, lookcheck,
                          naturalness, orchestration as orch, proc, provenance, sheet)
 from scripts.lib.edl import EDL
 from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS, Manifest
-from scripts.lib.models import CropPath, Delivery, PathMeta, ReelManifest
+from scripts.lib.models import CropPath, Delivery, PathMeta, ReelGeometry, ReelManifest
 
-FRAMES = 3          # start / middle / end of the window, at (i+0.5)/N — never the
-                    # first or last frame, which a dip or a bookend can own
+# FRAMES/sample_times live in color_measure now (design 2026-08-30 §0.4) — a probe
+# defining its own FRAMES would be a second constant that must agree with the
+# conductor's and the gate's, which is exactly the drift this slice removes.
 
 
 def source_for(md: dict, epdir: Path | str) -> str:
@@ -151,18 +152,20 @@ def _refuse_on_drift(plan: reframe.RenderPlan, path_json: str, meta_json: str) -
             f"show a frame this episode never produced. Re-render it first")
 
 
-def _tone(f: np.ndarray) -> tuple[float, float, float]:
-    """(p5, p50, p95) luma — the same three anchors ReframeSpec.tone_src/tone_dst speak
-    in, so a probe reading drops straight into an EDL pair.
+def _plan_for(md: dict, src: str, route: str | None) -> reframe.RenderPlan:
+    """The RenderPlan for `md` — graded or stripped, whichever the caller handed in.
 
-    Computed in numpy from RGB with the BT.601 weights, where color_measure gets its
-    histogram from ffmpeg's `format=gray`. The two can differ by a code or so on the
-    same frame; both feed the same three anchors, and a tone pair is authored in whole
-    codes.
+    Shared by probe_grade and probe_grade_geometry so the Manifest -> ReframeSpec ->
+    RenderPlan chain is written once: build_reframe_spec's own docstring names exactly
+    this risk ("a probe carrying its own copy of this mapping would drift field by
+    field"), and two copies of the chain ONE LEVEL UP is the same risk again.
     """
-    luma = 0.299 * f[:, :, 0] + 0.587 * f[:, :, 1] + 0.114 * f[:, :, 2]
-    hist = np.bincount(luma.astype(np.uint8).ravel(), minlength=256)[:256]
-    return color.percentiles([int(c) for c in hist])
+    m = Manifest.from_dict(md)
+    params = dict(orch.DEFAULT_PARAMS)
+    if m.smooth_window_s is not None:
+        params["smooth_window_s"] = m.smooth_window_s
+    spec = process_episode.build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
+    return reframe.plan_render(spec, src, route)
 
 
 def _render(plan: reframe.RenderPlan, src: str, times: list[float],
@@ -191,7 +194,7 @@ def _render(plan: reframe.RenderPlan, src: str, times: list[float],
 
 
 def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
-                out_dir: str | None = None, frames: int = FRAMES) -> dict:
+                out_dir: str | None = None, frames: int = color_measure.FRAMES) -> dict:
     """Render and measure `frames` frames of episode `index`. Returns the report dict
     it also writes to probe.json, beside a probe.jpg of the frames themselves.
 
@@ -213,33 +216,94 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     md = dict(ep.manifest)
     if edl_path is not None:
         md = regrade(md, edl_path, index)
-    m = Manifest.from_dict(md)
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
-    spec = process_episode.build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
     src = source_for(md, epdir)
-    plan = reframe.plan_render(spec, src, ep.route)
+    plan = _plan_for(md, src, ep.route)
     _refuse_on_drift(plan, ep.path, ep.meta)
 
     d = Path(out_dir) if out_dir is not None else epdir / "probe"
-    times = [((i + 0.5) / frames) * plan.dur for i in range(frames)]
+    times = color_measure.sample_times(plan.dur, frames)
     imgs = _render(plan, src, times, d)
     stats = naturalness.measure(imgs)
+    tone = color_measure.crop_percentiles(plan, src, times)
     report = {
         "episode": index, "episodes": episodes_path, "edl": edl_path,
         "source": src, "frames": len(imgs),
         "times": [round(t, 3) for t in times],
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
-        "tone": [[round(v, 1) for v in _tone(f)] for f in imgs],
+        "tone_profile": [round(v, 1) for v in tone],
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
     }
     (d / "probe.json").write_text(json.dumps(report, indent=2))
-    cells = [sheet.Cell(image=f,
-                        lines=(f"t={t:.2f}s",
-                               "p5/p50/p95 " + "/".join(f"{v:.0f}" for v in tone)))
-             for f, t, tone in zip(imgs, times, report["tone"])]
+    cells = [sheet.Cell(image=f, lines=(f"t={t:.2f}s",)) for f, t in zip(imgs, times)]
+    sheet.tile(cells).save(str(d / "probe.jpg"), quality=90)
+    return report
+
+
+def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None = None,
+                         frames: int = color_measure.FRAMES) -> dict:
+    """Render and measure `frames` frames of episode `index` from GEOMETRY.json —
+    edl_to_reel --stop-after-geometry's output — before any episode has EVER been
+    encoded. Returns the report dict it also writes to probe.json, beside a probe.jpg.
+
+    R3.1's "draft 2" (design 2026-08-30 §4): a stage taking source + route + colour
+    block and emitting stills, so a grade converges in seconds instead of a reel per
+    attempt. Two differences from probe_grade:
+
+    There is no "grade that was rendered" to fall back to, because nothing has
+    rendered yet — so unlike probe_grade's OPTIONAL `edl_path`, this ALWAYS applies
+    the EDL's CURRENT colour block, through the same `regrade` probe_grade uses,
+    reading `geo.edl` VERBATIM (never resolve()d — the rest of the pipeline reads it
+    the same way, and tests pin that). The `md["segment"]`/`md["out_path"]` regrade
+    needs to rebuild the fresh manifest come from `eg.manifest`: build_geometry stores
+    it colour-STRIPPED, but segment/out_path are not colour fields and survive the
+    strip untouched.
+
+    And there is no `_refuse_on_drift`: that oracle exists to catch the recomputed
+    geometry disagreeing with a FROZEN path.json/path.meta.json, and neither sidecar
+    exists yet — the plan IS the source of truth before an encode. The report SAYS so
+    (`drift_checked: False`) rather than silently omitting the check; the `--episodes`
+    mode keeps the oracle.
+
+    `source` is `EpisodeGeometry.source` — the file reframe will actually consume —
+    rather than `source_for`'s filename inference, which has nothing on disk to infer
+    from before process_episode has ever run this episode.
+
+    A pan episode (`eg.route is None`) is not special-cased: `_plan_for` generates its
+    path exactly as a real render would (design 2026-08-30 plan, Task 4 proved this
+    with real ffmpeg against `measure_crop`).
+    """
+    if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
+        raise ValueError(f"probe: frames must be an integer >= 1, got {frames!r}")
+    geo = ReelGeometry.from_json(geometry_path)
+    if not 0 <= index < len(geo.episodes):
+        raise IndexError(f"{geometry_path} has {len(geo.episodes)} episodes; index "
+                         f"{index} is out of range. The index is the episode's "
+                         f"position in BOTH GEOMETRY.json and the EDL it names "
+                         f"({geo.edl}) — pick an index in [0, {len(geo.episodes)})")
+    eg = geo.episodes[index]
+    md = regrade(dict(eg.manifest), geo.edl, index)
+    plan = _plan_for(md, eg.source, eg.route)
+
+    d = Path(out_dir) if out_dir is not None else Path(eg.project_dir) / "probe"
+    times = color_measure.sample_times(plan.dur, frames)
+    imgs = _render(plan, eg.source, times, d)
+    stats = naturalness.measure(imgs)
+    tone = color_measure.crop_percentiles(plan, eg.source, times)
+    report = {
+        "episode": index, "geometry": geometry_path, "edl": geo.edl,
+        "source": eg.source, "frames": len(imgs),
+        "times": [round(t, 3) for t in times],
+        "grade": plan.grade,
+        "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
+        "tone_profile": [round(v, 1) for v in tone],
+        "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
+        "drift_checked": False,     # there is no path.json yet: the plan IS the
+                                    # source of truth before the encode. The
+                                    # --episodes mode keeps the oracle.
+    }
+    (d / "probe.json").write_text(json.dumps(report, indent=2))
+    cells = [sheet.Cell(image=f, lines=(f"t={t:.2f}s",)) for f, t in zip(imgs, times)]
     sheet.tile(cells).save(str(d / "probe.jpg"), quality=90)
     return report
 
@@ -277,14 +341,23 @@ def main() -> None:
 
     g = sub.add_parser("grade", help="render+measure N frames of one episode over its "
                                      "frozen route")
-    g.add_argument("--episodes", required=True, help="EPISODES.json from "
-                                                     "edl_to_reel --stop-after-episodes")
+    mode = g.add_mutually_exclusive_group()
+    mode.add_argument("--episodes", default=None, help="EPISODES.json from "
+                                                       "edl_to_reel --stop-after-episodes "
+                                                       "— the grade that WAS rendered")
+    mode.add_argument("--geometry", default=None, help="GEOMETRY.json from edl_to_reel "
+                                                       "--stop-after-geometry — renders "
+                                                       "before any episode is ever "
+                                                       "encoded, always on the EDL's "
+                                                       "CURRENT colour block (the EDL "
+                                                       "itself is the file GEOMETRY.json "
+                                                       "names, not a separate flag)")
     g.add_argument("--index", type=int, required=True)
-    g.add_argument("--edl", default=None, help="take the colour block from this "
-                                               "(edited) EDL.json instead of the "
-                                               "grade that was rendered")
+    g.add_argument("--edl", default=None, help="--episodes only: take the colour block "
+                                               "from this (edited) EDL.json instead of "
+                                               "the grade that was rendered")
     g.add_argument("--out-dir", default=None, help="default: <epdir>/probe")
-    g.add_argument("--frames", type=int, default=FRAMES)
+    g.add_argument("--frames", type=int, default=color_measure.FRAMES)
 
     lk = sub.add_parser("look", help="re-check a delivered reel against its master")
     lk.add_argument("master")
@@ -295,8 +368,22 @@ def main() -> None:
 
     a = ap.parse_args()
     if a.cmd == "grade":
-        r = probe_grade(a.episodes, a.index, edl_path=a.edl, out_dir=a.out_dir,
-                        frames=a.frames)
+        if not a.episodes and not a.geometry:
+            ap.error("grade needs exactly one of --episodes or --geometry: --episodes "
+                     "reads the grade that WAS rendered (edl_to_reel "
+                     "--stop-after-episodes); --geometry renders before any episode is "
+                     "ever encoded (edl_to_reel --stop-after-geometry)")
+        if a.geometry and a.edl:
+            ap.error("--edl has no effect with --geometry: geometry mode always applies "
+                     "the EDL's CURRENT colour block, read from the path GEOMETRY.json "
+                     "itself names — there is no 'grade that was rendered' to fall back "
+                     "to, because nothing has been encoded yet")
+        if a.geometry:
+            r = probe_grade_geometry(a.geometry, a.index, out_dir=a.out_dir,
+                                     frames=a.frames)
+        else:
+            r = probe_grade(a.episodes, a.index, edl_path=a.edl, out_dir=a.out_dir,
+                            frames=a.frames)
         print(json.dumps(r, indent=2))
     else:
         print(json.dumps(probe_look(a.master, a.delivered, vignette=a.vignette,
