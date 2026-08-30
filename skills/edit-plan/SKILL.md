@@ -302,6 +302,17 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `--stop-after-geometry` as the remedy, because a moved cut needs a fresh
    route, not just a fresh grade.
 
+   **Re-run `match_grade build --geometry ...` after every rebuild — always,
+   not only when the edit should feed back into the common target.**
+   `edit_plan build` projects the EDL from `selection.json` alone, so a
+   rebuild drops **both** the per-episode `tone_src`/`tone_dst` match-grade
+   authored **and `EDL.tone_target`** (measured: both come back `None`). The
+   pairs going means the reel is genuinely ungraded, and the target going
+   means nothing says so — `check_reel`'s blocking `tone_match` reports
+   `not-checked: no-target` with `passed: null`, which never blocks, while
+   `MATCH.md` survives on disk and `montage status` still reads match-grade
+   as done. Skip the re-run and the gate examines zero pixels.
+
    This is also simpler than the post-render path below: once satisfied,
    `edl_to_reel --from-geometry` renders directly off the converged
    `EDL.json` — no manual manifest patch, because nothing was ever rendered
@@ -355,7 +366,13 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `selection.json` does **not** carry that pair forward — the projection reads
    `selection.json` only, so match-grade's result is silently gone from the new
    `EDL.json` unless you copy the pair into `selection.json` yourself or re-run
-   **match-grade** again after converging.
+   **match-grade** again after converging. **`EDL.tone_target` goes with it**,
+   and that is the half that hides the first: without a target `check_reel`'s
+   blocking `tone_match` reports `not-checked: no-target` with `passed: null`
+   and never blocks, so an ungraded reel passes the one gate that exists to
+   catch it while `MATCH.md` and `montage status` both still read as done.
+   Re-running **match-grade** after the last rebuild is what closes it, every
+   time — not only when the edit should move the common target.
 
    Only when it converges is the full render worth paying for — and re-render
    **that one episode**, never the reel, so the tracker never runs again. There is

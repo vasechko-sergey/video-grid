@@ -67,6 +67,24 @@ _Last updated: 2026-08-30._
   at every code and never collided. Nothing here changes a threshold: whether
   `color_fidelity` should measure damage against identity or against the DECLARED
   transform is a design decision, not a patch.
+  **Fix wave (2026-08-30), whole-branch review — 3 Important + 12 Minor:** a
+  second P1 row (design §9.9) — `tone_match`'s own commuting-percentiles claim
+  holds only while tone is the LAST luma op, and six `color.grade_chain` filters
+  run after it, so a correctly graded episode carrying a legal `black_point`/
+  `highlight`/etc. can fail the blocking gate; pinned by
+  `test_a_black_point_beside_the_tone_pair_misses_the_target_RECORDED_LIMITATION`
+  (tone alone 1.0 off target, `+ black_point=0.05` 13.0 off, on real footage).
+  `EpisodeGeometry.require_inputs` closes the same wiped-build-dir gap in both
+  `match_grade.conduct` and `probe.probe_grade_geometry` with one remedy instead
+  of two bare `CalledProcessError`s. Six Minors: two stale `--stop-after-episodes`
+  CLI help strings now say `--from-geometry` too; `_refuse_on_changed_cut`'s
+  length/type guard widened to reject a non-dict `cuts` entry instead of raising
+  a bare `AttributeError`; `pipeline-map.md`'s stamp and its 5.14 row updated;
+  this doc's own Next-action pointed at the two new P1s; the run-dir-separation
+  design's stale `match_grade`-knows-the-footage-root mention amended.
+  **Full suite: 3321 passed, 1 skipped** (3317 before this wave's four new
+  tests — the `black_point`-beside-tone-pair pin, the two `require_inputs`
+  wiped-build-dir cases, and the malformed-cut-entry regression).
 
 - **Colour-convergence loop retired — R2.6 DONE (2026-08-29)** — design
   [2026-08-29-colour-convergence-retire-design.md](specs/2026-08-29-colour-convergence-retire-design.md),
@@ -4799,6 +4817,22 @@ _Last updated: 2026-08-30._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **Two P1 rows added 2026-08-30 outrank everything below** — `docs/backlog.md`
+> is the only document that holds priority, and its P1 section now opens with a
+> pair the cinematic-quality thread below does not mention: a conductor-authored
+> tone pair is grade movement to `check_episode`'s blocking `color_fidelity`
+> (no waiver anywhere, all eight real-run episodes over its headroom), and
+> `check_reel`'s blocking `tone_match` fails a **correctly graded** episode that
+> carries any post-tone luma knob (`black_point`, `highlight`, a non-default
+> `color_means`, …) because the conductor measures the crop at identity. Both
+> escalate into a loop with no exit — back into the stage that authored the
+> pair on purpose — and neither has a code fix: each names an open design
+> question (measure damage against identity or the declared transform; measure
+> the residual through the chain or exclude post-tone knobs from it), not a
+> patch. See [design](specs/2026-08-30-grade-shipped-pixels-design.md) §9.8/§9.9
+> and the backlog's own two P1 rows. The critical-path narrative below predates
+> this and has not been reordered around it.
 
 - **Cinematic-quality P3 continues — what's left after S3** (synthesis
   `docs/cinematic-quality-playbook.md` §3/§4 priority 3) — S1 (footage

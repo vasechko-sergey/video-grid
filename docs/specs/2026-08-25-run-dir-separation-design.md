@@ -192,10 +192,13 @@ closed.
 Those three write video but take no `--footage-root`, so pointed at the footage
 folder by hand they cannot refuse. Audited: they are the only such stages, and all
 three are driven by `edl_to_reel`, which is guarded — while the stages that DO know
-the footage root but are not guarded (`contact_sheet`, `pacing`, `match_grade`)
-write only `.jpg`, `.json` and `.md`, which intake never reads. So the three
-guarded sites are exact coverage of "knows the footage root and writes a video",
-and this residual is the hand-driven path outside it.
+the footage root but are not guarded (`contact_sheet`, `pacing`) write only `.jpg`,
+`.json` and `.md`, which intake never reads. So the three guarded sites are exact
+coverage of "knows the footage root and writes a video", and this residual is the
+hand-driven path outside it. **Amended 2026-08-30**: `match_grade` dropped out of
+that parenthetical — grade-shipped-pixels made it read `GEOMETRY.json`'s own
+per-episode `source` paths instead of taking a `--footage-root` argument, so it no
+longer belongs to the "knows the footage root" set at all, guarded or not.
 
 **One entry still appears in the footage folder.** `montage/` is the price of
 keeping the run self-contained and the deliverable findable.

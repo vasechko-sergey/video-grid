@@ -446,8 +446,8 @@ same reel.
 | `match_grade` | `--geometry` replaces `--edl` + `--footage-root` (**breaking**) |
 | `probe` | `grade --geometry` alternative to `--episodes` |
 | `color_measure.measure_crop` | new — the crop reading |
-| `color_measure.gray_percentiles` | new — the ruler's one chokepoint |
-| `probe._tone` | deleted; `gray_percentiles` replaces it |
+| `color_measure._percentiles_from_gray` | new — the ruler's one chokepoint |
+| `probe._tone` | deleted; `_percentiles_from_gray` replaces it |
 | `montage.V1_STAGES` | `episodes-geometry` inserted after `pacing`, ahead of `match-grade` |
 | `montage.V1_STAGES` | `match-grade` `optional` → `required` (the router leads through it) |
 
@@ -594,6 +594,113 @@ it, and it stops noticing a transform that is itself wrong. Filed **P1** in
 `docs/backlog.md`; distinct from the P2 visibility row beside it (`probe grade`
 cannot predict this gate), which is about seeing the stop coming, not about the
 deadlock once it arrives.
+
+### §9.9 The gate's own justification is conditional, and a legal knob breaks it
+
+`_tone_match_check` was written on the claim that percentiles commute with a
+monotone map, so a graded episode's delivered p5/p50/p95 land on the target **by
+construction**. That is true only while the tone curve is the **last** luma
+operation in the chain, and it is not. `color.grade_chain`'s order is
+
+    wb → tone → black_point → gain → shadow_red → mid_blue → saturation
+       → highlight → highlight_red → dip
+
+— six luma-moving filters after `tone` — while the conductor solves the curve
+against `color_measure.measure_crop`, which plans through `manifest.strip_colour`,
+i.e. with **every** knob at identity. So the curve is fitted to pixels that carry
+none of the post-tone knobs, and each one that moves luma displaces the reading
+this gate takes.
+
+Measured on a 3-band tv-range clip, ungraded `(40, 120, 200)` onto target
+`(52, 103.5, 191.5)`, against `tone_match_max = 12.0`:
+
+| chain | delivered | residual |
+|---|---|---:|
+| tone only | 51 / 102 / 191 | 1.5 |
+| tone + `black_point=0.05` | 40 / 93 / 187 | **12.0** |
+| tone + `black_point=0.10` | 27 / 84 / 183 | **25.0** |
+| tone + `highlight=0.8` | 56 / 107 / 172 | **19.5** |
+| tone + non-default `color_means` | 48 / 98 / 183 | 8.5 |
+| `white_balance=0.6` then tone | 52 / 106 / 192 | 2.5 |
+
+Two knobs are safe, and it is worth saying why: `white_balance` runs **before**
+tone, so the conductor's own measurement already carries it (2.5, the last row);
+`saturation` is `eq=saturation`, a chroma scale that never touches the luma plane.
+The rest — `black_point`, a non-default `color_means`, `shadow_red`, `mid_blue`,
+`highlight`, `highlight_red`, `dip` — all move luma after the curve.
+
+Stated plainly: **a correctly graded episode that carries a second luma knob fails
+a blocking gate.** `black_point ∈ [0, 0.35]` and `highlight ∈ [0.6, 1.0]` are
+documented, in-range, per-episode fields, and `black_point_arg`'s own docstring
+names a real production case for them (DJI's flat profile put the darkest 1% at
+65.7/255 against 23.1 on the telephoto beside it). At `black_point = 0.10` the
+residual of 25.0 is past §0.6's **negative-class minimum of 19.5**, so the two
+classes overlap and the gate cannot separate "the grade never reached the pixels"
+from "the author lifted a toe". The failure escalates to `match-grade`, which
+re-measures at identity and re-authors the identical pair: a second no-exit loop,
+the same shape as §9.8's and by a different mechanism.
+
+**Nothing here changes a threshold**, for the same reason §9.8 changes none — the
+open question is a design decision, not a patch: *should the residual be measured
+**through** the non-tone part of the chain (measure what the episode actually
+renders, at the cost of the gate no longer being a statement about the tone
+transfer alone), or should post-tone luma knobs be **excluded** from it (keep the
+clean claim, at the cost of the gate examining nothing on an episode that carries
+one)?* Filed **P1** in `docs/backlog.md`, cross-referenced to the §9.8 row: two
+different mechanisms reaching the same deadlock.
+
+**Corroborated on real footage, not only on the bands above.** The pin
+`test_a_black_point_beside_the_tone_pair_misses_the_target_RECORDED_LIMITATION`
+(`tests/integration/test_grade_shipped_pixels.py`) runs the whole conductor →
+`--from-geometry` path over the same re-exposed `golden_ride.mp4` every other proof
+in that file uses. Tone alone lands **1.0** from the target; the same episode with
+`black_point = 0.05` added afterwards lands **13.0** — past `MATCH_EPS` (4.0) *and*
+past `tone_match_max` (12.0). So the blocking gate does not merely lose its
+justification on a legal second knob, it fails on one, at the smallest legal lift
+this repo documents. The test asserts against `MATCH_EPS` rather than the gate
+ceiling because 13.0 sits one unit above 12.0 and that margin is too fine to pin.
+It records the limitation; it does not endorse it — when the design question above
+is answered the test should go red and be rewritten, not deleted.
+
+### §9.10 Three places where the seam reads the manifest, not the file
+
+Carried from the per-task reviews and routed here rather than fixed. All three are
+the same shape: phase 1b is handed a `prepared_source`, and the code around it
+still asks the manifest — or the raw segment — what that file is.
+
+1. **The preflight probes the wrong file.** `process_episode` opens with
+   `reframe._probe(m.segment)` and threads `src_w`/`src_h` into the layout
+   preflight, while the pixels that are actually rendered come from `src`, which
+   under `prepared_source` is the stabilized file. They agree today, and by
+   construction: `vidstab.stabilize` runs `crop=keep`, so the dimensions and the
+   frame rate are preserved. But the agreement is a property of the pre-stage, not
+   something this call checks, and the *same* probe's `_fps`/`_dur` are what
+   `vidstab.stabilize` is called with on the non-prepared branch — which is why
+   moving the probe onto `src` is not a one-line change.
+
+2. **`reframe(..., stabilized=m.stabilize)` asks the manifest, not the file.** The
+   flag tells `reframe` whether its input has already been through the pre-stage.
+   Under `prepared_source` the two agree, because the driver only supplies a
+   prepared source for an episode whose manifest declares `stabilize` (§2.3 makes
+   `m.stabilize` staying true a deliberate property, so the reports still say what
+   happened). The honest predicate is nonetheless "was the file I am being handed
+   stabilized", and nothing at this call site can answer it.
+
+3. **A stabilized PAN re-runs its own pre-stage in phase 1b.** `prepared` is gated
+   on the ROUTE as well as on `stabilize` (`render_from_geometry`), because
+   `prepared_source` is refused without `route_path` — and a pan has no route. So a
+   stabilized pan is handed neither half and `process_episode` calls
+   `vidstab.stabilize` again, writing to the same `<project_dir>/stabilized.mp4`
+   the conductor measured its crop through. Two things are worth separating. The
+   **cost is certain**: two extra full-resolution passes per such episode. The
+   **risk is not**: this repo's own claim is that `vidstabtransform` is not
+   bit-reproducible *across runs of a different length*, and a phase-1b re-run is
+   the same segment at the same length, so the second file is probably identical to
+   the first — and even where it is not, the difference is a slightly different warp
+   of the same shot, which a (p5, p50, p95) reading over a whole crop should not
+   see. **Neither half of that has been measured**, and this section does not claim
+   it has. Today the whole case lives as a code comment beside the `prepared` list
+   in `edl_to_reel.py`.
 
 ---
 
