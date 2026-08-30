@@ -269,9 +269,44 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    Two keys are **reel-level** and sit beside `episodes`, never inside one:
    `look` and `variety_waiver`.
 
-   **Converging a grade — do not re-render a reel to look at one episode.** Once
-   `edl_to_reel --stop-after-episodes` has written `<run>/reels/<reel>/episodes/EPISODES.json`, edit
-   the episode's colour fields in **`selection.json`** — never `EDL.json` directly.
+   **Converging a grade before anything is ever rendered (the normal case,
+   design 2026-08-30).** `edl_to_reel --stop-after-geometry` freezes every
+   episode's route into `<run>/reels/<reel>/episodes/GEOMETRY.json` — no
+   `ep{i}.mp4` exists yet, and **match-grade** (its own skill) already read
+   this same file to author a first tone pass. Edit the episode's colour
+   fields in **`selection.json`**, re-run this build (step 3 below — the SAME
+   command with the SAME flags the earlier build used), then probe the
+   freshly-written `EDL.json` straight through the frozen geometry:
+
+       python -m scripts.probe grade --geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
+         --index <N>
+
+   No `--edl`: geometry mode always applies the EDL's CURRENT colour block,
+   read from the path `GEOMETRY.json` itself names, so a rebuild is picked up
+   on the very next probe with nothing else to pass. It writes the same
+   `probe.jpg`/`probe.json` pair described below, with one difference:
+   `probe.json`'s `drift_checked` reads `false`, because there is no rendered
+   file yet for the recomputed plan to be checked against — the plan itself
+   IS the source of truth before an encode. Loop (edit `selection.json`,
+   rebuild, probe) for as long as you like — **nothing is encoded** until
+   `edl_to_reel --from-geometry` runs. The one thing this mode refuses: a real
+   CUT change (a different window, source, or ramp) since the geometry was
+   frozen — `--from-geometry` catches that at render time and names
+   `--stop-after-geometry` as the remedy, because a moved cut needs a fresh
+   route, not just a fresh grade.
+
+   This is also simpler than the post-render path below: once satisfied,
+   `edl_to_reel --from-geometry` renders directly off the converged
+   `EDL.json` — no manual manifest patch, because nothing was ever rendered
+   with the stale grade in the first place.
+
+   **Converging a grade once episodes already exist — do not re-render a reel
+   to look at one episode.** This is the path once
+   `edl_to_reel --from-geometry` (or, driven by hand, `--stop-after-episodes`)
+   has actually written `<run>/reels/<reel>/episodes/EPISODES.json` — mid-loop
+   if you kept going past a render, or because **episode-qc** routed a
+   post-render colour finding back here. Edit the episode's colour fields in
+   **`selection.json`** — never `EDL.json` directly.
    `EDL.json` is stamped (design 2026-08-04): `probe grade --edl` opens it through
    the same `EDL.from_json` that refuses a file whose contents no longer match its
    own stamp, so a hand-edited `EDL.json` is refused on the probe's very first
@@ -294,9 +329,11 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
          --index <N> --edl <run>/reels/<reel>/EDL.json
 
    It writes `<run>/reels/<reel>/build/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
-   (naturalness flags plus p5/p50/p95 per frame, which read straight into a
-   `tone_src`/`tone_dst` pair). Look at the pixels, edit `selection.json`, rebuild,
-   probe again. The probe **refuses** if the recomputed crop path differs from the
+   (naturalness flags plus `tone_profile`, ONE pooled `(p5, p50, p95)` triple
+   across all the probe's frames together — not a reading per frame — which
+   reads straight into a `tone_src`/`tone_dst` pair). Look at the pixels, edit
+   `selection.json`, rebuild, probe again. This `--episodes` mode's probe
+   **refuses** if the recomputed crop path differs from the
    frozen one: that means something other than colour changed (a re-track, a
    retry-adjusted `max_speed`/`smooth_window_s`, a different source file), and its
    frames would not be the frames the next render ships.

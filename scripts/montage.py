@@ -63,9 +63,13 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("pacing", "PACING.md", "optional",
           "pacing SKILL -> pacing CLI (fits the EDL's cuts; edit-plan re-runs with "
           "--pacing to apply)", None, "reel"),
-    Stage("match-grade", "MATCH.md", "optional",
-          "match-grade SKILL -> match_grade build CLI (opt-in; run AFTER pacing settles "
-          "the cut, before deliver)", None, "reel"),
+    Stage("episodes-geometry", "GEOMETRY.json", "required",
+          "edl_to_reel --stop-after-geometry (stabilize, track and gate every "
+          "episode; no encode) — the seam match-grade measures the shipped crop in",
+          None, "episodes"),
+    Stage("match-grade", "MATCH.md", "required",
+          "match-grade SKILL -> match_grade build --geometry (measures each episode's "
+          "own crop; run AFTER episodes-geometry, before the render)", None, "reel"),
     Stage("assemble-draft", "draft.mp4", "optional",
           "draft CLI (optional QA preview)", "edl", "reel"),
     Stage("titles", "TITLES.json", "optional",

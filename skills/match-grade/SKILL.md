@@ -1,6 +1,6 @@
 ---
 name: match-grade
-description: Conveyor stage — the match-grade conductor. Measures every EDL episode's source tone at its window midpoint, computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.md report. using-montage invokes this after pacing (a pacing re-run wipes authored tone) and before edl_to_reel; run it directly only to re-grade. Use for a reel cut from mixed cameras/lighting. Optional — a single-camera reel skips it.
+description: Conveyor stage — the match-grade conductor. Measures every EDL episode's own tracked crop (the pixels that actually ship, read through GEOMETRY.json's frozen route), computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.md report. using-montage invokes this after episodes-geometry (there is no crop to measure before a route is frozen) and before the render; run it directly only to re-grade. Required — the router runs it on every reel, even a single-camera one, since it costs seconds and reports within-eps for free.
 ---
 
 # match-grade (design §10, tone conductor)
@@ -20,31 +20,37 @@ ffmpeg, no numpy).
 
 ## Inputs
 
-- **`EDL.json`** (required, from edit-plan — and from pacing too, if the reel
-  uses music) — the settled cut. match-grade reads it, measures each
-  episode's *source* clip, and rewrites it IN PLACE with the tone pairs it
-  authors.
-- **A footage root** (required) — the directory each episode's `source` path
-  resolves against, the same root every other stage uses.
+- **`GEOMETRY.json`** (required, from `edl_to_reel --stop-after-geometry`) —
+  every episode's frozen route and the crop it will actually ship, colour
+  block stripped. match-grade reads the EDL it names, measures each episode's
+  OWN tracked **crop** through that frozen route — never the whole source
+  frame — and rewrites the EDL IN PLACE with the tone pairs it authors.
 
-Not `SPEC.json`/`MUSIC.json`: match-grade is a pure colour pass over a cut
-that already exists — it invents no timing and reads no editorial brief.
+Not `SPEC.json`/`MUSIC.json` for timing: match-grade is a pure colour pass over
+a cut that already exists — it invents no timing and reads no editorial brief.
 
 ## When to run
 
-AFTER the cut is fully settled — edit-plan, and pacing too when the reel
-carries music — and BEFORE `edl_to_reel`. Only run it when the episodes
-actually come from mixed cameras or mixed lighting; a single-camera reel
-already reads as one grade and needs it not (every episode would land
-`within-eps` and receive no pair). Opt-in, like `white_balance`/`dip`/the SFX
-whoosh: it changes the look, so it never sits on the autonomous path — a
-human chooses to run it.
+AFTER `episodes-geometry` (`edl_to_reel --stop-after-geometry`) has frozen
+every episode's route — there is no crop to measure before a route exists —
+and BEFORE the render (`edl_to_reel --from-geometry`). **Required, not
+opt-in**, since 2026-08-30: the router runs it on every reel, even a
+single-camera one — every episode simply lands `within-eps` and `MATCH.md`
+says so, which costs a few seconds (eight crops in about five seconds on a
+real reel) and is cheaper than a stage nobody is told to run at the moment of
+need being rebuilt by hand instead (design §6, closing the retro's R4.2). It
+still changes nothing on a reel that already reads as one grade: no pair is
+authored unless an episode actually deviates past `--eps`.
 
 **Ordering landmine.** Pacing re-runs edit-plan with `--pacing` to apply its
-fit, and that re-run REGENERATES `EDL.json` from `selection.json` — wiping
-any tone pair match-grade already authored. Always run match-grade AFTER
-pacing, never before it. Same "settle the cut first" rule pacing itself
-carries.
+fit, and that re-run REGENERATES `EDL.json` from `selection.json` — wiping any
+tone pair match-grade already authored, and orphaning the frozen
+`GEOMETRY.json`'s cut identity too (`edl_to_reel --from-geometry` would then
+refuse the changed cut). Always settle the cut — edit-plan, then pacing's
+apply pass — BEFORE running `--stop-after-geometry`, and run match-grade only
+after that. Same "settle the cut first" rule pacing itself carries, now also
+enforced mechanically: a re-cut after freezing the geometry is refused, not
+silently graded.
 
 ## The Process
 
@@ -58,16 +64,21 @@ step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / 
 directory. If that file is missing, the user has not run `bash setup.sh` — stop and
 say so rather than guessing a path.
 
-1. **Recon.** `EDL.json` must already exist and the cut must be settled — this
-   stage runs AFTER edit-plan and, if used, AFTER pacing's apply pass. No
-   `EDL.json` -> run edit-plan first; there is no cut to grade.
+1. **Recon.** `<run>/reels/<reel>/episodes/GEOMETRY.json` must already exist —
+   this stage runs AFTER **episodes-geometry**, which itself needs a settled
+   cut (edit-plan, and pacing's apply pass too, if used). No `GEOMETRY.json`
+   -> run `edl_to_reel --stop-after-geometry` first; there is no frozen route
+   and no crop to measure yet.
 2. **Conduct.**
-   `"$VG" scripts.match_grade build --edl <run>/reels/<reel>/EDL.json --footage-root <footage_root> [--spec <run>/reels/<reel>/SPEC.json] [--eps 4.0] [--force]`
-   Measures every episode's source at its window midpoint, computes the one
-   common target (the per-anchor median across episodes), and rewrites
-   `EDL.json` IN PLACE — `tone_src`/`tone_dst` land on every episode that
-   deviates past `--eps` (default 4 luma units). Also writes a sibling
-   `MATCH.md`.
+   `"$VG" scripts.match_grade build --geometry <run>/reels/<reel>/episodes/GEOMETRY.json [--spec <run>/reels/<reel>/SPEC.json] [--eps 4.0] [--force]`
+   Measures every episode's OWN tracked crop — read through the route
+   `GEOMETRY.json` froze, at colour identity — computes the one common target
+   (the per-anchor median across episodes), and rewrites the EDL
+   `GEOMETRY.json` itself names IN PLACE — `tone_src`/`tone_dst` land on every
+   episode that deviates past `--eps` (default 4 luma units). Also writes a
+   sibling `MATCH.md` beside that EDL. No `--edl` and no `--footage-root`:
+   the geometry file names the EDL, and every episode's source is already an
+   absolute path inside it.
 
    **Pass `--spec` when a brief exists.** Without it the conductor is pure
    consistency: it makes the cameras agree and has no view on what they should
@@ -122,11 +133,22 @@ episode.
 
 ## Honest limit
 
-match-grade measures the WHOLE source frame at the window's midpoint, not the
-shipped crop — it runs before tracking, so there is no crop yet to measure. A
-tight crop on a rider can read a different histogram from the wide frame
-around them. This is the same boundary `color_measure.measure_profile`
-already ships with — the honest MVP, not hidden.
+**Closed 2026-08-30.** match-grade used to measure the WHOLE source frame at
+the window's midpoint, before tracking ever ran — a tight crop on a rider
+could read a different histogram from the wide frame around them. Measured on
+a real 8-episode reel: seven of eight episodes disagreed with a crop-based
+reading by more than `--eps`, median 14 and max 36 luma units, which moved
+five episodes' authored pairs by roughly 10 units each while their p5/p95
+anchors (pinned by sky and specular water) never moved at all. It now measures
+each episode's own tracked crop through `GEOMETRY.json`'s frozen route — the
+pixels that actually ship.
+
+What is still true: **luma only**. The target and every measured profile are
+(p5, p50, p95) of luma — two cameras can still disagree on white balance after
+every episode lands on the same tone target, and nothing here measures
+agreement between episodes (`color_fidelity` compares an episode against its
+OWN source, i.e. damage, never episode against episode). Filed under the
+mood-LUT/agreement gap, design §10.
 
 ## Not this skill
 
@@ -149,5 +171,9 @@ already ships with — the honest MVP, not hidden.
   retired with the check that drove it (2026-08-29) — it optimised a
   different quantity than any gate read. The path now is editorial:
   `reel-review`'s `colour` axis names the episode that drifted, routed back
-  to THIS skill — re-run match-grade (`--force` if the episode already
-  carries a tone pair) and then `edl_to_reel`.
+  to THIS skill — re-run match-grade against the SAME `GEOMETRY.json`
+  (`--force` if the episode already carries a tone pair), then
+  `edl_to_reel --from-geometry` to re-render over the still-frozen routes
+  (never `--stop-after-geometry` again unless the cut itself is changing too
+  — that pays for a full re-track this seam exists to avoid), then episode-qc
+  and deliver again.

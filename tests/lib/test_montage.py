@@ -45,8 +45,8 @@ def test_an_unknown_bucket_is_refused():
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
         "project-init", "footage-intake", "contact-sheet", "reel-brief", "trend-scan",
-        "edit-plan", "music-and-mood", "pacing", "match-grade", "assemble-draft", "titles",
-        "episodes", "episode-qc", "deliver", "reel-review"]
+        "edit-plan", "music-and-mood", "pacing", "episodes-geometry", "match-grade",
+        "assemble-draft", "titles", "episodes", "episode-qc", "deliver", "reel-review"]
 
 
 def test_v1_stages_kinds_and_flags():
@@ -75,10 +75,14 @@ def test_v1_stages_kinds_and_flags():
     assert by["project-init"].checkpoint == "spec"
     assert by["edit-plan"].checkpoint == "edl"
     assert by["deliver"].checkpoint == "final"
-    assert by["match-grade"].kind == "optional"
+    assert by["match-grade"].kind == "required"
     assert by["match-grade"].artifact == "MATCH.md"
     assert by["match-grade"].checkpoint is None
     assert by["match-grade"].bucket == "reel"
+    assert by["episodes-geometry"].kind == "required"
+    assert by["episodes-geometry"].artifact == "GEOMETRY.json"
+    assert by["episodes-geometry"].checkpoint is None
+    assert by["episodes-geometry"].bucket == "episodes"
     assert by["contact-sheet"].kind == "required"
     assert by["contact-sheet"].artifact == "SHEETS.md"
     assert by["contact-sheet"].checkpoint is None
@@ -113,6 +117,7 @@ def test_every_stage_lands_in_the_bucket_the_design_assigns_it():
         "edit-plan": "reel",
         "music-and-mood": "reel",
         "pacing": "reel",
+        "episodes-geometry": "episodes",
         "match-grade": "reel",
         "assemble-draft": "reel",
         "titles": "reel",
@@ -181,13 +186,44 @@ def test_pacing_optional_absent_then_present(tmp_path):
     assert res2["next"] == "edit-plan"
 
 
-def test_match_grade_optional_absent_then_present(tmp_path):
-    _touch(tmp_path, "edit-plan")
+# ---- episodes-geometry / match-grade: both required (design 2026-08-30 §6) ----
+# episodes-geometry freezes the route match-grade measures; match-grade flipped
+# optional -> required so the router no longer walks silently past the only
+# stage that converges colour (design §6, closing the retro's R4.2).
+
+def test_episodes_geometry_required_absent_then_present(tmp_path):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+        _touch(tmp_path, key)
     res = next_action(str(tmp_path))
-    assert _state(res, "match-grade") == "optional"      # absent optional never blocks
+    assert res["next"] == "episodes-geometry"
+    assert _state(res, "episodes-geometry") == "next"      # absent required blocks `next`
+    assert _state(res, "match-grade") == "pending"          # required too, blocked behind it
+    _touch(tmp_path, "episodes-geometry")
+    res2 = next_action(str(tmp_path))
+    assert _state(res2, "episodes-geometry") == "done"
+    assert res2["next"] == "match-grade"
+
+
+def test_match_grade_required_absent_then_present(tmp_path):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry"):
+        _touch(tmp_path, key)
+    res = next_action(str(tmp_path))
+    assert res["next"] == "match-grade"
+    assert _state(res, "match-grade") == "next"             # absent required blocks `next`
     _touch(tmp_path, "match-grade")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "match-grade") == "done"
+    assert res2["next"] == "episodes"
+
+
+def test_episodes_geometry_sits_between_pacing_and_match_grade():
+    """Order, not just presence (design 2026-08-30 §6): match-grade cannot measure
+    a crop that has no frozen route yet, and episodes cannot render one that
+    hasn't been geometry-checked and (now, unconditionally) grade-conducted."""
+    keys = [s.key for s in montage.V1_STAGES]
+    assert (keys.index("pacing") < keys.index("episodes-geometry")
+           < keys.index("match-grade") < keys.index("episodes"))
 
 
 def test_reel_brief_optional_absent_then_present(tmp_path):
@@ -206,11 +242,11 @@ def test_assemble_draft_optional_absent_then_present(tmp_path):
         _touch(tmp_path, key)
     res = next_action(str(tmp_path))
     assert _state(res, "assemble-draft") == "optional"   # absent optional never blocks
-    assert res["next"] == "episodes"                      # next unaffected by an optional stage
+    assert res["next"] == "episodes-geometry"             # next unaffected by an optional stage
     _touch(tmp_path, "assemble-draft")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "assemble-draft") == "done"
-    assert res2["next"] == "episodes"
+    assert res2["next"] == "episodes-geometry"
 
 
 def test_titles_optional_absent_then_present(tmp_path):
@@ -218,16 +254,17 @@ def test_titles_optional_absent_then_present(tmp_path):
         _touch(tmp_path, key)
     res = next_action(str(tmp_path))
     assert _state(res, "titles") == "optional"   # absent optional never blocks
-    assert res["next"] == "episodes"
+    assert res["next"] == "episodes-geometry"
     _touch(tmp_path, "titles")
     res2 = next_action(str(tmp_path))
     assert _state(res2, "titles") == "done"
-    assert res2["next"] == "episodes"
+    assert res2["next"] == "episodes-geometry"
 
 
 def test_reel_review_required_absent_then_present(tmp_path):
     # review runs AFTER deliver; it is required (design §8) and blocks `next` until reviewed
-    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade"):
         _touch(tmp_path, key)
     _touch(tmp_path, "episodes")      # episode-qc's two upstream required stages
     _touch(tmp_path, "episode-qc")
@@ -241,18 +278,21 @@ def test_reel_review_required_absent_then_present(tmp_path):
     assert res2["next"] is None                    # nothing required outstanding now
 
 
-def test_edl_present_next_is_episodes(tmp_path):
+def test_edl_present_next_is_episodes_geometry(tmp_path):
     # the EDL alone no longer reaches deliver directly (design 2026-08-08 §9): the
     # episode render + QC gate are required stages sitting between edit-plan and deliver
+    # — and since design 2026-08-30 §6, episodes-geometry + match-grade sit between
+    # edit-plan and the render too, both required.
     for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
         _touch(tmp_path, key)
     res = next_action(str(tmp_path))
-    assert res["next"] == "episodes"
+    assert res["next"] == "episodes-geometry"
     assert res["delivered"] is False
 
 
 def test_delivered_when_deliver_artifact_exists(tmp_path):
-    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade"):
         _touch(tmp_path, key)
     _touch(tmp_path, "episodes")      # episode-qc's two upstream required stages
     _touch(tmp_path, "episode-qc")
@@ -399,7 +439,8 @@ def test_a_run_with_footage_but_no_edl_asks_for_edit_plan_not_music(tmp_path):
 def test_reel_review_is_next_after_delivery(tmp_path):
     # #15: CP3 must not be free. Every required artifact present except REVIEW.json.
     run = tmp_path / "run"
-    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade"):
         _touch(run, key)
     _touch(run, "episodes")
     _touch(run, "episode-qc")
@@ -411,7 +452,8 @@ def test_reel_review_is_next_after_delivery(tmp_path):
 
 def test_a_run_is_only_finished_when_the_review_exists(tmp_path):
     run = tmp_path / "run"
-    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan", "reel-review"):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade", "reel-review"):
         _touch(run, key)
     _touch(run, "episodes")
     _touch(run, "episode-qc")
@@ -523,7 +565,8 @@ def test_the_qc_stage_sits_between_the_episodes_and_the_reel():
 
 def test_next_points_at_the_qc_stage_once_the_episodes_exist(tmp_path):
     """A run with rendered episodes and no verdicts is NOT ready to deliver."""
-    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan"):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade"):
         _touch(tmp_path, key)               # touch the artifacts the earlier stages need
     _touch(tmp_path, "episodes")
     assert next_action(str(tmp_path))["next"] == "episode-qc"
