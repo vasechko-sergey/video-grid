@@ -1076,6 +1076,11 @@ class ReelCheckSpec:
     layout_jump_max: float = 0.6       # advisory: max layout-jump score across a cut before transitions flags
     length_retime_max: float = 1.0     # max shortfall (target − dur) build_reel absorbs by
                                        # re-timing the target to the reel's real length (§3)
+    tone_match_max: float = 12.0       # max per-anchor luma distance from the reel's
+                                       # common tone target an episode may land at.
+                                       # Measured (design 2026-08-30 §0.6) mid-gap
+                                       # between a healthy maximum of 8.0 and an
+                                       # ungraded minimum of 19.5, both on one shoot.
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -1097,6 +1102,9 @@ class ReelCheckSpec:
         if not isinstance(self.length_retime_max, (int, float)) or self.length_retime_max <= 0:
             raise ValueError(f"ReelCheckSpec.length_retime_max must be a positive number of "
                              f"seconds, got {self.length_retime_max!r}")
+        if not isinstance(self.tone_match_max, (int, float)) or self.tone_match_max <= 0:
+            raise ValueError(f"ReelCheckSpec.tone_match_max must be a positive number of "
+                             f"luma units, got {self.tone_match_max!r}")
 
 
 @dataclass
@@ -1365,6 +1373,96 @@ class ReelEpisode:
                 "route": self.route, "path": self.path, "meta": self.meta}
 
 
+@dataclass(frozen=True)
+class EpisodeGeometry:
+    """One episode's geometry, decided and frozen before any colour is measured
+    (design 2026-08-30 §2.2).
+
+    `manifest` is stored with its COLOUR BLOCK STRIPPED, and that is the guard,
+    not a space saving: --from-geometry re-derives the same stripped manifest from
+    the current EDL and refuses any difference, so a cut edited under a frozen
+    route is refused while a re-authored grade passes — which is the entire point
+    of the seam.
+
+    `route` is None under a pan, exactly as on ReelEpisode: a generated path has no
+    observation to freeze. `source` is the file reframe will consume — the segment
+    normally, the stabilize pre-stage's output when stabilize is set — recorded by
+    the stage that knows rather than inferred from a filename later.
+    """
+    manifest: dict
+    route: str | None
+    source: str
+    project_dir: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.manifest, dict):
+            raise ValueError("EpisodeGeometry.manifest must be a dict")
+        if self.route is not None and not (isinstance(self.route, str) and self.route):
+            raise ValueError("EpisodeGeometry.route must be a route.json path or None "
+                             "(None = a generated pan path, which has no route)")
+        for name in ("source", "project_dir"):
+            v = getattr(self, name)
+            if not (isinstance(v, str) and v):
+                raise ValueError(f"EpisodeGeometry.{name} is empty — it names the file "
+                                 f"reframe will consume and the scratch dir holding the "
+                                 f"frozen route; both are written by --stop-after-geometry")
+
+    def to_dict(self) -> dict:
+        return {"manifest": dict(self.manifest), "route": self.route,
+                "source": self.source, "project_dir": self.project_dir}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EpisodeGeometry":
+        if not isinstance(d, dict):
+            raise ValueError("EpisodeGeometry.from_dict: expected an object")
+        return cls(manifest=d.get("manifest") or {}, route=d.get("route"),
+                   source=d.get("source", ""), project_dir=d.get("project_dir", ""))
+
+
+@dataclass(frozen=True)
+class ReelGeometry:
+    """GEOMETRY.json — phase 1a's output and match_grade's input."""
+    episodes: tuple[EpisodeGeometry, ...]
+    edl: str
+    provenance: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.episodes:
+            raise ValueError("ReelGeometry.episodes is empty — run "
+                             "edl_to_reel --stop-after-geometry first")
+        for k, e in enumerate(self.episodes):
+            if not isinstance(e, EpisodeGeometry):
+                raise ValueError(f"ReelGeometry.episodes[{k}] must be an EpisodeGeometry")
+        if not (isinstance(self.edl, str) and self.edl):
+            raise ValueError("ReelGeometry.edl is empty — it names the EDL this "
+                             "geometry was derived from, and match_grade writes it back")
+
+    def to_dict(self) -> dict:
+        d = {"episodes": [e.to_dict() for e in self.episodes], "edl": self.edl}
+        if self.provenance:
+            d["provenance"] = dict(self.provenance)
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReelGeometry":
+        if not isinstance(d, dict):
+            raise ValueError("ReelGeometry.from_dict: expected a GEOMETRY.json object "
+                             "with an 'episodes' list — produce it with "
+                             "edl_to_reel --stop-after-geometry")
+        eps = d.get("episodes")
+        if not isinstance(eps, list):
+            raise ValueError("ReelGeometry.from_dict: 'episodes' must be a list")
+        return cls(episodes=tuple(EpisodeGeometry.from_dict(e) for e in eps),
+                   edl=d.get("edl", ""), provenance=d.get("provenance") or {})
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "ReelGeometry":
+        return cls.from_dict(json.loads(Path(path).read_text()))
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+
 @dataclass
 class ReelManifest:
     """Typed input to build_reel (design §2). Episodes are already locked by
@@ -1386,6 +1484,12 @@ class ReelManifest:
                                        # §5). None = no fit ran, and build_reel's
                                        # within-band length absorb behaves exactly as
                                        # before.
+    tone_target: "tuple[float, float, float] | None" = None   # (p5, p50, p95) — this
+                                       # reel's common tone, measured on the tracked
+                                       # crop (design 2026-08-30 §2). None = never
+                                       # measured; travels separately from
+                                       # check_spec's tone_match_max, which is a
+                                       # threshold and not data about this reel.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1436,6 +1540,14 @@ class ReelManifest:
             OutroFit.from_dict(self.outro)   # the shape/rung oracle. A malformed outro must
                                              # fail loud here, not read as "unchanged" and
                                              # silently restore the absorb it exists to block
+        if self.tone_target is not None:
+            tt = self.tone_target
+            if not (isinstance(tt, (tuple, list)) and len(tt) == 3
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in tt)
+                    and all(0 <= v <= 255 for v in tt)
+                    and tt[0] <= tt[1] <= tt[2]):
+                raise ValueError(f"ReelManifest.tone_target must be 3 non-decreasing luma "
+                                 f"values (p5 <= p50 <= p95) in 0-255, or null, got {tt!r}")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
@@ -1475,6 +1587,7 @@ class ReelManifest:
                    sfx=d.get("sfx", False), platform=d.get("platform", ""),
                    look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
                    outro=d.get("outro"),
+                   tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1489,6 +1602,7 @@ class ReelManifest:
                 "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
                 "look": self.look.to_dict() if self.look is not None else None,
                 "outro": self.outro,
+                "tone_target": list(self.tone_target) if self.tone_target is not None else None,
                 "provenance": dict(self.provenance)}
 
     def write(self, path: str | Path) -> None:

@@ -274,6 +274,9 @@ class EDL:
                                     # never "the ending is fine". Provenance only:
                                     # nothing downstream reads it, but the reel's length
                                     # cannot otherwise say which rung chose it.
+    tone_target: tuple[float, float, float] | None = None   # (p5, p50, p95) — the
+                                    # reel's common tone, measured on the tracked crop
+                                    # (design 2026-08-30 §2). None = never measured.
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
@@ -308,6 +311,14 @@ class EDL:
         if self.outro is not None and not isinstance(self.outro, OutroFit):
             raise ValueError(f"EDL.outro must be an OutroFit or None, got "
                              f"{type(self.outro).__name__} — re-run edit_plan build")
+        if self.tone_target is not None:
+            tt = self.tone_target
+            if not (isinstance(tt, (tuple, list)) and len(tt) == 3
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in tt)
+                    and all(0 <= v <= 255 for v in tt)
+                    and tt[0] <= tt[1] <= tt[2]):
+                raise ValueError(f"EDL.tone_target must be 3 non-decreasing luma values "
+                                 f"(p5 <= p50 <= p95) in 0-255, or null, got {tt!r}")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"EDL.provenance must be an object, got "
                              f"{type(self.provenance).__name__} — re-run edit_plan build "
@@ -347,6 +358,7 @@ class EDL:
                    constraints=(ConstraintReport.from_dict(d["constraints"])
                                 if d.get("constraints") else None),
                    outro=OutroFit.from_dict(d["outro"]) if d.get("outro") else None,
+                   tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -378,7 +390,8 @@ class EDL:
              "target_dur": self.target_dur,
              "variety": self.variety.to_dict() if self.variety is not None else None,
              "constraints": self.constraints.to_dict() if self.constraints is not None else None,
-             "outro": self.outro.to_dict() if self.outro is not None else None}
+             "outro": self.outro.to_dict() if self.outro is not None else None,
+             "tone_target": list(self.tone_target) if self.tone_target is not None else None}
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d
@@ -396,6 +409,10 @@ class EDL:
         if self.look is not None and (self.look.vignette or self.look.fade):
             lines.append(f"- **Look:** vignette {self.look.vignette:.2f} · "
                          f"fade {self.look.fade:.2f}s")
+        if self.tone_target is not None:
+            lines.append("- **Tone target:** "
+                         + "/".join(f"{v:.0f}" for v in self.tone_target)
+                         + " (p5/p50/p95 luma, measured on each episode's crop)")
         lines += ["",
                  "| # | source | window | shot | layout | comp | grid | motion | beat | notes |",
                  "|---|--------|--------|------|--------|------|------|--------|:----:|-------|"]

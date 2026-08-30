@@ -1079,6 +1079,44 @@ def test_edl_outro_round_trips_the_brief_length():
     assert back == fit and back.brief_len == 30.0
 
 
+# --- grade-shipped-pixels Task 1: EDL.tone_target — the reel's common tone target
+# (design docs/specs/2026-08-30-grade-shipped-pixels-design.md §2) ---
+
+def test_edl_tone_target_round_trips():
+    e = EDL(episodes=(_ep(),), tone_target=(52.0, 103.5, 191.5))
+    assert EDL.from_dict(e.to_dict()).tone_target == (52.0, 103.5, 191.5)
+
+
+def test_edl_tone_target_defaults_to_none():
+    # Neither construction path ever mentions the key, so there is no fixture to pop
+    # from (unlike ReelManifest's shared _reel_dict()) — both call sites already show
+    # the key absent by construction, which is itself the vacuity guard here.
+    assert EDL(episodes=(_ep(),)).tone_target is None
+    assert EDL.from_dict({"episodes": [_ep().to_dict()]}).tone_target is None
+
+
+def test_edl_tone_target_refuses_a_decreasing_target():
+    with pytest.raises(ValueError, match="tone_target"):
+        EDL(episodes=(_ep(),), tone_target=(150.0, 100.0, 200.0))
+
+
+def test_edl_tone_target_refuses_an_out_of_range_value():
+    with pytest.raises(ValueError, match="tone_target"):
+        EDL(episodes=(_ep(),), tone_target=(50.0, 100.0, 256.0))
+
+
+def test_edl_tone_target_refuses_a_bool():
+    with pytest.raises(ValueError, match="tone_target"):
+        EDL(episodes=(_ep(),), tone_target=(True, 100.0, 200.0))
+
+
+def test_edl_markdown_prints_the_tone_target_only_when_set():
+    assert "Tone target" not in EDL(episodes=(_ep(),)).to_markdown()
+    md = EDL(episodes=(_ep(),), tone_target=(50.0, 100.0, 190.0)).to_markdown()
+    assert ("- **Tone target:** 50/100/190 (p5/p50/p95 luma, measured on each "
+            "episode's crop)") in md
+
+
 # --- pacing-fixed-point Task 0: EDLEpisode.base_dur + base_play_dur() ---
 
 def test_base_dur_defaults_to_none_and_round_trips():

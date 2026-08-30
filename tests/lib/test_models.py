@@ -664,6 +664,68 @@ def test_reframe_spec_no_longer_accepts_color_correct():
                       layout=m.LayoutSpec(mode="fill"), color_correct=(0.9, 1.0, 1.0))
 
 
+# --- grade-shipped-pixels Task 1: EpisodeGeometry/ReelGeometry — GEOMETRY.json, the
+# split point between phase 1a (frozen geometry) and match_grade (design
+# docs/specs/2026-08-30-grade-shipped-pixels-design.md §2.2) ---
+
+def test_reel_geometry_round_trips():
+    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={"segment": "a.mp4"},
+                                               route="r.json", source="s.mp4",
+                                               project_dir="build/ep0"),),
+                     edl="EDL.json", provenance={"engine": {"rev": "abc"}})
+    assert m.ReelGeometry.from_dict(g.to_dict()) == g
+
+
+def test_episode_geometry_refuses_an_empty_source():
+    with pytest.raises(ValueError, match="source"):
+        m.EpisodeGeometry(manifest={}, route=None, source="", project_dir="d")
+
+
+def test_episode_geometry_allows_a_routeless_pan():
+    m.EpisodeGeometry(manifest={}, route=None, source="s.mp4", project_dir="d")
+
+
+def test_episode_geometry_refuses_an_empty_project_dir():
+    with pytest.raises(ValueError, match="project_dir"):
+        m.EpisodeGeometry(manifest={}, route=None, source="s.mp4", project_dir="")
+
+
+def test_episode_geometry_refuses_a_non_dict_manifest():
+    with pytest.raises(ValueError, match="manifest"):
+        m.EpisodeGeometry(manifest=None, route=None, source="s.mp4", project_dir="d")
+
+
+def test_episode_geometry_refuses_an_empty_string_route():
+    # "" is not the pan spelling (None is) — same reasoning as ReelEpisode.route.
+    with pytest.raises(ValueError, match="route"):
+        m.EpisodeGeometry(manifest={}, route="", source="s.mp4", project_dir="d")
+
+
+def test_reel_geometry_refuses_an_empty_episode_tuple():
+    with pytest.raises(ValueError, match="episodes"):
+        m.ReelGeometry(episodes=(), edl="EDL.json")
+
+
+def test_reel_geometry_refuses_an_empty_edl():
+    with pytest.raises(ValueError, match="edl"):
+        m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
+                                                    source="s.mp4", project_dir="d"),),
+                       edl="")
+
+
+def test_reel_geometry_from_dict_refuses_a_non_list_episodes():
+    with pytest.raises(ValueError, match="episodes"):
+        m.ReelGeometry.from_dict({"episodes": "nope", "edl": "EDL.json"})
+
+
+def test_reel_geometry_provenance_defaults_empty_and_is_omitted_from_to_dict():
+    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
+                                                    source="s.mp4", project_dir="d"),),
+                       edl="EDL.json")
+    assert g.provenance == {}
+    assert "provenance" not in g.to_dict()
+
+
 def _reel_dict(**over):
     d = dict(episodes=[{"manifest": {"segment": "s0.mp4"}, "clip": "c0.mp4", "route": "r0.json"},
                        {"manifest": {"segment": "s1.mp4"}, "clip": "c1.mp4", "route": "r1.json"}],
@@ -776,6 +838,48 @@ def test_reel_manifest_ignores_a_legacy_color_delta_max_key():
     rm = m.ReelManifest.from_dict(_reel_dict(color_delta_max=56.0))
     assert not hasattr(rm, "color_delta_max")
     assert rm.check_spec.variety_min == 4
+
+
+# --- grade-shipped-pixels Task 1: the reel's common tone target
+# (design docs/specs/2026-08-30-grade-shipped-pixels-design.md §2) ---
+
+def test_reel_manifest_carries_the_tone_target():
+    d = dict(_reel_dict()); d["tone_target"] = [52.0, 103.5, 191.5]
+    assert m.ReelManifest.from_dict(d).tone_target == (52.0, 103.5, 191.5)
+
+
+def test_reel_manifest_tone_target_defaults_to_none():
+    # _reel_dict()'s own base dict never sets "tone_target" (checked by reading its
+    # definition above), so this pop is a no-op today and cannot yet be the reason the
+    # assertion below passes. Kept anyway as a guard against a future _reel_dict()
+    # change that starts carrying the key — the test right after this one is the
+    # version that is actually discriminating today.
+    d = dict(_reel_dict()); d.pop("tone_target", None)
+    assert m.ReelManifest.from_dict(d).tone_target is None
+
+
+def test_reel_manifest_tone_target_omitted_on_direct_construction():
+    rm = m.ReelManifest(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+                        target_dur=6.0)
+    assert rm.tone_target is None
+
+
+def test_reel_manifest_tone_target_refuses_a_decreasing_target():
+    with pytest.raises(ValueError, match="tone_target"):
+        m.ReelManifest.from_dict(_reel_dict(tone_target=[150.0, 100.0, 200.0]))
+
+
+def test_reel_manifest_tone_target_refuses_an_out_of_range_value():
+    with pytest.raises(ValueError, match="tone_target"):
+        m.ReelManifest.from_dict(_reel_dict(tone_target=[50.0, 100.0, 256.0]))
+
+
+def test_reel_manifest_tone_target_refuses_a_bool():
+    # isinstance(True, int) is True, so a bare numeric-type check alone would let a
+    # JSON `true` through as luma value 1.0 — this codebase guards that explicitly
+    # elsewhere (e.g. EDLEpisode.color_means) and tone_target must too.
+    with pytest.raises(ValueError, match="tone_target"):
+        m.ReelManifest.from_dict(_reel_dict(tone_target=[True, 100.0, 200.0]))
 
 
 def test_reel_manifest_rejects_null_manifest():
@@ -1252,6 +1356,18 @@ def test_reel_check_spec_length_retime_max_rejects_non_positive():
 def test_reel_check_spec_length_retime_max_rejects_non_number():
     with pytest.raises(ValueError, match="length_retime_max"):
         ReelCheckSpec(target_dur=12.0, length_retime_max="1.0")
+
+
+# --- grade-shipped-pixels Task 1: the convergence gate's ceiling
+# (design docs/specs/2026-08-30-grade-shipped-pixels-design.md §0.6) ---
+
+def test_reel_check_spec_tone_match_max_defaults_to_12():
+    assert ReelCheckSpec(target_dur=10.0).tone_match_max == 12.0
+
+
+def test_reel_check_spec_refuses_a_non_positive_tone_match_max():
+    with pytest.raises(ValueError, match="tone_match_max"):
+        ReelCheckSpec(target_dur=10.0, tone_match_max=0.0)
 
 
 # --- PanSpec (design 2026-07-19): two fractions of horizontal freedom, not a layout ---
