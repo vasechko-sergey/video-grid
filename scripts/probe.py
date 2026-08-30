@@ -283,6 +283,12 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
                          f"({geo.edl}) — pick an index in [0, {len(geo.episodes)})")
     eg = geo.episodes[index]
     md = regrade(dict(eg.manifest), geo.edl, index)
+    # _plan_for probes eg.source; source_for's own FileNotFoundError has no reach here
+    # (nothing is inferred from a filename in geometry mode), so the same condition is
+    # refused with the same remedy before any ffprobe (whole-branch review, minor 5).
+    # AFTER regrade: a tampered EDL is the more specific complaint of the two, and
+    # answering "your file is missing" to it would send the reader to the wrong place.
+    eg.require_inputs(index)
     plan = _plan_for(md, eg.source, eg.route)
 
     d = Path(out_dir) if out_dir is not None else Path(eg.project_dir) / "probe"
@@ -343,8 +349,9 @@ def main() -> None:
                                      "frozen route")
     mode = g.add_mutually_exclusive_group()
     mode.add_argument("--episodes", default=None, help="EPISODES.json from "
-                                                       "edl_to_reel --stop-after-episodes "
-                                                       "— the grade that WAS rendered")
+                                                       "edl_to_reel --from-geometry (or "
+                                                       "--stop-after-episodes) — the grade "
+                                                       "that WAS rendered")
     mode.add_argument("--geometry", default=None, help="GEOMETRY.json from edl_to_reel "
                                                        "--stop-after-geometry — renders "
                                                        "before any episode is ever "
@@ -370,7 +377,7 @@ def main() -> None:
     if a.cmd == "grade":
         if not a.episodes and not a.geometry:
             ap.error("grade needs exactly one of --episodes or --geometry: --episodes "
-                     "reads the grade that WAS rendered (edl_to_reel "
+                     "reads the grade that WAS rendered (edl_to_reel --from-geometry, or "
                      "--stop-after-episodes); --geometry renders before any episode is "
                      "ever encoded (edl_to_reel --stop-after-geometry)")
         if a.geometry and a.edl:

@@ -1417,6 +1417,31 @@ class EpisodeGeometry:
                                  f"reframe will consume and the scratch dir holding the "
                                  f"frozen route; both are written by --stop-after-geometry")
 
+    def require_inputs(self, index: int) -> None:
+        """Refuse, with a remedy, when the pixels or the frozen route are gone.
+
+        Both live in `build/`, and the gap between phase 1a and phase 1b is a HUMAN
+        turn: any plain `edl_to_reel` or `--stop-after-episodes` run on the same reel
+        dirs in that window wipes them, while GEOMETRY.json survives next door in
+        `episodes/`. Every consumer of this file then opens `source` with ffprobe —
+        `match_grade.conduct` through measure_crop, `probe.probe_grade_geometry`
+        through _plan_for — and without this dies inside `reframe._probe` with a bare
+        CalledProcessError carrying no remedy. `edl_to_reel._refuse_on_missing_inputs`
+        already answers exactly this condition for the RENDER, as a routed
+        stop_and_report over every episode at once; these two callers act on one
+        episode and have no finding channel, so the same fact is raised here.
+        """
+        for path, what in ((self.source, "the source reframe would consume"),
+                           (self.route, "the frozen route")):
+            if path is not None and not Path(path).exists():
+                raise FileNotFoundError(
+                    f"episode {index}: {what} is gone ({path}) — the build dir was "
+                    f"wiped between the phases (a plain edl_to_reel or "
+                    f"--stop-after-episodes run on the same reel does exactly that), "
+                    f"and a frozen route cannot be recovered without re-tracking. "
+                    f"Re-run `edl_to_reel --stop-after-geometry`, then re-run this "
+                    f"against the GEOMETRY.json it writes")
+
     def to_dict(self) -> dict:
         return {"manifest": dict(self.manifest), "route": self.route,
                 "source": self.source, "project_dir": self.project_dir}

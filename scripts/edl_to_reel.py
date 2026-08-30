@@ -429,7 +429,8 @@ def _refuse_on_changed_cut(geo: ReelGeometry, edl: EDL, mds: list[dict],
     window, source clip or ramp. Only the colour block may move between the phases —
     that is the seam."""
     frozen = geo.provenance.get("cuts")
-    if not isinstance(frozen, list) or len(frozen) != len(geo.episodes):
+    if (not isinstance(frozen, list) or len(frozen) != len(geo.episodes)
+            or any(not isinstance(c, dict) for c in frozen)):
         raise ValueError(
             f"{geometry_path} records no cut identity for its {len(geo.episodes)} "
             f"episodes, so nothing here can tell whether the EDL's windows still "
@@ -637,8 +638,8 @@ def main() -> None:
                        help="render every episode, write EPISODES.json, and stop — the "
                             "seam the per-episode QC gate sits in (design 2026-08-08)")
     phase.add_argument("--from-episodes", default=None,
-                       help="an EPISODES.json from --stop-after-episodes: gate on "
-                            "EPISODE_QC.json beside it, then assemble and deliver")
+                       help="an EPISODES.json from --from-geometry (or --stop-after-episodes): "
+                            "gate on EPISODE_QC.json beside it, then assemble and deliver")
     phase.add_argument("--stop-after-geometry", action="store_true",
                        help="stabilize, track and gate every episode, write GEOMETRY.json "
                             "and stop — the seam match_grade measures the crop in, before "

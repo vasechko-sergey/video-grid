@@ -1,6 +1,7 @@
 import json
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +10,30 @@ from scripts.lib import matchgrade, moodpreset, provenance
 from scripts.lib.edl import EDLEpisode, EDL
 from scripts.lib.models import EpisodeGeometry, ReelCheckSpec, ReelGeometry
 from scripts.lib.spec import Spec
+
+
+@pytest.fixture(autouse=True)
+def _in_a_run_dir(tmp_path, monkeypatch):
+    """Every test in this file runs inside its own empty directory.
+
+    `_geo`/`_write_geometry` name their sources and routes RELATIVELY ("s0.mp4",
+    "r0.json") and every assertion below reads those strings back, so the files have to
+    exist somewhere the CWD reaches: `conduct` calls EpisodeGeometry.require_inputs
+    before it measures anything (whole-branch review, minor 5), and a geometry naming
+    files that are not on disk is precisely the wiped-build-dir state that guard exists
+    to refuse. Chdir-ing rather than absolutising keeps the recorded paths — and the
+    whole-object asserts over them — unchanged."""
+    monkeypatch.chdir(tmp_path)
+
+
+def _touch(*names) -> None:
+    """Create the named files in the CWD, empty. `measure_crop` is monkeypatched in
+    every test here, so nothing ever decodes them — they exist only to satisfy the
+    existence guard, which asks whether the pixels are still there, not what is in
+    them."""
+    for n in names:
+        if n is not None:
+            Path(n).touch()
 
 
 def _ep(source, start=0.0, dur=2.0, **kw):
@@ -27,6 +52,8 @@ def _geo(*sources_routes, edl_path="EDL.json"):
     manifest is irrelevant to every test in this file except the pan/measure_crop
     integration proof (tests/integration/test_color_measure.py) — measure_crop itself
     is monkeypatched here, so an empty dict satisfies EpisodeGeometry's own guard."""
+    for source, route in sources_routes:
+        _touch(source, route)
     return ReelGeometry(episodes=tuple(
         EpisodeGeometry(manifest={}, route=route, source=source, project_dir=f"p{i}")
         for i, (source, route) in enumerate(sources_routes)),
@@ -78,6 +105,28 @@ def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
     assert out.episodes[0].tone_src is None and out.episodes[0].tone_dst is None
 
 
+@pytest.mark.parametrize("gone", ["s1.mp4", "r1.json"])
+def test_conduct_refuses_a_wiped_build_dir_with_a_remedy(gone, monkeypatch):
+    """Both halves of the frozen pair, and the routed remedy (whole-branch review,
+    minor 5). Without this, conduct fed eg.source straight to ffprobe and a build dir
+    wiped in the human gap between the phases surfaced as a bare CalledProcessError
+    from inside reframe._probe — while edl_to_reel._refuse_on_missing_inputs and
+    probe.source_for both answer the IDENTICAL condition with a remedy.
+
+    The measure is stubbed to raise: this must refuse BEFORE any measuring, not after
+    the first episode has already been decoded."""
+    def _never(*a, **k):
+        raise AssertionError("conduct measured before checking its inputs exist")
+    monkeypatch.setattr(match_grade, "measure_crop", _never)
+    geo = _geo(("s0.mp4", "r0.json"), ("s1.mp4", "r1.json"))
+    Path(gone).unlink()
+    with pytest.raises(FileNotFoundError) as e:
+        match_grade.conduct(geo, _edl(_ep("d.mp4"), _ep("b.mp4")))
+    msg = str(e.value)
+    assert "episode 1" in msg and gone in msg
+    assert "edl_to_reel --stop-after-geometry" in msg
+
+
 def test_conduct_no_longer_reads_the_footage_root():
     """Anti-regression pin for the breaking CLI/API change (design 2026-08-30 §3): the
     whole-frame mode and its footage_root parameter are DELETED, not defaulted away."""
@@ -90,6 +139,8 @@ def _write_geometry(tmp_path, *eps):
     per episode in EDL order. Returns (geometry_path, edl_path), both str."""
     edl_path = tmp_path / "EDL.json"
     edl_path.write_text(json.dumps(_edl(*eps).to_dict(), indent=2))
+    for i, e in enumerate(eps):
+        _touch(e.source, f"r{i}.json")
     geo = ReelGeometry(episodes=tuple(
         EpisodeGeometry(manifest={}, route=f"r{i}.json", source=e.source, project_dir=f"p{i}")
         for i, e in enumerate(eps)),
@@ -200,6 +251,8 @@ def test_write_match_does_not_resolve_the_geometrys_edl_path(tmp_path, monkeypat
     inner.mkdir()
     edl_path = outer / "EDL.json"
     edl_path.write_text(json.dumps(_edl(_ep("d.mp4")).to_dict(), indent=2))
+    (outer / "d.mp4").touch()
+    (outer / "r0.json").touch()     # relative, and resolved after the chdir below
     geo = ReelGeometry(episodes=(EpisodeGeometry(manifest={}, route="r0.json",
                                                  source="d.mp4", project_dir="p0"),),
                        edl="EDL.json")           # relative — resolves against the CWD

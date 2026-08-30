@@ -78,7 +78,16 @@ def _percentiles_from_gray(raw: bytes, want: int, w: int, h: int,
 
 
 def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float]:
-    """The ruler over a FINISHED file — what check_reel reads off the master."""
+    """The ruler over a FINISHED file, one span at a time — no crop, no manifest.
+
+    NOT a production path any more: since Task 6's fix round check_reel's tone_match
+    reads the master through clip_percentiles_batch, which decodes once for every
+    episode instead of once per episode. What is left is the single-span primitive —
+    the independently-trusted reading that batch is checked AGAINST
+    (test_clip_percentiles_batch_matches_the_per_span_calls), and the one-liner a proof or a
+    hand measurement reaches for when it wants one clip's profile. It is deliberately
+    not folded into the batch version: a batch that reconstructs the singles is only
+    evidence while the singles are computed some other way."""
     info = assembly.probe_stream(clip)
     out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip,
                     "-vf", f"{_select(times, info.fps)},format=gray",
@@ -164,8 +173,14 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
 def plan_ungraded(manifest_dict: dict, src: str,
                   route: str | None) -> "reframe.RenderPlan":
     """The render this episode would get with NO grade — the plan a measurement
-    reads through, and the plan probe renders stills from when it is showing the
-    footage rather than a grade."""
+    reads through.
+
+    One caller: measure_crop, directly below. `probe` does NOT come through here,
+    though an earlier draft of this docstring said it did — it builds its own plan in
+    `probe._plan_for`, from the manifest the CALLER handed it, precisely because a
+    probe is usually showing a grade rather than stripping one. The two share
+    process_episode.build_reframe_spec, which is the piece that must not be copied;
+    the strip is what differs, and it belongs on this side of the split."""
     m = manifest_lib.Manifest.from_dict(manifest_lib.strip_colour(manifest_dict))
     params = dict(orch.DEFAULT_PARAMS)
     if m.smooth_window_s is not None:

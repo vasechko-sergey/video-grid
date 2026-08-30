@@ -20,7 +20,8 @@ import pytest
 from scripts import build_reel, color_measure, edl_to_reel, match_grade, probe
 from scripts import process_episode as pe
 from scripts import track
-from scripts.lib import assembly, ffbin, manifest as manifest_lib, matchgrade, models, proc
+from scripts.lib import assembly, color, ffbin, manifest as manifest_lib, matchgrade
+from scripts.lib import models, proc
 from scripts.lib import provenance as prov_lib
 from scripts.lib.edl import EDL, EDLEpisode, preflight
 from scripts.lib.look import LookSpec
@@ -239,6 +240,69 @@ def test_a_single_episode_reel_is_its_own_median_and_nothing_moves(tmp_path, mon
 
     after = _render(ctx)
     assert Path(after.episodes[0].clip).read_bytes() == ungraded.read_bytes()
+
+
+# A legal, in-range value of a documented per-episode knob. 0.05 and not 0.35: this
+# test records that ANY post-tone luma knob breaks the gate's premise, so it uses the
+# smallest lift that shows it rather than the largest one available. Machine-checked
+# against the ceiling color.py itself publishes, so a widened range cannot make this
+# fixture quietly illegal.
+_PIN_BLACK_POINT = 0.05
+
+
+def test_a_black_point_beside_the_tone_pair_misses_the_target_RECORDED_LIMITATION(
+        tmp_path, monkeypatch):
+    """A RECORDED LIMITATION, not an endorsement — design §9.9, backlog P1.
+
+    `_tone_match_check` justifies being BLOCKING on percentiles commuting with the
+    monotone map `color.tone_arg` builds. That holds only while the tone curve is the
+    LAST luma operation in the chain, and `color.grade_chain` puts six more after it
+    (black_point, gain, shadow_red, mid_blue, highlight, highlight_red, dip — saturation
+    and the leading white_balance are the two that do not move luma). The conductor
+    solves the curve through `color_measure.measure_crop`, which reads via
+    `manifest.strip_colour` — every knob at identity — so the fit never sees them.
+
+    This test asserts the CURRENT behaviour: an episode graded correctly by the
+    conductor, then given a legal `black_point`, lands OUTSIDE `matchgrade.MATCH_EPS`
+    of the target it was authored against. Nobody thinks that is right; §9.9 names the
+    open design question (measure the residual through the non-tone part of the chain,
+    or exclude post-tone knobs from it). When that question is answered this test
+    should go RED and be rewritten, not deleted.
+
+    Measured here, on the same real footage every other proof in this file uses:
+    tone alone lands **1.0** from the target, tone + `black_point=0.05` lands **13.0**
+    — past `matchgrade.MATCH_EPS` (4.0) and past `ReelCheckSpec.tone_match_max` (12.0),
+    so this is not a rounding complaint: the blocking gate really does fail this
+    episode. The bar asserted below is MATCH_EPS and not the gate ceiling only because
+    13.0 sits one unit above 12.0, which is too fine a margin to pin.
+
+    CONTROL, and it carries the whole weight: the SAME two episodes, the SAME target,
+    the SAME render path with tone ALONE both land inside MATCH_EPS — and episode 1,
+    which is not touched, stays inside it in the second render too. Without both, a
+    residual outside the bar would only show that something moved."""
+    assert 0 < _PIN_BLACK_POINT <= color.BLACK_POINT_MAX
+
+    ctx = _run(tmp_path, monkeypatch, [(DARK, {}), (BRIGHT, {})])
+    _geometry(ctx)
+    assert match_grade.write_match(ctx["geometry"])["authored"] == 2
+    target = EDL.from_json(ctx["edl"]).tone_target
+    assert target is not None
+
+    clean = [_resid(_profile(e.clip), target) for e in _render(ctx).episodes]
+    assert all(r <= matchgrade.MATCH_EPS for r in clean), (clean, target)
+
+    # the knob is added AFTER the conductor ran, exactly as an author reaching for a
+    # toe lift on one flat-profile source would add it. Only the colour block moves, so
+    # the frozen routes still describe these episodes and --from-geometry renders them.
+    _edit_edl(ctx["edl"], 0, black_point=_PIN_BLACK_POINT)
+    got = [_resid(_profile(e.clip), target) for e in _render(ctx).episodes]
+    assert got[0] > matchgrade.MATCH_EPS, (
+        f"the recorded limitation no longer reproduces: episode 0 carries "
+        f"black_point={_PIN_BLACK_POINT} beside its conductor-authored pair and still "
+        f"lands {got[0]:.1f} from {target} (was {clean[0]:.1f} with tone alone). If the "
+        f"chain or the measurement changed on purpose, rewrite this test and close the "
+        f"P1 row; do not loosen the bar")
+    assert got[1] <= matchgrade.MATCH_EPS, (got, clean, target)
 
 
 # --- Proof 2: the frame and the crop disagree, at the stage that acts on it ----

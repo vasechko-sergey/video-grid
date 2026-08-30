@@ -134,6 +134,10 @@ def test_probe_grade_from_geometry_needs_no_episodes_json(tmp_path, monkeypatch)
     CURRENT colour block (there is no 'grade that was rendered' to fall back to)."""
     edl_path = tmp_path / "EDL.json"
     _stamped_edl(edl_path, highlight_red=0.3)
+    # the source is named relatively and EpisodeGeometry.require_inputs resolves it
+    # against the CWD, so this test runs where it says its pixels are
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "seg.mp4").touch()
     geo = ReelGeometry(
         episodes=(EpisodeGeometry(manifest=_md(), route=None, source="seg.mp4",
                                   project_dir=str(tmp_path)),),

@@ -147,12 +147,37 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
                       tone_dsts: list | None) -> tuple[CheckResult, ReelFailure | None]:
     """TONE_MATCH — did the declared grade reach the pixels (design 2026-08-30 §5)?
 
-    BLOCKING, and cheap to justify: percentiles commute with a monotone map and
-    color.tone_arg builds one, so a graded episode's delivered p5/p50/p95 land ON the
-    target by construction. A large residual is therefore something really broken — a
-    stale target, a colour block dropped between authoring and render — not a matter
-    of taste. Measured (§0.6): the healthy maximum is 8.0 and the broken minimum 19.5,
-    and tone_match_max = 12.0 sits mid-gap.
+    BLOCKING, and cheap to justify — ON ONE CONDITION, which the pipeline does not
+    guarantee. Percentiles commute with a monotone map and color.tone_arg builds one,
+    so a graded episode's delivered p5/p50/p95 land ON the target by construction
+    PROVIDED the tone curve is the LAST luma operation in its chain. In general it is
+    not: color.grade_chain's order is wb -> tone -> black_point -> gain -> shadow_red
+    -> mid_blue -> saturation -> highlight -> highlight_red -> dip, and the conductor
+    solves the curve against color_measure.measure_crop, which reads through
+    manifest.strip_colour — every knob at identity. So any POST-tone knob that moves
+    luma displaces the very reading this gate takes: black_point, a non-default
+    color_means (the mixer), shadow_red, mid_blue, highlight, highlight_red and dip.
+    Two do not: white_balance runs BEFORE tone (and the measurement carries it), and
+    saturation is an eq= chroma scale that leaves the luma plane alone.
+
+    Measured (design 2026-08-30 §9.9) on a 3-band tv-range clip, ungraded 40/120/200
+    onto target 52/103.5/191.5: tone alone lands 1.5 off; tone + black_point=0.05
+    lands 12.0; tone + black_point=0.10 lands 25.0; tone + highlight=0.8 lands 19.5.
+    black_point in [0, 0.35] and highlight in [0.6, 1.0] are documented, in-range,
+    per-episode knobs, so a CORRECTLY graded episode carrying one can fail this gate,
+    and at black_point=0.10 the residual is past the negative class's own minimum —
+    the gate cannot then tell "the grade never reached the pixels" from "the author
+    lifted a toe". It escalates to match-grade, which re-measures at identity and
+    re-authors the identical pair: a second no-exit loop, the same shape as §9.8's
+    but by a different mechanism. Filed P1 in docs/backlog.md; the open design
+    question is whether the residual should be measured THROUGH the non-tone part of
+    the chain, or whether post-tone knobs should be excluded from it.
+
+    A large residual is therefore something really broken — a stale target, a colour
+    block dropped between authoring and render — OR a second luma knob beside the
+    tone pair, and nothing in this check separates the two. Measured (§0.6), on
+    episodes graded by tone ALONE: the healthy maximum is 8.0 and the broken minimum
+    19.5, and tone_match_max = 12.0 sits mid-gap.
 
     Read off the MASTER, not the delivered reel: the look's vignette and the bookend
     fade ride deliver's one encode and both move percentiles, so the master is the

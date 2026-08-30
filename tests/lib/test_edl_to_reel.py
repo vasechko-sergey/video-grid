@@ -1561,6 +1561,21 @@ def test_from_geometry_refuses_a_changed_episode_count(tmp_path, monkeypatch):
         _render(ctx)
 
 
+def test_from_geometry_refuses_a_malformed_cut_entry_not_a_bare_attributeerror(
+        tmp_path, monkeypatch):
+    """Whole-branch review, minor 11: the length/type guard above checked `frozen` was
+    a list of the right length, then `_refuse_on_changed_cut` indexed into an element
+    with `.get(k)` — a non-dict element (a hand-edited or truncated GEOMETRY.json)
+    raised a bare AttributeError instead of the "not written by --stop-after-geometry"
+    refusal one line above. The guard now widens to reject a non-dict element too."""
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    doc = json.loads(Path(ctx["geometry"]).read_text())
+    doc["provenance"]["cuts"][0] = "not-a-dict"
+    Path(ctx["geometry"]).write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match="records no cut identity"):
+        _render(ctx)
+
+
 def test_from_geometry_does_not_wipe_the_build_dir(tmp_path, monkeypatch):
     """The routes live there. Wiping between the phases destroys the input."""
     geo, ctx = _geometry_run(tmp_path, monkeypatch)

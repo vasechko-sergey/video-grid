@@ -46,6 +46,11 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     EDLEpisode carries tone as data (like hero/pan/layout), and the check lives downstream
     in ReframeSpec (the soft-manifest / hard-engine split), so a malformed pair fails when
     the episode is processed, not in this driver."""
+    # Before any ffprobe: measure_crop opens eg.source, and a build dir wiped in the
+    # human gap between the phases would otherwise surface as a bare CalledProcessError
+    # from inside reframe._probe (whole-branch review, minor 5).
+    for i, eg in enumerate(geo.episodes):
+        eg.require_inputs(i)
     profiles = [measure_crop(eg.manifest, eg.source, eg.route)
                 for eg in geo.episodes]
     target = matchgrade.common_target(profiles)
