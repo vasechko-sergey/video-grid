@@ -303,8 +303,17 @@ silently, and the manifest comparison would see nothing.
 
 **The `ramp` case is the one that settles it**: `play_dur() = dur + ramp_extra`,
 and `ramp_extra` is by design a `dur`-independent constant of the ramp region
-(2026-08-09 §2) — so moving a ramp's `at` leaves `target_dur` **bit-identical**
-while the pixels on disk are phase 1a's. No manifest field moves at all.
+(2026-08-09 §2) — so at the `at` values where it comes out exactly equal, moving
+a ramp leaves `target_dur` **bit-identical** while the pixels on disk are phase
+1a's, and no manifest field moves at all.
+
+Measured afterwards over 14 sampled `at` values (Task 8's review): exactly 3 are
+bit-identical; the interior ones differ by 1–3 ULP and the ones near the window's
+edges by 0.05–0.094 s, which the manifest half *would* catch. So the manifest half
+is not blind to every moved ramp — it is blind to a real, reachable subset of
+them, and a guard that catches a cut change only at most `at` values is not a
+guard. Proof 3 deliberately picks one of the exact three, so a half-built guard
+cannot pass it by arithmetic luck.
 
 So `ReelGeometry` records a second half: a per-episode **cut identity**
 `{source, start, dur, ramp}` — exactly the four fields `extract_edl` reads — and
@@ -544,6 +553,47 @@ Phase 1 now has `--stop-after-geometry` / `--from-geometry` on top of
 the router drives the ordinary one, but the driver's CLI is now four flags of
 phase control, and a human running it by hand has four ways to pair the wrong two
 artifacts. The refusals of §2.2 cover the pairing; the count is still real.
+
+### §9.8 This feature can stop a real run, on a gate with no waiver
+
+The one limit that is not about precision. `check_episode`'s `color_fidelity` has
+been **blocking** since 2026-08-28 at `CheckSpec.grade_delta_max = 5.0` dE00: it
+measures the tracked subject in the source segment against the same subject in the
+graded clip, it sits in `orchestration._UNFIXABLE`, it escalates on attempt 1 as
+`grade-damage`, and it has **no waiver anywhere** — no CLI flag, no manifest field.
+A conductor-authored tone pair *is* grade movement to that sensor.
+
+Measured two ways, independently, during Task 8:
+
+- Sweeping a two-exposure fixture, the gate crosses at a **max-anchor pull between
+  34.5 and 39.5** luma units (dE00 2.98 at a 34.5 pull, **5.48** at 39.5).
+- Computing dE00 through this repo's own `color._segments`/`_lerp` and
+  `lib/colordiff`, modelling the subject as a *neutral* patch — a lower bound, since
+  a chromatic subject adds dC\* and dH\* in quadrature — the gate's entire headroom
+  is **~14–20 codes** of subject-luma movement. Against the §0.3 real-run pairs, **all
+  eight episodes have a subject-luma band over 5.0 dE00**, three of eight trip at the
+  crop's own median, and two reach **2.3× the ceiling**.
+
+The **old** whole-frame conductor did not collide with it: its pulls could only move
+the midpoint (sky and specular water pinned p5 and p95 on both sides, §0.2), and the
+same measurement reads **3.10 dE00 at every code** — comfortably under. So this slice
+is what makes the collision unavoidable, and §6 flipping `match-grade` to **required**
+is what carries it to every reel rather than an opt-in few.
+
+`grade-damage` routes to `edit-plan`'s colour block, whose remedy is the very pair
+`match-grade` just authored on purpose. That is a loop with no exit that does not
+involve a human lowering a gate which has no lever to lower.
+
+**Nothing here changes a threshold**, because the fix is a design decision and not a
+patch: *should `color_fidelity` measure damage against identity, or against the
+**declared** transform?* Measuring against identity asks "did the pixels move", and a
+declared, converged, reel-wide grade is supposed to move them. Measuring against the
+declared transform asks "did anything move that the grade did not ask for", which is
+the question the sensor was built to answer — but it needs the transform threaded to
+it, and it stops noticing a transform that is itself wrong. Filed **P1** in
+`docs/backlog.md`; distinct from the P2 visibility row beside it (`probe grade`
+cannot predict this gate), which is about seeing the stop coming, not about the
+deadlock once it arrives.
 
 ---
 

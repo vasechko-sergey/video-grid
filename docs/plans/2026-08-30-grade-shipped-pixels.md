@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task.
-> Steps use checkbox (`- [ ]`) syntax for tracking.
+> Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** `match_grade` measures each episode's tracked crop instead of its whole
 source frame, which requires the route to exist first — so `edl_to_reel`'s phase 1
@@ -84,7 +84,7 @@ These bind every task. A reviewer checks each diff against them.
 - Modify: `scripts/probe.py` (imports only — `_COLOUR_KEYS`/`_COLOUR_IDENTITY` move out)
 - Test: `tests/integration/test_color_measure.py`
 
-- [ ] **Step 1: move the colour-key registry to `lib/manifest.py`**
+- [x] **Step 1: move the colour-key registry to `lib/manifest.py`**
 
 Cut `_COLOUR_KEYS` and `_COLOUR_IDENTITY` out of `scripts/probe.py` (with their
 comments — they are about `Manifest`'s dataclass fields, which is what this file
@@ -125,7 +125,7 @@ Add `import dataclasses` at the top of `manifest.py` if absent. In `probe.py`,
 replace both constants with `from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS`
 and rename the ~8 use sites.
 
-- [ ] **Step 2: write the failing tests for the new readers**
+- [x] **Step 2: write the failing tests for the new readers**
 
 Append to `tests/integration/test_color_measure.py`:
 
@@ -164,7 +164,7 @@ a minimal `fill` episode at a 1:1 delivery whose crop covers only the bottom hal
 and `route.json` is a constant centre in the bottom band. Copy the shape of the
 existing episode fixtures in `tests/integration/test_reframe*.py`.
 
-- [ ] **Step 3: implement**
+- [x] **Step 3: implement**
 
 Append to `scripts/color_measure.py` (and add the imports it needs:
 `from scripts import process_episode, reframe`, `from scripts.lib import manifest as manifest_lib`,
@@ -274,7 +274,7 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
 
 Run the tests: PASS.
 
-- [ ] **Step 4: mutation check — the ruler is the crop's**
+- [x] **Step 4: mutation check — the ruler is the crop's**
 
 Change `plan_ungraded` to pass `route=None`... it will raise (a non-pan episode
 needs a route), which is the wrong mutation. Instead: in `measure_crop`, replace
@@ -282,7 +282,7 @@ needs a route), which is the wrong mutation. Instead: in `measure_crop`, replace
 `test_crop_percentiles_reads_the_crop_not_the_frame` MUST go RED. Re-apply the
 inverse edit and confirm `git diff` is clean.
 
-- [ ] **Step 5: full file suite + commit**
+- [x] **Step 5: full file suite + commit**
 
 ```bash
 .venv/bin/python -m pytest tests/integration/test_color_measure.py tests/lib/test_probe.py -q
@@ -298,7 +298,7 @@ git add -A && git commit -m "feat: one gray ruler, and a crop reading to use it"
 - Modify: `scripts/lib/edl.py`
 - Test: `tests/lib/test_models.py`, `tests/lib/test_edl.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 `tests/lib/test_models.py`:
 
@@ -347,7 +347,7 @@ State in the report which it was.
 `tests/lib/test_edl.py`: the same pair for `EDL.tone_target` — a round trip
 through `to_dict`/`from_dict`, and `None` when the key is absent.
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 `models.py`, beside `ReelEpisode`:
 
@@ -488,7 +488,7 @@ set:
 
 placed beside the existing `look` line so an unset target moves no golden.
 
-- [ ] **Step 3: run + commit**
+- [x] **Step 3: run + commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_models.py tests/lib/test_edl.py -q
@@ -503,7 +503,7 @@ git add -A && git commit -m "feat: geometry contracts, the reel's tone target, t
 - Modify: `scripts/process_episode.py`
 - Test: `tests/lib/test_process_episode.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_stop_after_geometry_returns_the_route_and_the_source(tmp_path, monkeypatch):
@@ -554,7 +554,7 @@ def test_prepared_source_without_a_route_is_refused(tmp_path):
 
 Run: FAIL — `process_episode() got an unexpected keyword argument 'stop_after'`.
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 Signature:
 
@@ -638,7 +638,7 @@ Immediately after the contradiction gate's `if findings:` block (before the
         return result
 ```
 
-- [ ] **Step 3: run, then two mutation checks**
+- [x] **Step 3: run, then two mutation checks**
 
 Both are steps:
 
@@ -650,7 +650,7 @@ Both are steps:
 
 Re-apply both inverses, `git diff` clean.
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_process_episode.py -q
@@ -665,7 +665,7 @@ git add -A && git commit -m "feat: process_episode stops at geometry, and accept
 - Modify: `scripts/edl_to_reel.py`
 - Test: `tests/lib/test_edl_to_reel.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_build_geometry_writes_routes_and_no_clips(tmp_path, monkeypatch):
@@ -707,7 +707,7 @@ def test_from_geometry_does_not_wipe_the_build_dir(tmp_path, monkeypatch):
     assert marker.read_bytes() == before
 ```
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 Refactor the existing pool loop into one helper both phases call:
 
@@ -799,7 +799,7 @@ episode must complete `--from-geometry`.
 Wire `ReelManifest.tone_target=edl.tone_target` into BOTH assembly sites (here and
 in the existing `edl_to_reel`).
 
-- [ ] **Step 3: CLI**
+- [x] **Step 3: CLI**
 
 ```python
     ph.add_argument("--stop-after-geometry", action="store_true",
@@ -829,7 +829,7 @@ of the manifest comparison go through a JSON round trip, because
 `Manifest.color_means`' default is a **tuple** and without it the guard refuses
 every run.
 
-- [ ] **Step 4: mutation checks (both halves)**
+- [x] **Step 4: mutation checks (both halves)**
 
 1. Delete the manifest half. `test_from_geometry_refuses_a_changed_layout` MUST go
    RED and `test_from_geometry_accepts_a_re_authored_grade` MUST stay green — if
@@ -840,7 +840,7 @@ every run.
 
 Re-apply both, `git diff` clean.
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_edl_to_reel.py -q
@@ -855,7 +855,7 @@ git add -A && git commit -m "feat: edl_to_reel splits phase 1 at the geometry bo
 - Modify: `scripts/match_grade.py`
 - Test: `tests/lib/test_match_grade.py`, `tests/integration/test_matchgrade.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_conduct_measures_every_episode_crop(tmp_path, monkeypatch):
@@ -877,7 +877,7 @@ def test_conduct_no_longer_reads_the_footage_root(tmp_path):
         match_grade.write_match("EDL.json", footage_root="/anywhere")
 ```
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 `conduct(geo: ReelGeometry, edl: EDL, ...)`:
 
@@ -915,7 +915,7 @@ Docstring's first paragraph becomes:
 CLI: delete `--edl` and `--footage-root`, add
 `b.add_argument("--geometry", required=True, help="GEOMETRY.json from edl_to_reel --stop-after-geometry; it names the EDL this writes back")`.
 
-- [ ] **Step 3: run + commit**
+- [x] **Step 3: run + commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_match_grade.py tests/integration/test_matchgrade.py -q
@@ -930,7 +930,7 @@ git add -A && git commit -m "feat: the conductor measures the crop that ships"
 - Modify: `scripts/probe.py`
 - Test: `tests/lib/test_probe.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_probe_grade_from_geometry_needs_no_episodes_json(tmp_path, monkeypatch):
@@ -952,7 +952,7 @@ def test_probe_tone_is_gone():
     assert not hasattr(probe, "_tone")
 ```
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 - Delete `_tone`; `report["tone"]` becomes one `color_measure.crop_percentiles(plan, src, times)`
   call (a single pooled reading for the episode, not one per frame — say so in the
@@ -972,7 +972,7 @@ def test_probe_tone_is_gone():
 - CLI: `grade` gains `--geometry` as an alternative to `--episodes`; exactly one
   is required.
 
-- [ ] **Step 3: commit**
+- [x] **Step 3: commit**
 
 ```bash
 .venv/bin/python -m pytest tests/lib/test_probe.py -q
@@ -987,7 +987,7 @@ git add -A && git commit -m "feat: probe grade before any encode, on the grade's
 - Modify: `scripts/check_reel.py`, `scripts/build_reel.py`
 - Test: `tests/lib/test_check_reel.py`
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_tone_match_passes_when_every_episode_lands_on_the_target(...)
@@ -1002,7 +1002,7 @@ def test_tone_match_is_blocking(...):
     assert "tone_match" not in models._ADVISORY_CHECKS
 ```
 
-- [ ] **Step 2: implement**
+- [x] **Step 2: implement**
 
 `check_reel.run` gains `tone_target: tuple[float, float, float] | None = None` and,
 after the variety check:
@@ -1057,12 +1057,12 @@ matches how `geometry=` is already threaded, and say which in the report.
 construction — add a test asserting that, because it is a property of another
 module that this check depends on.
 
-- [ ] **Step 3: mutation check**
+- [x] **Step 3: mutation check**
 
 Raise `tone_match_max` to `100.0` in `models.py`;
 `test_tone_match_fails_and_routes_to_match_grade` MUST go RED. Re-apply.
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ---
 
@@ -1073,7 +1073,7 @@ Raise `tone_match_max` to `100.0` in `models.py`;
 - Modify: `skills/match-grade/SKILL.md`, `skills/using-montage/SKILL.md`
 - Test: `tests/lib/test_montage.py`
 
-- [ ] **Step 1: the stage row**
+- [x] **Step 1: the stage row**
 
 Insert **after** `pacing` and **before** `match-grade`:
 
@@ -1096,7 +1096,7 @@ Test that `V1_STAGES` order is `... pacing, episodes-geometry, match-grade, ...`
 and that `next_action` names `episodes-geometry` on a run with an EDL and no
 GEOMETRY.json.
 
-- [ ] **Step 2: the skills**
+- [x] **Step 2: the skills**
 
 `skills/match-grade/SKILL.md`: the command becomes
 `bin/vg -m scripts.match_grade build --geometry <run>/reels/<name>/episodes/GEOMETRY.json`,
@@ -1112,7 +1112,7 @@ mention.
 > Edit `selection.json`, re-run `edit_plan build`, re-run `match_grade build`,
 > probe again. Nothing is encoded until you stop.
 
-- [ ] **Step 3: commit**
+- [x] **Step 3: commit**
 
 ---
 
@@ -1124,33 +1124,33 @@ mention.
 Real ffmpeg throughout, `@pytest.mark.integration`. Each proof carries a control
 that must NOT move.
 
-- [ ] **Proof 1 — the central claim, end to end.** A two-episode fixture whose
+- [x] **Proof 1 — the central claim, end to end.** A two-episode fixture whose
   segments differ in exposure by ~40 luma: geometry → `write_match` → render →
   every delivered clip within `MATCH_EPS` of `EDL.tone_target`.
   **Control:** a one-episode reel authors nothing (`plan` returns `within-eps`
   against its own profile, which IS the median) and its clip is byte-identical to
   the ungraded render.
-- [ ] **Proof 2 — frame and crop disagree.** The `_banded_episode` fixture from
+- [x] **Proof 2 — frame and crop disagree.** The `_banded_episode` fixture from
   Task 0, asserted through `conduct` rather than through `measure_crop`, so the
   disagreement is proven at the stage that acts on it.
-- [ ] **Proof 3 — the cut guard.** `render_from_geometry` accepts a rewritten
+- [x] **Proof 3 — the cut guard.** `render_from_geometry` accepts a rewritten
   colour block and refuses a rewritten window, on the same GEOMETRY.json.
-- [ ] **Proof 4 — stabilize.** An episode with `stabilize: true` renders through
+- [x] **Proof 4 — stabilize.** An episode with `stabilize: true` renders through
   `--from-geometry`; the same route passed by hand to `process_episode` refuses.
   Needs `vidstab` — use the shared `need_filter` fixture.
-- [ ] **Proof 5 — the gate fires.** Render the two-episode reel with episode 1's
+- [x] **Proof 5 — the gate fires.** Render the two-episode reel with episode 1's
   `tone_src`/`tone_dst` dropped from its manifest; `check_reel` reports
   `tone_match` failing and routed to `match-grade`. **Control:** the same reel
   with the pair present passes.
-- [ ] **Proof 6 — the gate reads the master.** Deliver the passing reel with
+- [x] **Proof 6 — the gate reads the master.** Deliver the passing reel with
   `LookSpec(vignette=0.6)`; `check_reel`'s `tone_match` still passes, and a
   direct `clip_percentiles` of the DELIVERED file is measurably further from the
   target than the master's — the number that shows the choice of file matters.
-- [ ] **Proof 7 — probe agrees with the encode.** `probe_grade_geometry` on
+- [x] **Proof 7 — probe agrees with the encode.** `probe_grade_geometry` on
   episode 0, then the real render, then `clip_percentiles` of the clip: the two
   agree within 1.5 codes on every anchor (§0.8 measured 1.0; the margin is for
   the fixture's own quantization).
-- [ ] **Proof 8 — the whole suite.**
+- [x] **Proof 8 — the whole suite.**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -1163,7 +1163,7 @@ should move** — nothing in this slice changes an existing render's pixels.
 
 ## Task 9: the mutation battery, the bump, the docs
 
-- [ ] **Step 1: the battery.** One row per load-bearing decision. Run each under
+- [x] **Step 1: the battery.** One row per load-bearing decision. Run each under
   `PYTHONDONTWRITEBYTECODE=1`, record RED/GREEN, and treat a GREEN row as a
   coverage hole to close with a new test before moving on.
 
@@ -1172,10 +1172,10 @@ should move** — nothing in this slice changes an existing render's pixels.
 | 1 | `measure_crop` reads `measure_profile(src)` instead of the plan | Task 0 crop-vs-frame |
 | 2 | `strip_colour` returns `md` unchanged | Task 3 cut guard (and Task 0's measure) |
 | 3 | `_percentiles_from_gray`'s exact size check becomes `len(raw) % want` | the short-buffer test at dims divisible by `want` |
-| 4 | `crop_percentiles` uses `plan.filter_args` + a leading `select` instead of `with_tail` | Proof 7 (one frame three times) |
+| 4 | `crop_percentiles` uses `plan.filter_args` + a leading `select` instead of `with_tail` | **the landmine lint** (`lint._select_before_fps` through `proc.run`'s always-on guard) — NOT Proof 7: measured in Task 8's review, on Proof 7's own fixture the pooled 3-frame profile and the first frame alone read identically (deviation 0.0) |
 | 5 | the stabilize refusal loses `and prepared_source is None` | Task 2 |
 | 6 | `elif m.stabilize` → `if m.stabilize` | Task 2 |
-| 7 | `stop_after` returns after the encode instead of before | Task 2's prepared-source test — it RAISES (check_episode.run is real and the faked reframe wrote no clip) before `calls == []` is reached |
+| 7 | `stop_after` returns after the encode instead of before | Task 2's `test_stop_after_geometry_returns_the_route_and_the_source` — measured in Task 9, it fails on `calls == []` directly (`['reframe'] != []`), not by raising first |
 | 7b | `src = prepared_source` becomes `src = m.segment` | Task 2's pinned `src`/`source` assertions |
 | 8 | `render_from_geometry` calls `_wipe_scratch` | Task 3 no-wipe |
 | 9 | the cut guard compares the FULL manifest | Task 3 re-authored-grade (green→red) |
@@ -1190,13 +1190,15 @@ should move** — nothing in this slice changes an existing render's pixels.
 | 16 | `sample_times` returns `[0, dur/2, dur]` | Task 0 ends test |
 | 17 | `match-grade` Stage back to `optional` | Task 7 |
 | 18 | `episodes-geometry` moved after `match-grade` | Task 7 order |
+| 9d | `build_geometry` records no cut identity (carried from Task 3's own row 14) | the `records no cut identity` refusal, on every `--from-geometry` test |
+| 2b | `plan_ungraded` stops stripping the colour block (the measure half of row 2, which the cut guard alone does not exercise) | **was GREEN — coverage hole**, closed with `test_measure_crop_reads_the_footage_not_a_grade_already_authored` |
 
-- [ ] **Step 2: version 0.6.0.** `.claude-plugin/plugin.json` and a `CHANGELOG.md`
+- [x] **Step 2: version 0.6.0.** `.claude-plugin/plugin.json` and a `CHANGELOG.md`
   entry naming the breaking change (`match_grade build --edl/--footage-root` is
   gone) and the measured before/after (44/64/120 → 11/6/2).
   `tests/test_plugin_manifests.py` enforces the pair.
 
-- [ ] **Step 3: docs.**
+- [x] **Step 3: docs.**
   - `CLAUDE.md`: two registry rows (design + plan).
   - `docs/build-status.md`: a Done entry with the numbers.
   - `docs/pipeline-map.md`: the new stage.
@@ -1207,7 +1209,7 @@ should move** — nothing in this slice changes an existing render's pixels.
     (The last slice's final review found nine such lines because the sweep matched
     symbols and the prose uses English.)
 
-- [ ] **Step 4: commit + full suite.**
+- [x] **Step 4: commit + full suite.**
 
 ---
 

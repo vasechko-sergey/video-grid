@@ -4,13 +4,69 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-29._
+_Last updated: 2026-08-30._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **The grade is measured on the pixels that ship — DONE (2026-08-30)** — design
+  [2026-08-30-grade-shipped-pixels-design.md](specs/2026-08-30-grade-shipped-pixels-design.md),
+  plan [2026-08-30-grade-shipped-pixels.md](plans/2026-08-30-grade-shipped-pixels.md),
+  Tasks 0–9 (branch `feat/grade-shipped-pixels`). Closes "grade the pixels that
+  ship", **R2.1** and **R3.1**. `match-grade` read a **whole source frame at each
+  window's midpoint** — a region no delivered frame matches, since every episode
+  ships a tracked crop of it. Measured on the preserved 2026-06 run: **7 of 8
+  episodes** differ between the whole-frame and crop readings by more than
+  `matchgrade.MATCH_EPS`, median **14** and max **36** luma units, and the shipped
+  reel's delivered spread across the three anchors was **44 / 64 / 120**. Measuring
+  the crop takes it to **11 / 6 / 2**, with a residual max of **8.0** and a median
+  of **3.5** against a `tone_match_max` of 12.0.
+  Measuring a crop requires the route, so `edl_to_reel` phase 1 splits at the
+  geometry boundary: `--stop-after-geometry` extracts / stabilizes / tracks / gates
+  and writes `GEOMETRY.json` **before any encode**, `--from-geometry` renders over
+  those frozen routes with the EDL's current colour block. The seam is guarded in
+  **two halves**, because neither sees the other's fields — the stored
+  colour-stripped manifest catches a changed layout / crop / hero / canvas, and a
+  per-episode `{source, start, dur, ramp}` **cut identity** catches a moved window,
+  which no manifest field can see (`to_manifest_dict` carries neither `source` nor
+  `start`, and a moved ramp's `ramp_extra` is `dur`-independent by design, so
+  `target_dur` can come back bit-identical). `--from-geometry` also refuses a build
+  dir wiped in the human gap between the phases, and an engine that moved.
+  `process_episode` gains `stop_after="geometry"` and an internal `prepared_source`
+  — the honest way to pair a frozen route with the stabilized file it was actually
+  measured on, and the one case its `stabilize + --route` refusal always had to
+  reject blind. `probe grade --geometry` renders and measures three frames of one
+  episode over its frozen route before anything is encoded (agrees with the shipped
+  encode's mean luma to **1 code**; `drift_checked: false`, said out loud, because
+  no rendered sidecar exists yet to check against). `check_reel` gains a **blocking**
+  `tone_match`, read off the **master** — not the delivery, whose vignette and
+  bookend fade both move percentiles (measured: master 1.5 vs delivery 19.0 on the
+  same reel) — in ONE batched decode across every bound episode. `match-grade`
+  becomes a **required** stage and the router leads through
+  `pacing → episodes-geometry → match-grade → … → --from-geometry`.
+  There is now exactly **one ruler**: `color.percentiles` is reached only from
+  `color_measure.measure_profile` and `color_measure._percentiles_from_gray`, and
+  `probe._tone` is gone. Eight real-ffmpeg proofs, each with a control that must not
+  move; Task 9's **22-row** mutation battery ran red on every row but one, and the
+  one green row (`plan_ungraded`'s colour strip, safe today only because
+  `build_geometry` stores manifests already stripped) was closed with a new test.
+  **Version 0.6.0. Breaking:** `match_grade build --edl X --footage-root Y` no
+  longer exists — the conductor reads `GEOMETRY.json`.
+  **Honest limit, filed P1 (design §9.8):** `check_episode`'s `color_fidelity` is
+  blocking at `grade_delta_max = 5.0` dE00, sits in `_UNFIXABLE`, escalates on
+  attempt 1 as `grade-damage`, and has **no waiver anywhere**. A conductor-authored
+  tone pair IS grade movement to it. Measured two ways independently: the gate
+  crosses at a max-anchor pull between **34.5 and 39.5** luma units on a swept
+  fixture, and modelling the subject as a neutral patch (a lower bound) its whole
+  headroom is **~14–20 codes** of subject luma — against which **all eight**
+  real-run episodes have a band over 5.0 dE00, three tripping at the crop's own
+  median and two at **2.3×** the ceiling. The old whole-frame conductor read 3.10
+  at every code and never collided. Nothing here changes a threshold: whether
+  `color_fidelity` should measure damage against identity or against the DECLARED
+  transform is a design decision, not a patch.
 
 - **Colour-convergence loop retired — R2.6 DONE (2026-08-29)** — design
   [2026-08-29-colour-convergence-retire-design.md](specs/2026-08-29-colour-convergence-retire-design.md),

@@ -168,7 +168,7 @@ def main() -> None:
         description="per-episode QC: pack the evidence, then validate the judges' findings")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("pack", help="one evidence dir per episode (strip + storyboard + numbers)")
-    p.add_argument("--episodes", required=True, help="EPISODES.json from edl_to_reel --stop-after-episodes")
+    p.add_argument("--episodes", required=True, help="EPISODES.json from edl_to_reel --from-geometry (or --stop-after-episodes)")
     p.add_argument("--out-dir", required=True, help="dir for the ep{i}/ packet dirs")
     p.add_argument("--frames", type=int, default=FRAMES, help=f"strip cells per episode (default {FRAMES})")
     b = sub.add_parser("build", help="validate every judge's findings.json -> EPISODE_QC.json + .md")

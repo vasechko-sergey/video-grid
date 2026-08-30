@@ -75,8 +75,8 @@ V1_STAGES: tuple[Stage, ...] = (
     Stage("titles", "TITLES.json", "optional",
           "titles SKILL -> titles build CLI (optional on-screen text)", "final", "reel"),
     Stage("episodes", "EPISODES.json", "required",
-          "edl_to_reel --stop-after-episodes (renders every episode, then stops at the "
-          "QC seam)", None, "episodes"),
+          "edl_to_reel --from-geometry (renders every episode over its frozen route, "
+          "then stops at the QC seam)", None, "episodes"),
     # required, not optional (design 2026-08-08 §1): a reel assembled over an episode
     # nobody judged is exactly what the 2026-08-03 run shipped. The stage gates the
     # artifact's presence and its digest binding — never proof that anyone looked (§12).

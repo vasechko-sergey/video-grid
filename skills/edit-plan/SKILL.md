@@ -228,9 +228,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      `[0.80, 1.20]` fixes sky-bounce on skin; `dip` ∈ `[0, 0.5]`s
      fades the episode in/out to dark grey. `tone` matches a clip's tonal profile to
      the reel: set `tone_src` to that clip's measured `[p5, p50, p95]` luma and
-     `tone_dst` to the reel's common target — measure both with
-     `python -m scripts.color_measure <clip>`. A banding `tone` curve fails loud at
-     render (`verify_tone`), so trust the error and widen the anchors.
+     `tone_dst` to the reel's common target. **You will rarely author this pair by
+     hand**: **match-grade** authors it for every episode from the tracked CROP, and
+     that is the reading the reel is judged against (`check_reel`'s blocking
+     `tone_match`). If you do author one, read `tone_src` off the crop — `probe grade
+     --geometry ... --index N` prints `tone_profile`, ONE pooled `(p5, p50, p95)` of
+     the pixels that ship. `python -m scripts.color_measure <clip>` measures a WHOLE
+     source frame instead, which on real footage differs from the crop by a median of
+     14 and a maximum of 36 luma units — useful for a quick look at a file, wrong as
+     the source anchor of a pair. A banding `tone` curve fails loud at render
+     (`verify_tone`), so trust the error and widen the anchors.
    - `color_means` (optional) — the target channel means `[r, g, b]` that
      `check_episode`'s colour check measures the DELIVERED clip against. Not a
      grade: it changes what "correct" means, never how a pixel looks. Leave it
@@ -376,7 +383,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    never the scratch `<run>/reels/<reel>/build/ep<N>/manifest.json` above. Skip the second
    `json.dump` and that retry silently re-renders this episode from the STALE
    pre-convergence grade — no error, no trace. The alternative is re-running phase 1
-   (`edl_to_reel --stop-after-episodes`, step 3's driver) from the re-stamped
+   (`edl_to_reel --from-geometry`, step 3's driver) from the re-stamped
    `EDL.json`, which writes a fully consistent `EPISODES.json` too — but at the cost
    of re-tracking and re-rendering EVERY episode, the whole expense this loop exists
    to avoid; reach for it only when converging several episodes at once makes that

@@ -577,7 +577,8 @@ def assemble_reel(episodes_path: str, work_dir: str, *, deliveries_dir: str | No
                             "problems": [
                                 f"episode {i}'s clip is gone ({rm.episodes[i].clip}) — the "
                                 f"out dir was cleaned while EPISODES.json was left behind; "
-                                f"re-run phase 1 (edl_to_reel --stop-after-episodes) before "
+                                f"re-run phase 1 (edl_to_reel --from-geometry, or "
+                                f"--stop-after-episodes for a hand-driven run) before "
                                 f"assembling" for i in gone]}}
     qc_path = Path(out_dir) / "EPISODE_QC.json"
     if not qc_path.exists():

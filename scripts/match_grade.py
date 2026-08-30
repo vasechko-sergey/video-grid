@@ -3,8 +3,10 @@ design 2026-08-30 §3): measure every EDL episode's own tracked CROP — the pix
 actually ship — compute one common reel tone target (the median), and author
 tone_src/tone_dst into the episodes that deviate — so the reel reads as one grade. Reads
 GEOMETRY.json (edl_to_reel --stop-after-geometry's output) + the EDL it names, writes the
-EDL back enriched + a MATCH.md report. Opt-in: it CHANGES the look, so it is never on the
-autonomous path. matchgrade owns the decisions; this driver owns the ffmpeg measuring
+EDL back enriched + a MATCH.md report. REQUIRED since design 2026-08-30 §6, not opt-in:
+the router runs it on every reel, because a reel it skips is a reel nothing measured —
+check_reel's blocking tone_match reports not-checked without the target this stamps.
+matchgrade owns the decisions; this driver owns the ffmpeg measuring
 (color_measure.measure_crop) and the EDL IO. Mirror of pacing.py: pure core in lib, driver
 here."""
 import argparse

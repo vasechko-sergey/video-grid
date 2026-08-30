@@ -143,8 +143,9 @@ def test_using_montage_defines_every_bucket():
 # filename, resolved against `--footage-root`, and the skills say so.
 _RUN_PATH_FLAGS = ("--edl", "--footage", "--selection", "--project", "--cast",
                    "--spec", "--pacing", "--music", "--titles", "--episodes",
-                   "--packets", "--out-dir", "--work-dir", "--deliveries-dir",
-                   "--scratch-dir", "--findings", "--reel-path", "--out")
+                   "--geometry", "--packets", "--out-dir", "--work-dir",
+                   "--deliveries-dir", "--scratch-dir", "--findings",
+                   "--reel-path", "--out")
 _BARE_ARG = re.compile(
     r"(" + "|".join(re.escape(f) for f in _RUN_PATH_FLAGS) + r")\s+"
     r"(?!<)([A-Za-z_][A-Za-z0-9_./-]*\.(?:json|md|mp4|png|jpg)|\.)(?:\s|`|$)")

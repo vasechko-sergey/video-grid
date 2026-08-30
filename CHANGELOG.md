@@ -10,6 +10,55 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.6.0 — 2026-08-30
+
+**The grade is now measured on the pixels that ship.** `match-grade` used to read a
+whole source frame at each window's midpoint — a region no delivered frame matches,
+since every episode ships a tracked crop of it. Measured on the real run, seven of
+eight episodes differ between the two readings by more than `MATCH_EPS`, median 14 and
+max 36 luma units, so the reel's "common target" was computed from pixels nobody sees.
+The conductor now measures each episode's own tracked crop through
+`reframe.plan_render` — literally the plan the render uses — pooled over three frames.
+Result on that same footage: the **delivered** spread across the three anchors falls
+**44 / 64 / 120 → 11 / 6 / 2** luma units, with a residual max of **8.0** and a median
+of **3.5**.
+
+**Breaking:** `match_grade build --edl X --footage-root Y` no longer exists. The
+conductor reads `GEOMETRY.json` instead — `match_grade build --geometry
+<run>/reels/<reel>/episodes/GEOMETRY.json` — because measuring a crop requires the
+route, and the route does not exist until an episode has been tracked.
+
+**New phase boundary in `edl_to_reel`.** Phase 1 splits at geometry:
+`--stop-after-geometry` extracts, stabilizes, tracks and gates every episode, writes
+`GEOMETRY.json` and stops **before any encode**; `--from-geometry` renders every
+episode over those frozen routes with the EDL's current colour block. Between them sits
+the seam the conductor (and a human) works in — a re-authored grade costs nothing to
+apply, because nothing has been encoded yet. `--from-geometry` refuses a cut that moved
+since the freeze (window, source clip or ramp), a build directory that was wiped in the
+gap, and an engine that changed underneath; each refusal names its remedy.
+
+**`probe grade --geometry`** renders and measures three frames of one episode over its
+frozen route before anything is encoded, always through the EDL's current colour block —
+so a grade converges in seconds instead of a reel per attempt. It agrees with the shipped
+encode's mean luma to **1 code**. `probe.json`'s `drift_checked` reads `false` there and
+says so: there is no rendered file yet for the recomputed plan to be checked against.
+
+**`check_reel` gains a blocking `tone_match`.** Three frames per bound episode, read off
+the **master** (not the delivery — `deliver`'s vignette and bookend fade both move
+percentiles), against the reel's one common target now stamped on `EDL.tone_target` and
+carried to `ReelManifest`. A failure escalates to `match-grade`. `tone_match_max = 12.0`
+sits between a measured positive maximum of 8.0 and a negative minimum of 19.5.
+
+**`match-grade` is now a required stage**, and the router leads through the new order:
+… pacing → **episodes-geometry** → **match-grade** → … → `edl_to_reel --from-geometry`.
+A reel that skips the conductor is a reel nothing measured: without the target it stamps,
+`tone_match` reports `not-checked`.
+
+**Known collision, recorded not fixed:** `check_episode`'s `color_fidelity` is blocking
+at 5.0 dE00 with no waiver, and a conductor-authored tone pair is grade movement to it.
+On the real run's own pairs the crop-based conductor's pulls exceed that ceiling. See
+the design's §9.8 and the P1 row in `docs/backlog.md` before running a mixed-camera reel.
+
 ## 0.5.0 — 2026-08-29
 
 **Retired the reel's colour-convergence loop.** `check_reel`'s `color_across_cuts`

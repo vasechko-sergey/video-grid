@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → episodes-geometry → match-grade → [assemble-draft] → [titles] → edl_to_reel episodes → episode-qc → edl_to_reel deliver → [reel-review]), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
+description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → episodes-geometry → match-grade → [assemble-draft] → [titles] → edl_to_reel episodes → episode-qc → edl_to_reel deliver → reel-review), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
 ---
 
 # using-montage (stage 5.1)
@@ -432,8 +432,9 @@ say so rather than guessing a path.
     with the colour retry loop itself (design 2026-08-29,
     colour-convergence-retire): there is no unpersisted correction left for a
     fresh phase 1 to discard. The instruction still holds, on a plainer
-    ground: `--stop-after-episodes` re-renders **every** episode from the
-    manifest, not only the one this stop names, so it pays the full
+    ground: a fresh phase 1 (`--from-geometry`, or `--stop-after-episodes` on a
+    hand-driven run) re-renders **every** episode, not only the one this stop
+    names, so it pays the full
     N-episode render cost again and invalidates every OTHER episode's
     still-good QC verdict along with the stale one — exactly the waste the
     remedy above (steps 1-4, re-judge the named indices only) exists to avoid.

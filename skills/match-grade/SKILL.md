@@ -150,6 +150,15 @@ agreement between episodes (`color_fidelity` compares an episode against its
 OWN source, i.e. damage, never episode against episode). Filed under the
 mood-LUT/agreement gap, design §10.
 
+**And `color_fidelity` may STOP a run this stage just fixed.** It is blocking at
+5.0 dE00 with **no waiver anywhere**, and the tone pair authored here is grade
+movement to it: its whole headroom is roughly 14–20 codes of subject luma, and on
+the one real 8-episode reel every episode has a band that exceeds it. The stop
+arrives as `grade-damage`, routed to edit-plan's colour block — the pair this
+stage just wrote on purpose. There is no lever to lower; if you hit it, read
+`docs/backlog.md`'s P1 row and the grade-shipped-pixels design §9.8 rather than
+looking for a flag.
+
 ## Not this skill
 
 - **Imposing an external look** (a mood LUT from `SPEC.mood`) → deferred,

@@ -1,6 +1,6 @@
 ---
 name: episode-qc
-description: Conveyor stage — the per-episode quality gate between rendering and delivery. using-montage invokes this after edl_to_reel --stop-after-episodes writes EPISODES.json, and before the --from-episodes call that assembles the reel. Packs one evidence directory per episode (a frame strip of the delivered clip, the storyboard, the mechanical report, and a colour-naturalness reading), dispatches one fresh judge subagent per episode — at most 3 concurrently — against composition/colour/impression/path/hero, then validates their findings into EPISODE_QC.json/.md, stamping each verdict's clip digest itself so a re-render cannot inherit a stale verdict. Required — a reel is never assembled over an episode nobody judged; a blocking finding stops the run there, routed to the stage that owns the fix. No waiver exists to lower this gate.
+description: Conveyor stage — the per-episode quality gate between rendering and delivery. using-montage invokes this after edl_to_reel --from-geometry writes EPISODES.json, and before the --from-episodes call that assembles the reel. Packs one evidence directory per episode (a frame strip of the delivered clip, the storyboard, the mechanical report, and a colour-naturalness reading), dispatches one fresh judge subagent per episode — at most 3 concurrently — against composition/colour/impression/path/hero, then validates their findings into EPISODE_QC.json/.md, stamping each verdict's clip digest itself so a re-render cannot inherit a stale verdict. Required — a reel is never assembled over an episode nobody judged; a blocking finding stops the run there, routed to the stage that owns the fix. No waiver exists to lower this gate.
 ---
 
 # episode-qc (per-episode QC gate)
@@ -24,8 +24,10 @@ the episode, never by re-judging until it passes (design §7).
 
 ## When to Use
 
-Between `edl_to_reel --stop-after-episodes` (writes `<run>/reels/<reel>/episodes/EPISODES.json`)
-and `edl_to_reel --from-episodes` (assembles and delivers). `using-montage`
+Between the render phase that writes `<run>/reels/<reel>/episodes/EPISODES.json` —
+`edl_to_reel --from-geometry` on the conveyor since 2026-08-30, or
+`--stop-after-episodes` when a run is driven by hand from a plain EDL — and
+`edl_to_reel --from-episodes` (assembles and delivers). `using-montage`
 invokes it there on every conveyor run — it is **required**, but it is not one
 of the three §4.1 checkpoints: a clean verdict passes through with no approval
 asked, and only a blocking finding stops the run. Re-run it (from `pack`,
@@ -41,7 +43,8 @@ place of `check_episode`'s mechanical gates — those already ran, inside
 ## Inputs
 
 - **`<run>/reels/<reel>/episodes/EPISODES.json`** (required) — a serialized `ReelManifest`,
-  written by `edl_to_reel --stop-after-episodes`. Its schema IS `ReelManifest`;
+  written by `edl_to_reel --from-geometry` (or `--stop-after-episodes`, driven by
+  hand). Its schema IS `ReelManifest`;
   there is no separate contract. Each episode's `path` field names a file
   inside that episode's own scratch dir (`<run>/reels/<reel>/build/ep{i}/`), which is where
   `pack` finds `report.json` / `route.meta.json` / `path.meta.json` /
@@ -157,8 +160,9 @@ say so rather than guessing a path.
   verdict has nothing to invalidate, so the `absent` paths below still
   reprocess and still ship unjudged.
 - **The single-command `edl_to_reel` path ships with no QC at all (design
-  §10).** This skill only gates the two-phase path
-  (`--stop-after-episodes` / `--from-episodes`). A hand-authored EDL run
+  §10).** This skill only gates a run that stops at the episodes seam
+  (`--from-geometry` or `--stop-after-episodes`, then `--from-episodes`). A
+  hand-authored EDL run
   through `edl_to_reel` in one shot is still the SP1 front door, and it
   ships unjudged — its attestation says `episode_qc: {"state": "absent"}`
   rather than pretend otherwise.
