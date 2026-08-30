@@ -121,6 +121,7 @@ def test_crop_percentiles_discriminates_at_a_realistic_gap(tmp_path):
     src, md, route = _banded_episode(tmp_path, top=120, bottom=100)
     whole = color_measure.measure_profile(str(src), at=0.5)
     crop = color_measure.measure_crop(md, str(src), str(route))
+    assert crop == pytest.approx((100.0, 100.0, 100.0))
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
 
 
