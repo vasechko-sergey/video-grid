@@ -74,15 +74,19 @@ def _refuse_on_engine_drift(started: dict, now: dict) -> None:
             f"against the current engine to re-baseline")
 
 
-def _build_manifest(edl_path: str, project_path: str, footage_root: str,
-                    work_dir: str, out_dir: str, *, music: str | None = None,
-                    jobs: int = DEFAULT_JOBS,
-                    changelog: str = "") -> tuple[ReelManifest | None, dict | None]:
-    """Everything up to the ReelManifest: preflight, extract, the loop-1 fan-out, the
-    run provenance. Returns (rm, None) or (None, stop_and_report).
+def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
+                     work_dir: str, out_dir: str, jobs: int
+                     ) -> tuple[EDL, dict, list[dict], dict | None]:
+    """Everything phase 1 does before the pool: the two footage-root refusals, the
+    same-directory refusal, the build wipe, the jobs gate, the engine-drift stop,
+    preflight and the extract. Returns (edl, engine_at_start, mds, stop).
+
+    Shared by _build_manifest (render straight through) and build_geometry (stop at
+    the geometry boundary), so the two arms cannot drift apart on a guard: both fill
+    the same two directories with .mp4, and both cut the same segments.
 
     Setup/IO errors — missing footage, a window running past EOF, unreadable JSON —
-    raise ValueError instead (a hard setup error, not an editorial finding to route)."""
+    raise ValueError (a hard setup error, not an editorial finding to route)."""
     # Both dirs receive .mp4 — out_dir the ep{i}.mp4 renders, work_dir the extracted
     # segments and the reel master; REEL_v{n} now lands in the deliveries dir next
     # door instead (see _deliveries_dir). In the footage folder these become source
@@ -121,16 +125,72 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # 1. resolve + preflight every episode — fail in ms, before any ffmpeg
     mds, stop = preflight(edl, cfg, seg_dir, out_dir)
     if stop:
-        return None, stop
+        return edl, started, mds, stop
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
     extract.extract_edl(edl, footage_root, seg_dir)
+    return edl, started, mds, None
 
-    # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
+
+def _cast_for(edl: EDL) -> Cast | None:
+    """The reel's cast registry, loaded once for the warm-up's pin resolution.
+
+    preflight already read and validated the same file, so this cannot fail here —
+    a second read is cheaper than threading the object out of preflight's return."""
+    return Cast.from_json(edl.cast) if edl.cast is not None else None
+
+
+def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
+              cast: Cast | None = None,
+              stop_after: str | None = None,
+              prepared: list[tuple[str | None, str | None]] | None = None
+              ) -> tuple[list[dict], dict | None]:
+    """One process_episode per episode over a bounded pool, results in index order.
+
+    `prepared[i]` is (route_path, prepared_source) for episode i — the frozen pair
+    phase 1a recorded (design 2026-08-30 §2.3). An episode handed a route never
+    tracks, so the two weight warm-ups below cover only the rest of the pool; with
+    `prepared=None` that is every episode, exactly as before the split.
+
+    Returns (results, None), one result per episode, or (results-so-far, stop)
+    naming the LOWEST-index episode that did not reach the expected status.
+
+    One pass, not two. An episode can fail through either channel (a raised setup
+    error or a returned non-pass status), and the two must be ordered AGAINST EACH
+    OTHER, not each within itself: draining every exception first would let a raise
+    at episode 2 beat a routable stop_and_report at episode 0 — which the sequential
+    loop returned before it ever reached episode 2. Whichever problem sits at the
+    lowest index wins, whatever kind it is; that is what makes the finding identical
+    to the sequential one."""
+    # Per-episode kwargs, and the subset this pool will actually track. Passing a
+    # kwarg only when it carries something keeps the call shape identical to the
+    # pre-split one for a plain render.
+    kwargs: list[dict] = []
+    tracking: list[dict] = []
+    for i, md in enumerate(mds):
+        kw: dict = {}
+        if stop_after is not None:
+            kw["stop_after"] = stop_after
+        route, src = prepared[i] if prepared is not None else (None, None)
+        if route is None:
+            if src is not None:
+                raise ValueError(
+                    f"episode {i} was handed a prepared source ({src}) with no frozen "
+                    f"route — the pair asserts 'this route was measured on these "
+                    f"pixels', so the source alone asserts nothing and process_episode "
+                    f"refuses it. Record the route in GEOMETRY.json, or drop the "
+                    f"prepared source and let this episode run its own pre-stage.")
+            tracking.append(md)
+        else:
+            kw["route_path"] = route
+            if src is not None:
+                kw["prepared_source"] = src
+        kwargs.append(kw)
+
     # Safe to parallelise because each episode owns its scratch (work_dir/ep{i}) and its
     # output (out_dir/ep{i}.mp4) — process_episode's docstring names the clobber this
     # would otherwise cause, and preflight built both paths per index.
-    for model in sorted({(md.get("model") or track.MODEL) for md in mds}):
+    for model in sorted({(md.get("model") or track.MODEL) for md in tracking}):
         track.ensure_model(model)      # before ANY worker: N cold workers would race the
                                        # same weights download into the same path (§5)
     # Same weights-race, the OTHER model: a cast-identity pin drives process_episode ->
@@ -142,48 +202,47 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     # is installed. The resolve mirrors process_episode's own — cheap, idempotent, and
     # guaranteed not to raise here because preflight already validated every pin against
     # this same registry (a bad name/descriptor would have returned a stop above).
-    cast = Cast.from_json(edl.cast) if edl.cast is not None else None
-    pins = (hero_lib.resolve(md.get("hero"), cast) for md in mds)
+    pins = (hero_lib.resolve(md.get("hero"), cast) for md in tracking)
     if any(p is not None and p.kind == "cast" for p in pins) and reid.available():
         reid.ensure_model()
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futures = [ex.submit(process_episode.process_episode, md,
-                             str(Path(work_dir) / f"ep{i}"))   # md already resolved → no project=
-                   for i, md in enumerate(mds)]
+                             str(Path(work_dir) / f"ep{i}"),   # md already resolved → no project=
+                             **kw)
+                   for i, (md, kw) in enumerate(zip(mds, kwargs, strict=True))]
     # the `with` block joined every worker, so each future below is already done and this
     # ONE loop reads them in index order — no dependence on completion order anywhere.
-    #
-    # One pass, not two. An episode can fail through either channel (a raised setup error
-    # or a returned non-pass status), and the two must be ordered AGAINST EACH OTHER, not
-    # each within itself: draining every exception first would let a raise at episode 2
-    # beat a routable stop_and_report at episode 0 — which the sequential loop returned
-    # before it ever reached episode 2. Whichever problem sits at the lowest index wins,
-    # whatever kind it is; that is what makes the finding identical to the sequential one.
-    episodes: list[ReelEpisode] = []
+    expect = "geometry" if stop_after == "geometry" else "mechanical_pass"
+    results: list[dict] = []
     for i, (md, fut) in enumerate(zip(mds, futures, strict=True)):
         try:
             res = fut.result()
         except Exception as e:         # a hard setup error stays an exception, per the docstring
             e.add_note(f"raised while processing episode {i} (segment {md['segment']})")
             raise
-        if res.get("status") != "mechanical_pass":
-            return None, {"status": "stop_and_report",
-                          "finding": {"reason": "episode-failed", "episode_idx": i,
-                                      "sub_status": res.get("status")}, "sub": res}
-        epdir = str(Path(work_dir) / f"ep{i}")
-        # A pan episode has no route.json — process_episode wrote none, deliberately.
-        # Naming a path that was never written would be a lie the reel manifest then
-        # carries around; None states the absence. check_reel does not depend on this
-        # (it branches on the meta sidecar's provenance bit, which is what actually
-        # happened rather than what a caller remembered to pass) — this is the
-        # contract telling the truth, not the crash fix.
-        episodes.append(ReelEpisode(
-            manifest=md, clip=res["clip"],
-            route=None if md.get("pan") is not None else str(Path(epdir) / "route.json"),
-            path=str(Path(epdir) / "path.json"),
-            meta=str(Path(epdir) / "path.meta.json")))
+        if res.get("status") != expect:
+            return results, {"status": "stop_and_report",
+                             "finding": {"reason": "episode-failed", "episode_idx": i,
+                                         "sub_status": res.get("status")}, "sub": res}
+        results.append(res)
+    return results, None
 
-    # 4. loop-2: assemble the ReelManifest and drive build_reel
+
+def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None],
+                   epdirs: list[str], edl: EDL, edl_path: str, *,
+                   music: str | None, changelog: str, started: dict) -> ReelManifest:
+    """The ReelManifest both phase-1 arms assemble from their pool's results.
+
+    `routes[i]` is the episode's route.json or None. A pan episode has no route.json
+    — process_episode wrote none, deliberately — and naming a path that was never
+    written would be a lie the reel manifest then carries around; None states the
+    absence. check_reel does not depend on this (it branches on the meta sidecar's
+    provenance bit, which is what actually happened rather than what a caller
+    remembered to pass) — this is the contract telling the truth, not the crash fix."""
+    episodes = [ReelEpisode(manifest=md, clip=res["clip"], route=routes[i],
+                            path=str(Path(epdirs[i]) / "path.json"),
+                            meta=str(Path(epdirs[i]) / "path.meta.json"))
+                for i, (md, res) in enumerate(zip(mds, results, strict=True))]
     # PLAYED lengths: check_reel measures the master's real duration against this
     # number, and a ramped episode contributes more screen time than its source
     # window (design §6).
@@ -215,7 +274,30 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                              "state": "intact" if edl.provenance.get("self") else "unstamped"},
                      "engine_at_start": started,
                      "overrides": provenance.spec_overrides(rm.check_spec)}
-    return rm, None
+    return rm
+
+
+def _build_manifest(edl_path: str, project_path: str, footage_root: str,
+                    work_dir: str, out_dir: str, *, music: str | None = None,
+                    jobs: int = DEFAULT_JOBS,
+                    changelog: str = "") -> tuple[ReelManifest | None, dict | None]:
+    """Everything up to the ReelManifest: preflight, extract, the loop-1 fan-out, the
+    run provenance. Returns (rm, None) or (None, stop_and_report)."""
+    edl, started, mds, stop = _phase_one_setup(edl_path, project_path, footage_root,
+                                               work_dir, out_dir, jobs)
+    if stop:
+        return None, stop
+    # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
+    results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl))
+    if stop:
+        return None, stop
+
+    # 4. loop-2: assemble the ReelManifest and drive build_reel
+    epdirs = [str(Path(work_dir) / f"ep{i}") for i in range(len(mds))]
+    routes = [None if md.get("pan") is not None else str(Path(d) / "route.json")
+              for md, d in zip(mds, epdirs, strict=True)]
+    return _reel_manifest(mds, results, routes, epdirs, edl, edl_path, music=music,
+                          changelog=changelog, started=started), None
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
