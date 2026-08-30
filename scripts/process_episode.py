@@ -72,14 +72,36 @@ def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
 def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: str | None = None,
                     max_attempts: int = 3,
                     project: ProjectConfig | str | Path | None = None,
-                    keyframes_path: str | None = None) -> dict:
+                    keyframes_path: str | None = None,
+                    stop_after: str | None = None,
+                    prepared_source: str | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
     do not). One fresh project_dir per episode — its route/path/report/storyboard
-    files are written flat and would clobber a sibling episode sharing the dir."""
+    files are written flat and would clobber a sibling episode sharing the dir.
+
+    `stop_after="geometry"` returns after the contradiction gate, before any
+    encode: the split edl_to_reel's phase 1 takes so a colour measurement can be
+    made on the crop that will ship (design 2026-08-30 §2.1). Every refusal above
+    the seam behaves exactly as it does in a full run.
+
+    `prepared_source` is that split's other half — the caller asserting "the
+    frozen route in route_path was measured on THIS file", which is the one thing
+    the stabilize refusal below cannot know. Not on the CLI: only a driver that
+    produced both halves can honestly assert it.
+    """
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    if stop_after not in (None, "geometry"):
+        return {"status": "needs_input", "attempt": 0, "problems": [
+            f"stop_after must be None or 'geometry', got {stop_after!r} — 'geometry' "
+            f"returns after tracking and the contradiction gate, before any encode"]}
+    if prepared_source is not None and route_path is None:
+        return {"status": "needs_input", "attempt": 0, "problems": [
+            "prepared_source needs route_path: it exists to assert that a frozen route "
+            "was measured on that file, and with no route there is nothing to assert. "
+            "Pass both, or neither."]}
     if project is not None:
         cfg = project if isinstance(project, ProjectConfig) else ProjectConfig.from_json(project)
         manifest_dict = resolve_manifest(manifest_dict, cfg)
@@ -249,7 +271,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # failure this whole ordering exists to prevent, arriving through the one door
     # the pre-stage cannot close by construction. Refuse it rather than corrupt
     # silently; manifest.validate cannot, because route_path is not a manifest field.
-    if m.stabilize and route_path is not None:
+    if m.stabilize and route_path is not None and prepared_source is None:
         return {"status": "needs_input", "attempt": 0, "problems": [
             "stabilize=true cannot be combined with a supplied --route: the frozen "
             "route was measured against unknown pixels, and applying it to the "
@@ -272,7 +294,14 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # tunes max_speed, which stabilization does not depend on.
     src = m.segment
     stabilize_report = None
-    if m.stabilize:
+    if prepared_source is not None:
+        # The caller has already produced these pixels and measured the route on
+        # them (design §2.3). Re-running the pre-stage would spend two 4K passes to
+        # recreate a file we were handed, and — because vidstabtransform is not
+        # bit-reproducible across runs of a different length — could produce pixels
+        # the frozen route no longer matches.
+        src = prepared_source
+    elif m.stabilize:
         src = str(Path(project_dir) / "stabilized.mp4")
         before, after = _timed("stabilize", lambda: vidstab.stabilize(
             m.segment, src, (src_w, src_h), _fps, _dur))
@@ -378,6 +407,13 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             if degraded is not None:
                 result["degraded"] = degraded
             return result
+
+    if stop_after == "geometry":
+        result = {"status": "geometry", "route": rp, "source": src,
+                  "timings": timings, "degraded": degraded}
+        if stabilize_report is not None:
+            result["stabilize"] = stabilize_report
+        return result
 
     # 3. reframe → check retry loop
     params = dict(orch.DEFAULT_PARAMS)
