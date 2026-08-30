@@ -159,8 +159,15 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
 
     `prepared[i]` is (route_path, prepared_source) for episode i — the frozen pair
     phase 1a recorded (design 2026-08-30 §2.3). An episode handed a route never
-    tracks, so the two weight warm-ups below cover only the rest of the pool; with
-    `prepared=None` that is every episode, exactly as before the split.
+    tracks, so the two weight warm-ups below cover only the ROUTE-LESS rest of the
+    pool — with `prepared=None` that is every episode, exactly as before the split.
+
+    That set is a safe SUPERSET, not an exact one, and deliberately: under `prepared`
+    its members are the pans, and a pan does not track either (process_episode
+    short-circuits to an empty route, timings["track"] = 0.0). Narrowing it would mean
+    a second copy of process_episode's rung logic here, free to drift from the
+    original silently; over-warming costs one idempotent weights check on a reel that
+    is about to spend real encodes anyway.
 
     Returns (results, None), one result per episode, or (results-so-far, stop)
     naming the LOWEST-index episode that did not reach the expected status.
@@ -453,12 +460,47 @@ def _refuse_on_changed_cut(geo: ReelGeometry, edl: EDL, mds: list[dict],
                 f"built with.)")
 
 
+def _refuse_on_missing_inputs(geo: ReelGeometry, mds: list[dict]) -> dict | None:
+    """Phase 1b's inputs — the frozen routes, the extracted segments, the stabilize
+    pre-stage's output — all live in build/, and the gap between the phases is a HUMAN
+    turn. Any plain `edl_to_reel` or `--stop-after-episodes` run on the same reel dirs
+    in that window calls _wipe_scratch and takes them, while GEOMETRY.json survives
+    next door in episodes/ and _refuse_on_changed_cut passes (not one path changed).
+    Without this the run dies inside reframe._probe with a bare ffprobe error carrying
+    no remedy — the same class assemble_reel's `episode-clips-missing` stop was added
+    for, and the same answer: a routed finding, before any ffmpeg."""
+    problems: list[str] = []
+    for i, (md, eg) in enumerate(zip(mds, geo.episodes, strict=True)):
+        # keyed by PATH so the common case (source == segment) is reported once, and
+        # the first label wins
+        wanted: dict[str, str] = {}
+        if eg.route is not None:
+            wanted[eg.route] = "frozen route"
+        wanted.setdefault(md["segment"], "extracted segment")
+        wanted.setdefault(eg.source, "source reframe would consume")
+        problems += [
+            f"episode {i}'s {what} is gone ({path}) — the build dir was wiped between "
+            f"the phases (a plain edl_to_reel or --stop-after-episodes run on the same "
+            f"reel does exactly that), and a frozen route cannot be recovered without "
+            f"re-tracking. Re-run `edl_to_reel --stop-after-geometry`, then re-apply "
+            f"the grade with `match_grade` before rendering"
+            for path, what in wanted.items() if not Path(path).exists()]
+    if not problems:
+        return None
+    return {"status": "stop_and_report",
+            "finding": {"reason": "geometry-inputs-missing", "episode_idx": None,
+                        "problems": problems}}
+
+
 def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
                          out_dir: str, *, music: str | None = None,
                          jobs: int = DEFAULT_JOBS, changelog: str = ""
                          ) -> tuple[ReelManifest | None, dict | None]:
     """Phase 1b: render every episode over its frozen route, with the EDL's CURRENT
     colour block. Returns (rm, None) or (None, stop_and_report).
+
+    Refuses, before any ffmpeg, a build dir that was wiped between the phases (see
+    _refuse_on_missing_inputs).
 
     Does NOT wipe build/ — the routes it needs live there — and does NOT re-extract:
     phase 1a already cut the segments those routes were measured against, so cutting
@@ -486,6 +528,9 @@ def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
     if stop:
         return None, stop
     _refuse_on_changed_cut(geo, edl, mds, geometry_path)
+    stop = _refuse_on_missing_inputs(geo, mds)
+    if stop:
+        return None, stop
     # The frozen pair, per episode (design §2.3). The prepared source is gated on the
     # ROUTE as well as on `stabilize`: a pan is stabilizable — the two are independent
     # EDL fields and nothing refuses the pair — and a pan has no route, which

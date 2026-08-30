@@ -1378,11 +1378,21 @@ class EpisodeGeometry:
     """One episode's geometry, decided and frozen before any colour is measured
     (design 2026-08-30 §2.2).
 
-    `manifest` is stored with its COLOUR BLOCK STRIPPED, and that is the guard,
+    `manifest` is stored with its COLOUR BLOCK STRIPPED, and that is HALF the guard,
     not a space saving: --from-geometry re-derives the same stripped manifest from
-    the current EDL and refuses any difference, so a cut edited under a frozen
-    route is refused while a re-authored grade passes — which is the entire point
-    of the seam.
+    the current EDL and refuses any difference, so a layout, hero, crop, canvas or
+    delivery edited under a frozen route is refused while a re-authored grade passes
+    — which is the entire point of the seam.
+
+    The OTHER half is ReelGeometry.provenance["cuts"], and it is needed because this
+    manifest cannot see the WINDOW: `to_manifest_dict` carries neither `source` nor
+    `start`, and `dur` crosses only as `target_dur = ep.play_dur()`. A moved ramp is
+    the sharpest case and the one a reader will not re-derive — play_dur() is
+    dur + ramp_extra, and ramp_extra is BY DESIGN a dur-independent constant of the
+    ramp REGION (design 2026-08-09 §2), so changing a ramp's `at` leaves target_dur
+    bit-identical. Phase 1b does not re-extract, so on any of those edits the segment
+    on disk is still phase 1a's and the reel would ship a cut the EDL no longer
+    describes — silently, which is why the second half exists.
 
     `route` is None under a pan, exactly as on ReelEpisode: a generated path has no
     observation to freeze. `source` is the file reframe will consume — the segment
@@ -1421,7 +1431,15 @@ class EpisodeGeometry:
 
 @dataclass(frozen=True)
 class ReelGeometry:
-    """GEOMETRY.json — phase 1a's output and match_grade's input."""
+    """GEOMETRY.json — phase 1a's output and match_grade's input.
+
+    `provenance` carries the two things a per-episode record cannot: #11's
+    `engine_at_start` stamp (the split gives the conductor, and a human, time for the
+    engine to move) and `cuts` — {source, start, dur, ramp} per episode, exactly
+    `extract`'s inputs — which is the half of the frozen-cut guard
+    EpisodeGeometry.manifest is blind to. See that docstring for why a stripped
+    manifest alone cannot see a moved window.
+    """
     episodes: tuple[EpisodeGeometry, ...]
     edl: str
     provenance: dict = field(default_factory=dict)

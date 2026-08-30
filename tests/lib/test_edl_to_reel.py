@@ -58,6 +58,10 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
 
     def fake_extract(edl, footage_root, seg_dir):
         segs = [str(Path(seg_dir) / f"ep{i}_raw.mp4") for i in range(len(edl.episodes))]
+        Path(seg_dir).mkdir(parents=True, exist_ok=True)
+        for s in segs:
+            Path(s).write_text("segment")   # a real file: the real extract leaves one,
+                                            # and phase 1b's inputs check looks for it
         seen["segments"] = segs
         return segs
     monkeypatch.setattr(edl_to_reel.extract, "extract_edl", fake_extract)
@@ -1633,15 +1637,76 @@ def test_from_geometry_warms_no_weights_when_every_route_is_frozen(tmp_path, mon
     assert ctx["seen"]["warm"] == []
 
 
-def test_from_geometry_still_warms_for_an_episode_that_tracks(tmp_path, monkeypatch):
-    # a pan carries no route, so phase 1b re-runs it — and any episode the geometry
-    # recorded route=None for still reaches the pool's tracking half
+def test_from_geometry_warms_for_every_route_less_episode(tmp_path, monkeypatch):
+    # The warm-up set is "every episode with no frozen route", and under `prepared`
+    # that set is exactly the pans — which do NOT track (process_episode short-circuits
+    # to an empty route). So what this pins is a deliberate SUPERSET: the warm-up here
+    # is unnecessary, and keeping it is what makes the rule identical to the pre-split
+    # one instead of a second copy of process_episode's rung logic, free to drift.
+    # An episode whose geometry recorded route=None for a NON-pan reason would really
+    # track, and is covered by the same rule.
     _no_vidstab_probe(monkeypatch)
     geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[
         _ep(pan={"from": 0.0, "to": 1.0}, composition="center"), _ep(start=2.0)])
     ctx["seen"]["warm"].clear()
     _render(ctx)
     assert ctx["seen"]["warm"] == [edl_to_reel.track.MODEL]
+
+
+# --- fix round 1: phase 1b never checked that its own inputs still exist -----------
+#
+# The routes and segments live in build/, which this seam exists to keep un-wiped —
+# but the gap between the phases is a HUMAN turn, and any plain edl_to_reel or
+# --stop-after-episodes run on the same reel dirs in that window wipes them.
+# GEOMETRY.json survives next door in episodes/, preflight passes, the cut guard
+# passes (not one path changed), and the run then died inside reframe._probe with a
+# bare ffprobe error carrying no remedy. Same class as assemble_reel's
+# episode-clips-missing stop, same answer.
+
+def test_from_geometry_refuses_when_the_frozen_route_was_wiped(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    (Path(ctx["work"]) / "ep0" / "route.json").unlink()
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert rm is None
+    assert stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "geometry-inputs-missing"
+    assert stop["finding"]["episode_idx"] is None
+    problems = stop["finding"]["problems"]
+    assert len(problems) == 1                      # episode 1 is intact, and says nothing
+    assert "episode 0's frozen route is gone" in problems[0]
+    assert "--stop-after-geometry" in problems[0]  # the remedy, named
+    assert ctx["seen"]["pe"] == []                 # refused before any episode ran
+
+
+def test_from_geometry_refuses_when_a_segment_was_wiped(tmp_path, monkeypatch):
+    # the other input, and the one every episode has — a pan carries no route at all
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    Path(geo.episodes[1].source).unlink()
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert rm is None and stop["finding"]["reason"] == "geometry-inputs-missing"
+    problems = stop["finding"]["problems"]
+    # ONE problem, not two: source == segment for an unstabilized episode, and the
+    # report is keyed by path so the same missing file is named once
+    assert len(problems) == 1
+    assert "episode 1's extracted segment is gone" in problems[0]
+    assert ctx["seen"]["pe"] == []
+
+
+def test_from_geometry_refuses_when_the_prepared_source_was_wiped(tmp_path, monkeypatch):
+    # the stabilize pre-stage's output is its own input, and lives in build/ too
+    _no_vidstab_probe(monkeypatch)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch,
+                             episodes=[_ep(stabilize=True), _ep(start=2.0)])
+    assert geo.episodes[0].source.endswith("ep0/stabilized.mp4")
+    Path(geo.episodes[0].source).unlink()
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert rm is None and stop["finding"]["reason"] == "geometry-inputs-missing"
+    assert "episode 0's source reframe would consume is gone" in \
+        stop["finding"]["problems"][0]
+    assert ctx["seen"]["pe"] == []
 
 
 def test_from_geometry_refuses_an_engine_change_since_the_geometry_was_frozen(
