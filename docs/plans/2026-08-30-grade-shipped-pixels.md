@@ -778,14 +778,30 @@ def render_from_geometry(geometry_path: str, work_dir: str, out_dir: str, *,
                 f"colour block may change between the phases — that is the seam.)")
 ```
 
-then the pool with `prepared=[(eg.route, eg.source if md.get("stabilize") else None) ...]`
-and `stop_after=None`, then the same `ReelEpisode`/`ReelManifest` assembly the
-current `edl_to_reel` does after its pool.
+then the pool with `stop_after=None` and
 
-Note `prepared_source` is passed **only** when the episode declares `stabilize`:
-for an unstabilized episode the source is `md["segment"]`, which
-`process_episode` already resolves, and passing it would add a second, redundant
-assertion path.
+```python
+    prepared = [(eg.route,
+                 eg.source if (md.get("stabilize") and eg.route is not None) else None)
+                for md, eg in zip(mds, geo.episodes, strict=True)]
+```
+
+then the same `ReelEpisode`/`ReelManifest` assembly the current `edl_to_reel` does
+after its pool.
+
+`prepared_source` is passed **only** when the episode declares `stabilize`: for an
+unstabilized episode the source is `md["segment"]`, which `process_episode` already
+resolves, and passing it would add a second, redundant assertion path.
+
+**And only when the episode HAS a route** — found by Task 2's review before Task 3
+ran. A pan is stabilizable (`pan` and `stabilize` are independent `EDLEpisode`
+fields and nothing refuses the pair) and a pan has `route=None`, so the naive
+tuple hands `(None, "…/stabilized.mp4")` to `process_episode`'s
+`prepared_source`-needs-`route_path` refusal and the whole `--from-geometry` run
+returns `needs_input` on a manifest the validator accepts. A pan+stabilize episode
+therefore re-runs its own pre-stage in phase 2 — wasteful but correct, since a
+generated path is not measured against pixels at all. **Test it:** a pan+stabilize
+episode must complete `--from-geometry`.
 
 Wire `ReelManifest.tone_target=edl.tone_target` into BOTH assembly sites (here and
 in the existing `edl_to_reel`).
@@ -1148,7 +1164,8 @@ should move** — nothing in this slice changes an existing render's pixels.
 | 4 | `crop_percentiles` uses `plan.filter_args` + a leading `select` instead of `with_tail` | Proof 7 (one frame three times) |
 | 5 | the stabilize refusal loses `and prepared_source is None` | Task 2 |
 | 6 | `elif m.stabilize` → `if m.stabilize` | Task 2 |
-| 7 | `stop_after` returns after the encode instead of before | Task 2's `calls == []` |
+| 7 | `stop_after` returns after the encode instead of before | Task 2's prepared-source test — it RAISES (check_episode.run is real and the faked reframe wrote no clip) before `calls == []` is reached |
+| 7b | `src = prepared_source` becomes `src = m.segment` | Task 2's pinned `src`/`source` assertions |
 | 8 | `render_from_geometry` calls `_wipe_scratch` | Task 3 no-wipe |
 | 9 | the cut guard compares the FULL manifest | Task 3 re-authored-grade (green→red) |
 | 10 | `conduct` measures `eg.source` with `route=None` | Proof 2 |
