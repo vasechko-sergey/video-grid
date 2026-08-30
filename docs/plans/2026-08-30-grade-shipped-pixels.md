@@ -768,14 +768,7 @@ def render_from_geometry(geometry_path: str, work_dir: str, out_dir: str, *,
     mds, stop = preflight(edl, cfg, seg_dir, out_dir)
     if stop:
         return None, stop
-    for i, (md, eg) in enumerate(zip(mds, geo.episodes, strict=True)):
-        if manifest_lib.strip_colour(md) != eg.manifest:
-            raise ValueError(
-                f"episode {i}'s cut changed after its geometry was frozen: the "
-                f"GEOMETRY.json in hand was built from a different window, layout "
-                f"or hero, and its route no longer describes this episode. Re-run "
-                f"edl_to_reel --stop-after-geometry, or restore the EDL. (Only the "
-                f"colour block may change between the phases — that is the seam.)")
+    _refuse_on_changed_cut(mds, edl, geo)      # BOTH halves — see below
 ```
 
 then the pool with `stop_after=None` and
@@ -821,13 +814,31 @@ in the existing `edl_to_reel`).
 Refuse `--stop-after-geometry` together with `--from-geometry` or
 `--from-episodes`, in the style of the existing mutual-exclusion messages.
 
-- [ ] **Step 4: mutation check**
+**The guard has TWO halves, and the second was found in execution.** The stripped
+manifest cannot see a changed window: `to_manifest_dict` carries neither `source`
+nor `start`, and `dur` crosses only as `target_dur = ep.play_dur()`. Since phase
+1b does not re-extract, a changed `start` ships phase 1a's OLD segment under the
+NEW colour block, silently. The `ramp` case settles it — `ramp_extra` is a
+`dur`-independent constant, so moving a ramp's `at` leaves `target_dur`
+bit-identical and NO manifest field moves.
 
-Delete the `strip_colour(md) != eg.manifest` guard.
-`test_from_geometry_refuses_a_changed_cut` MUST go RED, and
-`test_from_geometry_accepts_a_re_authored_grade` MUST stay green — if the second
-also goes red, the guard is comparing the colour block too and the strip is not
-being applied on both sides. Re-apply, `git diff` clean.
+So `build_geometry` also records a per-episode cut identity
+`{source, start, dur, ramp}` — exactly the four fields `extract_edl` reads — and
+`_refuse_on_changed_cut` checks both halves, naming which fields moved. Both sides
+of the manifest comparison go through a JSON round trip, because
+`Manifest.color_means`' default is a **tuple** and without it the guard refuses
+every run.
+
+- [ ] **Step 4: mutation checks (both halves)**
+
+1. Delete the manifest half. `test_from_geometry_refuses_a_changed_layout` MUST go
+   RED and `test_from_geometry_accepts_a_re_authored_grade` MUST stay green — if
+   the second also reddens, the strip is not applied on both sides.
+2. Delete the cut-identity half. `test_from_geometry_refuses_a_changed_window` MUST
+   go RED. Include a **moved ramp** case: it is the one a `target_dur` comparison
+   cannot catch.
+
+Re-apply both, `git diff` clean.
 
 - [ ] **Step 5: commit**
 
@@ -1168,6 +1179,8 @@ should move** — nothing in this slice changes an existing render's pixels.
 | 7b | `src = prepared_source` becomes `src = m.segment` | Task 2's pinned `src`/`source` assertions |
 | 8 | `render_from_geometry` calls `_wipe_scratch` | Task 3 no-wipe |
 | 9 | the cut guard compares the FULL manifest | Task 3 re-authored-grade (green→red) |
+| 9b | the cut-identity half is deleted, keeping the manifest half | Task 3's changed-window test, incl. the moved-ramp case |
+| 9c | `_jsonable` is dropped from ONE side of the manifest comparison | every `--from-geometry` test (the tuple default refuses every run) |
 | 10 | `conduct` measures `eg.source` with `route=None` | Proof 2 |
 | 11 | `write_match` stops writing `tone_target` | Task 4 + Task 6 no-target |
 | 12 | `tone_match_max` → 100.0 | Task 6 |

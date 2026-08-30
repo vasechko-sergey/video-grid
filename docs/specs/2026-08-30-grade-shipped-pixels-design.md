@@ -287,13 +287,29 @@ class ReelGeometry:
     provenance: dict        # engine stamp — the same drift guard EPISODES.json carries
 ```
 
-The manifest is stored **without** its colour block, and that is the guard, not a
-space saving: `--from-geometry` re-reads the EDL, re-derives each episode's
-stripped manifest, and refuses on any difference. A cut that changed under a
-frozen route is refused; a colour block that changed is exactly what this seam is
-for. The drop-and-reapply is `probe.regrade`'s, unchanged and already proven —
-`_COLOUR_KEYS` with `_COLOUR_IDENTITY` filling what `to_manifest_dict` omits at
-identity.
+The manifest is stored **without** its colour block, and that is half the guard,
+not a space saving: `--from-geometry` re-reads the EDL, re-derives each episode's
+stripped manifest, and refuses on any difference. The drop-and-reapply is
+`probe.regrade`'s, unchanged and already proven — `COLOUR_KEYS` with
+`COLOUR_IDENTITY` filling what `to_manifest_dict` omits at identity.
+
+**Amended during execution (Task 3), because one half is not enough.** The stored
+manifest cannot see a changed *window*. `to_manifest_dict` carries neither
+`source` nor `start` — those are `extract`'s inputs, and the manifest only names
+the segment `extract` already wrote — and `dur` crosses only as
+`target_dur = ep.play_dur()`. Since phase 1b deliberately does **not** re-extract,
+a changed `start` would ship phase 1a's OLD segment under the NEW colour block,
+silently, and the manifest comparison would see nothing.
+
+**The `ramp` case is the one that settles it**: `play_dur() = dur + ramp_extra`,
+and `ramp_extra` is by design a `dur`-independent constant of the ramp region
+(2026-08-09 §2) — so moving a ramp's `at` leaves `target_dur` **bit-identical**
+while the pixels on disk are phase 1a's. No manifest field moves at all.
+
+So `ReelGeometry` records a second half: a per-episode **cut identity**
+`{source, start, dur, ramp}` — exactly the four fields `extract_edl` reads — and
+`--from-geometry` checks both, naming which fields moved. A changed cut is
+refused; a changed colour block is exactly what this seam is for.
 
 ### §2.3 The stabilize/route reconciliation
 
@@ -412,7 +428,7 @@ same reel.
 | Contract | Change |
 |---|---|
 | `models.EpisodeGeometry` | new |
-| `models.ReelGeometry` | new |
+| `models.ReelGeometry` | new — its `provenance` carries the per-episode cut identity beside the engine stamp (§2.2, amended) |
 | `models.ReelCheckSpec.tone_match_max` | new, `12.0` |
 | `models.ReelManifest.tone_target` | new, `tuple[float,float,float] \| None` |
 | `edl.EDL.tone_target` | new, written by `match_grade`, carried to `ReelManifest` |
