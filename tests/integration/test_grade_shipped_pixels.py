@@ -42,16 +42,19 @@ _ROUTE_META = json.loads((FIX / "golden_route.meta.json").read_text())
 # The two exposures, and the two windows they are cut from.
 #
 # Measured on the tracked crops these produce (a 720x720 square crop out of a 1280x720
-# frame — no rescale, so the reading is of the crop's own pixels): 32/71/179 against
-# 42/93/236, a 57-unit p95 gap, and each sits 28.5 luma units from the common median on
-# every anchor — well past matchgrade.MATCH_EPS, so both get a pair.
+# frame — no resample, so the reading is of the crop's own pixels): 32/71/179 against
+# 42/93/236. Each sits [5.0, 11.0, 28.5] from the common median 37/82/207.5 — the pull
+# is NOT uniform across the anchors, it grows with luma, and 28.5 is the p95 anchor
+# alone. matchgrade.needs_tone reads the MAX, so both get a pair; the subject the
+# colour sensor watches sits nearer the 5-11 end.
 #
 # The upper bound is not taste, it is a MEASURED ceiling this repo already ships:
 # check_episode's color_fidelity gate is BLOCKING at grade_delta_max = 5.0 dE00 since
-# 2026-08-28, and the convergence grade IS grade movement to it. At x0.78/x1.15 the
-# bright episode reads 5.27 and phase 1b stops with `grade-damage`; here the sensor
-# reads 2.33 and 3.82. See the task report — a real reel with a wider exposure spread
-# than this fixture cannot be match-graded through the current gate.
+# 2026-08-28, and the convergence grade IS grade movement to it. Swept on this exact
+# fixture shape: at x0.78/x1.15 the bright episode reads 5.48 and phase 1b stops with
+# `grade-damage`; here the sensor reads 2.33 and 3.82. See the task report — a real reel
+# with a wider exposure spread than this fixture cannot be match-graded through the
+# current gate.
 DARK, BRIGHT = 0.83, 1.09
 
 # One window per episode, by index. Two DIFFERENT windows because check_reel's variety
@@ -103,13 +106,14 @@ def _run(tmp_path, monkeypatch, rows, *, canvas=(1, 1), **edl_fields):
     below drives.
 
     The square canvas is load-bearing, not arbitrary: 1:1 against a 1280x720 source
-    crops 720x720 and `native` delivery keeps it, so no scale filter runs and the
-    conductor's reading and the encoded clip's reading are of the same pixel
-    population. Measured against a 9:16 canvas (crop 405 wide, delivered 404 — a
-    one-pixel resample): every delivered residual rose from 1.0 to 3.5, because
-    resampling and a non-linear tone curve do not commute. That is a real number about
-    production geometry, and it is recorded in the task report; here it is simply
-    noise this fixture does not need to carry."""
+    crops 720x720 and `native` delivery keeps it. The chain still ends `…,scale=720:720,…`
+    — the filter is emitted either way — but at equal dimensions it is an identity that
+    takes swscale's unscaled path, so NOTHING RESAMPLES and the conductor's reading and
+    the encoded clip's reading are of the same pixel population. Measured against a 9:16
+    canvas (crop 405 wide, delivered 404 — one pixel of real resampling): every delivered
+    residual rose from 1.0 to 3.5, because a resample and a non-linear tone curve do not
+    commute. That is a real number about production geometry, recorded in the task
+    report; here it is simply noise this fixture does not need to carry."""
     _fake_tracker(monkeypatch)
     foot = tmp_path / "footage"
     foot.mkdir(parents=True, exist_ok=True)
@@ -247,7 +251,12 @@ def test_conduct_decides_on_the_crop_not_on_the_whole_frame(tmp_path):
 
     `_banded_episode` is imported rather than copied: a second copy would drift from the
     fixture whose crop is pinned into the bottom band (see the import's own note)."""
-    src, md, route = _banded_episode(tmp_path)              # top band 240, bottom 100
+    # The REALISTIC band (120 over 100), not the fixture's dramatic 240/100 default —
+    # its own docstring asks for this, and test_color_measure.py already reads it here.
+    # A proof that only holds at a 35x margin says nothing about production scale; at
+    # 120/100 the counterfactual target is still 10.0 from the real one against a
+    # MATCH_EPS of 4.0 (measured).
+    src, md, route = _banded_episode(tmp_path, top=120, bottom=100)
     other = tmp_path / "other.mp4"                          # a second, gradeable episode
     proc.run([ffbin.ffmpeg(), "-y",
               "-f", "lavfi", "-i", "color=c=0x202020:s=160x1280:d=2:r=30",
@@ -419,19 +428,25 @@ def test_the_gate_fires_when_the_grade_never_reached_the_pixels(tmp_path, monkey
 
 
 def test_the_gate_reads_the_master_not_the_delivered_reel(tmp_path, monkeypatch):
-    """design §5. `deliver`'s vignette moves percentiles, and the master is the last
-    artifact whose pixels are the episodes'. The proof is not that the vignette is
-    harmless — it is that the CHOICE OF FILE decides the verdict: the same reel read
-    off the delivery is measurably further from its own target, past the gate's
-    ceiling, while the check (which reads the master) passes."""
+    """design §5, and its §8.6 in full: the reel passes, AND WOULD NOT if the check
+    sampled the delivery.
+
+    `deliver`'s vignette and bookend fade both ride its one encode, and the master is
+    the last artifact whose pixels are the episodes'. The look carries BOTH, because the
+    vignette alone does not settle it — measured at vignette 0.6 with no fade, the
+    delivery reads 5.5 against the master's 1.5: further, but still inside the gate's
+    12.0 ceiling, so a check reading the wrong file would have reached the same verdict
+    by luck. The fade is what makes the choice of file decide the answer: `fade_args`
+    emits `fade=t=in:st=0:d=0.3`, and the first per-episode sample lands at 0.125s of
+    the master — inside the fade-in, at roughly 42% brightness."""
     # authored on the EDL, where a look really is authored — LookSpec builds the dict so
     # the shape is the contract's, not a literal that can drift from it
     ctx = _run(tmp_path, monkeypatch, [(DARK, {}), (BRIGHT, {})],
-               look=LookSpec(vignette=0.6).to_dict())
+               look=LookSpec(vignette=0.6, fade=0.3).to_dict())
     _geometry(ctx)
     match_grade.write_match(ctx["geometry"])
     rm = _render(ctx)
-    assert rm.look is not None and rm.look.vignette == 0.6
+    assert rm.look is not None and (rm.look.vignette, rm.look.fade) == (0.6, 0.3)
 
     work = str(Path(ctx["work"]) / "reel")
     res = build_reel.build_reel(rm, ctx["deliveries"], work)
@@ -448,13 +463,12 @@ def test_the_gate_reads_the_master_not_the_delivered_reel(tmp_path, monkeypatch)
     d_worst = max(_resid(p, target) for p in d_prof)
     # the check read THIS file — not an inference, the two numbers are the same number
     assert m_worst == pytest.approx(tm["worst"], abs=0.01), (m_worst, tm)
-    # and the choice of file decides the answer: on the master the reel sits inside the
-    # tolerance the conductor itself grades to; on the delivery it does not. (Measured
-    # here: 1.5 against 5.5, the vignette costing 4.0 luma units — a third of the gate's
-    # own 12.0 ceiling, and enough to flip any reel already near it.)
+    # and the choice of file decides the VERDICT, not merely the number. Measured: the
+    # master reads 1.5 and the delivery 19.0 (episodes 18/65/198 and 21/67/197 against a
+    # 37/82/207.5 target) — a check that sampled the delivery would have failed this reel
+    # and escalated it to match-grade, which has nothing to fix.
     assert m_worst <= rm.check_spec.tone_match_max
-    assert d_worst > m_worst + 2.0, (m_prof, d_prof, target)
-    assert m_worst <= matchgrade.MATCH_EPS < d_worst, (m_worst, d_worst)
+    assert d_worst > rm.check_spec.tone_match_max, (m_prof, d_prof, target)
 
 
 # --- Proof 7: the probe predicts the encode -----------------------------------
