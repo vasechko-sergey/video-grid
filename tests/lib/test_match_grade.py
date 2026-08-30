@@ -7,7 +7,8 @@ import pytest
 from scripts import match_grade
 from scripts.lib import matchgrade, moodpreset, provenance
 from scripts.lib.edl import EDLEpisode, EDL
-from scripts.lib.models import EpisodeGeometry, ReelGeometry
+from scripts.lib.models import EpisodeGeometry, ReelCheckSpec, ReelGeometry
+from scripts.lib.spec import Spec
 
 
 def _ep(source, start=0.0, dur=2.0, **kw):
@@ -142,6 +143,43 @@ def test_write_match_stamps_the_tone_target_on_the_edl(tmp_path, monkeypatch):
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     match_grade.write_match(geometry_path)
     assert EDL.from_json(str(edl_path)).tone_target == (20.0, 100.0, 200.0)
+
+
+def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monkeypatch):
+    """grade-shipped-pixels Task 6's missing test: write_match's `spec=` path resolves a
+    mood preset and displaces the common target (design 2026-08-17 §1) INSIDE conduct() —
+    which reassigns its one local `target` from matchgrade.biased_target, so both
+    consumers (the per-episode tone_dst plan() authors, and the EDL.tone_target this
+    stamps) read that same variable and cannot diverge today. But check_reel's tone_match
+    gate (design 2026-08-30 §5) compares every delivered episode's PIXELS against
+    EDL.tone_target/ReelManifest.tone_target — so if a future refactor ever let the raw
+    median reach that stamp on a mood-biased reel while the render still graded toward
+    the biased value, the gate's premise (a graded episode lands ON the target by
+    construction) would break for every episode on the reel, not just this one field.
+
+    Profiles + preset (moody: -18/-16/-8, and moody never scales — biased_target's own
+    docstring says so because it pulls inward) are the SAME ones
+    test_conduct_with_a_mood_displaces_the_target already uses one level down; picked so
+    the median and the biased target differ by MORE than ReelCheckSpec.tone_match_max —
+    discriminating the gate's premise, not float noise."""
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
+    geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
+    spec_path = tmp_path / "SPEC.json"
+    spec_path.write_text(json.dumps(
+        Spec(canvas=(1080, 1920), length_s=10.0, mood="moody", hook="h").to_dict()))
+
+    median = _plain_target()                                # (25.0, 110.0, 195.0)
+    biased, k = matchgrade.biased_target(median, (-18.0, -16.0, -8.0))
+    assert k == 1.0                                          # the full bias survived, nothing scaled away
+    worst = max(abs(a - b) for a, b in zip(median, biased))
+    assert worst > ReelCheckSpec(target_dur=1.0).tone_match_max    # > 12.0, or this proves nothing
+
+    status = match_grade.write_match(geometry_path, spec=str(spec_path))
+
+    assert status["target"] == list(biased) and status["mood"] == "moody"
+    back = EDL.from_json(edl_path)
+    assert back.tone_target == biased                              # the DISPLACED target
+    assert back.tone_target != median                              # never the raw median
 
 
 def test_write_match_does_not_resolve_the_geometrys_edl_path(tmp_path, monkeypatch):

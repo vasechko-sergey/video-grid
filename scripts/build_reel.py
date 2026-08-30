@@ -48,6 +48,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     audio: str | None = None
     geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
                 if all(e.path and e.meta for e in rm.episodes) else None)
+    # The convergence gate's per-episode half (design 2026-08-30 §5): which episodes are
+    # BOUND to rm.tone_target. A parallel list, exactly like `geometry` above and for the
+    # same reason — check_reel.run stays callable from its own CLI, which has neither.
+    # Constant across rounds: a reprocess re-renders with the SAME manifest, so the pair
+    # it grades toward cannot move between rounds either.
+    tone_dsts = [e.manifest.get("tone_dst") for e in rm.episodes]
     need_assemble = True
     # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
     # length — so it must not block the absorb. .get with a default rather than [] :
@@ -67,7 +73,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             need_assemble = False
         report = check_reel.run(master, clips, spec, report_path,
                                 music=music, audio=audio, geometry=geometry,
-                                platform=rm.platform, outro=rm.outro)
+                                platform=rm.platform, outro=rm.outro,
+                                tone_target=rm.tone_target, tone_dsts=tone_dsts)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
                                                 spec.length_retime_max, outro_fixed)
         if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long

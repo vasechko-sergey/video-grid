@@ -5,8 +5,8 @@ import imagehash
 import pytest
 
 from scripts import check_reel
-from scripts.lib import provenance
-from scripts.lib.models import CheckResult, ReelCheckSpec
+from scripts.lib import models, provenance, reel_orchestration
+from scripts.lib.models import CheckResult, ReelCheckSpec, ReelFailure
 
 
 class _Stub:
@@ -461,3 +461,176 @@ def test_a_residual_past_the_reporting_tolerance_is_flagged_but_advisory(tmp_pat
                          str(tmp_path / "r.json"), outro=GAP)
     assert rep.checks["outro"].passed is False
     assert rep.overall is True
+
+
+# --- grade-shipped-pixels Task 6: the convergence gate (design 2026-08-30 §5) ---
+# tone_target/tone_dsts are PARALLEL lists, the same idiom `geometry=` already uses —
+# check_reel.run must stay callable from its own CLI, which supplies neither. The ruler
+# (color_measure.clip_percentiles) is stubbed per test with the master-relative sample
+# times it was asked for, so these prove the SPAN arithmetic too, not just the compare.
+
+TGT = (20.0, 100.0, 200.0)
+
+
+def _ruler(monkeypatch, per_call):
+    """Stub the one ruler. `per_call` is a list of profiles returned in call order;
+    every call's (clip, times) is recorded so a test can assert WHICH pixels were read."""
+    seen = []
+    profiles = iter(per_call)
+
+    def fake(clip, times):
+        seen.append((clip, [round(t, 4) for t in times]))
+        return next(profiles)
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles", fake)
+    return seen
+
+
+def test_tone_match_passes_when_every_episode_lands_on_the_target(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [(22.0, 104.0, 197.0), (20.0, 100.0, 200.0)])
+    master = _master(tmp_path)
+    rep = check_reel.run(master, ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT), list(TGT)])
+    assert rep.checks["tone_match"] == CheckResult("tone_match", True, {
+        "target": [20.0, 100.0, 200.0], "residuals": {"0": 4.0, "1": 0.0},
+        "not_checked": {}, "max": 12.0, "worst": 4.0})
+    assert rep.overall is True and not rep.fail_reasons
+    # the MASTER, at each episode's own span, at (k+0.5)/3 of it — never the delivered reel
+    assert seen == [(master, [0.5, 1.5, 2.5]), (master, [3.5, 4.5, 5.5])]
+
+
+def test_tone_match_fails_and_routes_to_match_grade(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    # ep0 landed; ep1's p50 is 30 units off the target — the ungraded shape of §0.6
+    _ruler(monkeypatch, [(22.0, 104.0, 197.0), (20.0, 130.0, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT), list(TGT)])
+    assert rep.checks["tone_match"].passed is False and rep.overall is False
+    f = [x for x in rep.fail_reasons if x.check == "tone_match"][0]
+    assert f.escalate_to == "match-grade"
+    assert f.episode_idx == 1                       # the WORST episode, by name
+    assert f.detail == {"residual": 30.0, "max": 12.0}
+
+
+def test_tone_match_is_not_checked_without_a_target(tmp_path, monkeypatch):
+    # match-grade was never run. Absence is not tampering — the same rule the
+    # attestation lives by — so the reel does not fail, and the ruler never runs.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["tone_match"].passed is None
+    assert rep.checks["tone_match"].detail["status"] == "not-checked"
+    assert rep.checks["tone_match"].detail["reason"] == "no-target"
+    assert "not_checked" not in rep.checks["tone_match"].detail   # nothing to index
+    assert rep.overall is True and seen == []
+
+
+def test_tone_match_skips_an_episode_the_conductor_skipped(tmp_path, monkeypatch):
+    # ep1 carries no pair at all (flat-source / within-eps) → NAMED, not silently passed.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [(20.0, 100.0, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT), None])
+    assert rep.checks["tone_match"].detail["not_checked"] == {"1": "not-bound"}
+    assert rep.checks["tone_match"].detail["residuals"] == {"0": 0.0}
+    assert rep.checks["tone_match"].passed is True
+    assert len(seen) == 1                     # the skipped episode's pixels were never read
+
+
+def test_a_hand_authored_pair_is_not_bound_to_the_reels_common_target(tmp_path, monkeypatch):
+    # The other skip shape: ep1 HAS a pair, but it is the human's, not the reel's.
+    # Judging it against the common target would report a failure its grade never claimed.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [(20.0, 100.0, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_target=TGT,
+                         tone_dsts=[list(TGT), [30.0, 110.0, 210.0]])
+    assert rep.checks["tone_match"].detail["not_checked"] == {"1": "not-bound"}
+    assert len(seen) == 1
+
+
+def test_a_target_with_no_episode_bound_to_it_says_so_instead_of_passing(tmp_path, monkeypatch):
+    # The conductor skipped EVERY episode. pass=True here would be a green tick for
+    # having examined nothing — the same vacuous shape the all-pan safe_zones branch
+    # refuses. The `reason` separates it from "no target was ever authored".
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[None, None])
+    assert rep.checks["tone_match"].passed is None
+    assert rep.checks["tone_match"].detail["reason"] == "no-episode-bound"
+    assert rep.checks["tone_match"].detail["not_checked"] == {"0": "not-bound", "1": "not-bound"}
+    assert rep.overall is True and seen == []
+
+
+def test_a_tone_dst_that_only_round_tripped_through_json_is_still_bound(tmp_path, monkeypatch):
+    # The manifest's pair is a LIST of ints; the reel target is a tuple of floats. They
+    # are the same numbers — an equality that type-sniffs would skip every episode and
+    # report a vacuously green reel.
+    _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
+    _ruler(monkeypatch, [(20.0, 100.0, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[[20, 100, 200]])
+    assert rep.checks["tone_match"].detail["residuals"] == {"0": 0.0}
+    assert rep.checks["tone_match"].detail["not_checked"] == {}
+
+
+def test_one_luma_code_of_difference_is_a_different_target(tmp_path, monkeypatch):
+    # The binding tolerance must not swallow a real difference: 1 code is the smallest
+    # color.percentiles can report, and color.TONE_MIN_GAP is 6. Guards _TONE_BIND_EPS
+    # against being widened into a threshold.
+    _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[[20.0, 101.0, 200.0]])
+    assert rep.checks["tone_match"].detail["not_checked"] == {"0": "not-bound"}
+    assert seen == []
+
+
+def test_tone_match_passes_at_exactly_the_threshold(tmp_path, monkeypatch):
+    # residual == tone_match_max must PASS; guards the > boundary
+    _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
+    _ruler(monkeypatch, [(20.0, 112.0, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT)])
+    assert rep.checks["tone_match"].passed is True
+    assert rep.checks["tone_match"].detail["worst"] == 12.0
+
+
+def test_a_target_without_the_per_episode_pairs_refuses_instead_of_passing_vacuously(tmp_path, monkeypatch):
+    # tone_target and tone_dsts are parallel lists. A target with no dsts would make
+    # EVERY episode read "not-bound" — a check that examined nothing while looking like
+    # it ran. Refuse, and name the call that fixes it.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    with pytest.raises(ValueError) as e:
+        check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                       str(tmp_path / "r.json"), tone_target=TGT)
+    assert "parallel lists" in str(e.value) and "tone_dst" in str(e.value)
+
+
+def test_a_short_tone_dsts_list_refuses_rather_than_zipping_the_tail_away(tmp_path, monkeypatch):
+    # zip() truncates silently: a 1-entry list against 2 episodes would drop episode 1
+    # from BOTH residuals and not_checked, so nothing in the report would show the gap.
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    with pytest.raises(ValueError, match="parallel lists"):
+        check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                       str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT)])
+
+
+def test_tone_match_is_blocking(tmp_path, monkeypatch):
+    """A property of ANOTHER module this check silently depends on: models._ADVISORY_CHECKS
+    is what ReelReport.overall excludes, so adding "tone_match" there would leave every
+    assertion above passing while the gate stopped blocking anything."""
+    assert "tone_match" not in models._ADVISORY_CHECKS
+
+
+def test_tone_match_escalates_and_is_never_reprocessed():
+    """Also another module's property. A re-render cannot fix a colour — the grade rides
+    the SAME manifest — so widening _REPROCESS_CLASS would turn one match-grade escalation
+    into `cap` wasted full-resolution re-renders that change nothing."""
+    assert "tone_match" not in reel_orchestration._REPROCESS_CLASS
+    f = ReelFailure("tone_match", "match-grade", 1, {"residual": 30.0, "max": 12.0})
+    action = reel_orchestration.next_action([f], attempts={}, cap=3)
+    assert action.kind == "escalate"
+    assert action.finding["escalate_to"] == "match-grade" and action.finding["episode_idx"] == 1

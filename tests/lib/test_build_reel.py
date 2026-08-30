@@ -45,9 +45,13 @@ def _wire(monkeypatch, reports, pe_results=None):
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda clips, dims, fps, out: out)
-    # music=/audio= tolerated (and ignored): build_reel now always passes them (None for
-    # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
-    # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
+    # music=/audio=/tone_target=/tone_dsts= tolerated (and ignored): build_reel now always
+    # passes them (None for these silent-reel, ungraded tests, matching check_reel.run's real
+    # defaults) — not the subject of this fixture, which only exercises the reprocess/deliver
+    # escalation ladder. The convergence gate's OWN forwarding (rm.tone_target and the
+    # e.manifest.get("tone_dst") comprehension) is proven at the check_reel.run level
+    # (tests/lib/test_check_reel.py, design 2026-08-30 §5 Task 6) — accepting-and-dropping
+    # them here only has to keep this fixture from TypeError-ing on the two new kwargs. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
     # geometry=/platform=/outro= ARE captured into seen so a test can assert build_reel builds
     # and forwards them to check_reel.run. outro_fixed (build_reel.py's OWN escalation gate,
@@ -55,7 +59,8 @@ def _wire(monkeypatch, reports, pe_results=None):
     # SEPARATE computation from this kwarg — the two tests below exercise outro_fixed, not this
     # forward. Conflating the two left the outro= forward with no coverage at all: flipping
     # build_reel.py's `outro=rm.outro` to `outro=None` changed nothing either test could see.
-    def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None):
+    def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
+                tone_target=None, tone_dsts=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
