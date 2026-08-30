@@ -3,7 +3,7 @@ import json
 import pytest
 from scripts import color_measure
 from scripts.color_measure import measure_profile
-from scripts.lib import ffbin, matchgrade, proc
+from scripts.lib import ffbin, manifest as manifest_lib, matchgrade, proc
 
 pytestmark = pytest.mark.integration
 
@@ -162,6 +162,35 @@ def test_crop_percentiles_discriminates_at_a_realistic_gap(tmp_path):
     crop = color_measure.measure_crop(md, str(src), str(route))
     assert crop == pytest.approx((100.0, 100.0, 100.0))
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
+
+
+def test_measure_crop_reads_the_footage_not_a_grade_already_authored(tmp_path, monkeypatch):
+    """`plan_ungraded` strips the colour block before planning, so a second
+    match-grade run measures the FOOTAGE and not its own previous output.
+
+    The invariant strip_colour's docstring states, and the one thing in this slice
+    with no test of its own until now: the conductor derives a common target from
+    what it measures, so measuring an already-graded crop would compound the pull
+    on every re-run — silently, since a grade that reads back as the target is
+    exactly what a converged reel looks like.
+
+    Today the real caller is safe by a second mechanism (build_geometry stores the
+    manifest colour-STRIPPED, so `conduct` never sees a pair), which is why the
+    whole suite stayed green with the strip deleted. That makes this a guard on
+    `measure_crop`'s own contract rather than on today's only call site: the tone
+    pair below lifts the crop's midpoint from 100 to 160, so a graded reading is
+    off by 60 luma units — 15x MATCH_EPS, not a margin any resampling can produce."""
+    src, md, route = _banded_episode(tmp_path)
+    plain = color_measure.measure_crop(md, src, route)
+    graded = dict(md, tone_src=[40, 100, 200], tone_dst=[40, 160, 200])
+    assert color_measure.measure_crop(graded, src, route) == pytest.approx(plain)
+    assert plain == pytest.approx((100.0, 100.0, 100.0))
+    # The control that MUST move: the same manifest through the same render with the
+    # strip disabled. Without it the first assertion is satisfied by a tone pair too
+    # weak to change any pixel, and this test would pass with strip_colour deleted.
+    monkeypatch.setattr(manifest_lib, "strip_colour", dict)
+    with_grade = color_measure.measure_crop(graded, src, route)
+    assert abs(with_grade[1] - plain[1]) > 10 * matchgrade.MATCH_EPS, (with_grade, plain)
 
 
 def _pan_episode(tmp_path, left=40, right=220):
