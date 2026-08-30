@@ -50,16 +50,32 @@ def _stub_probe(monkeypatch):
     """Every test below reaches `reframe._probe(m.segment)` on its way to (or
     past) the seam under test, and `segment` is never a real file here —
     tests/lib/ is pure unit, no ffmpeg (docs/testing-guide.md). Stubbing the one
-    ffprobe call lets the rest of the shell run for real against fakes."""
+    ffprobe call lets the rest of the shell run for real against fakes.
+
+    Also stubs `vidstab.require()` — `manifest.validate()` calls it for real
+    (an uncached `ffmpeg -filters` spawn) whenever a manifest sets
+    `stabilize=True`, exactly the two tests below that do. Same convention as
+    tests/lib/test_manifest.py's `test_a_manifest_without_stabilize_never_probes_ffmpeg`.
+    `process_episode.vidstab` is the same `scripts.lib.vidstab` module object
+    `manifest.py` imports, so patching it here reaches that call too."""
     monkeypatch.setattr(process_episode.reframe, "_probe",
                         lambda src: (1920, 1080, 30.0, 3.0, "yuv420p", "tv"))
+    monkeypatch.setattr(process_episode.vidstab, "require", lambda: None)
 
 
 def _stub_mechanical_pass(monkeypatch, route):
     """Fakes reframe.reframe / storyboard.build / check_episode.run enough to
     reach mechanical_pass without real ffmpeg — mirrors (trimmed to what this
-    file needs) tests/integration/test_process_episode.py's `_stub_engine`."""
+    file needs) tests/integration/test_process_episode.py's `_stub_engine`.
+
+    Returns a `calls` dict recording the `src` reframe.reframe received and the
+    `source` check_episode.run received — a caller asserting `prepared_source`
+    threading needs to see both land on the SAME pixels: reframe encodes them
+    and check_episode judges them, two independent readers of the same claim."""
+    calls = {}
+
     def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
+        calls["reframe_src"] = src
         Path(out).write_text("clip")
         Path(path_out).write_text(json.dumps([100] * len(route)))
         models.PathMeta(mode="fill", crop_w=1920, crop_h=1080, crop_y=0,
@@ -75,10 +91,12 @@ def _stub_mechanical_pass(monkeypatch, route):
     monkeypatch.setattr(process_episode.storyboard, "build", fake_storyboard_build)
 
     def fake_run(clip, route_path, path_path, spec, out, source=None):
+        calls["check_source"] = source
         r = models.Report(checks={}, attempt=spec.attempt)
         r.write(out)
         return r
     monkeypatch.setattr(process_episode.check_episode, "run", fake_run)
+    return calls
 
 
 def test_stop_after_geometry_returns_the_route_and_the_source(tmp_path, monkeypatch):
@@ -122,13 +140,20 @@ def test_prepared_source_unlocks_stabilize_with_a_frozen_route(tmp_path, monkeyp
     route.write_text(json.dumps(route_data))
     route.with_suffix(".meta.json").write_text(json.dumps({"ambiguous": False}))
 
-    _stub_mechanical_pass(monkeypatch, route_data)           # fake reframe/check(/storyboard)
+    calls = _stub_mechanical_pass(monkeypatch, route_data)   # fake reframe/check(/storyboard)
     monkeypatch.setattr(process_episode.vidstab, "stabilize",
                         lambda *a, **k: pytest.fail("the pre-stage must not re-run"))
 
     res = process_episode.process_episode(md, project_dir,
                                           route_path=str(route), prepared_source=str(prepared))
     assert res["status"] == "mechanical_pass"
+    # the pairing this parameter exists to assert: reframe must encode the SAME
+    # pixels the frozen route was measured on, and check_episode must judge
+    # those same pixels — not the raw, unstabilized segment. A drop of either
+    # is silent (design 2026-07-20 §1: path and route still agree with each
+    # other in source coordinates, only the pixels disagree).
+    assert calls["reframe_src"] == str(prepared)
+    assert calls["check_source"] == str(prepared)
 
 
 def test_stabilize_still_refuses_a_bare_route(tmp_path):
