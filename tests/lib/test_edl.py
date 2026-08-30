@@ -1110,6 +1110,16 @@ def test_edl_tone_target_refuses_a_bool():
         EDL(episodes=(_ep(),), tone_target=(True, 100.0, 200.0))
 
 
+def test_edl_tone_target_refuses_a_wrong_length():
+    # Same precedent as EDLEpisode.color_means's own wrong-length row in
+    # test_bad_field_raises_valueerror_with_remedy above. The 4-element case matters
+    # most: it is what `len(tt) >= 3` would let through if `== 3` were ever loosened
+    # while adding a fourth anchor.
+    for bad in ((50.0, 100.0), (50.0, 100.0, 150.0, 200.0)):
+        with pytest.raises(ValueError, match="tone_target"):
+            EDL(episodes=(_ep(),), tone_target=bad)
+
+
 def test_edl_markdown_prints_the_tone_target_only_when_set():
     assert "Tone target" not in EDL(episodes=(_ep(),)).to_markdown()
     md = EDL(episodes=(_ep(),), tone_target=(50.0, 100.0, 190.0)).to_markdown()

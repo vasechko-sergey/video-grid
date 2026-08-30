@@ -726,6 +726,17 @@ def test_reel_geometry_provenance_defaults_empty_and_is_omitted_from_to_dict():
     assert "provenance" not in g.to_dict()
 
 
+def test_reel_geometry_round_trips_a_default_empty_provenance():
+    # The round-trip test above (test_reel_geometry_round_trips) only exercises a
+    # non-empty provenance. to_dict() omits the key entirely when provenance is
+    # falsy and from_dict() restores {} on a missing key — this proves the omission
+    # is actually lossless rather than merely asserting the omission happens.
+    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
+                                                    source="s.mp4", project_dir="d"),),
+                       edl="EDL.json")
+    assert m.ReelGeometry.from_dict(g.to_dict()) == g
+
+
 def _reel_dict(**over):
     d = dict(episodes=[{"manifest": {"segment": "s0.mp4"}, "clip": "c0.mp4", "route": "r0.json"},
                        {"manifest": {"segment": "s1.mp4"}, "clip": "c1.mp4", "route": "r1.json"}],
@@ -880,6 +891,17 @@ def test_reel_manifest_tone_target_refuses_a_bool():
     # elsewhere (e.g. EDLEpisode.color_means) and tone_target must too.
     with pytest.raises(ValueError, match="tone_target"):
         m.ReelManifest.from_dict(_reel_dict(tone_target=[True, 100.0, 200.0]))
+
+
+def test_reel_manifest_tone_target_refuses_a_wrong_length():
+    # Same precedent as EDLEpisode.color_means a few dozen lines above this class
+    # (test_bad_field_raises_valueerror_with_remedy's `color_means=[1, 2]` row):
+    # a 3-anchor tuple must refuse both too few and too many. The 4-element case is
+    # the one that matters most — it is what `len(tt) >= 3` would let through if
+    # `== 3` were ever loosened while adding a fourth anchor.
+    for bad in ([50.0, 100.0], [50.0, 100.0, 150.0, 200.0]):
+        with pytest.raises(ValueError, match="tone_target"):
+            m.ReelManifest.from_dict(_reel_dict(tone_target=bad))
 
 
 def test_reel_manifest_rejects_null_manifest():
