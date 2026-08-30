@@ -14,7 +14,6 @@ uncalibrated taste function invents a target — match_grade remains the determi
 lane. The agent looks, edits the EDL, probes again.
 """
 import argparse
-import dataclasses
 import json
 from pathlib import Path
 
@@ -25,39 +24,11 @@ from scripts import process_episode, reframe
 from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
                          naturalness, orchestration as orch, proc, provenance, sheet)
 from scripts.lib.edl import EDL
-from scripts.lib.manifest import Manifest
+from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS, Manifest
 from scripts.lib.models import CropPath, Delivery, PathMeta, ReelManifest
 
 FRAMES = 3          # start / middle / end of the window, at (i+0.5)/N — never the
                     # first or last frame, which a dip or a bookend can own
-
-# The colour block, as it crosses edl.to_manifest_dict. A CLOSED set, because regrade
-# below must DROP these before re-applying: to_manifest_dict omits highlight_red,
-# tone_src and tone_dst at their identity, so a plain merge would keep a value the
-# author has just deleted from the EDL.
-_COLOUR_KEYS = ("color_means", "white_balance", "black_point", "highlight",
-                "highlight_red", "saturation", "shadow_red", "mid_blue", "dip",
-                "tone_src", "tone_dst")
-
-# The value Manifest.from_dict falls back to for each of _COLOUR_KEYS when the JSON
-# key is absent or explicitly null — compare white_balance=float(d.get("white_balance")
-# or 0.0) in manifest.py against Manifest's own `white_balance: float = 0.0` field
-# declaration, and so on for all eleven: from_dict's fallback logic was written to
-# reproduce the field default, not to invent a second number. DERIVED from Manifest's
-# dataclass fields rather than hand-copied here, so this cannot drift the day someone
-# edits a default in manifest.py and forgets this file exists — reading the dataclass
-# IS agreeing with Manifest's own behaviour, not a second, independently-maintained
-# opinion about it. (Only 3 of the 11 are ever actually consulted below — regrade's
-# `fresh.get(k, ...)` — since to_manifest_dict emits the other 8 unconditionally; kept
-# total anyway so this map's meaning does not depend on to_manifest_dict's internals.)
-#
-# Safe only because every Manifest field uses a plain `= value` default, never
-# `field(default_factory=...)` (manifest.py imports `dataclass` but never `field`) — a
-# default_factory field's own .default is dataclasses.MISSING and would poison this
-# map silently. Verified empirically for all eleven names; re-check that invariant
-# before ever widening _COLOUR_KEYS to a field manifest.py declares differently.
-_COLOUR_IDENTITY = {f.name: f.default for f in dataclasses.fields(Manifest)
-                    if f.name in _COLOUR_KEYS}
 
 
 def source_for(md: dict, epdir: Path | str) -> str:
@@ -84,7 +55,7 @@ def source_for(md: dict, epdir: Path | str) -> str:
 def regrade(md: dict, edl_path: str, index: int) -> dict:
     """`md` with its colour block replaced by EDL episode `index`'s.
 
-    Dropped and re-applied, never merged — see _COLOUR_KEYS. Everything else (the
+    Dropped and re-applied, never merged — see COLOUR_KEYS. Everything else (the
     segment, the resolved canvas/delivery the project filled in, the layout, the
     hero) stays exactly as the run resolved it: this probes a NEW GRADE on the SAME
     episode, and re-deriving the rest would silently probe a different cut.
@@ -95,8 +66,8 @@ def regrade(md: dict, edl_path: str, index: int) -> dict:
     there" would then leave `out` without that key at all rather than at its new
     (identity) value — not the stale OLD value a plain merge would keep, but still
     not the fact this function's whole job is to state: what the episode's colour
-    block IS now. _COLOUR_IDENTITY supplies the value to_manifest_dict left
-    implicit, so every one of _COLOUR_KEYS is always present in `out`.
+    block IS now. COLOUR_IDENTITY supplies the value to_manifest_dict left
+    implicit, so every one of COLOUR_KEYS is always present in `out`.
 
     `edl_path` must reach here through the ordinary front door: edit
     `selection.json`, then re-run `edit_plan build`, which re-stamps EDL.json
@@ -131,8 +102,8 @@ def regrade(md: dict, edl_path: str, index: int) -> dict:
                          f"range. The index is the episode's position in BOTH EDL.json and "
                          f"EPISODES.json — they must describe the same cut")
     fresh = edl_lib.to_manifest_dict(e.episodes[index], md["segment"], md["out_path"])
-    out = {k: v for k, v in md.items() if k not in _COLOUR_KEYS}
-    out.update({k: fresh.get(k, _COLOUR_IDENTITY[k]) for k in _COLOUR_KEYS})
+    out = {k: v for k, v in md.items() if k not in COLOUR_KEYS}
+    out.update({k: fresh.get(k, COLOUR_IDENTITY[k]) for k in COLOUR_KEYS})
     return out
 
 
@@ -260,7 +231,7 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
         "source": src, "frames": len(imgs),
         "times": [round(t, 3) for t in times],
         "grade": plan.grade,
-        "colour": {k: md[k] for k in _COLOUR_KEYS if k in md},
+        "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone": [[round(v, 1) for v in _tone(f)] for f in imgs],
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
     }

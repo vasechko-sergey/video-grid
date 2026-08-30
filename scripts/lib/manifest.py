@@ -6,6 +6,7 @@ starting if ambiguous" — missing/contradictory/unsupported fields are caught
 here, before any YOLO/ffmpeg runs, so the orchestrator returns needs_input
 instead of guessing.
 """
+import dataclasses
 from dataclasses import dataclass
 
 from scripts.lib import hero as hero_lib   # aliased: this module already has a `hero` FIELD
@@ -300,3 +301,32 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
     except (ValueError, TypeError) as e:
         problems.append(f"delivery {m.delivery!r} invalid — {e}")
     return problems
+
+
+# The colour block, as it crosses edl.to_manifest_dict. A CLOSED set, because a
+# caller that re-applies a fresh block must DROP these first: to_manifest_dict
+# omits highlight_red, tone_src and tone_dst at their identity, so a plain merge
+# would keep a value the author has just deleted from the EDL.
+COLOUR_KEYS = ("color_means", "white_balance", "black_point", "highlight",
+               "highlight_red", "saturation", "shadow_red", "mid_blue", "dip",
+               "tone_src", "tone_dst")
+
+# The value Manifest.from_dict falls back to for each of COLOUR_KEYS when the JSON
+# key is absent or explicitly null. DERIVED from Manifest's dataclass fields rather
+# than hand-copied, so this cannot drift the day someone edits a default above.
+# Safe only because every Manifest field uses a plain `= value` default, never
+# `field(default_factory=...)` — a default_factory field's own .default is
+# dataclasses.MISSING and would poison this map silently. Re-check that invariant
+# before ever widening COLOUR_KEYS.
+COLOUR_IDENTITY = {f.name: f.default for f in dataclasses.fields(Manifest)
+                   if f.name in COLOUR_KEYS}
+
+
+def strip_colour(md: dict) -> dict:
+    """`md` with every colour field at its identity value — the same episode,
+    ungraded. The measuring path plans a render from this so the reading is of the
+    footage, not of a grade already applied; the geometry path stores it so a
+    changed CUT can be told from a changed GRADE (design 2026-08-30 §2.2)."""
+    out = {k: v for k, v in md.items() if k not in COLOUR_KEYS}
+    out.update(COLOUR_IDENTITY)
+    return out
