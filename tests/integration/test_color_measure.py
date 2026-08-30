@@ -95,6 +95,45 @@ def test_clip_percentiles_reads_a_finished_file(tmp_path):
     assert p5 < 60 and p95 > 180
 
 
+def _three_phase_clip(tmp_path, levels=(40, 120, 220), dur=1.0, fps=30):
+    """A clip whose flat luma level changes over TIME, once per phase (video concat,
+    not hstack/vstack): a spatial-band clip (like _two_band_clip) reads identically at
+    ANY t, so it cannot discriminate whether a batched read attributed the right
+    span's bytes to the right slot — only a clip whose content actually differs
+    between spans can."""
+    clip = tmp_path / "phases.mp4"
+    inputs = []
+    for level in levels:
+        hexv = f"0x{level:02x}{level:02x}{level:02x}"
+        inputs += ["-f", "lavfi", "-i", f"color=c={hexv}:s=320x240:d={dur}:r={fps}"]
+    n = len(levels)
+    filt = "".join(f"[{i}:v]" for i in range(n)) + f"concat=n={n}:v=1:a=0[v]"
+    proc.run([ffbin.ffmpeg(), "-y", *inputs, "-filter_complex", filt, "-map", "[v]",
+              "-frames:v", str(round(dur * fps) * n), "-pix_fmt", "yuv420p", str(clip)])
+    return str(clip)
+
+
+def test_clip_percentiles_batch_matches_the_per_span_calls(tmp_path):
+    """fix round 1, minor 1: check_reel used to call clip_percentiles once per bound
+    episode, each re-decoding the master from t=0 through only that episode's own last
+    sample — summed over N episodes, roughly N/2 full-master decodes. Batched into ONE
+    ffmpeg call across every span, the raw buffer is sliced back into per-span groups;
+    this proves that slicing reconstructs EXACTLY what N separate clip_percentiles
+    calls would have read, on the SAME real fixture — not merely that both readings are
+    equally wrong, since clip_percentiles is the existing, independently-trusted ruler
+    every other test in this file already exercises."""
+    levels = (40, 120, 220)
+    dur = 1.0
+    clip = _three_phase_clip(tmp_path, levels=levels, dur=dur)
+    spans = [[i * dur + t for t in color_measure.sample_times(dur)] for i in range(len(levels))]
+    singles = [color_measure.clip_percentiles(clip, s) for s in spans]
+    batched = color_measure.clip_percentiles_batch(clip, spans)
+    assert batched == singles                      # byte-for-byte the same ruler, batched or not
+    # and not merely self-consistent: each phase's own p50 actually lands near its level
+    for (p5, p50, p95), level in zip(batched, levels):
+        assert abs(p50 - level) <= 8
+
+
 def test_crop_percentiles_reads_the_crop_not_the_frame(tmp_path):
     """The design's §0.1 finding, as a test: a frame whose TOP half is blown out
     and whose bottom half is mid-grey reads very differently once the crop

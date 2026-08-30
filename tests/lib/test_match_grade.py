@@ -169,7 +169,11 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
         Spec(canvas=(1080, 1920), length_s=10.0, mood="moody", hook="h").to_dict()))
 
     median = _plain_target()                                # (25.0, 110.0, 195.0)
-    biased, k = matchgrade.biased_target(median, (-18.0, -16.0, -8.0))
+    # read from the table (fix round 1 nit), not a hardcoded (-18.0, -16.0, -8.0) pin —
+    # a table change would otherwise fail this test as an opaque value mismatch instead
+    # of the test tracking whatever "moody" actually asks for today.
+    bias = moodpreset.resolve("moody").tone_bias
+    biased, k = matchgrade.biased_target(median, bias)
     assert k == 1.0                                          # the full bias survived, nothing scaled away
     worst = max(abs(a - b) for a, b in zip(median, biased))
     assert worst > ReelCheckSpec(target_dur=1.0).tone_match_max    # > 12.0, or this proves nothing

@@ -110,10 +110,26 @@ def _same_target(dst, target: tuple[float, float, float]) -> bool:
     Only a BOUND episode can be judged against the target: one the conductor skipped
     carries no pair (flat-source, within-eps) or a different one (hand-authored), and
     measuring it against a target it was never graded toward would report a failure
-    the grade never claimed. A malformed pair cannot reach here — reframe refuses one
-    long before the reel is assembled — so a non-triple is simply not the target."""
+    the grade never claimed. `None` and a wrong-length value both read as simply not
+    the target — the everyday shapes an unbound episode's manifest legitimately
+    carries (edl_to_reel's own path: reframe refuses a malformed pair long before the
+    reel is assembled, so neither shape reaching here is ever real corruption on that
+    path).
+
+    A right-length value with a NON-NUMERIC element is a different fact, found in fix
+    round 1: that shape is not one reframe's validation, on ANY path, ever produces —
+    but build_reel's own CLI reads an arbitrary reel-manifest JSON with no reframe or
+    edl_to_reel validation upstream of it, so a hand-edited or corrupt manifest CAN
+    reach here with one. Refusing it loud, with a remedy, beats letting `abs(a - b)`
+    below raise a bare unattributed TypeError (CONSTRAINTS §4)."""
     if not isinstance(dst, (list, tuple)) or len(dst) != len(target):
         return False
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in dst):
+        raise ValueError(
+            f"check_reel: an episode's tone_dst {dst!r} is not a triple of luma "
+            "numbers (p5, p50, p95) — the reel manifest is corrupt; regenerate it "
+            "(match-grade always authors tone_dst as three numbers, or leaves it "
+            "null — a non-numeric value did not come from there)")
     return all(abs(a - b) <= _TONE_BIND_EPS for a, b in zip(dst, target))
 
 
@@ -141,14 +157,20 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
     Read off the MASTER, not the delivered reel: the look's vignette and the bookend
     fade ride deliver's one encode and both move percentiles, so the master is the
     last artifact whose pixels are the episodes'. `cuts` already holds every internal
-    boundary, so each episode's span costs nothing new.
+    boundary, so each episode's span costs nothing new. Every BOUND episode's span is
+    measured in ONE clip_percentiles_batch call (fix round 1, minor 1) rather than one
+    clip_percentiles call per episode — each of those re-decoded the master from t=0
+    through only its own episode, so N episodes cost roughly N/2 full-master decodes
+    summed; one batched decode costs one, regardless of N.
 
     Only episodes BOUND to the reel's common target are judged; the rest are NAMED,
     never silently passed. The two absences are different facts and carry different
     keys, so a reader never has to type-sniff: a reel that was never conducted reports
-    `status: not-checked` with `reason: "no-target"` at the top level, while
-    `not_checked` — present whenever a target exists — is ALWAYS a {episode index:
-    reason} map. "not-bound" is one label for all three of the conductor's skip
+    `status: not-checked` with `reason: "no-target"` at the top level (its `remedy`
+    names how many episodes already carry a tone_dst regardless, per fix round 1
+    minor 2 — a reel graded before tone_target existed must not read as ungraded),
+    while `not_checked` — present whenever a target exists — is ALWAYS a {episode
+    index: reason} map. "not-bound" is one label for all three of the conductor's skip
     reasons (flat-source / within-eps / hand-authored) because the manifest cannot
     tell them apart; MATCH.md is where the conductor records which it was.
 
@@ -156,10 +178,21 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
     _REPROCESS_CLASS is ("black",), so every non-black reel failure already escalates
     rather than re-rendering — no reframe knob moves a colour."""
     if tone_target is None:
+        graded = sum(1 for d in (tone_dsts or []) if d is not None)
+        remedy = ("this reel declares no common tone target — run match-grade to "
+                  "author one, or ship it ungraded (absence is not tampering)")
+        if graded:
+            # fix round 1, minor 2: an EDL graded before tone_target existed (or one
+            # match-grade never touched but a human hand-authored per-episode pairs
+            # onto) must not read as plain "ungraded" — the remedy above is still
+            # correct (there is genuinely no reel-wide target to compare against), but
+            # silently saying nothing about it would hide that these episodes ARE
+            # graded from the one place a reader looks when a reel looks washed out.
+            remedy += (f"; {graded}/{len(durations)} episode(s) already carry a "
+                      "tone_dst pair, so this reel IS graded — match-grade just never "
+                      "stamped the reel-wide target this check compares against")
         return CheckResult("tone_match", None, {
-            "status": "not-checked", "reason": "no-target",
-            "remedy": "this reel declares no common tone target — run match-grade to "
-                      "author one, or ship it ungraded (absence is not tampering)"}), None
+            "status": "not-checked", "reason": "no-target", "remedy": remedy}), None
     if tone_dsts is None or len(tone_dsts) != len(durations):
         raise ValueError(
             f"check_reel: tone_target {list(tone_target)} was supplied with "
@@ -168,19 +201,28 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
             "[e.manifest.get('tone_dst') for e in rm.episodes] (build_reel does), or "
             "pass no tone_target at all to report the check not-checked")
     starts = [0.0] + cuts
-    residuals: dict[str, float] = {}
     not_checked: dict[str, str] = {}
-    worst, worst_i = 0.0, None
+    bound_idx: list[int] = []
+    bound_spans: list[list[float]] = []
     for i, (st, dur, dst) in enumerate(zip(starts, durations, tone_dsts)):
         if not _same_target(dst, tone_target):
             not_checked[str(i)] = "not-bound"
             continue
-        got = color_measure.clip_percentiles(
-            master, [st + t for t in color_measure.sample_times(dur)])
-        d = max(abs(a - b) for a, b in zip(got, tone_target))
-        residuals[str(i)] = round(d, 1)
-        if d > worst:
-            worst, worst_i = d, i
+        bound_idx.append(i)
+        bound_spans.append([st + t for t in color_measure.sample_times(dur)])
+    residuals: dict[str, float] = {}
+    worst, worst_i = 0.0, None
+    if bound_spans:
+        got_profiles = color_measure.clip_percentiles_batch(master, bound_spans)
+        for i, got in zip(bound_idx, got_profiles):
+            d = max(abs(a - b) for a, b in zip(got, tone_target))
+            # fix round 1, minor 3: 2 decimals, not 1 — a worst of 12.04 against a
+            # 12.0 max must still fail, and a reader must be able to see WHY from the
+            # report alone instead of a residual that rounds to look identical to the
+            # ceiling it just missed. _loudness_check already rounds to 2; length to 3.
+            residuals[str(i)] = round(d, 2)
+            if d > worst:
+                worst, worst_i = d, i
     detail = {"target": list(tone_target), "residuals": residuals,
               "not_checked": not_checked, "max": spec.tone_match_max}
     if not residuals:
@@ -193,9 +235,9 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
             "remedy": "no episode carries this reel's common target — read MATCH.md "
                       "for why the conductor skipped each one"}), None
     ok = worst <= spec.tone_match_max
-    detail["worst"] = round(worst, 1)
+    detail["worst"] = round(worst, 2)
     fail = None if ok else ReelFailure("tone_match", "match-grade", worst_i,
-                                       {"residual": round(worst, 1),
+                                       {"residual": round(worst, 2),
                                         "max": spec.tone_match_max})
     return CheckResult("tone_match", ok, detail), fail
 

@@ -40,30 +40,41 @@ def _wire(monkeypatch, reports, pe_results=None):
     """Feed check_reel.run a queue of canned reports; record deliver + the route
     passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
-            "targets": [], "deliver_platform": "", "outro": None}
+            "targets": [], "deliver_platform": "", "outro": None,
+            "tone_target": None, "tone_dsts": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(build_reel.assembly, "assemble", lambda clips, dims, fps, out: out)
-    # music=/audio=/tone_target=/tone_dsts= tolerated (and ignored): build_reel now always
-    # passes them (None for these silent-reel, ungraded tests, matching check_reel.run's real
-    # defaults) — not the subject of this fixture, which only exercises the reprocess/deliver
-    # escalation ladder. The convergence gate's OWN forwarding (rm.tone_target and the
-    # e.manifest.get("tone_dst") comprehension) is proven at the check_reel.run level
-    # (tests/lib/test_check_reel.py, design 2026-08-30 §5 Task 6) — accepting-and-dropping
-    # them here only has to keep this fixture from TypeError-ing on the two new kwargs. titles=
+    # music=/audio= tolerated (and ignored): build_reel now always passes them (None for
+    # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
+    # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
-    # geometry=/platform=/outro= ARE captured into seen so a test can assert build_reel builds
-    # and forwards them to check_reel.run. outro_fixed (build_reel.py's OWN escalation gate,
-    # derived directly off rm.outro BEFORE check_reel.run is ever called, at line ~66) is a
-    # SEPARATE computation from this kwarg — the two tests below exercise outro_fixed, not this
-    # forward. Conflating the two left the outro= forward with no coverage at all: flipping
-    # build_reel.py's `outro=rm.outro` to `outro=None` changed nothing either test could see.
+    # geometry=/platform=/outro=/tone_target=/tone_dsts= ARE captured into seen so a test can
+    # assert build_reel builds and forwards them to check_reel.run.
+    #
+    # fix round 1 (Important): tone_target=/tone_dsts= used to be accepted-and-dropped here,
+    # with a comment claiming their forwarding was "proven at the check_reel.run level" —
+    # circular, since test_check_reel.py calls check_reel.run directly and never imports
+    # build_reel. Changing tone_dsts to [None, ...] or tone_target to None at the real call
+    # site left the whole suite green: in production every episode would then read
+    # not-bound, the no-episode-bound arm returns passed=None, overall is unaffected, and the
+    # reel delivers having examined zero pixels — the exact silent bypass this gate exists to
+    # close. See test_build_reel_forwards_the_tone_convergence_pair_to_check_reel below,
+    # mirroring the outro= precedent's own "THE FORWARD ITSELF" comment.
+    #
+    # outro_fixed (build_reel.py's OWN escalation gate, derived directly off rm.outro BEFORE
+    # check_reel.run is ever called, at line ~66) is a SEPARATE computation from the outro=
+    # kwarg — the two tests below exercise outro_fixed, not this forward. Conflating the two
+    # left the outro= forward with no coverage at all: flipping build_reel.py's
+    # `outro=rm.outro` to `outro=None` changed nothing either test could see.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
                 tone_target=None, tone_dsts=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
+        seen["tone_target"] = tone_target
+        seen["tone_dsts"] = tone_dsts
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
@@ -310,6 +321,34 @@ def test_an_unchanged_rung_outro_does_not_block_the_absorb(monkeypatch, tmp_path
     res = build_reel.build_reel(_rm(outro=outro), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
     assert seen["targets"] == [6.0, 5.3]
+
+
+def test_build_reel_forwards_the_tone_convergence_pair_to_check_reel(monkeypatch, tmp_path):
+    """fix round 1, Important: fake_run accepted tone_target=/tone_dsts= and dropped
+    them, and nothing in this file — or anywhere else — ever looked at what arrived. A
+    comment here used to claim the forwarding was "proven at the check_reel.run level",
+    which was circular: test_check_reel.py calls check_reel.run directly and never
+    imports build_reel, so it cannot see whether build_reel itself hands over the right
+    values. Changing tone_dsts to [None, None], or tone_target to None, at the real
+    call site in build_reel.py left the whole suite green before this test existed — in
+    production that reaches the exact silent bypass this gate exists to close: every
+    episode reads not-bound, the no-episode-bound arm returns passed=None, overall is
+    unaffected, and the reel delivers having examined zero pixels.
+
+    THE FORWARD ITSELF, mirroring test_a_within_band_shortfall_escalates_when_the_
+    manifests_outro_chose_the_length above: rm.tone_target is a plain attribute read
+    and the per-episode tone_dst list is a comprehension over rm.episodes, so a correct
+    manifest alone proves nothing about whether build_reel actually hands both to
+    check_reel.run — this is the one place in the suite that would catch it not doing so."""
+    seen = _wire(monkeypatch, [_pass()])
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4", "tone_dst": [20.0, 100.0, 200.0]},
+                       clip="c0.mp4", route="r0.json"),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, tone_target=(20.0, 100.0, 200.0))
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["tone_target"] == (20.0, 100.0, 200.0)
+    assert seen["tone_dsts"] == [[20.0, 100.0, 200.0], None]
 
 
 # --- music integration (Task 6) --------------------------------------------

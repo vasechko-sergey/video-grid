@@ -88,6 +88,64 @@ def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float
                                   f"clip_percentiles({clip})")
 
 
+def clip_percentiles_batch(clip: str, spans: list[list[float]]) -> list[tuple[float, float, float]]:
+    """(p5, p50, p95) luma for EACH span in `spans`, from ONE decode of `clip` (design
+    2026-08-30 Task 6 fix round 1, minor 1).
+
+    check_reel's tone_match gate used to call clip_percentiles once per bound episode;
+    each call re-decodes `clip` from t=0 (no -ss, per §12) through only THAT episode's
+    own last sample — so summed over N episodes the master is decoded roughly N/2 times
+    over (episode 0 decodes a little of it, episode N-1 decodes almost all of it).
+    Selecting every span's times back-to-back in the SAME ffmpeg call decodes `clip`
+    exactly once no matter how many spans are asked for — the same batching the
+    grade-delta-sensors slice already used to fold three samples' worth of decodes down
+    to two.
+
+    `spans` must already be in ASCENDING, NON-OVERLAPPING time order — check_reel's
+    episode spans always are, since they partition the master from its start to its
+    end. select's own OUTPUT order follows the decoded stream's natural frame order,
+    never the order frames are named in the filter expression, so slicing the one raw
+    buffer back into per-span groups by each span's own frame count only reconstructs
+    the right groups because the request order already matches stream order; an
+    out-of-order span would silently hand one episode another's pixels with no error
+    to catch it, which is why this is a documented precondition and not a parameter.
+
+    The total byte count is checked BEFORE any slicing (a frame missing or duplicated
+    anywhere could otherwise make one span's slice quietly borrow bytes that belong to
+    its neighbour, past the point where a single span's own length still happens to
+    come out right); each span's slice is then handed to _percentiles_from_gray — the
+    SAME pooling call clip_percentiles itself makes, and the only other reason this
+    function exists (it re-validates that one slice's own byte count too) — so
+    color.percentiles stays reached from exactly the two places the plan's invariant 2
+    names. Batching changes how many decodes happen, never the ruler."""
+    if not spans:
+        raise ValueError("clip_percentiles_batch: spans is empty — nothing to measure")
+    info = assembly.probe_stream(clip)
+    all_times = [t for span in spans for t in span]
+    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip,
+                    "-vf", f"{_select(all_times, info.fps)},format=gray",
+                    "-vsync", "0", "-frames:v", str(len(all_times)),
+                    "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
+    frame_bytes = info.w * info.h
+    want_bytes = len(all_times) * frame_bytes
+    if len(out) != want_bytes:
+        got = len(out) / frame_bytes if frame_bytes else float("nan")
+        raise RuntimeError(
+            f"clip_percentiles_batch({clip}): asked for {len(all_times)} frames across "
+            f"{len(spans)} spans of {info.w}x{info.h} gray ({want_bytes} bytes), got "
+            f"{len(out)} bytes ({got:g} frames) — a frame is missing or duplicated; "
+            "check the select expression's position")
+    results = []
+    offset = 0
+    for i, span in enumerate(spans):
+        n = len(span)
+        chunk = out[offset * frame_bytes:(offset + n) * frame_bytes]
+        results.append(_percentiles_from_gray(chunk, n, info.w, info.h,
+                                              f"clip_percentiles_batch({clip})[{i}]"))
+        offset += n
+    return results
+
+
 def crop_percentiles(plan: "reframe.RenderPlan", src: str,
                      times: list[float]) -> tuple[float, float, float]:
     """The ruler over the pixels a RenderPlan would encode — the crop, scaled to

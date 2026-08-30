@@ -466,23 +466,28 @@ def test_a_residual_past_the_reporting_tolerance_is_flagged_but_advisory(tmp_pat
 # --- grade-shipped-pixels Task 6: the convergence gate (design 2026-08-30 §5) ---
 # tone_target/tone_dsts are PARALLEL lists, the same idiom `geometry=` already uses —
 # check_reel.run must stay callable from its own CLI, which supplies neither. The ruler
-# (color_measure.clip_percentiles) is stubbed per test with the master-relative sample
-# times it was asked for, so these prove the SPAN arithmetic too, not just the compare.
+# (color_measure.clip_percentiles_batch, fix round 1 minor 1 — ONE decode across every
+# BOUND episode's span, not one clip_percentiles call per episode) is stubbed per test
+# with the master-relative sample times it was asked for, so these prove the SPAN
+# arithmetic too, not just the compare.
 
 TGT = (20.0, 100.0, 200.0)
 
 
-def _ruler(monkeypatch, per_call):
-    """Stub the one ruler. `per_call` is a list of profiles returned in call order;
-    every call's (clip, times) is recorded so a test can assert WHICH pixels were read."""
-    seen = []
-    profiles = iter(per_call)
+def _ruler(monkeypatch, profiles):
+    """Stub the one ruler. `profiles` is the list of per-BOUND-episode triples the one
+    batched call returns, in bound order. `calls` records every invocation's
+    (clip, spans) — spans is a list of this call's per-episode sample-time lists — so a
+    test can assert WHICH pixels were read, and confirm there is exactly ONE call no
+    matter how many episodes it covers (a regression back to one-call-per-episode would
+    still pass every value assertion below; only counting/inspecting `calls` catches it)."""
+    calls = []
 
-    def fake(clip, times):
-        seen.append((clip, [round(t, 4) for t in times]))
-        return next(profiles)
-    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles", fake)
-    return seen
+    def fake(clip, spans):
+        calls.append((clip, [[round(t, 4) for t in s] for s in spans]))
+        return list(profiles)
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch", fake)
+    return calls
 
 
 def test_tone_match_passes_when_every_episode_lands_on_the_target(tmp_path, monkeypatch):
@@ -495,8 +500,10 @@ def test_tone_match_passes_when_every_episode_lands_on_the_target(tmp_path, monk
         "target": [20.0, 100.0, 200.0], "residuals": {"0": 4.0, "1": 0.0},
         "not_checked": {}, "max": 12.0, "worst": 4.0})
     assert rep.overall is True and not rep.fail_reasons
-    # the MASTER, at each episode's own span, at (k+0.5)/3 of it — never the delivered reel
-    assert seen == [(master, [0.5, 1.5, 2.5]), (master, [3.5, 4.5, 5.5])]
+    # the MASTER, at each episode's own span, at (k+0.5)/3 of it — never the delivered
+    # reel — and in exactly ONE call carrying BOTH spans (fix round 1 minor 1: the
+    # decode is batched, not one clip_percentiles_batch call per episode).
+    assert seen == [(master, [[0.5, 1.5, 2.5], [3.5, 4.5, 5.5]])]
 
 
 def test_tone_match_fails_and_routes_to_match_grade(tmp_path, monkeypatch):
@@ -524,18 +531,43 @@ def test_tone_match_is_not_checked_without_a_target(tmp_path, monkeypatch):
     assert rep.checks["tone_match"].detail["reason"] == "no-target"
     assert "not_checked" not in rep.checks["tone_match"].detail   # nothing to index
     assert rep.overall is True and seen == []
+    assert "already carry" not in rep.checks["tone_match"].detail["remedy"]   # nothing graded either
+
+
+def test_a_graded_reel_with_no_target_says_so_in_the_remedy(tmp_path, monkeypatch):
+    """fix round 1, minor 2: the no-target arm used to return early without even
+    looking at tone_dsts, so an EDL graded before tone_target existed (or hand-authored
+    per-episode pairs with no reel-wide target ever stamped) reported the exact same
+    'ship it ungraded' remedy as a reel with NO grading at all — hiding the one fact a
+    reader most needs when a reel looks washed out. Does not change the verdict
+    (still passed=None, still not-checked): absence of a reel-wide target is not
+    tampering, this only makes the remedy honest about what IS on disk."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), tone_dsts=[[20.0, 100.0, 200.0], None])
+    assert rep.checks["tone_match"].passed is None
+    assert rep.checks["tone_match"].detail["reason"] == "no-target"
+    assert "not_checked" not in rep.checks["tone_match"].detail    # still absent — no target exists
+    assert "1/2 episode(s) already carry a tone_dst" in rep.checks["tone_match"].detail["remedy"]
+    assert rep.overall is True and seen == []                      # the verdict does not change
 
 
 def test_tone_match_skips_an_episode_the_conductor_skipped(tmp_path, monkeypatch):
     # ep1 carries no pair at all (flat-source / within-eps) → NAMED, not silently passed.
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     seen = _ruler(monkeypatch, [(20.0, 100.0, 200.0)])
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    master = _master(tmp_path)
+    rep = check_reel.run(master, ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT), None])
     assert rep.checks["tone_match"].detail["not_checked"] == {"1": "not-bound"}
     assert rep.checks["tone_match"].detail["residuals"] == {"0": 0.0}
     assert rep.checks["tone_match"].passed is True
-    assert len(seen) == 1                     # the skipped episode's pixels were never read
+    # one call, carrying ONLY ep0's span — the skipped episode's pixels were never read,
+    # not merely "read but discarded" (a bare len(seen)==1 cannot tell those apart once
+    # the ruler is batched: a bug that fed BOTH spans into one call would also produce
+    # exactly one call).
+    assert seen == [(master, [[0.5, 1.5, 2.5]])]
 
 
 def test_a_hand_authored_pair_is_not_bound_to_the_reels_common_target(tmp_path, monkeypatch):
@@ -543,11 +575,12 @@ def test_a_hand_authored_pair_is_not_bound_to_the_reels_common_target(tmp_path, 
     # Judging it against the common target would report a failure its grade never claimed.
     _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
     seen = _ruler(monkeypatch, [(20.0, 100.0, 200.0)])
-    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+    master = _master(tmp_path)
+    rep = check_reel.run(master, ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
                          str(tmp_path / "r.json"), tone_target=TGT,
                          tone_dsts=[list(TGT), [30.0, 110.0, 210.0]])
     assert rep.checks["tone_match"].detail["not_checked"] == {"1": "not-bound"}
-    assert len(seen) == 1
+    assert seen == [(master, [[0.5, 1.5, 2.5]])]     # ep1's span never read
 
 
 def test_a_target_with_no_episode_bound_to_it_says_so_instead_of_passing(tmp_path, monkeypatch):
@@ -588,6 +621,23 @@ def test_one_luma_code_of_difference_is_a_different_target(tmp_path, monkeypatch
     assert seen == []
 
 
+def test_a_non_numeric_tone_dst_refuses_loud_instead_of_crashing_bare(tmp_path, monkeypatch):
+    """fix round 1, minor 4: reframe refuses a malformed tone pair long before a reel is
+    assembled, but ONLY on the edl_to_reel path — build_reel's own CLI reads an
+    arbitrary reel-manifest JSON with no such validation upstream, so a hand-edited or
+    corrupt manifest CAN hand a non-numeric tone_dst to this check. Before this fix,
+    the right-length-but-wrong-content shape below reached `abs(a - b)` and raised a
+    bare, unattributed TypeError; it must now name the episode, the value, and the fix."""
+    _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
+    seen = _ruler(monkeypatch, [])
+    with pytest.raises(ValueError, match="tone_dst") as e:
+        check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                       str(tmp_path / "r.json"), tone_target=TGT,
+                       tone_dsts=[["a", "b", "c"]])
+    assert "not a triple of luma numbers" in str(e.value)
+    assert seen == []                          # refused before any pixel was ever read
+
+
 def test_tone_match_passes_at_exactly_the_threshold(tmp_path, monkeypatch):
     # residual == tone_match_max must PASS; guards the > boundary
     _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
@@ -596,6 +646,23 @@ def test_tone_match_passes_at_exactly_the_threshold(tmp_path, monkeypatch):
                          str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT)])
     assert rep.checks["tone_match"].passed is True
     assert rep.checks["tone_match"].detail["worst"] == 12.0
+
+
+def test_a_narrowly_failing_residual_is_distinguishable_from_the_max(tmp_path, monkeypatch):
+    """fix round 1, minor 3: `ok` is decided on the UNROUNDED worst, but the reported
+    residual used to round to 1 decimal — a worst of 12.04 fails (12.04 > 12.0) while
+    the JSON showed residual 12.0, max 12.0, and a reader could not tell why it failed.
+    2 decimals (matching _loudness_check; length already uses 3) is enough to show the
+    difference that actually decided the verdict."""
+    _Stub([3.0], hashes={1.5: 0}).install(monkeypatch)
+    _ruler(monkeypatch, [(20.0, 112.04, 200.0)])
+    rep = check_reel.run(_master(tmp_path), ["a.mp4"], ReelCheckSpec(target_dur=3.0),
+                         str(tmp_path / "r.json"), tone_target=TGT, tone_dsts=[list(TGT)])
+    assert rep.checks["tone_match"].passed is False              # 12.04 > 12.0 — a genuine fail
+    assert rep.checks["tone_match"].detail["worst"] == 12.04      # not 12.0 — must not round to the ceiling
+    assert rep.checks["tone_match"].detail["residuals"] == {"0": 12.04}
+    f = [x for x in rep.fail_reasons if x.check == "tone_match"][0]
+    assert f.detail == {"residual": 12.04, "max": 12.0}
 
 
 def test_a_target_without_the_per_episode_pairs_refuses_instead_of_passing_vacuously(tmp_path, monkeypatch):
