@@ -9,7 +9,8 @@ from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.footage import DESCRIPTOR_LEN
 from scripts.lib.look import LookSpec
-from scripts.lib.models import ReelEpisode, ReelManifest
+from scripts.lib.models import (EpisodeGeometry, ReelEpisode, ReelGeometry,
+                                ReelManifest)
 from scripts.lib.outro import OutroFit
 from scripts.lib.project import ProjectConfig
 
@@ -83,14 +84,36 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
                         f"hollows out the test; write {{0: result}}, not [result]")
     canned = dict(pe_results or {})     # {episode_idx: result}; absent → mechanical_pass
 
-    def fake_pe(manifest, project_dir, route_path=None):
+    def fake_pe(manifest, project_dir, route_path=None, *, stop_after=None,
+                prepared_source=None):
         # key off project_dir's ep{i} suffix — the one per-call value that names the
         # episode. Call ORDER is not usable: under the pool (design §7.1) it is a race.
         idx = int(Path(project_dir).name.removeprefix("ep"))
-        seen["pe"].append({"manifest": manifest, "project_dir": project_dir, "idx": idx})
+        seen["pe"].append({"manifest": manifest, "project_dir": project_dir, "idx": idx,
+                           "route_path": route_path, "stop_after": stop_after,
+                           "prepared_source": prepared_source})
         seen["order"].append(("pe", project_dir))   # list.append is atomic under the GIL;
                                                     # only the order AMONG workers is undefined
-        return canned.get(idx, {"status": "mechanical_pass", "clip": manifest["out_path"]})
+        if idx in canned:
+            return canned[idx]
+        if stop_after == "geometry":
+            # Stand in for process_episode's geometry return (design 2026-08-30 §2.1),
+            # writing the two artifacts the next phase reads off disk: a real route.json
+            # where the tracker would have left one, and the stabilize pre-stage's output
+            # when the episode asks for one. A pan gets neither — it follows nobody.
+            Path(project_dir).mkdir(parents=True, exist_ok=True)
+            rp = (None if manifest.get("pan") is not None
+                  else str(Path(project_dir) / "route.json"))
+            if rp is not None:
+                Path(rp).write_text(json.dumps(
+                    [{"t": 0.0, "x": 960, "y": 540, "w": 120, "h": 120, "id": 1}]))
+            src = manifest["segment"]
+            if manifest.get("stabilize"):
+                src = str(Path(project_dir) / "stabilized.mp4")
+                Path(src).write_text("stabilized")
+            return {"status": "geometry", "route": rp, "source": src, "timings": {},
+                    "degraded": None}
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
     monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
 
     def fake_build(rm, out_dir, work_dir, titles=None):
@@ -1386,6 +1409,420 @@ def test_cli_refuses_deliveries_dir_combined_with_stop_after_episodes(monkeypatc
                                       "--out-dir", str(tmp_path / "out"),
                                       "--stop-after-episodes",
                                       "--deliveries-dir", str(tmp_path / "elsewhere")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+# --- grade-shipped-pixels Task 3: phase 1 splits at the geometry boundary ---------
+#
+# match_grade measures each episode's SOURCE at its window midpoint; the reel ships
+# the tracked crop, and measuring that crop needs the route to exist first. So phase
+# 1 gains a seam: track everything, stop before any encode, let the conductor measure
+# and author, then render over the frozen routes (design 2026-08-30 §2).
+
+
+def _ep(**over):
+    """One EDL episode row, the same default shape _edl_file builds its pair from."""
+    return {**dict(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                   composition="lead", grid="thirds", crop_scale=0.8), **over}
+
+
+def _reel_dirs(tmp_path):
+    """The CANONICAL build/episodes pair, not two loose directories.
+
+    wipe_build's predicate is "work_dir is out_dir's sibling named build", so only
+    this arrangement makes the wipe real — with a loose --work-dir the wipe is a
+    silent no-op and test_from_geometry_does_not_wipe_the_build_dir below would pass
+    against a phase 1b that wiped on every run."""
+    reel = tmp_path / "reels" / "main"
+    return str(reel / "build"), str(reel / "episodes")
+
+
+def _stamped_project(tmp_path, stamp):
+    """A project.json that RECORDS an engine stamp — _project's plain one records
+    none, and the drift guard cannot fire against an empty stamp on either side."""
+    p = tmp_path / "project.json"
+    ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native",
+                  provenance={"v": 1, "engine": stamp, "self": "x", "inputs": {}}).write(p)
+    return str(p)
+
+
+def _geometry_run(tmp_path, monkeypatch, episodes=None, project=None, **edl_kw):
+    """Phase 1a over the standard fake. Returns (geo, ctx) where ctx names the EDL,
+    the project, the GEOMETRY.json, both dirs and the _wire recorder this run used."""
+    seen = _wire(monkeypatch)
+    edl_path = _edl_file(tmp_path, episodes=episodes, **edl_kw)
+    project = project or _project(tmp_path)
+    work, out = _reel_dirs(tmp_path)
+    geo, stop = edl_to_reel.build_geometry(edl_path, project, str(tmp_path), work, out)
+    assert stop is None
+    return geo, {"edl": edl_path, "project": project, "work": work, "out": out,
+                 "geometry": str(Path(out) / "GEOMETRY.json"), "seen": seen}
+
+
+def _render(ctx, **kw):
+    return edl_to_reel.render_from_geometry(ctx["geometry"], ctx["project"],
+                                            ctx["work"], ctx["out"], **kw)
+
+
+def _rewrite_edl(edl_path, index, **fields):
+    doc = json.loads(Path(edl_path).read_text())
+    doc["episodes"][index].update(fields)
+    Path(edl_path).write_text(json.dumps(doc))
+
+
+def _no_vidstab_probe(monkeypatch):
+    """manifest.validate() calls the real, uncached vidstab.require() (an
+    `ffmpeg -filters` spawn) for any manifest with stabilize=true, and preflight runs
+    validate() on every episode. tests/lib/ is pure unit, no ffmpeg — same convention
+    as tests/lib/test_manifest.py and test_process_episode.py's _stub_probe."""
+    from scripts.lib import vidstab
+    monkeypatch.setattr(vidstab, "require", lambda: None)
+
+
+def test_build_geometry_writes_routes_and_no_clips(tmp_path, monkeypatch):
+    """Phase 1a: GEOMETRY.json exists, out_dir holds no ep{i}.mp4."""
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    g = ReelGeometry.from_json(ctx["geometry"])
+    assert len(g.episodes) == 2
+    assert g.edl == ctx["edl"]
+    assert not list(Path(ctx["out"]).glob("ep*.mp4"))
+    # every episode stopped at the seam — nothing below it ran
+    assert [m["stop_after"] for m in ctx["seen"]["pe"]] == ["geometry"] * 2
+    assert g.episodes[0].route == str(Path(ctx["work"]) / "ep0" / "route.json")
+    assert g.episodes[0].project_dir == str(Path(ctx["work"]) / "ep0")
+    assert g.episodes[0].source == str(Path(ctx["work"]) / "segments" / "ep0_raw.mp4")
+
+
+def test_build_geometry_records_the_engine_stamp_it_started_from(tmp_path, monkeypatch):
+    # the same #11 guard EPISODES.json carries, so a run cannot straddle an engine
+    # change across the conductor's turn either. The stamp is NON-EMPTY here on
+    # purpose: _project's plain project.json records none, and {} == {} would hold
+    # against a build_geometry that recorded nothing at all.
+    stamp = {"sha": "aaaaaaa", "dirty": False}
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp", lambda: stamp)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch,
+                             project=_stamped_project(tmp_path, stamp))
+    assert geo.provenance["engine_at_start"] == stamp
+
+
+def test_geometry_stores_the_manifest_without_its_colour_block(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[
+        _ep(tone_src=[20.0, 100.0, 200.0], tone_dst=[30.0, 110.0, 210.0], dip=0.4)])
+    # the manifest phase 1a actually ran DID carry the grade — without this the strip
+    # assertion below would hold just as well against an EDL that never set one
+    assert ctx["seen"]["pe"][0]["manifest"]["tone_src"] == [20.0, 100.0, 200.0]
+    assert ctx["seen"]["pe"][0]["manifest"]["dip"] == 0.4
+    assert geo.episodes[0].manifest["tone_src"] is None
+    assert geo.episodes[0].manifest["tone_dst"] is None
+    assert geo.episodes[0].manifest["dip"] == 0.0
+
+
+def test_from_geometry_accepts_a_re_authored_grade(tmp_path, monkeypatch):
+    """The seam's whole purpose: the EDL's colour block changed between the phases."""
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    _rewrite_edl(ctx["edl"], 0, tone_src=[20.0, 100.0, 200.0],
+                 tone_dst=[30.0, 110.0, 210.0])
+    rm, stop = _render(ctx)
+    assert stop is None
+    assert rm.episodes[0].manifest["tone_dst"] == [30.0, 110.0, 210.0]
+    # to_manifest_dict omits the pair at its identity, so "absent" is the untouched shape
+    assert "tone_dst" not in rm.episodes[1].manifest
+
+
+def test_from_geometry_refuses_a_changed_cut(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    _rewrite_edl(ctx["edl"], 0, start=9.0)      # a different cut entirely
+    with pytest.raises(ValueError, match="geometry was frozen"):
+        _render(ctx)
+
+
+def test_from_geometry_refuses_a_changed_layout(tmp_path, monkeypatch):
+    # the OTHER half of the guard: `start` is invisible to the manifest (extract's
+    # input, never a manifest field), `layout` is invisible to the cut identity
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    _rewrite_edl(ctx["edl"], 1, layout="fit")
+    with pytest.raises(ValueError, match="geometry was frozen"):
+        _render(ctx)
+
+
+def test_from_geometry_refuses_a_changed_episode_count(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    doc = json.loads(Path(ctx["edl"]).read_text())
+    doc["episodes"].append(_ep(start=4.0))
+    Path(ctx["edl"]).write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match="3 episodes.*froze 2"):
+        _render(ctx)
+
+
+def test_from_geometry_does_not_wipe_the_build_dir(tmp_path, monkeypatch):
+    """The routes live there. Wiping between the phases destroys the input."""
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    work, out = ctx["work"], ctx["out"]
+    # the marker IS destructible: this is the canonical build dir, so a _wipe_scratch
+    # call here would really delete it (see _reel_dirs)
+    assert Path(work).resolve() == Path(out).resolve().parent / "build"
+    marker = Path(work) / "ep0" / "route.json"
+    before = marker.read_bytes()
+    _render(ctx)
+    assert marker.read_bytes() == before
+
+
+def test_from_geometry_does_not_re_extract(tmp_path, monkeypatch):
+    # phase 1a already cut the segments the frozen routes were measured against;
+    # re-cutting them would be waste, and a lie about which pixels were tracked
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    ctx["seen"]["segments"] = []
+    _render(ctx)
+    assert ctx["seen"]["segments"] == []
+
+
+def test_from_geometry_hands_each_episode_its_frozen_route(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert stop is None
+    calls = sorted(ctx["seen"]["pe"], key=lambda m: m["idx"])
+    assert [m["route_path"] for m in calls] == [eg.route for eg in geo.episodes]
+    assert [m["stop_after"] for m in calls] == [None, None]      # rendered, not stopped
+    # an unstabilized episode's source is md["segment"], which process_episode already
+    # resolves — a second, redundant assertion path is exactly what prepared_source is not
+    assert [m["prepared_source"] for m in calls] == [None, None]
+    assert [e.route for e in rm.episodes] == [eg.route for eg in geo.episodes]
+
+
+def test_a_stabilized_episode_is_handed_its_prepared_source(tmp_path, monkeypatch):
+    _no_vidstab_probe(monkeypatch)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch,
+                             episodes=[_ep(stabilize=True), _ep(start=2.0)])
+    assert geo.episodes[0].source.endswith("ep0/stabilized.mp4")
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert stop is None
+    calls = sorted(ctx["seen"]["pe"], key=lambda m: m["idx"])
+    assert calls[0]["prepared_source"] == geo.episodes[0].source
+    assert calls[0]["route_path"] == geo.episodes[0].route
+    assert calls[1]["prepared_source"] is None
+
+
+def test_a_pan_and_stabilize_episode_completes_from_geometry(tmp_path, monkeypatch):
+    """pan and stabilize are independent EDL fields and nothing refuses the pair, but
+    a pan has no route — and process_episode refuses a prepared source without one.
+    The pair must therefore be handed NEITHER half, and re-run its own pre-stage."""
+    _no_vidstab_probe(monkeypatch)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[
+        _ep(stabilize=True, pan={"from": 0.0, "to": 1.0}, composition="center"),
+        _ep(start=2.0)])
+    assert geo.episodes[0].route is None
+    ctx["seen"]["pe"].clear()
+    rm, stop = _render(ctx)
+    assert stop is None
+    calls = sorted(ctx["seen"]["pe"], key=lambda m: m["idx"])
+    assert calls[0]["route_path"] is None and calls[0]["prepared_source"] is None
+    assert rm.episodes[0].route is None            # still the truth: nothing was tracked
+
+
+def test_from_geometry_warms_no_weights_when_every_route_is_frozen(tmp_path, monkeypatch):
+    # the warm-ups exist to stop N cold workers racing one weights download; an
+    # episode handed a frozen route never reaches either model
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    ctx["seen"]["warm"].clear()
+    _render(ctx)
+    assert ctx["seen"]["warm"] == []
+
+
+def test_from_geometry_still_warms_for_an_episode_that_tracks(tmp_path, monkeypatch):
+    # a pan carries no route, so phase 1b re-runs it — and any episode the geometry
+    # recorded route=None for still reaches the pool's tracking half
+    _no_vidstab_probe(monkeypatch)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[
+        _ep(pan={"from": 0.0, "to": 1.0}, composition="center"), _ep(start=2.0)])
+    ctx["seen"]["warm"].clear()
+    _render(ctx)
+    assert ctx["seen"]["warm"] == [edl_to_reel.track.MODEL]
+
+
+def test_from_geometry_refuses_an_engine_change_since_the_geometry_was_frozen(
+        tmp_path, monkeypatch):
+    stamp = {"sha": "aaaaaaa", "dirty": False}
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp", lambda: stamp)
+    geo, ctx = _geometry_run(tmp_path, monkeypatch,
+                             project=_stamped_project(tmp_path, stamp))
+    monkeypatch.setattr(edl_to_reel.provenance, "engine_stamp",
+                        lambda: {"sha": "ffff", "dirty": False})
+    with pytest.raises(ValueError, match="engine changed since this run started"):
+        _render(ctx)
+
+
+def test_from_geometry_passes_a_preflight_stop_through(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    _rewrite_edl(ctx["edl"], 0, crop_scale=99.0)
+    rm, stop = _render(ctx)
+    assert rm is None and stop["status"] == "stop_and_report"
+    assert stop["finding"]["reason"] == "edl-invalid"
+
+
+def test_from_geometry_reports_the_lowest_failing_episode(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    ctx["seen"]["pe"].clear()
+    rm, stop = edl_to_reel.render_from_geometry(
+        ctx["geometry"], _project(tmp_path), ctx["work"], ctx["out"])   # sanity: passes
+    assert stop is None
+    _wire(monkeypatch, pe_results={1: {"status": "needs_input", "problems": ["x"]}})
+    rm, stop = _render(ctx)
+    assert rm is None
+    assert stop["finding"] == {"reason": "episode-failed", "episode_idx": 1,
+                               "sub_status": "needs_input"}
+
+
+# --- the reel's common tone target reaches BOTH assembly sites --------------------
+
+def test_the_edls_tone_target_reaches_the_reel_manifest(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path, tone_target=[20.0, 100.0, 200.0]),
+                            _project(tmp_path), str(tmp_path), str(tmp_path / "w"),
+                            str(tmp_path / "out"))
+    assert seen["rm"].tone_target == (20.0, 100.0, 200.0)
+
+
+def test_the_reel_manifest_tone_target_is_none_by_default(monkeypatch, tmp_path):
+    seen = _wire(monkeypatch)
+    edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                            str(tmp_path / "w"), str(tmp_path / "out"))
+    assert seen["rm"].tone_target is None
+
+
+def test_from_geometry_carries_the_tone_target_too(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    doc = json.loads(Path(ctx["edl"]).read_text())
+    doc["tone_target"] = [20.0, 100.0, 200.0]      # what match_grade writes back
+    Path(ctx["edl"]).write_text(json.dumps(doc))
+    rm, stop = _render(ctx)
+    assert stop is None and rm.tone_target == (20.0, 100.0, 200.0)
+
+
+# --- the CLI's two new phase flags -------------------------------------------------
+
+def test_cli_stop_after_geometry_dispatches_to_build_geometry(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_build_geometry(edl_path, project_path, footage_root, work_dir, out_dir, *,
+                            jobs=edl_to_reel.DEFAULT_JOBS):
+        seen["called"] = "build_geometry"
+        seen["out_dir"] = out_dir
+        seen["jobs"] = jobs
+        return ReelGeometry(episodes=(EpisodeGeometry(manifest={}, route=None,
+                                                      source="s.mp4", project_dir="d"),),
+                            edl="EDL.json"), None
+    monkeypatch.setattr(edl_to_reel, "build_geometry", fake_build_geometry)
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel",
+                        lambda *a, **k: seen.setdefault("wrong_fn", "edl_to_reel"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--stop-after-geometry"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert seen["called"] == "build_geometry" and "wrong_fn" not in seen
+    assert seen["out_dir"] == str(tmp_path / "out")
+
+
+def test_cli_from_geometry_dispatches_to_render_from_geometry(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_render(geometry_path, project_path, work_dir, out_dir, *, music=None,
+                    jobs=edl_to_reel.DEFAULT_JOBS, changelog=""):
+        seen.update(geometry=geometry_path, project=project_path, work_dir=work_dir,
+                    out_dir=out_dir, jobs=jobs)
+        return ReelManifest(episodes=[ReelEpisode(
+            manifest={"segment": "s.mp4", "out_path": str(tmp_path / "ep0.mp4")},
+            clip=str(tmp_path / "ep0.mp4"), route=None, path="p.json",
+            meta="m.json")], target_dur=2.0), None
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry", fake_render)
+    monkeypatch.setattr(edl_to_reel, "edl_to_reel",
+                        lambda *a, **k: seen.setdefault("wrong_fn", "edl_to_reel"))
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(out),
+                                      "--from-geometry", str(tmp_path / "GEOMETRY.json"),
+                                      "--jobs", "2"])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 0
+    assert "wrong_fn" not in seen
+    assert seen["geometry"] == str(tmp_path / "GEOMETRY.json") and seen["jobs"] == 2
+    # it ends where --stop-after-episodes ends: EPISODES.json, ready for the QC gate
+    assert (out / "EPISODES.json").exists()
+
+
+def test_cli_from_geometry_refuses_a_positional_edl(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry",
+                        lambda *a, **k: called.append("render_from_geometry"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", _edl_file(tmp_path),
+                                      "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--from-geometry", str(tmp_path / "GEOMETRY.json")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+def test_cli_from_geometry_refuses_a_footage_root_flag(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry",
+                        lambda *a, **k: called.append("render_from_geometry"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--project", _project(tmp_path),
+                                      "--footage-root", str(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--from-geometry", str(tmp_path / "GEOMETRY.json")])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2
+    assert called == []
+
+
+@pytest.mark.parametrize("other", [["--from-geometry", "g.json"],
+                                   ["--from-episodes", "e.json"],
+                                   ["--stop-after-episodes"]])
+def test_cli_stop_after_geometry_is_exclusive_with_every_other_phase(monkeypatch, tmp_path,
+                                                                    other):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(edl_to_reel, "build_geometry",
+                        lambda *a, **k: called.append("build_geometry"))
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry",
+                        lambda *a, **k: called.append("render_from_geometry"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--stop-after-geometry", *other])
+    with pytest.raises(SystemExit) as ei:
+        edl_to_reel.main()
+    assert ei.value.code == 2            # argparse's own mutually_exclusive_group
+    assert called == []
+
+
+def test_cli_refuses_titles_combined_with_from_geometry(monkeypatch, tmp_path):
+    called = _no_dispatch(monkeypatch)
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry",
+                        lambda *a, **k: called.append("render_from_geometry"))
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel",
+                                      "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--from-geometry", str(tmp_path / "GEOMETRY.json"),
+                                      "--titles", "TITLES.json"])
     with pytest.raises(SystemExit) as ei:
         edl_to_reel.main()
     assert ei.value.code == 2
