@@ -159,7 +159,7 @@ Neither reference is identity. That is the whole change.
 
 ---
 
-## §2 Faithfulness — `tone_match` re-referenced
+## §2 Faithfulness — `tone_match` becomes `grade_faithful`
 
 `check_reel._tone_match_check` keeps its shape, its `not-bound` accounting, its
 batched single-decode read of the master and its escalation to `match-grade`.
@@ -186,11 +186,36 @@ which already handles the stabilized case correctly — a route measured on
 stabilized pixels must be replayed against the stabilized file, and inferring a
 filename would silently pick the raw one.
 
-**Threshold.** 12.0 was mid-gap between a healthy maximum of 8.0 and a broken
+**Threshold.** `ReelCheckSpec.tone_match_max = 12.0` is replaced by
+`grade_residual_max`. 12.0 was mid-gap between a healthy maximum of 8.0 and a broken
 minimum of 19.5, both measured against the *wrong* reference. Against the right
 one the residual is prediction-vs-delivery agreement, which the predecessor
 measured at **1 code** (§0.8). The new ceiling is set by measurement in the
 plan, not chosen here; the expectation is ~4.0.
+
+### §2.1 It stops checking cross-episode agreement, and that is a demotion
+
+Today's gate compares each bound episode against the reel's **common** target,
+so it is weakly an agreement check: everything within 12.0 of one target agrees
+within 24.0 of everything else. Against the new reference each episode is
+compared to **its own** declaration, and agreement is no longer measured at all.
+
+Two consequences, both taken deliberately:
+
+The check is **renamed `grade_faithful`** and judges **every** episode, not only
+the ones bound to the target. Faithfulness is a property of any declaration,
+including an empty one, so the `not-bound` skip disappears; `not_checked`
+survives only for an episode whose prediction could not be built.
+
+Agreement becomes the **advisory `target_dev`** — `max|prediction − target|` per
+bound episode, which is §0.2's full-chain column. It is not blocking, and the
+reason is that making it blocking re-opens the deadlock from the other side:
+ep0's declared chain lands 12.50 from the target and the only remedy is a
+conductor that solves the tone pair **through** the post-tone knobs, which is an
+iterative solve and its own slice (§10 row 4). Demoting a signal that is wrong
+today (it fires on correct input) to a number that is right is an improvement;
+pretending it still gates would not be. §0.2 also bounds what is being given up:
+on real footage the knobs displace agreement by at most 4.0 units.
 
 **What it no longer catches, named.** The old reference was independent of the
 render path; the new one shares `process_episode.build_reframe_spec` with it.
@@ -198,7 +223,14 @@ A bug that drops a field on the way from manifest to `ReframeSpec` now breaks
 both sides identically and passes. Mitigation: the old comparison stays in the
 report as an **advisory** `target_dev` per episode. The signal remains visible
 to a reader and to the QC judge; it stops being a gate, because as a gate it
-is wrong.
+is wrong. `target_dev` carries both jobs at once — it is the render-path-
+independent reading AND the agreement reading.
+
+**Routing.** A faithfulness failure means the pixels did not get the
+declaration, so the remedy is a re-render, not a re-authoring: the failure
+routes to `process-episode`, not to `match-grade`. It escalates for free —
+`reel_orchestration._REPROCESS_CLASS` is `("black",)`, so every non-black reel
+failure already escalates rather than looping.
 
 ---
 
@@ -282,11 +314,13 @@ instead. Advisory either way; it stops being nonsense.
 | file | change |
 |---|---|
 | `scripts/lib/gradedamage.py` | new — `entropy`, `evaluate`, `ENTROPY_BINS` |
-| `scripts/lib/models.py` | `CheckSpec.grade_delta_max` → `entropy_floor = 0.90`; `ReelCheckSpec.tone_match_max` re-measured |
+| `scripts/lib/color.py` | `FRAMES` + `sample_times` move here from `color_measure`, which `check_episode` cannot import (cycle) |
+| `scripts/reframe.py` | new `frames_rgb(plan, src, times)` — one plan, N decoded frames |
+| `scripts/lib/models.py` | `CheckSpec.grade_delta_max` → `entropy_floor = 0.90`; `ReelCheckSpec.tone_match_max` → `grade_residual_max`, re-measured |
 | `scripts/check_episode.py` | `color_fidelity` → `grade_damage`; `plans=` parameter; dE00 demoted to advisory |
 | `scripts/lib/orchestration.py` | `_UNFIXABLE` / `_UNFIXABLE_REASON` renamed to `grade_damage` |
-| `scripts/process_episode.py` | builds and passes the plan pair |
-| `scripts/check_reel.py` | `_tone_match_check` reference swap; advisory `target_dev` |
+| `scripts/process_episode.py` | `plan_for` + `plan_ungraded` (moved from `color_measure`, which could not carry them without a cycle); builds and passes the plan pair |
+| `scripts/check_reel.py` | `tone_match` → `grade_faithful`: reference swap, every episode judged, advisory `target_dev` |
 | `scripts/build_reel.py` | forwards what the fresh prediction needs |
 | `scripts/probe.py` | ungraded render; `grade_damage` + `predicted_profile` in `probe.json` |
 | `scripts/episode_qc.py` | `_source_reading` reads the crop-geometry ungraded render |
@@ -370,3 +404,7 @@ Each of these gets a backlog row before this slice is finished.
 3. **Make the faithfulness reference independent of `build_reframe_spec`**
    (P3/M). §9.4 — would need a second, separately-written path from manifest to
    chain, which is a cure worth less than the disease until something breaks.
+4. **Let the conductor solve the tone pair THROUGH the post-tone knobs, then
+   re-block agreement** (P2/M). §2.1 — `match_grade` measures at identity and
+   the knobs then displace the result by up to 4.0 units on real footage and
+   12.50 on ep0. An iterative solve would let `target_dev` become a gate again.
