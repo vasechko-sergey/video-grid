@@ -59,7 +59,7 @@ pytest.
 |---|---|
 | `scripts/lib/gradedamage.py` | **new.** Pure: luma-histogram entropy and the damage verdict. numpy in, one dict out. No ffmpeg, no paths. |
 | `scripts/lib/color.py` | gains `FRAMES` and `sample_times`, moved out of `color_measure` (which `check_episode` cannot import — `color_measure` imports `process_episode` imports `check_episode`). |
-| `scripts/reframe.py` | gains `frames_rgb(plan, src, times)` — one plan, N decoded RGB frames. Lives beside `RenderPlan` because it is the plan's third sink, after the x264 encode and the gray ruler. |
+| `scripts/reframe.py` | gains `plan_frames_rgb(plan, src, times)` — one plan, N decoded RGB frames. Lives beside `RenderPlan` because it is the plan's third sink, after the x264 encode and the gray ruler. |
 | `scripts/process_episode.py` | gains public `plan_for` / `plan_ungraded` (the manifest→plan map, previously duplicated in `color_measure.plan_ungraded` and `probe._plan_for`); builds and passes the plan pair to `check_episode`. |
 | `scripts/check_episode.py` | `color_fidelity` → `grade_damage`; dE00 demoted to an advisory field. |
 | `scripts/check_reel.py` | `tone_match` → `grade_faithful`; prediction reference; advisory `target_dev`. |
@@ -348,16 +348,16 @@ git commit -m "feat: entropy as the damage statistic, and one sample_times"
 
 ---
 
-### Task 1: `reframe.frames_rgb` — a plan's third sink
+### Task 1: `reframe.plan_frames_rgb` — a plan's third sink
 
 **Files:**
-- Modify: `scripts/reframe.py` (add `frames_rgb` after `plan_render`)
+- Modify: `scripts/reframe.py` (add `plan_frames_rgb` after `plan_render`)
 - Test: `tests/integration/test_reframe_frames.py` (create)
 
 **Interfaces:**
 - Consumes: `reframe.RenderPlan`, `RenderPlan.with_tail`, `RenderPlan.rl.out_w/out_h`,
   `RenderPlan.fps`, `RenderPlan.dur`.
-- Produces: `reframe.frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list[np.ndarray]`
+- Produces: `reframe.plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list[np.ndarray]`
   — each element HxWx3 uint8 in the plan's OUTPUT dimensions.
 
 - [ ] **Step 1: Write the failing test**
@@ -365,7 +365,7 @@ git commit -m "feat: entropy as the damage statistic, and one sample_times"
 `tests/integration/test_reframe_frames.py`:
 
 ```python
-"""reframe.frames_rgb over real ffmpeg — the plan's RGB sink."""
+"""reframe.plan_frames_rgb over real ffmpeg — the plan's RGB sink."""
 import numpy as np
 import pytest
 
@@ -380,48 +380,48 @@ def _manifest(seg: str, out: str) -> dict:
             "canvas": [9, 16], "delivery": "short_edge:480"}
 
 
-def test_frames_rgb_returns_one_frame_per_time_at_output_dims(golden_ride_segment, tmp_path):
+def test_plan_frames_rgb_returns_one_frame_per_time_at_output_dims(golden_ride_segment, tmp_path):
     md = _manifest(str(golden_ride_segment), str(tmp_path / "ep.mp4"))
     plan = process_episode.plan_for(md, str(golden_ride_segment),
                                     "tests/fixtures/golden_route.json")
     times = [0.2, 0.6, 1.0]
-    frames = reframe.frames_rgb(plan, str(golden_ride_segment), times)
+    frames = reframe.plan_frames_rgb(plan, str(golden_ride_segment), times)
     assert len(frames) == 3
     for f in frames:
         assert f.shape == (plan.rl.out_h, plan.rl.out_w, 3)
         assert f.dtype == np.uint8
 
 
-def test_frames_rgb_returns_DIFFERENT_frames_not_one_repeated(golden_ride_segment, tmp_path):
+def test_plan_frames_rgb_returns_DIFFERENT_frames_not_one_repeated(golden_ride_segment, tmp_path):
     """The §12 select landmine: a select before the chain's own fps= emits ONE frame
     N times and the count still comes out right, so a length assertion cannot see it."""
     md = _manifest(str(golden_ride_segment), str(tmp_path / "ep.mp4"))
     plan = process_episode.plan_for(md, str(golden_ride_segment),
                                     "tests/fixtures/golden_route.json")
-    frames = reframe.frames_rgb(plan, str(golden_ride_segment), [0.1, 0.7, 1.3])
+    frames = reframe.plan_frames_rgb(plan, str(golden_ride_segment), [0.1, 0.7, 1.3])
     assert not np.array_equal(frames[0], frames[1])
     assert not np.array_equal(frames[1], frames[2])
 
 
-def test_frames_rgb_refuses_a_short_buffer(golden_ride_segment, tmp_path):
+def test_plan_frames_rgb_refuses_a_short_buffer(golden_ride_segment, tmp_path):
     """A time past the stream's end yields fewer frames; the exact-byte check must
     catch it rather than reshape whatever arrived."""
     md = _manifest(str(golden_ride_segment), str(tmp_path / "ep.mp4"))
     plan = process_episode.plan_for(md, str(golden_ride_segment),
                                     "tests/fixtures/golden_route.json")
     with pytest.raises(RuntimeError, match="asked for"):
-        reframe.frames_rgb(plan, str(golden_ride_segment), [0.1, 999.0])
+        reframe.plan_frames_rgb(plan, str(golden_ride_segment), [0.1, 999.0])
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe_frames.py -q`
-Expected: FAIL — `AttributeError: module 'scripts.reframe' has no attribute 'frames_rgb'`
+Expected: FAIL — `AttributeError: module 'scripts.reframe' has no attribute 'plan_frames_rgb'`
 (and `plan_for`, which Task 2 adds; until then the test fails on the first missing
 name, which is fine — Step 5 re-runs it after Task 2).
 
 **Note for the implementer:** `process_episode.plan_for` is Task 2's deliverable.
-Implement `frames_rgb` now against a plan built inline with
+Implement `plan_frames_rgb` now against a plan built inline with
 `reframe.plan_render(process_episode.build_reframe_spec(...), ...)` if you want a
 green step here; the test above is written against the final API and Task 2 makes
 it pass. Do not invent a different name.
@@ -431,7 +431,7 @@ it pass. Do not invent a different name.
 Add `import numpy as np` to `scripts/reframe.py`'s imports, and after `plan_render`:
 
 ```python
-def frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
+def plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
     """The frames this plan would encode at `times`, decoded HxWx3 uint8 RGB.
 
     The plan's THIRD sink, beside reframe()'s x264 encode and
@@ -460,7 +460,7 @@ def frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
     # three frames (design 2026-08-30 plan, Task 0's finding).
     if len(raw) != want:
         raise RuntimeError(
-            f"frames_rgb asked for {len(nums)} frames {nums} of {w}x{h} "
+            f"plan_frames_rgb asked for {len(nums)} frames {nums} of {w}x{h} "
             f"({want} bytes) from {src} and got {len(raw)} — a frame number is past "
             f"the stream's end (times {times} against a {plan.dur:.3f}s source at "
             f"{plan.fps:.4g}fps)")
@@ -485,7 +485,7 @@ Expected: PASS once `plan_for` exists. Note in the report if it is still red on
 
 ```bash
 git add scripts/reframe.py tests/integration/test_reframe_frames.py
-git commit -m "feat: reframe.frames_rgb — the plan's RGB sink"
+git commit -m "feat: reframe.plan_frames_rgb — the plan's RGB sink"
 ```
 
 ---
@@ -648,7 +648,7 @@ git commit -m "refactor: one manifest -> RenderPlan map, three callers"
 - Modify: `docs/specs/2026-08-31-grade-sensor-references-design.md` (§0.5, new)
 
 **Interfaces:**
-- Consumes: `reframe.frames_rgb`, `process_episode.plan_for`/`plan_ungraded`,
+- Consumes: `reframe.plan_frames_rgb`, `process_episode.plan_for`/`plan_ungraded`,
   `gradedamage.evaluate`, `color_measure.crop_percentiles`, `color.sample_times`.
 - Produces: two numbers, written into the design as §0.5 and consumed as literals
   by Tasks 4 and 6: `CheckSpec.entropy_floor` and `ReelCheckSpec.grade_residual_max`.
@@ -693,8 +693,8 @@ def _ratio(md: dict, src: str) -> float:
     graded = process_episode.plan_for(md, src, ROUTE)
     plain = process_episode.plan_ungraded(md, src, ROUTE)
     times = color.sample_times(graded.dur)
-    d = gradedamage.evaluate(plain=reframe.frames_rgb(plain, src, times),
-                             graded=reframe.frames_rgb(graded, src, times),
+    d = gradedamage.evaluate(plain=reframe.plan_frames_rgb(plain, src, times),
+                             graded=reframe.plan_frames_rgb(graded, src, times),
                              floor=0.90)
     return d["ratio"]
 
@@ -817,7 +817,7 @@ git commit -m "test: measure both thresholds on the suite's own real footage"
   `tests/lib/test_orchestration.py`, `tests/lib/test_color_fidelity.py`
 
 **Interfaces:**
-- Consumes: `gradedamage.evaluate`, `color.sample_times`, `reframe.frames_rgb`.
+- Consumes: `gradedamage.evaluate`, `color.sample_times`, `reframe.plan_frames_rgb`.
 - Produces: `CheckSpec.entropy_floor: float = 0.90`;
   `check_episode.run(..., plans: tuple | None = None)`;
   report key `grade_damage` replacing `color_fidelity`;
@@ -964,8 +964,8 @@ def _grade_damage(clip: str, source: str | None, plans, route_pts, path_obj,
                             "reason": "no render plans" if source else "no source clip"})
     graded_plan, plain_plan = plans
     times = color.sample_times(graded_plan.dur)
-    g_frames = reframe.frames_rgb(graded_plan, source, times)
-    p_frames = reframe.frames_rgb(plain_plan, source, times)
+    g_frames = reframe.plan_frames_rgb(graded_plan, source, times)
+    p_frames = reframe.plan_frames_rgb(plain_plan, source, times)
     d = gradedamage.evaluate(plain=p_frames, graded=g_frames,
                              floor=spec.entropy_floor)
     d.update(_subject_delta_advisory(clip, source, route_pts, path_obj, meta))
@@ -1519,7 +1519,7 @@ git commit -m "feat: build_reel predicts each episode's own declared profile"
 - Test: `tests/integration/test_probe.py`, `tests/lib/test_episode_qc.py`
 
 **Interfaces:**
-- Consumes: `process_episode.plan_ungraded`, `reframe.frames_rgb`,
+- Consumes: `process_episode.plan_ungraded`, `reframe.plan_frames_rgb`,
   `gradedamage.evaluate`, `models.CheckSpec` (for the floor).
 - Produces: `probe.json` gains `"grade_damage"` and `"predicted_profile"`.
 
@@ -1558,7 +1558,7 @@ def test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP(monkeypatch, t
     monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded",
                         lambda md, src, route: seen.setdefault("planned", (src, route))
                         or _fake_plan())
-    monkeypatch.setattr(episode_qc.reframe, "frames_rgb",
+    monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb",
                         lambda plan, src, times: [_flat_frame()] * len(times))
     d = episode_qc._source_reading(_episode(tmp_path), {"contrast": 100.0})
     assert seen["planned"][0].endswith("segment.mp4")
@@ -1586,7 +1586,7 @@ In both `probe_grade` and `probe_grade_geometry`, after the existing
 ```python
     plain = process_episode.plan_ungraded(md, src, <route>)
     damage = gradedamage.evaluate(
-        plain=reframe.frames_rgb(plain, src, times),
+        plain=reframe.plan_frames_rgb(plain, src, times),
         graded=[np.asarray(i) for i in imgs],
         floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
 ```
@@ -1636,7 +1636,7 @@ def _source_reading(ep, graded: dict) -> dict:
         plan = process_episode.plan_ungraded(md, src, ep.route)
     except (FileNotFoundError, KeyError, ValueError):
         return {"source": None, "delta": None}
-    frames = reframe.frames_rgb(plan, src, color.sample_times(plan.dur, SENSOR_FRAMES))
+    frames = reframe.plan_frames_rgb(plan, src, color.sample_times(plan.dur, SENSOR_FRAMES))
     src_stats = naturalness.measure(frames)
     return {"source": src_stats, "delta": naturalness.evaluate_delta(src_stats, graded)}
 ```
@@ -1779,8 +1779,8 @@ coverage hole to close, not a row to delete.
 | 4 | `evaluate` judges the raw ratio, not the rounded one | `test_evaluate_judges_the_rounded_ratio_it_reports` |
 | 5 | `evaluate` returns `ratio >= floor` for `below` | `test_gradedamage.py` |
 | 6 | `color.sample_times` uses `k/frames` instead of `(k+0.5)/frames` | `test_color.py` |
-| 7 | `frames_rgb` puts the select BEFORE the chain (`plan.filter_args` edited directly instead of `with_tail`) | `test_frames_rgb_returns_DIFFERENT_frames_not_one_repeated` |
-| 8 | `frames_rgb`'s size check becomes `len(raw) % want == 0` | `test_frames_rgb_refuses_a_short_buffer` |
+| 7 | `plan_frames_rgb` puts the select BEFORE the chain (`plan.filter_args` edited directly instead of `with_tail`) | `test_plan_frames_rgb_returns_DIFFERENT_frames_not_one_repeated` |
+| 8 | `plan_frames_rgb`'s size check becomes `len(raw) % want == 0` | `test_plan_frames_rgb_refuses_a_short_buffer` |
 | 9 | `plan_ungraded` forgets `strip_colour` | `test_process_episode_plans.py` |
 | 10 | `plan_for` hardcodes `orch.DEFAULT_PARAMS["smooth_window_s"]` | `test_process_episode_plans.py` — **if GREEN, add a test** |
 | 11 | `CheckSpec.entropy_floor` default 0.90 → 0.50 | `test_models.py` |
@@ -1860,7 +1860,7 @@ produced by Task 3 and consumed as literals by Tasks 4 and 6. No later task may
 invent one; Task 3's Step 4 forbids a surviving placeholder.
 
 **Type consistency.** `plan_for`/`plan_ungraded` keep their names from Task 2
-through Tasks 5, 7 and 8. `frames_rgb(plan, src, times)` keeps its argument order
+through Tasks 5, 7 and 8. `plan_frames_rgb(plan, src, times)` keeps its argument order
 everywhere. `gradedamage.evaluate` is **keyword-only** (Task 0, fix round 1) because
 the ratio is graded ÷ plain while §3.1 hands Task 5 a `(graded, plain)` tuple —
 a positional splat would have inverted the sensor in silence. Every call site in

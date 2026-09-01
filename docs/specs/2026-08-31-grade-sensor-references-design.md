@@ -315,7 +315,7 @@ instead. Advisory either way; it stops being nonsense.
 |---|---|
 | `scripts/lib/gradedamage.py` | new — `entropy`, `evaluate`, `ENTROPY_BINS` |
 | `scripts/lib/color.py` | `FRAMES` + `sample_times` move here from `color_measure`, which `check_episode` cannot import (cycle) |
-| `scripts/reframe.py` | new `frames_rgb(plan, src, times)` — one plan, N decoded frames |
+| `scripts/reframe.py` | new `plan_frames_rgb(plan, src, times)` — one plan, N decoded frames (named apart from the pre-existing `assembly.frames_rgb`, which reads a finished file at its native size) |
 | `scripts/lib/models.py` | `CheckSpec.grade_delta_max` → `entropy_floor = 0.90`; `ReelCheckSpec.tone_match_max` → `grade_residual_max`, re-measured |
 | `scripts/check_episode.py` | `color_fidelity` → `grade_damage`; `plans=` parameter; dE00 demoted to advisory |
 | `scripts/lib/orchestration.py` | `_UNFIXABLE` / `_UNFIXABLE_REASON` renamed to `grade_damage` |
