@@ -968,9 +968,14 @@ def test_the_preflight_probe_stays_on_the_original_segment(monkeypatch, tmp_path
     # retry loop also builds the damage sensor's (graded, plain) plan pair via two
     # REAL reframe.plan_render calls, which correctly probe the render's actual
     # source — stabilized.mp4 — AFTER this preflight has already run. That is a
-    # second, later, and entirely legitimate probe call, not a regression; this
-    # test only pins the FIRST one, the one that must precede stabilization's two
-    # ffmpeg passes.
+    # second and third, later, and entirely legitimate probe call, not a
+    # regression; this test pins ALL THREE: the first must be the raw segment
+    # (the preflight, before stabilization's two ffmpeg passes), and the other
+    # two must be the stabilized file (the damage sensor's pair, built from the
+    # SAME `src` reframe.reframe encoded). The count is exact, not a floor: this
+    # test drives exactly one attempt (the default stub reports mechanical_pass
+    # immediately), so it is fully determined — 1 preflight + 2 plan_render calls
+    # (graded, plain) — and a drift either way is worth seeing fail.
     dims = (1920, 1080, 30.0, 3.0, "yuv420p", "tv")
     _stub_engine(monkeypatch, tmp_path, dims=dims)
     _stub_vidstab(monkeypatch)
@@ -983,8 +988,10 @@ def test_the_preflight_probe_stays_on_the_original_segment(monkeypatch, tmp_path
     result = pe.process_episode(_manifest(tmp_path, stabilize=True),
                                 project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass", result
+    assert len(probed) == 3, probed
     assert probed[0].endswith("seg.mp4")
     assert not probed[0].endswith("stabilized.mp4")
+    assert all(p.endswith("stabilized.mp4") for p in probed[1:]), probed
 
 
 def test_the_before_and_after_reach_the_result(monkeypatch, tmp_path):
