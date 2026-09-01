@@ -83,7 +83,10 @@ pytest.
 
 **Interfaces:**
 - Produces: `gradedamage.ENTROPY_BINS: int`, `gradedamage.entropy(frame: np.ndarray) -> float`,
-  `gradedamage.evaluate(plain: list, graded: list, floor: float) -> dict`.
+  `gradedamage.evaluate(*, plain: list, graded: list, floor: float) -> dict`
+  — **keyword-only**, decided in Task 0's fix round 1: this returns `graded / plain`
+  while §3.1 hands the next task a `(graded, plain)` tuple, so a positional splat
+  would invert the sensor silently. Keyword-only makes that a `TypeError`.
   `evaluate` returns either `{"status","reason"}` or
   `{"ratio","plain_bits","graded_bits","floor","frames","below"}`.
 - Produces: `color.FRAMES: int = 3`, `color.sample_times(dur: float, frames: int = FRAMES) -> list[float]`.
@@ -690,8 +693,9 @@ def _ratio(md: dict, src: str) -> float:
     graded = process_episode.plan_for(md, src, ROUTE)
     plain = process_episode.plan_ungraded(md, src, ROUTE)
     times = color.sample_times(graded.dur)
-    d = gradedamage.evaluate(reframe.frames_rgb(plain, src, times),
-                             reframe.frames_rgb(graded, src, times), 0.90)
+    d = gradedamage.evaluate(plain=reframe.frames_rgb(plain, src, times),
+                             graded=reframe.frames_rgb(graded, src, times),
+                             floor=0.90)
     return d["ratio"]
 
 
@@ -962,7 +966,8 @@ def _grade_damage(clip: str, source: str | None, plans, route_pts, path_obj,
     times = color.sample_times(graded_plan.dur)
     g_frames = reframe.frames_rgb(graded_plan, source, times)
     p_frames = reframe.frames_rgb(plain_plan, source, times)
-    d = gradedamage.evaluate(p_frames, g_frames, spec.entropy_floor)
+    d = gradedamage.evaluate(plain=p_frames, graded=g_frames,
+                             floor=spec.entropy_floor)
     d.update(_subject_delta_advisory(clip, source, route_pts, path_obj, meta))
     if "status" in d:
         return CheckResult("grade_damage", None, d)
@@ -1580,9 +1585,10 @@ In both `probe_grade` and `probe_grade_geometry`, after the existing
 
 ```python
     plain = process_episode.plan_ungraded(md, src, <route>)
-    damage = gradedamage.evaluate(reframe.frames_rgb(plain, src, times),
-                                  [np.asarray(i) for i in imgs],
-                                  CheckSpec.__dataclass_fields__["entropy_floor"].default)
+    damage = gradedamage.evaluate(
+        plain=reframe.frames_rgb(plain, src, times),
+        graded=[np.asarray(i) for i in imgs],
+        floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
 ```
 
 and add to the report dict:
@@ -1769,7 +1775,7 @@ coverage hole to close, not a row to delete.
 |---|---|---|
 | 1 | `gradedamage.ENTROPY_BINS` 256 → 64 | `test_gradedamage.py` (the quantization test) |
 | 2 | `entropy` drops the `.clip(0, 255)` | `test_gradedamage.py` |
-| 3 | `evaluate` returns the mean instead of the median | `test_gradedamage.py` |
+| 3 | `evaluate` returns the mean instead of the median | `test_gradedamage.py` — the median-vs-mean test added in Task 0's fix round 1. This row was GREEN on the first pass: every fixture used bit-identical repeated frames, so mean, median, min and max all agreed |
 | 4 | `evaluate` judges the raw ratio, not the rounded one | `test_evaluate_judges_the_rounded_ratio_it_reports` |
 | 5 | `evaluate` returns `ratio >= floor` for `below` | `test_gradedamage.py` |
 | 6 | `color.sample_times` uses `k/frames` instead of `(k+0.5)/frames` | `test_color.py` |
@@ -1855,9 +1861,10 @@ invent one; Task 3's Step 4 forbids a surviving placeholder.
 
 **Type consistency.** `plan_for`/`plan_ungraded` keep their names from Task 2
 through Tasks 5, 7 and 8. `frames_rgb(plan, src, times)` keeps its argument order
-everywhere. `gradedamage.evaluate(plain, graded, floor)` is called with the plain
-frames FIRST in Tasks 4 and 8 — the ratio is graded ÷ plain, so a swapped call
-inverts the sensor silently, and mutation row 27 is the closest thing to a guard.
+everywhere. `gradedamage.evaluate` is **keyword-only** (Task 0, fix round 1) because
+the ratio is graded ÷ plain while §3.1 hands Task 5 a `(graded, plain)` tuple —
+a positional splat would have inverted the sensor in silence. Every call site in
+Tasks 3, 4 and 8 names its arguments.
 The check keys are `grade_damage` (episode) and `grade_faithful` (reel), never
 mixed.
 
