@@ -30,16 +30,40 @@ ENTROPY_BINS = 256      # one bin per 8-bit code. Coarsening to 64 was measured 
                         # makes the two classes overlap (design §0.3).
 
 
+def _luma(frame: np.ndarray) -> np.ndarray:
+    """The rounded, clipped 8-bit luma plane of one HxWx3 uint8 RGB frame — the
+    histogram `entropy` reduces to a scalar.
+
+    Its own function so the weight coefficients are directly testable (fix round 1,
+    Important 2). `entropy`'s return value is a function of the multiset of bin
+    PROBABILITIES only, and is invariant under any relabeling that preserves group
+    sizes — that invariance is the whole reason this statistic was chosen, and is
+    itself pinned by test_entropy_is_invariant_under_a_bijective_relabeling. The
+    same invariance means `entropy` alone cannot catch e.g. an R/B weight
+    transposition on any fixture where swapping the two channels does not change
+    how many pixels land in each code: testing the coefficients needs the plane
+    itself, not the scalar entropy reduces it to."""
+    y = 0.299 * frame[..., 0] + 0.587 * frame[..., 1] + 0.114 * frame[..., 2]
+    return y.round().clip(0, 255).astype(np.uint8)
+
+
 def entropy(frame: np.ndarray) -> float:
     """Shannon entropy in bits of one HxWx3 uint8 RGB frame's luma histogram."""
-    y = 0.299 * frame[..., 0] + 0.587 * frame[..., 1] + 0.114 * frame[..., 2]
-    counts = np.bincount(y.round().clip(0, 255).astype(np.uint8).ravel(),
-                         minlength=ENTROPY_BINS)
+    counts = np.bincount(_luma(frame).ravel(), minlength=ENTROPY_BINS)
     p = counts[counts > 0] / counts.sum()
     return float(-(p * np.log2(p)).sum())
 
 
-def evaluate(plain: list, graded: list, floor: float) -> dict:
+def _no_negzero(x: float) -> float:
+    """Collapse IEEE754 negative zero to positive zero. `entropy` returns exactly
+    -0.0 for a fully-concentrated histogram (log2(1) == 0.0, then negated by the
+    sum), and a report reading 'ratio: -0.0' or 'plain_bits: -0.0' carries a sign
+    no reader should have to interpret, even though -0.0 == 0.0 numerically
+    (fix round 1, Important 5)."""
+    return 0.0 if x == 0 else x
+
+
+def evaluate(*, plain: list, graded: list, floor: float) -> dict:
     """The episode's damage verdict: the MEDIAN per-frame entropy ratio against `floor`.
 
     `plain` and `graded` are parallel: the same frames of the same render, differing
@@ -51,7 +75,13 @@ def evaluate(plain: list, graded: list, floor: float) -> dict:
     frame must not decide an episode.
 
     Rounds once and judges the ROUNDED value, so `below` always agrees with the
-    `ratio` the report shows — the same rule color_fidelity.evaluate documents."""
+    `ratio` the report shows — the same rule color_fidelity.evaluate documents.
+
+    Keyword-only, deliberately (fix round 1, Important 3): this returns
+    graded ÷ plain, while the design's §3.1 hands the next task a
+    `plans: tuple[RenderPlan, RenderPlan]` documented as `(graded, plain)` — the
+    OPPOSITE order. A caller writing `evaluate(*plans, floor)` would invert the
+    sensor with no error; keyword-only turns that into a TypeError instead."""
     if len(plain) != len(graded):
         raise ValueError(f"gradedamage.evaluate: plain and graded are parallel lists "
                          f"of the same frames, got {len(plain)} and {len(graded)}")
@@ -59,14 +89,23 @@ def evaluate(plain: list, graded: list, floor: float) -> dict:
         return {"status": "not-checked", "reason": "no frames to compare"}
     pe = [entropy(f) for f in plain]
     ge = [entropy(f) for f in graded]
-    ratios = [g / p for p, g in zip(pe, ge) if p > 0]
-    if not ratios:
+    # Filtered ONCE, together (fix round 1, Important 5): plain_bits/graded_bits
+    # must describe the same frames `ratio`/`frames` do. Computing them from the
+    # unfiltered pe/ge let a flat frame excluded from the ratio (it has none —
+    # dividing by zero entropy invents one) still drag the reported bits toward
+    # its own zero entropy, so a report could show a `plain_bits` figure that
+    # belongs to a frame `frames` says was never counted.
+    pairs = [(p, g) for p, g in zip(pe, ge) if p > 0]
+    if not pairs:
         return {"status": "not-checked",
                 "reason": "every ungraded frame is flat — no information to lose"}
-    r = round(statistics.median(ratios), 3)
+    ratios = [g / p for p, g in pairs]
+    pe_f = [p for p, _ in pairs]
+    ge_f = [g for _, g in pairs]
+    r = _no_negzero(round(statistics.median(ratios), 3))
     return {"ratio": r,
-            "plain_bits": round(statistics.median(pe), 3),
-            "graded_bits": round(statistics.median(ge), 3),
+            "plain_bits": _no_negzero(round(statistics.median(pe_f), 3)),
+            "graded_bits": _no_negzero(round(statistics.median(ge_f), 3)),
             "floor": floor,
             "frames": len(ratios),
             "below": r < floor}
