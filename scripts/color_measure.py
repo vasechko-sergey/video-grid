@@ -30,11 +30,6 @@ def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, f
     return color.percentiles([int(c) for c in hist])
 
 
-def _select(times: list[float], fps: float) -> str:
-    nums = [round(t * fps) for t in times]
-    return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
-
-
 def _percentiles_from_gray(raw: bytes, want: int, w: int, h: int,
                            where: str) -> tuple[float, float, float]:
     """(p5, p50, p95) of a pooled gray rawvideo buffer — the ONE ruler.
@@ -73,7 +68,7 @@ def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float
     evidence while the singles are computed some other way."""
     info = assembly.probe_stream(clip)
     out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip,
-                    "-vf", f"{_select(times, info.fps)},format=gray",
+                    "-vf", f"{color.select_frames(times, info.fps)},format=gray",
                     "-vsync", "0", "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
     return _percentiles_from_gray(out, len(times), info.w, info.h,
@@ -115,7 +110,7 @@ def clip_percentiles_batch(clip: str, spans: list[list[float]]) -> list[tuple[fl
     info = assembly.probe_stream(clip)
     all_times = [t for span in spans for t in span]
     out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", clip,
-                    "-vf", f"{_select(all_times, info.fps)},format=gray",
+                    "-vf", f"{color.select_frames(all_times, info.fps)},format=gray",
                     "-vsync", "0", "-frames:v", str(len(all_times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
     frame_bytes = info.w * info.h
@@ -145,7 +140,7 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
     the END through with_tail: before the chain's own `fps=` it would emit one
     frame N times (§12)."""
     out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
-                    *plan.with_tail(f"{_select(times, plan.fps)},format=gray"),
+                    *plan.with_tail(f"{color.select_frames(times, plan.fps)},format=gray"),
                     "-t", f"{plan.dur:.6f}", "-vsync", "0",
                     "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout

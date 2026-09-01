@@ -163,19 +163,18 @@ def _render(plan: reframe.RenderPlan, src: str, times: list[float],
     x is a function of t — the crop would land somewhere else, silently (§12's seek
     landmine in its worst form). select never moves a timestamp.
     """
-    nums = [round(t * plan.fps) for t in times]
-    sel = "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
+    sel = color.select_frames(times, plan.fps)
     out_dir.mkdir(parents=True, exist_ok=True)
     for p in out_dir.glob("f*.png"):
         p.unlink()
     proc.run([ffbin.ffmpeg(), "-y", "-i", src, *plan.with_tail(sel),
               "-t", f"{plan.dur:.6f}", "-vsync", "0",
-              "-frames:v", str(len(nums)), str(out_dir / "f%03d.png")])
+              "-frames:v", str(len(times)), str(out_dir / "f%03d.png")])
     pngs = sorted(out_dir.glob("f*.png"))
-    if len(pngs) != len(nums):
+    if len(pngs) != len(times):
         raise RuntimeError(
-            f"probe asked for {len(nums)} frames {nums} and ffmpeg emitted {len(pngs)} "
-            f"— a frame number is past the stream's end (times {times} against a "
+            f"probe asked for {len(times)} frames at {times} and ffmpeg emitted "
+            f"{len(pngs)} — a frame number is past the stream's end (against a "
             f"{plan.dur:.3f}s source at {plan.fps:.4g}fps)")
     return [np.asarray(Image.open(p).convert("RGB")) for p in pngs]
 

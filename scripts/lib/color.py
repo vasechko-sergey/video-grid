@@ -614,3 +614,23 @@ def sample_times(dur: float, frames: int = FRAMES) -> list[float]:
     if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
         raise ValueError(f"frames must be an integer >= 1, got {frames!r}")
     return [((k + 0.5) / frames) * dur for k in range(frames)]
+
+
+def select_frames(times: list[float], fps: float) -> str:
+    """An ffmpeg `select='eq(n\\,N)+...'` fragment picking the frame nearest each of
+    `times`, rounded against `fps` to a frame index.
+
+    Shared for the same reason FRAMES/sample_times live here rather than in
+    color_measure (see the comment above): this two-line computation — round each
+    time to a frame index, then OR the eq(n,N) terms together with the comma escaped
+    — turned up hand-copied in three places in one slice (reframe.plan_frames_rgb,
+    color_measure's percentile readers via a since-deleted `_select`, and
+    probe._render), the exact species of duplication process_episode.plan_for was
+    built one commit earlier to close for the manifest -> RenderPlan map. It cannot
+    live in color_measure.py, the more obviously-named home: color_measure imports
+    reframe (for plan_ungraded), so reframe importing a helper back from
+    color_measure would be a cycle. color.py is a leaf every one of the three call
+    sites already imports, so centralizing here moves nothing in the import graph.
+    """
+    nums = [round(t * fps) for t in times]
+    return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"

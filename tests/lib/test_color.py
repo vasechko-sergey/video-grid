@@ -425,3 +425,20 @@ def test_sample_times_refuses_a_non_positive_frame_count():
 def test_sample_times_refuses_a_bool_frame_count():
     with pytest.raises(ValueError, match="integer >= 1"):
         color.sample_times(4.0, True)
+
+
+def test_select_frames_pins_the_comma_escaped_select_fragment():
+    # 0.1*30=3, 0.5*30=15, 1.0*30=30 — round numbers chosen so the pin exercises the
+    # \, escaping (design §12: ffmpeg's select expression needs the comma inside
+    # eq(n,N) escaped from its own term separator) without floating-point rounding
+    # near a .5 boundary muddying which integer is "the" expected one.
+    frag = color.select_frames([0.1, 0.5, 1.0], 30.0)
+    assert frag == r"select='eq(n\,3)+eq(n\,15)+eq(n\,30)'"
+
+
+def test_select_frames_rounds_each_time_independently():
+    # 0.05*30=1.5 rounds to 2 under Python's banker's rounding (round-half-to-even);
+    # pinning it here means a future switch to a different rounding rule (e.g.
+    # int(x+0.5)) would be caught by this test rather than silently shipping.
+    frag = color.select_frames([0.05], 30.0)
+    assert frag == r"select='eq(n\,2)'"

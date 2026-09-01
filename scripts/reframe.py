@@ -543,12 +543,18 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
                       crop_hs=crop_hs, crop_ys=crop_ys, grade=grade)
 
 
-def frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
+def plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
     """The frames this plan would encode at `times`, decoded HxWx3 uint8 RGB.
 
     The plan's THIRD sink, beside reframe()'s x264 encode and
     color_measure.crop_percentiles' gray ruler. One chain builder, three sinks —
     a caller that rebuilt the chain would be a second implementation of the render.
+
+    Named `plan_frames_rgb`, not `frames_rgb`: assembly.frames_rgb already owns that
+    name for a differently-shaped read — a FINISHED file, at its own native
+    resolution. This one previews a PLAN's pre-encode output, at the plan's own
+    output dimensions, before any encode exists to read back — same signature shape,
+    different meaning, and scripts/probe.py imports both.
 
     The select goes through with_tail, at the END: before the chain's own `fps=` it
     emits the SAME frame once per requested time and the output count is still right,
@@ -557,28 +563,32 @@ def frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
     No -ss anywhere. An input seek resets each frame's timestamp and the crop's x is
     a function of t, so the crop would land somewhere else, silently.
     """
-    nums = [round(t * plan.fps) for t in times]
-    sel = "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
+    sel = color.select_frames(times, plan.fps)
     raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
                     *plan.with_tail(f"{sel},format=rgb24"),
                     "-t", f"{plan.dur:.6f}", "-vsync", "0",
-                    "-frames:v", str(len(nums)),
+                    "-frames:v", str(len(times)),
                     "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]).stdout
     w, h = plan.rl.out_w, plan.rl.out_h
     stride = w * h * 3
-    want = len(nums) * stride
-    # EXACT, never a modulo: len(raw) % want is true for every real frame count
-    # whenever the frame size divides the request, which it does at 1920x1080 for
-    # three frames (design 2026-08-30 plan, Task 0's finding).
+    want = len(times) * stride
+    # EXACT, never a modulo: for RGB, stride = w*h*3 is divisible by 3 at EVERY
+    # resolution, not just ones like 1920x1080 where the pixel count itself happens
+    # to be — the 3 here is the channel count, not a property of the frame area (the
+    # grayscale ruler's stride = w*h has no such guarantee; it divides by 3 only at
+    # particular sizes, see color_measure._percentiles_from_gray). So a bare
+    # `len(raw) % want == 0` would be vacuous at every resolution this function ever
+    # renders, not merely some of them: a buffer short by a whole number of frames
+    # would still divide evenly and pass.
     if len(raw) != want:
         raise RuntimeError(
-            f"frames_rgb asked for {len(nums)} frames {nums} of {w}x{h} "
+            f"plan_frames_rgb asked for {len(times)} frames at {times} of {w}x{h} "
             f"({want} bytes) from {src} and got {len(raw)} — a frame number is past "
-            f"the stream's end (times {times} against a {plan.dur:.3f}s source at "
+            f"the stream's end (against a {plan.dur:.3f}s source at "
             f"{plan.fps:.4g}fps)")
     return [np.frombuffer(raw, dtype=np.uint8, count=stride,
                           offset=i * stride).reshape(h, w, 3)
-            for i in range(len(nums))]
+            for i in range(len(times))]
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
