@@ -90,8 +90,9 @@ def _stub_mechanical_pass(monkeypatch, route):
         return out, None
     monkeypatch.setattr(process_episode.storyboard, "build", fake_storyboard_build)
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
         calls["check_source"] = source
+        calls["check_plans"] = plans
         r = models.Report(checks={}, attempt=spec.attempt)
         r.write(out)
         return r
@@ -154,6 +155,11 @@ def test_prepared_source_unlocks_stabilize_with_a_frozen_route(tmp_path, monkeyp
     # other in source coordinates, only the pixels disagree).
     assert calls["reframe_src"] == str(prepared)
     assert calls["check_source"] == str(prepared)
+    # grade_damage's plan pair must reach check_episode.run along this path too —
+    # it is built from the SAME `src` local the two assertions above already pin,
+    # so a None here would mean the retry loop stopped threading it through the
+    # prepared_source/stabilize branch specifically.
+    assert calls["check_plans"] is not None
 
 
 def test_stabilize_still_refuses_a_bare_route(tmp_path):

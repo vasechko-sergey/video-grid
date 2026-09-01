@@ -454,11 +454,20 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         rspec = build_reframe_spec(m, delivery, params)
         _timed("reframe", lambda: reframe.reframe(rspec, src, rp, m.out_path, path_out,
                                                   stabilized=m.stabilize))
+        # The damage sensor's pair: the SAME render twice, differing only in the
+        # colour tail. Built from this attempt's own `params`, not through
+        # plan_for/plan_ungraded, which read orch defaults — a retry that adjusted
+        # smooth_window_s would otherwise compare two different geometries and the
+        # entropy ratio would be measuring a crop instead of a grade.
+        plain_m = manifest_lib.Manifest.from_dict(manifest_lib.strip_colour(manifest_dict))
+        plain_spec = build_reframe_spec(plain_m, delivery, params)
+        plans = (reframe.plan_render(rspec, src, rp),
+                 reframe.plan_render(plain_spec, src, rp))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
                           attempt=attempt)
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
-            source=src))
+            source=src, plans=plans))
         if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every

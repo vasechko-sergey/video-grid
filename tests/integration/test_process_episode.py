@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import pytest
-from scripts import process_episode as pe
+from scripts import color_measure, process_episode as pe
 from scripts import check_episode, reframe, storyboard, track
 from scripts.lib import ffbin, models
 from scripts.lib import orchestration as orch
@@ -107,10 +107,11 @@ def _stub_engine(monkeypatch, tmp_path, *, route=None, report=None,
 
     default_report = _report(True, [])
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
         calls["check"] = dict(attempt=spec.attempt, composition=spec.composition,
                               grid=spec.grid, target_dur=spec.target_dur)
         calls["check_source"] = source
+        calls["check_plans"] = plans
         src_report = report if report is not None else default_report
         r = models.Report(checks=dict(src_report.checks), attempt=spec.attempt)
         r.write(out)
@@ -261,7 +262,7 @@ def test_retry_then_pass(monkeypatch, tmp_path):
     seq = [_report(False, ["on_line"]), _report(True, [])]
     speeds = []
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
         r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
         r.write(out)
         return r
@@ -514,6 +515,66 @@ def test_golden_ride_through_orchestrator(tmp_path, golden_ride_segment):
     assert (probe["width"], probe["height"]) == (1080, 1920)
 
 
+@pytest.mark.integration
+def test_grade_damage_passes_a_healthy_grade_end_to_end(tmp_path, golden_ride_segment):
+    """check_episode.run, UNSTUBBED, driven through the real orchestrator (design
+    2026-08-31 §3, brief Task 5): Task 4 built the grade_damage gate but nothing
+    supplied its (graded, plain) plan pair, so in production it reported
+    'not-checked' and blocked nothing — a decoration, not a gate. This proves the
+    wiring actually turns it on.
+
+    The tone pair is conductor-shaped: this crop's own measured profile pulled
+    toward a plausible common target — the exact recipe
+    test_grade_sensor_calibration.py's entropy-floor test measures at 0.933 on this
+    same fixture+route (design §0.5). Legitimate colour movement, not damage."""
+    src = str(golden_ride_segment)
+    route = str(FIX / "golden_route.json")
+    base = dict(segment=src, out_path=str(tmp_path / "ep.mp4"), target_dur=1.5,
+               composition="center", grid="thirds", layout="fill", canvas=[9, 16],
+               delivery="short_edge:480")
+    prof = color_measure.measure_crop(base, src, route)
+    target = [round(prof[0] + 12, 1), round(prof[1] - 10, 1), round(prof[2] - 18, 1)]
+    manifest = dict(base, tone_src=list(prof), tone_dst=target)
+    result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=route)
+    # grade_damage rides every terminal status that carries a report (mechanical_pass
+    # OR escalate), so this does not depend on the UNRELATED framing checks (centered,
+    # jitter, ...) converging within max_attempts — only on the sensor itself firing.
+    assert "report" in result, result
+    gd = result["report"]["checks"]["grade_damage"]
+    print(f"\nMEASURED end-to-end grade_damage (healthy): {gd}")
+    # CheckResult.to_dict() carries "status" only while passed is None (not-checked);
+    # once evaluated the key is simply absent — so .get, not [], is what makes this
+    # equivalent to "the Report object's .passed is not None" without a KeyError.
+    assert gd.get("status") != "not-checked", gd
+    assert gd["pass"] is True, gd
+
+
+@pytest.mark.integration
+def test_grade_damage_escalates_a_damaging_grade_on_attempt_one(tmp_path, golden_ride_segment):
+    """The blocking half, end to end. black_point=0.35 is Task 3's measured
+    damaging value (design §0.5: entropy ratio 0.753 against the 0.90 floor, on
+    this exact fixture+route — the legal maximum of a knob whose own docstring
+    names a real production case). It must fail grade_damage AND escalate via
+    orchestration._UNFIXABLE's grade_damage entry (reason 'grade-damage') on
+    ATTEMPT 1 — not after three wasted retries, since no value of max_speed or
+    smooth_window_s (the only knobs the ladder touches) moves a colour."""
+    src = str(golden_ride_segment)
+    route = str(FIX / "golden_route.json")
+    manifest = dict(segment=src, out_path=str(tmp_path / "ep.mp4"), target_dur=1.5,
+                    composition="center", grid="thirds", layout="fill", canvas=[9, 16],
+                    delivery="short_edge:480", black_point=0.35)
+    result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=route)
+    assert result["status"] == "escalate", result
+    assert result["reason"] == "grade-damage", result
+    assert result["attempt"] == 1, (
+        "grade_damage is in orchestration._UNFIXABLE — it must escalate on the "
+        "first attempt, not waste two more retries reframe's geometry knobs can "
+        f"never fix: {result}")
+    gd = result["report"]["checks"]["grade_damage"]
+    print(f"\nMEASURED end-to-end grade_damage (damaging): {gd}")
+    assert gd["pass"] is False, gd
+
+
 from scripts.lib import project as pj
 
 
@@ -574,9 +635,9 @@ def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
     # colour-as-a-stage Task 10 (+ highlight_red, 2026-08-13 cinematic-look Task 7
     # fix round 2 item 2): the manifest's ten colour fields must reach ReframeSpec,
     # and the pre-grade segment (`src`, reframe's own input) must reach
-    # check_episode.run as source= — one of grade_damage's two ingredients (the
-    # other, a `plans` RenderPlan pair, is a later task's wiring). validate()
-    # structurally cannot catch a drop here (same shape as
+    # check_episode.run as source= — one of grade_damage's two ingredients. The
+    # other, a `plans` RenderPlan pair, is pinned below (grade-sensor-references
+    # Task 5). validate() structurally cannot catch a drop here (same shape as
     # test_the_manifests_filler_reaches_the_reframe_spec above): it never builds a
     # ReframeSpec of its own to compare against, so a regression would pass the
     # gate clean and every authored grade would silently render as identity.
@@ -608,6 +669,63 @@ def test_process_episode_threads_colour_and_source(monkeypatch, tmp_path):
     # not the manifest's raw segment (they differ once stabilize=True), and
     # not silently None (the default that turns the check not-checked).
     assert calls["check_source"] == calls["reframe_src"]
+    # grade_damage's OTHER ingredient: a (graded, plain) RenderPlan pair that
+    # differs ONLY in colour. Asserting the VALUE, not just that something
+    # truthy arrived — a wiring bug that passed None, the wrong pair, or two
+    # copies of the SAME plan would leave every assertion above this one green
+    # while the gate silently read not-checked forever.
+    graded, plain = calls["check_plans"]
+    assert graded is not None and plain is not None
+    assert graded.grade != plain.grade
+    assert graded.path == plain.path
+    assert (graded.rl.out_w, graded.rl.out_h) == (plain.rl.out_w, plain.rl.out_h)
+
+
+def test_a_retry_ladders_own_params_reach_both_halves_of_the_damage_pair(
+        monkeypatch, tmp_path):
+    """The plain half of grade_damage's pair must be built from THIS ATTEMPT's own
+    params (max_speed/smooth_window_s), never from orch.DEFAULT_PARAMS — a jitter
+    fail on attempt 1 widens smooth_window_s and damps max_speed for attempt 2, and
+    if the plain plan were built through plan_ungraded (which reads the module
+    defaults) the two plans would compare two DIFFERENT geometries on attempt 2:
+    the entropy ratio would be measuring a crop, not a grade. Unauthored
+    smooth_window_s on purpose — an authored one floors the lag branch (see
+    test_authored_smooth_window_s_survives_a_lag_retry) but jitter alone still
+    widens it off the module default, so this fixture's ladder actually moves both
+    knobs between attempts, which is what makes the equality checks below meaningful
+    rather than vacuous."""
+    _stub_engine(monkeypatch, tmp_path)
+    seq = [_failing_report("jitter"), _report(True, [])]
+
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
+        r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
+        r.write(out)
+        return r
+    monkeypatch.setattr(pe.check_episode, "run", fake_run)
+
+    seen_params = []
+    real_build = pe.build_reframe_spec
+
+    def spy_build(m, delivery, params):
+        seen_params.append(dict(params))
+        return real_build(m, delivery, params)
+    monkeypatch.setattr(pe, "build_reframe_spec", spy_build)
+
+    result = pe.process_episode(_manifest(tmp_path), project_dir=str(tmp_path))
+    assert result["status"] == "mechanical_pass"
+    assert result["attempt"] == 2
+    # two build_reframe_spec calls per attempt (graded rspec, then plain_spec) x
+    # 2 attempts = 4 — a count regression here would silently invalidate the
+    # pairing asserted below.
+    assert len(seen_params) == 4
+    att1_graded, att1_plain, att2_graded, att2_plain = seen_params
+    assert att1_graded == att1_plain
+    assert att2_graded == att2_plain
+    # the ladder actually adjusted something between attempts, or the equality
+    # checks above would hold even from a wiring bug that ignored params entirely
+    assert att1_graded != att2_graded
+    assert att2_graded["smooth_window_s"] > att1_graded["smooth_window_s"]
+    assert att2_graded["max_speed"] < att1_graded["max_speed"]
 
 
 def test_process_episode_colour_fields_default_identity(monkeypatch, tmp_path):
@@ -845,20 +963,28 @@ def test_the_preflight_probe_stays_on_the_original_segment(monkeypatch, tmp_path
     # milliseconds. Moving it after stabilization would spend the two ffmpeg passes
     # before the cheap refusal — so it must be handed the RAW segment, not the
     # not-yet-written stabilized.mp4.
+    #
+    # Recorded as a LIST, not one slot: since grade-sensor-references Task 5, the
+    # retry loop also builds the damage sensor's (graded, plain) plan pair via two
+    # REAL reframe.plan_render calls, which correctly probe the render's actual
+    # source — stabilized.mp4 — AFTER this preflight has already run. That is a
+    # second, later, and entirely legitimate probe call, not a regression; this
+    # test only pins the FIRST one, the one that must precede stabilization's two
+    # ffmpeg passes.
     dims = (1920, 1080, 30.0, 3.0, "yuv420p", "tv")
     _stub_engine(monkeypatch, tmp_path, dims=dims)
     _stub_vidstab(monkeypatch)
-    probed = {}
+    probed = []
 
     def spy_probe(src):
-        probed["src"] = src
+        probed.append(src)
         return dims
     monkeypatch.setattr(pe.reframe, "_probe", spy_probe)
     result = pe.process_episode(_manifest(tmp_path, stabilize=True),
                                 project_dir=str(tmp_path))
     assert result["status"] == "mechanical_pass", result
-    assert probed["src"].endswith("seg.mp4")
-    assert not probed["src"].endswith("stabilized.mp4")
+    assert probed[0].endswith("seg.mp4")
+    assert not probed[0].endswith("stabilized.mp4")
 
 
 def test_the_before_and_after_reach_the_result(monkeypatch, tmp_path):
@@ -1144,7 +1270,7 @@ def test_authored_smooth_window_s_survives_a_lag_retry(monkeypatch, tmp_path):
     _stub_engine(monkeypatch, tmp_path)
     seq = [_report(False, ["on_line"]), _report(True, [])]
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
         r = models.Report(checks=dict(seq[spec.attempt - 1].checks), attempt=spec.attempt)
         r.write(out)
         return r
