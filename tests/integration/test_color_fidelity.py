@@ -328,6 +328,7 @@ def test_a_real_authored_grade_does_not_trip_the_entropy_gate(tmp_path, graded_s
     assert gd.detail["below"] is False
     assert gd.detail["advisory_delta_e"] is True
     assert gd.detail["delta_e"] < 5.0          # still a small move in absolute terms
+    assert report.overall is True, report.fail_reasons
 
     # 3. The identity control reads a smaller advisory delta too — the headroom the
     #    authored grade spends is real. Its OWN entropy ratio is exactly 1.0 (both
@@ -341,3 +342,4 @@ def test_a_real_authored_grade_does_not_trip_the_entropy_gate(tmp_path, graded_s
     assert ccf.passed is True, ccf.detail
     assert ccf.detail["ratio"] == pytest.approx(1.0, abs=1e-3)
     assert ccf.detail["delta_e"] < gd.detail["delta_e"]
+    assert control_report.overall is True, control_report.fail_reasons

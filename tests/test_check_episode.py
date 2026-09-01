@@ -166,3 +166,4 @@ def test_the_subject_dE00_survives_as_an_advisory_number(tmp_path, monkeypatch,
     d = rep.checks["grade_damage"].detail
     assert "delta_e" in d and "dominant" in d
     assert d["advisory_delta_e"] is True
+    assert d["samples"] == 5
