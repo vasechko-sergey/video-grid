@@ -596,3 +596,21 @@ def percentiles(hist256: list[int]) -> tuple[float, float, float]:
         return 255.0
 
     return (_pct(0.05), _pct(0.50), _pct(0.95))
+
+
+FRAMES = 3          # start / middle / end of a span, at (i+0.5)/N — never the first
+                    # or last frame, which a dip or a bookend can own. Measured
+                    # (design 2026-08-30 §0.4): 5 and 9 frames give the same residual
+                    # median and a slightly worse maximum, because the residual is not
+                    # sampling noise.
+                    #
+                    # Lives here rather than in color_measure because check_episode
+                    # needs it and cannot import that driver: color_measure imports
+                    # process_episode, which imports check_episode.
+
+
+def sample_times(dur: float, frames: int = FRAMES) -> list[float]:
+    """`frames` sample times spread over `dur`, at (k+0.5)/frames of it."""
+    if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
+        raise ValueError(f"frames must be an integer >= 1, got {frames!r}")
+    return [((k + 0.5) / frames) * dur for k in range(frames)]

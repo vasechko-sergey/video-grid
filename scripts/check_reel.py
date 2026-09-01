@@ -12,7 +12,7 @@ import imagehash
 from PIL import Image
 
 from scripts import color_measure
-from scripts.lib import ffbin, proc, provenance, reel_final, safezones
+from scripts.lib import color, ffbin, proc, provenance, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -234,7 +234,7 @@ def _tone_match_check(master: str, durations: list[float], cuts: list[float],
             not_checked[str(i)] = "not-bound"
             continue
         bound_idx.append(i)
-        bound_spans.append([st + t for t in color_measure.sample_times(dur)])
+        bound_spans.append([st + t for t in color.sample_times(dur)])
     residuals: dict[str, float] = {}
     worst, worst_i = 0.0, None
     if bound_spans:

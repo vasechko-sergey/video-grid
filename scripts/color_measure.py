@@ -33,20 +33,6 @@ def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, f
     return color.percentiles([int(c) for c in hist])
 
 
-FRAMES = 3          # start / middle / end of a span, at (i+0.5)/N — never the first
-                    # or last frame, which a dip or a bookend can own. Measured
-                    # (design 2026-08-30 §0.4): 5 and 9 frames give the same residual
-                    # median and a slightly worse maximum, because the residual is not
-                    # sampling noise.
-
-
-def sample_times(dur: float, frames: int = FRAMES) -> list[float]:
-    """`frames` sample times spread over `dur`, at (k+0.5)/frames of it."""
-    if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
-        raise ValueError(f"frames must be an integer >= 1, got {frames!r}")
-    return [((k + 0.5) / frames) * dur for k in range(frames)]
-
-
 def _select(times: list[float], fps: float) -> str:
     nums = [round(t * fps) for t in times]
     return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
@@ -190,7 +176,7 @@ def plan_ungraded(manifest_dict: dict, src: str,
 
 
 def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
-                 frames: int = FRAMES) -> tuple[float, float, float]:
+                 frames: int = color.FRAMES) -> tuple[float, float, float]:
     """(p5, p50, p95) of the episode's own tracked crop, ungraded — the reading
     `color.tone_arg`'s docstring has always asked its callers for.
 
@@ -199,7 +185,7 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
     episodes differ by more than matchgrade.MATCH_EPS, median 14 and max 36 luma
     units. Costs 0.65s per episode."""
     plan = plan_ungraded(manifest_dict, src, route)
-    return crop_percentiles(plan, src, sample_times(plan.dur, frames))
+    return crop_percentiles(plan, src, color.sample_times(plan.dur, frames))
 
 
 def main() -> None:

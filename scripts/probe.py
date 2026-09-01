@@ -21,15 +21,18 @@ import numpy as np
 from PIL import Image
 
 from scripts import color_measure, process_episode, reframe
-from scripts.lib import (assembly, edl as edl_lib, ffbin, lookcheck,
+from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
                          naturalness, orchestration as orch, proc, provenance, sheet)
 from scripts.lib.edl import EDL
 from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS, Manifest
 from scripts.lib.models import CropPath, Delivery, PathMeta, ReelGeometry, ReelManifest
 
-# FRAMES/sample_times live in color_measure now (design 2026-08-30 §0.4) — a probe
-# defining its own FRAMES would be a second constant that must agree with the
-# conductor's and the gate's, which is exactly the drift this slice removes.
+# FRAMES/sample_times live in color (scripts/lib/color.py) now (design
+# 2026-08-31 grade-sensor-references §6) — check_episode needs them and cannot
+# import color_measure (color_measure imports process_episode, which imports
+# check_episode: a cycle). A probe defining its own FRAMES would be a second
+# constant that must agree with the conductor's and the gate's, which is
+# exactly the drift this slice removes.
 
 
 def source_for(md: dict, epdir: Path | str) -> str:
@@ -194,7 +197,7 @@ def _render(plan: reframe.RenderPlan, src: str, times: list[float],
 
 
 def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
-                out_dir: str | None = None, frames: int = color_measure.FRAMES) -> dict:
+                out_dir: str | None = None, frames: int = color.FRAMES) -> dict:
     """Render and measure `frames` frames of episode `index`. Returns the report dict
     it also writes to probe.json, beside a probe.jpg of the frames themselves.
 
@@ -221,7 +224,7 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     _refuse_on_drift(plan, ep.path, ep.meta)
 
     d = Path(out_dir) if out_dir is not None else epdir / "probe"
-    times = color_measure.sample_times(plan.dur, frames)
+    times = color.sample_times(plan.dur, frames)
     imgs = _render(plan, src, times, d)
     stats = naturalness.measure(imgs)
     tone = color_measure.crop_percentiles(plan, src, times)
@@ -241,7 +244,7 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
 
 
 def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None = None,
-                         frames: int = color_measure.FRAMES) -> dict:
+                         frames: int = color.FRAMES) -> dict:
     """Render and measure `frames` frames of episode `index` from GEOMETRY.json —
     edl_to_reel --stop-after-geometry's output — before any episode has EVER been
     encoded. Returns the report dict it also writes to probe.json, beside a probe.jpg.
@@ -292,7 +295,7 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     plan = _plan_for(md, eg.source, eg.route)
 
     d = Path(out_dir) if out_dir is not None else Path(eg.project_dir) / "probe"
-    times = color_measure.sample_times(plan.dur, frames)
+    times = color.sample_times(plan.dur, frames)
     imgs = _render(plan, eg.source, times, d)
     stats = naturalness.measure(imgs)
     tone = color_measure.crop_percentiles(plan, eg.source, times)
@@ -364,7 +367,7 @@ def main() -> None:
                                                "from this (edited) EDL.json instead of "
                                                "the grade that was rendered")
     g.add_argument("--out-dir", default=None, help="default: <epdir>/probe")
-    g.add_argument("--frames", type=int, default=color_measure.FRAMES)
+    g.add_argument("--frames", type=int, default=color.FRAMES)
 
     lk = sub.add_parser("look", help="re-check a delivered reel against its master")
     lk.add_argument("master")

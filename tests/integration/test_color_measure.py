@@ -3,7 +3,7 @@ import json
 import pytest
 from scripts import color_measure
 from scripts.color_measure import measure_profile
-from scripts.lib import ffbin, manifest as manifest_lib, matchgrade, proc
+from scripts.lib import color, ffbin, manifest as manifest_lib, matchgrade, proc
 
 pytestmark = pytest.mark.integration
 
@@ -125,7 +125,7 @@ def test_clip_percentiles_batch_matches_the_per_span_calls(tmp_path):
     levels = (40, 120, 220)
     dur = 1.0
     clip = _three_phase_clip(tmp_path, levels=levels, dur=dur)
-    spans = [[i * dur + t for t in color_measure.sample_times(dur)] for i in range(len(levels))]
+    spans = [[i * dur + t for t in color.sample_times(dur)] for i in range(len(levels))]
     singles = [color_measure.clip_percentiles(clip, s) for s in spans]
     batched = color_measure.clip_percentiles_batch(clip, spans)
     assert batched == singles                      # byte-for-byte the same ruler, batched or not
@@ -240,5 +240,9 @@ def test_percentiles_from_gray_refuses_a_short_buffer_the_old_check_missed():
 
 
 def test_sample_times_never_touches_the_ends():
-    assert color_measure.sample_times(3.0, 3) == [0.5, 1.5, 2.5]
-    assert color_measure.sample_times(1.0, 1) == [0.5]
+    # sample_times itself now lives in scripts.lib.color (moved 2026-08-31, design
+    # grade-sensor-references §6 — check_episode needs it and cannot import
+    # color_measure without a cycle); this pins that color_measure's own callers
+    # still reach the same function through the new path.
+    assert color.sample_times(3.0, 3) == [0.5, 1.5, 2.5]
+    assert color.sample_times(1.0, 1) == [0.5]

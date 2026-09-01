@@ -403,3 +403,25 @@ def test_tone_arg_keeps_a_constant_tail_when_p95_is_255():
     frag = color.tone_arg((30.0, 100.0, 255.0), (40.0, 110.0, 200.0))
     assert "-255.0000)*" not in frag, frag
     assert frag.startswith("lutyuv=y='") and frag.endswith("',")
+
+
+def test_sample_times_never_touches_the_ends():
+    # The brief's own literal expected value here was [0.5, 2.0, 3.5], which is
+    # only what (k+0.5)/frames*dur produces when dur happens to equal frames (the
+    # pre-existing dur=3.0 case in tests/integration/test_color_measure.py gives
+    # exactly [0.5, 1.5, 2.5]). At dur=4.0 with the default frames=3 the margin at
+    # each end is dur/(2*frames) = 4/6 = 0.667s, not a fixed 0.5s, so the correct
+    # triple is [2/3, 2.0, 10/3] — still strictly inside (0, 4.0), which is the
+    # property this test's name is actually pinning.
+    ts = color.sample_times(4.0)
+    assert ts == pytest.approx([2 / 3, 2.0, 10 / 3])
+
+
+def test_sample_times_refuses_a_non_positive_frame_count():
+    with pytest.raises(ValueError, match="integer >= 1"):
+        color.sample_times(4.0, 0)
+
+
+def test_sample_times_refuses_a_bool_frame_count():
+    with pytest.raises(ValueError, match="integer >= 1"):
+        color.sample_times(4.0, True)

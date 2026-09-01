@@ -152,7 +152,7 @@ def _render(ctx):
 def _profile(clip: str) -> tuple[float, float, float]:
     """The gate's own ruler over a finished clip, at the same (k+0.5)/3 times."""
     dur = assembly.probe_duration(clip)
-    return color_measure.clip_percentiles(clip, color_measure.sample_times(dur))
+    return color_measure.clip_percentiles(clip, color.sample_times(dur))
 
 
 def _resid(profile, target) -> float:
@@ -447,7 +447,7 @@ def _spans(rm):
     durs = [assembly.probe_duration(e.clip) for e in rm.episodes]
     start, spans = 0.0, []
     for d in durs:
-        spans.append([start + t for t in color_measure.sample_times(d)])
+        spans.append([start + t for t in color.sample_times(d)])
         start += d
     return spans
 

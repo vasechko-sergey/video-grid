@@ -15,9 +15,8 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
-from scripts import color_measure
 from scripts.color_measure import measure_crop
-from scripts.lib import matchgrade, moodpreset
+from scripts.lib import color, matchgrade, moodpreset
 from scripts.lib.edl import EDL, write_edl
 from scripts.lib.models import ReelGeometry
 from scripts.lib.spec import Spec
@@ -85,7 +84,7 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     n_auth = sum(1 for d in decisions if d.action == "author")
     head = (f"# Match-grade — target {_triple(target)} (p5/p50/p95), eps {eps:g}\n\n"
             f"Measured on each episode's own tracked crop, "
-            f"{color_measure.FRAMES} frames per episode "
+            f"{color.FRAMES} frames per episode "
             f"(design 2026-08-30 §1) — not the whole source frame.")
     if preset is not None and preset.name != "balanced":
         head += (f"\n\nMood **{preset.name}** displaced the target by "
