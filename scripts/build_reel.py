@@ -16,13 +16,43 @@ import json
 import sys
 from pathlib import Path
 
-from scripts import check_reel, deliver, mix, process_episode
-from scripts.lib import assembly, episode_qc as qc_lib, reel_orchestration
+from scripts import check_reel, color_measure, deliver, mix, probe, process_episode
+from scripts.lib import assembly, color, episode_qc as qc_lib, reel_orchestration
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
 
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
+
+
+def _predict(rm: ReelManifest) -> list:
+    """One (p5, p50, p95) per episode: what its OWN full declared chain produces.
+
+    The reference check_reel.grade_faithful compares the master against. Built here
+    rather than inside check_reel because this is where the manifests are, and built
+    ONCE rather than per retry round because a reprocess re-renders with the same
+    manifest — the declaration cannot move between rounds, the same argument
+    tone_dsts already makes just below.
+
+    probe.source_for, not md["segment"]: under `stabilize` reframe consumed the
+    pre-stage's output, and planning against the raw segment would predict pixels
+    the episode never shipped.
+
+    An episode whose plan cannot be built contributes None. check_reel NAMES it in
+    not_checked; losing one episode's reading must not cost the reel its gate.
+    """
+    out = []
+    for e in rm.episodes:
+        try:
+            md = dict(e.manifest)
+            src = probe.source_for(md, Path(e.path).parent)
+            plan = process_episode.plan_for(md, src, e.route)
+            out.append(color_measure.crop_percentiles(
+                plan, src, color.sample_times(plan.dur)))
+        except Exception as ex:                     # noqa: BLE001 — reported, not swallowed
+            _log(f"build_reel: no grade prediction for {e.clip}: {ex}")
+            out.append(None)
+    return out
 
 
 def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None = None) -> dict:
@@ -54,6 +84,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     # Constant across rounds: a reprocess re-renders with the SAME manifest, so the pair
     # it grades toward cannot move between rounds either.
     tone_dsts = [e.manifest.get("tone_dst") for e in rm.episodes]
+    predicted = _predict(rm)
     need_assemble = True
     # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
     # length — so it must not block the absorb. .get with a default rather than [] :
@@ -74,6 +105,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
         report = check_reel.run(master, clips, spec, report_path,
                                 music=music, audio=audio, geometry=geometry,
                                 platform=rm.platform, outro=rm.outro,
+                                predicted=predicted,
                                 tone_target=rm.tone_target, tone_dsts=tone_dsts)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
                                                 spec.length_retime_max, outro_fixed)

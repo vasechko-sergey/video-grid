@@ -41,7 +41,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None,
-            "tone_target": None, "tone_dsts": None}
+            "tone_target": None, "tone_dsts": None, "predicted": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -50,8 +50,8 @@ def _wire(monkeypatch, reports, pe_results=None):
     # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
     # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
-    # geometry=/platform=/outro=/tone_target=/tone_dsts= ARE captured into seen so a test can
-    # assert build_reel builds and forwards them to check_reel.run.
+    # geometry=/platform=/outro=/tone_target=/tone_dsts=/predicted= ARE captured into seen so
+    # a test can assert build_reel builds and forwards them to check_reel.run.
     #
     # fix round 1 (Important): tone_target=/tone_dsts= used to be accepted-and-dropped here,
     # with a comment claiming their forwarding was "proven at the check_reel.run level" —
@@ -63,16 +63,23 @@ def _wire(monkeypatch, reports, pe_results=None):
     # close. See test_build_reel_forwards_the_tone_convergence_pair_to_check_reel below,
     # mirroring the outro= precedent's own "THE FORWARD ITSELF" comment.
     #
+    # predicted= is the same shape of risk one task later (2026-08-31 Task 7): a bare
+    # `predicted=None` parameter that nothing asserts would let build_reel silently drop
+    # its own _predict(rm) output and still leave every test in this file green — see
+    # test_build_reel_forwards_one_prediction_per_episode below, which is the one place
+    # that would catch it.
+    #
     # outro_fixed (build_reel.py's OWN escalation gate, derived directly off rm.outro BEFORE
     # check_reel.run is ever called, at line ~66) is a SEPARATE computation from the outro=
     # kwarg — the two tests below exercise outro_fixed, not this forward. Conflating the two
     # left the outro= forward with no coverage at all: flipping build_reel.py's
     # `outro=rm.outro` to `outro=None` changed nothing either test could see.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
-                tone_target=None, tone_dsts=None):
+                predicted=None, tone_target=None, tone_dsts=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
+        seen["predicted"] = predicted
         seen["tone_target"] = tone_target
         seen["tone_dsts"] = tone_dsts
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
@@ -696,3 +703,42 @@ def test_an_unjudged_reel_still_delivers_after_a_reprocess(monkeypatch, tmp_path
     res = build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
     assert res["reprocessed"] == [1]
+
+
+# --- grade-sensor-references Task 7: build_reel predicts each episode's own
+# declared profile -----------------------------------------------------------
+# check_reel.grade_faithful (design 2026-08-31) needs a per-episode (p5, p50, p95)
+# prediction of what each episode's OWN declared chain renders; build_reel is where
+# the manifests live, so it builds that list (_predict) and forwards it. These three
+# tests are the ones that would catch a dropped or per-round-rebuilt argument — see
+# the "predicted=" note on _wire above, which mirrors the tone_dsts/outro precedents
+# this same file already carries.
+
+def test_build_reel_forwards_one_prediction_per_episode(monkeypatch, tmp_path):
+    """Nothing else pins this. A dropped argument leaves the gate reporting
+    not-checked forever and the suite green."""
+    seen = _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel, "_predict",
+                        lambda rm: [(52.0, 104.0, 192.0)] * len(rm.episodes))
+    build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert seen["predicted"] == [(52.0, 104.0, 192.0)] * 2
+
+
+def test_a_plan_that_cannot_be_built_becomes_None_not_a_crash(monkeypatch, tmp_path):
+    """One unplannable episode must not cost the reel its whole gate — check_reel
+    names it in not_checked."""
+    def boom(md, src, route):
+        raise FileNotFoundError("gone")
+    monkeypatch.setattr(build_reel.process_episode, "plan_for", boom)
+    rm = _rm()
+    assert build_reel._predict(rm) == [None] * len(rm.episodes)
+
+
+def test_predictions_are_built_ONCE_not_per_retry_round(monkeypatch, tmp_path):
+    """A reprocess re-renders with the same manifest, so the declaration cannot move
+    between rounds — the same argument tone_dsts already makes."""
+    calls = []
+    monkeypatch.setattr(build_reel, "_predict", lambda rm: calls.append(1) or [None, None])
+    _wire(monkeypatch, [_black_fail(1), _pass()])   # round 0 reprocesses ep1; round 1 delivers
+    build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
+    assert len(calls) == 1
