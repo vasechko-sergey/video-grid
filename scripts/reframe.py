@@ -2,6 +2,7 @@
 import argparse, json
 from dataclasses import dataclass
 from pathlib import Path
+import numpy as np
 from scripts.lib import geometry as g
 from scripts.lib import pathsmooth, color, ffbin, proc
 from scripts.lib import layout as layout_lib
@@ -540,6 +541,44 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
     return RenderPlan(filter_args=filter_args, path=path, fps=fps, dur=dur,
                       src_w=src_w, src_h=src_h, rl=rl, cy=cy, crop_ws=crop_ws,
                       crop_hs=crop_hs, crop_ys=crop_ys, grade=grade)
+
+
+def frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
+    """The frames this plan would encode at `times`, decoded HxWx3 uint8 RGB.
+
+    The plan's THIRD sink, beside reframe()'s x264 encode and
+    color_measure.crop_percentiles' gray ruler. One chain builder, three sinks —
+    a caller that rebuilt the chain would be a second implementation of the render.
+
+    The select goes through with_tail, at the END: before the chain's own `fps=` it
+    emits the SAME frame once per requested time and the output count is still right,
+    so nothing fails and the caller compares a frame against itself (§12).
+
+    No -ss anywhere. An input seek resets each frame's timestamp and the crop's x is
+    a function of t, so the crop would land somewhere else, silently.
+    """
+    nums = [round(t * plan.fps) for t in times]
+    sel = "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
+                    *plan.with_tail(f"{sel},format=rgb24"),
+                    "-t", f"{plan.dur:.6f}", "-vsync", "0",
+                    "-frames:v", str(len(nums)),
+                    "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]).stdout
+    w, h = plan.rl.out_w, plan.rl.out_h
+    stride = w * h * 3
+    want = len(nums) * stride
+    # EXACT, never a modulo: len(raw) % want is true for every real frame count
+    # whenever the frame size divides the request, which it does at 1920x1080 for
+    # three frames (design 2026-08-30 plan, Task 0's finding).
+    if len(raw) != want:
+        raise RuntimeError(
+            f"frames_rgb asked for {len(nums)} frames {nums} of {w}x{h} "
+            f"({want} bytes) from {src} and got {len(raw)} — a frame number is past "
+            f"the stream's end (times {times} against a {plan.dur:.3f}s source at "
+            f"{plan.fps:.4g}fps)")
+    return [np.frombuffer(raw, dtype=np.uint8, count=stride,
+                          offset=i * stride).reshape(h, w, 3)
+            for i in range(len(nums))]
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
