@@ -219,11 +219,26 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
     # (design §2.1). Uses the same _same_target/_TONE_BIND_EPS identity test the old
     # gate used to decide bound-ness — that part of the shape survives; only its
     # consequence (a gate) does not.
+    #
+    # tone_dsts is still a REQUIRED parallel list once tone_target is given, exactly
+    # as the old _tone_match_check demanded — advisory does not mean unchecked-input.
+    # `tone_dsts is None` used to mean "the caller forgot the parallel list", and
+    # silently reading it as [None]*len(predicted) would report every episode
+    # "not bound", indistinguishable from the true fact that a conductor really did
+    # skip every episode (fix round 1, Important 5). A too-short list is the same
+    # caller mistake in a different shape; without this guard `dsts[i]` below raises
+    # a bare, unattributed IndexError instead of naming the fix.
     target_dev: dict[str, float] = {}
     if tone_target is not None:
-        dsts = tone_dsts or [None] * len(predicted)
+        if tone_dsts is None or len(tone_dsts) != len(predicted):
+            raise ValueError(
+                f"check_reel: tone_target {list(tone_target)} was supplied with "
+                f"{'no' if tone_dsts is None else len(tone_dsts)} per-episode tone_dst "
+                f"values for {len(predicted)} episodes — they are parallel lists; pass "
+                "[e.manifest.get('tone_dst') for e in rm.episodes] (build_reel does), or "
+                "pass no tone_target at all to skip the advisory target_dev reading")
         for i, p in enumerate(predicted):
-            if p is not None and _same_target(dsts[i], tone_target):
+            if p is not None and _same_target(tone_dsts[i], tone_target):
                 target_dev[str(i)] = round(max(abs(a - b) for a, b in zip(p, tone_target)), 2)
     detail = {"residuals": residuals, "not_checked": not_checked,
               "max": spec.grade_residual_max,

@@ -525,6 +525,53 @@ def test_grade_faithful_is_not_checked_without_predictions(tmp_path):
     assert c.detail["reason"] == "no-predictions"
 
 
+def test_grade_faithful_is_not_checked_when_every_prediction_fails_to_build(tmp_path):
+    """fix round 1, Important 1: the vacuous-check guard — every episode's prediction
+    failed to build, so the check examined zero pixels. passed=True here would be a
+    green tick for having looked at nothing, the same shape the all-pan safe_zones
+    branch refuses. This is a DIFFERENT absence than `predicted=None` above (that one
+    never even reaches the per-episode loop): here `predicted` exists but names no
+    episode as plannable, so `not_checked` is populated for every index and `reason`
+    is `no-episode-predicted`, not `no-predictions`. This survived the tone_match ->
+    grade_faithful rename (`no-episode-bound` -> `no-episode-predicted`) with no test
+    at all — `clip_percentiles_batch` need not even be stubbed, since `spans` stays
+    empty and the ruler is never called."""
+    rep = _run_reel(tmp_path, predicted=[None, None])
+    c = rep.checks["grade_faithful"]
+    assert c.passed is None
+    assert c.detail["reason"] == "no-episode-predicted"
+    assert c.detail["not_checked"] == {"0": "no-prediction", "1": "no-prediction"}
+
+
+def test_grade_faithful_passes_at_exactly_the_threshold(monkeypatch, tmp_path):
+    """fix round 1, Important 2: residual == grade_residual_max must PASS — guards the
+    <= vs < boundary. Nothing else in the suite puts `worst` anywhere near 4.0."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0), (56.0, 104.0, 192.0)])
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2)
+    c = rep.checks["grade_faithful"]
+    assert c.passed is True
+    assert c.detail["worst"] == 4.0
+
+
+def test_a_narrowly_failing_residual_is_distinguishable_from_the_max(monkeypatch, tmp_path):
+    """fix round 1, Important 3: `ok` is decided on the UNROUNDED worst, but the
+    reported residual is rounded to 2 decimals — a worst of 4.04 must still fail
+    (4.04 > 4.0), and a reader must be able to see WHY from the report alone instead
+    of a residual that rounds to look identical to the ceiling it just missed. The
+    routed `ReelFailure.detail` must carry the same two numbers the report does, so
+    whoever reads process-episode's remedy sees the same evidence."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0), (56.04, 104.0, 192.0)])
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2)
+    c = rep.checks["grade_faithful"]
+    assert c.passed is False
+    assert c.detail["worst"] == 4.04
+    assert c.detail["residuals"] == {"0": 0.0, "1": 4.04}
+    f = [x for x in rep.fail_reasons if x.check == "grade_faithful"][0]
+    assert f.detail == {"residual": 4.04, "max": 4.0}
+
+
 def test_a_missing_prediction_is_NAMED_never_silently_passed(monkeypatch, tmp_path):
     monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
                         lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
@@ -535,22 +582,31 @@ def test_a_missing_prediction_is_NAMED_never_silently_passed(monkeypatch, tmp_pa
 
 
 def test_target_dev_is_advisory_and_only_for_bound_episodes(monkeypatch, tmp_path):
-    """The agreement signal survives as a number, not a gate (design §2.1). A gate
-    would re-open the deadlock from the other side: design §2.1's own example has an
-    episode's declared chain land 12.50 from the target, fixable only by an
-    iterative conductor that solves tone THROUGH the post-tone knobs.
+    """The agreement signal survives as a number, not a gate — design §2.1's own
+    worked example: the conductor authored tone_dst = target for episode 0 (BOUND),
+    but its full declared chain — tone plus whatever post-tone knobs ride beside it —
+    predicts (52.0, 104.0, 179.5), 12.5 off the (52.0, 104.0, 192.0) target on the p95
+    anchor alone. The render is completely FAITHFUL to that prediction (the master's
+    own pixels match it exactly), so the BLOCKING check passes with worst=0.0 — 12.5
+    shows up ONLY in target_dev, and must not touch `passed`. Episode 1 is unbound
+    (tone_dst is None) and stays out of target_dev entirely regardless of its own
+    residual.
 
-    ep1 is faithful to its OWN declared chain too (its own prediction is
-    (70, 104, 192), and the ruler reads exactly that back) — it is simply not BOUND
-    to the reel's common target (tone_dst is None). Bound-or-not is the only thing
-    target_dev keys on; it does not care whether the blocking check also passed."""
+    fix round 1, Important 4: the PREVIOUS fixture here used a bound episode whose
+    target_dev happened to be 0.0 — indistinguishable from a WRONG implementation
+    that folds target_dev into the gate (`ok = worst <= max and all(v <= max for v in
+    target_dev.values())` also passes a 0.0-target_dev fixture). This one's
+    target_dev (12.5) is past grade_residual_max (4.0), so a gating implementation
+    would flip `passed` to False here and this test would catch it — verified by
+    making exactly that mutation, confirming this test goes RED, and reverting it."""
     monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
-                        lambda m, spans: [(52.0, 104.0, 192.0), (70.0, 104.0, 192.0)])
-    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0), (70.0, 104.0, 192.0)],
+                        lambda m, spans: [(52.0, 104.0, 179.5), (52.0, 104.0, 192.0)])
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 179.5), (52.0, 104.0, 192.0)],
                     tone_target=(52.0, 104.0, 192.0),
                     tone_dsts=[[52.0, 104.0, 192.0], None])
     d = rep.checks["grade_faithful"].detail
-    assert d["target_dev"] == {"0": 0.0}
+    assert d["target_dev"] == {"0": 12.5}
+    assert d["worst"] == 0.0
     assert rep.checks["grade_faithful"].passed is True     # advisory never blocks
 
 
@@ -601,6 +657,31 @@ def test_a_tone_dst_that_only_round_tripped_through_json_still_lands_in_target_d
     rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
                     tone_target=(52.0, 104.0, 192.0), tone_dsts=[[52, 104, 192], None])
     assert rep.checks["grade_faithful"].detail["target_dev"] == {"0": 0.0}
+
+
+def test_target_dev_refuses_a_missing_tone_dsts_list_instead_of_going_silent(monkeypatch, tmp_path):
+    """fix round 1, Important 5: a caller who passes tone_target but forgets the
+    parallel tone_dsts list entirely used to get a silently-empty target_dev, reading
+    exactly like "the conductor skipped every episode" — a fact about the reel, not
+    about a caller's own bug. Refuse loud instead, matching the old tone_match's own
+    guard (this rename had dropped it)."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    with pytest.raises(ValueError, match="parallel lists"):
+        _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                 tone_target=(52.0, 104.0, 192.0))    # tone_dsts omitted
+
+
+def test_target_dev_refuses_a_short_tone_dsts_list_rather_than_crashing_bare(monkeypatch, tmp_path):
+    """fix round 1, Important 5: without a length guard, a too-short tone_dsts list
+    raises a bare, unattributed IndexError at dsts[i] instead of naming the caller's
+    mistake and the fix — the exact class of bug _same_target's own docstring
+    (three lines above) says this module refuses rather than lets happen."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    with pytest.raises(ValueError, match="parallel lists"):
+        _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                 tone_target=(52.0, 104.0, 192.0), tone_dsts=[[52.0, 104.0, 192.0]])   # 1 for 2
 
 
 def test_grade_faithful_is_blocking(tmp_path, monkeypatch):
