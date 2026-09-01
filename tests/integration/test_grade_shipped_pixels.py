@@ -16,8 +16,9 @@ import json
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
-from scripts import build_reel, color_measure, edl_to_reel, match_grade, probe
+from scripts import build_reel, color_measure, edl_to_reel, match_grade, probe, reframe
 from scripts import process_episode as pe
 from scripts import track
 from scripts.lib import assembly, color, ffbin, manifest as manifest_lib, matchgrade
@@ -456,6 +457,76 @@ def test_a_stabilized_episode_renders_from_geometry_but_not_by_hand(tmp_path, mo
     assert not Path(tmp_path / "byhand.mp4").exists()       # refused before any encode
 
 
+def test_predict_reads_the_stabilized_source_not_the_raw_segment(tmp_path, monkeypatch,
+                                                                  need_filter):
+    """design 2026-08-31 Task 7 fix round. probe.source_for's stabilize branch
+    (scripts/probe.py:47-49) is what makes a prediction honest under `stabilize`:
+    reframe consumed the vidstab pre-stage's output, not md['segment'], so planning
+    against the raw segment would predict pixels this episode never shipped — the
+    exact hazard source_for's own docstring names. Proof 4 above already shows
+    process_episode/reframe honour that split; nothing before this test ever drove
+    _predict (or build_reel.build_reel) over a stabilized episode, so a _predict
+    that quietly reached for md['segment'] instead would have silently mispredicted
+    every stabilized episode and nothing in the suite would have caught it.
+
+    Spied on probe.source_for itself — the real function, still called, not
+    replaced — so the assertion is about the VALUE _predict actually measured, not
+    merely that source_for was invoked with the right arguments.
+    """
+    need_filter("vidstabdetect")
+    need_filter("vidstabtransform")
+    ctx = _run(tmp_path, monkeypatch, [(DARK, {"stabilize": True})])
+    _geometry(ctx)
+    rm = _render(ctx)
+    assert rm.episodes[0].manifest["stabilize"] is True
+    ep0 = rm.episodes[0]
+
+    calls = []
+    real_source_for = probe.source_for
+
+    def spy(md, epdir):
+        got = real_source_for(md, epdir)
+        calls.append(got)
+        return got
+    monkeypatch.setattr(probe, "source_for", spy)
+
+    predicted = build_reel._predict(rm)
+    assert predicted[0] is not None, predicted
+    stabilized = str(Path(ctx["work"]) / "ep0" / "stabilized.mp4")
+    raw = ep0.manifest["segment"]
+    assert calls == [stabilized], calls      # _predict asked source_for the right question
+    assert stabilized != raw
+
+    # THE VALUE, not merely the call: predicted[0] must be exactly what plan_for +
+    # crop_percentiles produce when pointed at the stabilized file — proving
+    # _predict's own MEASUREMENT used the right pixels, not only that it asked
+    # source_for the right question.
+    plan_stab = pe.plan_for(dict(ep0.manifest), stabilized, ep0.route)
+    want = color_measure.crop_percentiles(plan_stab, stabilized,
+                                          color.sample_times(plan_stab.dur))
+    assert predicted[0] == want, (predicted[0], want)
+
+    # CONTROL: raw.mp4 and stabilized.mp4 are NOT pixel-identical — vidstab's
+    # correction is a real, substantial per-pixel effect (measured on this exact
+    # fixture: mean |delta| ~8 across the whole frame at plan_stab.dur/2, up to 182 at
+    # a single pixel) — so "predicted[0] == want" above is not vacuously true because
+    # the two files happen to read alike. Measured through the CROP+PERCENTILE summary
+    # instead of the whole frame, the two sources land on the exact same (p5, p50, p95)
+    # for this window regardless (32.0, 71.0, 179.0 both times) — a 3-point percentile
+    # is insensitive to a shift that does not move the crop's overall brightness
+    # distribution, so that narrower comparison cannot serve as this control; the
+    # routing assertions above (`calls == [stabilized]`, `predicted[0] == want`) are
+    # what actually catch a regression back to md['segment'].
+    plan_raw = pe.plan_for(dict(ep0.manifest), raw, ep0.route)
+    t = plan_stab.dur / 2
+    f_raw = assembly.frame_rgb(raw, t)
+    f_stab = assembly.frame_rgb(stabilized, t)
+    assert f_raw.shape == f_stab.shape           # vidstab preserves frame dimensions
+    assert not np.array_equal(f_raw, f_stab), "raw and stabilized decoded identically " \
+        "— this fixture no longer demonstrates that the pre-stage changed anything"
+    assert plan_raw.dur == plan_stab.dur         # same probed duration either way
+
+
 # --- Proofs 5 and 6: the gate --------------------------------------------------
 
 def _spans(rm):
@@ -605,3 +676,97 @@ def test_probe_grade_geometry_predicts_the_encode(tmp_path, monkeypatch):
     rm = _render(ctx)
     encoded = _profile(rm.episodes[0].clip)
     assert _resid(predicted, encoded) <= 1.5, (predicted, encoded)
+
+
+# --- Proof 8: the drift guard — a geometry disagreement becomes not_checked,
+# never a bogus residual --------------------------------------------------------
+
+def _pan_manifest(src: str, clip: str, pan_from: float, pan_to: float) -> dict:
+    return {"segment": src, "out_path": clip, "composition": "center", "grid": "thirds",
+            "canvas": [1, 1], "target_dur": 1.0, "pan": {"from": pan_from, "to": pan_to}}
+
+
+def _pan_spec(pan_from: float, pan_to: float) -> models.ReframeSpec:
+    # color_means == color.TARGET: identity gain, so only the crop's OWN pixels move
+    # the reading (test_probe.py's `_flat` uses the same trick).
+    return models.ReframeSpec(composition="center", grid="thirds", canvas=(1, 1),
+                              color_means=color.TARGET, delivery=models.Delivery.from_spec(None),
+                              pan=models.PanSpec(start=pan_from, end=pan_to))
+
+
+def test_a_drifted_manifest_becomes_not_checked_not_a_bogus_residual(tmp_path):
+    """design 2026-08-31 Task 7 fix round. process_episode.plan_for always rebuilds a
+    plan from orch.DEFAULT_PARAMS (its own docstring says so): an episode whose
+    accepted attempt was not attempt 1 shipped with orch.adjust_reframe_params's
+    rescaled max_speed/smooth_window_s instead, and nothing records which params
+    shipped — so _predict's fresh recompute can disagree with the crop trajectory
+    actually IN the frozen path.json even though the manifest's declared COLOUR
+    never moved. Reproducing that exact ladder needs a fixture engineered to miss a
+    mechanical check on attempt 1 and pass on attempt 2 with adjusted params —
+    fragile to force deterministically. _refuse_on_drift does not care WHY plan_for's
+    output disagrees with the frozen sidecar, only THAT it does (its own docstring
+    lists "a re-track ... or a different source file" as equally valid causes
+    alongside the retry ladder) — so this reaches the identical code path the safe
+    way: episode 0's DECLARED manifest (what build_reel._predict reads) carries a
+    different pan target than the one that actually rendered it.
+
+    The source is two flat, far-apart-in-luma halves rather than real footage, so
+    the "bogus" reading is unambiguous: a crop pinned to the dark half and one
+    pinned to the bright half are not a little different, they are most of the
+    legal luma range apart — nothing here depends on a subject happening to sit in
+    the wrong place by just enough to cross a threshold.
+
+    Episode 1 is the CONTROL: same source, same shape, an UNDRIFTED manifest — its
+    prediction must be unaffected and still land in `residuals`, proving the guard
+    costs episode 0 alone, not the reel's whole gate (`_predict`'s own docstring:
+    "losing one episode's reading must not cost the reel its gate")."""
+    # 1600x200, split at x=800: a dark left half and a bright right half. canvas=(1,1)
+    # crops 200x200 (freedom = 1600-200 = 1400) out of it — plenty of room to pin a
+    # pan entirely inside one half or the other. 80/255 and 224/255 sit well clear of
+    # blackdetect's default pixel threshold (~25.5/255) in EITHER direction, so this
+    # fixture cannot trip check_reel's black gate by accident.
+    src = str(tmp_path / "src.mp4")
+    proc.run([ffbin.ffmpeg(), "-y",
+              "-f", "lavfi", "-i", "color=c=0x505050:s=800x200:d=1:r=30",
+              "-f", "lavfi", "-i", "color=c=0xE0E0E0:s=800x200:d=1:r=30",
+              "-filter_complex", "hstack=inputs=2", "-frames:v", "30",
+              "-pix_fmt", "yuv420p", "-color_range", "tv", src])
+
+    # episode 0: RENDERED pinned to the dark half (pan 0.0-0.1 of freedom, x in
+    # [0, 140] — inside [0, 800)); DECLARED (what _predict reads) pinned to the
+    # bright half instead (pan 0.9-1.0, x in [1260, 1400] — inside [800, 1600)).
+    # That mismatch is the drift.
+    clip0 = str(tmp_path / "ep0.mp4")
+    path0 = str(tmp_path / "ep0.path.json")
+    reframe.reframe(_pan_spec(0.0, 0.1), src, None, clip0, path0)
+    declared0 = _pan_manifest(src, clip0, 0.9, 1.0)
+
+    # episode 1: rendered and declared agree (pan 0.3-0.4, x in [420, 560] — still
+    # inside the dark half) — no drift, the control.
+    clip1 = str(tmp_path / "ep1.mp4")
+    path1 = str(tmp_path / "ep1.path.json")
+    reframe.reframe(_pan_spec(0.3, 0.4), src, None, clip1, path1)
+    declared1 = _pan_manifest(src, clip1, 0.3, 0.4)
+
+    ep0 = models.ReelEpisode(manifest=declared0, clip=clip0, route=None,
+                             path=path0, meta=str(Path(path0).with_suffix(".meta.json")))
+    ep1 = models.ReelEpisode(manifest=declared1, clip=clip1, route=None,
+                             path=path1, meta=str(Path(path1).with_suffix(".meta.json")))
+    rm = models.ReelManifest(episodes=[ep0, ep1], target_dur=2.0, variety_min=0)
+
+    predicted = build_reel._predict(rm)
+    assert predicted[0] is None, predicted          # the drift was refused, not measured
+    assert predicted[1] is not None, predicted       # the undrifted control still predicts
+
+    ok = build_reel.build_reel(rm, str(tmp_path / "deliveries"), str(tmp_path / "work"))
+    assert ok["status"] == "delivered", ok
+    gf = ok["report"]["checks"]["grade_faithful"]
+    # THE DOWNSTREAM CONSEQUENCE: episode 0 is NAMED, not silently dropped, and it
+    # carries no residual at all — check_reel never compares its (nonexistent)
+    # prediction to anything.
+    assert gf["not_checked"] == {"0": "no-prediction"}, gf
+    assert "0" not in gf["residuals"], gf
+    # and losing episode 0's reading did not cost episode 1 its own — the reel's
+    # gate still examined real pixels and still passed on them
+    assert "1" in gf["residuals"], gf
+    assert gf["pass"] is True, gf

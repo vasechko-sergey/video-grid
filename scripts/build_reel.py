@@ -38,8 +38,22 @@ def _predict(rm: ReelManifest) -> list:
     pre-stage's output, and planning against the raw segment would predict pixels
     the episode never shipped.
 
-    An episode whose plan cannot be built contributes None. check_reel NAMES it in
-    not_checked; losing one episode's reading must not cost the reel its gate.
+    probe._refuse_on_drift, reused verbatim rather than a second oracle: plan_for
+    always builds from orch.DEFAULT_PARAMS (plus an AUTHORED smooth_window_s, never
+    a retry-adjusted one — process_episode.plan_for's own docstring says so). An
+    episode whose accepted attempt was not attempt 1 shipped with
+    orch.adjust_reframe_params's rescaled max_speed/smooth_window_s instead, which
+    nothing records — so the recomputed plan's crop trajectory (RenderPlan.path) can
+    disagree with the one frozen in path.json even though nothing about the
+    DECLARED colour changed. Without this check that disagreement would still
+    produce a profile, and grade_faithful would report it as a colour residual —
+    the wrong remedy (process-episode cannot fix a geometry mismatch by re-grading)
+    for a defect this whole slice exists to remove. `probe.probe_grade` guards the
+    identical hazard the identical way, right after building the identical plan.
+
+    An episode whose plan cannot be built, or whose recomputed geometry drifts from
+    what shipped, contributes None. check_reel NAMES it in not_checked; losing one
+    episode's reading must not cost the reel its gate.
     """
     out = []
     for e in rm.episodes:
@@ -47,6 +61,7 @@ def _predict(rm: ReelManifest) -> list:
             md = dict(e.manifest)
             src = probe.source_for(md, Path(e.path).parent)
             plan = process_episode.plan_for(md, src, e.route)
+            probe._refuse_on_drift(plan, e.path, e.meta)
             out.append(color_measure.crop_percentiles(
                 plan, src, color.sample_times(plan.dur)))
         except Exception as ex:                     # noqa: BLE001 — reported, not swallowed
