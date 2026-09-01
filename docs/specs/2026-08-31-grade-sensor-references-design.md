@@ -144,6 +144,30 @@ of the six damages. The one it does not catch is `highlight = 0.60` on ep0, at
 Passing exactly at the boundary is the correct verdict, not a miss; but a floor
 with 2.1 % of headroom is a first cut, and §9 says so.
 
+### §0.5 The two constants, measured on the suite's own fixture
+
+Measured 2026-08-31 through `tests/integration/test_grade_sensor_calibration.py`
+on `golden_ride_segment` — real camera footage cut to the tv-range segment
+contract, with `golden_route.json` as its route.
+
+| | value | how |
+|---|---|---|
+| `CheckSpec.entropy_floor` | 0.90 | a conductor-shaped tone pair reads 0.933; `black_point = 0.35` reads 0.753; an ungraded episode reads 1.000 exactly |
+| `ReelCheckSpec.grade_residual_max` | 4.0 | a healthy render carrying a post-tone `black_point = 0.05` sits 0.00 luma units from its own prediction; the ceiling is that plus 2.0 for encoder noise a single fixture cannot sample |
+
+Ceiling arithmetic: `ceil(0.00) + 2.0 = 2.0`, rounded to one decimal is still
+`2.0` — below the `4.0` floor, so the floor governs and not the measurement:
+`grade_residual_max = 4.0`. On this fixture the healthy render's encode (CRF 18,
+1.5 s, three sample frames) reproduced `crop_percentiles`' pre-encode prediction
+at all three anchors to the exact byte — `(38.0, 71.0, 193.0)` both sides — so
+the residual is `0.0`, not merely small; the floor, not the fixture, is doing
+all the work in this ceiling.
+
+The reference run put the floor's margin at 1.2 % (§0.4); this fixture is a second
+shoot and a second geometry, and it agrees — with more headroom, not less (this
+fixture's gap is 18.0 %: damaged 0.753 to legitimate 0.933). Two points is not a
+survey and §9.1 says so.
+
 ---
 
 ## §1 The rule
