@@ -17,7 +17,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from scripts import build_reel, check_reel, color_measure, edl_to_reel, match_grade, probe
+from scripts import build_reel, color_measure, edl_to_reel, match_grade, probe
 from scripts import process_episode as pe
 from scripts import track
 from scripts.lib import assembly, color, ffbin, manifest as manifest_lib, matchgrade
@@ -474,17 +474,12 @@ def test_the_gate_fires_when_the_grade_never_reached_the_pixels(tmp_path, monkey
     manifest still declares it, and the render lost it. The reel's own record says
     graded; the pixels say otherwise, and `grade_faithful` is the only thing that looks.
 
-    Design 2026-08-31 moved the gate's reference from the reel's common target to each
-    episode's OWN declared chain — `build_reel` does not yet build that prediction
-    itself (Task 7 of that slice), so this drives `check_reel.run` directly, over the
-    SAME master `build_reel` already assembled, rather than reading it out of
-    `build_reel`'s own result. On THIS fixture the two references coincide exactly:
-    both episodes are graded by a tone curve ALONE (`_run`'s edl_fields carry no other
-    colour knob), and `test_the_conductor_converges_two_exposures_through_the_real_render`
-    already proves — with a real render — that a tone-only episode's delivered profile
-    lands within `matchgrade.MATCH_EPS` of `target`, the same 4.0 design §0.5 measured
-    for `grade_residual_max`. So `target` IS episode 0's and episode 1's own predicted
-    profile here, not a stand-in for it.
+    Restored (2026-08-31 Task 7): `build_reel` now builds its own per-episode
+    predictions (`_predict`), so this drives `build_reel.build_reel` directly for BOTH
+    the clean reel and the corrupted one — no manual `check_reel.run` call is needed to
+    prove the point, and none is used here. This is the one place in the suite that
+    verifies the PIPELINE ITSELF stops this defect class, not merely that the sensor
+    can detect it when handed the right arguments by hand.
 
     CONTROL: the SAME reel, from the SAME manifest, with the grade actually applied —
     it delivers, and its worst residual is a number, not a pass/fail."""
@@ -495,37 +490,26 @@ def test_the_gate_fires_when_the_grade_never_reached_the_pixels(tmp_path, monkey
     target = EDL.from_json(ctx["edl"]).tone_target
     assert rm.tone_target == target
     assert all(e.manifest["tone_dst"] == list(target) for e in rm.episodes)
-    predicted = [list(target), list(target)]
 
-    work = str(Path(ctx["work"]) / "reel")
-    ok = build_reel.build_reel(rm, ctx["deliveries"], work)
+    ok = build_reel.build_reel(rm, ctx["deliveries"], str(Path(ctx["work"]) / "reel"))
     assert ok["status"] == "delivered", ok
-    master = str(Path(work) / "master.mp4")
-    clips = [e.clip for e in rm.episodes]
-    gf_report = check_reel.run(master, clips, rm.check_spec, str(tmp_path / "gf.json"),
-                               predicted=predicted)
-    tm = gf_report.checks["grade_faithful"].to_dict()
+    tm = ok["report"]["checks"]["grade_faithful"]
     assert tm["pass"] is True, tm
     assert tm["not_checked"] == {} and set(tm["residuals"]) == {"0", "1"}, tm
     assert tm["worst"] <= rm.check_spec.grade_residual_max
 
-    # The colour block goes missing between authoring and render. `rm` (and the
-    # `predicted` read off its own tone_dst snapshot, above) is NOT rebuilt: it is the
-    # record the reel ships with, and it still declares both pairs.
+    # The colour block goes missing between authoring and render. `rm` is NOT rebuilt:
+    # it is the record the reel ships with, and it still declares both pairs — _predict
+    # reads exactly that stale declaration, independently of what actually got rendered.
     _edit_edl(ctx["edl"], 1, tone_src=None, tone_dst=None)
     _render(ctx)
-    work2 = str(Path(ctx["work"]) / "reel2")
-    bad = build_reel.build_reel(rm, str(tmp_path / "deliveries2"), work2)
-    # build_reel does not compute predictions on its own yet (Task 7), so nothing
-    # inside its OWN loop can notice this — it still delivers.
-    assert bad["status"] == "delivered", bad
-    bad_master = str(Path(work2) / "master.mp4")
-    bad_report = check_reel.run(bad_master, clips, rm.check_spec, str(tmp_path / "gf2.json"),
-                                predicted=predicted)      # the SAME (now-stale) declaration
-    bad_tm = bad_report.checks["grade_faithful"].to_dict()
+    bad = build_reel.build_reel(rm, str(tmp_path / "deliveries2"),
+                               str(Path(ctx["work"]) / "reel2"))
+    assert bad["status"] == "stop_and_report", bad
+    assert bad["finding"]["check"] == "grade_faithful", bad["finding"]
+    assert bad["finding"]["escalate_to"] == "process-episode", bad["finding"]
+    bad_tm = bad["report"]["checks"]["grade_faithful"]
     assert bad_tm["pass"] is False
-    f = [x for x in bad_report.fail_reasons if x.check == "grade_faithful"][0]
-    assert f.escalate_to == "process-episode" and f.episode_idx == 1
     assert bad_tm["residuals"]["1"] > rm.check_spec.grade_residual_max
     # and episode 0, which kept its grade, is still where it was — the failure is
     # attributed to the one episode that lost it
@@ -546,15 +530,23 @@ def test_the_gate_reads_the_master_not_the_delivered_reel(tmp_path, monkeypatch)
     `fade=t=in:st=0:d=0.3`, and the first per-episode sample lands at 0.125s of the
     master — inside the fade-in, at roughly 42% brightness.
 
-    `predicted = [target, target]` for the same reason
-    test_the_gate_fires_when_the_grade_never_reached_the_pixels uses it: both episodes
-    are graded by a tone curve alone, so each one's own declared chain predicts
-    `target` exactly (design §0.5's `grade_residual_max` and
-    `test_the_conductor_converges_two_exposures_through_the_real_render`'s own
-    `matchgrade.MATCH_EPS` proof agree at 4.0). `build_reel` does not yet build that
-    prediction itself (Task 7), so this drives `check_reel.run` directly, over the
-    assembled master AND, separately, over the delivered file — the one difference
-    between the two calls is which file the SAME predicted profile is checked against."""
+    Restored (2026-08-31 Task 7): `build_reel` now builds its own per-episode
+    predictions, so `tm` below is read straight off `build_reel`'s own report — the
+    ONE real `grade_faithful` check the pipeline ran — rather than from a second,
+    hand-built `check_reel.run` call. A future refactor of that plumbing (e.g. one that
+    quietly re-pointed the gate at the delivered file) would regress silently without
+    this assertion reading build_reel's own report.
+
+    The manual re-check below compares against `build_reel._predict(rm)`, not against
+    `rm.tone_target` — `grade_faithful`'s reference is each episode's OWN declared
+    chain (design §2), which a fresh render of a tone-only episode lands close to but
+    not exactly on the common target: measured here, `predicted` is (36, 81, 207)
+    against a target of (37, 82, 207.5), so the master's worst residual against
+    `predicted` (1.0) is a hair under its worst against `target` (1.5) — that
+    predicted-vs-target gap is the advisory `target_dev` this gate deliberately does
+    not vote on (§2.1). Measured: the master reads 1.0 and the delivery 18.0 — well
+    past `grade_residual_max` either way, so the choice of reference does not manufacture
+    this test's result, only its exact numbers."""
     # authored on the EDL, where a look really is authored — LookSpec builds the dict so
     # the shape is the contract's, not a literal that can drift from it
     ctx = _run(tmp_path, monkeypatch, [(DARK, {}), (BRIGHT, {})],
@@ -567,35 +559,23 @@ def test_the_gate_reads_the_master_not_the_delivered_reel(tmp_path, monkeypatch)
     work = str(Path(ctx["work"]) / "reel")
     res = build_reel.build_reel(rm, ctx["deliveries"], work)
     assert res["status"] == "delivered", res
+    tm = res["report"]["checks"]["grade_faithful"]
+    assert tm["pass"] is True, tm
 
-    target = rm.tone_target
-    predicted = [list(target), list(target)]
-    clips = [e.clip for e in rm.episodes]
-    master = str(Path(work) / "master.mp4")
-
-    m_report = check_reel.run(master, clips, rm.check_spec, str(tmp_path / "gf_master.json"),
-                              predicted=predicted)
-    gf = m_report.checks["grade_faithful"].to_dict()
-    d_report = check_reel.run(res["output"], clips, rm.check_spec,
-                              str(tmp_path / "gf_delivered.json"), predicted=predicted)
-    gf_d = d_report.checks["grade_faithful"].to_dict()
-
+    predicted = build_reel._predict(rm)      # the SAME reference grade_faithful used above
     spans = _spans(rm)
+    master = str(Path(work) / "master.mp4")
     m_prof = color_measure.clip_percentiles_batch(master, spans)
     d_prof = color_measure.clip_percentiles_batch(res["output"], spans)
-    m_worst = max(_resid(p, target) for p in m_prof)
-    d_worst = max(_resid(p, target) for p in d_prof)
-    # the check read THIS file — not an inference, the two numbers are the same numbers
-    # an independent clip_percentiles_batch read produces
-    assert m_worst == pytest.approx(gf["worst"], abs=0.01), (m_worst, gf)
-    assert d_worst == pytest.approx(gf_d["worst"], abs=0.01), (d_worst, gf_d)
-    # and the choice of file decides the VERDICT, not merely the number. Measured: the
-    # master reads 1.5 and the delivery 19.0 (episodes 18/65/198 and 21/67/197 against a
-    # 37/82/207.5 target) — a check that sampled the delivery would have failed this reel
-    # and escalated it to process-episode, which has nothing to fix.
+    m_worst = max(_resid(p, t) for p, t in zip(m_prof, predicted))
+    d_worst = max(_resid(p, t) for p, t in zip(d_prof, predicted))
+    # the check read THIS file — not an inference, the two numbers are the same number
+    assert m_worst == pytest.approx(tm["worst"], abs=0.01), (m_worst, tm)
+    # and the choice of file decides the VERDICT, not merely the number — a check that
+    # sampled the delivery would have failed this reel and escalated it to
+    # process-episode, which has nothing to fix.
     assert m_worst <= rm.check_spec.grade_residual_max
-    assert d_worst > rm.check_spec.grade_residual_max, (m_prof, d_prof, target)
-    assert gf["pass"] is True and gf_d["pass"] is False, (gf, gf_d)
+    assert d_worst > rm.check_spec.grade_residual_max, (m_prof, d_prof, predicted)
 
 
 # --- Proof 7: the probe predicts the encode -----------------------------------
