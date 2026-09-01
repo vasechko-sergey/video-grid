@@ -81,10 +81,11 @@ def test_evaluate_reports_the_median_ratio_not_the_mean_min_or_max(monkeypatch):
     for `statistics.mean` at gradedamage.py's `r = ...` line and watching every
     other test in this file still pass.
 
-    Mirrors color_fidelity's own test_the_verdict_is_the_median_not_the_worst
-    (tests/lib/test_color_fidelity.py) but with three DISTINCT values, not two
-    tied survivors and one outlier: two equal survivors would make median and max
-    coincide, and this test would then fail to notice `evaluate` using max.
+    Mirrors color_fidelity's own test_the_description_is_the_median_not_the_worst
+    (tests/lib/test_color_fidelity.py, renamed 2026-08-31 §3 when that module's dE00
+    stopped voting) but with three DISTINCT values, not two tied survivors and one
+    outlier: two equal survivors would make median and max coincide, and this test
+    would then fail to notice `evaluate` using max.
 
     Stubbed ratios [0.99, 0.40, 0.95] -> sorted [0.40, 0.95, 0.99]:
       median = 0.95  (the correct aggregator, asserted below)
@@ -121,7 +122,9 @@ def test_evaluate_fails_a_quantization():
 
 def test_evaluate_judges_the_rounded_ratio_it_reports(monkeypatch):
     """A report reading 'ratio: 0.9, floor: 0.9, below: true' is a contradiction no
-    reader can act on — color_fidelity.evaluate documents the same rule.
+    reader can act on — color_fidelity.evaluate documented the same round-then-judge
+    rule before its own verdict was retired (design 2026-08-31 §3); this module is
+    now the one place that rule still has a threshold to protect.
 
     The monkeypatch below replaces the brief's own bisection, on the controller's
     instruction (fix round 1, Important 4: that authorization was given in the

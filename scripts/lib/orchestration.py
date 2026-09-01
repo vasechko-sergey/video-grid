@@ -144,16 +144,19 @@ SMOOTH_WINDOW_S_MAX = 0.7   # past this the crop stops following the subject at 
                             # lags visibly through a real direction change
 
 # reframe can't fix these by re-cropping — the fault is upstream (window/segment),
-# or, for color_fidelity, in the episode's colour block: max_speed and
+# or, for grade_damage, in the episode's colour block: max_speed and
 # smooth_window_s are geometry knobs and no value of either moves a colour, so
 # without this entry the ladder re-renders 4K three times before giving up
-# (design 2026-08-28 §3). Order matters — see _UNFIXABLE_REASON.
-_UNFIXABLE = ("length", "continuity", "black_frames", "color_fidelity")
+# (design 2026-08-28 §3). And for grade_damage specifically, the colour block IS
+# the right remedy now rather than a loop: the sensor only fires when the
+# declared grade destroys information, which no reframe retry can undo either
+# (design 2026-08-31 §3). Order matters — see _UNFIXABLE_REASON.
+_UNFIXABLE = ("length", "continuity", "black_frames", "grade_damage")
 
 # The escalation reason for a specific unfixable failure, where the generic one
 # would name only what CANNOT fix the problem. The first entry of _UNFIXABLE
 # present in fail_reasons wins, so an upstream fault outranks a colour one.
-_UNFIXABLE_REASON = {"color_fidelity": "grade-damage"}
+_UNFIXABLE_REASON = {"grade_damage": "grade-damage"}
 
 
 def _lags_line(fail_reasons: list[str]) -> bool:

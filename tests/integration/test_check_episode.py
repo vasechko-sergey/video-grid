@@ -108,16 +108,16 @@ def test_positive_freedom_still_runs_the_numeric_check(tmp_path, sample_clip):
 
 
 @pytest.mark.integration
-def test_color_fidelity_not_checked_without_source(tmp_path, sample_clip):
-    """No source= at all (the process_episode wiring is a later task) → the
-    check reports honestly instead of silently skipping. Blocking since Task 3,
-    but a not-checked result is still `passed=None`, and — like `framing`'s
-    editorial-only branch — never moves `overall`, which stays driven by real
-    pass/fail verdicts."""
+def test_grade_damage_not_checked_without_source_or_plans(tmp_path, sample_clip):
+    """Neither source= nor plans= (the process_episode wiring is a later task) →
+    the check reports honestly instead of silently skipping. Blocking since
+    design 2026-08-31 §3 (entropy ratio, not the old dE00), but a not-checked
+    result is still `passed=None`, and — like `framing`'s editorial-only branch —
+    never moves `overall`, which stays driven by real pass/fail verdicts."""
     rp, pp = _fill(tmp_path)
     spec = CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
     report = check_episode.run(str(sample_clip), rp, pp, spec, str(tmp_path / "report.json"))
-    cf = report.checks["color_fidelity"]
+    cf = report.checks["grade_damage"]
     assert cf.passed is None
     assert cf.detail["status"] == "not-checked"
     assert report.overall is True

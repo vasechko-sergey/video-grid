@@ -254,12 +254,20 @@ def test_check_spec_no_longer_carries_canvas_or_src_dims():
     assert not hasattr(spec, "src_dims")
 
 
-def test_checkspec_grade_delta_max():
-    assert m.CheckSpec(composition="center", grid="thirds", target_dur=3.0).grade_delta_max == 5.0
-    with pytest.raises(ValueError, match="positive dE00 ceiling"):
-        m.CheckSpec(composition="center", grid="thirds", target_dur=3.0, grade_delta_max=-1)
-    with pytest.raises(ValueError, match="positive dE00 ceiling"):
-        m.CheckSpec(composition="center", grid="thirds", target_dur=3.0, grade_delta_max=True)  # bool-reject
+def test_check_spec_entropy_floor_defaults_to_the_measured_value():
+    s = m.CheckSpec(composition="center", grid="thirds", target_dur=2.0)
+    assert s.entropy_floor == 0.90
+
+
+@pytest.mark.parametrize("bad", [0, -0.1, 1.5, True, "0.9", None])
+def test_check_spec_refuses_an_out_of_range_entropy_floor(bad):
+    with pytest.raises(ValueError, match="entropy_floor"):
+        m.CheckSpec(composition="center", grid="thirds", target_dur=2.0, entropy_floor=bad)
+
+
+def test_check_spec_no_longer_carries_grade_delta_max():
+    assert not hasattr(m.CheckSpec(composition="center", grid="thirds", target_dur=2.0),
+                       "grade_delta_max")
     assert not hasattr(m.CheckSpec(composition="center", grid="thirds", target_dur=3.0),
                        "hue_drift_max")
 

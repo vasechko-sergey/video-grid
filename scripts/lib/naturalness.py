@@ -1,7 +1,8 @@
 """Colour-naturalness measurement (design docs/specs/2026-08-08-episode-qc-design.md §5).
 
-check_episode's color_fidelity answers "how far did the grade move the SUBJECT's
-colour" and says nothing about the frame around it. This measures the frame: two
+check_episode's grade_damage carries an advisory subject dE00 that answers "how far
+did the grade move the SUBJECT's colour" and says nothing about the frame around it.
+This measures the frame: two
 absolute flags for information the grade destroyed (blown highlights, crushed
 blacks) and three source-relative ones for what it changed (cast, saturation,
 contrast), so the QC judge argues from numbers instead of impressions.

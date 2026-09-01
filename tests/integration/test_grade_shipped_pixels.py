@@ -49,13 +49,21 @@ _ROUTE_META = json.loads((FIX / "golden_route.meta.json").read_text())
 # alone. matchgrade.needs_tone reads the MAX, so both get a pair; the subject the
 # colour sensor watches sits nearer the 5-11 end.
 #
-# The upper bound is not taste, it is a MEASURED ceiling this repo already ships:
-# check_episode's color_fidelity gate is BLOCKING at grade_delta_max = 5.0 dE00 since
-# 2026-08-28, and the convergence grade IS grade movement to it. Swept on this exact
-# fixture shape: at x0.78/x1.15 the bright episode reads 5.48 and phase 1b stops with
-# `grade-damage`; here the sensor reads 2.33 and 3.82. See the task report — a real reel
-# with a wider exposure spread than this fixture cannot be match-graded through the
-# current gate.
+# The upper bound is not taste, it is a MEASURED ceiling this repo shipped at the time
+# these values were picked: check_episode's color_fidelity gate was BLOCKING at
+# grade_delta_max = 5.0 dE00 from 2026-08-28, and the convergence grade IS grade
+# movement to it. Swept on this exact fixture shape: at x0.78/x1.15 the bright episode
+# read 5.48 and phase 1b stopped with `grade-damage`; here the sensor read 2.33 and 3.82.
+# See the task report — a real reel with a wider exposure spread than this fixture could
+# not be match-graded through that gate.
+#
+# Design 2026-08-31 §3 renamed the check `grade_damage` and replaced the dE00 verdict
+# with a luma-entropy ratio (the dE00 reading is now an advisory description, not a
+# vote) — and, until a later task wires process_episode to pass it a `plans` pair, the
+# check reports not-checked for every episode this file renders, so the ceiling this
+# comment describes is dormant here rather than enforced. DARK/BRIGHT are left at their
+# originally-measured, conservative values regardless: they were never chosen to prove
+# this specific gate, only to stay safely clear of it.
 DARK, BRIGHT = 0.83, 1.09
 
 # One window per episode, by index. Two DIFFERENT windows because check_reel's variety

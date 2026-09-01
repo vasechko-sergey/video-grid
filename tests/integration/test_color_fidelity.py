@@ -1,7 +1,11 @@
-"""Real-ffmpeg proof for the blocking colour-fidelity check (design 2026-08-28
-§2): real bytes through the batched `assembly.frames_rgb` sampling
-(`check_episode._box_mean_rgb`) + evaluate (`color_fidelity.evaluate`) path,
-driven by `check_episode.run(..., source=)`.
+"""Real-ffmpeg proof for the subject grade-delta ADVISORY (design 2026-08-28 §2,
+demoted from a blocking dE00 gate to a description of check_episode.grade_damage
+2026-08-31 §3 — see design §0.1: a grade IS movement, so a dE00 threshold could not
+tell a grade from damage): real bytes through the batched `assembly.frames_rgb`
+sampling (`check_episode._box_mean_rgb`) + evaluate (`color_fidelity.evaluate`) path,
+driven directly through `check_episode._subject_delta_advisory` (the sampling body,
+unchanged) where the check no longer needs a `plans` pair to exercise it, and through
+`check_episode.run(..., source=, plans=)` where the whole grade_damage verdict matters.
 
 Fixture shape: a coloured subject box on a dark-grey field (`source.mp4`), and
 a "graded" clip that is a REAL crop of it (`crop=480:360:80:0` — a non-trivial
@@ -10,8 +14,8 @@ x offset, not an identity pass-through) so the route/path/meta sidecar's
 satisfied. `faithful.mp4` re-runs the identical recipe (no colour change);
 `broken.mp4` adds a strong `hue=h=120` rotation after the crop — the
 "simplest" grade-breaker the task names, verified empirically (see below) to
-land the subject's median dE00 well past `CheckSpec.grade_delta_max` and any
-plausible grading move.
+land the subject's median dE00 well past the old 5.0 `grade_delta_max` ceiling
+(deleted 2026-08-31 §3) and any plausible grading move.
 
 A SECOND fixture pair at the bottom of this file covers what those three could
 not: a real authored `ReframeSpec` colour block rendered by `reframe.reframe`
@@ -26,8 +30,8 @@ from pathlib import Path
 import pytest
 from scripts import check_episode, reframe
 from scripts.lib import assembly, color, ffbin, proc
-from scripts.lib.models import (CheckSpec, Delivery, LayoutSpec, PathMeta,
-                                ReframeSpec)
+from scripts.lib.models import (CheckSpec, CropPath, Delivery, LayoutSpec, PathMeta,
+                                ReframeSpec, route_from_json)
 
 pytestmark = pytest.mark.integration
 
@@ -117,14 +121,25 @@ def test_box_mean_rgb_reads_the_synthesized_colour(source_clip):
     assert abs(r - 200) < 15 and abs(g - 80) < 15 and abs(b - 40) < 15
 
 
+def _route_pts_path_meta(rp: str, pp: str):
+    """The three ingredients `check_episode.run` derives from `rp`/`pp` before
+    calling `_subject_delta_advisory` — built the same way here so these tests can
+    call that sampling body directly, without a `plans` pair `run()` now also
+    requires before it will report anything but not-checked (design 2026-08-31 §3)."""
+    route_pts = route_from_json(rp)
+    path_obj = CropPath.from_json(pp)
+    meta = PathMeta.from_json(Path(pp).with_suffix(".meta.json"))
+    return route_pts, path_obj, meta
+
+
 def test_the_check_takes_five_samples(tmp_path, source_clip, faithful_clip):
     """The sample count is the statistic's own denominator — the median of five is
     what the design's thresholds were measured on (§0.4/§2.2)."""
     rp, pp = _sidecar(tmp_path)
-    spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
-    report = check_episode.run(str(faithful_clip), rp, pp, spec,
-                               str(tmp_path / "report.json"), source=str(source_clip))
-    assert report.checks["color_fidelity"].detail["samples"] == 5
+    route_pts, path_obj, meta = _route_pts_path_meta(rp, pp)
+    d = check_episode._subject_delta_advisory(str(faithful_clip), str(source_clip),
+                                              route_pts, path_obj, meta)
+    assert d["samples"] == 5
 
 
 def test_sampling_survives_a_route_that_reaches_the_last_frame(tmp_path, source_clip,
@@ -150,38 +165,54 @@ def test_sampling_survives_a_route_that_reaches_the_last_frame(tmp_path, source_
     PathMeta(mode="fill", crop_w=CROP_W, crop_h=H, crop_y=0, src_dims=(W, H),
              canvas=(CROP_W, H), out_dims=(CROP_W, H), rect_px=(0, 0, CROP_W, H),
              freedom=W - CROP_W).write(tmp_path / "path.meta.json")
-    spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
-    report = check_episode.run(str(faithful_clip), str(tmp_path / "route.json"),
-                               str(tmp_path / "path.json"), spec,
-                               str(tmp_path / "report.json"), source=str(source_clip))
-    assert report.checks["color_fidelity"].detail["samples"] == 5
+    rp, pp = str(tmp_path / "route.json"), str(tmp_path / "path.json")
+    route_pts, path_obj, meta = _route_pts_path_meta(rp, pp)
+    d = check_episode._subject_delta_advisory(str(faithful_clip), str(source_clip),
+                                              route_pts, path_obj, meta)
+    assert d["samples"] == 5
 
 
-def test_faithful_grade_does_not_exceed(tmp_path, source_clip, faithful_clip):
+def test_faithful_grade_reads_a_small_advisory_delta(tmp_path, source_clip, faithful_clip):
     rp, pp = _sidecar(tmp_path)
+    route_pts, path_obj, meta = _route_pts_path_meta(rp, pp)
+    d = check_episode._subject_delta_advisory(str(faithful_clip), str(source_clip),
+                                              route_pts, path_obj, meta)
+    assert d["advisory_delta_e"] is True
+    assert d["delta_e"] < 5.0
+
+    # Without a `plans` pair, grade_damage AS A WHOLE reports not-checked and never
+    # blocks — even for a grade this clean. design 2026-08-31 §3: process_episode
+    # is what supplies `plans` (a later task), and until then the advisory above is
+    # computed here directly, not through run().
     spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
     report = check_episode.run(str(faithful_clip), rp, pp, spec,
                                str(tmp_path / "report.json"), source=str(source_clip))
-    cf = report.checks["color_fidelity"]
-    assert cf.passed is True                     # blocking, and this grade is clean
-    assert cf.detail.get("status") != "not-checked", cf.detail
-    assert cf.detail["exceeded"] is False
-    assert cf.detail["delta_e"] < 5.0
+    gd = report.checks["grade_damage"]
+    assert gd.passed is None and gd.detail["status"] == "not-checked"
     assert report.overall is True
 
 
-def test_hue_broken_grade_fails_the_episode(tmp_path, source_clip, broken_clip):
+def test_hue_broken_grade_reads_a_large_advisory_delta_but_no_longer_blocks(
+        tmp_path, source_clip, broken_clip):
+    """dE00 stopped voting 2026-08-31 §3 — design's own point: a grade IS movement,
+    so a dE00 threshold cannot tell a grade from damage, and on the reference run a
+    real conductor pair put five of eight episodes over the old 5.0 ceiling with
+    none of them damage. The sampling still describes a large move accurately (the
+    direct call below); check_episode.run no longer stops the episode over it, and
+    — without a `plans` pair — could not vote on it at all even if it still did."""
     rp, pp = _sidecar(tmp_path)
+    route_pts, path_obj, meta = _route_pts_path_meta(rp, pp)
+    d = check_episode._subject_delta_advisory(str(broken_clip), str(source_clip),
+                                              route_pts, path_obj, meta)
+    assert d["delta_e"] > 20.0           # hue=h=120 on a saturated orange
+    assert d["dominant"] == "hue"
+
     spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
     report = check_episode.run(str(broken_clip), rp, pp, spec,
                                str(tmp_path / "report.json"), source=str(source_clip))
-    cf = report.checks["color_fidelity"]
-    assert cf.passed is False                    # a damaged grade now stops the episode
-    assert cf.detail["exceeded"] is True
-    assert cf.detail["delta_e"] > 20.0           # hue=h=120 on a saturated orange
-    assert cf.detail["dominant"] == "hue"
-    assert report.overall is False
-    assert "color_fidelity" in report.fail_reasons
+    gd = report.checks["grade_damage"]
+    assert gd.passed is None and gd.detail["status"] == "not-checked"
+    assert report.overall is True
 
 
 # --- A REAL authored grade must clear the bar (final review M-7) ---------------
@@ -227,34 +258,47 @@ def _grade_route(tmp_path):
     return str(rp)
 
 
-def _render_episode(src, route_path, out_dir, tone):
-    """One real episode through reframe.reframe, with or without an authored tone pair.
-
-    color_means is color.TARGET, so gains_for_means returns (1, 1, 1) and the mixer is
-    an identity — the tone pair is then the ONLY colour operation in the chain, and the
-    two renders differ by exactly the thing under test."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+def _episode_spec(tone) -> ReframeSpec:
+    """color_means is color.TARGET, so gains_for_means returns (1, 1, 1) and the
+    mixer is an identity — a tone pair, when given, is then the ONLY colour
+    operation in the chain. Factored out so the test can build a RenderPlan from
+    the exact same spec _render_episode renders, without a second render."""
+    return ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                        color_means=tuple(float(v) for v in color.TARGET),
                        delivery=Delivery("native"), layout=LayoutSpec(mode="fill"),
                        tone_src=tone[0] if tone else None, tone_dst=tone[1] if tone else None)
+
+
+def _render_episode(src, route_path, out_dir, tone, plans=None):
+    """One real episode through reframe.reframe, with or without an authored tone
+    pair, then checked with `plans` threaded through as grade_damage's ingredient
+    (design 2026-08-31 §3) — None (the default) leaves it not-checked, exactly the
+    shape `source` already had before plans existed."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    spec = _episode_spec(tone)
     clip = str(out_dir / "ep.mp4")
     reframe.reframe(spec, str(src), route_path, clip, str(out_dir / "path.json"))
     cspec = CheckSpec(composition="center", grid="thirds", target_dur=GRADE_DUR)
     report = check_episode.run(clip, route_path, str(out_dir / "path.json"), cspec,
-                               str(out_dir / "report.json"), source=str(src))
+                               str(out_dir / "report.json"), source=str(src), plans=plans)
     return spec, clip, report
 
 
-def test_a_real_authored_grade_clears_the_blocking_bar(tmp_path, graded_source):
+def test_a_real_authored_grade_does_not_trip_the_entropy_gate(tmp_path, graded_source):
     """§2.4's live control, reproducible: a `match-grade`-shaped tone pair of ep1's own
-    magnitude, rendered by reframe itself, must NOT stop the episode.
+    magnitude, rendered by reframe itself, must NOT read as damage.
 
-    Measured on these bytes: the authored grade lands at ΔE00 **1.59** against a
-    threshold of 5.0, and the identity control at **0.79** — so roughly half of the
-    authored reading is the re-encode and the crop's own resampling, and the whole
-    authored grade still sits at under a third of the bar. (Design §2.4's ep1 reads
-    1.44 on real footage; this fixture is not that footage and the agreement is a
+    Renamed from '..._clears_the_blocking_bar': the bar that used to block here (median
+    subject dE00 vs CheckSpec.grade_delta_max) is retired (design 2026-08-31 §3) because
+    it could not tell a grade from damage — this proves the REPLACEMENT (the whole-frame
+    luma-entropy ratio vs entropy_floor) also does not fire on a legitimate grade, using
+    a real (graded, plain) RenderPlan pair built the same way process_episode will build
+    one (a later task's wiring).
+
+    The dE00 advisory rides along too: measured on these bytes, the authored grade lands
+    at ΔE00 **1.59**, and the identity control at **0.79** — so roughly half of the
+    authored reading is the re-encode and the crop's own resampling. (Design §2.4's ep1
+    reads 1.44 on real footage; this fixture is not that footage and the agreement is a
     sanity check, not a pin.)
 
     The control is what stops this test being vacuous. A tone pair silently dropped
@@ -262,27 +306,38 @@ def test_a_real_authored_grade_clears_the_blocking_bar(tmp_path, graded_source):
     asserted to carry a real `lutyuv` transfer AND to differ in bytes from the
     identity render."""
     route_path = _grade_route(tmp_path)
-    _, control_clip, control_report = _render_episode(
+    control_spec, control_clip, _ = _render_episode(
         graded_source, route_path, tmp_path / "control", None)
+    control_plan = reframe.plan_render(control_spec, str(graded_source), route_path)
+
     tone = (GRADE_PROFILE, (GRADE_PROFILE[0], GRADE_PROFILE[1] + TONE_LIFT, GRADE_PROFILE[2]))
+    graded_plan = reframe.plan_render(_episode_spec(tone), str(graded_source), route_path)
     spec, graded_clip, report = _render_episode(
-        graded_source, route_path, tmp_path / "graded", tone)
+        graded_source, route_path, tmp_path / "graded", tone,
+        plans=(graded_plan, control_plan))
 
     # 1. The grade is real: a luma transfer in the chain, and different pixels out.
     plan = reframe.plan_render(spec, str(graded_source), route_path)
     assert "lutyuv" in plan.grade, plan.grade
     assert Path(graded_clip).read_bytes() != Path(control_clip).read_bytes()
 
-    # 2. And it does not stop the episode.
-    cf = report.checks["color_fidelity"]
-    assert cf.passed is True, cf.detail
-    assert cf.detail["exceeded"] is False
-    assert cf.detail["delta_e"] < CheckSpec(composition="center", grid="thirds",
-                                            target_dur=GRADE_DUR).grade_delta_max
-    assert report.overall is True, report.fail_reasons
+    # 2. And the entropy gate does not fire — a +10.6-code lift of one anchor is
+    #    movement, not destruction.
+    gd = report.checks["grade_damage"]
+    assert gd.passed is True, gd.detail
+    assert gd.detail["below"] is False
+    assert gd.detail["advisory_delta_e"] is True
+    assert gd.detail["delta_e"] < 5.0          # still a small move in absolute terms
 
-    # 3. The identity control passes too, and by a wider margin — the headroom the
-    #    authored grade spends is real and is a fraction of what the bar allows.
-    ccf = control_report.checks["color_fidelity"]
+    # 3. The identity control reads a smaller advisory delta too — the headroom the
+    #    authored grade spends is real. Its OWN entropy ratio is exactly 1.0 (both
+    #    halves of the pair are the same identity plan), so it cannot be below the floor.
+    control_report = check_episode.run(
+        control_clip, route_path, str(tmp_path / "control" / "path.json"),
+        CheckSpec(composition="center", grid="thirds", target_dur=GRADE_DUR),
+        str(tmp_path / "control" / "report_with_plans.json"), source=str(graded_source),
+        plans=(control_plan, control_plan))
+    ccf = control_report.checks["grade_damage"]
     assert ccf.passed is True, ccf.detail
-    assert ccf.detail["delta_e"] < cf.detail["delta_e"]
+    assert ccf.detail["ratio"] == pytest.approx(1.0, abs=1e-3)
+    assert ccf.detail["delta_e"] < gd.detail["delta_e"]

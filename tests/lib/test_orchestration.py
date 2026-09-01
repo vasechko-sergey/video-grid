@@ -344,13 +344,15 @@ def test_jitter_still_refuses_to_widen_past_the_ceiling_on_its_own():
     assert p["smooth_window_s"] == orch.SMOOTH_WINDOW_S_MAX == 0.7
 
 
-# --- Task 3 (design 2026-08-28 §3): color_fidelity becomes unfixable-by-reframe ---
+# --- Task 3 (design 2026-08-28 §3): grade_damage becomes unfixable-by-reframe ---
+# (renamed from color_fidelity 2026-08-31 §3: the dE00 verdict became an entropy
+# ratio, but the "reframe can't fix a colour fault" reasoning is unchanged.)
 
 def test_a_colour_failure_escalates_immediately_with_its_own_reason():
     """Reframe params are geometry knobs; no value of max_speed or smooth_window_s
     moves a colour. Without this the episode is re-rendered at full resolution three
     times before escalating, and then escalates naming only what cannot fix it."""
-    esc = orch.escalation(attempt=1, fail_reasons=["color_fidelity"])
+    esc = orch.escalation(attempt=1, fail_reasons=["grade_damage"])
     assert esc is not None
     assert esc["reason"] == "grade-damage"
     assert esc["escalate_to"] == "edit-plan"
@@ -361,9 +363,27 @@ def test_an_upstream_failure_still_outranks_the_colour_reason():
     'grade-damage' there would send the author to the colour block for a problem
     the colour block cannot fix. The order of _UNFIXABLE decides, not the order the
     checks happened to run in."""
-    esc = orch.escalation(attempt=1, fail_reasons=["color_fidelity", "length"])
+    esc = orch.escalation(attempt=1, fail_reasons=["grade_damage", "length"])
     assert esc["reason"] == "unfixable-by-reframe"
 
 
 def test_colour_is_listed_as_unfixable():
-    assert "color_fidelity" in orch._UNFIXABLE
+    assert "grade_damage" in orch._UNFIXABLE
+
+
+def test_grade_damage_is_unfixable_and_names_its_own_remedy():
+    # NOTE: the brief for this test named `orchestration.next_action(...).kind` /
+    # `.finding` — that API lives in scripts/lib/reel_orchestration.py (reel-level
+    # retry), not this per-episode module, which escalates through `escalation()`
+    # returning a plain dict. Adapted to the real API; the claim under test
+    # (grade_damage is unfixable-by-reframe and names its own "grade-damage"
+    # remedy) is unchanged, and is also covered above by
+    # test_a_colour_failure_escalates_immediately_with_its_own_reason.
+    esc = orch.escalation(attempt=1, fail_reasons=["grade_damage"], max_attempts=3)
+    assert esc is not None
+    assert esc["escalate_to"] == "edit-plan"
+    assert esc["reason"] == "grade-damage"
+
+
+def test_color_fidelity_is_no_longer_a_known_unfixable():
+    assert "color_fidelity" not in orch._UNFIXABLE

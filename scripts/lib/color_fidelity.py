@@ -2,8 +2,14 @@
 how far the grade moved the tracked subject's colour, source vs delivered.
 
 Pure — the sampling lives in check_episode, the arithmetic in colordiff. What
-this module owns is the verdict: which statistic over the samples, and what the
-numbers are called in the report.
+this module owns is the DESCRIPTION: which statistic over the samples, and what
+the numbers are called in the report. It no longer owns a verdict (design
+2026-08-31 §3): a grade IS movement, so a threshold on this number cannot tell
+a grade from damage — on the reference run a real conductor pair puts five of
+eight episodes over the old 5.0 ceiling, two at over twice it, and none of them
+is damage. check_episode.grade_damage's luma-entropy ratio carries the verdict
+now; this module's dE00 rides along as an advisory description of WHAT the
+grade did, read by check_episode._subject_delta_advisory and the QC judge.
 
 This replaces a hue-angle metric that could not see its own subject. Hue is
 invariant to exposure and saturation, which is what a grade moves, and the
@@ -24,8 +30,9 @@ def sample_deltas(pairs: list[tuple]) -> list[tuple[float, float, float, float]]
             for src, graded in pairs]
 
 
-def evaluate(pairs: list[tuple], delta_max: float) -> dict:
-    """The episode's verdict: the MEDIAN of its samples against `delta_max`.
+def evaluate(pairs: list[tuple]) -> dict:
+    """The episode's DESCRIPTION: the MEDIAN of its samples. Does not vote —
+    see the module docstring for why (design 2026-08-31 §3).
 
     Median, not worst: measured over the reference run and the damage magnitudes
     its retro recorded, the per-episode median separates (healthy 0.89-4.29,
@@ -40,17 +47,10 @@ def evaluate(pairs: list[tuple], delta_max: float) -> dict:
     rows = sample_deltas(pairs)
     comps = tuple(statistics.median(r[i] for r in rows) for i in (1, 2, 3))
     dominant = _COMPONENTS[max(range(3), key=lambda i: abs(comps[i]))]
-    # Round once, then judge the ROUNDED value against delta_max — not the raw
-    # median. `exceeded` must agree with the `delta_e` the report actually shows;
-    # comparing the unrounded median instead can flag a report that reads
-    # "delta_e: 11.07, threshold: 11.07, exceeded: true", which is a
-    # contradiction no reader can act on.
     de = round(statistics.median(r[0] for r in rows), 2)
     return {"delta_e": de,
             "delta_l": round(comps[0], 2),
             "delta_c": round(comps[1], 2),
             "delta_h": round(comps[2], 2),
-            "threshold": delta_max,
             "samples": len(rows),
-            "dominant": dominant,
-            "exceeded": de > delta_max}
+            "dominant": dominant}

@@ -4,7 +4,9 @@ import tempfile
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageStat
-from scripts.lib import assembly, checks as checks_mod, color_fidelity, ffbin, geometry, proc
+from scripts import reframe
+from scripts.lib import (assembly, checks as checks_mod, color, color_fidelity, ffbin,
+                         geometry, gradedamage, proc)
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify, travel_direction
 
@@ -104,27 +106,24 @@ def _last_sampleable_t(*clips: str) -> tuple[list[float], float]:
     return fpses, min(lasts)
 
 
-def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
-                     path_obj: CropPath, meta: PathMeta, spec: CheckSpec) -> CheckResult:
-    """Subject grade-delta, source vs graded (design 2026-08-28 §2, blocking as of §3).
+def _subject_delta_advisory(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
+                            path_obj: CropPath, meta: PathMeta) -> dict:
+    """The tracked subject's source-vs-graded dE00, as a DESCRIPTION (design
+    2026-08-31 §3). Same sampling as the old blocking color_fidelity gate; the
+    only change is that nothing votes on it any more.
 
     Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at the
     route bbox in source px) and in the graded `clip` (at the subject's projected
     location, via geometry.extent_at_times) at SAMPLE_FRACS of the route's span, and
-    delegate to the pure color_fidelity.evaluate for the median-dE00 verdict.
+    delegate to the pure color_fidelity.evaluate for the median-dE00 description.
 
     One decode per file, not one per sample: assembly.frames_rgb batches the whole
     set through a single select pass, so five samples cost two decodes where three
     used to cost six.
-
-    `passed` is False when the median dE00 exceeds CheckSpec.grade_delta_max —
-    the episode stops and escalates to edit-plan as `grade-damage`, because the
-    remedy is its colour block and no reframe parameter can reach it.
     """
     if source is None or not route_pts:
-        return CheckResult("color_fidelity", None,
-                           {"status": "not-checked",
-                            "reason": "no source clip or no tracked subject"})
+        return {"advisory_delta_e": True, "delta_e": None,
+                "delta_reason": "no source clip or no tracked subject"}
     ts = [p.t for p in route_pts]
     (s_fps, g_fps), last = _last_sampleable_t(source, clip)
     times = [min(ts[0] + (ts[-1] - ts[0]) * f, last) for f in SAMPLE_FRACS]
@@ -139,12 +138,48 @@ def _colour_fidelity(clip: str, source: str | None, route_pts: list[RoutePoint] 
                 round(p.x + p.w / 2), round(p.y + p.h / 2))
         gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
         pairs.append((_box_mean_rgb(sf, sbox), _box_mean_rgb(gf, gbox)))
-    d = color_fidelity.evaluate(pairs, spec.grade_delta_max)
-    # evaluate documents a {"status", "reason"} return for an empty pair list, which
-    # carries no "exceeded". Unreachable from here — the guard above requires route_pts
-    # and the loop always builds five pairs — but reading a key the callee says may be
-    # absent is a contract mismatch, not a safe assumption about today's caller.
-    return CheckResult("color_fidelity", None if "status" in d else not d["exceeded"], d)
+    d = color_fidelity.evaluate(pairs)
+    return {"advisory_delta_e": True, **d}
+
+
+def _grade_damage(clip: str, source: str | None,
+                  plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None",
+                  route_pts: list[RoutePoint] | None, path_obj: CropPath, meta: PathMeta,
+                  spec: CheckSpec) -> CheckResult:
+    """Does the DECLARED grade destroy information (design 2026-08-31 §3)?
+
+    Renders the same episode twice — once with its colour block, once with every
+    knob at identity — and compares the luma-histogram entropy of the two. Both
+    sides come from a render, never from the shipped clip: libx264 quantization
+    lowers entropy on its own and would bias the ratio toward false damage. The
+    consequence is explicit and paired: THIS sensor judges the declared map, and
+    check_reel's tone_match judges the delivered pixels.
+
+    `plans` is (graded, plain) and comes from process_episode, which owns the
+    attempt's own params — building the pair here from orch defaults would compare
+    two renders the episode never made. `None` reports not-checked and does not
+    block, exactly the shape `source` uses; a source-less episode reports the same
+    status but a different reason, so a reader can tell "nobody passed plans" from
+    "this episode has no pre-grade source clip".
+
+    The subject dE00 rides along as an ADVISORY description, not a verdict. It was
+    the verdict until 2026-08-31, and it could not tell a grade from damage: on the
+    reference run a real conductor pair puts five of eight episodes over the old
+    5.0 ceiling, two at over twice it, and none of them is damage (design §0.1).
+    """
+    if plans is None or source is None:
+        return CheckResult("grade_damage", None,
+                           {"status": "not-checked",
+                            "reason": "no render plans" if source else "no source clip"})
+    graded_plan, plain_plan = plans
+    times = color.sample_times(graded_plan.dur)
+    g_frames = reframe.plan_frames_rgb(graded_plan, source, times)
+    p_frames = reframe.plan_frames_rgb(plain_plan, source, times)
+    d = gradedamage.evaluate(plain=p_frames, graded=g_frames, floor=spec.entropy_floor)
+    d.update(_subject_delta_advisory(clip, source, route_pts, path_obj, meta))
+    if "status" in d:
+        return CheckResult("grade_damage", None, d)
+    return CheckResult("grade_damage", not d["below"], d)
 
 
 ROUTE_SMOOTH_S = 0.08     # the span over which a crop reversal becomes visible (~5 frames @60fps)
@@ -166,7 +201,8 @@ def _route_window(route: list[dict]) -> int:
 
 
 def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str,
-        source: str | None = None) -> Report:
+        source: str | None = None,
+        plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None" = None) -> Report:
     """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
     rest of this function branches on, before anything asks for a route at all.
 
@@ -175,10 +211,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     `fill`. Under fit it returns the canvas-aspect width, and on_line then
     divides by a width that was never cut.
 
-    `source` (the pre-grade segment) feeds the color_fidelity check only — None
-    (the default) reports that check `not-checked` (non-blocking, `passed` stays
-    None) and changes nothing else; process_episode passes the reframe input
-    segment here, which is what makes the check blocking in practice.
+    `source` (the pre-grade segment) and `plans` (the (graded, plain) RenderPlan
+    pair) both feed the grade_damage check only — either absent (the default)
+    reports that check `not-checked` (non-blocking, `passed` stays None) and
+    changes nothing else; process_episode passes the reframe input segment as
+    `source` and builds `plans` from the same manifest, which is what makes the
+    check blocking in practice (design 2026-08-31 §3).
     """
     path = CropPath.from_json(path_path).xs
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
@@ -282,7 +320,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
     bf = _black_frames_check(clip, black_floor=spec.black_floor, black_rel=spec.black_rel)
     checks["black_frames"] = CheckResult("black_frames", bf["pass"], {k: v for k, v in bf.items() if k != "pass"})
-    checks["color_fidelity"] = _colour_fidelity(clip, source, route_pts, path_obj, meta, spec)
+    checks["grade_damage"] = _grade_damage(clip, source, plans, route_pts, path_obj, meta, spec)
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
     checks["horizon"] = CheckResult("horizon", None, {"status": "not-implemented"})
     checks["head_power_point"] = CheckResult("head_power_point", None, {"status": "not-implemented"})

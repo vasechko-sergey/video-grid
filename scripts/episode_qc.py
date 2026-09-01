@@ -74,7 +74,8 @@ def _source_reading(ep, graded: dict) -> dict:
     absent, never as a clean reading, the same rule the rest of _evidence applies to
     the sidecars.
 
-    NOT the same baseline check_episode's color_fidelity uses on a STABILIZED episode:
+    NOT the same baseline check_episode's grade_damage (subject dE00 advisory) uses on
+    a STABILIZED episode:
     that one compares against the file reframe actually consumed
     (<project_dir>/stabilized.mp4), this always reads ep.manifest["segment"], the raw
     one. So on a stabilized episode the two colour sensors describe changes from two
