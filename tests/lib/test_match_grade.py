@@ -201,18 +201,21 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
     mood preset and displaces the common target (design 2026-08-17 §1) INSIDE conduct() —
     which reassigns its one local `target` from matchgrade.biased_target, so both
     consumers (the per-episode tone_dst plan() authors, and the EDL.tone_target this
-    stamps) read that same variable and cannot diverge today. But check_reel's tone_match
-    gate (design 2026-08-30 §5) compares every delivered episode's PIXELS against
-    EDL.tone_target/ReelManifest.tone_target — so if a future refactor ever let the raw
-    median reach that stamp on a mood-biased reel while the render still graded toward
-    the biased value, the gate's premise (a graded episode lands ON the target by
-    construction) would break for every episode on the reel, not just this one field.
+    stamps) read that same variable and cannot diverge today. check_reel's blocking
+    gate no longer compares against this stamp at all (design 2026-08-31 renamed it
+    grade_faithful and moved its reference to each episode's own predicted chain) —
+    but the advisory `target_dev` it still reports (§2.1) reads every BOUND episode's
+    PIXELS against EDL.tone_target/ReelManifest.tone_target, so if a future refactor
+    ever let the raw median reach that stamp on a mood-biased reel while the render
+    still graded toward the biased value, that advisory reading would silently claim
+    every episode on the reel agrees with a target it was never graded toward, not
+    just this one field.
 
     Profiles + preset (moody: -18/-16/-8, and moody never scales — biased_target's own
     docstring says so because it pulls inward) are the SAME ones
     test_conduct_with_a_mood_displaces_the_target already uses one level down; picked so
-    the median and the biased target differ by MORE than ReelCheckSpec.tone_match_max —
-    discriminating the gate's premise, not float noise."""
+    the median and the biased target differ by MORE than ReelCheckSpec.grade_residual_max —
+    discriminating the advisory reading's premise, not float noise."""
     monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     spec_path = tmp_path / "SPEC.json"
@@ -227,7 +230,7 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
     biased, k = matchgrade.biased_target(median, bias)
     assert k == 1.0                                          # the full bias survived, nothing scaled away
     worst = max(abs(a - b) for a, b in zip(median, biased))
-    assert worst > ReelCheckSpec(target_dur=1.0).tone_match_max    # > 12.0, or this proves nothing
+    assert worst > ReelCheckSpec(target_dur=1.0).grade_residual_max    # > 4.0, or this proves nothing
 
     status = match_grade.write_match(geometry_path, spec=str(spec_path))
 

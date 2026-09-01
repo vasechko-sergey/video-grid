@@ -58,9 +58,10 @@ def _percentiles_from_gray(raw: bytes, want: int, w: int, h: int,
 def clip_percentiles(clip: str, times: list[float]) -> tuple[float, float, float]:
     """The ruler over a FINISHED file, one span at a time — no crop, no manifest.
 
-    NOT a production path any more: since Task 6's fix round check_reel's tone_match
-    reads the master through clip_percentiles_batch, which decodes once for every
-    episode instead of once per episode. What is left is the single-span primitive —
+    NOT a production path any more: since Task 6's fix round check_reel's grade_faithful
+    check (named tone_match before design 2026-08-31) reads the master through
+    clip_percentiles_batch, which decodes once for every episode instead of once per
+    episode. What is left is the single-span primitive —
     the independently-trusted reading that batch is checked AGAINST
     (test_clip_percentiles_batch_matches_the_per_span_calls), and the one-liner a proof or a
     hand measurement reaches for when it wants one clip's profile. It is deliberately
@@ -79,7 +80,8 @@ def clip_percentiles_batch(clip: str, spans: list[list[float]]) -> list[tuple[fl
     """(p5, p50, p95) luma for EACH span in `spans`, from ONE decode of `clip` (design
     2026-08-30 Task 6 fix round 1, minor 1).
 
-    check_reel's tone_match gate used to call clip_percentiles once per bound episode;
+    check_reel's grade_faithful gate (named tone_match before design 2026-08-31) used to
+    call clip_percentiles once per bound episode;
     each call re-decodes `clip` from t=0 (no -ss, per §12) through only THAT episode's
     own last sample — so summed over N episodes the master is decoded roughly N/2 times
     over (episode 0 decodes a little of it, episode N-1 decodes almost all of it).

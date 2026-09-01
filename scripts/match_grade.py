@@ -5,7 +5,8 @@ tone_src/tone_dst into the episodes that deviate — so the reel reads as one gr
 GEOMETRY.json (edl_to_reel --stop-after-geometry's output) + the EDL it names, writes the
 EDL back enriched + a MATCH.md report. REQUIRED since design 2026-08-30 §6, not opt-in:
 the router runs it on every reel, because a reel it skips is a reel nothing measured —
-check_reel's blocking tone_match reports not-checked without the target this stamps.
+check_reel's blocking grade_faithful (named tone_match before design 2026-08-31) reads
+its advisory target_dev against the target this stamps.
 matchgrade owns the decisions; this driver owns the ffmpeg measuring
 (color_measure.measure_crop) and the EDL IO. Mirror of pacing.py: pure core in lib, driver
 here."""

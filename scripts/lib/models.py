@@ -1078,11 +1078,14 @@ class ReelCheckSpec:
     layout_jump_max: float = 0.6       # advisory: max layout-jump score across a cut before transitions flags
     length_retime_max: float = 1.0     # max shortfall (target − dur) build_reel absorbs by
                                        # re-timing the target to the reel's real length (§3)
-    tone_match_max: float = 12.0       # max per-anchor luma distance from the reel's
-                                       # common tone target an episode may land at.
-                                       # Measured (design 2026-08-30 §0.6) mid-gap
-                                       # between a healthy maximum of 8.0 and an
-                                       # ungraded minimum of 19.5, both on one shoot.
+    grade_residual_max: float = 4.0    # max per-anchor luma distance between an
+                                       # episode's delivered profile and what its own
+                                       # DECLARED chain predicts. Measured (design
+                                       # 2026-08-31 §0.5). Replaces tone_match_max,
+                                       # whose reference — the reel's common target,
+                                       # solved with every other knob at identity —
+                                       # was displaced by any post-tone luma knob and
+                                       # so failed correctly graded episodes (§0.2).
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -1104,9 +1107,9 @@ class ReelCheckSpec:
         if not isinstance(self.length_retime_max, (int, float)) or self.length_retime_max <= 0:
             raise ValueError(f"ReelCheckSpec.length_retime_max must be a positive number of "
                              f"seconds, got {self.length_retime_max!r}")
-        if not isinstance(self.tone_match_max, (int, float)) or self.tone_match_max <= 0:
-            raise ValueError(f"ReelCheckSpec.tone_match_max must be a positive number of "
-                             f"luma units, got {self.tone_match_max!r}")
+        if not isinstance(self.grade_residual_max, (int, float)) or self.grade_residual_max <= 0:
+            raise ValueError(f"ReelCheckSpec.grade_residual_max must be a positive number of "
+                             f"luma units, got {self.grade_residual_max!r}")
 
 
 @dataclass
@@ -1534,7 +1537,7 @@ class ReelManifest:
                                        # reel's common tone, measured on the tracked
                                        # crop (design 2026-08-30 §2). None = never
                                        # measured; travels separately from
-                                       # check_spec's tone_match_max, which is a
+                                       # check_spec's grade_residual_max, which is a
                                        # threshold and not data about this reel.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 

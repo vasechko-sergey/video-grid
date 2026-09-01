@@ -153,7 +153,7 @@ def _grade_damage(clip: str, source: str | None,
     sides come from a render, never from the shipped clip: libx264 quantization
     lowers entropy on its own and would bias the ratio toward false damage. The
     consequence is explicit and paired: THIS sensor judges the declared map, and
-    check_reel's tone_match judges the delivered pixels.
+    check_reel's grade_faithful judges the delivered pixels.
 
     `plans` is (graded, plain) and comes from process_episode, which owns the
     attempt's own params — building the pair here from orch defaults would compare

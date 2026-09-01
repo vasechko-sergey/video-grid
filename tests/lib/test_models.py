@@ -1388,16 +1388,21 @@ def test_reel_check_spec_length_retime_max_rejects_non_number():
         ReelCheckSpec(target_dur=12.0, length_retime_max="1.0")
 
 
-# --- grade-shipped-pixels Task 1: the convergence gate's ceiling
-# (design docs/specs/2026-08-30-grade-shipped-pixels-design.md §0.6) ---
+# --- grade-sensor-references Task 6: grade_faithful's reference (design
+# docs/specs/2026-08-31-grade-sensor-references-design.md §0.5, §2). Replaces the old
+# tone_match_max — the common-target reference it measured a ceiling for is gone. ---
 
-def test_reel_check_spec_tone_match_max_defaults_to_12():
-    assert ReelCheckSpec(target_dur=10.0).tone_match_max == 12.0
+def test_reel_check_spec_no_longer_carries_tone_match_max():
+    assert not hasattr(ReelCheckSpec(target_dur=10.0), "tone_match_max")
 
 
-def test_reel_check_spec_refuses_a_non_positive_tone_match_max():
-    with pytest.raises(ValueError, match="tone_match_max"):
-        ReelCheckSpec(target_dur=10.0, tone_match_max=0.0)
+def test_reel_check_spec_grade_residual_max_defaults_to_the_measured_value():
+    assert ReelCheckSpec(target_dur=10.0).grade_residual_max == 4.0   # <- design §0.5
+
+
+def test_reel_check_spec_refuses_a_non_positive_grade_residual_max():
+    with pytest.raises(ValueError, match="grade_residual_max"):
+        ReelCheckSpec(target_dur=10.0, grade_residual_max=0.0)
 
 
 # --- PanSpec (design 2026-07-19): two fractions of horizontal freedom, not a layout ---

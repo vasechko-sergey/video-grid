@@ -142,129 +142,107 @@ def _loudness_check(measured: float, spec: ReelCheckSpec) -> tuple[CheckResult, 
     return CheckResult("loudness", ok, detail), fail
 
 
-def _tone_match_check(master: str, durations: list[float], cuts: list[float],
-                      spec: ReelCheckSpec, tone_target: tuple[float, float, float] | None,
-                      tone_dsts: list | None) -> tuple[CheckResult, ReelFailure | None]:
-    """TONE_MATCH — did the declared grade reach the pixels (design 2026-08-30 §5)?
+def _grade_faithful_check(master: str, durations: list[float], cuts: list[float],
+                          spec: ReelCheckSpec, predicted: list | None,
+                          tone_target: tuple[float, float, float] | None,
+                          tone_dsts: list | None) -> tuple[CheckResult, ReelFailure | None]:
+    """GRADE_FAITHFUL — did the delivered pixels get the declaration (design
+    2026-08-31 §2)?
 
-    BLOCKING, and cheap to justify — ON ONE CONDITION, which the pipeline does not
-    guarantee. Percentiles commute with a monotone map and color.tone_arg builds one,
-    so a graded episode's delivered p5/p50/p95 land ON the target by construction
-    PROVIDED the tone curve is the LAST luma operation in its chain. In general it is
-    not: color.grade_chain's order is wb -> tone -> black_point -> gain -> shadow_red
-    -> mid_blue -> saturation -> highlight -> highlight_red -> dip, and the conductor
-    solves the curve against color_measure.measure_crop, which reads through
-    manifest.strip_colour — every knob at identity. So any POST-tone knob that moves
-    luma displaces the very reading this gate takes: black_point, a non-default
-    color_means (the mixer), shadow_red, mid_blue, highlight, highlight_red and dip.
-    Two do not: white_balance runs BEFORE tone (and the measurement carries it), and
-    saturation is an eq= chroma scale that leaves the luma plane alone.
+    BLOCKING, and now unconditionally justified. The old reference was the reel's
+    common tone target, and the justification was that percentiles commute with a
+    monotone map — true, and irrelevant: it holds only while the tone curve is the
+    LAST luma operation, and six luma-moving filters follow it in
+    color.grade_chain. Measured (§0.2) on the reference run, all eight episodes
+    carry a post-tone knob, the knobs displace the reading by up to 4.0 units and
+    one of eight crossed the old 12.0 ceiling while being correctly graded.
 
-    Measured (design 2026-08-30 §9.9) on a 3-band tv-range clip, ungraded 40/120/200
-    onto target 52/103.5/191.5: tone alone lands 1.5 off; tone + black_point=0.05
-    lands 12.0; tone + black_point=0.10 lands 25.0; tone + highlight=0.8 lands 19.5.
-    black_point in [0, 0.35] and highlight in [0.6, 1.0] are documented, in-range,
-    per-episode knobs, so a CORRECTLY graded episode carrying one can fail this gate,
-    and at black_point=0.10 the residual is past the negative class's own minimum —
-    the gate cannot then tell "the grade never reached the pixels" from "the author
-    lifted a toe". It escalates to match-grade, which re-measures at identity and
-    re-authors the identical pair: a second no-exit loop, the same shape as §9.8's
-    but by a different mechanism. Filed P1 in docs/backlog.md; the open design
-    question is whether the residual should be measured THROUGH the non-tone part of
-    the chain, or whether post-tone knobs should be excluded from it.
+    `predicted[i]` is the (p5, p50, p95) that episode i's OWN full declared chain
+    produces, rendered fresh by the caller. Fresh, never recorded at render time: a
+    recorded prediction goes stale the moment build_reel's retry loop re-renders an
+    episode, and a stale binding is this repo's most repeated wound.
 
-    A large residual is therefore something really broken — a stale target, a colour
-    block dropped between authoring and render — OR a second luma knob beside the
-    tone pair, and nothing in this check separates the two. Measured (§0.6), on
-    episodes graded by tone ALONE: the healthy maximum is 8.0 and the broken minimum
-    19.5, and tone_match_max = 12.0 sits mid-gap.
+    Every episode is judged, not only the ones bound to a common target —
+    faithfulness is a property of any declaration, including an empty one. An
+    episode whose prediction could not be built is NAMED in `not_checked`, never
+    silently passed.
+
+    `target_dev` is ADVISORY: max|prediction - target| for bound episodes, i.e. does
+    the declared grade actually land this episode on the reel's common tone. It
+    carries two jobs the blocking reading gives up — a reference independent of
+    process_episode.build_reframe_spec, which the prediction now shares with the
+    render, and the only remaining measure of cross-episode agreement. It is not a
+    gate because making it one re-opens the deadlock from the other side (§2.1).
 
     Read off the MASTER, not the delivered reel: the look's vignette and the bookend
-    fade ride deliver's one encode and both move percentiles, so the master is the
-    last artifact whose pixels are the episodes'. `cuts` already holds every internal
-    boundary, so each episode's span costs nothing new. Every BOUND episode's span is
-    measured in ONE clip_percentiles_batch call (fix round 1, minor 1) rather than one
-    clip_percentiles call per episode — each of those re-decoded the master from t=0
-    through only its own episode, so N episodes cost roughly N/2 full-master decodes
-    summed; one batched decode costs one, regardless of N.
+    fade ride deliver's one encode and both move percentiles. Every span is measured
+    in ONE clip_percentiles_batch call.
 
-    Only episodes BOUND to the reel's common target are judged; the rest are NAMED,
-    never silently passed. The two absences are different facts and carry different
-    keys, so a reader never has to type-sniff: a reel that was never conducted reports
-    `status: not-checked` with `reason: "no-target"` at the top level (its `remedy`
-    names how many episodes already carry a tone_dst regardless, per fix round 1
-    minor 2 — a reel graded before tone_target existed must not read as ungraded),
-    while `not_checked` — present whenever a target exists — is ALWAYS a {episode
-    index: reason} map. "not-bound" is one label for all three of the conductor's skip
-    reasons (flat-source / within-eps / hand-authored) because the manifest cannot
-    tell them apart; MATCH.md is where the conductor records which it was.
-
-    Escalates to match-grade, and escalates for free: reel_orchestration's
-    _REPROCESS_CLASS is ("black",), so every non-black reel failure already escalates
-    rather than re-rendering — no reframe knob moves a colour."""
-    if tone_target is None:
-        graded = sum(1 for d in (tone_dsts or []) if d is not None)
-        remedy = ("this reel declares no common tone target — run match-grade to "
-                  "author one, or ship it ungraded (absence is not tampering)")
-        if graded:
-            # fix round 1, minor 2: an EDL graded before tone_target existed (or one
-            # match-grade never touched but a human hand-authored per-episode pairs
-            # onto) must not read as plain "ungraded" — the remedy above is still
-            # correct (there is genuinely no reel-wide target to compare against), but
-            # silently saying nothing about it would hide that these episodes ARE
-            # graded from the one place a reader looks when a reel looks washed out.
-            remedy += (f"; {graded}/{len(durations)} episode(s) already carry a "
-                      "tone_dst pair, so this reel IS graded — match-grade just never "
-                      "stamped the reel-wide target this check compares against")
-        return CheckResult("tone_match", None, {
-            "status": "not-checked", "reason": "no-target", "remedy": remedy}), None
-    if tone_dsts is None or len(tone_dsts) != len(durations):
+    Escalates to process-episode — the pixels did not get the declaration, so the
+    remedy is a re-render, not a re-authoring — and escalates for free:
+    reel_orchestration._REPROCESS_CLASS is ("black",)."""
+    if predicted is None:
+        return CheckResult("grade_faithful", None, {
+            "status": "not-checked", "reason": "no-predictions",
+            "remedy": "check_reel was called without per-episode predictions; "
+                      "build_reel supplies them, and the CLI cannot (it has no "
+                      "manifests to plan from)"}), None
+    if len(predicted) != len(durations):
         raise ValueError(
-            f"check_reel: tone_target {list(tone_target)} was supplied with "
-            f"{'no' if tone_dsts is None else len(tone_dsts)} per-episode tone_dst "
-            f"values for {len(durations)} episodes — they are parallel lists; pass "
-            "[e.manifest.get('tone_dst') for e in rm.episodes] (build_reel does), or "
-            "pass no tone_target at all to report the check not-checked")
+            f"check_reel: predicted carries {len(predicted)} profiles for "
+            f"{len(durations)} episodes — they are parallel lists; build_reel "
+            f"builds one per episode, None where a plan could not be made")
     starts = [0.0] + cuts
     not_checked: dict[str, str] = {}
-    bound_idx: list[int] = []
-    bound_spans: list[list[float]] = []
-    for i, (st, dur, dst) in enumerate(zip(starts, durations, tone_dsts)):
-        if not _same_target(dst, tone_target):
-            not_checked[str(i)] = "not-bound"
+    idx: list[int] = []
+    spans: list[list[float]] = []
+    for i, (st, dur, p) in enumerate(zip(starts, durations, predicted)):
+        if p is None:
+            not_checked[str(i)] = "no-prediction"
             continue
-        bound_idx.append(i)
-        bound_spans.append([st + t for t in color.sample_times(dur)])
+        idx.append(i)
+        spans.append([st + t for t in color.sample_times(dur)])
     residuals: dict[str, float] = {}
     worst, worst_i = 0.0, None
-    if bound_spans:
-        got_profiles = color_measure.clip_percentiles_batch(master, bound_spans)
-        for i, got in zip(bound_idx, got_profiles):
-            d = max(abs(a - b) for a, b in zip(got, tone_target))
-            # fix round 1, minor 3: 2 decimals, not 1 — a worst of 12.04 against a
-            # 12.0 max must still fail, and a reader must be able to see WHY from the
-            # report alone instead of a residual that rounds to look identical to the
-            # ceiling it just missed. _loudness_check already rounds to 2; length to 3.
+    if spans:
+        got_profiles = color_measure.clip_percentiles_batch(master, spans)
+        for i, got in zip(idx, got_profiles):
+            d = max(abs(a - b) for a, b in zip(got, predicted[i]))
+            # 2 decimals, not 1 — a worst of 4.04 against a 4.0 max must still fail,
+            # and a reader must be able to see WHY from the report alone instead of a
+            # residual that rounds to look identical to the ceiling it just missed.
+            # _loudness_check already rounds to 2; length to 3.
             residuals[str(i)] = round(d, 2)
             if d > worst:
                 worst, worst_i = d, i
-    detail = {"target": list(tone_target), "residuals": residuals,
-              "not_checked": not_checked, "max": spec.tone_match_max}
+    # target_dev: ADVISORY agreement-with-the-common-target, for BOUND episodes only
+    # (design §2.1). Uses the same _same_target/_TONE_BIND_EPS identity test the old
+    # gate used to decide bound-ness — that part of the shape survives; only its
+    # consequence (a gate) does not.
+    target_dev: dict[str, float] = {}
+    if tone_target is not None:
+        dsts = tone_dsts or [None] * len(predicted)
+        for i, p in enumerate(predicted):
+            if p is not None and _same_target(dsts[i], tone_target):
+                target_dev[str(i)] = round(max(abs(a - b) for a, b in zip(p, tone_target)), 2)
+    detail = {"residuals": residuals, "not_checked": not_checked,
+              "max": spec.grade_residual_max,
+              "target_dev": target_dev, "target_dev_advisory": True}
     if not residuals:
-        # A target exists but nothing is bound to it — the reel where the conductor
-        # skipped every episode. passed=True here would be a green tick for having
-        # examined nothing, the same vacuous shape the all-pan safe_zones branch
-        # refuses to fall through to. Say so instead.
-        return CheckResult("tone_match", None, {
-            **detail, "status": "not-checked", "reason": "no-episode-bound",
-            "remedy": "no episode carries this reel's common target — read MATCH.md "
-                      "for why the conductor skipped each one"}), None
-    ok = worst <= spec.tone_match_max
+        # Every episode's prediction failed to build — the check examined nothing.
+        # passed=True here would be a green tick for having looked at zero pixels,
+        # the same vacuous shape the all-pan safe_zones branch refuses to fall
+        # through to. Say so instead.
+        return CheckResult("grade_faithful", None, {
+            **detail, "status": "not-checked", "reason": "no-episode-predicted",
+            "remedy": "no episode could be planned — read the per-episode reasons "
+                      "in not_checked"}), None
+    ok = worst <= spec.grade_residual_max
     detail["worst"] = round(worst, 2)
-    fail = None if ok else ReelFailure("tone_match", "match-grade", worst_i,
+    fail = None if ok else ReelFailure("grade_faithful", "process-episode", worst_i,
                                        {"residual": round(worst, 2),
-                                        "max": spec.tone_match_max})
-    return CheckResult("tone_match", ok, detail), fail
+                                        "max": spec.grade_residual_max})
+    return CheckResult("grade_faithful", ok, detail), fail
 
 
 def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> CheckResult:
@@ -282,6 +260,7 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         music: MusicSpec | None = None, audio: str | None = None,
         geometry: list[tuple[str, str, str]] | None = None, platform: str = "",
         outro: dict | None = None,
+        predicted: list | None = None,
         tone_target: tuple[float, float, float] | None = None,
         tone_dsts: list | None = None) -> ReelReport:
     t0 = time.monotonic()
@@ -322,8 +301,9 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         checks["variety"] = CheckResult("variety", None,
                                         {"status": "n/a", "reason": "single episode"})
 
-    cr, fail = _tone_match_check(master, durations, cuts, spec, tone_target, tone_dsts)
-    checks["tone_match"] = cr
+    cr, fail = _grade_faithful_check(master, durations, cuts, spec, predicted,
+                                     tone_target, tone_dsts)
+    checks["grade_faithful"] = cr
     if fail is not None:
         fails.append(fail)
 
