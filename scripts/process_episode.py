@@ -57,6 +57,32 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
                        zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None)
 
 
+def plan_for(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
+    """The RenderPlan this manifest would render — the ONE manifest -> plan map.
+
+    Lives here because build_reframe_spec does, and its docstring already names the
+    risk this function exists to remove: a caller carrying its own copy of the map
+    drifts field by field. Two callers used to have one each (color_measure's
+    stripped variant and probe's graded one) and check_episode now needs a third.
+
+    Params come from orch.DEFAULT_PARAMS: this builds a plan from a manifest alone,
+    which is what a probe, a measurement and a check all want. The retry loop below
+    does NOT come through here — it carries the attempt's own adjusted params, and
+    reading defaults there would silently probe a different render than it ships."""
+    m = manifest_lib.Manifest.from_dict(manifest_dict)
+    params = dict(orch.DEFAULT_PARAMS)
+    if m.smooth_window_s is not None:
+        params["smooth_window_s"] = m.smooth_window_s
+    spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
+    return reframe.plan_render(spec, src, route)
+
+
+def plan_ungraded(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
+    """`plan_for` with every colour knob at identity — the render a measurement reads
+    through, and the plain half of the damage sensor's pair."""
+    return plan_for(manifest_lib.strip_colour(manifest_dict), src, route)
+
+
 def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")

@@ -5,9 +5,6 @@ import argparse
 import numpy as np
 from scripts import process_episode, reframe
 from scripts.lib import assembly, color, ffbin, proc
-from scripts.lib import manifest as manifest_lib
-from scripts.lib import orchestration as orch
-from scripts.lib.models import Delivery
 
 
 def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, float]:
@@ -156,25 +153,6 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
                                   f"crop_percentiles({src})")
 
 
-def plan_ungraded(manifest_dict: dict, src: str,
-                  route: str | None) -> "reframe.RenderPlan":
-    """The render this episode would get with NO grade — the plan a measurement
-    reads through.
-
-    One caller: measure_crop, directly below. `probe` does NOT come through here,
-    though an earlier draft of this docstring said it did — it builds its own plan in
-    `probe._plan_for`, from the manifest the CALLER handed it, precisely because a
-    probe is usually showing a grade rather than stripping one. The two share
-    process_episode.build_reframe_spec, which is the piece that must not be copied;
-    the strip is what differs, and it belongs on this side of the split."""
-    m = manifest_lib.Manifest.from_dict(manifest_lib.strip_colour(manifest_dict))
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
-    spec = process_episode.build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
-    return reframe.plan_render(spec, src, route)
-
-
 def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
                  frames: int = color.FRAMES) -> tuple[float, float, float]:
     """(p5, p50, p95) of the episode's own tracked crop, ungraded — the reading
@@ -184,7 +162,7 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
     midpoint, which is what match_grade read before this: seven of eight real
     episodes differ by more than matchgrade.MATCH_EPS, median 14 and max 36 luma
     units. Costs 0.65s per episode."""
-    plan = plan_ungraded(manifest_dict, src, route)
+    plan = process_episode.plan_ungraded(manifest_dict, src, route)
     return crop_percentiles(plan, src, color.sample_times(plan.dur, frames))
 
 

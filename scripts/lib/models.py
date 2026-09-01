@@ -1425,11 +1425,12 @@ class EpisodeGeometry:
         dirs in that window wipes them, while GEOMETRY.json survives next door in
         `episodes/`. Every consumer of this file then opens `source` with ffprobe —
         `match_grade.conduct` through measure_crop, `probe.probe_grade_geometry`
-        through _plan_for — and without this dies inside `reframe._probe` with a bare
-        CalledProcessError carrying no remedy. `edl_to_reel._refuse_on_missing_inputs`
-        already answers exactly this condition for the RENDER, as a routed
-        stop_and_report over every episode at once; these two callers act on one
-        episode and have no finding channel, so the same fact is raised here.
+        through `process_episode.plan_for` — and without this dies inside
+        `reframe._probe` with a bare CalledProcessError carrying no remedy.
+        `edl_to_reel._refuse_on_missing_inputs` already answers exactly this
+        condition for the RENDER, as a routed stop_and_report over every episode at
+        once; these two callers act on one episode and have no finding channel, so
+        the same fact is raised here.
         """
         for path, what in ((self.source, "the source reframe would consume"),
                            (self.route, "the frozen route")):

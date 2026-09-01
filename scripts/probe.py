@@ -22,10 +22,10 @@ from PIL import Image
 
 from scripts import color_measure, process_episode, reframe
 from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
-                         naturalness, orchestration as orch, proc, provenance, sheet)
+                         naturalness, proc, provenance, sheet)
 from scripts.lib.edl import EDL
-from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS, Manifest
-from scripts.lib.models import CropPath, Delivery, PathMeta, ReelGeometry, ReelManifest
+from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS
+from scripts.lib.models import CropPath, PathMeta, ReelGeometry, ReelManifest
 
 # FRAMES/sample_times live in color (scripts/lib/color.py) now (design
 # 2026-08-31 grade-sensor-references §6) — check_episode needs them and cannot
@@ -155,22 +155,6 @@ def _refuse_on_drift(plan: reframe.RenderPlan, path_json: str, meta_json: str) -
             f"show a frame this episode never produced. Re-render it first")
 
 
-def _plan_for(md: dict, src: str, route: str | None) -> reframe.RenderPlan:
-    """The RenderPlan for `md` — graded or stripped, whichever the caller handed in.
-
-    Shared by probe_grade and probe_grade_geometry so the Manifest -> ReframeSpec ->
-    RenderPlan chain is written once: build_reframe_spec's own docstring names exactly
-    this risk ("a probe carrying its own copy of this mapping would drift field by
-    field"), and two copies of the chain ONE LEVEL UP is the same risk again.
-    """
-    m = Manifest.from_dict(md)
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
-    spec = process_episode.build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
-    return reframe.plan_render(spec, src, route)
-
-
 def _render(plan: reframe.RenderPlan, src: str, times: list[float],
             out_dir: Path) -> list[np.ndarray]:
     """The probe's sink: the plan's own chain plus a select, straight to PNG.
@@ -220,7 +204,7 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     if edl_path is not None:
         md = regrade(md, edl_path, index)
     src = source_for(md, epdir)
-    plan = _plan_for(md, src, ep.route)
+    plan = process_episode.plan_for(md, src, ep.route)
     _refuse_on_drift(plan, ep.path, ep.meta)
 
     d = Path(out_dir) if out_dir is not None else epdir / "probe"
@@ -272,9 +256,9 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     rather than `source_for`'s filename inference, which has nothing on disk to infer
     from before process_episode has ever run this episode.
 
-    A pan episode (`eg.route is None`) is not special-cased: `_plan_for` generates its
-    path exactly as a real render would (design 2026-08-30 plan, Task 4 proved this
-    with real ffmpeg against `measure_crop`).
+    A pan episode (`eg.route is None`) is not special-cased: `process_episode.plan_for`
+    generates its path exactly as a real render would (design 2026-08-30 plan, Task 4
+    proved this with real ffmpeg against `measure_crop`).
     """
     if not isinstance(frames, int) or isinstance(frames, bool) or frames < 1:
         raise ValueError(f"probe: frames must be an integer >= 1, got {frames!r}")
@@ -286,13 +270,13 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
                          f"({geo.edl}) — pick an index in [0, {len(geo.episodes)})")
     eg = geo.episodes[index]
     md = regrade(dict(eg.manifest), geo.edl, index)
-    # _plan_for probes eg.source; source_for's own FileNotFoundError has no reach here
-    # (nothing is inferred from a filename in geometry mode), so the same condition is
-    # refused with the same remedy before any ffprobe (whole-branch review, minor 5).
-    # AFTER regrade: a tampered EDL is the more specific complaint of the two, and
-    # answering "your file is missing" to it would send the reader to the wrong place.
+    # process_episode.plan_for probes eg.source; source_for's own FileNotFoundError has
+    # no reach here (nothing is inferred from a filename in geometry mode), so the same
+    # condition is refused with the same remedy before any ffprobe (whole-branch review,
+    # minor 5). AFTER regrade: a tampered EDL is the more specific complaint of the two,
+    # and answering "your file is missing" to it would send the reader to the wrong place.
     eg.require_inputs(index)
-    plan = _plan_for(md, eg.source, eg.route)
+    plan = process_episode.plan_for(md, eg.source, eg.route)
 
     d = Path(out_dir) if out_dir is not None else Path(eg.project_dir) / "probe"
     times = color.sample_times(plan.dur, frames)
