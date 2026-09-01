@@ -147,9 +147,24 @@ def _selection_json(tmp_path, source):
 
 def _project_json(tmp_path):
     # small + fast delivery, like test_ramp.py's Task 8 fixture (long_edge:240 on a
-    # 640x360 source keeps deliver's one real x264 encode quick)
+    # 640x360 source keeps deliver's one real x264 encode quick).
+    #
+    # canvas = the SOURCE's own aspect (was [1080, 1920], a 9:16 "reel" canvas), to
+    # agree with what `_fake_track_pe` actually delivers. `_fake_track_pe` skips
+    # reframe entirely — a plain `-c:v copy`, no crop — and its own path.meta.json
+    # already says so honestly (`"canvas": [W, H]`, matching src_dims, not the
+    # project's declared 9:16). A 9:16 project canvas left the two disagreeing: the
+    # MANIFEST (which is what a real reframe, and now `build_reel._predict`, reads)
+    # still declared a 9:16 crop nobody rendered. Nothing noticed until design
+    # 2026-08-31 Task 7 wired `check_reel.grade_faithful` to predict each episode
+    # fresh from that same declaration — nothing here was mis-cropped, the
+    # declaration was always a fiction this fixture's fake never enacted, and nothing
+    # before Task 7 ever compared the two. `grade_faithful` correctly refused it
+    # (episode 1's tracked-box window sits inside the fictional crop's centre column,
+    # residual 222 against a 4.0 ceiling). Matching canvas to source, like the
+    # sidecar already does, removes the crop this fixture never actually took.
     p = tmp_path / "project.json"
-    p.write_text(json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "long_edge:240"}))
+    p.write_text(json.dumps({"purpose": "reel", "canvas": [W, H], "delivery": "long_edge:240"}))
     return str(p)
 
 
