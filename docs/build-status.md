@@ -84,8 +84,9 @@ _Last updated: 2026-09-02._
   plan's own instruction and found to now discriminate); and one row —
   `gradedamage.ENTROPY_BINS` — was found to be mathematically inert (consumed
   only as `np.bincount`'s `minlength`, which the very next line's zero-count
-  filter makes unobservable for any input whatsoever) and reported as an
-  honest open finding rather than forced closed. **Full suite: 3392 passed, 1
+  filter makes unobservable for any input whatsoever); reported first, then
+  deleted in Task 10's own fix round 1 rather than left as a footgun beside a
+  design comment that reads as endorsing a knob. **Full suite: 3392 passed, 1
   skipped** (3389 + 3 new tests: the clip's `.clip(0, 255)` guard, the exact-
   byte-vs-modulo size check, and `plan_for` honouring an authored
   `smooth_window_s` — each a real coverage hole the battery found and closed).

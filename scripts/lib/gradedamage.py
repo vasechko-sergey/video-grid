@@ -26,9 +26,6 @@ import statistics
 
 import numpy as np
 
-ENTROPY_BINS = 256      # one bin per 8-bit code. Coarsening to 64 was measured and
-                        # makes the two classes overlap (design §0.3).
-
 
 def _luma(frame: np.ndarray) -> np.ndarray:
     """The rounded, clipped 8-bit luma plane of one HxWx3 uint8 RGB frame — the
@@ -48,8 +45,20 @@ def _luma(frame: np.ndarray) -> np.ndarray:
 
 
 def entropy(frame: np.ndarray) -> float:
-    """Shannon entropy in bits of one HxWx3 uint8 RGB frame's luma histogram."""
-    counts = np.bincount(_luma(frame).ravel(), minlength=ENTROPY_BINS)
+    """Shannon entropy in bits of one HxWx3 uint8 RGB frame's luma histogram.
+
+    Computed directly over the 8-bit code alphabet `_luma` already returns —
+    `np.bincount` sizes its own output to the data, so no bin count is threaded
+    through here. Design §0.3's comparison against a genuine 64-bin coarsening
+    (measured there to make the legitimate and damaging classes overlap) was an
+    offline survey over an independently rebucketed histogram; this module
+    never expressed that binning in code, and a `minlength=` argument sized to
+    a bin count someone might mistake for a live knob only invited the
+    confusion (fix round, 2026-09-02) — `minlength` pads `bincount`'s trailing
+    zero-count entries, which the next line's `counts > 0` filter strips before
+    they can affect anything, so the argument never changed this function's
+    return value for any input."""
+    counts = np.bincount(_luma(frame).ravel())
     p = counts[counts > 0] / counts.sum()
     return float(-(p * np.log2(p)).sum())
 
