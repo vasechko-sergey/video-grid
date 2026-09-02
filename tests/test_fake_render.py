@@ -13,8 +13,13 @@ import pytest
 
 @pytest.mark.parametrize("dims", [(1920, 1080), (640, 360)])
 def test_the_project_canvas_is_the_dims_the_fake_writes(dims, tmp_path, monkeypatch, fake_render):
+    """Whole-object, not field-by-field (testing-guide): the fixture derives SEVEN numbers
+    from `src_dims` and a per-field assert on two of them lets a mutation hardcode the
+    other five and stay green at (640, 360), where every derived value differs from the
+    1920x1080 literals the deleted local fakes used."""
     from scripts import edl_to_reel
 
+    w, h = dims
     fake = fake_render(monkeypatch, src_dims=dims)
     project = json.loads(Path(fake.project(tmp_path)).read_text())
 
@@ -22,9 +27,14 @@ def test_the_project_canvas_is_the_dims_the_fake_writes(dims, tmp_path, monkeypa
     edl_to_reel.process_episode.process_episode(
         {"segment": "unused.mp4", "out_path": str(tmp_path / "ep0.mp4")}, str(epdir))
     meta = json.loads((epdir / "path.meta.json").read_text())
+    route = json.loads((epdir / "route.json").read_text())
 
     assert project["canvas"] == list(dims)
-    assert meta["canvas"] == project["canvas"] == meta["src_dims"]
+    assert meta == {"mode": "fill", "crop_w": w, "crop_h": h, "crop_y": 0,
+                    "src_dims": [w, h], "canvas": [w, h], "out_dims": [w, h],
+                    "rect_px": [0, 0, w, h], "freedom": 0}
+    assert route == [{"t": 0.0, "x": w // 2, "y": h // 2,
+                      "w": w // 16, "h": h // 9, "id": 1}]
 
 
 def test_pan_aware_writes_no_route_for_a_pan_episode(tmp_path, monkeypatch, fake_render):

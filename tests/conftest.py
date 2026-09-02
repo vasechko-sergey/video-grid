@@ -223,21 +223,23 @@ def need_filter():
     return _need
 
 
-@dataclass
+@dataclass(frozen=True)
 class FakeRender:
     """A fake `process_episode` and the `project.json` that agrees with it, by construction.
 
     The whole class of defect this closes (design 2026-09-02 §0) is a test stating its
     geometry twice — once in `project.json`, once in the `path.meta.json` its fake writes
     — with nothing keeping the two in step. Here there is one `src_dims` and both readings
-    come off it, so they cannot disagree.
+    come off it, so they cannot disagree. Frozen, so that "once" is literal: a
+    `fake.src_dims = ...` after construction would silently re-open the split, since the
+    fake already installed above closed over the original value.
 
     NOT for tests that render nothing. `tests/integration/test_edit_plan.py`'s three
     pure-`edit_plan` gate tests (variety-gap, delivered-geometry, constraints) need a
     declared canvas that deliberately does NOT match the source — that mismatch is what
     they prove (design §3). They keep their own writer; do not "unify" them onto this.
     """
-    src_dims: tuple
+    src_dims: tuple[int, int]
     delivery: str = "native"
     pan_aware: bool = False
 
@@ -265,6 +267,32 @@ def fake_render():
     `w//16 x h//9` box (exactly the 120x120 the 1920x1080 call sites used by hand), and the
     sidecar is a plain full-frame `fill` — which is the truth, because the clip is a
     `-c:v copy` and no crop is taken.
+
+    The sidecar is full-frame REGARDLESS of a `crop_scale` the EDL declares: all four
+    migrated files declare `crop_scale=0.8`, which a real `reframe` would honour (a 1536x864
+    crop with freedom 384 at 1920x1080) and this fake does not. It is `src_dims` — the
+    canvas — that the fixture unifies, not every field of the geometry. Design §6 records the
+    limit; the fake reports the pixels it actually produced, so do not "fix" it by writing a
+    crop it never took.
+
+    `pan_aware` mirrors what the real `process_episode` leaves on disk under a pan (design
+    2026-07-19 §6.1): an empty `route.json` already means "the tracker ran and found nobody",
+    so a pan episode gets none at all. The fake therefore writes `path.json` +
+    `path.meta.json` (`pan=True`) and no route for a manifest carrying a `pan` key, and all
+    three sidecars for a tracked one — which is what lets a test exercise the REAL absence of
+    the file rather than a stand-in that always writes one.
+
+    The `-c:v copy` runs only when the segment exists on disk, so a test can drive this fake
+    for its sidecars alone with a segment path that names nothing. The cost of that
+    convenience: a future test whose extract legitimately produced no file gets a cheerful
+    `mechanical_pass` naming a clip that is not there, and this fake will not be what says so.
+
+    The fake's signature is `(manifest, project_dir, route_path=None)` — the real
+    `process_episode` also takes `stop_after` and `prepared_source`, which `edl_to_reel`
+    forwards as `**kw`. Both are absent for a plain render, which is why the migrated tests
+    work; a fixture-driven test of the `--stop-after-geometry` / `--from-geometry` seam gets a
+    `TypeError`. Left unimplemented on purpose: that failure is loud, and an accepted-and-
+    ignored parameter would not be.
     """
     def _install(monkeypatch, src_dims=(1920, 1080), delivery="native", pan_aware=False):
         from scripts import edl_to_reel
