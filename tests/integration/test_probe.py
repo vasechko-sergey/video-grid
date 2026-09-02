@@ -9,11 +9,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from scripts import deliver as deliver_mod, probe, reframe
-from scripts.lib import assembly, color, ffbin, layout as layout_lib, proc, provenance
+from scripts import check_episode, deliver as deliver_mod, probe, process_episode, reframe
+from scripts.lib import (assembly, color, ffbin, gradedamage, layout as layout_lib,
+                         orchestration as orch, proc, provenance)
 from scripts.lib.look import LookSpec
-from scripts.lib.models import (Delivery, ExportProfile, PanSpec, ReelEpisode, ReelManifest,
-                                ReelReport, ReframeSpec)
+from scripts.lib.manifest import Manifest
+from scripts.lib.models import (CheckSpec, Delivery, ExportProfile, PanSpec, ReelEpisode,
+                                ReelManifest, ReelReport, ReframeSpec)
 
 pytestmark = pytest.mark.integration
 
@@ -265,3 +267,80 @@ def test_a_vignette_that_renders_nothing_is_refused(tmp_path, monkeypatch):
                             scratch_dir=str(tmp_path / "scratch"), look=LookSpec(vignette=0.5))
     assert list(out_dir.glob("REEL_v*.mp4"))
     assert not list(out_dir.glob("*.attest.json"))
+
+
+# --- 2026-08-31 grade-sensor-references Task 8: probe predicts BOTH gates ---------
+
+ROUTE = "tests/fixtures/golden_route.json"     # sampled against golden_ride_segment's
+                                               # own timeline (see that fixture's docstring)
+
+
+def _grade_md(seg: str, out: str, **colour) -> dict:
+    """Same shape as test_grade_sensor_calibration.py's _md — the fixture pairing the
+    entropy floor this slice introduced against a legitimate grade and a damaging one."""
+    md = {"segment": seg, "out_path": out, "target_dur": 1.5,
+          "composition": "center", "grid": "thirds", "layout": "fill",
+          "canvas": [9, 16], "delivery": "short_edge:480"}
+    md.update(colour)
+    return md
+
+
+def _probe_one(tmp_path: Path, golden_ride_segment, **colour) -> dict:
+    """One probe_grade call over golden_ride_segment/ROUTE. Renders for real first:
+    probe_grade's _refuse_on_drift needs a genuine path.json/path.meta.json to check
+    the recomputed crop against, exactly as
+    test_the_probes_frames_are_the_frames_the_render_ships_under_stabilize does above."""
+    d = tmp_path / "probe_one"
+    d.mkdir()
+    src = str(golden_ride_segment)
+    out = str(d / "ep0.mp4")
+    md = _grade_md(src, out, **colour)
+    path_json = str(d / "path.json")
+    rspec = process_episode.build_reframe_spec(
+        Manifest.from_dict(md), Delivery.from_spec(md["delivery"]), dict(orch.DEFAULT_PARAMS))
+    reframe.reframe(rspec, src, ROUTE, out, path_json)
+    ep = ReelEpisode(manifest=md, clip=out, route=ROUTE, path=path_json,
+                     meta=str(Path(path_json).with_suffix(".meta.json")))
+    ep_json = d / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=md["target_dur"]).write(ep_json)
+    return probe.probe_grade(str(ep_json), 0, out_dir=str(d / "probe_out"))
+
+
+def _check_episode_grade_damage(tmp_path: Path, golden_ride_segment, **colour) -> dict:
+    """What check_episode.run's OWN grade_damage check computes for the same episode
+    — the production function itself, not a re-implementation of its maths, so a
+    change to _grade_damage's own wiring (e.g. which floor it reads, which plan is
+    'graded') would be caught here too.
+
+    route_pts=None short-circuits _subject_delta_advisory before it ever touches
+    path_obj/meta (`if source is None or not route_pts: return ...`), which is what
+    makes passing None for both safe without a real tracked route or sidecars; `clip`
+    is never dereferenced on that branch either, so a path that names no real file
+    is fine there."""
+    d = tmp_path / "check_one"
+    d.mkdir()
+    src = str(golden_ride_segment)
+    out = str(d / "ep0.mp4")
+    md = _grade_md(src, out, **colour)
+    plans = (process_episode.plan_for(md, src, ROUTE), process_episode.plan_ungraded(md, src, ROUTE))
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=md["target_dur"])
+    return check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+
+
+def test_probe_json_predicts_BOTH_gates(tmp_path, golden_ride_segment):
+    """The P2 row this closes: an operator converging on stills could not see the
+    stop coming, and probe was the only cheap way to converge at all."""
+    rep = _probe_one(tmp_path, golden_ride_segment, saturation=0.8, black_point=0.1)
+    assert rep["grade_damage"]["ratio"] > 0.0
+    assert "below" in rep["grade_damage"]
+    assert rep["predicted_profile"] == rep["tone_profile"]
+
+
+def test_probe_grade_damage_agrees_with_check_episode_on_the_same_episode(
+        tmp_path, golden_ride_segment):
+    """A predictor that disagrees with the gate it predicts is worse than none."""
+    rep = _probe_one(tmp_path, golden_ride_segment, black_point=0.35)
+    from_check = _check_episode_grade_damage(tmp_path, golden_ride_segment,
+                                             black_point=0.35)
+    assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.02)
+    assert rep["grade_damage"]["below"] is from_check["below"]

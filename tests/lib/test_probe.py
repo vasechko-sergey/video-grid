@@ -128,6 +128,22 @@ def _fake_render():
     return _render
 
 
+def _fake_plan_frames_rgb():
+    """A stand-in for reframe.plan_frames_rgb — Task 8's probe_grade/probe_grade_geometry
+    call this a second time, on the UNGRADED plan, to build grade_damage's `plain` half.
+    process_episode.plan_ungraded reaches reframe.plan_render internally too (patched
+    below onto the shared reframe module both probe.py and process_episode.py import,
+    so plan_ungraded's plan is the SAME fake_plan object plan_render already returns),
+    but that fake plan carries none of a real RenderPlan's fields (fps, path, rl, ...)
+    that plan_frames_rgb needs — so this fakes the read itself, exactly as _render
+    fakes the graded one. All-zero (flat) frames are fine: neither test below asserts
+    on grade_damage's content, and gradedamage.evaluate already has a defined,
+    non-crashing answer for an all-flat plain half ({"status": "not-checked", ...})."""
+    def _pfr(plan, src, times):
+        return [np.zeros((2, 2, 3), dtype=np.uint8) for _ in times]
+    return _pfr
+
+
 def test_probe_grade_from_geometry_needs_no_episodes_json(tmp_path, monkeypatch):
     """probe_grade_geometry works from GEOMETRY.json alone — no EPISODES.json ever
     exists before the first encode (design §4) — and always applies the EDL's
@@ -147,6 +163,7 @@ def test_probe_grade_from_geometry_needs_no_episodes_json(tmp_path, monkeypatch)
 
     fake_plan = SimpleNamespace(dur=2.0, grade="")
     monkeypatch.setattr(probe.reframe, "plan_render", lambda *a, **k: fake_plan)
+    monkeypatch.setattr(probe.reframe, "plan_frames_rgb", _fake_plan_frames_rgb())
     monkeypatch.setattr(probe, "_render", _fake_render())
     monkeypatch.setattr(probe.color_measure, "crop_percentiles",
                         lambda *a, **k: (10.0, 20.0, 30.0))
@@ -189,6 +206,7 @@ def test_probe_reports_the_gray_ruler(tmp_path, monkeypatch):
 
     fake_plan = SimpleNamespace(dur=2.0, grade="")
     monkeypatch.setattr(probe.reframe, "plan_render", lambda *a, **k: fake_plan)
+    monkeypatch.setattr(probe.reframe, "plan_frames_rgb", _fake_plan_frames_rgb())
     monkeypatch.setattr(probe, "_refuse_on_drift", lambda *a, **k: None)
     monkeypatch.setattr(probe, "_render", _fake_render())
     calls = []

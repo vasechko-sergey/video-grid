@@ -14,29 +14,42 @@ from scripts.lib.models import (CheckResult, Delivery, LayoutSpec, ReelEpisode,
                                 ReelFailure, ReelManifest, ReelReport, ReframeSpec)
 
 
-def _episode(sample_clip, tmp, x_const, name):
+def _episode(sample_clip, tmp, x_const, name, *, black_point: float = 0.0):
     """A real reframed episode with its sidecars named the way process_episode names
-    them, so ReelEpisode.path/meta are coherent and pack can derive the scratch dir."""
+    them, so ReelEpisode.path/meta are coherent and pack can derive the scratch dir.
+
+    The manifest carries out_path/canvas (design 2026-08-31 Task 8), matching the
+    `spec` this same function renders with two lines above: _source_reading now
+    builds an ungraded RENDER PLAN from this manifest (process_episode.plan_ungraded
+    -> Manifest.from_dict), not just a file path, and manifest.REQUIRED demands both.
+    Before Task 8, _source_reading read ep.manifest["segment"] directly and never
+    planned anything, so this fixture's manifest never needed to be plannable.
+
+    `black_point` defaults to 0.0 (identity — every caller but one) so the other
+    tests in this file are byte-for-byte what they were before Task 8; one test
+    below needs an episode that actually carries a grade."""
     d = tmp / name
     d.mkdir(parents=True, exist_ok=True)
     route = [dict(t=i / 10, x=float(x_const), y=540.0, w=140.0, h=320.0) for i in range(30)]
     (d / "route.json").write_text(json.dumps(route))
     spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
                        color_means=(105.0, 122.0, 137.0), delivery=Delivery("native"),
-                       layout=LayoutSpec(mode="fill"))
+                       layout=LayoutSpec(mode="fill"), black_point=black_point)
     clip = str(tmp / f"{name}.mp4")
     reframe.reframe(spec, str(sample_clip), str(d / "route.json"), clip, str(d / "path.json"))
-    return ReelEpisode(manifest={"segment": str(sample_clip), "target_dur": 3.0,
-                                 "composition": "center", "grid": "thirds"},
-                       clip=clip, route=str(d / "route.json"),
+    md = {"segment": str(sample_clip), "out_path": clip, "target_dur": 3.0,
+          "composition": "center", "grid": "thirds", "canvas": [9, 16]}
+    if black_point:
+        md["black_point"] = black_point
+    return ReelEpisode(manifest=md, clip=clip, route=str(d / "route.json"),
                        path=str(d / "path.json"), meta=str(d / "path.meta.json"))
 
 
-def _episodes_json(tmp_path, sample_clip):
+def _episodes_json(tmp_path, sample_clip, *, black_point: float = 0.0):
     out = tmp_path / "out"
     out.mkdir(parents=True, exist_ok=True)
-    eps = [_episode(sample_clip, tmp_path, 645, "ep0"),
-           _episode(sample_clip, tmp_path, 1045, "ep1")]
+    eps = [_episode(sample_clip, tmp_path, 645, "ep0", black_point=black_point),
+           _episode(sample_clip, tmp_path, 1045, "ep1", black_point=black_point)]
     rm = ReelManifest(episodes=eps, target_dur=6.0, changelog="qc proof")
     p = out / "EPISODES.json"
     rm.write(p)
@@ -69,22 +82,32 @@ def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
 @pytest.mark.integration
 def test_the_evidence_packet_carries_the_pre_grade_reading(tmp_path, sample_clip):
     """R2.5: the judge must be able to see what the GRADE did, not only what the
-    footage is. The segment has always been in the manifest and was never read."""
-    p, _ = _episodes_json(tmp_path, sample_clip)
+    footage is. The segment has always been in the manifest and was never read.
+
+    Task 8 fixed _source_reading to measure the source THROUGH THE EPISODE'S OWN
+    CROP PLAN rather than the whole segment frame, so every OTHER episode in this
+    file — rendered at identity colour (black_point=0.0) — now correctly reads
+    source == stats: there is no grade left for a "delta" to carry, which is the
+    point of the fix, not a bug in this test. So this one episode is rendered with
+    an actual black_point, to give the grade something real to have done."""
+    p, _ = _episodes_json(tmp_path, sample_clip, black_point=0.3)
     episode_qc.pack(str(p), str(tmp_path / "qc"))
     nat = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())["naturalness"]
     assert set(nat) == {"stats", "flags", "source", "delta"}
     assert nat["source"]["frames"] == episode_qc.SENSOR_FRAMES
     # A source reading that happens to equal the graded reading is what a `seg`/`ep.clip`
-    # mixup in _source_reading would produce (both would sample the SAME file) — the two
-    # files really do differ (a 1920x1080 segment vs a cropped/reframed delivered clip),
-    # so a correct implementation can never land here by coincidence.
+    # mixup in _source_reading would produce (both would sample the SAME file) — this
+    # episode's black_point=0.3 grade (see _episode) gives the two a real difference to
+    # be measured, so a correct implementation can never land here by coincidence.
     assert nat["source"] != nat["stats"]
     # Recomputation, not just a key-set check: catches an evaluate_delta(src, graded)
     # argument-order swap. cast_shift/saturation_shift are abs()-symmetric and cannot see
     # a swap; contrast_drop is signed and is what discriminates here. MEASURED (not
-    # assumed) on this fixture: source contrast 0.0 vs graded 123.6, |Δ| = 123.6 — well
-    # past CONTRAST_DROP_MAX (20.0), so a swap really does flip contrast_drop's boolean.
+    # assumed) on this fixture: source contrast 123.6 vs graded 150.0 — the black_point
+    # grade STRETCHES contrast rather than crushing it here, so in the correct order
+    # (src - grd = -26.4) contrast_drop reads False, and a swapped order (grd - src =
+    # +26.4, past CONTRAST_DROP_MAX 20.0) would flip it to True — either way a swap
+    # really does flip contrast_drop's boolean, which is what this assertion catches.
     assert nat["delta"] == naturalness.evaluate_delta(nat["source"], nat["stats"])
     assert set(nat["delta"]) == {"cast_shift", "saturation_shift", "contrast_drop"}
 

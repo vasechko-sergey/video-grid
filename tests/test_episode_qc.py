@@ -1,5 +1,9 @@
 """episode_qc driver — validation and stamping (design §6/§7)."""
 import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 import pytest
 
 from scripts import episode_qc
@@ -99,3 +103,99 @@ def test_evidence_reports_an_existing_storyboard_path(tmp_path):
     (d / "storyboard.jpg").write_bytes(b"x")
     ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}})
     assert ev["storyboard"] == str(d / "storyboard.jpg")
+
+
+# --- 2026-08-31 grade-sensor-references Task 8: _source_reading reads the CROP ----
+
+def _episode(tmp_path, segment=None):
+    """A ReelEpisode whose segment exists on disk by default (a placeholder — the
+    wiring test below fakes both process_episode.plan_ungraded and
+    reframe.plan_frames_rgb, so its bytes are never actually decoded) or is a
+    caller-chosen path that need not exist, for the absent-source case.
+
+    The manifest carries every field manifest.REQUIRED needs — not just "segment" —
+    so that Manifest.from_dict (plan_ungraded's first step) actually succeeds and
+    execution reaches the real read this test means to exercise, rather than
+    returning early on a manifest-validation ValueError that would land on the SAME
+    except branch for an unrelated reason. Measured while writing this test: a
+    thinner manifest (segment/target_dur only) made the absent-source test pass even
+    with the exists() guard deleted, because Manifest.from_dict itself raised
+    ValueError first — a false pass this fuller manifest closes."""
+    d = tmp_path / "ep0"
+    d.mkdir(exist_ok=True)
+    if segment is None:
+        segment = str(d / "segment.mp4")
+        Path(segment).write_bytes(b"x")
+    manifest = {"segment": segment, "out_path": str(d / "out.mp4"), "target_dur": 2.0,
+                "composition": "center", "grid": "thirds", "canvas": [9, 16]}
+    return ReelEpisode(manifest=manifest, clip=str(tmp_path / "ep0.mp4"), route=None,
+                       path=str(d / "path.json"), meta=str(d / "path.meta.json"))
+
+
+def _fake_plan():
+    return SimpleNamespace(dur=2.0)
+
+
+def _flat_frame():
+    return np.full((8, 8, 3), 128, dtype=np.uint8)
+
+
+def test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP(monkeypatch, tmp_path):
+    """_source_reading used to read the whole segment frame at its native size
+    (assembly.frames_rgb straight on ep.manifest["segment"]) and compare THAT against
+    the delivered clip's crop — the branch's own fixture measured that as source
+    contrast 0.0 against graded 123.6 with no grade at all (see the comment at
+    tests/integration/test_episode_qc.py:79), which is the crop showing up as a
+    "delta", not the grade. This slice replaced the read with the episode's own
+    plan_ungraded/plan_frames_rgb pair, so both readings come from the same geometry.
+
+    A reverted (old) implementation never calls plan_ungraded or plan_frames_rgb at
+    all, so asserting on the OUTPUT numbers could not catch it — a flat fake frame
+    reads the same whichever path produced it (measured: cast/saturation/contrast
+    are all 0.0 on a constant-128 frame regardless of who rendered it). Spying on
+    which functions ran, with what arguments, is what tells the two apart — the same
+    shape of trap the comment linked above names for evaluate_delta's argument
+    order."""
+    ep = _episode(tmp_path)
+    seen = {}
+
+    def _no_old_path(*a, **k):
+        raise AssertionError("assembly.frames_rgb must not run any more — "
+                             "_source_reading has to read the source through the "
+                             "episode's own crop plan, not at native size")
+    monkeypatch.setattr(episode_qc.assembly, "frames_rgb", _no_old_path)
+
+    plan_obj = _fake_plan()
+
+    def _plan_ungraded(md, src, route):
+        seen["planned"] = (md, src, route)
+        return plan_obj
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _plan_ungraded)
+
+    def _plan_frames_rgb(plan, src, times):
+        seen["rendered"] = (plan, src, times)
+        return [_flat_frame() for _ in times]
+    monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb", _plan_frames_rgb)
+
+    graded = {"cast": 0.0, "saturation": 0.0, "contrast": 100.0}
+    d = episode_qc._source_reading(ep, graded)
+
+    assert seen["planned"] == (ep.manifest, ep.manifest["segment"], ep.route)
+    assert seen["rendered"][0] is plan_obj          # the SAME plan — not re-derived
+    assert seen["rendered"][1] == ep.manifest["segment"]
+    assert len(seen["rendered"][2]) == episode_qc.SENSOR_FRAMES
+    assert d["source"]["frames"] == episode_qc.SENSOR_FRAMES
+
+
+def test_source_reading_still_reports_absent_as_absent(tmp_path):
+    """A source that resolves to nothing must report {"source": None, "delta": None}
+    — never let plan_ungraded reach a real ffprobe on a missing file. Per
+    _source_reading's own docstring, a missing/garbage path there surfaces as a
+    RuntimeError through proc.run, not one of FileNotFoundError/KeyError/ValueError —
+    so this is what a wrong implementation that folded the explicit
+    `Path(src).exists()` guard (which runs BEFORE plan_ungraded) into the except
+    clause, or dropped it, would break: the call would reach ffprobe on
+    "/nowhere/gone.mp4" and this test would error instead of asserting a clean
+    absent reading."""
+    ep = _episode(tmp_path, segment="/nowhere/gone.mp4")
+    assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}

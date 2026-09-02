@@ -12,8 +12,8 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts import contact_sheet
-from scripts.lib import assembly, naturalness, provenance
+from scripts import contact_sheet, probe, process_episode, reframe
+from scripts.lib import assembly, color, naturalness, provenance
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.models import ReelManifest
 
@@ -66,29 +66,43 @@ def _evidence(ep, i: int, clip_stats: dict) -> dict:
 
 
 def _source_reading(ep, graded: dict) -> dict:
-    """The pre-grade segment's own naturalness, and the delta against the delivered
-    clip. The segment has always been in the manifest and was never read, so the judge
-    was shown what the FOOTAGE is and asked about what the GRADE did (design §5).
+    """The episode's own source IN ITS OWN CROP, and the delta against the delivered
+    clip (design 2026-08-31 §5).
 
-    A manifest with no segment on disk reports both as None — absent is reported as
-    absent, never as a clean reading, the same rule the rest of _evidence applies to
-    the sidecars.
+    It used to measure a whole segment frame against a reframed crop of that frame —
+    often 9:16 out of 16:9 — so the "delta" carried the crop as well as the grade.
+    The ungraded render this slice added is exactly the source in the delivered
+    geometry, which makes the two readings comparable for the first time: the
+    branch's own test recorded source contrast 0.0 against graded 123.6 with no
+    grade at all — that is a crop, not a grade.
 
-    NOT the same baseline check_episode's grade_damage (subject dE00 advisory) uses on
-    a STABILIZED episode:
-    that one compares against the file reframe actually consumed
-    (<project_dir>/stabilized.mp4), this always reads ep.manifest["segment"], the raw
-    one. So on a stabilized episode the two colour sensors describe changes from two
-    different starting points. probe.source_for already resolves this correctly and
-    routing through it would fix it (design 2026-08-28 §9.8, backlog row)."""
-    seg = ep.manifest.get("segment")
-    if not seg or not Path(seg).exists():
+    probe.source_for, not ep.manifest["segment"]: on a stabilized episode the two
+    colour sensors used to describe changes from two different starting points
+    (design 2026-08-28 §9.8, the backlog row this closes).
+
+    A manifest whose source is gone — or too thin to plan a render from at all —
+    reports both as None: absent is reported as absent, never as a clean reading,
+    the same rule the rest of _evidence applies to the sidecars.
+
+    The `Path(src).exists()` check is explicit and comes BEFORE plan_ungraded,
+    not folded into the except clause: a segment path that names no file makes
+    plan_ungraded reach reframe.plan_render's ffprobe, which fails through
+    proc.run as a RuntimeError ("No such file or directory"), not a
+    FileNotFoundError/KeyError/ValueError — measured directly against proc.run,
+    not assumed. Catching RuntimeError here too would also swallow a genuinely
+    broken ffmpeg install or a corrupt (but present) file, which is exactly the
+    fail-loud case this function must NOT report as a quiet 'absent'."""
+    md = dict(ep.manifest)
+    try:
+        src = probe.source_for(md, Path(ep.path).parent)
+        if not Path(src).exists():
+            return {"source": None, "delta": None}
+        plan = process_episode.plan_ungraded(md, src, ep.route)
+    except (FileNotFoundError, KeyError, ValueError):
         return {"source": None, "delta": None}
-    info = assembly.probe_stream(seg)
-    dur = assembly.probe_duration(seg)
-    times = [dur * (k + 0.5) / SENSOR_FRAMES for k in range(SENSOR_FRAMES)]
-    src = naturalness.measure(assembly.frames_rgb(seg, times, info.fps))
-    return {"source": src, "delta": naturalness.evaluate_delta(src, graded)}
+    frames = reframe.plan_frames_rgb(plan, src, color.sample_times(plan.dur, SENSOR_FRAMES))
+    src_stats = naturalness.measure(frames)
+    return {"source": src_stats, "delta": naturalness.evaluate_delta(src_stats, graded)}
 
 
 def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:

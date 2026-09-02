@@ -21,11 +21,11 @@ import numpy as np
 from PIL import Image
 
 from scripts import color_measure, process_episode, reframe
-from scripts.lib import (assembly, color, edl as edl_lib, ffbin, lookcheck,
-                         naturalness, proc, provenance, sheet)
+from scripts.lib import (assembly, color, edl as edl_lib, ffbin, gradedamage,
+                         lookcheck, naturalness, proc, provenance, sheet)
 from scripts.lib.edl import EDL
 from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS
-from scripts.lib.models import CropPath, PathMeta, ReelGeometry, ReelManifest
+from scripts.lib.models import CheckSpec, CropPath, PathMeta, ReelGeometry, ReelManifest
 
 # FRAMES/sample_times live in color (scripts/lib/color.py) now (design
 # 2026-08-31 grade-sensor-references §6) — check_episode needs them and cannot
@@ -211,6 +211,15 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     imgs = _render(plan, src, times, d)
     stats = naturalness.measure(imgs)
     tone = color_measure.crop_percentiles(plan, src, times)
+    # The same pair check_episode.grade_damage renders: `imgs` above is the graded
+    # half, this is the plain one — every colour knob at identity, from the SAME
+    # md/src/route the graded render came from. A predictor that disagreed with the
+    # gate it predicts would be worse than none (design 2026-08-31 §3/§8).
+    plain = process_episode.plan_ungraded(md, src, ep.route)
+    damage = gradedamage.evaluate(
+        plain=reframe.plan_frames_rgb(plain, src, times),
+        graded=imgs,
+        floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
     report = {
         "episode": index, "episodes": episodes_path, "edl": edl_path,
         "source": src, "frames": len(imgs),
@@ -218,6 +227,12 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
+        # predicted_profile is the SAME value as tone_profile above — build_reel's
+        # _predict computes it identically — under the name check_reel.grade_faithful
+        # uses for it. Two names, one number: this is what lets a probe converge
+        # THAT gate too, alongside grade_damage's entropy ratio below.
+        "predicted_profile": [round(v, 1) for v in tone],
+        "grade_damage": damage,
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
     }
     (d / "probe.json").write_text(json.dumps(report, indent=2))
@@ -282,6 +297,14 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     imgs = _render(plan, eg.source, times, d)
     stats = naturalness.measure(imgs)
     tone = color_measure.crop_percentiles(plan, eg.source, times)
+    # Same pair as probe_grade (see its comment) — eg.source/eg.route rather than a
+    # source_for()-resolved path, since geometry mode has nothing rendered yet to
+    # infer one from.
+    plain = process_episode.plan_ungraded(md, eg.source, eg.route)
+    damage = gradedamage.evaluate(
+        plain=reframe.plan_frames_rgb(plain, eg.source, times),
+        graded=imgs,
+        floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
     report = {
         "episode": index, "geometry": geometry_path, "edl": geo.edl,
         "source": eg.source, "frames": len(imgs),
@@ -289,6 +312,10 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
+        # predicted_profile: the same value under grade_faithful's name — see
+        # probe_grade's comment.
+        "predicted_profile": [round(v, 1) for v in tone],
+        "grade_damage": damage,
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
         "drift_checked": False,     # there is no path.json yet: the plan IS the
                                     # source of truth before the encode. The
