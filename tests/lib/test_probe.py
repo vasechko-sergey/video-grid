@@ -217,6 +217,41 @@ def test_probe_reports_the_gray_ruler(tmp_path, monkeypatch):
     assert r["tone_profile"] == [1.0, 2.0, 3.0] and calls
 
 
+def test_predicted_profile_ignores_frames_but_tone_profile_does_not(tmp_path, monkeypatch):
+    """Task 8 fix round 1, Minor 2. predicted_profile must always be build_reel._predict's
+    OWN recipe (color_measure.crop_percentiles at color.sample_times' DEFAULT count) —
+    never moved by --frames, or a probe run with a non-default --frames would silently
+    report a number check_reel.grade_faithful (via _predict) was never going to compare
+    against. tone_profile, by contrast, IS supposed to move with --frames: it describes
+    the stills THIS call rendered, and narrowing/widening that set is the whole point of
+    the knob.
+
+    The mock keys its answer on len(times) rather than returning one fixed tuple, which
+    is what makes this discriminate: a wrong implementation that (again) used `tone` for
+    predicted_profile would report the WIDENED reading for both fields, not just
+    tone_profile — a mock returning a single constant regardless of args could not
+    tell the two calls apart."""
+    ep = ReelEpisode(manifest=_md(), clip="o.mp4", route=None,
+                     path=str(tmp_path / "path.json"), meta=str(tmp_path / "path.meta.json"))
+    ep_json = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=2.0).write(ep_json)
+
+    fake_plan = SimpleNamespace(dur=2.0, grade="")
+    monkeypatch.setattr(probe.reframe, "plan_render", lambda *a, **k: fake_plan)
+    monkeypatch.setattr(probe.reframe, "plan_frames_rgb", _fake_plan_frames_rgb())
+    monkeypatch.setattr(probe, "_refuse_on_drift", lambda *a, **k: None)
+    monkeypatch.setattr(probe, "_render", _fake_render())
+
+    def _by_sample_count(plan, src, times):
+        return (9.0, 9.0, 9.0) if len(times) != 3 else (1.0, 2.0, 3.0)
+    monkeypatch.setattr(probe.color_measure, "crop_percentiles", _by_sample_count)
+
+    r = probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / "out"), frames=7)
+    assert len(r["times"]) == 7                    # the widened request really landed
+    assert r["tone_profile"] == [9.0, 9.0, 9.0]    # the widened (7-sample) reading
+    assert r["predicted_profile"] == [1.0, 2.0, 3.0]   # ALWAYS the default (3-sample) one
+
+
 def test_probe_tone_is_gone():
     assert not hasattr(probe, "_tone")
 

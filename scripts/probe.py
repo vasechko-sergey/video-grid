@@ -227,11 +227,16 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
-        # predicted_profile is the SAME value as tone_profile above — build_reel's
-        # _predict computes it identically — under the name check_reel.grade_faithful
-        # uses for it. Two names, one number: this is what lets a probe converge
-        # THAT gate too, alongside grade_damage's entropy ratio below.
-        "predicted_profile": [round(v, 1) for v in tone],
+        # predicted_profile is build_reel._predict's OWN recipe, called here verbatim
+        # (color_measure.crop_percentiles at color.sample_times' DEFAULT count) — NOT
+        # `tone` above, which samples at --frames instead. --frames widens the STILLS
+        # this probe renders and shows; it must not move what this field predicts, or
+        # a probe run with a non-default --frames would silently report a number
+        # check_reel.grade_faithful was never going to compare against (Task 8 fix
+        # round 1, Minor 2). At the default --frames this is the SAME call over the
+        # SAME plan/times as `tone` above, so the two numbers still agree there.
+        "predicted_profile": [round(v, 1) for v in color_measure.crop_percentiles(
+            plan, src, color.sample_times(plan.dur))],
         "grade_damage": damage,
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
     }
@@ -312,9 +317,10 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
-        # predicted_profile: the same value under grade_faithful's name — see
-        # probe_grade's comment.
-        "predicted_profile": [round(v, 1) for v in tone],
+        # predicted_profile: build_reel._predict's own recipe, independent of --frames
+        # — see probe_grade's comment for why.
+        "predicted_profile": [round(v, 1) for v in color_measure.crop_percentiles(
+            plan, eg.source, color.sample_times(plan.dur))],
         "grade_damage": damage,
         "naturalness": {"stats": stats, "flags": naturalness.evaluate(stats)},
         "drift_checked": False,     # there is no path.json yet: the plan IS the

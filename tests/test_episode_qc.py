@@ -144,9 +144,13 @@ def test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP(monkeypatch, t
     """_source_reading used to read the whole segment frame at its native size
     (assembly.frames_rgb straight on ep.manifest["segment"]) and compare THAT against
     the delivered clip's crop — the branch's own fixture measured that as source
-    contrast 0.0 against graded 123.6 with no grade at all (see the comment at
-    tests/integration/test_episode_qc.py:79), which is the crop showing up as a
-    "delta", not the grade. This slice replaced the read with the episode's own
+    contrast 0.0 against graded 123.6 with no grade at all, which is the crop
+    showing up as a "delta", not the grade. See
+    test_the_evidence_packet_carries_the_pre_grade_reading in
+    tests/integration/test_episode_qc.py — its own comment warns of exactly this
+    "seg"/"ep.clip" mixup shape. Named by test, not by line: a line number rots the
+    moment either file grows a line above it, which this very commit already did
+    once. This slice replaced the read with the episode's own
     plan_ungraded/plan_frames_rgb pair, so both readings come from the same geometry.
 
     A reverted (old) implementation never calls plan_ungraded or plan_frames_rgb at
@@ -199,3 +203,48 @@ def test_source_reading_still_reports_absent_as_absent(tmp_path):
     absent reading."""
     ep = _episode(tmp_path, segment="/nowhere/gone.mp4")
     assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
+
+
+def test_source_reading_reads_the_stabilized_file_not_the_raw_segment(monkeypatch, tmp_path):
+    """Task 8 fix round 1 (Important 2). _source_reading's own docstring names a
+    STABILIZED episode as the motivating case: probe.source_for resolves to
+    <epdir>/stabilized.mp4, not ep.manifest["segment"], because on a stabilized
+    episode reframe consumed the pre-stage output, not the raw segment (design
+    2026-08-28 §9.8). Every other test in this file leaves stabilize unset, where
+    probe.source_for's non-stabilized branch returns md["segment"] VERBATIM — so a
+    regression that bypassed probe.source_for entirely and read
+    ep.manifest["segment"] directly would satisfy those tests' spy assertions
+    IDENTICALLY (same string, either way). `grep -rn stabilize tests/test_episode_qc.py
+    tests/integration/test_episode_qc.py` found zero hits before this test — this is
+    the only case that can tell "called probe.source_for" apart from "read
+    ep.manifest['segment'] directly", the same shape of gap Task 7's own review found
+    in its own stabilize test.
+
+    raw.mp4 is never even created on disk: if a wrong implementation fell back to
+    reading it, Path(src).exists() would find nothing and this would fail loudly as
+    a wrong absent reading, not silently pass."""
+    d = tmp_path / "ep0"
+    d.mkdir()
+    raw = str(d / "raw.mp4")                    # must never be planned from, and
+                                                # is never even written to disk
+    stabilized = d / "stabilized.mp4"
+    stabilized.write_bytes(b"x")                # what probe.source_for must resolve to
+    manifest = {"segment": raw, "out_path": str(d / "out.mp4"), "target_dur": 2.0,
+                "composition": "center", "grid": "thirds", "canvas": [9, 16],
+                "stabilize": True}
+    ep = ReelEpisode(manifest=manifest, clip=str(tmp_path / "ep0.mp4"), route=None,
+                     path=str(d / "path.json"), meta=str(d / "path.meta.json"))
+    seen = {}
+
+    def _plan_ungraded(md, src, route):
+        seen["planned"] = (md, src, route)
+        return _fake_plan()
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _plan_ungraded)
+    monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb",
+                        lambda plan, src, times: [_flat_frame() for _ in times])
+
+    d_out = episode_qc._source_reading(ep, {"cast": 0.0, "saturation": 0.0, "contrast": 100.0})
+
+    assert seen["planned"][1] == str(stabilized)
+    assert seen["planned"][1] != raw
+    assert d_out["source"] is not None

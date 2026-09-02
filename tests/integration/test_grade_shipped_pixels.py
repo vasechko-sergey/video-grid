@@ -21,7 +21,7 @@ import pytest
 from scripts import build_reel, color_measure, edl_to_reel, match_grade, probe, reframe
 from scripts import process_episode as pe
 from scripts import track
-from scripts.lib import assembly, color, ffbin, manifest as manifest_lib, matchgrade
+from scripts.lib import assembly, color, ffbin, gradedamage, manifest as manifest_lib, matchgrade
 from scripts.lib import models, proc
 from scripts.lib import provenance as prov_lib
 from scripts.lib.edl import EDL, EDLEpisode, preflight
@@ -676,6 +676,34 @@ def test_probe_grade_geometry_predicts_the_encode(tmp_path, monkeypatch):
     rm = _render(ctx)
     encoded = _profile(rm.episodes[0].clip)
     assert _resid(predicted, encoded) <= 1.5, (predicted, encoded)
+
+    # Task 8 fix round 1 (Important 1): grade_damage/predicted_profile had NO
+    # real-pixel proof at this entry point — only tests/lib/test_probe.py's
+    # fully-mocked test touches this branch, and its mock exists purely to avoid an
+    # AttributeError crash (it asserts nothing about grade_damage or
+    # predicted_profile). probe_grade_geometry re-derives the SAME plain/graded pair
+    # probe_grade does, but from DIFFERENT variables (eg.source/eg.route instead of
+    # source_for(md, epdir)/ep.route) — a wiring bug specific to this copy (e.g. a
+    # plan/plain mixup reusing the GRADED render for the "plain" half) would ship
+    # undetected. Ground truth built independently below, from the SAME documented
+    # inputs probe_grade_geometry itself reads (probe.regrade, then
+    # process_episode.plan_for/plan_ungraded, then reframe.plan_frames_rgb): a wrong
+    # implementation that swapped, dropped, or reused one of those arguments renders
+    # DIFFERENT frames from this, and gradedamage.evaluate is deterministic over
+    # identical frames (plan_frames_rgb pipes raw decoded video with no encode, so
+    # there is no ffmpeg-side randomness to blur the comparison) — a correct
+    # implementation matches this EXACTLY, not approximately.
+    assert r["predicted_profile"] == r["tone_profile"]   # probe.py's documented identity
+    md = probe.regrade(dict(eg.manifest), geo.edl, 0)
+    graded_plan = pe.plan_for(md, eg.source, eg.route)
+    plain_plan = pe.plan_ungraded(md, eg.source, eg.route)
+    want_times = color.sample_times(graded_plan.dur)
+    want_damage = gradedamage.evaluate(
+        plain=reframe.plan_frames_rgb(plain_plan, eg.source, want_times),
+        graded=reframe.plan_frames_rgb(graded_plan, eg.source, want_times),
+        floor=models.CheckSpec(composition="center", grid="thirds",
+                               target_dur=1.0).entropy_floor)
+    assert r["grade_damage"] == want_damage, (r["grade_damage"], want_damage)
 
 
 # --- Proof 8: the drift guard — a geometry disagreement becomes not_checked,
