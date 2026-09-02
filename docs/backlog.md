@@ -521,13 +521,21 @@ performs; `_fake_track_pe`/its stand-ins skip reframe entirely (a plain
 compare the DECLARATION against a prediction built from it and it FAILED
 there at residual 222; the other three were repaired 2026-09-02 while still
 dormant. Two things measured on the way, neither of which the original row
-knew: through the real driver `grade_faithful` reports `no-prediction` for
-every episode in BOTH geometries, because the fakes write `path.json = [0]`
-and `probe._refuse_on_drift` refuses that against any recomputed plan first —
-so the three dormant copies were shielded twice, not once, and only a fake
-that later writes a faithful `path.json` would have exposed them (with the
-oracle bypassed, the 9:16 declaration predicts a residual of 1.0 on
-`test_front_spine.py`'s fixture and the source aspect 0.0). And
+knew: through the real driver `grade_faithful` today reports `no-prediction`
+for every episode in BOTH geometries — all four, not three — because the fakes
+write `path.json = [0]` and `probe._refuse_on_drift` refuses that against any
+recomputed plan before the colour comparison is reached (with the oracle
+bypassed, the 9:16 declaration predicts a residual of 1.0 on
+`test_front_spine.py`'s fixture and the source aspect 0.0). So why did
+`test_outro.py`'s FAIL at 222 while the others sat latent? Not because its fake
+writes a path the oracle accepts — **corrected 2026-09-02, the first answer was
+wrong about the mechanism**: the difference is temporal. `8c81fea` is this
+branch's 21st commit and `9d0bd34`, which added the `_refuse_on_drift` call to
+`build_reel._predict`, is its 22nd — so `grade_faithful` existed for exactly one
+commit with no drift guard, `test_outro.py`'s fixture was rendered through that
+window, and by the time anything exercised the other three the guard was in.
+Same conclusion (a class, not a one-off), different reason, and the reason is
+what a reader needs: nothing structural distinguishes the four. And
 `test_edit_plan.py`'s helper is NOT one class: three pure-`edit_plan` gate
 tests there (variety-gap, delivered-geometry, constraints) render no frame
 and depend on the 9:16 crop being real, so that file needed the helper SPLIT
