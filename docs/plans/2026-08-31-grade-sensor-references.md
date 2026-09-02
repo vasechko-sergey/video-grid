@@ -1808,6 +1808,98 @@ Write the result — every row, RED or GREEN, and what was added to close each
 GREEN — into the plan file under this task. A row expected GREEN must say so in
 advance, as rows 26 does.
 
+**Battery results (run 2026-09-02, `PYTHONDONTWRITEBYTECODE=1`, every row
+restored via `git show HEAD:<path> > <path>` and confirmed clean before the
+next).** Several rows named a test that no longer exists after eight tasks of
+renames — the *actual* discriminating test is given below in every such case,
+not the brief's stale name.
+
+| # | result | discriminating test / note |
+|---|---|---|
+| 1 | **GREEN — not closeable** | See below. |
+| 2 | GREEN → CLOSED | new `test_luma_clips_a_frame_whose_values_are_not_a_valid_uint8_image` (`tests/lib/test_gradedamage.py`) |
+| 3 | RED | `test_evaluate_reports_the_median_ratio_not_the_mean_min_or_max` |
+| 4 | RED | `test_evaluate_judges_the_rounded_ratio_it_reports` |
+| 5 | RED | 5 of 16 `test_gradedamage.py` tests fail |
+| 6 | RED | `test_sample_times_never_touches_the_ends` |
+| 7 | RED | all 4 tests in `tests/integration/test_reframe_frames.py` fail — `proc.run`'s own landmine-lint guard (added after Task 1) refuses the "ahead" argv outright, before ffmpeg runs. Stale name: the brief's `test_plan_frames_rgb_returns_DIFFERENT_frames_not_one_repeated` is now `test_a_select_ahead_of_the_tail_collapses_to_one_frame` |
+| 8 | GREEN → CLOSED | new `test_plan_frames_rgb_refuses_a_buffer_that_is_a_MULTIPLE_of_the_wanted_size` (`tests/integration/test_reframe_frames.py`) — see below |
+| 9 | RED | 3 of 5 `test_process_episode_plans.py` tests fail |
+| 10 | GREEN → CLOSED | new `test_plan_for_honours_an_AUTHORED_smooth_window_s_not_just_the_default` (`tests/lib/test_process_episode_plans.py`) |
+| 11 | RED | `test_check_spec_entropy_floor_defaults_to_the_measured_value` |
+| 12 | RED | `test_check_spec_refuses_an_out_of_range_entropy_floor[1.5]` |
+| 13 | RED | `test_grade_damage_blocks_when_the_ratio_is_below_the_floor` |
+| 14 | RED | `test_grade_damage_blocks_when_the_ratio_is_below_the_floor`, `test_the_subject_dE00_survives_as_an_advisory_number`, **and Proof 1** (`test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one`) |
+| 15 | RED | Stale name (`test_process_episode_hands_check_episode_a_plan_pair...` does not exist): `test_process_episode_threads_colour_and_source` and `test_grade_damage_escalates_a_damaging_grade_on_attempt_one` (`tests/integration/test_process_episode.py`) |
+| 16 | RED | Stale name (`test_the_plain_plan_uses_the_ATTEMPT_S_params_not_the_defaults` does not exist): `test_a_retry_ladders_own_params_reach_both_halves_of_the_damage_pair` |
+| 17 | RED | 3 of 48 `test_orchestration.py` tests fail |
+| 18 | RED | `test_reel_check_spec_grade_residual_max_defaults_to_the_measured_value` |
+| 19 | RED | `test_grade_faithful_judges_EVERY_episode_not_only_the_bound_ones` |
+| 20 | RED | 6 of `test_check_reel.py` **and Proof 3** (`test_grade_faithful_survives_a_post_tone_knob_and_fails_a_dropped_block`) |
+| 21 | RED | `test_target_dev_is_advisory_and_only_for_bound_episodes` (a REAL non-zero target_dev of 12.5 — the Task 6 review's own repaired fixture) |
+| 22 | RED | `test_grade_faithful_is_not_checked_when_every_prediction_fails_to_build` |
+| 23 | RED | `test_grade_faithful_fails_and_routes_to_process_episode` |
+| 24 | RED, via Proof 3 only | `tests/lib/test_build_reel.py` alone stays GREEN (42 passed — its own `_predict` tests monkeypatch it or assert exactly the all-None shape); `test_grade_faithful_survives_a_post_tone_knob_and_fails_a_dropped_block` (Proof 3) catches it (`KeyError: 'pass'`). Confirms the brief's own "`test_build_reel.py` + Proof 3" naming — neither alone is enough, together they are |
+| 25 | RED | `test_build_reel_forwards_one_prediction_per_episode` |
+| 26 | **RED — premise re-checked, no longer GREEN** | See below. |
+| 27 | RED | `test_probe_grade_damage_agrees_with_check_episode_on_the_same_episode` (+ bonus: `test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count`) |
+| 28 | RED | `test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP` (+ bonus: `test_source_reading_reads_the_stabilized_file_not_the_raw_segment`) |
+
+**26 of 28 rows were RED**, several only once pointed at the test that actually
+exists today rather than the brief's pre-rename name (rows 7, 15, 16). Two rows
+needed a new test to close a real gap (2 also stayed GREEN once, see below; 8, 10);
+one row's premise had already been overtaken by a later task's own fix (26).
+
+**Row 1 — `gradedamage.ENTROPY_BINS` 256 → 64 — GREEN, and not closeable by any
+test.** This is not an ordinary coverage hole. `entropy()` consumes `ENTROPY_BINS`
+only as `np.bincount`'s `minlength`, and `minlength` can only PAD a bincount's
+result (numpy never truncates data to it); the very next line,
+`p = counts[counts > 0] / counts.sum()`, strips every zero-count bin — including
+every padding bin `minlength` might have added — before the Shannon-entropy sum
+ever runs. The returned value is therefore mathematically independent of
+`ENTROPY_BINS` for *any* input array, real or synthetic; verified interactively
+(`entropy(ramp())` reads the identical `4.0` at `ENTROPY_BINS` 256, 64, and 4) and
+by running the whole suite file under the mutation (15/15 pass). No frame — real
+footage or a hand-built fixture — can discriminate a parameter that never reaches
+the returned value. This is not the "coarsen to 64 bins" measurement the module's
+own docstring and design §0.3 describe (that survey used an actual re-bucketing
+of the histogram, not this constant); as shipped, `ENTROPY_BINS` documents "8-bit
+codes" without being wired to anything that would change if it were wrong. Left
+as a genuine, reported GREEN rather than forced closed — see the changelog/backlog
+entry this spawns.
+
+**Row 8 — closed, but the NAMED test does not discriminate it either.**
+`test_plan_frames_rgb_refuses_a_short_buffer`'s own fixture (`[0.1, 999.0]`, want
+= 2×stride) happens to come back 1×stride short — NOT a whole multiple of `want`
+— so `!=` and `% want != 0` agree on it; all 4 pre-existing tests in
+`tests/integration/test_reframe_frames.py` stay green under the mutation. The
+new test forces the actual vacuous case the function's own comment warns about
+(a buffer that is a whole OTHER multiple of `want` — doubled here) by
+monkeypatching `reframe.proc.run` to hand back a real buffer twice.
+
+**Row 26 — `build_reel._predict` uses `md["segment"]` instead of
+`probe.source_for` — declared GREEN in the brief, now RED.** The brief's own
+row 26 note says to add a stabilized-episode test "if one is cheap" because none
+existed when the plan was written. One now does, landed by Task 7's own fix
+round for an unrelated reason (its review's Important 2):
+`tests/integration/test_grade_shipped_pixels.py::test_predict_reads_the_stabilized_source_not_the_raw_segment`
+spies on the real `probe.source_for` and asserts
+`calls == [stabilized]`. Under this mutation `source_for` is never called at
+all — `calls == []` — so the test fails immediately
+(`AssertionError: [] == ['.../ep0/stabilized.mp4']`). **The slice's own history
+overtook this row**: what the plan predicted as an open gap, a later task's
+fix round closed as a side effect. No new test needed; full sanity run of
+`tests/integration/test_grade_shipped_pixels.py` + `tests/lib/test_build_reel.py`
+on HEAD: 53 passed.
+
+**New tests added (3, all kept):**
+- `tests/lib/test_gradedamage.py`: `test_luma_clips_a_frame_whose_values_are_not_a_valid_uint8_image` (row 2)
+- `tests/integration/test_reframe_frames.py`: `test_plan_frames_rgb_refuses_a_buffer_that_is_a_MULTIPLE_of_the_wanted_size` (row 8)
+- `tests/lib/test_process_episode_plans.py`: `test_plan_for_honours_an_AUTHORED_smooth_window_s_not_just_the_default` (row 10)
+
+Full details, including every restore confirmation, are in
+`.superpowers/sdd/2026-08-31-grade-sensor-references/task-10-report.md`.
+
 - [ ] **Step 3: Version bump**
 
 `.claude-plugin/plugin.json` → `0.7.0`, and a matching `CHANGELOG.md` entry at the

@@ -164,9 +164,18 @@ the residual is `0.0`, not merely small; the floor, not the fixture, is doing
 all the work in this ceiling.
 
 The reference run put the floor's margin at 1.2 % (§0.4); this fixture is a second
-shoot and a second geometry, and it agrees — with more headroom, not less (this
-fixture's gap is 18.0 %: damaged 0.753 to legitimate 0.933). Two points is not a
-survey and §9.1 says so.
+shoot and a second geometry, and — corrected 2026-09-02, Task 10's doc sync — **the
+ordering replicates; the margin does not** (this fixture's gap is 18.0 %: damaged
+0.753 to legitimate 0.933, an order of magnitude wider than the reference run's
+1.2 %). Two points is not a survey and §9.1 says so.
+
+The 0.933 reading is also not a typical conductor pull. The synthesized pair here
+(`+12/-10/-18` off the crop's own measured profile, Task 3) moves the anchors by
+18.0 luma units — 4.5× `MATCH_EPS` and genuinely non-trivial — but that is still
+BELOW the shallowest deviation the reference run actually measured (19.5, §0.1's
+ep2). So 0.933 is closer to the weakest plausible conductor pull on record than to
+a typical one; a real run's median pull would be expected to sit further from the
+floor, not closer to it, but nothing here measures that directly.
 
 ---
 
@@ -268,14 +277,26 @@ keeping the old name over new arithmetic would be that defect on purpose.
 bins, graded ÷ ungraded, median over the three sample frames.
 **Floor:** `CheckSpec.entropy_floor = 0.90`, one-sided. Blocking.
 
-**Both sides are read from a render, not from the shipped clip.** libx264
-quantization lowers entropy on its own and would bias the ratio toward false
-damage; rendering both sides through the same path keeps the comparison
-symmetric. The consequence is explicit: **damage judges the declared map,
-faithfulness judges the delivered pixels.** Between them the declaration and
-the delivery are both covered, and neither sensor pretends to cover the other's
-half. The size of the x264 entropy bias is measured in the plan and recorded,
-so the choice is on the record rather than assumed.
+**Both sides are read from a render, not from the shipped clip.** **Corrected
+2026-09-02 (Task 10's doc sync, from Task 9's measurement, §9):** this was
+originally justified here as "libx264 quantization lowers entropy on its own
+and would bias the ratio toward false damage" — measured directly and
+reproduced five times, that is backwards. A clip-read's entropy comes back
+*higher* than a render-pair's (0.940 vs 0.933 on the same graded episode, bias
+−0.007), because CRF-18 quantization and deblocking noise SPREAD the luma
+histogram rather than collapsing it. The DECISION still stands, and is better
+justified now than the original reason gave it credit for: comparing two things
+measured the same way is robust regardless of which direction an operating-point-
+dependent artifact happens to push, so symmetry is the right property to hold
+onto even though the specific mechanism first invoked for it was wrong. What a
+reader needs to take from this is the corrected risk: a clip-read comparison
+would be slightly more LENIENT than the render-pair this sensor actually uses,
+so the failure mode to guard against is missing real damage, not flagging a
+legitimate grade. The consequence is unchanged: **damage judges the declared
+map, faithfulness judges the delivered pixels.** Between them the declaration
+and the delivery are both covered, and neither sensor pretends to cover the
+other's half. The size of the x264 entropy bias is measured in the plan and
+recorded, so the choice is on the record rather than assumed.
 
 **The escalation becomes correct.** `grade_damage` sits in
 `orchestration._UNFIXABLE` and reports `grade-damage`, routing to the episode's
@@ -298,9 +319,20 @@ they are good, and the QC judge reads them. As a gate they were wrong.
   — (graded, plain). `None` reports `not-checked`, exactly the shape `source`
   already uses: non-blocking by default, blocking in practice because
   `process_episode` passes it.
-- `process_episode` builds the pair — it already builds the graded plan for
-  `reframe`, and `color_measure.plan_ungraded` is the stripped twin, already
-  written and already used by `measure_crop`.
+- `process_episode` builds the pair. **Corrected 2026-09-02 (Task 10's doc
+  sync):** this originally read as endorsing reuse of
+  `color_measure.plan_ungraded` (now `process_episode.plan_ungraded`) for the
+  plain half — it does not, and the code deliberately does not either.
+  `plan_for`/`plan_ungraded` both read `orch.DEFAULT_PARAMS`, which is right for
+  a probe or a measurement building a plan from a manifest alone, but wrong
+  inside the retry loop: an attempt whose params were adjusted (a jitter fail
+  widening `smooth_window_s` or damping `max_speed`) must compare two renders
+  that share THAT attempt's geometry, or the entropy ratio measures a crop
+  instead of a grade. The loop instead builds both the graded and the plain
+  `RenderPlan` directly from its own `params` dict, colour-stripping only the
+  manifest that feeds the plain half — never by calling `plan_for`/
+  `plan_ungraded` themselves. Task 5's own mutation-battery rows 15/16 exist
+  because of exactly this distinction.
 - `CheckSpec.grade_delta_max` is **deleted** and `CheckSpec.entropy_floor`
   replaces it. An advisory number needs no ceiling.
 
@@ -394,7 +426,13 @@ written.
 Classes B and C come from eight episodes of one shoot and six knob extremes on
 two of them. `0.90` is a first cut with 2.1 % of headroom below the worst
 legitimate pair. It will move on the next real run, and a run that moves it is
-worth more than any further synthesis here.
+worth more than any further synthesis here. **Added 2026-09-02 (Task 10's doc
+sync, from Task 9's measurement, §3):** the x264 entropy bias itself eats into
+that headroom — measured at 0.007 (clip-read 0.940 vs render-pair 0.933)
+against the render-pair statistic's 0.033 of margin to the 0.90 floor, i.e.
+**21 %** of the margin this floor actually has to work with is the bias this
+slice's own render-vs-render choice was designed to route around, not slack
+against a real damage signal.
 
 **§9.2 `highlight = 0.60` passes.** At 0.910 it clears a 0.90 floor. Argued
 above as correct — it is the documented boundary of acceptable — but a reader
@@ -407,6 +445,28 @@ are set against the run that IS the complaint (own P2 row).
 
 **§9.4 Faithfulness shares a code path with the render.** Stated in §2 and
 mitigated by the advisory `target_dev`, not closed.
+
+**Added 2026-09-02 (Task 10's doc sync, from Task 7's review):** the same
+sharing creates a drift blind spot on the PREDICTION side, not just the
+render side. `build_reel._predict` always plans from `orch.DEFAULT_PARAMS`
+(plus an AUTHORED `smooth_window_s`, per `process_episode.plan_for`'s own
+docstring — never a retry-ADJUSTED one), but an episode whose accepted attempt
+was not attempt 1 shipped with `orchestration.adjust_reframe_params`'s rescaled
+`max_speed`/`smooth_window_s` instead, and nothing records which attempt won.
+The recomputed plan's crop trajectory can then disagree with the one frozen in
+`path.json` even though nothing about the DECLARED colour changed — and left
+unguarded, that disagreement would still produce a profile, so
+`grade_faithful` would report a GEOMETRY mismatch as a colour residual and
+escalate to `process-episode` with a remedy (re-grade) that cannot fix a
+mismatch it did not cause. `_predict` closes this the same way
+`probe.probe_grade` already does at the identical hazard: it reuses
+`probe._refuse_on_drift` right after building the plan and contributes `None`
+on disagreement, so `check_reel` names the episode in `not_checked` instead of
+grading a phantom colour failure. The blind spot this leaves is narrower, not
+gone: an episode loses its faithfulness reading entirely rather than getting a
+wrong one, and nothing yet distinguishes "no reading because of a drift" from
+"no reading because the plan could not be built at all" in the report a human
+reads.
 
 **§9.5 Damage never reads the shipped clip.** By construction, per §3. The
 encode's own contribution is covered by the black gate and the look gate, not

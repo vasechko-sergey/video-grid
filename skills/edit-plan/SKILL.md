@@ -166,7 +166,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      same convention as `pan`). Unlike `pan` it does NOT replace the tracked
      route — the rect's position still comes from the SAME composition rule
      as any tracked episode, only its width shrinks or grows, which is what
-     keeps every `check_episode` check (framing/continuity/colour-fidelity)
+     keeps every `check_episode` check (framing/continuity/`grade_damage`)
      applying to it in full, exactly as it does to a still crop. It therefore
      **needs a tracked subject** — there is no route to ride without one —
      and `zoom` together with `pan` on one episode is refused (one anchors to
@@ -182,7 +182,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      empty of people** — intake's own measured `present` fraction, not your
      read of the frame. `edit_plan build` refuses a `pan` over a window
      holding people (`FootageWindow.present` above `PAN_PRESENCE_MAX`, 10% of
-     samples): a route-less move turns off framing/continuity/colour-fidelity,
+     samples): a route-less move turns off framing/continuity/`grade_damage`,
      which is only legitimate for a shot with no subject to check in the
      first place — not an editorial choice `pan` gets to make on your word.
      The gate enforces two further constraints: `composition` must be
@@ -231,7 +231,9 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      `tone_dst` to the reel's common target. **You will rarely author this pair by
      hand**: **match-grade** authors it for every episode from the tracked CROP, and
      that is the reading the reel is judged against (`check_reel`'s blocking
-     `tone_match`). If you do author one, read `tone_src` off the crop — `probe grade
+     `grade_faithful`, which predicts from your FULL declared chain, not the
+     bare tone pair — a post-tone knob moves the prediction and the delivery
+     together and cancels). If you do author one, read `tone_src` off the crop — `probe grade
      --geometry ... --index N` prints `tone_profile`, ONE pooled `(p5, p50, p95)` of
      the pixels that ship. `python -m scripts.color_measure <clip>` measures a WHOLE
      source frame instead, which on real footage differs from the crop by a median of
@@ -307,11 +309,16 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `edit_plan build` projects the EDL from `selection.json` alone, so a
    rebuild drops **both** the per-episode `tone_src`/`tone_dst` match-grade
    authored **and `EDL.tone_target`** (measured: both come back `None`). The
-   pairs going means the reel is genuinely ungraded, and the target going
-   means nothing says so — `check_reel`'s blocking `tone_match` reports
-   `not-checked: no-target` with `passed: null`, which never blocks, while
-   `MATCH.md` survives on disk and `montage status` still reads match-grade
-   as done. Skip the re-run and the gate examines zero pixels.
+   pairs going means the reel is genuinely ungraded, and this is now
+   INVISIBLE to the mechanical gate rather than merely unblocked: `check_reel`'s
+   blocking `grade_faithful` predicts each episode against its OWN declared
+   chain — with no pair declared, it predicts an ungraded profile, the render
+   is genuinely ungraded too, the two agree, and the check reports a clean
+   **pass**. The advisory `target_dev` goes silently empty in the same stroke
+   (it needs `EDL.tone_target` to have anything to compare against), so
+   nothing in `report.json` flags the loss at all. `MATCH.md` and
+   `montage status` both still read match-grade as done. Skip the re-run and
+   the reel ships ungraded with a green mechanical gate.
 
    This is also simpler than the post-render path below: once satisfied,
    `edl_to_reel --from-geometry` renders directly off the converged
@@ -367,12 +374,18 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    `selection.json` only, so match-grade's result is silently gone from the new
    `EDL.json` unless you copy the pair into `selection.json` yourself or re-run
    **match-grade** again after converging. **`EDL.tone_target` goes with it**,
-   and that is the half that hides the first: without a target `check_reel`'s
-   blocking `tone_match` reports `not-checked: no-target` with `passed: null`
-   and never blocks, so an ungraded reel passes the one gate that exists to
-   catch it while `MATCH.md` and `montage status` both still read as done.
-   Re-running **match-grade** after the last rebuild is what closes it, every
-   time — not only when the edit should move the common target.
+   and that is the half that hides the first — more completely than before:
+   `check_reel`'s blocking `grade_faithful` predicts THIS episode against its
+   own (now empty) declared chain, the render is genuinely ungraded to match,
+   the two agree, and the gate reports a clean **pass**, not a visible
+   `not-checked`. The advisory `target_dev` — the one number that USED to hint
+   something was off — goes silently empty for the same reason (no
+   `EDL.tone_target` means nothing to compare it against). So an ungraded reel
+   passes the one gate that exists to catch it, with no signal anywhere in
+   `report.json`, while `MATCH.md` and `montage status` both still read as
+   done. Re-running **match-grade** after the last rebuild is what closes it,
+   every time — not only when the edit should move the common target, and now
+   the only thing standing between a silently ungraded reel and delivery.
 
    Only when it converges is the full render worth paying for — and re-render
    **that one episode**, never the reel, so the tracker never runs again. There is

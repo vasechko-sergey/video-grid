@@ -146,18 +146,27 @@ pixels that actually ship.
 What is still true: **luma only**. The target and every measured profile are
 (p5, p50, p95) of luma — two cameras can still disagree on white balance after
 every episode lands on the same tone target, and nothing here measures
-agreement between episodes (`color_fidelity` compares an episode against its
-OWN source, i.e. damage, never episode against episode). Filed under the
-mood-LUT/agreement gap, design §10.
+agreement between episodes (`check_episode`'s `grade_damage` compares an
+episode against its OWN source, i.e. damage, never episode against episode).
+Filed under the mood-LUT/agreement gap, design §10.
 
-**And `color_fidelity` may STOP a run this stage just fixed.** It is blocking at
-5.0 dE00 with **no waiver anywhere**, and the tone pair authored here is grade
-movement to it: its whole headroom is roughly 14–20 codes of subject luma, and on
-the one real 8-episode reel every episode has a band that exceeds it. The stop
-arrives as `grade-damage`, routed to edit-plan's colour block — the pair this
-stage just wrote on purpose. There is no lever to lower; if you hit it, read
-`docs/backlog.md`'s P1 row and the grade-shipped-pixels design §9.8 rather than
-looking for a flag.
+**Closed 2026-09-02: `grade_damage` no longer STOPS a run this stage just
+fixed.** Until then, the mechanical gate this pair fed into measured how far
+the grade moved the tracked subject's colour from its own source — and a
+grade IS movement, so a real conductor pair routinely crossed it: on the one
+real 8-episode reel every episode had a subject-luma band that exceeded the
+old 5.0 dE00 ceiling, with no waiver anywhere. `check_episode.color_fidelity`
+is now `grade_damage`: it renders the episode's OWN declared grade twice —
+once as declared, once with every colour knob at identity — and asks whether
+the declared map DESTROYED information (Shannon entropy of the luma
+histogram, against `CheckSpec.entropy_floor = 0.90`), not whether it moved
+anything. A tone pair authored here reads as movement, which the sensor is
+now built to ignore, and passes cleanly; the old dE00 reading survives only as
+an advisory number in `report.json`, read by the QC judge, never a gate. If a
+`grade-damage` finding does arrive now, it means the named colour knob is
+genuinely too aggressive (e.g. `black_point`/`highlight` near their legal
+limit) — soften it in the episode's colour block via **edit-plan**; it is no
+longer this stage's own pair being misdiagnosed.
 
 ## Not this skill
 

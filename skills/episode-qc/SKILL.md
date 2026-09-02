@@ -175,21 +175,34 @@ say so rather than guessing a path.
   manifest has no `segment` or the file is gone. A strong cast, a flat frame
   or a saturated one in `stats` alone is a fact about the footage, not a
   defect — a `delta` flag is the one that can say the grade did something.
-  **`contrast_drop` is the exception and cannot be read that way**: the source
-  is measured over the WHOLE segment frame while the graded side is a reframed
-  crop of it, so the difference between two regions reads as a grade. On one
-  real fixture that is source contrast 0.0 against graded 123.6 with no grade
-  at all (design 2026-08-28 §9.7). Still advisory in both directions: ground a
-  finding in them, never defer to them.
+  **`contrast_drop` used to be an exception that could not be read that way**
+  (design 2026-08-28 §9.7): the source was measured over the WHOLE segment
+  frame while the graded side was a reframed crop of it, so the difference
+  between two REGIONS read as a grade — one real fixture showed source
+  contrast 0.0 against graded 123.6 with no grade at all. **Closed 2026-09-02
+  (grade-sensor-references §5)**: `source` now reads through the episode's
+  OWN crop geometry (the ungraded render this slice adds, via
+  `process_episode.plan_ungraded` + `reframe.plan_frames_rgb`), so `delta` —
+  `contrast_drop` included — is finally a same-geometry, grade-only
+  comparison. Still advisory in both directions: ground a finding in them,
+  never defer to them.
 - **The colour axis's mechanical companion now stops the episode.**
-  `report.json`'s `color_fidelity` (in the mechanical checks) reports a
-  median `delta_e` plus `dominant` (`luma` / `chroma` / `hue`) and fails the
-  episode above its threshold before this gate ever sees it — so an episode
-  that reached you already passed the mechanical colour check, **unless that
-  check reports `{"status": "not-checked"}` with `passed: null`**. A scenery
-  pan has no tracked subject and no route, so nothing measured its colour at
-  all; there, you are the only colour check the episode gets. Judge the pixels
-  regardless; a passing number is not a verdict on taste.
+  `report.json`'s `grade_damage` (in the mechanical checks; renamed from
+  `color_fidelity`, design 2026-08-31) renders the episode's OWN declared
+  grade against an identity twin of itself and fails the episode when the
+  declared map DESTROYED information (an entropy-ratio floor), before this
+  gate ever sees it — so an episode that reached you already passed the
+  mechanical colour check, **unless `grade_damage` itself reports
+  `{"status": "not-checked"}` with `passed: null`** (its render plans were
+  unavailable — rare). The check's advisory `delta_e`/`dominant` describe how
+  far the grade moved the tracked subject's colour, a DESCRIPTION of the
+  grade's intent, not a threshold — a large `delta_e` is not itself a
+  finding. A scenery pan has no tracked subject, so `delta_e` reads `null`
+  with `delta_reason: "no source clip or no tracked subject"`, but the
+  whole-frame entropy check itself still ran and still gated the episode; you
+  are only the sole colour check for what that check structurally cannot see
+  (chroma, and whether the natural-looking pixels are also the RIGHT ones).
+  Judge the pixels regardless; a passing number is not a verdict on taste.
 - **QC is per-episode and blind to neighbours.** Never comment on how one
   episode sits next to another, on pacing, or on repetition — that is
   reel-review's question, asked after delivery, over the assembled reel.

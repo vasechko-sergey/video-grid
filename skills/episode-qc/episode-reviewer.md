@@ -44,14 +44,22 @@ both — this is the pixel evidence itself, not a summary of it.
   never a global thirds rule? A `break` episode ignoring the thirds is
   correct; the same frame under `lead` is not. Judge against
   `intent.composition`, not a rule of thumb.
-- **colour** — does the grade read natural? The mechanical `color_fidelity`
-  check (in "The mechanical checks" above) already STOPPED this episode if
-  the grade moved the tracked subject's colour past its threshold — so if you
-  are looking at this episode, that already passed, and its `delta_e` /
-  `dominant` say how much headroom remained. **Unless it reads
-  `{"status": "not-checked"}` with `passed: null`** — a scenery pan has no
-  tracked subject, so nothing measured its colour and you are the only check
-  it gets. The naturalness flags above are
+- **colour** — does the grade read natural? The mechanical `grade_damage`
+  check (in "The mechanical checks" above) already stopped this episode if
+  the DECLARED grade destroyed information (an entropy-ratio floor, the
+  delivered grade's luma-histogram entropy against the same episode ungraded)
+  — so if you are looking at this episode, that already passed. Its advisory
+  `delta_e`/`dominant` describe how far the grade moved the tracked subject's
+  colour — a DESCRIPTION of what the grade did, not a threshold it cleared,
+  since a real regrade is supposed to move colour; a large `delta_e` is not
+  itself a finding, judge the pixels instead. **Unless `delta_e` itself reads
+  `null` with `delta_reason: "no source clip or no tracked subject"`** — a
+  scenery pan has no tracked subject, so only the whole-frame entropy check
+  ran (it still did, and still gates); you are the only judge of whether
+  its colour looks natural. `{"status": "not-checked", "passed": null}` on
+  the WHOLE `grade_damage` block is different and rarer — the render plans
+  themselves were unavailable, not merely the subject. The naturalness flags
+  above are
   advisory context, not a verdict — a `crushed_blacks` flag on a deliberately
   dark/night shot, or a `saturation_shift` on a scene that was meant to pop,
   is not a finding by itself. Look at the strip and decide for yourself; cite

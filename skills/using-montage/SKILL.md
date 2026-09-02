@@ -284,9 +284,15 @@ say so rather than guessing a path.
     > again. The re-run is not optional: `edit_plan build` projects the EDL
     > from `selection.json` alone, so a rebuild drops **both** the per-episode
     > `tone_src`/`tone_dst` match-grade authored **and `EDL.tone_target`**, and
-    > without the target `check_reel`'s blocking `tone_match` reports
-    > `not-checked: no-target` and examines zero pixels while `MATCH.md`
-    > survives on disk and `montage status` still reads match-grade as done.
+    > losing the target now makes the loss INVISIBLE rather than merely
+    > unblocked: `check_reel`'s blocking `grade_faithful` predicts each episode
+    > against its OWN declared chain, and with no pair declared it predicts an
+    > ungraded profile that the (now genuinely ungraded) render matches — a
+    > clean **pass**, not a visible `not-checked`. The advisory `target_dev`
+    > goes silently empty in the same stroke (it needs `EDL.tone_target` to
+    > compare against). So the reel ships ungraded with a green mechanical
+    > gate and no signal in `report.json`, while `MATCH.md` survives on disk
+    > and `montage status` still reads match-grade as done.
     > **Nothing is encoded until you stop.** See the **edit-plan** skill's
     > colour-grade section for the full loop and its footguns, and
     > `--from-geometry` (step 13) refuses a `GEOMETRY.json` whose cut no
@@ -348,14 +354,19 @@ say so rather than guessing a path.
     the remedy (`--stop-after-geometry` again, or restore the EDL). A
     `stop_and_report` here (an episode failed its own mechanical gate) is
     surfaced verbatim — never fixed forward; route it to the culprit stage's
-    skill. **One reason routes into a loop and must be recognised by name:
-    `grade-damage`** (`check_episode`'s `color_fidelity`, blocking at 5.0 dE00
-    with no waiver anywhere) names edit-plan's colour block as its culprit —
-    which is the tone pair **match-grade** authored on purpose one step
-    earlier, so following the route as written re-authors the same pair.
-    Read the **match-grade** skill's "`color_fidelity` may STOP a run this
-    stage just fixed" paragraph, and `docs/backlog.md`'s P1 row, before
-    changing anything; do not go looking for a flag, there is none.
+    skill. **One reason names a genuine colour defect and must be recognised
+    by name: `grade-damage`** (`check_episode`'s `grade_damage`, blocking at
+    an entropy-ratio floor of 0.90 with no waiver anywhere) names edit-plan's
+    colour block as its culprit. Since 2026-09-02 this diagnosis is
+    trustworthy rather than a trap: `grade_damage` renders the episode's own
+    declared grade against an identity render of the SAME clip and fails only
+    when the declared map actually destroys information (an extreme
+    `black_point`/`highlight`, for instance) — never on a legitimate
+    **match-grade**-authored tone pair, which reads as movement, not damage.
+    So a `grade-damage` finding is not `match-grade`'s pair being
+    misdiagnosed; it means the named colour knob really is too aggressive —
+    soften it in the episode's colour block via **edit-plan**, the way any
+    other mechanical finding is fixed.
 
 14. **episode-qc (required, not a checkpoint).** Invoke the **episode-qc**
     skill — it packs one evidence directory per episode from

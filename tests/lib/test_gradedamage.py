@@ -192,6 +192,25 @@ def test_evaluate_bits_and_frames_describe_the_same_subset():
     assert d["ratio"] == pytest.approx(1.0)
 
 
+def test_luma_clips_a_frame_whose_values_are_not_a_valid_uint8_image():
+    """`_luma`'s `.clip(0, 255)` guards a caller that hands it something other than
+    what its own docstring promises: 'one HxWx3 uint8 RGB frame'. Every production
+    caller (reframe.plan_frames_rgb's raw ffmpeg RGB24 pipe) can only ever produce
+    values already in [0, 255], so on any REAL frame the clip is provably a no-op —
+    the luma weights (0.299+0.587+0.114) sum to strictly <= 1.0 in float64, and
+    R/G/B are already non-negative, so the weighted sum can never leave [0, 255]
+    (measured: every corner of {0,255}^3 tops out at exactly 255.0). This test
+    therefore reaches the clip the only way possible: by passing a frame that is
+    NOT a valid uint8 image (a float array carrying an out-of-range value). Without
+    the clip, `.round().astype(np.uint8)` on 500.0 silently WRAPS via integer
+    overflow (500 % 256 = 244) instead of saturating at 255 — landing the pixel in
+    an arbitrary wrong bin rather than the frame's actual brightest code."""
+    frame = np.full((2, 2, 3), 100.0)
+    frame[0, 0] = (500.0, 500.0, 500.0)     # unclipped: round->500, astype(uint8)->244
+    y = gradedamage._luma(frame)
+    assert y[0, 0] == 255
+
+
 def test_evaluate_never_reports_a_negative_zero():
     """Fix round 1, Important 5: `entropy` returns exactly -0.0 for a flat frame
     (log2(1) == 0.0, negated), and dividing a flat GRADED frame's -0.0 by a real

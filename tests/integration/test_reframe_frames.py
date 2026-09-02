@@ -111,3 +111,30 @@ def test_plan_frames_rgb_refuses_a_short_buffer(golden_ride_segment, tmp_path):
                                     "tests/fixtures/golden_route.json")
     with pytest.raises(RuntimeError, match="asked for"):
         reframe.plan_frames_rgb(plan, str(golden_ride_segment), [0.1, 999.0])
+
+
+def test_plan_frames_rgb_refuses_a_buffer_that_is_a_MULTIPLE_of_the_wanted_size(
+        golden_ride_segment, tmp_path, monkeypatch):
+    """The exact-byte check must be `!=`, never `% want == 0`: the mutation-battery
+    row for this line (grade-sensor-references Task 10) found that
+    test_plan_frames_rgb_refuses_a_short_buffer above does NOT discriminate `!=`
+    from `% want != 0` — its own shortfall (1 real frame against 2 requested) is
+    not a whole multiple of `want`, so both forms raise for it. The function's own
+    comment names the real vacuous case: a buffer that is SOME OTHER exact multiple
+    of `want` (double, triple, ... or empty) satisfies a modulo check while still
+    being the wrong length. Forced here by feeding a real, correctly-shaped buffer
+    back TWICE — `2*want % want == 0`, so a modulo guard would silently accept it
+    and go on to slice frames out of it, while `!=` still catches the wrong length."""
+    md = _manifest(str(golden_ride_segment), str(tmp_path / "ep.mp4"))
+    plan = process_episode.plan_for(md, str(golden_ride_segment),
+                                    "tests/fixtures/golden_route.json")
+    real_run = reframe.proc.run
+
+    def _doubled_stdout(cmd):
+        result = real_run(cmd)
+        result.stdout = result.stdout * 2
+        return result
+
+    monkeypatch.setattr(reframe.proc, "run", _doubled_stdout)
+    with pytest.raises(RuntimeError, match="asked for"):
+        reframe.plan_frames_rgb(plan, str(golden_ride_segment), [0.2, 0.6, 1.0])

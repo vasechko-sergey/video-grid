@@ -10,6 +10,48 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.7.0 — 2026-09-02
+
+**Each colour gate gets a reference that admits the grade.** Two blocking
+colour gates each measured the render against a reference that pretended the
+declared grade did not exist, so each failed correctly-graded episodes and
+routed them back to the stage that authored the grade — the two P1 rows
+0.6.0 filed and left open.
+
+`check_episode.color_fidelity` → **`grade_damage`**. It renders the same
+episode twice — once with its declared colour block, once with every knob at
+identity — and asks whether the Shannon entropy of the two luma histograms
+says the declared map DESTROYED information, against `CheckSpec.entropy_floor
+= 0.90` (measured: a conductor-shaped tone pair reads 0.933, `black_point =
+0.35` reads 0.753, an ungraded episode reads 1.000 exactly). A grade IS
+movement and entropy is blind to a bijective one, so a real conductor pair —
+which used to cross the OLD 5.0 dE00 ceiling on five of eight real-run
+episodes — now passes clean. The old dE00 statistic survives as an advisory
+`delta_e`/`dominant` pair, read by the QC judge, never a gate.
+
+`check_reel.tone_match` → **`grade_faithful`**. It is now judged against the
+profile each episode's OWN full declared chain predicts — rendered fresh
+through the same `RenderPlan` the real render uses — instead of a common
+target solved with every other knob at identity. `ReelCheckSpec.
+grade_residual_max = 4.0` replaces `tone_match_max = 12.0`. Every episode is
+judged now, not only ones bound to a target. **Demoted, not silently lost:**
+cross-episode agreement no longer gates anything — it survives as the
+advisory `target_dev`, because gating it re-opens the same deadlock from the
+other side (a conductor pair that lands an episode on the common target can
+still read far from it once the episode's own post-tone knobs are applied).
+
+**Breaking:** `report.json`'s `color_fidelity` key and `reel_report.json`'s
+`tone_match` key are gone, replaced by `grade_damage` and `grade_faithful`;
+`CheckSpec.grade_delta_max` and `ReelCheckSpec.tone_match_max` no longer
+exist. A pre-0.7.0 artifact keeps its old keys; nothing reads them forward.
+
+**Also:** `probe grade` now predicts both gates (`grade_damage` +
+`predicted_profile` in `probe.json`, agreeing with the real gate to within
+0.02), so an operator converging on stills sees both stops coming instead of
+meeting them after a full render; `episode_qc`'s colour-naturalness sensor
+now reads the source through the episode's own crop geometry instead of a
+whole segment frame, so its advisory deltas finally compare like with like.
+
 ## 0.6.0 — 2026-08-30
 
 **The grade is now measured on the pixels that ship.** `match-grade` used to read a

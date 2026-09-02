@@ -4,13 +4,91 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-08-30._
+_Last updated: 2026-09-02._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Each colour gate gets a reference that admits the grade — the two P1
+  deadlocks closed (2026-09-02)** — design
+  [2026-08-31-grade-sensor-references-design.md](specs/2026-08-31-grade-sensor-references-design.md),
+  plan [2026-08-31-grade-sensor-references.md](plans/2026-08-31-grade-sensor-references.md),
+  Tasks 0–10 (branch `feat/grade-sensor-references`). Both P1 rows the previous
+  slice filed (design §9.8/§9.9) are closed: two blocking colour gates each
+  measured the render against a reference that pretended the declared grade did
+  not exist, so each failed correctly-graded episodes and routed them back to
+  the stage that authored the grade.
+  `check_episode.color_fidelity` → **`grade_damage`**: renders the SAME episode
+  twice — once with its declared colour block, once with every knob at
+  identity — and asks whether the Shannon entropy of the two luma histograms
+  says the declared map DESTROYED information, against `CheckSpec.entropy_floor
+  = 0.90` (measured on `golden_ride_segment`: a conductor-shaped pull reads
+  **0.933**, `black_point = 0.35` reads **0.753**, an ungraded episode reads
+  **1.000** exactly). A grade IS movement and entropy is blind to a bijective
+  one, so the design's own real-run conductor pairs — which used to cross the
+  OLD 5.0 dE00 ceiling on five of eight episodes — now pass clean (design §7
+  Proof 1, real ffmpeg). The old dE00 statistic survives as an advisory
+  `delta_e`/`dominant` pair, read by the QC judge, never a gate.
+  `check_reel.tone_match` → **`grade_faithful`**: judged against the profile
+  each episode's OWN full declared chain predicts — rendered fresh through the
+  same `RenderPlan` the real render uses — instead of a common target solved
+  with every other knob at identity. `ReelCheckSpec.grade_residual_max = 4.0`
+  replaces `tone_match_max = 12.0` (a healthy render carrying a post-tone
+  `black_point = 0.05` sits 0.00 luma units from its own prediction on this
+  fixture — the floor, not the fixture, sets the ceiling). Every episode is now
+  judged, not only ones bound to a target; cross-episode agreement is a real,
+  named demotion — it no longer gates at all, surviving only as the advisory
+  `target_dev` (design §2.1).
+  **The load-bearing correction, found while measuring the plan (Task 9) and
+  folded back into the design (Task 10):** §3 originally justified reading both
+  sides from a render because "libx264 quantization lowers entropy on its own
+  and would bias the ratio toward false damage" — measured and reproduced five
+  times, that is backwards. A clip-read's entropy comes back **higher** than a
+  render-pair's (0.940 vs 0.933, bias −0.007 — 21% of the render-pair
+  statistic's own 0.033 of margin to the floor), because CRF-18 quantization
+  and deblocking SPREAD the luma histogram rather than collapsing it. The
+  symmetric-render decision still stands — it is robust to an artifact whose
+  sign depends on the operating point — but the real risk of a clip-read
+  comparison is missing damage, not flagging a legitimate grade.
+  **Version 0.7.0.** New: `scripts/lib/gradedamage.py` (`entropy`/`evaluate`,
+  keyword-only on purpose — the ratio is graded ÷ plain while `plans` hands the
+  next layer a `(graded, plain)` tuple, so a positional splat would invert the
+  sensor in silence); `color.FRAMES`/`sample_times` (moved out of
+  `color_measure`, which `check_episode` cannot import without a cycle);
+  `reframe.plan_frames_rgb` (the plan's third sink, beside the x264 encode and
+  the gray ruler); one `process_episode.plan_for`/`plan_ungraded` manifest→plan
+  map, replacing three drifted copies (`color_measure.plan_ungraded`,
+  `probe._plan_for`, and reframe's own inline construction). `probe grade`
+  predicts both gates now (`grade_damage` + `predicted_profile` in
+  `probe.json`, cross-checked to agree with the real gate to within 0.02); an
+  operator converging on stills sees both stops coming instead of meeting them
+  after a full render — closing the P2 row filed 2026-08-28. `episode_qc`'s
+  colour-naturalness sensor finally compares like with like: `_source_reading`
+  reads the ungraded render in the episode's OWN crop geometry instead of a
+  whole segment frame, closing the P2 row the same slice filed (the branch's
+  own test used to record source contrast 0.0 against graded 123.6 with no
+  grade at all — a crop, not a grade).
+  **Breaking:** `report.json`'s `color_fidelity` key and `reel_report.json`'s
+  `tone_match` key are gone, replaced by `grade_damage` and `grade_faithful`;
+  `CheckSpec.grade_delta_max` and `ReelCheckSpec.tone_match_max` no longer
+  exist, replaced by `entropy_floor` (0.90) and `grade_residual_max` (4.0). A
+  pre-0.7.0 artifact keeps its old keys silently; nothing reads them forward.
+  Task 10's 28-row mutation battery ran RED on 26 rows outright (several only
+  once pointed at a test renamed since the brief was written across eight
+  prior tasks); 2 rows needed a new test to close a real gap; one row's own
+  gap was already closed by an earlier task's unrelated fix (a stabilized-
+  episode fixture landed for Task 7's own review, re-checked here per the
+  plan's own instruction and found to now discriminate); and one row —
+  `gradedamage.ENTROPY_BINS` — was found to be mathematically inert (consumed
+  only as `np.bincount`'s `minlength`, which the very next line's zero-count
+  filter makes unobservable for any input whatsoever) and reported as an
+  honest open finding rather than forced closed. **Full suite: 3392 passed, 1
+  skipped** (3389 + 3 new tests: the clip's `.clip(0, 255)` guard, the exact-
+  byte-vs-modulo size check, and `plan_for` honouring an authored
+  `smooth_window_s` — each a real coverage hole the battery found and closed).
 
 - **The grade is measured on the pixels that ship — DONE (2026-08-30)** — design
   [2026-08-30-grade-shipped-pixels-design.md](specs/2026-08-30-grade-shipped-pixels-design.md),
@@ -4818,21 +4896,20 @@ _Last updated: 2026-08-30._
 
 ## Next action
 
-> **Two P1 rows added 2026-08-30 outrank everything below** — `docs/backlog.md`
-> is the only document that holds priority, and its P1 section now opens with a
-> pair the cinematic-quality thread below does not mention: a conductor-authored
-> tone pair is grade movement to `check_episode`'s blocking `color_fidelity`
-> (no waiver anywhere, all eight real-run episodes over its headroom), and
-> `check_reel`'s blocking `tone_match` fails a **correctly graded** episode that
-> carries any post-tone luma knob (`black_point`, `highlight`, a non-default
-> `color_means`, …) because the conductor measures the crop at identity. Both
-> escalate into a loop with no exit — back into the stage that authored the
-> pair on purpose — and neither has a code fix: each names an open design
-> question (measure damage against identity or the declared transform; measure
-> the residual through the chain or exclude post-tone knobs from it), not a
-> patch. See [design](specs/2026-08-30-grade-shipped-pixels-design.md) §9.8/§9.9
-> and the backlog's own two P1 rows. The critical-path narrative below predates
-> this and has not been reordered around it.
+> **The two P1 rows added 2026-08-30 are closed 2026-09-02** —
+> `docs/backlog.md` is the only document that holds priority, and its P1
+> section now marks both ✅: `check_episode.color_fidelity` → `grade_damage`
+> (renders the episode's own declared grade against an identity twin of
+> itself and asks whether it destroyed information, not whether it moved
+> anything — a conductor pair reads as movement and passes clean) and
+> `check_reel.tone_match` → `grade_faithful` (judged against each episode's
+> OWN full declared chain, so a post-tone knob moves the prediction and the
+> delivery together and cancels). See [design](specs/2026-08-31-grade-sensor-references-design.md)
+> and the Done entry above. **P1 still has open rows** (R7.2, R5.3, R1.1–R1.3
+> — none of them colour), so this is not a return to an empty P1, only the
+> removal of the pair that outranked everything else. The critical-path
+> narrative below predates both this closure and the deadlock it answers, and
+> has not been reordered around either.
 
 - **Cinematic-quality P3 continues — what's left after S3** (synthesis
   `docs/cinematic-quality-playbook.md` §3/§4 priority 3) — S1 (footage

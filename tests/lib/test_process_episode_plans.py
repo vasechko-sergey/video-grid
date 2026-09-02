@@ -60,6 +60,20 @@ def test_the_two_plans_differ_ONLY_in_the_colour_tail(golden_ride_segment):
     assert a.filter_args[1].replace(a.grade, "") == b.filter_args[1].replace(b.grade, "")
 
 
+def test_plan_for_honours_an_AUTHORED_smooth_window_s_not_just_the_default(golden_ride_segment):
+    """`plan_for`'s own docstring says it builds from orch.DEFAULT_PARAMS 'plus an
+    authored smooth_window_s' — nothing else in this file supplies one, so a
+    regression that read the default unconditionally (ignoring `m.smooth_window_s`)
+    left every other test here green (grade-sensor-references Task 10 mutation
+    battery, row 10). A real route with real movement (golden_route.json) is what
+    makes the savgol window observable at all: a much wider window (1.5s) against
+    the 0.25s default must smooth the crop path into a DIFFERENT trajectory."""
+    src, route = str(golden_ride_segment), "tests/fixtures/golden_route.json"
+    default = process_episode.plan_for(_md(src), src, route)
+    wide = process_episode.plan_for(dict(_md(src), smooth_window_s=1.5), src, route)
+    assert wide.path != default.path
+
+
 def test_color_measure_no_longer_owns_a_second_copy():
     assert not hasattr(color_measure, "plan_ungraded")
 
