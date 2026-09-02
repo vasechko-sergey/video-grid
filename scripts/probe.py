@@ -216,9 +216,24 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     # md/src/route the graded render came from. A predictor that disagreed with the
     # gate it predicts would be worse than none (design 2026-08-31 §3/§8).
     plain = process_episode.plan_ungraded(md, src, ep.route)
+    # grade_damage here and predicted_profile below (in `report`) both predict a
+    # gate that ALWAYS samples at the DEFAULT count — check_episode._grade_damage
+    # and build_reel._predict, neither takes a `frames` argument. --frames widens
+    # the STILLS a human looks at (`imgs`, `tone_profile`) and must move neither
+    # prediction, or a probe run with a non-default --frames would silently report
+    # numbers the real gates were never going to compare against (Task 8 fix round
+    # 1 fixed this for predicted_profile; fix round 2 does the same here). When
+    # `frames` is already the default, `times` already IS the default sample set
+    # and the graded frames rendered above (`imgs`) are reused at zero extra cost;
+    # only a non-default --frames pays for a second, small, default-count render.
+    if frames == color.FRAMES:
+        damage_times, damage_graded = times, imgs
+    else:
+        damage_times = color.sample_times(plan.dur)
+        damage_graded = reframe.plan_frames_rgb(plan, src, damage_times)
     damage = gradedamage.evaluate(
-        plain=reframe.plan_frames_rgb(plain, src, times),
-        graded=imgs,
+        plain=reframe.plan_frames_rgb(plain, src, damage_times),
+        graded=damage_graded,
         floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
     report = {
         "episode": index, "episodes": episodes_path, "edl": edl_path,
@@ -227,14 +242,8 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
-        # predicted_profile is build_reel._predict's OWN recipe, called here verbatim
-        # (color_measure.crop_percentiles at color.sample_times' DEFAULT count) — NOT
-        # `tone` above, which samples at --frames instead. --frames widens the STILLS
-        # this probe renders and shows; it must not move what this field predicts, or
-        # a probe run with a non-default --frames would silently report a number
-        # check_reel.grade_faithful was never going to compare against (Task 8 fix
-        # round 1, Minor 2). At the default --frames this is the SAME call over the
-        # SAME plan/times as `tone` above, so the two numbers still agree there.
+        # predicted_profile: same reasoning as grade_damage above — always the
+        # default sample count, independent of --frames.
         "predicted_profile": [round(v, 1) for v in color_measure.crop_percentiles(
             plan, src, color.sample_times(plan.dur))],
         "grade_damage": damage,
@@ -306,9 +315,18 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     # source_for()-resolved path, since geometry mode has nothing rendered yet to
     # infer one from.
     plain = process_episode.plan_ungraded(md, eg.source, eg.route)
+    # grade_damage/predicted_profile: same reasoning as probe_grade's comment —
+    # both predict a gate that always samples at the default count, independent
+    # of --frames, reusing the frames already rendered above when frames is
+    # already the default and paying for a second small render only when it is not.
+    if frames == color.FRAMES:
+        damage_times, damage_graded = times, imgs
+    else:
+        damage_times = color.sample_times(plan.dur)
+        damage_graded = reframe.plan_frames_rgb(plan, eg.source, damage_times)
     damage = gradedamage.evaluate(
-        plain=reframe.plan_frames_rgb(plain, eg.source, times),
-        graded=imgs,
+        plain=reframe.plan_frames_rgb(plain, eg.source, damage_times),
+        graded=damage_graded,
         floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
     report = {
         "episode": index, "geometry": geometry_path, "edl": geo.edl,
@@ -317,8 +335,8 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
         "grade": plan.grade,
         "colour": {k: md[k] for k in COLOUR_KEYS if k in md},
         "tone_profile": [round(v, 1) for v in tone],
-        # predicted_profile: build_reel._predict's own recipe, independent of --frames
-        # — see probe_grade's comment for why.
+        # predicted_profile: same reasoning as grade_damage above — always the
+        # default sample count, independent of --frames.
         "predicted_profile": [round(v, 1) for v in color_measure.crop_percentiles(
             plan, eg.source, color.sample_times(plan.dur))],
         "grade_damage": damage,

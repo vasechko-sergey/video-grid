@@ -12,10 +12,11 @@ import pytest
 from scripts import check_episode, deliver as deliver_mod, probe, process_episode, reframe
 from scripts.lib import (assembly, color, ffbin, gradedamage, layout as layout_lib,
                          orchestration as orch, proc, provenance)
+from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.look import LookSpec
-from scripts.lib.manifest import Manifest
-from scripts.lib.models import (CheckSpec, Delivery, ExportProfile, PanSpec, ReelEpisode,
-                                ReelManifest, ReelReport, ReframeSpec)
+from scripts.lib.manifest import Manifest, strip_colour
+from scripts.lib.models import (CheckSpec, Delivery, EpisodeGeometry, ExportProfile, PanSpec,
+                                ReelEpisode, ReelGeometry, ReelManifest, ReelReport, ReframeSpec)
 
 pytestmark = pytest.mark.integration
 
@@ -343,4 +344,130 @@ def test_probe_grade_damage_agrees_with_check_episode_on_the_same_episode(
     from_check = _check_episode_grade_damage(tmp_path, golden_ride_segment,
                                              black_point=0.35)
     assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.02)
+    assert rep["grade_damage"]["below"] is from_check["below"]
+
+
+# --- Task 8 fix round 2: grade_damage must predict its gate at ANY --frames ------
+
+def _two_region_clip(tmp_path: Path, da: float, db: float) -> str:
+    """A synthetic clip built from two very different regions concatenated end to
+    end: `da` seconds near-black with faint noise, then `db` seconds mid-gray with
+    heavy noise. Built because golden_ride_segment could NOT discriminate this
+    round's bug at any legal colour knob or any N up to 31 (measured while writing
+    this test: black_point at 0.05/0.1/0.2/0.35, saturation combos, N in
+    {3,5,7,9,15,21,31} all agreed to within 0.006) — that clip is ~1.585s of one
+    real, fairly uniform shot, and (k+0.5)/N sampling of a smooth, roughly unimodal
+    per-frame entropy curve gives the SAME median for any two ODD N (color.FRAMES'
+    own comment already documents this for 5 vs 9: "the residual is not sampling
+    noise"). This fixture is deliberately adversarial instead of naturalistic: a
+    black_point of 0.35 crushes the near-black region's noise to EXACTLY zero
+    entropy (a hard nonlinearity, not a sampling artifact) while barely touching
+    the mid-gray region's, so the two regions' per-frame ratios are almost exactly
+    0.0 and 1.1 — bimodal, not smooth. At `da`/`db` chosen so ODD N=3 lands a
+    2-of-3 majority in one region (an extreme, take-all median) while EVEN N=4
+    lands 2-and-2 (an averaged median, ~0.55) the two counts diverge by the whole
+    ~0.55 gap — measured stable and reproducible across independent rebuilds
+    (byte-identical ratios both times: the noise amplitude is far too small to
+    survive the crush, so its exact realization does not matter)."""
+    a = tmp_path / "region_a.mp4"
+    b = tmp_path / "region_b.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+              "-i", f"color=c=0x060606:s=320x240:d={da:g}:r=30",
+              "-vf", "noise=alls=6:allf=t+u", "-c:v", "libx264", "-crf", "12",
+              "-pix_fmt", "yuv420p", str(a)])
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi",
+              "-i", f"color=c=0x808080:s=320x240:d={db:g}:r=30",
+              "-vf", "noise=alls=50:allf=t+u", "-c:v", "libx264", "-crf", "12",
+              "-pix_fmt", "yuv420p", str(b)])
+    out = tmp_path / "two_region.mp4"
+    concat_list = tmp_path / "concat.txt"
+    concat_list.write_text(f"file '{a}'\nfile '{b}'\n")
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "concat", "-safe", "0",
+              "-i", str(concat_list), "-c", "copy", str(out)])
+    return str(out)
+
+
+def _two_region_md(src: str, out: str, dur: float) -> dict:
+    """A route-less PAN episode (no tracker involved) over the whole synthetic
+    clip. crop_scale < 1.0 gives the pan horizontal freedom to be a pan at all —
+    canvas matches the source's own 4:3 aspect, so nothing here is about framing,
+    only about the colour chain and the timeline."""
+    return {"segment": src, "out_path": out, "target_dur": dur,
+           "composition": "center", "grid": "thirds", "canvas": [4, 3],
+           "layout": "fill", "delivery": "native", "crop_scale": 0.8,
+           "pan": {"from": 0.0, "to": 0.3}, "black_point": 0.35}
+
+
+def test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count(tmp_path):
+    """Task 8 fix round 2. grade_damage must predict check_episode._grade_damage's
+    own reading regardless of --frames — check_episode._grade_damage never takes a
+    frames argument, so it always samples at the default count, and grade_damage
+    has to match that gate at ANY --frames, not only the default one
+    test_probe_grade_damage_agrees_with_check_episode_on_the_same_episode already
+    proves. That other test always calls probe_grade at the default --frames, so it
+    can never exercise the non-default branch a --frames-driven regression hides
+    in — this fixture (see _two_region_clip) is built specifically to make that
+    branch matter: measured, the default N=3 reads 0.0 and N=4 reads ~0.55."""
+    src = _two_region_clip(tmp_path, da=1.1, db=0.9)
+    dur = assembly.probe_duration(src)
+    out = str(tmp_path / "ep0.mp4")
+    md = _two_region_md(src, out, dur)
+    path_json = str(tmp_path / "path.json")
+    rspec = process_episode.build_reframe_spec(
+        Manifest.from_dict(md), Delivery.from_spec(md["delivery"]), dict(orch.DEFAULT_PARAMS))
+    reframe.reframe(rspec, src, None, out, path_json)
+    ep = ReelEpisode(manifest=md, clip=out, route=None, path=path_json,
+                     meta=str(Path(path_json).with_suffix(".meta.json")))
+    ep_json = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=dur).write(ep_json)
+
+    rep = probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / "probe_out"), frames=4)
+    assert len(rep["times"]) == 4           # the --frames override really landed on the stills
+
+    plans = (process_episode.plan_for(md, src, None), process_episode.plan_ungraded(md, src, None))
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    from_check = check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+
+    assert from_check["ratio"] < 0.05, from_check    # ground truth: the default N=3 reading
+    assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.05)
+    assert rep["grade_damage"]["below"] is from_check["below"]
+
+
+def test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count_geometry(
+        tmp_path):
+    """Task 8 fix round 2, geometry mode. probe_grade_geometry takes the same
+    --frames parameter as probe_grade and got the identical fix (see its own
+    comment, "same reasoning as probe_grade's comment") — this is the same proof
+    as test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count
+    above, driven through GEOMETRY.json/EDL.json instead of EPISODES.json, so the
+    fix is proved in both modes rather than assumed to carry over because the code
+    looks the same."""
+    src = _two_region_clip(tmp_path, da=1.1, db=0.9)
+    dur = assembly.probe_duration(src)
+    out = str(tmp_path / "ep0.mp4")
+    # EpisodeGeometry.manifest is stored colour-STRIPPED in the real pipeline
+    # (design 2026-08-30 §2.2) — regrade replaces COLOUR_KEYS from the EDL
+    # regardless, so this is about matching the real shape, not about the result.
+    stripped_md = strip_colour(_two_region_md(src, out, dur))
+    eg = EpisodeGeometry(manifest=stripped_md, route=None, source=src,
+                         project_dir=str(tmp_path))
+    edl_path = tmp_path / "EDL.json"
+    write_edl(EDL(episodes=(EDLEpisode(source=src, start=0.0, dur=dur, shot_type="wide",
+                                       composition="center", grid="thirds",
+                                       black_point=0.35),)), edl_path)
+    geo = ReelGeometry(episodes=(eg,), edl=str(edl_path))
+    geo_path = tmp_path / "GEOMETRY.json"
+    geo.write(geo_path)
+
+    rep = probe.probe_grade_geometry(str(geo_path), 0, out_dir=str(tmp_path / "probe_out"),
+                                     frames=4)
+    assert len(rep["times"]) == 4           # the --frames override really landed on the stills
+
+    md = probe.regrade(dict(eg.manifest), geo.edl, 0)
+    plans = (process_episode.plan_for(md, src, None), process_episode.plan_ungraded(md, src, None))
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=dur)
+    from_check = check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+
+    assert from_check["ratio"] < 0.05, from_check    # ground truth: the default N=3 reading
+    assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.05)
     assert rep["grade_damage"]["below"] is from_check["below"]
