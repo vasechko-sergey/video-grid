@@ -227,12 +227,21 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path, m
 
 
 def _write_project(tmp_path):
-    # 9:16, long_edge 240 — small and fast: canvas sets the crop aspect against the 640x360
-    # source, delivery caps the final encode small so the real extract/track/reframe/deliver
-    # passes below stay quick (mirrors test_zoom.py's reason for the same delivery value).
+    # canvas = ramp_clip's own 640x360 (was [1080, 1920], a 9:16 crop), long_edge 240 —
+    # delivery caps the final encode small so the real extract/assemble/deliver passes
+    # below stay quick (mirrors test_zoom.py's reason for the same delivery value).
+    #
+    # The canvas matches the SOURCE because `_fake_track_pe` below skips reframe
+    # entirely — a plain `-c:v copy`, no crop — and records that honestly in its own
+    # path.meta.json (`"canvas": [W, H]`). A 9:16 project canvas left the MANIFEST —
+    # what a real reframe, and now `build_reel._predict`, reads — declaring a crop
+    # nobody rendered, the same fiction that cost test_outro.py residual 222 against
+    # `grade_faithful`'s 4.0 ceiling (8c81fea) and was repaired identically in
+    # test_front_spine.py and test_edit_plan.py. Nothing these two tests assert
+    # (played length, the EDL markdown) reads the canvas.
     p = tmp_path / "project.json"
     p.write_text(json.dumps(
-        {"purpose": "reel", "canvas": [1080, 1920], "delivery": "long_edge:240"}))
+        {"purpose": "reel", "canvas": [W, H], "delivery": "long_edge:240"}))
     return str(p)
 
 

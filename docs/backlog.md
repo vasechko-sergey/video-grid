@@ -507,23 +507,35 @@ integration test, so the new window-pool proof covers the carve and pool-scoring
 plumbing on real bytes, NOT the motion sensor's judgement — the sensor still has
 no real-footage proof, which is the calibration row's territory
 (cheap-P2-chores §4.1) ·
-a fixture class, one row instead of three one-offs: `test_outro.py`
-(repaired), `test_front_spine.py`'s `_project`, `test_edit_plan.py`'s
+a fixture class, one row instead of four one-offs — **all four now repaired
+by hand, the shared helper that would prevent a fifth is what remains**:
+`test_outro.py`, `test_front_spine.py`'s `_project`, `test_edit_plan.py`'s
 `_project_json` and `test_ramp.py`'s inline equivalent (copied from the
-latter, its own comment says so) all declare a `project.json` canvas of
+latter, its own comment says so) each declared a `project.json` canvas of
 `[1080, 1920]` — a 9:16 "reel" crop — that their own FAKE renderer never
 performs; `_fake_track_pe`/its stand-ins skip reframe entirely (a plain
 `-c:v copy`, no crop) and record the honest truth in their own
-`path.meta.json` (`"canvas": [W, H]`, the source's own dims). Only
-`test_outro.py`'s was ever fixed (realigned to the source aspect, design
+`path.meta.json` (`"canvas": [W, H]`, the source's own dims).
+`test_outro.py`'s was fixed first (realigned to the source aspect, design
 2026-08-31 Task 7), because `grade_faithful` is the first check to actually
-compare the DECLARATION against a prediction built from it; the other three
-stay dormant — found reading the fixtures, not running them, since nothing
-today exercises the path that would make any of them bite. A shared fixture
-helper that derives the declared canvas FROM whatever the fake renderer
-actually produces, the way the repaired one now does by hand, would close all
-three at once and stop a fourth copy from reintroducing it
-(grade-sensor-references Tasks 7/8, final review) ·
+compare the DECLARATION against a prediction built from it and it FAILED
+there at residual 222; the other three were repaired 2026-09-02 while still
+dormant. Two things measured on the way, neither of which the original row
+knew: through the real driver `grade_faithful` reports `no-prediction` for
+every episode in BOTH geometries, because the fakes write `path.json = [0]`
+and `probe._refuse_on_drift` refuses that against any recomputed plan first —
+so the three dormant copies were shielded twice, not once, and only a fake
+that later writes a faithful `path.json` would have exposed them (with the
+oracle bypassed, the 9:16 declaration predicts a residual of 1.0 on
+`test_front_spine.py`'s fixture and the source aspect 0.0). And
+`test_edit_plan.py`'s helper is NOT one class: three pure-`edit_plan` gate
+tests there (variety-gap, delivered-geometry, constraints) render no frame
+and depend on the 9:16 crop being real, so that file needed the helper SPLIT
+rather than changed — a blanket sweep would have broken the very tests that
+prove the variety gate reads delivered geometry. A shared fixture helper that
+derives the declared canvas FROM whatever the fake renderer actually
+produces, honouring that split, would stop a fifth copy from reintroducing
+this (grade-sensor-references Tasks 7/8, final review; repairs 2026-09-02) ·
 the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless

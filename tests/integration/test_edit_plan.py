@@ -62,15 +62,39 @@ def _selection_json(tmp_path, source):
 
 
 def _project_json(tmp_path):
+    # 9:16 on purpose, and load-bearing: the three pure-`edit_plan` gate tests below
+    # (variety-gap, delivered-geometry, constraints) never render a frame — they exist
+    # to prove the gate judges DELIVERED geometry, so the crop must be real to them.
     p = tmp_path / "project.json"
     p.write_text(json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
+    return str(p)
+
+
+def _project_json_source_aspect(tmp_path):
+    """For the two tests that drive `edl_to_reel` behind `_fake_track_pe`.
+
+    The fake skips reframe entirely — a plain `-c:v copy`, no crop — and records that
+    honestly in its own path.meta.json (`"canvas": [1920, 1080]`, matching src_dims).
+    A 9:16 project canvas here left the MANIFEST — what a real reframe, and now
+    `build_reel._predict`, reads — declaring a crop nobody rendered. `grade_faithful`
+    compares the master against a prediction built from that declaration, so the
+    fiction is a landmine: test_outro.py's identical one cost residual 222 against a
+    4.0 ceiling (8c81fea), and test_front_spine.py's was repaired the same way.
+    Measured here through the driver with `probe._refuse_on_drift` bypassed to reach
+    the comparison, the 9:16 declaration predicts a residual of 1.0 and the source
+    aspect 0.0; unbypassed, the drift oracle refuses `path.json = [0]` first, which is
+    why this never bit. `_project_json` above stays 9:16 — the gate tests that use it
+    render nothing and depend on the crop being real.
+    """
+    p = tmp_path / "project.json"
+    p.write_text(json.dumps({"purpose": "reel", "canvas": [1920, 1080], "delivery": "native"}))
     return str(p)
 
 
 def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     fj = _footage_json(tmp_path, sample_clip.name)
     sj = _selection_json(tmp_path, sample_clip.name)
-    pj = _project_json(tmp_path)
+    pj = _project_json_source_aspect(tmp_path)
     plan_out = tmp_path / "plan"
 
     res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out))
@@ -115,7 +139,7 @@ def _span_selection_json(tmp_path, source):
 def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     fj = _span_footage_json(tmp_path, sample_clip.name)
     sj = _span_selection_json(tmp_path, sample_clip.name)
-    pj = _project_json(tmp_path)
+    pj = _project_json_source_aspect(tmp_path)
     plan_out = tmp_path / "plan"
 
     res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out))
@@ -229,7 +253,7 @@ def test_sp3_delivered_geometry_is_what_decides(tmp_path):
     sp = tmp_path / "selection.json"
     sp.write_text(json.dumps(_geo_selection(source)))
     pp_16x9 = _project_json_16x9(tmp_path)
-    pp_9x16 = _project_json(tmp_path)      # purpose "reel" -> 9:16 canvas, same helper test1 uses
+    pp_9x16 = _project_json(tmp_path)      # purpose "reel" -> 9:16 canvas
 
     wide_canvas = edit_plan.write_edit_plan(str(fp), str(sp), str(pp_16x9), str(tmp_path))
     assert wide_canvas["status"] == "written"          # nothing but wide exists at 16:9

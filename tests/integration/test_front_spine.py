@@ -21,8 +21,30 @@ from scripts.lib import ffbin, proc
 
 
 def _project(tmp_path):
+    # canvas = the SOURCE's own 1920x1080 aspect (was [1080, 1920], a 9:16 "reel"
+    # canvas), so the declaration agrees with what this file's fakes actually render.
+    # Both `_fake_track_pe` and `_fake_track_or_pan_pe` skip reframe entirely — a
+    # plain `-c:v copy`, no crop — and record that honestly in their own
+    # path.meta.json (`"canvas": [1920, 1080]`, matching src_dims), as does this
+    # module's docstring. A 9:16 project canvas left the MANIFEST — what a real
+    # reframe, and now `build_reel._predict`, reads — declaring a crop nobody
+    # rendered. Same fiction, same repair as test_outro.py's `_project_json`
+    # (8c81fea), where it cost residual 222 against `grade_faithful`'s 4.0 ceiling.
+    #
+    # Measured here through the real driver, with `probe._refuse_on_drift` bypassed
+    # to reach the comparison: the 9:16 declaration predicted a residual of 1.0 on
+    # both episodes (the box's area fraction on this uniform grey background keeps
+    # the predicted percentiles close — luck, not correctness), the source aspect
+    # predicts 0.0. Unbypassed, `grade_faithful` reports `no-prediction` for every
+    # episode in BOTH geometries: the fakes write `path.json = [0]`, which the drift
+    # oracle refuses against any recomputed plan, so today the gate is doubly
+    # shielded and this was dormant. That second shield is what makes the mismatch a
+    # landmine rather than a failure — a fake that later writes a faithful path.json,
+    # or any change to the box's size or trajectory, would expose it as a colour
+    # residual having nothing to do with the EDL -> driver -> build_reel -> deliver
+    # wiring this file is chartered to test.
     p = tmp_path / "project.json"
-    p.write_text(json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
+    p.write_text(json.dumps({"purpose": "reel", "canvas": [1920, 1080], "delivery": "native"}))
     return str(p)
 
 
