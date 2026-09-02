@@ -17,9 +17,10 @@ file is the short "what changed for someone who installs it" list.
   the install path is version-keyed, so a reinstall at an unmoved version keeps
   serving the previous snapshot of the docs and skills that ride into the cache
   alongside the code.
-- **One shared test fixture where four hand-written copies used to be.** Four
-  integration tests each declared a canvas their own fake renderer never honoured —
-  the same defect, repaired by hand four times, with nothing stopping a fifth.
+- **One shared test fixture where five hand-written copies used to be.** Four
+  integration tests — one of them twice over, a plain fake and a pan-aware sibling
+  — each declared a canvas their own fake renderer never honoured: the same
+  defect, repaired by hand four times, with nothing stopping a fifth.
   `tests/conftest.py` now derives both the declared canvas and the fake's own
   geometry sidecar from a single source size, so the two readings cannot disagree.
   Recorded honestly rather than overstated: it unifies the **canvas**, not every

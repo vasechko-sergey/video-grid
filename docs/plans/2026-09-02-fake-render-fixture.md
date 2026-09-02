@@ -53,7 +53,7 @@ their deliberately-mismatched local project writer — see design §3.
   `pan_aware: bool` and one method `project(tmp_path) -> str` (the `project.json` path).
   Calling the factory installs the fake; `project()` may be called before or after.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_fake_render.py`:
 
@@ -106,12 +106,12 @@ sidecars, not on a clip. Step 3's implementation guards the copy with
 `if Path(manifest["segment"]).exists()` for exactly this reason — every migrated call site
 passes a real segment, so the copy still runs everywhere it matters.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_fake_render.py -q`
 Expected: FAIL — `NameError: name 'fake_render_factory' is not defined`.
 
-- [ ] **Step 3: Implement the fixture**
+- [x] **Step 3: Implement the fixture**
 
 Append to `tests/conftest.py`:
 
@@ -199,24 +199,24 @@ The `if Path(manifest["segment"]).exists()` guard is what lets the fixture's own
 tests exercise the sidecars without a real clip. Every migrated call site passes a real
 segment, so the copy still runs there.
 
-- [ ] **Step 4: Point the test at the real fixture**
+- [x] **Step 4: Point the test at the real fixture**
 
 In `tests/test_fake_render.py`, add `fake_render` to each test's parameters and replace both
 `fake_render_factory(` calls with `fake_render(`.
 
-- [ ] **Step 5: Run the test**
+- [x] **Step 5: Run the test**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_fake_render.py -q`
 Expected: PASS, 3 tests (two parametrized + the pan one).
 
-- [ ] **Step 6: Prove the invariant test actually discriminates**
+- [x] **Step 6: Prove the invariant test actually discriminates**
 
 Temporarily change `FakeRender.project` to write `"canvas": [1080, 1920]`.
 Run the same command. Expected: both parametrized tests FAIL.
 Restore the file, re-run, confirm green, and confirm `git diff tests/conftest.py` shows only the
 intended addition.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/conftest.py tests/test_fake_render.py
@@ -236,7 +236,7 @@ git commit -m "test: a fake renderer that owns its geometry, and the project tha
 - Consumes: `fake_render` from Task 1.
 - Produces: nothing new.
 
-- [ ] **Step 1: Rewrite the four tests**
+- [x] **Step 1: Rewrite the four tests**
 
 `test_edl_drives_a_silent_reel_end_to_end` and `test_edl_drives_a_reel_with_music` replace
 `_fake_track_pe(monkeypatch)` + `_project(tmp_path)` with:
@@ -260,30 +260,30 @@ Every existing assertion stays exactly as it is — in particular the pan tests'
 the on-disk `not (...).exists()` checks, and the `safe_zones` / `key_action` `skipped_episodes`
 assertions. Those are what prove `pan_aware` is not a no-op.
 
-- [ ] **Step 2: Delete the three local helpers**
+- [x] **Step 2: Delete the three local helpers**
 
 Remove `_project`, `_fake_track_pe` and `_fake_track_or_pan_pe`. Move nothing else: `_edl`,
 `_edl_all_pan`, `_edl_mixed` and `_spy_on_build_reel` stay.
 
-- [ ] **Step 3: Keep the module docstring honest**
+- [x] **Step 3: Keep the module docstring honest**
 
 The docstring says the mechanical middle is faked and "the delivered reel keeps the source dims,
 not the project canvas". That second clause is now the fixture's guarantee rather than a
 coincidence — reword it to say the project canvas IS the source dims, via `fake_render`, and
 point at `docs/specs/2026-09-02-fake-render-fixture-design.md`.
 
-- [ ] **Step 4: Run the file**
+- [x] **Step 4: Run the file**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/integration/test_front_spine.py -q`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Prove `pan_aware` still carries its weight**
+- [x] **Step 5: Prove `pan_aware` still carries its weight**
 
 Temporarily pass `pan_aware=False` in the two pan tests. Run the file.
 Expected: both pan tests FAIL (`route is None` and the on-disk absence both break).
 Restore, re-run, confirm 4 pass, confirm `git diff` shows only the intended change.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/integration/test_front_spine.py
@@ -302,7 +302,7 @@ git commit -m "test: front_spine takes its geometry from the shared fake rendere
 - Consumes: `fake_render` from Task 1.
 - Produces: nothing new.
 
-- [ ] **Step 1: Rewrite the two driver tests**
+- [x] **Step 1: Rewrite the two driver tests**
 
 In `test_selection_becomes_edl_becomes_reel` and `test_span_selection_becomes_edl_becomes_reel`,
 add `fake_render` to the parameters and replace the helper pair:
@@ -316,7 +316,7 @@ then delete the later `_fake_track_pe(monkeypatch)` line — the factory already
 `pj` continues to be passed to `edit_plan.write_edit_plan` and `edl_to_reel.edl_to_reel`
 unchanged.
 
-- [ ] **Step 2: Delete only the two now-unused helpers**
+- [x] **Step 2: Delete only the two now-unused helpers**
 
 Remove `_fake_track_pe` and `_project_json_source_aspect`. **Keep `_project_json`** and its
 comment. Extend that comment with one sentence naming the fixture and why these three tests are
@@ -329,12 +329,12 @@ not on it:
     # silently.
 ```
 
-- [ ] **Step 3: Run the file**
+- [x] **Step 3: Run the file**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/integration/test_edit_plan.py -q`
 Expected: PASS, all tests in the file (5 at time of writing).
 
-- [ ] **Step 4: Prove the gate tests are still on the 9:16 declaration**
+- [x] **Step 4: Prove the gate tests are still on the 9:16 declaration**
 
 Temporarily point `test_sp3_delivered_geometry_is_what_decides`'s `pp_9x16` at
 `fake_render(monkeypatch, src_dims=(3840, 2160)).project(tmp_path / "c")`.
@@ -342,7 +342,7 @@ Run the file. Expected: that test FAILS — the variety gap it asserts disappear
 declared canvas matches the source, which is precisely design §3's point.
 Restore, re-run, confirm green, confirm `git diff`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_edit_plan.py
@@ -363,7 +363,7 @@ git commit -m "test: edit_plan's two driver tests move onto the shared fake rend
 - Consumes: `fake_render` from Task 1.
 - Produces: nothing new.
 
-- [ ] **Step 1: Rewrite `test_outro.py`'s call site**
+- [x] **Step 1: Rewrite `test_outro.py`'s call site**
 
 Both `W, H = 640, 360` and the `long_edge:240` delivery are already module constants. Replace
 the `_fake_track_pe(monkeypatch)` + `pj = _project_json(tmp_path)` pair with:
@@ -377,7 +377,7 @@ adding `fake_render` to the test's parameters. Delete both local helpers. The lo
 `_project_json` explaining the 9:16 repair goes away with it — the fixture's docstring and the
 design now carry that reasoning; do not copy it to the call site.
 
-- [ ] **Step 2: Rewrite `test_ramp.py`'s two call sites**
+- [x] **Step 2: Rewrite `test_ramp.py`'s two call sites**
 
 `test_a_ramped_episode_reaches_the_reel_at_its_played_length` takes the same two lines as
 Step 1. `test_the_edl_markdown_reports_the_ramp` renders nothing but still needs a project:
@@ -394,7 +394,7 @@ Delete `_write_project` and `_fake_track_pe`. The section comment above them (th
 why the mechanical middle is faked here) keeps its first two paragraphs about ramp-specific
 scope; drop only the sentences that describe the now-deleted helpers' internals.
 
-- [ ] **Step 3: Run both files**
+- [x] **Step 3: Run both files**
 
 Run:
 ```bash
@@ -403,7 +403,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest \
 ```
 Expected: PASS, all tests in both files (15 at time of writing, together with Task 3's file).
 
-- [ ] **Step 4: Prove the delivery parameter is real**
+- [x] **Step 4: Prove the delivery parameter is real**
 
 Temporarily drop `delivery="long_edge:240"` from `test_ramp.py`'s ramped-reel test so it falls
 back to `"native"`. Run that test with `-q`. Expected: it still passes but takes materially
@@ -412,7 +412,7 @@ in the commit message. If it does NOT get slower, the parameter is not reaching 
 that is a finding to report, not to paper over.
 Restore and re-run.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/integration/test_outro.py tests/integration/test_ramp.py
@@ -428,18 +428,18 @@ git commit -m "test: outro and ramp take their geometry from the shared fake ren
 - Modify: `docs/build-status.md` (a `## Done` entry at the top)
 - Modify: `CLAUDE.md` (two Quick Reference rows: the design and this plan)
 
-- [ ] **Step 1: Run the whole suite**
+- [x] **Step 1: Run the whole suite**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q 2>&1 | tail -5`
 Expected: **3401 passed, 1 skipped** — the 3398 baseline plus Task 1's three new tests. Any
 other number needs explaining before proceeding: fewer means a test stopped being collected.
 
-- [ ] **Step 2: Confirm no production file moved**
+- [x] **Step 2: Confirm no production file moved**
 
 Run: `git diff --stat main...HEAD -- scripts/`
 Expected: empty output. If not, stop and report.
 
-- [ ] **Step 3: Rewrite the backlog row**
+- [x] **Step 3: Rewrite the backlog row**
 
 The row currently ends with "A shared fixture helper that derives the declared canvas FROM
 whatever the fake renderer actually produces, honouring that split, would stop a fifth copy from
@@ -448,20 +448,20 @@ four files on it, the three gate tests deliberately off it, and the limit that s
 nothing forces a new test to use the fixture, and a copy written from scratch would still be
 born dormant behind the drift guard. Keep the row's history intact; only its open tail changes.
 
-- [ ] **Step 4: Add the `## Done` entry**
+- [x] **Step 4: Add the `## Done` entry**
 
 At the top of `docs/build-status.md`'s `## Done` list, add an entry naming the design and plan,
 the census (30 declare a canvas / 8 fake / 4 render), what moved, what deliberately did not, the
 suite numbers before and after, and the mutation checks from Tasks 1, 2, 3 and 4 with their
 results. Follow the existing entries' shape.
 
-- [ ] **Step 5: Add the two `CLAUDE.md` registry rows**
+- [x] **Step 5: Add the two `CLAUDE.md` registry rows**
 
 One row for the design, one for the plan, in the Quick Reference table beside the other test-
 scaffolding entries. One line each, saying what the reader gets — including §3, since that is
 the part a future unifier needs to read before touching `test_edit_plan.py`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/backlog.md docs/build-status.md CLAUDE.md
