@@ -201,11 +201,9 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path, m
 
 # --- Task 8: end to end, SP3 -> SP1 (design docs/specs/2026-07-11-extract-spine-design.md).
 #
-# Scaffolding copied from tests/integration/test_edit_plan.py's _project_json/_footage_json/
-# _selection_json/_fake_track_pe (test_selection_becomes_edl_becomes_reel is the SP3->SP1 seam
-# this mirrors), adapted: _write_footage takes an `fps` and emits ONE window covering the whole
-# [0.0, 2.0] of ramp.mp4; footage_root is tmp_path itself here (unlike sample_clip's own
-# session-scoped media dir), so ramp_clip is copied in under the name FOOTAGE.json/selection.json
+# _write_footage takes an `fps` and emits ONE window covering the whole [0.0, 2.0] of
+# ramp.mp4; footage_root is tmp_path itself here (unlike sample_clip's own session-scoped
+# media dir), so ramp_clip is copied in under the name FOOTAGE.json/selection.json
 # reference it by.
 #
 # process_episode IS faked here, same as test_edit_plan.py and for the same reason: driving the
@@ -226,25 +224,6 @@ def test_an_unramped_extract_is_unchanged_by_this_slice(sample_clip, tmp_path, m
 # proof, and staying honest about the boundary matters more than chasing a broader claim.
 
 
-def _write_project(tmp_path):
-    # canvas = ramp_clip's own 640x360 (was [1080, 1920], a 9:16 crop), long_edge 240 —
-    # delivery caps the final encode small so the real extract/assemble/deliver passes
-    # below stay quick (mirrors test_zoom.py's reason for the same delivery value).
-    #
-    # The canvas matches the SOURCE because `_fake_track_pe` below skips reframe
-    # entirely — a plain `-c:v copy`, no crop — and records that honestly in its own
-    # path.meta.json (`"canvas": [W, H]`). A 9:16 project canvas left the MANIFEST —
-    # what a real reframe, and now `build_reel._predict`, reads — declaring a crop
-    # nobody rendered, the same fiction that cost test_outro.py residual 222 against
-    # `grade_faithful`'s 4.0 ceiling (8c81fea) and was repaired identically in
-    # test_front_spine.py and test_edit_plan.py. Nothing these two tests assert
-    # (played length, the EDL markdown) reads the canvas.
-    p = tmp_path / "project.json"
-    p.write_text(json.dumps(
-        {"purpose": "reel", "canvas": [W, H], "delivery": "long_edge:240"}))
-    return str(p)
-
-
 def _write_footage(tmp_path, clip, fps):
     dst = tmp_path / "ramp.mp4"
     dst.write_bytes(Path(clip).read_bytes())
@@ -263,44 +242,16 @@ def _write_selection(tmp_path, episodes):
     return str(p)
 
 
-def _fake_track_pe(monkeypatch):
-    """Copied from tests/integration/test_edit_plan.py's _fake_track_pe, dims adjusted
-    to ramp_clip's own 640x360 (W, H) instead of sample_clip's 1920x1080 — see the
-    module comment above for why the mechanical middle is faked at all."""
-    from scripts import edl_to_reel
-
-    def fake_pe(manifest, project_dir, route_path=None):
-        Path(project_dir).mkdir(parents=True, exist_ok=True)
-        (Path(project_dir) / "route.json").write_text(
-            json.dumps([{"t": 0.0, "x": W // 2, "y": H // 2, "w": 40, "h": 80, "id": 1}]))
-        # real process_episode writes path.json + path.meta.json beside route.json on every
-        # mechanical_pass (reframe emits both); mirror that so build_reel's frozen safe_zones
-        # geometry reads real files. CropPath [0] is parallel to the single route point above;
-        # a plain fill sidecar at the clip's own W x H dims (safe_zones is advisory — this
-        # test doesn't assert it, so the values need only be valid, not "safe").
-        (Path(project_dir) / "path.json").write_text(json.dumps([0]))
-        (Path(project_dir) / "path.meta.json").write_text(json.dumps(
-            {"mode": "fill", "crop_w": W, "crop_h": H, "crop_y": 0,
-             "src_dims": [W, H], "canvas": [W, H], "out_dims": [W, H],
-             "rect_px": [0, 0, W, H], "freedom": 0}))
-        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an",
-                 manifest["out_path"]])
-        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
-    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
-    # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
-    # the pool — unstubbed, this ffmpeg golden also constructs a real YOLO (importing
-    # torch, and downloading 6MB on a cold cache) for a tracking pass it never runs.
-    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
-
-
-def test_a_ramped_episode_reaches_the_reel_at_its_played_length(ramp_clip, tmp_path, monkeypatch):
+def test_a_ramped_episode_reaches_the_reel_at_its_played_length(
+        ramp_clip, tmp_path, monkeypatch, fake_render):
     """The whole point of backlog #7, end to end: the reel is as long as the episodes
     PLAY, not as long as their source windows. (Scope: see the module comment above
     this section — process_episode is faked, so this proves LENGTH, not framing.)"""
     from scripts import edit_plan, edl_to_reel
     from scripts.lib.edl import EDL
 
-    proj = _write_project(tmp_path)
+    fake = fake_render(monkeypatch, src_dims=(W, H), delivery="long_edge:240")
+    proj = fake.project(tmp_path)
     foot = _write_footage(tmp_path, ramp_clip, fps=FPS)
     sel = _write_selection(tmp_path, [
         {"source": "ramp.mp4", "window": 0,
@@ -315,7 +266,6 @@ def test_a_ramped_episode_reaches_the_reel_at_its_played_length(ramp_clip, tmp_p
     ep = e.episodes[0]
     assert ep.play_dur() > ep.dur
 
-    _fake_track_pe(monkeypatch)
     res = edl_to_reel.edl_to_reel(
         str(tmp_path / "EDL.json"), proj, str(tmp_path),
         str(tmp_path / "work"), str(tmp_path / "out"))
@@ -324,10 +274,10 @@ def test_a_ramped_episode_reaches_the_reel_at_its_played_length(ramp_clip, tmp_p
         ep.play_dur(), abs=0.2)
 
 
-def test_the_edl_markdown_reports_the_ramp(ramp_clip, tmp_path):
+def test_the_edl_markdown_reports_the_ramp(ramp_clip, tmp_path, monkeypatch, fake_render):
     from scripts import edit_plan
 
-    proj = _write_project(tmp_path)
+    proj = fake_render(monkeypatch, src_dims=(W, H), delivery="long_edge:240").project(tmp_path)
     foot = _write_footage(tmp_path, ramp_clip, fps=FPS)
     sel = _write_selection(tmp_path, [
         {"source": "ramp.mp4", "window": 0,

@@ -5,14 +5,14 @@ The claim under test is the one §1 rests on: choosing reel_dur = line + fade ma
 mix's EXISTING afade start exactly on the bar line, with no change to any ffmpeg
 stage. A unit test cannot show that — only a delivered file can.
 
-Fixture modelled on tests/integration/test_edit_plan.py's SP3->SP1 golden (same
-_fake_track_pe/_footage_json/_selection_json/_project_json shapes, and the same
-reason the mechanical middle is faked: the synthetic clip is a box, not a person,
-so real YOLO tracking returns an empty route) plus tests/integration/
-test_front_spine.py's test_edl_drives_a_reel_with_music for the real-tone
-MUSIC.json recipe. tests/integration/test_ramp.py's Task 8 fixture is where the
-small 640x360 source + long_edge:240 delivery combination (fast real encodes)
-comes from.
+Fixture modelled on tests/integration/test_edit_plan.py's SP3->SP1 golden
+(_footage_json/_selection_json shapes here, geometry from the shared fake_render
+fixture, and the same reason the mechanical middle is faked: the synthetic clip
+is a box, not a person, so real YOLO tracking returns an empty route) plus
+tests/integration/test_front_spine.py's test_edl_drives_a_reel_with_music for the
+real-tone MUSIC.json recipe. tests/integration/test_ramp.py's Task 8 fixture is
+where the small 640x360 source + long_edge:240 delivery combination (fast real
+encodes) comes from.
 
 mix.py/deliver.py/check_reel.py/build_reel.py/edl_to_reel.py are untouched by this
 slice (design §1) — this file only calls them, never edits them.
@@ -24,7 +24,6 @@ prove: `edit_plan._back_edge_target`'s over-flow clamp discarding the outro fit'
 growth (Task 5b; design 2026-08-14 §6's correction has the mechanism)."""
 import json
 import subprocess
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -98,30 +97,6 @@ def tone(tmp_path_factory):
     return out
 
 
-def _fake_track_pe(monkeypatch):
-    """Copied from test_edit_plan.py's _fake_track_pe, dims adjusted to this
-    module's own WxH — see that file's module comment for why the mechanical
-    middle is faked at all (the synthetic clip is a box, not a person, so real
-    YOLO tracking returns an empty route)."""
-    def fake_pe(manifest, project_dir, route_path=None):
-        Path(project_dir).mkdir(parents=True, exist_ok=True)
-        (Path(project_dir) / "route.json").write_text(
-            json.dumps([{"t": 0.0, "x": W // 2, "y": H // 2, "w": 40, "h": 80, "id": 1}]))
-        (Path(project_dir) / "path.json").write_text(json.dumps([0]))
-        (Path(project_dir) / "path.meta.json").write_text(json.dumps(
-            {"mode": "fill", "crop_w": W, "crop_h": H, "crop_y": 0,
-             "src_dims": [W, H], "canvas": [W, H], "out_dims": [W, H],
-             "rect_px": [0, 0, W, H], "freedom": 0}))
-        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an",
-                 manifest["out_path"]])
-        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
-    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
-    # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
-    # the pool — unstubbed, this ffmpeg golden also constructs a real YOLO (importing
-    # torch, and downloading 6MB on a cold cache) for a tracking pass it never runs.
-    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
-
-
 def _footage_json(tmp_path, source):
     # window 0: [0.5, 6.5) — window 1: [10.0, 14.0), the CLOSING shot the outro fit
     # grows. No scene cuts: room_after(10.0) == CLIP_DUR - 10.0 == 10.0s, comfortably
@@ -142,29 +117,6 @@ def _selection_json(tmp_path, source):
         {"source": source, "window": 1, "composition": "lead", "grid": "thirds", "crop_scale": 0.8}]}
     p = tmp_path / "selection.json"
     p.write_text(json.dumps(sel))
-    return str(p)
-
-
-def _project_json(tmp_path):
-    # small + fast delivery, like test_ramp.py's Task 8 fixture (long_edge:240 on a
-    # 640x360 source keeps deliver's one real x264 encode quick).
-    #
-    # canvas = the SOURCE's own aspect (was [1080, 1920], a 9:16 "reel" canvas), to
-    # agree with what `_fake_track_pe` actually delivers. `_fake_track_pe` skips
-    # reframe entirely — a plain `-c:v copy`, no crop — and its own path.meta.json
-    # already says so honestly (`"canvas": [W, H]`, matching src_dims, not the
-    # project's declared 9:16). A 9:16 project canvas left the two disagreeing: the
-    # MANIFEST (which is what a real reframe, and now `build_reel._predict`, reads)
-    # still declared a 9:16 crop nobody rendered. Nothing noticed until design
-    # 2026-08-31 Task 7 wired `check_reel.grade_faithful` to predict each episode
-    # fresh from that same declaration — nothing here was mis-cropped, the
-    # declaration was always a fiction this fixture's fake never enacted, and nothing
-    # before Task 7 ever compared the two. `grade_faithful` correctly refused it
-    # (episode 1's tracked-box window sits inside the fictional crop's centre column,
-    # residual 222 against a 4.0 ceiling). Matching canvas to source, like the
-    # sidecar already does, removes the crop this fixture never actually took.
-    p = tmp_path / "project.json"
-    p.write_text(json.dumps({"purpose": "reel", "canvas": [W, H], "delivery": "long_edge:240"}))
     return str(p)
 
 
@@ -221,14 +173,14 @@ def _music_json(tmp_path, track, *, bars):
     return str(p)
 
 
-def _build(tmp_path, clip, track, *, bars, monkeypatch):
+def _build(tmp_path, clip, track, *, bars, monkeypatch, fake_render):
     """The real chain: FOOTAGE + selection + project + pacing + music -> edit_plan
     build --pacing --music -> edl_to_reel -> a delivered reel. Returns (out_reel,
     the written EDL)."""
-    _fake_track_pe(monkeypatch)
+    fake = fake_render(monkeypatch, src_dims=(W, H), delivery="long_edge:240")
     fj = _footage_json(tmp_path, clip.name)
     sj = _selection_json(tmp_path, clip.name)
-    pj = _project_json(tmp_path)
+    pj = fake.project(tmp_path)
     pacing = _pacing_json(tmp_path)
     mj = _music_json(tmp_path, track, bars=bars)
     plan_out = tmp_path / "plan"
@@ -244,7 +196,8 @@ def _build(tmp_path, clip, track, *, bars, monkeypatch):
     return reel["output"], edl
 
 
-def test_delivered_reel_ends_at_line_plus_fade(outro_clip, tone, tmp_path, monkeypatch):
+def test_delivered_reel_ends_at_line_plus_fade(
+        outro_clip, tone, tmp_path, monkeypatch, fake_render):
     # The realized (pre-fit) picture is 6.0 + 4.0 = 10.0s. The closing shot (window 1,
     # [10.0, 14.0) on the 20s clip, no scene cuts) can grow up to
     # room_after(10.0) - dur(4.0) = (20.0 - 10.0) - 4.0 = 6.0s, so grow_max never
@@ -262,7 +215,8 @@ def test_delivered_reel_ends_at_line_plus_fade(outro_clip, tone, tmp_path, monke
     assert fit.line == LINE and fit.fade == FADE
     expected_line, expected_fade, expected_dur = fit.line, fit.fade, fit.reel_dur
 
-    out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(LINE,), monkeypatch=monkeypatch)
+    out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(LINE,), monkeypatch=monkeypatch,
+                           fake_render=fake_render)
     # the EDL agrees with the pure fit above, and the back-edge target was NOT
     # clamped back down to the pre-fit 10.0s (see _pacing_json's docstring)
     assert edl.outro is not None and edl.outro.rung == "gap"
@@ -275,13 +229,15 @@ def test_delivered_reel_ends_at_line_plus_fade(outro_clip, tone, tmp_path, monke
     assert _rms(out_reel, expected_line - 0.30, 0.20) > 5 * _rms(out_reel, dur - 0.10, 0.08)
 
 
-def test_unfitted_reel_keeps_its_footage_derived_length(outro_clip, tone, tmp_path, monkeypatch):
+def test_unfitted_reel_keeps_its_footage_derived_length(
+        outro_clip, tone, tmp_path, monkeypatch, fake_render):
     """Step 2 — the control that must NOT move. The SAME fixture with bars=() in
     MUSIC.json must deliver at the un-fitted realized length (6.0+4.0=10.0s), not at
     line + fade. Without this, the first test would pass for any implementation
     that always extends the reel regardless of what MUSIC.json says."""
     realized = 6.0 + 4.0
-    out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(), monkeypatch=monkeypatch)
+    out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(), monkeypatch=monkeypatch,
+                           fake_render=fake_render)
     assert edl.outro is not None and edl.outro.rung == "unchanged" and edl.outro.line is None
     assert edl.target_dur == pytest.approx(realized)
 
