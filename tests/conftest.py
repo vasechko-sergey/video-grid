@@ -1,3 +1,5 @@
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -219,3 +221,79 @@ def need_filter():
         if not present:
             pytest.skip(f"ffmpeg lacks the {name} filter (run: bash setup.sh)")
     return _need
+
+
+@dataclass
+class FakeRender:
+    """A fake `process_episode` and the `project.json` that agrees with it, by construction.
+
+    The whole class of defect this closes (design 2026-09-02 §0) is a test stating its
+    geometry twice — once in `project.json`, once in the `path.meta.json` its fake writes
+    — with nothing keeping the two in step. Here there is one `src_dims` and both readings
+    come off it, so they cannot disagree.
+
+    NOT for tests that render nothing. `tests/integration/test_edit_plan.py`'s three
+    pure-`edit_plan` gate tests (variety-gap, delivered-geometry, constraints) need a
+    declared canvas that deliberately does NOT match the source — that mismatch is what
+    they prove (design §3). They keep their own writer; do not "unify" them onto this.
+    """
+    src_dims: tuple
+    delivery: str = "native"
+    pan_aware: bool = False
+
+    def project(self, tmp_path) -> str:
+        p = Path(tmp_path) / "project.json"
+        p.write_text(json.dumps({"purpose": "reel", "canvas": list(self.src_dims),
+                                 "delivery": self.delivery}))
+        return str(p)
+
+
+@pytest.fixture
+def fake_render():
+    """Install a fake `process_episode` that copies instead of reframing, and hand back the
+    object that also writes the matching `project.json`.
+
+    The real `process_episode` cannot run in these tests: the synthetic clips are a box, not
+    a person, so real YOLO tracking returns an empty route and the tracking ladder's
+    optical-flow fallback produces a route too jittery for `check_episode`'s gates — the run
+    escalates rather than delivering. Faking the mechanical middle (tracking + reframe +
+    check_episode) is what keeps those tests on the wiring they are about.
+
+    The fake mirrors what a real `mechanical_pass` leaves on disk: `route.json`, `path.json`
+    and `path.meta.json` beside the clip, so `build_reel`'s frozen geometry reads real files.
+    Every number is derived from `src_dims`: the route point is the frame centre with a
+    `w//16 x h//9` box (exactly the 120x120 the 1920x1080 call sites used by hand), and the
+    sidecar is a plain full-frame `fill` — which is the truth, because the clip is a
+    `-c:v copy` and no crop is taken.
+    """
+    def _install(monkeypatch, src_dims=(1920, 1080), delivery="native", pan_aware=False):
+        from scripts import edl_to_reel
+
+        w, h = src_dims
+
+        def fake_pe(manifest, project_dir, route_path=None):
+            Path(project_dir).mkdir(parents=True, exist_ok=True)
+            is_pan = pan_aware and manifest.get("pan") is not None
+            if not is_pan:
+                (Path(project_dir) / "route.json").write_text(json.dumps(
+                    [{"t": 0.0, "x": w // 2, "y": h // 2,
+                      "w": w // 16, "h": h // 9, "id": 1}]))
+            (Path(project_dir) / "path.json").write_text(json.dumps([0]))
+            meta = {"mode": "fill", "crop_w": w, "crop_h": h, "crop_y": 0,
+                    "src_dims": [w, h], "canvas": [w, h], "out_dims": [w, h],
+                    "rect_px": [0, 0, w, h], "freedom": 0}
+            if pan_aware:
+                meta["pan"] = is_pan
+            (Path(project_dir) / "path.meta.json").write_text(json.dumps(meta))
+            if Path(manifest["segment"]).exists():
+                proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy",
+                          "-an", manifest["out_path"]])
+            return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+
+        monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+        # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above the
+        # pool — unstubbed, these goldens also construct a real YOLO (importing torch, and
+        # downloading 6MB on a cold cache) for a tracking pass they never run.
+        monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
+        return FakeRender(tuple(src_dims), delivery, pan_aware)
+    return _install
