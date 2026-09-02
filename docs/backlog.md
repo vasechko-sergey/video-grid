@@ -507,8 +507,11 @@ integration test, so the new window-pool proof covers the carve and pool-scoring
 plumbing on real bytes, NOT the motion sensor's judgement — the sensor still has
 no real-footage proof, which is the calibration row's territory
 (cheap-P2-chores §4.1) ·
-a fixture class, one row instead of four one-offs — **all four now repaired
-by hand, the shared helper that would prevent a fifth is what remains**:
+✅ a fixture class, one row instead of four one-offs — **landed 2026-09-02
+(0.7.1): `tests/conftest.py`'s shared `fake_render` fixture now derives a test's
+declared canvas and its fake's sidecar from one `src_dims`, so the fifth copy this
+row was filed against has nowhere to come from.** The four hand repairs that
+preceded it:
 `test_outro.py`, `test_front_spine.py`'s `_project`, `test_edit_plan.py`'s
 `_project_json` and `test_ramp.py`'s inline equivalent (copied from the
 latter, its own comment says so) each declared a `project.json` canvas of
@@ -531,8 +534,9 @@ bypassed, the 9:16 declaration predicts a residual of 1.0 on
 writes a path the oracle accepts — **corrected 2026-09-02, the first answer was
 wrong about the mechanism**: the difference is temporal. `8c81fea` is this
 branch's 21st commit and `9d0bd34`, which added the `_refuse_on_drift` call to
-`build_reel._predict`, is its 22nd — so `grade_faithful` existed for exactly one
-commit with no drift guard, `test_outro.py`'s fixture was rendered through that
+`build_reel._predict`, is its 22nd — and `_predict` itself entered at `bb8ebd4`,
+so `grade_faithful` ran with no drift guard across THREE commits (`bb8ebd4`,
+`401eb98`, `8c81fea`), `test_outro.py`'s fixture was rendered through that
 window, and by the time anything exercised the other three the guard was in.
 Same conclusion (a class, not a one-off), different reason, and the reason is
 what a reader needs: nothing structural distinguishes the four. And
@@ -551,12 +555,19 @@ build their geometry through it instead of a hand-written local copy. The
 three pure-`edit_plan` gate tests (variety-gap, delivered-geometry,
 constraints) stay OFF it, on purpose: their whole point is a declared canvas
 that does NOT match the source, and `test_edit_plan.py`'s `_project_json` now
-carries a comment saying so. Two limits survive, named rather than left to
+carries a comment saying so. THREE limits survive, named rather than left to
 expire with the design: nothing forces a new test onto the fixture, so a sixth
-hand-written copy is still writable; and a copy written from scratch would
+hand-written copy is still writable; a copy written from scratch would
 still be born dormant behind `probe._refuse_on_drift` (§0 above) — the same
-guard that let three of the original four sit unnoticed until this repair
-(fake-render-fixture Tasks 1–4, 2026-09-02) ·
+guard that let three of the original four sit unnoticed until this repair; and
+what the fixture unifies is the CANVAS, not all of the geometry — all four
+migrated files declare `crop_scale: 0.8`, which `geometry.crop_for` would turn
+into a 1536x864 crop with freedom 384 at 1920x1080 (512x288, freedom 128 at
+640x360), against a fake sidecar that still says full frame with `freedom: 0`.
+That last one predates the slice (the deleted local fakes wrote the identical
+sidecar) and is shielded by the same drift guard, which is exactly why it is
+worth writing down rather than trusting
+(fake-render-fixture Tasks 1–5, 2026-09-02) ·
 the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless

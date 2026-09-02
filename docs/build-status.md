@@ -49,7 +49,8 @@ _Last updated: 2026-09-02._
   --stat main...HEAD -- scripts/` is empty: no production file changed anywhere in
   the slice.
 
-  Four mutation checks, one per migration task, all discriminating:
+  Four mutation checks, one per migration task; **three discriminated, and the
+  fourth's failure to was itself the finding** (Task 4, below):
   - **Task 1**: hardcoding `FakeRender.project`'s canvas to `[1080, 1920]` fails
     both parametrized invariant tests.
   - **Task 2**: flipping `pan_aware` to `False` in `test_front_spine.py`'s two pan
@@ -63,8 +64,9 @@ _Last updated: 2026-09-02._
     'finding'`) — every window reads `wide`, zero `medium`, and the variety gap
     the test asserts disappears, proving the three gate tests are still, provably,
     on the declared-vs-source mismatch.
-  - **Task 4**: dropping `delivery="long_edge:240"` from the ramped-reel test does
-    NOT change its timing (1.39s pytest-reported either way) — reported as a real
+  - **Task 4 — the one that did NOT discriminate, which is the finding**: dropping
+    `delivery="long_edge:240"` from the ramped-reel test changes nothing at all,
+    timing included (1.39s pytest-reported either way) — reported as a real
     finding, not papered over: the fake never reaches `Delivery.dims()` (called
     only from the real reframe path in `scripts/lib/layout.py` and from
     `scripts/draft.py`, never `scripts/deliver.py`, which just probes the
@@ -77,10 +79,21 @@ _Last updated: 2026-09-02._
 
   Honest limits carried into the backlog row rather than left to expire with the
   design (§6): nothing forces a new test onto the fixture, so a sixth hand-written
-  copy is still writable; and a copy written from scratch would still be born
+  copy is still writable; a copy written from scratch would still be born
   dormant behind `probe._refuse_on_drift` — the same guard that let three of the
-  original four sit unnoticed until this repair. No production changes; no version
-  bump.
+  original four sit unnoticed until this repair; and the fixture unifies the
+  **canvas**, not every field of the geometry — all four migrated files declare
+  `crop_scale: 0.8` and the fake's sidecar still says full frame with
+  `freedom: 0`, where a real `reframe` would cut 1536x864 with freedom 384. That
+  predates the slice (the deleted local fakes wrote the identical sidecar) and is
+  shielded by the same `probe._refuse_on_drift` that is not a defence.
+
+  No production changes, and the version still moves: **0.7.1**, a
+  documentation-and-tests PATCH, because
+  [development-workflow.md#versioning](development-workflow.md#versioning) admits
+  no unbumped slice — the install path is version-keyed, so a reinstall at an
+  unmoved version keeps serving the old snapshot of
+  `CHANGELOG.md`/`CLAUDE.md`/`skills/` along with everything else.
 
 - **Each colour gate gets a reference that admits the grade — the two P1
   deadlocks closed (2026-09-02)** — design

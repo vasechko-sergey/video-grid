@@ -10,6 +10,22 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.7.1 — 2026-09-02
+
+- **Nothing about a reel changes here.** This is a documentation-and-tests PATCH:
+  `git diff --stat -- scripts/` across the whole slice is empty. It ships because
+  the install path is version-keyed, so a reinstall at an unmoved version keeps
+  serving the previous snapshot of the docs and skills that ride into the cache
+  alongside the code.
+- **One shared test fixture where four hand-written copies used to be.** Four
+  integration tests each declared a canvas their own fake renderer never honoured —
+  the same defect, repaired by hand four times, with nothing stopping a fifth.
+  `tests/conftest.py` now derives both the declared canvas and the fake's own
+  geometry sidecar from a single source size, so the two readings cannot disagree.
+  Recorded honestly rather than overstated: it unifies the **canvas**, not every
+  field of the geometry — a declared `crop_scale` is still a number the fake does
+  not honour.
+
 ## 0.7.0 — 2026-09-02
 
 **Each colour gate gets a reference that admits the grade.** Two blocking

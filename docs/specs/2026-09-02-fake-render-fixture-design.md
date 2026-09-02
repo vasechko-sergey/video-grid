@@ -30,8 +30,9 @@ Two measurements from the repairs, both worth carrying into this design:
   **222** against a `grade_residual_max` of 4.0 — a real failure, in a real suite run.
 - **Nothing structural separated the four.** `test_outro.py`'s failed and the other three did
   not, purely because of commit order: `8c81fea` is commit 21 of that branch and `9d0bd34`,
-  which added `probe._refuse_on_drift` to `_predict`, is commit 22. `grade_faithful` existed for
-  exactly one commit with no drift guard; `test_outro.py`'s fixture was rendered through that
+  which added `probe._refuse_on_drift` to `_predict`, is commit 22. `build_reel._predict`
+  entered at `bb8ebd4`, so `grade_faithful` ran with no drift guard across **three** commits
+  — `bb8ebd4`, `401eb98`, `8c81fea` — and `test_outro.py`'s fixture was rendered through that
   window. Today all four report `no-prediction` — the guard refuses `path.json = [0]` before the
   colour comparison is reached.
 
@@ -53,7 +54,9 @@ def test_something(sample_clip, tmp_path, monkeypatch, fake_render):
 The object holds `src_dims` once. `fake.project(tmp_path)` writes `project.json` with
 `canvas = list(src_dims)`; the installed fake writes `path.meta.json` from the same attribute;
 the route point and crop rect are **derived** from it rather than typed. There is no second
-number to keep in step — the declaration and the sidecar are two renderings of one value.
+**canvas** to keep in step — the declaration and the sidecar are two renderings of one value.
+That is the axis this unifies, and only that axis: an EDL's `crop_scale` is still declared
+independently and still not honoured by the fake (§6).
 
 Parameters, one per axis the five existing copies actually vary on (§2):
 
@@ -68,18 +71,23 @@ platform. It is a constant in the fixture, not a parameter, until a test needs o
 
 ## §2 The census — what is actually duplicated
 
-Measured over `tests/` on 2026-09-02, not estimated:
+Measured over `tests/` on 2026-09-02 at this branch's base (`c7190a3`), not estimated:
 
-- **30** test files write a `project.json` carrying a `canvas`.
-- **8** of those also install a fake `process_episode`.
+- **30** test files contain a `"canvas"` literal. That is the count actually taken, and it is
+  wider than "writes a `project.json` carrying a canvas" — a canvas also reaches a
+  `ProjectConfig`, a manifest and a `path.meta.json` without any project file being written.
+  The files that really write a `project.json` with a canvas number **11**.
+- **8** of the 30 also install a fake `process_episode`.
 - **4** of those call `ffmpeg` inside the fake, i.e. produce a real file whose geometry a real
   gate later reads: `test_front_spine.py`, `test_edit_plan.py`, `test_outro.py`, `test_ramp.py`.
 
-Only the last group can hold this defect at all. The other four fakes (`tests/lib/`,
-`tests/test_episode_qc.py`) return dicts and never decode a frame, so a declared-vs-rendered
-mismatch is not observable by any gate — there are no rendered pixels to disagree with. They
-stay as they are; converting them would be uniformity for its own sake, and would put a
-`dict`-only mode into the fixture that no test exercises.
+Only the last group can hold this defect at all. The other four fakes
+(`tests/lib/test_edl_to_reel.py`, `tests/lib/test_process_episode.py`,
+`tests/test_episode_qc.py`, `tests/integration/test_episode_qc.py`) return dicts and never
+decode a frame, so a declared-vs-rendered mismatch is not observable by any gate — there are
+no rendered pixels to disagree with. They stay as they are; converting them would be
+uniformity for its own sake, and would put a `dict`-only mode into the fixture that no test
+exercises.
 
 The four files carry **five** fake copies (`test_front_spine.py` has two: a plain one and a
 pan-aware sibling). Diffed against each other, they vary on exactly the three axes in §1 and are
@@ -145,11 +153,26 @@ declaring the same geometry.
 - **Nothing checks that a new test uses the fixture.** The row this closes asked for prevention
   of a fifth copy; what it gets is prevention *through* the fixture. A sixth copy written from
   scratch is still writable, and would still be born dormant behind the drift guard (§0).
-- **The derived route point is a behaviour change, small but real.** Today's fakes write literal
-  route coordinates (`960, 540, 120, 120` and `W//2, H//2, 40, 80`). Deriving them from
-  `src_dims` produces the same values for the two existing sizes by construction, but a future
-  size gets a computed point nobody has looked at. No current test asserts a route coordinate —
-  they assert presence, absence, and file existence — so this is safe today and worth re-checking
-  if one ever does.
+- **The derived route point is a behaviour change, small but real — and at 640x360 the box
+  actually moves.** The old fakes wrote literal route coordinates (`960, 540, 120, 120` at
+  1920x1080 and `W//2, H//2, 40, 80` at 640x360). Deriving them as `w//16 x h//9` reproduces
+  the 1920x1080 pair exactly (`120x120`) but **not** the 640x360 one: the box becomes
+  `40x40` where the literal said `40x80`. That is a real change, not an equivalence. It is
+  safe because no test in this repo asserts a route bounding box — they assert the point's
+  presence, its absence under a pan, and file existence — and `tests/test_fake_render.py` now
+  pins the whole point against the same derivation, so a future size gets a computed box that
+  is at least stated rather than typed.
+- **A second declared geometry the fixture does NOT unify: `crop_scale`.** The fake hardcodes
+  its sidecar as `crop_w: w, crop_h: h, rect_px: [0, 0, w, h], freedom: 0` — full frame —
+  whatever the EDL declares. All four migrated files declare `crop_scale: 0.8`, and
+  `LayoutSpec.crop_scale` is deliberately not constrained by `fill` (`models.py`), so a real
+  `reframe` would take `geometry.crop_for` at its word: **1536x864 with freedom 384** at
+  1920x1080, **512x288 with freedom 128** at 640x360, against a sidecar claiming the full
+  frame and `freedom: 0`. This is not a regression — the five deleted local fakes wrote the
+  identical sidecar — and today it is shielded by `probe._refuse_on_drift`, which refuses
+  these fakes' `path.json = [0]` before any geometry comparison. That shield is the same one
+  §0 argues is not a defence: it is why three of the original four canvas mismatches sat
+  unnoticed, and it would hide this one the same way. So §1's claim is about the **canvas**
+  only; `crop_scale` remains a number a test can state and its fake need not honour.
 - **This makes no reel better.** It is scaffolding. Its whole value is that the next person
   writing an integration test cannot cheaply state a geometry their fake does not honour.
