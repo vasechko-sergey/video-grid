@@ -18,30 +18,6 @@ from scripts.lib.footage import Footage, FootageClip, FootageWindow
 pytestmark = pytest.mark.integration
 
 
-def _fake_track_pe(monkeypatch):
-    def fake_pe(manifest, project_dir, route_path=None):
-        Path(project_dir).mkdir(parents=True, exist_ok=True)
-        (Path(project_dir) / "route.json").write_text(
-            json.dumps([{"t": 0.0, "x": 960, "y": 540, "w": 120, "h": 120, "id": 1}]))
-        # real process_episode writes path.json + path.meta.json beside route.json on every
-        # mechanical_pass (reframe emits both); mirror that so build_reel's frozen safe_zones
-        # geometry reads real files. CropPath [0] is parallel to the single route point above;
-        # a plain fill sidecar at the 1920x1080 source dims (safe_zones is advisory — these
-        # tests don't assert it, so the values need only be valid, not "safe").
-        (Path(project_dir) / "path.json").write_text(json.dumps([0]))
-        (Path(project_dir) / "path.meta.json").write_text(json.dumps(
-            {"mode": "fill", "crop_w": 1920, "crop_h": 1080, "crop_y": 0,
-             "src_dims": [1920, 1080], "canvas": [1920, 1080], "out_dims": [1920, 1080],
-             "rect_px": [0, 0, 1920, 1080], "freedom": 0}))
-        proc.run([ffbin.ffmpeg(), "-y", "-i", manifest["segment"], "-c:v", "copy", "-an", manifest["out_path"]])
-        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
-    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
-    # process_episode is faked, but edl_to_reel calls track.ensure_model ITSELF above
-    # the pool — unstubbed, this ffmpeg golden also constructs a real YOLO (importing
-    # torch, and downloading 6MB on a cold cache) for a tracking pass it never runs.
-    monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
-
-
 def _footage_json(tmp_path, source):
     # two windows far apart → the box sits at very different x → distinct phash (variety)
     f = Footage(clips=[FootageClip(source=source, dur=3.0, res=(1920, 1080), fps=30.0, windows=[
@@ -65,36 +41,20 @@ def _project_json(tmp_path):
     # 9:16 on purpose, and load-bearing: the three pure-`edit_plan` gate tests below
     # (variety-gap, delivered-geometry, constraints) never render a frame — they exist
     # to prove the gate judges DELIVERED geometry, so the crop must be real to them.
+    # Deliberately NOT `fake_render` (design 2026-09-02 §3): the fixture ties the declared
+    # canvas to the source, and these three tests need them to differ — that is what they
+    # prove. A gate test moved onto the fixture fails loudly; a driver test left off it fails
+    # silently.
     p = tmp_path / "project.json"
     p.write_text(json.dumps({"purpose": "reel", "canvas": [1080, 1920], "delivery": "native"}))
     return str(p)
 
 
-def _project_json_source_aspect(tmp_path):
-    """For the two tests that drive `edl_to_reel` behind `_fake_track_pe`.
-
-    The fake skips reframe entirely — a plain `-c:v copy`, no crop — and records that
-    honestly in its own path.meta.json (`"canvas": [1920, 1080]`, matching src_dims).
-    A 9:16 project canvas here left the MANIFEST — what a real reframe, and now
-    `build_reel._predict`, reads — declaring a crop nobody rendered. `grade_faithful`
-    compares the master against a prediction built from that declaration, so the
-    fiction is a landmine: test_outro.py's identical one cost residual 222 against a
-    4.0 ceiling (8c81fea), and test_front_spine.py's was repaired the same way.
-    Measured here through the driver with `probe._refuse_on_drift` bypassed to reach
-    the comparison, the 9:16 declaration predicts a residual of 1.0 and the source
-    aspect 0.0; unbypassed, the drift oracle refuses `path.json = [0]` first, which is
-    why this never bit. `_project_json` above stays 9:16 — the gate tests that use it
-    render nothing and depend on the crop being real.
-    """
-    p = tmp_path / "project.json"
-    p.write_text(json.dumps({"purpose": "reel", "canvas": [1920, 1080], "delivery": "native"}))
-    return str(p)
-
-
-def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
+def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch, fake_render):
     fj = _footage_json(tmp_path, sample_clip.name)
     sj = _selection_json(tmp_path, sample_clip.name)
-    pj = _project_json_source_aspect(tmp_path)
+    fake = fake_render(monkeypatch, src_dims=(1920, 1080))
+    pj = fake.project(tmp_path)
     plan_out = tmp_path / "plan"
 
     res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out))
@@ -103,7 +63,6 @@ def test_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
     assert edl_path.exists() and (plan_out / "EDL.md").exists()
     assert "# Edit plan — 2 episodes" in (plan_out / "EDL.md").read_text()
 
-    _fake_track_pe(monkeypatch)
     reel = edl_to_reel.edl_to_reel(
         str(edl_path), pj, footage_root=str(sample_clip.parent),
         work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "out"))
@@ -136,10 +95,11 @@ def _span_selection_json(tmp_path, source):
     return str(p)
 
 
-def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch):
+def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypatch, fake_render):
     fj = _span_footage_json(tmp_path, sample_clip.name)
     sj = _span_selection_json(tmp_path, sample_clip.name)
-    pj = _project_json_source_aspect(tmp_path)
+    fake = fake_render(monkeypatch, src_dims=(1920, 1080))
+    pj = fake.project(tmp_path)
     plan_out = tmp_path / "plan"
 
     res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out))
@@ -150,7 +110,6 @@ def test_span_selection_becomes_edl_becomes_reel(sample_clip, tmp_path, monkeypa
     # episode 0 is the merged span: from window 0's start (0.2) to window 1's end (1.8)
     assert edl["episodes"][0]["start"] == 0.2 and edl["episodes"][0]["dur"] == pytest.approx(1.6)
 
-    _fake_track_pe(monkeypatch)
     reel = edl_to_reel.edl_to_reel(
         str(edl_path), pj, footage_root=str(sample_clip.parent),
         work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "out"))
