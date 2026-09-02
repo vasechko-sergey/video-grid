@@ -86,6 +86,10 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     assert result["status"] == "mechanical_pass", result
     gd = result["report"]["checks"]["grade_damage"]
     print(f"\nMEASURED proof 1 (graded): ratio={gd['ratio']} delta_e={gd['delta_e']}")
+    assert gd["frames"] == 3, gd    # pins the sample count check_episode actually used —
+                                    # a silently reduced/enlarged N would move the ratio by
+                                    # about as much as proof 5's own headline finding (fix
+                                    # round 1) without tripping any OTHER assertion here
     assert gd["pass"] is True, gd                 # NEW gate: not damage
     assert gd["delta_e"] > 5.0, gd                 # OLD gate: would have blocked here
 
@@ -95,6 +99,7 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     assert ctrl_result["status"] == "mechanical_pass", ctrl_result
     cgd = ctrl_result["report"]["checks"]["grade_damage"]
     print(f"MEASURED proof 1 (ungraded control): ratio={cgd['ratio']} delta_e={cgd['delta_e']}")
+    assert cgd["frames"] == 3, cgd
     assert cgd["pass"] is True, cgd
     assert cgd["delta_e"] < 5.0, cgd
 
@@ -131,6 +136,7 @@ def test_black_point_at_its_legal_max_fails_and_a_benign_value_passes(
     assert result["attempt"] == 1, result
     gd = result["report"]["checks"]["grade_damage"]
     print(f"\nMEASURED proof 2 (black_point=0.35): ratio={gd['ratio']}")
+    assert gd["frames"] == 3, gd
     assert gd["pass"] is False, gd
 
     benign = dict(base, out_path=str(tmp_path / "benign.mp4"), black_point=0.02)
@@ -139,6 +145,7 @@ def test_black_point_at_its_legal_max_fails_and_a_benign_value_passes(
     assert ok["status"] == "mechanical_pass", ok
     ogd = ok["report"]["checks"]["grade_damage"]
     print(f"MEASURED proof 2 (black_point=0.02): ratio={ogd['ratio']}")
+    assert ogd["frames"] == 3, ogd
     assert ogd["pass"] is True, ogd
 
 
@@ -382,6 +389,13 @@ def test_the_x264_entropy_bias_is_measured_not_assumed(golden_ride_segment, tmp_
         clip_graded_frames = assembly.frames_rgb(clip, times, clip_fps)
         clip_read = gradedamage.evaluate(plain=plain_frames, graded=clip_graded_frames,
                                          floor=_ENTROPY_FLOOR)
+        # Pin the sample count on BOTH readings: fix round 1 measured that a silent
+        # change to N moves the ratio by about as much as this proof's own headline
+        # bias (0.0115 spread over N=1..15 against a 0.007 bias) — undetectable by any
+        # OTHER assertion here, since both sides of a given reading always share the
+        # same `times`.
+        assert render_pair["frames"] == len(times) == 3, (render_pair, times)
+        assert clip_read["frames"] == len(times) == 3, (clip_read, times)
         return render_pair, clip_read
 
     render_pair, clip_read = measure("graded", dict(tone_src=list(prof), tone_dst=target))
