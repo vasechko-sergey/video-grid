@@ -540,10 +540,23 @@ what a reader needs: nothing structural distinguishes the four. And
 tests there (variety-gap, delivered-geometry, constraints) render no frame
 and depend on the 9:16 crop being real, so that file needed the helper SPLIT
 rather than changed — a blanket sweep would have broken the very tests that
-prove the variety gate reads delivered geometry. A shared fixture helper that
-derives the declared canvas FROM whatever the fake renderer actually
-produces, honouring that split, would stop a fifth copy from reintroducing
-this (grade-sensor-references Tasks 7/8, final review; repairs 2026-09-02) ·
+prove the variety gate reads delivered geometry.
+Closed 2026-09-02: `tests/conftest.py` gained one `fake_render` fixture
+holding a single `src_dims`, from which BOTH the declared `project.json`
+canvas and the fake's own `path.meta.json` sidecar are derived, so the two
+readings of one geometry cannot disagree by construction.
+`test_front_spine.py` (both fakes), `test_edit_plan.py`'s two driver tests,
+`test_outro.py` and `test_ramp.py` — the four files identified above — now
+build their geometry through it instead of a hand-written local copy. The
+three pure-`edit_plan` gate tests (variety-gap, delivered-geometry,
+constraints) stay OFF it, on purpose: their whole point is a declared canvas
+that does NOT match the source, and `test_edit_plan.py`'s `_project_json` now
+carries a comment saying so. Two limits survive, named rather than left to
+expire with the design: nothing forces a new test onto the fixture, so a sixth
+hand-written copy is still writable; and a copy written from scratch would
+still be born dormant behind `probe._refuse_on_drift` (§0 above) — the same
+guard that let three of the original four sit unnoticed until this repair
+(fake-render-fixture Tasks 1–4, 2026-09-02) ·
 the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless

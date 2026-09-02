@@ -12,6 +12,76 @@ _Last updated: 2026-09-02._
 
 ## Done
 
+- **One geometry, not two that agree — the fake-render fixture class closed
+  (2026-09-02)** — design
+  [2026-09-02-fake-render-fixture-design.md](specs/2026-09-02-fake-render-fixture-design.md),
+  plan [2026-09-02-fake-render-fixture.md](plans/2026-09-02-fake-render-fixture.md),
+  Tasks 1–5 (branch `feat/fake-render-fixture`, commits `6253625`..`0419f0b` + this
+  docs sync).
+
+  Closes the P3 backlog row for "a fixture class, one row instead of four one-offs":
+  four integration tests each declared a `project.json` canvas their own fake
+  renderer never honoured, repaired by hand one at a time (`8c81fea`, `48eee61`)
+  with nothing stopping a fifth. Measured census (design §2): **30** test files
+  declare a `project.json` canvas, **8** of those also install a fake
+  `process_episode`, and only **4** — `test_front_spine.py`, `test_edit_plan.py`,
+  `test_outro.py`, `test_ramp.py` — call ffmpeg inside the fake and so can hold the
+  defect at all: the other four fakes return dicts and decode no frame, so a
+  declared-vs-rendered mismatch has no rendered pixels to disagree with.
+
+  `tests/conftest.py` gains one `fake_render` factory fixture: a
+  `FakeRender(src_dims, delivery, pan_aware)` dataclass whose `.project(tmp_path)`
+  writes `project.json`'s canvas and whose installed fake `process_episode` writes
+  `path.meta.json`'s sidecar, BOTH off the same `src_dims` — there is no second
+  number left to keep in step. All four rendering files migrated onto it:
+  `test_front_spine.py`'s two fakes (plain + pan-aware), `test_edit_plan.py`'s two
+  driver tests, `test_outro.py`, `test_ramp.py` — the five local
+  fake-`process_episode` installers deleted, along with their four companion
+  `project.json` writers. `test_edit_plan.py`'s three
+  pure-`edit_plan` gate tests (variety-gap, delivered-geometry, constraints)
+  deliberately stayed OFF the fixture (design §3): they render no frame and need a
+  declared canvas that does NOT match the source — that mismatch is what they prove
+  — so `_project_json` survives, now carrying a comment naming why a future unifier
+  must not touch it.
+
+  **Full suite: 3401 passed, 1 skipped** (was 3398 passed, 1 skipped — the 3 new
+  tests are `test_fake_render.py`'s own invariant proof, added by Task 1). `git diff
+  --stat main...HEAD -- scripts/` is empty: no production file changed anywhere in
+  the slice.
+
+  Four mutation checks, one per migration task, all discriminating:
+  - **Task 1**: hardcoding `FakeRender.project`'s canvas to `[1080, 1920]` fails
+    both parametrized invariant tests.
+  - **Task 2**: flipping `pan_aware` to `False` in `test_front_spine.py`'s two pan
+    tests fails both — not via the tests' own assertions but earlier and louder,
+    through `check_reel`'s own sidecar-contradiction refusal (`ValueError:
+    check_reel needs a route for episode N: the sidecar says this path was tracked
+    (pan=false), but route_path is None`), because the mutated fixture writes a
+    real route for an episode whose sidecar still claims untracked.
+  - **Task 3**: pointing `test_sp3_delivered_geometry_is_what_decides`'s 9:16
+    project at a canvas that MATCHES the 4K source fails it (`KeyError:
+    'finding'`) — every window reads `wide`, zero `medium`, and the variety gap
+    the test asserts disappears, proving the three gate tests are still, provably,
+    on the declared-vs-source mismatch.
+  - **Task 4**: dropping `delivery="long_edge:240"` from the ramped-reel test does
+    NOT change its timing (1.39s pytest-reported either way) — reported as a real
+    finding, not papered over: the fake never reaches `Delivery.dims()` (called
+    only from the real reframe path in `scripts/lib/layout.py` and from
+    `scripts/draft.py`, never `scripts/deliver.py`, which just probes the
+    assembled episodes' own dimensions), so `delivery` is genuinely inert under
+    this fixture. Closed by correcting design §1's parameter table, which had
+    called it "the small-and-fast encode" — it is carried into `project.json`/the
+    manifest and validated by `ProjectConfig`/`Delivery.from_spec`, but the speed
+    here comes from small `src_dims` plus the stream-copy fake, not from
+    `delivery`.
+
+  Honest limits carried into the backlog row rather than left to expire with the
+  design (§6): nothing forces a new test onto the fixture, so a sixth hand-written
+  copy is still writable; and a copy written from scratch would still be born
+  dormant behind `probe._refuse_on_drift` — the same guard that let three of the
+  original four sit unnoticed until this repair. No production changes; no version
+  bump.
+
 - **Each colour gate gets a reference that admits the grade — the two P1
   deadlocks closed (2026-09-02)** — design
   [2026-08-31-grade-sensor-references-design.md](specs/2026-08-31-grade-sensor-references-design.md),

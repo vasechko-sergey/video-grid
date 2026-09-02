@@ -60,7 +60,7 @@ Parameters, one per axis the five existing copies actually vary on (§2):
 | parameter | why it exists |
 |---|---|
 | `src_dims` | `(1920, 1080)` for `sample_clip`, `(640, 360)` for `ramp_clip`/`test_outro` |
-| `delivery` | `"native"` or `"long_edge:240"` (the small-and-fast encode) |
+| `delivery` | `"native"` or `"long_edge:240"` — carried into `project.json` (and so the manifest) and parsed/validated by `ProjectConfig`/`Delivery.from_spec`, but reaches no encode here: `Delivery.dims()` is called only from the real reframe path (`scripts/lib/layout.py`) and `scripts/draft.py`, never `scripts/deliver.py`, which just probes whatever dimensions the assembled episodes already carry. The fake skips reframe and stream-copies, so the speed these tests get comes from small `src_dims` plus the copy, not from this value (measured 2026-09-02, Task 4: 1.39s pytest-reported both with and without it) |
 | `pan_aware` | one fake in `test_front_spine.py` must skip `route.json` for a pan episode |
 
 `purpose` stays `"reel"` — every one of the four uses it, and it is what the router maps to a
