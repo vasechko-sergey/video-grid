@@ -684,6 +684,57 @@ def test_target_dev_refuses_a_short_tone_dsts_list_rather_than_crashing_bare(mon
                  tone_target=(52.0, 104.0, 192.0), tone_dsts=[[52.0, 104.0, 192.0]])   # 1 for 2
 
 
+# --- final review I-3: an empty target_dev must say WHY (design §9.7) ---------
+
+def test_target_dev_names_no_target_when_none_was_supplied(monkeypatch, tmp_path):
+    """With no EDL.tone_target at all, target_dev is empty for the obvious reason —
+    there is no common target to compare against. A wrong implementation that never
+    set target_dev_reason (the bug final review I-3 found: this state was
+    indistinguishable from "a target exists but nothing is bound to it") would leave
+    the key missing or always None here."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2)   # tone_target omitted
+    d = rep.checks["grade_faithful"].detail
+    assert d["target_dev"] == {}
+    assert d["target_dev_reason"] == "no-target"
+
+
+def test_target_dev_names_no_episode_bound_when_the_target_exists_but_nothing_binds(
+        monkeypatch, tmp_path):
+    """A target exists, but every episode's tone_dst is either None or off by more
+    than _TONE_BIND_EPS — the SAME empty {} a missing target produces, but a
+    different fact about the reel (a conductor that ran and skipped everyone, or a
+    hand-authored pair, rather than a conductor that never ran at all). An
+    implementation that special-cased only `tone_target is None` (fixing the test
+    above by hardcoding target_dev_reason from that one condition, never checking
+    whether target_dev actually ended up populated) would still report None or the
+    wrong string here."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                    tone_target=(52.0, 104.0, 192.0),
+                    tone_dsts=[[52.0, 105.0, 192.0], None])   # 1 code off; None
+    d = rep.checks["grade_faithful"].detail
+    assert d["target_dev"] == {}
+    assert d["target_dev_reason"] == "no-episode-bound"
+
+
+def test_target_dev_reason_is_none_once_something_is_bound(monkeypatch, tmp_path):
+    """The control for the two tests above: once at least one episode really is
+    bound, target_dev is non-empty and target_dev_reason must go back to None — an
+    implementation that always names a reason whenever tone_target is not None
+    (ignoring whether target_dev ended up empty) would fail this one instead."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                    tone_target=(52.0, 104.0, 192.0),
+                    tone_dsts=[[52.0, 104.0, 192.0], None])
+    d = rep.checks["grade_faithful"].detail
+    assert d["target_dev"] == {"0": 0.0}
+    assert d["target_dev_reason"] is None
+
+
 def test_grade_faithful_is_blocking(tmp_path, monkeypatch):
     """A property of ANOTHER module this check silently depends on: models._ADVISORY_CHECKS
     is what ReelReport.overall excludes, so adding "grade_faithful" there would leave every

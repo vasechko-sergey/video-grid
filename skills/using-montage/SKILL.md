@@ -468,6 +468,25 @@ say so rather than guessing a path.
     path; if one ever comes back non-empty, something bypassed the refusal —
     name it at Checkpoint 3 rather than passing over it.
 
+    **`grade_faithful` is also a stop here, and its remedy is a re-render, not
+    an EDL edit.** In the same phase, `check_reel`'s blocking `grade_faithful`
+    check (design 2026-08-31 §2) can name one episode whose delivered pixels
+    disagree with what its OWN declared colour chain predicts by more than
+    `grade_residual_max` luma units. Its finding's `escalate_to` reads
+    `process-episode`, not `match-grade` or `edit-plan`: the declaration is
+    fine, the render did not get it, so the fix is re-rendering that episode —
+    never touching its colour block, which would just be faithfully re-applied
+    and fail the same way again. `edl_to_reel` has no flag that re-renders a
+    single episode: `--from-geometry` (step 13) is the only render entry
+    point, and it always renders every episode over the current
+    `GEOMETRY.json`, which invalidates every episode's `EPISODE_QC.json`
+    verdict, not only the named one's. Pay that cost — there is no cheaper
+    mechanical path today (backlog) — rather than hand-editing `EPISODES.json`
+    to splice in one clip, which is a generated artifact like any other:
+    re-run `edl_to_reel --from-geometry` (step 13, the whole reel), then
+    **episode-qc** (step 14, every episode — every digest just changed), then
+    this step again.
+
     **Checkpoint 3 — final
     review:** present `<run>/reels/<reel>/deliveries/REEL_v1.mp4`, the `check_reel`
     report, and (when titles were authored) `TITLES.md` alongside them. Before

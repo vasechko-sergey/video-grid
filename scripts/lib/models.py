@@ -1107,7 +1107,9 @@ class ReelCheckSpec:
         if not isinstance(self.length_retime_max, (int, float)) or self.length_retime_max <= 0:
             raise ValueError(f"ReelCheckSpec.length_retime_max must be a positive number of "
                              f"seconds, got {self.length_retime_max!r}")
-        if not isinstance(self.grade_residual_max, (int, float)) or self.grade_residual_max <= 0:
+        if (isinstance(self.grade_residual_max, bool)
+                or not isinstance(self.grade_residual_max, (int, float))
+                or self.grade_residual_max <= 0):
             raise ValueError(f"ReelCheckSpec.grade_residual_max must be a positive number of "
                              f"luma units, got {self.grade_residual_max!r}")
 

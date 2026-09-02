@@ -371,19 +371,5 @@ def test_colour_is_listed_as_unfixable():
     assert "grade_damage" in orch._UNFIXABLE
 
 
-def test_grade_damage_is_unfixable_and_names_its_own_remedy():
-    # NOTE: the brief for this test named `orchestration.next_action(...).kind` /
-    # `.finding` — that API lives in scripts/lib/reel_orchestration.py (reel-level
-    # retry), not this per-episode module, which escalates through `escalation()`
-    # returning a plain dict. Adapted to the real API; the claim under test
-    # (grade_damage is unfixable-by-reframe and names its own "grade-damage"
-    # remedy) is unchanged, and is also covered above by
-    # test_a_colour_failure_escalates_immediately_with_its_own_reason.
-    esc = orch.escalation(attempt=1, fail_reasons=["grade_damage"], max_attempts=3)
-    assert esc is not None
-    assert esc["escalate_to"] == "edit-plan"
-    assert esc["reason"] == "grade-damage"
-
-
 def test_color_fidelity_is_no_longer_a_known_unfixable():
     assert "color_fidelity" not in orch._UNFIXABLE

@@ -173,6 +173,10 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
     process_episode.build_reframe_spec, which the prediction now shares with the
     render, and the only remaining measure of cross-episode agreement. It is not a
     gate because making it one re-opens the deadlock from the other side (§2.1).
+    An empty `target_dev` is ambiguous by itself — no target at all, and a target
+    with nothing bound to it, both render as `{}` — so `target_dev_reason` names
+    which one it is ("no-target" / "no-episode-bound" / `None` once something is
+    bound); design §9.7 records what that reason still cannot say.
 
     Read off the MASTER, not the delivered reel: the look's vignette and the bookend
     fade ride deliver's one encode and both move percentiles. Every span is measured
@@ -187,6 +191,14 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
             "remedy": "check_reel was called without per-episode predictions; "
                       "build_reel supplies them, and the CLI cannot (it has no "
                       "manifests to plan from)"}), None
+    # Unreachable from any production or CLI path today (final review M-7):
+    # build_reel._predict always returns one entry per rm.episodes, so `predicted`
+    # and `durations` already agree by construction on that path, and the bare CLI
+    # never supplies `predicted` at all (the `is None` branch above catches that).
+    # Kept anyway, the same reason _same_target's own non-numeric guard is kept
+    # below: this is a public keyword parameter on `run`, and a caller who builds
+    # `predicted` by hand gets a named refusal here instead of a silently truncated
+    # zip a few lines down.
     if len(predicted) != len(durations):
         raise ValueError(
             f"check_reel: predicted carries {len(predicted)} profiles for "
@@ -228,7 +240,18 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
     # skip every episode (fix round 1, Important 5). A too-short list is the same
     # caller mistake in a different shape; without this guard `dsts[i]` below raises
     # a bare, unattributed IndexError instead of naming the fix.
+    # target_dev_reason (final review I-3): an empty target_dev is ambiguous on its
+    # own — "no EDL.tone_target at all" and "a target exists but nothing is bound to
+    # it" both render as `{}`, and the old tone_match gate reported the FIRST as a
+    # visible not-checked absence, never a clean reading. Named here instead of left
+    # for a reader to guess: `None` once at least one episode is actually bound (the
+    # everyday case, and the only one where an absent reason would mislead), else
+    # "no-target" or "no-episode-bound" — distinct strings because they are distinct
+    # facts (a missing target names a stage that never ran; a present-but-unbound
+    # target names episodes that are all hand-authored, skipped, or off by more than
+    # _TONE_BIND_EPS).
     target_dev: dict[str, float] = {}
+    target_dev_reason: str | None = "no-target"
     if tone_target is not None:
         if tone_dsts is None or len(tone_dsts) != len(predicted):
             raise ValueError(
@@ -240,9 +263,11 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
         for i, p in enumerate(predicted):
             if p is not None and _same_target(tone_dsts[i], tone_target):
                 target_dev[str(i)] = round(max(abs(a - b) for a, b in zip(p, tone_target)), 2)
+        target_dev_reason = None if target_dev else "no-episode-bound"
     detail = {"residuals": residuals, "not_checked": not_checked,
               "max": spec.grade_residual_max,
-              "target_dev": target_dev, "target_dev_advisory": True}
+              "target_dev": target_dev, "target_dev_advisory": True,
+              "target_dev_reason": target_dev_reason}
     if not residuals:
         # Every episode's prediction failed to build — the check examined nothing.
         # passed=True here would be a green tick for having looked at zero pixels,

@@ -85,9 +85,10 @@ defect.
 
 ### §0.3 The damage statistic: four candidates, one survivor
 
-Three classes, all rendered through this repo's own `probe._plan_for` and
-`color_measure.plan_ungraded` so the two sides of every ratio differ **only**
-in the colour tail:
+Three classes, all rendered through this repo's own `probe._plan_for` (now
+`process_episode.plan_for`) and `color_measure.plan_ungraded` (now
+`process_episode.plan_ungraded`) so the two sides of every ratio differ
+**only** in the colour tail:
 
 - **A** — the eight shipped grades (weak: `shadow_red`, `mid_blue`, `saturation`).
 - **B** — the eight realistic conductor pairs from §0.1. Legitimate by
@@ -203,9 +204,10 @@ with a monotone map. True, and irrelevant — it holds only while the tone curve
 is the last luma operation, and six luma-moving filters follow it.
 
 **New:** `color_measure.crop_percentiles` over the **full** colour block, i.e.
-the same `RenderPlan` that `probe._plan_for` builds and `reframe` encodes. The
-gate then makes no assumption about the chain's order at all. A post-tone knob
-moves prediction and delivery together and cancels.
+the same `RenderPlan` that `probe._plan_for` (now `process_episode.plan_for`)
+builds and `reframe` encodes. The gate then makes no assumption about the
+chain's order at all. A post-tone knob moves prediction and delivery together
+and cancels.
 
 The prediction is computed **fresh, inside `check_reel`** — never recorded at
 render time and read back. A recorded prediction goes stale the moment
@@ -475,6 +477,23 @@ by this one.
 **§9.6 Nobody has looked at any of this on a screen.** Every number here is a
 histogram statistic. Whether a reel that passes both gates looks right is the
 QC judge's question and no measurement in this slice answers it.
+
+**§9.7 `target_dev_reason` names two facts, not their causes.** Final review
+I-3: an empty `target_dev` used to be silently ambiguous between "no
+`EDL.tone_target` at all" and "a target exists but nothing is bound to it" —
+the old `tone_match` reported the first as a visible not-checked absence, and
+the rewrite quietly collapsed both into the same `{}`, with the two tests that
+had held the distinction deleted and no successor written.
+`check_reel._grade_faithful_check` now names which of the two it is
+(`target_dev_reason`: `"no-target"` / `"no-episode-bound"` / `None` once at
+least one episode binds), but `"no-episode-bound"` is itself one label over at
+least four different causes: the conductor skipped every episode as
+flat-source or already within-eps, every episode carries a hand-authored pair
+that does not happen to equal the target, every prediction failed to build (so
+there was nothing to compare against `tone_dsts` either), or some mix of the
+three. A reader who wants to know WHICH of those still has to open `MATCH.md`
+or the EDL by hand; the reason string proves the ambiguity was named, not that
+it was resolved.
 
 ---
 

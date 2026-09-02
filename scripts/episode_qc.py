@@ -119,7 +119,7 @@ def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
         dur = assembly.probe_duration(ep.clip)
         contact_sheet.build_strip(ep.clip, str(d / "strip.jpg"), start=0.0, dur=dur,
                                   frames=frames, fps=info.fps)
-        times = [dur * (k + 0.5) / SENSOR_FRAMES for k in range(SENSOR_FRAMES)]
+        times = color.sample_times(dur, SENSOR_FRAMES)
         stats = naturalness.measure(assembly.frames_rgb(ep.clip, times, info.fps))
         clip_stats = {"stats": stats, "flags": naturalness.evaluate(stats),
                       **_source_reading(ep, stats)}

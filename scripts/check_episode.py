@@ -150,8 +150,12 @@ def _grade_damage(clip: str, source: str | None,
 
     Renders the same episode twice — once with its colour block, once with every
     knob at identity — and compares the luma-histogram entropy of the two. Both
-    sides come from a render, never from the shipped clip: libx264 quantization
-    lowers entropy on its own and would bias the ratio toward false damage. The
+    sides come from a render, never from the shipped clip: measured directly and
+    reproduced five times (design §3, §9.1), a clip-read's entropy comes back
+    HIGHER than a render-pair's — CRF-18 quantization and deblocking SPREAD the
+    luma histogram rather than collapsing it — so a clip-read comparison would be
+    slightly more LENIENT than this one, not stricter. The risk to guard against
+    is therefore missing real damage, not flagging a legitimate grade. The
     consequence is explicit and paired: THIS sensor judges the declared map, and
     check_reel's grade_faithful judges the delivered pixels.
 

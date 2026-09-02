@@ -365,7 +365,22 @@ put a per-episode grade-movement table in the reviewer's packet so the `colour` 
 can cite a number instead of judging blind — `color_fidelity` already writes
 `delta_e`/`delta_l`/`delta_c`/`delta_h` per episode into `build/ep{i}/report.json`,
 which every render wipes; `EPISODE_QC.json` is the candidate non-wiped source
-(colour-convergence-retire §9.4, §10)
+(colour-convergence-retire §9.4, §10) ·
+`grade_faithful`'s advisory `target_dev_reason` distinguishes "no target" from
+"target exists but nothing bound", but collapses at least four different causes
+of the second into one string — a flat-source/within-eps conductor skip, a
+hand-authored pair that misses the target, every prediction failing to build, or
+some mix, are all `no-episode-bound` today; a reader still has to open
+`MATCH.md` or the EDL by hand to tell which (grade-sensor-references design §9.7,
+final review I-3) ·
+`grade_damage` and `grade_faithful` name the same shape of absence in different
+words — `check_episode`'s not-checked reason is `"no render plans"`/`"no source
+clip"` against `check_reel`'s `"no-predictions"`/`"no-episode-predicted"`/
+`"no-prediction"`, and the advisory flag is `advisory_delta_e` on one and
+`target_dev_advisory`/`target_dev_reason` on the other. Real, but a convention
+pass over strings a QC judge and a router both read is its own change, not one
+folded into a merge-eve review (grade-sensor-references, final review,
+deliberately out of scope)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
@@ -449,7 +464,17 @@ calibrate the look gate's constants (`VIGNETTE_MIN_FRACTION`/`FADE_BLACK_MAX`/`F
 generalize the frame probe to the other QC axes, composition and path smoothness — `RenderPlan` + `with_tail` are axis-agnostic, only colour is wired this slice (frame-probe-look-gate §11) ·
 **✅ dissolved 2026-08-29** — record the applied `color_correct` on `PathMeta` so `probe_grade` can see and reproduce (or refuse against) a reel-level colour retry — its no-`--edl` baseline is silently wrong for any episode `build_reel`'s retry touched, because the pull lives only in `build_reel`'s own in-memory dict and `EPISODES.json` never carries it forward, so no later re-probe can recover the shipped grade either (frame-probe-look-gate, whole-branch review). Moot: `color_correct` itself is deleted, so there is no applied pull left to record ([colour-convergence-retire](specs/2026-08-29-colour-convergence-retire-design.md) §3) ·
 a titles-only delivery — and even an explicitly EMPTY `TITLES.json` (the predicate `_verify_look`/`lookcheck.evaluate` use is `titles is not None`, a path was passed, never "the parsed `Titles` has items" — filed at this slice's own Task 5 but never promoted to this file) — still pays the full 3-frame decode (5 subprocess calls) that `evaluate` never reads for anything but a permanent `not-checked` finding; gate the sampling in `_verify_look`/`probe_look` on `vig or fade` (frame-probe-look-gate, whole-branch review) ·
-`provenance.verify_delivery`'s detail for an unattested file reads "this file was not produced by deliver()" — literally false for the look-gate-withheld case (`deliver` DID run and DID write `REEL_v{n}` before refusing); and `look_checks` (the gate's own findings, present in a WRITTEN attestation) is never surfaced by `montage status`/`verify`, so a `not-checked` vignette or fade reads no differently from a passing one at either command (frame-probe-look-gate, whole-branch review)
+`provenance.verify_delivery`'s detail for an unattested file reads "this file was not produced by deliver()" — literally false for the look-gate-withheld case (`deliver` DID run and DID write `REEL_v{n}` before refusing); and `look_checks` (the gate's own findings, present in a WRITTEN attestation) is never surfaced by `montage status`/`verify`, so a `not-checked` vignette or fade reads no differently from a passing one at either command (frame-probe-look-gate, whole-branch review) ·
+`grade_faithful` names one episode but nothing can re-render just that one —
+`edl_to_reel`'s only render entry point, `--from-geometry`, always renders every
+episode, so recovering from this stop pays a full N-episode re-render and a full
+episode-qc re-judge, the exact waste the `episode-qc-reprocessed` remedy
+(using-montage step 15) was built to avoid for its own stop. `build_reel`'s own
+retry loop already reprocesses ONE episode in place for a `black` hit
+(`process_episode.process_episode` on that episode's own manifest and
+directory); a CLI entry point onto the same call, or widening
+`_REPROCESS_CLASS`'s reach into a bounded per-episode retry, would close it for
+`grade_faithful` too (grade-sensor-references, final review I-2)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -482,26 +507,35 @@ integration test, so the new window-pool proof covers the carve and pool-scoring
 plumbing on real bytes, NOT the motion sensor's judgement — the sensor still has
 no real-footage proof, which is the calibration row's territory
 (cheap-P2-chores §4.1) ·
-`test_grade_damage_is_unfixable_and_names_its_own_remedy`
-(`tests/lib/test_orchestration.py`) is a brief-mandated near-duplicate of the
-test three lines above it — it fails only in lockstep with that one and
-detects nothing new (grade-sensor-references Task 4) ·
-`tests/integration/test_front_spine.py` carries a dormant canvas mismatch of
-the SAME species as the one repaired in `test_outro.py` (a `_project_json`
-declaring a crop nobody's fake renderer actually performs) — found, named, and
-left alone because nothing currently exercises the path that would make it
-bite (grade-sensor-references Task 7) ·
+a fixture class, one row instead of three one-offs: `test_outro.py`
+(repaired), `test_front_spine.py`'s `_project`, `test_edit_plan.py`'s
+`_project_json` and `test_ramp.py`'s inline equivalent (copied from the
+latter, its own comment says so) all declare a `project.json` canvas of
+`[1080, 1920]` — a 9:16 "reel" crop — that their own FAKE renderer never
+performs; `_fake_track_pe`/its stand-ins skip reframe entirely (a plain
+`-c:v copy`, no crop) and record the honest truth in their own
+`path.meta.json` (`"canvas": [W, H]`, the source's own dims). Only
+`test_outro.py`'s was ever fixed (realigned to the source aspect, design
+2026-08-31 Task 7), because `grade_faithful` is the first check to actually
+compare the DECLARATION against a prediction built from it; the other three
+stay dormant — found reading the fixtures, not running them, since nothing
+today exercises the path that would make any of them bite. A shared fixture
+helper that derives the declared canvas FROM whatever the fake renderer
+actually produces, the way the repaired one now does by hand, would close all
+three at once and stop a fourth copy from reintroducing it
+(grade-sensor-references Tasks 7/8, final review) ·
 the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless
 (grade-sensor-references Task 7) ·
-the stabilize test in `tests/test_episode_qc.py`
-(`test_source_reading_reads_the_stabilized_file_not_the_raw_segment`)
+the stabilize test in `tests/integration/test_grade_shipped_pixels.py`
+(`test_predict_reads_the_stabilized_source_not_the_raw_segment`)
 discriminates SOLELY via its `source_for` call-spy: raw and stabilized
 `golden_ride` yield the identical crop profile on this fixture, so the value
 assertion alone would pass a `_predict` wired to the wrong file too
 (grade-sensor-references Task 7, same shape as Task 5's own finding on the
-preflight-probe test) ·
+preflight-probe test; mis-attributed to `tests/test_episode_qc.py` until
+corrected by the whole-branch final review, M-2) ·
 `gradedamage.ENTROPY_BINS` (was `scripts/lib/gradedamage.py:29`) was deleted
 2026-09-02 (grade-sensor-references Task 10 fix round 1) after the mutation
 battery found it consumed only as `np.bincount`'s `minlength`, itself

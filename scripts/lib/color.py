@@ -628,9 +628,11 @@ def select_frames(times: list[float], fps: float) -> str:
     probe._render), the exact species of duplication process_episode.plan_for was
     built one commit earlier to close for the manifest -> RenderPlan map. It cannot
     live in color_measure.py, the more obviously-named home: color_measure imports
-    reframe (for plan_ungraded), so reframe importing a helper back from
-    color_measure would be a cycle. color.py is a leaf every one of the three call
-    sites already imports, so centralizing here moves nothing in the import graph.
+    reframe (for the `RenderPlan` annotation on `crop_percentiles` — `plan_ungraded`
+    itself lives in process_episode now, not here), so reframe importing a helper
+    back from color_measure would be a cycle. color.py is a leaf every one of the
+    three call sites already imports, so centralizing here moves nothing in the
+    import graph.
     """
     nums = [round(t * fps) for t in times]
     return "select='" + "+".join(rf"eq(n\,{n})" for n in nums) + "'"

@@ -76,9 +76,12 @@ def evaluate(*, plain: list, graded: list, floor: float) -> dict:
     """The episode's damage verdict: the MEDIAN per-frame entropy ratio against `floor`.
 
     `plain` and `graded` are parallel: the same frames of the same render, differing
-    only in the colour tail. That symmetry is the point — libx264 quantization lowers
-    entropy on its own, so comparing a render against a shipped clip would bias the
-    ratio toward false damage.
+    only in the colour tail. That symmetry is the point — measured directly and
+    reproduced five times (design §3, §9.1), a clip-read's entropy comes back
+    HIGHER than a render-pair's, because CRF-18 quantization and deblocking SPREAD
+    the luma histogram rather than collapse it. So comparing a render against a
+    shipped clip would bias the ratio toward LENIENCY, not toward false damage —
+    the failure mode symmetry guards against is missing real damage.
 
     Median, not worst, for the reason color_fidelity.evaluate gives: one atypical
     frame must not decide an episode.

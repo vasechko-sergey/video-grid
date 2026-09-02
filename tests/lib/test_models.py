@@ -1400,9 +1400,17 @@ def test_reel_check_spec_grade_residual_max_defaults_to_the_measured_value():
     assert ReelCheckSpec(target_dur=10.0).grade_residual_max == 4.0   # <- design §0.5
 
 
-def test_reel_check_spec_refuses_a_non_positive_grade_residual_max():
+@pytest.mark.parametrize("bad", [0, -0.1, True, "4.0", None])
+def test_reel_check_spec_refuses_a_bad_grade_residual_max(bad):
+    """Mirrors test_check_spec_refuses_an_out_of_range_entropy_floor (final review
+    M-3): grade_residual_max's validator used to lack entropy_floor's `isinstance(...,
+    bool)` exclusion, so `ReelCheckSpec(grade_residual_max=True)` was silently
+    accepted as 1.0 — True is a positive int as far as the old
+    `isinstance(x, (int, float))` check could tell. `bad=True` is what catches a
+    regression back to that gap; the other values pin the pre-existing positive-number
+    guard."""
     with pytest.raises(ValueError, match="grade_residual_max"):
-        ReelCheckSpec(target_dur=10.0, grade_residual_max=0.0)
+        ReelCheckSpec(target_dur=10.0, grade_residual_max=bad)
 
 
 # --- PanSpec (design 2026-07-19): two fractions of horizontal freedom, not a layout ---

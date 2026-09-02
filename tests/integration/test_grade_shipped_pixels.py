@@ -470,8 +470,14 @@ def test_predict_reads_the_stabilized_source_not_the_raw_segment(tmp_path, monke
     every stabilized episode and nothing in the suite would have caught it.
 
     Spied on probe.source_for itself — the real function, still called, not
-    replaced — so the assertion is about the VALUE _predict actually measured, not
-    merely that source_for was invoked with the right arguments.
+    replaced. Corrected (final review M-2): the CALL-SPY (`calls == [stabilized]`)
+    is what actually proves the right file was selected, not the VALUE assertion
+    two blocks down (`predicted[0] == want`) — raw and stabilized golden_ride land
+    on the exact same (p5, p50, p95) for this window regardless (measured in the
+    CONTROL below), so that value assertion would still pass even if _predict
+    quietly reached for the wrong file. It pins a real, separate claim instead —
+    the percentile arithmetic agreeing with an independently built plan — not
+    source selection.
     """
     need_filter("vidstabdetect")
     need_filter("vidstabtransform")
