@@ -240,6 +240,60 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
     assert back.tone_target != median                              # never the raw median
 
 
+def test_write_match_prefers_an_authored_tone_bias_over_the_mood_preset(tmp_path, monkeypatch):
+    """Fix round 1 (Important finding): every other write_match/spec test in this file
+    either omits tone_bias or leaves it None, so write_match's own
+    `bias, bias_source = _resolve_bias(spec_obj, preset)` call was never exercised
+    end-to-end with BOTH a mood and an authored override present — the exact shape a
+    real SPEC.json has. If that call ever reverted to `_resolve_bias(None, preset)`,
+    every authored SPEC.tone_bias in production would be silently dropped for the
+    preset's taste, and no other test would notice — none of them combine the two.
+
+    Same fixture as test_write_match_stamps_the_mood_biased_target_not_the_median
+    (_MOOD_PROFS, median (25.0, 110.0, 195.0)), so the three candidate targets are
+    directly comparable, each computed via the real matchgrade.biased_target (not hand
+    arithmetic):
+      - the plain median:                        (25.0, 110.0, 195.0)
+      - what "moody"'s OWN preset bias produces:  (7.0, 94.0, 187.0)   (bias -18/-16/-8)
+      - what THIS authored bias produces:         (35.0, 115.0, 175.0) (bias 10/5/-20)
+    all three pairwise more than ReelCheckSpec.grade_residual_max (4.0) apart — an
+    authored bias that happened to land on the preset's own target (or the median)
+    would pass this test against a broken _resolve_bias call and prove nothing."""
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
+    geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
+    authored_bias = (10.0, 5.0, -20.0)
+    spec_path = tmp_path / "SPEC.json"
+    spec_path.write_text(json.dumps(
+        Spec(canvas=(1080, 1920), length_s=10.0, mood="moody", hook="h",
+            tone_bias=authored_bias).to_dict()))
+
+    median = _plain_target()                                            # (25.0, 110.0, 195.0)
+    moody_bias = moodpreset.resolve("moody").tone_bias
+    moody_biased, _ = matchgrade.biased_target(median, moody_bias)       # (7.0, 94.0, 187.0)
+    authored_biased, k = matchgrade.biased_target(median, authored_bias)  # (35.0, 115.0, 175.0)
+    assert k == 1.0                                                     # nothing scaled away
+    # The three candidates must be well separated, or a broken _resolve_bias could land
+    # on the wrong one and this test would not notice.
+    for a, b in ((median, authored_biased), (moody_biased, authored_biased)):
+        assert (max(abs(x - y) for x, y in zip(a, b))
+                > ReelCheckSpec(target_dur=1.0).grade_residual_max)
+
+    status = match_grade.write_match(geometry_path, spec=str(spec_path))
+
+    # The AUTHORED bias won, not the mood preset's — and the report says so.
+    assert status["target"] == list(authored_biased)
+    assert status["target"] != list(moody_biased)
+    assert status["mood"] == "moody"                    # the preset was still resolved...
+    assert status["bias_source"] == "SPEC.tone_bias"    # ...but its bias was NOT the one used
+    back = EDL.from_json(edl_path)
+    assert back.tone_target == authored_biased
+    assert back.tone_target != moody_biased
+    assert back.tone_target != median
+    md = (tmp_path / "MATCH.md").read_text()
+    assert "SPEC.tone_bias" in md
+    assert "the moody preset" not in md
+
+
 def test_write_match_does_not_resolve_the_geometrys_edl_path(tmp_path, monkeypatch):
     """geo.edl is stored VERBATIM (design 2026-08-30 §2.2, matching how
     edl_to_reel.render_from_geometry already reads it) — resolving it against
