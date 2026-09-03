@@ -160,7 +160,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
     target = (25.0, 110.0, 195.0)                      # median of the two measured profiles
     assert status == {"status": "written", "edl": edl_path, "md": str(tmp_path / "MATCH.md"),
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
-                      "mood": None, "bias_scale": 1.0,     # no --spec: the plain median
+                      "mood": None, "bias_source": "", "bias_scale": 1.0,  # no --spec: the plain median
                       "authored": 2, "skipped": {}}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
     assert back.tone_target == target
@@ -213,7 +213,7 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
 
     Profiles + preset (moody: -18/-16/-8, and moody never scales — biased_target's own
     docstring says so because it pulls inward) are the SAME ones
-    test_conduct_with_a_mood_displaces_the_target already uses one level down; picked so
+    test_conduct_with_a_bias_displaces_the_target already uses one level down; picked so
     the median and the biased target differ by MORE than ReelCheckSpec.grade_residual_max —
     discriminating the advisory reading's premise, not float noise."""
     monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
@@ -326,49 +326,89 @@ def test_conduct_without_a_spec_authors_the_plain_median(monkeypatch):
     assert (target, k) == (_plain_target(), 1.0)
 
 
-def test_conduct_with_a_mood_displaces_the_target(monkeypatch):
+def test_conduct_with_a_bias_displaces_the_target(monkeypatch):
+    """conduct no longer resolves a preset itself (design 2026-09-03 §2, _resolve_bias) —
+    it takes whatever bias the caller hands it; here, a mood's tone_bias fetched directly,
+    to prove conduct still threads an arbitrary supplied bias through to the target."""
     geo, edl = _mood_geo_edl(monkeypatch)
-    _, target, _, k = match_grade.conduct(geo, edl, preset=moodpreset.resolve("moody"))
+    _, target, _, k = match_grade.conduct(geo, edl, bias=moodpreset.resolve("moody").tone_bias)
     assert (target, k) == matchgrade.biased_target(_plain_target(), (-18.0, -16.0, -8.0))
     assert target != _plain_target()          # the displacement is not a no-op on this fleet
 
 
-def test_a_balanced_brief_displaces_nothing(monkeypatch):
-    """resolve() returned the fallback, so no mood matched — and an unmatched brief
-    must not have a grade imposed on it (design §1)."""
-    geo, edl = _mood_geo_edl(monkeypatch)
-    _, target, _, k = match_grade.conduct(geo, edl, preset=moodpreset.BALANCED)
-    assert (target, k) == (_plain_target(), 1.0)
-
-
-def test_the_report_names_the_mood_and_flags_an_ineffective_bias():
+def test_report_names_the_preset_source_and_flags_an_ineffective_bias():
     d = matchgrade.ToneDecision(0, "author", "authored", measured=(10.0, 90.0, 150.0),
                                 tone_src=(10.0, 90.0, 150.0), tone_dst=(30.0, 80.0, 180.0))
+    epic = moodpreset.resolve("epic")
     md = match_grade._report_md(["a.mp4"], (30.0, 80.0, 180.0), [d], 4.0,
-                                preset=moodpreset.resolve("epic"), k=5.0 / 16.0)
+                                bias=epic.tone_bias, bias_source=f"the {epic.name} preset",
+                                k=5.0 / 16.0)
     assert "epic" in md and "mood-bias-ineffective" in md
 
 
-def test_the_report_says_when_no_mood_matched():
-    d = matchgrade.ToneDecision(0, "skip", "within-eps", measured=(30.0, 80.0, 180.0))
-    md = match_grade._report_md(["a.mp4"], (30.0, 80.0, 180.0), [d], 4.0,
-                                preset=moodpreset.BALANCED, k=1.0)
-    assert "No mood matched" in md and "mood-bias-ineffective" not in md
+def test_resolve_bias_guards_the_balanced_fallback_by_name_not_by_a_zero_vector():
+    """Ported to _resolve_bias (design 2026-09-03 §2): conduct no longer knows what a
+    preset is, so the balanced-name guard that used to live there now lives only here,
+    and this is the only place left that can test it.
 
-
-def test_the_balanced_guard_is_tested_by_name_not_by_a_zero_vector(monkeypatch):
-    """Found by this slice's own mutation battery: dropping the `name != "balanced"`
-    check changed NOTHING, because the shipped BALANCED.tone_bias is already zero — so
-    the test above proves the zero, not the guard. Hand a preset that is NAMED balanced
-    and carries a real displacement: the guard, and only the guard, keeps it out.
+    Found by this slice's own mutation battery: dropping the `name != "balanced"` check
+    changed NOTHING when tried against the shipped BALANCED.tone_bias, because that
+    vector is already zero — so a test built on it proves the zero, not the guard. Hand
+    a preset that is NAMED balanced and carries a real displacement: the guard, and only
+    the guard, keeps it out.
 
     This is not hypothetical. BALANCED.look once carried a concrete fade and
     write_edit_plan applied it unconditionally, which put a real picture bookend on
     every autonomous reel (cinematic-look final review I-2). The guard exists so that
     filling this field later cannot repeat it."""
-    geo, edl = _mood_geo_edl(monkeypatch)
     loud = moodpreset.MoodPreset("balanced", None,
                                  {"close": 0.25, "medium": 0.40, "wide": 0.35}, (1.5, 4.0),
                                  tone_bias=(-18.0, -16.0, -8.0))
-    _, target, _, k = match_grade.conduct(geo, edl, preset=loud)
-    assert (target, k) == (_plain_target(), 1.0)
+    assert match_grade._resolve_bias(None, loud) == ((0.0, 0.0, 0.0), "")
+
+
+_SPEC = dict(canvas=(9, 16), length_s=30.0, mood="nostalgic warm", hook="open")
+
+
+def test_resolve_bias_prefers_the_authored_triple_over_the_preset():
+    spec = Spec(**{**_SPEC, "tone_bias": (1, 2, 3)})
+    preset = moodpreset.resolve("nostalgic warm")
+    assert preset.tone_bias != (1.0, 2.0, 3.0)          # the preset really differs
+    assert match_grade._resolve_bias(spec, preset) == ((1.0, 2.0, 3.0), "SPEC.tone_bias")
+
+
+def test_resolve_bias_honours_an_authored_zero_against_a_biased_preset():
+    # The whole point of None-vs-zero: this mood, leave my colour alone.
+    spec = Spec(**{**_SPEC, "tone_bias": (0, 0, 0)})
+    preset = moodpreset.resolve("nostalgic warm")
+    assert preset.tone_bias != (0.0, 0.0, 0.0)
+    assert match_grade._resolve_bias(spec, preset) == ((0.0, 0.0, 0.0), "SPEC.tone_bias")
+
+
+def test_resolve_bias_falls_back_to_the_preset_when_unauthored():
+    spec = Spec(**_SPEC)                                 # tone_bias is None
+    preset = moodpreset.resolve("nostalgic warm")
+    assert match_grade._resolve_bias(spec, preset) == (preset.tone_bias,
+                                                       f"the {preset.name} preset")
+
+
+def test_resolve_bias_imposes_nothing_for_the_balanced_fallback():
+    preset = moodpreset.resolve("no mood word matches this at all")
+    assert preset.name == "balanced"
+    assert match_grade._resolve_bias(None, preset) == ((0.0, 0.0, 0.0), "")
+
+
+def test_resolve_bias_is_zero_with_no_spec_and_no_preset():
+    assert match_grade._resolve_bias(None, None) == ((0.0, 0.0, 0.0), "")
+
+
+def test_report_names_the_authored_source():
+    md = match_grade._report_md([], (10.0, 100.0, 200.0), [], 4.0,
+                                bias=(1.0, 2.0, 3.0), bias_source="SPEC.tone_bias")
+    assert "SPEC.tone_bias" in md
+
+
+def test_report_says_nothing_about_mood_when_no_bias_was_asked_for():
+    md = match_grade._report_md([], (10.0, 100.0, 200.0), [], 4.0,
+                                bias=(0.0, 0.0, 0.0), bias_source="")
+    assert "displaced" not in md

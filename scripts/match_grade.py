@@ -23,8 +23,30 @@ from scripts.lib.models import ReelGeometry
 from scripts.lib.spec import Spec
 
 
+def _resolve_bias(spec: Spec | None,
+                  preset: moodpreset.MoodPreset | None) -> tuple[tuple[float, float, float], str]:
+    """The tone displacement and WHERE it came from (design 2026-09-03 §2).
+
+    An authored `Spec.tone_bias` outranks the preset's taste, and an authored
+    (0, 0, 0) is a real answer — "this mood, but leave my colour alone" — not the
+    absence of one, which is why the field's default is None rather than a zero
+    triple. `balanced` is tested by NAME, exactly as write_edit_plan tests it for
+    `look` and for the same reason: it is resolve()'s "nothing matched", and an
+    unmatched brief must not have a taste imposed on it.
+
+    The source string is what MATCH.md prints. Until this slice the report showed
+    the displacement without ever saying where it came from, which is the
+    "silently" half of the retro's R1.1.
+    """
+    if spec is not None and spec.tone_bias is not None:
+        return spec.tone_bias, "SPEC.tone_bias"
+    if preset is not None and preset.name != "balanced":
+        return preset.tone_bias, f"the {preset.name} preset"
+    return (0.0, 0.0, 0.0), ""
+
+
 def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
-            force: bool = False, preset: moodpreset.MoodPreset | None = None
+            force: bool = False, bias: tuple[float, float, float] = (0.0, 0.0, 0.0)
             ) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision], float]:
     """Measure each episode's own tracked CROP (design 2026-08-30 §1) — the pixels
     that ship, read through the same RenderPlan the render will use, with the
@@ -37,7 +59,7 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     units each while their p5 and p95 anchors, pinned by sky and specular water,
     were identical on both sides of every pair.
 
-    The scale is 1.0 unless a mood displacement had to be shrunk to fit (see biased_target); it
+    The scale is 1.0 unless the supplied bias had to be shrunk to fit (see biased_target); it
     is returned rather than swallowed because a weakened displacement is invisible in the
     pixels and the report is the only place it can be seen. The decisions
     carry each measured profile, so write_match writes the report with no second measure.
@@ -54,12 +76,9 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     profiles = [measure_crop(eg.manifest, eg.source, eg.route)
                 for eg in geo.episodes]
     target = matchgrade.common_target(profiles)
-    # The mood displaces the common target (design 2026-08-17 §1). BALANCED is tested by
-    # name, exactly as write_edit_plan tests it for `look` and for the same reason: it is
-    # resolve()'s "nothing matched", and an unmatched brief must not have a taste imposed
-    # on it. No preset at all -> a zero bias -> biased_target hands the median straight
-    # back, so a run without --spec authors what it authored before this slice.
-    bias = preset.tone_bias if preset is not None and preset.name != "balanced" else (0.0, 0.0, 0.0)
+    # The displacement arrives already resolved (_resolve_bias): conduct does not know
+    # what a preset is, so an authored bias and a preset's taste reach the target the
+    # same way and there is one place that decides between them.
     target, scale = matchgrade.biased_target(target, bias)
     has_tone = [e.tone_src is not None for e in edl.episodes]
     decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force)
@@ -72,14 +91,17 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
 
 def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
-               preset: moodpreset.MoodPreset | None = None, k: float = 1.0) -> str:
+               bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
+               bias_source: str = "", k: float = 1.0) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
 
-    The mood lines exist because a displacement the footage had no room for is invisible
-    in the pixels and has nowhere else to be seen (design 2026-08-17 §5). A scale under
-    the floor is the one thing in this report a human must act on."""
+    The displacement lines exist because a shift the footage had no room for is invisible
+    in the pixels and has nowhere else to be seen (design 2026-08-17 §5), and now name
+    WHERE the bias came from — SPEC.tone_bias or a mood preset (design 2026-09-03 §2) —
+    closing the "silently" half of the retro's R1.1. A scale under the floor is the one
+    thing in this report a human must act on."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -87,18 +109,15 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             f"Measured on each episode's own tracked crop, "
             f"{color.FRAMES} frames per episode "
             f"(design 2026-08-30 §1) — not the whole source frame.")
-    if preset is not None and preset.name != "balanced":
-        head += (f"\n\nMood **{preset.name}** displaced the target by "
-                 f"{tuple(preset.tone_bias)}")
+    if bias_source:
+        head += f"\n\nTone displaced by {tuple(bias)} — from {bias_source}"
         if k < 1.0:
             head += f", scaled to {k:.0%} (the reel's own range left no room for the rest)"
-        if matchgrade.bias_ineffective(preset.tone_bias, k):
+        if matchgrade.bias_ineffective(bias, k):
             head += (f"\n\n> **mood-bias-ineffective** — what survived is under "
                      f"{matchgrade.MOOD_FLOOR:g} luma units, which is below this "
-                     f"conductor's own delivery error, so the mood will not be visible "
-                     f"in the grade.")
-    elif preset is not None:
-        head += "\n\nNo mood matched the brief — the target is the plain median."
+                     f"conductor's own delivery error, so the displacement will not be "
+                     f"visible in the grade.")
     lines = [head, "",
              f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
@@ -122,8 +141,10 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     than silently reading a different file."""
     geo = ReelGeometry.from_json(geometry_path)
     edl = EDL.from_json(geo.edl)
-    preset = moodpreset.resolve(Spec.from_json(spec).mood) if spec else None
-    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, preset=preset)
+    spec_obj = Spec.from_json(spec) if spec else None
+    preset = moodpreset.resolve(spec_obj.mood) if spec_obj is not None else None
+    bias, bias_source = _resolve_bias(spec_obj, preset)
+    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, bias=bias)
     # the reel's ONE common target (design §3) — deriving it from the episodes' own
     # tone_dst would fail on the reel where every episode was skipped (all None)
     out = replace(out, tone_target=target)
@@ -131,11 +152,12 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
                                   # output is the tool's output (design §4)
     md_path = Path(geo.edl).parent / "MATCH.md"
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
-                                  preset=preset, k=k))
+                                  bias=bias, bias_source=bias_source, k=k))
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
             "target": list(target), "eps": eps,
-            "mood": preset.name if preset is not None else None, "bias_scale": k,
+            "mood": preset.name if preset is not None else None,
+            "bias_source": bias_source, "bias_scale": k,
             "authored": sum(1 for d in decisions if d.action == "author"),
             "skipped": dict(skipped)}
 
