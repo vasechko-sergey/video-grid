@@ -216,4 +216,4 @@ def test_spec_round_trips_tone_bias_through_json_shape():
 
 def test_spec_round_trips_an_absent_tone_bias():
     s = Spec(**GOOD)
-    assert Spec.from_dict(s.to_dict()).tone_bias is None
+    assert Spec.from_dict(s.to_dict()) == s
