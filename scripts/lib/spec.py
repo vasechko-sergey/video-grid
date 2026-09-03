@@ -27,6 +27,7 @@ class Spec:
     ending: str = ""
     cast: tuple = ()
     notes: str = ""
+    tone_bias: tuple | None = None   # (p5, p50, p95) luma displacement, or None
 
     def __post_init__(self) -> None:
         if not (isinstance(self.canvas, (tuple, list)) and len(self.canvas) == 2
@@ -63,6 +64,16 @@ class Spec:
                 and all(isinstance(c, str) and c.strip() for c in self.cast)):
             raise ValueError(f"Spec.cast must be a list of non-empty name strings, got {self.cast!r}")
         self.cast = tuple(self.cast)
+        if self.tone_bias is not None:
+            if not (isinstance(self.tone_bias, (tuple, list)) and len(self.tone_bias) == 3
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                            for v in self.tone_bias)):
+                raise ValueError(
+                    f"Spec.tone_bias must be three numbers — a (p5, p50, p95) luma "
+                    f"displacement, the same shape as MoodPreset.tone_bias — or null to "
+                    f"take the mood preset's own. Got {self.tone_bias!r}. Write [0, 0, 0] "
+                    f"to keep the mood and leave the colour alone")
+            self.tone_bias = tuple(float(v) for v in self.tone_bias)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Spec":
@@ -85,7 +96,7 @@ class Spec:
             reel_count=opt("reel_count", 1), music=opt("music", "auto"),
             music_mode=opt("music_mode", "free"), style_lean=opt("style_lean", "balanced"),
             platform=opt("platform", ""), text=opt("text", ""),
-            ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""))
+            ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""), tone_bias=d.get("tone_bias"))
 
     def to_dict(self) -> dict:
         return {"canvas": list(self.canvas), "length_s": self.length_s,
@@ -93,7 +104,8 @@ class Spec:
                 "music": self.music, "music_mode": self.music_mode,
                 "style_lean": self.style_lean, "platform": self.platform,
                 "text": self.text, "ending": self.ending, "cast": list(self.cast),
-                "notes": self.notes}
+                "notes": self.notes,
+                "tone_bias": None if self.tone_bias is None else list(self.tone_bias)}
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Spec":

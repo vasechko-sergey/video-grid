@@ -180,3 +180,40 @@ def test_spec_from_json_non_object_top_level_names_a_remedy(body, tmp_path):
     p = tmp_path / "SPEC.json"; p.write_text(body)
     with pytest.raises(ValueError, match="re-run reel-brief"):
         Spec.from_json(p)
+
+
+def test_spec_tone_bias_defaults_to_none_not_zero():
+    # None and (0,0,0) mean different things: None = "take the preset's taste",
+    # (0,0,0) = "this mood, leave my colour alone". A zero default would make
+    # the second inexpressible (design 2026-09-03 §2).
+    assert Spec(**GOOD).tone_bias is None
+
+
+def test_spec_accepts_an_authored_tone_bias():
+    s = Spec(**{**GOOD, "tone_bias": [10, 0, -18]})
+    assert s.tone_bias == (10.0, 0.0, -18.0)
+
+
+def test_spec_accepts_an_explicit_zero_bias():
+    s = Spec(**{**GOOD, "tone_bias": (0, 0, 0)})
+    assert s.tone_bias == (0.0, 0.0, 0.0)
+
+
+def test_spec_rejects_a_two_element_tone_bias():
+    with pytest.raises(ValueError, match="tone_bias"):
+        Spec(**{**GOOD, "tone_bias": (10, 0)})
+
+
+def test_spec_rejects_a_bool_in_tone_bias():
+    with pytest.raises(ValueError, match="tone_bias"):
+        Spec(**{**GOOD, "tone_bias": (10, True, 0)})
+
+
+def test_spec_round_trips_tone_bias_through_json_shape():
+    s = Spec(**{**GOOD, "tone_bias": (10, 0, -18)})
+    assert Spec.from_dict(s.to_dict()) == s
+
+
+def test_spec_round_trips_an_absent_tone_bias():
+    s = Spec(**GOOD)
+    assert Spec.from_dict(s.to_dict()).tone_bias is None
