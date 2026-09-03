@@ -25,7 +25,7 @@ _Last updated: 2026-09-03._
   `carve._tight_unit` builds a window of exactly `win_min` per activity peak. The
   footage was never the constraint (92.9% of scene spans run past 4.0s, median
   15.98s), and a wider ceiling would not have changed the delivered cut anyway:
-  `edit_plan`'s span merge already joins adjacent windows past `WIN_MAX`, and 5 of
+  `edit_plan`'s span merge already joins adjacent windows past `WIN_MAX`, and 4 of
   the shipped run's 8 episodes already exceed 4.0s (up to 5.80s). The operator's
   "pull toward two seconds" is not explained by the `asl` band either — the
   shipped reel's median shot was 4.10s, *above* `nostalgic`'s own declared ceiling.

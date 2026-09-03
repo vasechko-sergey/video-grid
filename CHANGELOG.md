@@ -17,7 +17,7 @@ retro's R1.1/R1.2/R1.3 — and R1.2 closes as **overturned**, not delivered as
 asked: measured read-only against the 2026-06 run's own artifacts, 72.9% of a
 1508-window pool sits on the carve's 1.2s floor and only 0.2% ever reaches its
 4.0s ceiling, the footage had room regardless (92.9% of scene spans run past
-4.0s), and the shipped reel already exceeds the ceiling in 5 of 8 episodes
+4.0s), and the shipped reel already exceeds the ceiling in 4 of 8 episodes
 because `edit_plan` joins adjacent windows — so a wider ceiling would not have
 changed the delivered cut, and the operator's "pull toward two seconds" is not
 explained by the `asl` band either (the shipped reel's median shot was 4.10s,

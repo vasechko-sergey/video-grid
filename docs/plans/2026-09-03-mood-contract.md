@@ -748,7 +748,7 @@ it, and a lib cannot import a driver. Footage records what was carved so
 edit_plan can reconcile against it instead of assuming the constant.
 
 Measured, so the scope is honest: the ceiling binds three windows in 1508
-on the reference pool and the shipped reel already exceeds it in five of
+on the reference pool and the shipped reel already exceeds it in four of
 eight episodes via span merge. This does not make shots longer. It makes
 the band changeable at all.
 

@@ -51,7 +51,7 @@ footage forced short windows. The carver chose them.
 The run's eight delivered episodes: 4.51 / 5.27 / 5.80 / 3.35 / 3.69 /
 5.78 / 2.63 / 2.00 s. Median **4.10**, mean **4.13**, longest **5.80**.
 
-**Five of eight are longer than `WIN_MAX = 4.0`** — `edit_plan`'s span
+**Four of eight are longer than `WIN_MAX = 4.0`** — `edit_plan`'s span
 merge (`"window": [i, j]`, 2026-07-26) joins adjacent windows and is used
 routinely, not exceptionally. So the ceiling does not bind the shipped cut
 in any sense: it is already routed around, by a mechanism built for exactly
