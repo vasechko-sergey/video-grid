@@ -10,6 +10,16 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.7.2 — 2026-09-02
+
+- `fake_render`'s docstring now states that `delivery` reaches no encode. `Delivery.dims()`
+  is called only from the real reframe path (`lib/layout.py`) and `draft.py`; a real reframe
+  records its result as `path.meta.json`'s `out_dims`, while the fake stream-copies and
+  writes `out_dims = src_dims`. The value still reaches `project.json`, where `ProjectConfig`
+  and the soft manifest gate validate it. Measured: `long_edge:240` and `native` deliver the
+  same 640x360 file in the same 1.39s. The design's §1 table already said this (0.7.1); the
+  fixture a reader actually opens did not.
+
 ## 0.7.1 — 2026-09-02
 
 - **Nothing about a reel changes here.** This is a documentation-and-tests PATCH:

@@ -282,6 +282,19 @@ def fake_render():
     three sidecars for a tracked one — which is what lets a test exercise the REAL absence of
     the file rather than a stand-in that always writes one.
 
+    `delivery` reaches no encode here, so it cannot make this fake's own render smaller or
+    faster. `Delivery.dims()` — the only place a delivery string becomes pixels — is called
+    from the real reframe path (`scripts/lib/layout.py`) and `scripts/draft.py`, and a real
+    reframe records the result as `path.meta.json`'s `out_dims`. This fake skips reframe and
+    stream-copies, so it writes `out_dims = src_dims`: honest about the pixels it produced,
+    and NOT what a real render at a non-native delivery would have written. What `delivery`
+    still does is reach `project.json`, where `ProjectConfig` and the soft manifest gate
+    parse and validate it. Measured 2026-09-02: `long_edge:240` and `native` deliver the same
+    640x360 file in the same 1.39s. Pass the value a test's real-pipeline counterpart would
+    use, but do not expect it to change a delivered frame — and do not add a scale filter to
+    make it: the copy is what keeps the fake cheap, and a fake that scales would still not
+    honour `crop_scale`, so it would trade one unfaithfulness for a slower one.
+
     The `-c:v copy` runs only when the segment exists on disk, so a test can drive this fake
     for its sidecars alone with a segment path that names nothing. The cost of that
     convenience: a future test whose extract legitimately produced no file gets a cheerful
