@@ -711,6 +711,18 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                 "finding": {"reason": "constraint-violation", "episode_idx": None,
                             "problems": [f"{v.stated} ({v.kind}): {v.message}"
                                          for v in c.violations]}}
+    band_problem = moodpreset.reconcile_band(preset, footage.band)
+    if footage.band is None:
+        _log("length band: not checked — this FOOTAGE.json predates the recorded carve "
+             "band (2026-09-03). Re-run footage-intake to record it")
+    else:
+        _log(f"length band: preset {preset.name} wants "
+             f"{preset.asl[0]:.1f}–{preset.asl[1]:.1f}s, footage carved "
+             f"{footage.band[0]:.1f}–{footage.band[1]:.1f}s")
+    if band_problem is not None:
+        return {"status": "stop_and_report",
+                "finding": {"reason": "length-band", "episode_idx": None,
+                            "problems": [band_problem]}}
     v = edl.variety
     _log("variety: preset {} — footage offers {}".format(
         v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES)))

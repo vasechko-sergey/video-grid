@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.lib import mood, moodpreset
+from scripts.lib import carve, mood, moodpreset
 from scripts.lib.footage import SHOT_TYPES
 
 
@@ -191,3 +191,38 @@ def test_tone_bias_must_be_three_numbers():
     with pytest.raises(ValueError, match="tone_bias"):
         moodpreset.MoodPreset("x", None, {"close": 0.3, "medium": 0.4, "wide": 0.3},
                               (1.0, 2.0), tone_bias=(1.0, 2.0))
+
+
+_FLOOR_PRESET = moodpreset.MoodPreset(
+    "deep", None, {"close": 0.3, "medium": 0.4, "wide": 0.3}, (2.5, 5.0))
+
+
+def test_reconcile_refuses_a_preset_floor_below_the_carved_floor():
+    # The preset wants shots down to 2.5s; nothing in FOOTAGE.json is shorter
+    # than 3.0s, and no stage splits a window.
+    msg = moodpreset.reconcile_band(_FLOOR_PRESET, (3.0, 4.0))
+    assert msg is not None
+    assert "2.5" in msg and "3.0" in msg and "--win-min" in msg
+
+
+def test_reconcile_allows_a_preset_ceiling_above_the_carved_ceiling():
+    # edit_plan JOINS adjacent windows (span merge), so a taller ceiling is
+    # always reachable — the run's own 5.80s episode against a 4.0s carve
+    # proves it (design 2026-09-03 §0.3). Refusing here would be wrong.
+    assert moodpreset.reconcile_band(_FLOOR_PRESET, (1.2, 4.0)) is None
+
+
+def test_reconcile_allows_an_exactly_equal_floor():
+    assert moodpreset.reconcile_band(_FLOOR_PRESET, (2.5, 4.0)) is None
+
+
+def test_reconcile_is_silent_without_a_carved_band():
+    # A legacy FOOTAGE.json: uncheckable, and the caller says so out loud.
+    assert moodpreset.reconcile_band(_FLOOR_PRESET, None) is None
+
+
+def test_reconcile_never_fires_at_the_shipped_defaults():
+    # Honest scope (design §4): at carve.DEFAULT_BAND every shipped preset passes,
+    # so this check goes live only when an operator raises --win-min.
+    for p in moodpreset.PRESETS + (moodpreset.BALANCED,):
+        assert moodpreset.reconcile_band(p, carve.DEFAULT_BAND) is None

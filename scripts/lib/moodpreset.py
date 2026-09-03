@@ -216,3 +216,31 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
                          available={s: int(available.get(s, 0)) for s in SHOT_TYPES},
                          used={s: int(used.get(s, 0)) for s in SHOT_TYPES},
                          asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver)
+
+
+def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
+    """The preset's asl band against the band the footage was CARVED with.
+    None = compatible, or uncheckable; a string = the refusal's problem text.
+
+    Only the LOWER bound is checkable, and that asymmetry is the whole check
+    (design 2026-09-03 §4). edit_plan joins adjacent windows through its span
+    merge, so a preset ceiling above the carved ceiling is always reachable —
+    the reference run shipped a 5.80s episode against a 4.0s carve ceiling, and
+    refusing that would be refusing a cut that works. Nothing splits a window,
+    so a preset FLOOR below the carved floor asks for a shot length that exists
+    nowhere in FOOTAGE.json, and no selection can supply it.
+
+    `carved` is None on a FOOTAGE.json written before 2026-09-03. The check
+    cannot run; the caller reports not-checked rather than a pass.
+    """
+    if carved is None:
+        return None
+    if preset.asl[0] >= carved[0]:
+        return None
+    return (f"preset {preset.name!r} wants shots from {preset.asl[0]:.1f}s, but the "
+            f"footage was carved with a {carved[0]:.1f}s floor, so no window in "
+            f"FOOTAGE.json is shorter than {carved[0]:.1f}s and nothing splits one. "
+            f"Re-scan with `--win-min {preset.asl[0]:g}`, choose a mood whose band "
+            f"starts at or above {carved[0]:.1f}s, or drop --spec to run without a "
+            f"preset. (The preset's CEILING is not checked: span merge joins adjacent "
+            f"windows, so a longer shot is always reachable.)")

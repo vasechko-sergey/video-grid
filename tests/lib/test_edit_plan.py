@@ -1,8 +1,9 @@
 import json
+from dataclasses import replace
 
 import pytest
 from scripts import edit_plan
-from scripts.lib import outro, provenance
+from scripts.lib import mood, outro, provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -1598,3 +1599,37 @@ def test_build_edl_binds_silently_on_a_pre_slice_pacing_json_with_a_readable_tra
     err = capsys.readouterr().err
     assert "music identity not-checked" in err
     assert "records no music_digest" in err
+
+
+# --- length-band reconciliation: the preset's asl FLOOR vs. the footage's carved
+# floor (design 2026-09-03 §4) — only the floor is checkable; a preset ceiling
+# above the carve ceiling is always reachable through edit_plan's own span merge.
+
+def test_write_edit_plan_refuses_a_preset_floor_under_the_carved_floor(monkeypatch, tmp_path):
+    # A carved floor above the preset's floor, so the gate is reachable at all:
+    # at carve.DEFAULT_BAND every shipped preset passes (design §4).
+    deep = moodpreset.MoodPreset("deep", mood.MoodVector(0.5, 0.5, 0.5),
+                                 {"close": 0.3, "medium": 0.4, "wide": 0.3}, (2.5, 5.0))
+    monkeypatch.setattr(moodpreset, "PRESETS", (deep,))
+    footage = replace(_footage(), band=(3.0, 4.0))
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(), footage=footage)
+    # moodpreset.resolve matches on the mood TEXT against scripts.lib.mood's anchor
+    # vocabulary, not on a preset's name — "deep" itself matches no anchor, which
+    # would fall back to BALANCED without ever consulting the patched PRESETS.
+    # "brooding" is a real anchor token; since PRESETS above was patched down to
+    # exactly one entry, any text that matches SOMETHING routes to that one preset.
+    spec_path = _write_spec(tmp_path, mood="brooding")
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert result["status"] == "stop_and_report"
+    assert result["finding"]["reason"] == "length-band"
+    assert "--win-min" in result["finding"]["problems"][0]
+
+
+def test_write_edit_plan_passes_a_carved_band_the_preset_fits_inside(tmp_path):
+    # The control: same inputs, a floor the preset clears, and the run proceeds
+    # past this gate. Without it the test above passes for a gate that always fires.
+    footage = replace(_footage(), band=(1.2, 4.0))
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(), footage=footage)
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path),
+                                       spec=_write_spec(tmp_path))
+    assert result["status"] == "written"
