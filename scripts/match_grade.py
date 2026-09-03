@@ -176,8 +176,10 @@ def main() -> None:
     b.add_argument("--force", action="store_true",
                    help="re-author even hand-authored/previously-conducted episodes")
     b.add_argument("--spec", default=None,
-                   help="SPEC.json — its mood displaces the common tone target "
-                        "(absent: the plain median, exactly as before)")
+                   help="SPEC.json — its mood displaces the common tone target, "
+                        "unless SPEC.tone_bias is authored, which outranks the "
+                        "preset's own displacement (absent --spec: the plain "
+                        "median, exactly as before)")
     a = ap.parse_args()
     result = write_match(a.geometry, eps=a.eps, force=a.force, spec=a.spec)
     print(json.dumps(result, indent=2))

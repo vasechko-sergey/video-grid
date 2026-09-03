@@ -439,6 +439,20 @@ def test_resolve_bias_honours_an_authored_zero_against_a_biased_preset():
     assert match_grade._resolve_bias(spec, preset) == ((0.0, 0.0, 0.0), "SPEC.tone_bias")
 
 
+def test_resolve_bias_checks_identity_not_truthiness():
+    # The test above cannot, by itself, tell `is not None` apart from a bare truthiness
+    # check: Spec.tone_bias is always None or a validated 3-tuple, and a 3-tuple of
+    # zeros is truthy in Python regardless of its contents, so `if spec.tone_bias:` and
+    # `if spec.tone_bias is not None:` agree on every value the dataclass can actually
+    # produce (mutation battery row 4, design 2026-09-03 §2 — found not to discriminate).
+    # _resolve_bias only reads `.tone_bias` off its argument (no isinstance check), so a
+    # duck-typed stand-in carrying a falsy-but-authored value pins the real check.
+    class _AuthoredButFalsy:
+        tone_bias = ()
+    preset = moodpreset.resolve("nostalgic warm")
+    assert match_grade._resolve_bias(_AuthoredButFalsy(), preset) == ((), "SPEC.tone_bias")
+
+
 def test_resolve_bias_falls_back_to_the_preset_when_unauthored():
     spec = Spec(**_SPEC)                                 # tone_bias is None
     preset = moodpreset.resolve("nostalgic warm")

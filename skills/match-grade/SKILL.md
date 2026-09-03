@@ -87,6 +87,15 @@ say so rather than guessing a path.
    darker and crushed for `moody`, faded for `nostalgic` (design 2026-08-17 §4).
    A brief whose mood matches nothing resolves to `balanced` and displaces
    nothing, on purpose.
+
+   **An authored `SPEC.tone_bias` outranks the mood preset's own** (design
+   2026-09-03 §2). `None` — the default, no `tone_bias` key in `SPEC.json` —
+   takes the preset's taste exactly as above; an explicit `[0, 0, 0]` is a
+   real, different answer, *this mood, but leave my colour alone*, and is
+   honoured exactly rather than treated as absent. `MATCH.md`'s header now
+   names which one actually won — `from SPEC.tone_bias` or `from the
+   nostalgic preset` — instead of printing a displacement with no stated
+   source.
 3. **Read the report.** `MATCH.md` lists the target triple (p5/p50/p95), then
    one row per episode: its measured profile, its distance (max Δ) to the
    target, and the action taken (`author`/`skip`) with a reason (`authored` /

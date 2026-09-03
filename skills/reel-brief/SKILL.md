@@ -65,4 +65,13 @@ edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
   not silently produce one reel for a brief that asked for more. If the user
   wants several reels, run the conveyor one reel at a time (a project directory
   per reel).
+- **`tone_bias` is a brief-level colour field match-grade reads** (design
+  2026-09-03 §2) — `Spec.tone_bias: tuple | None`. `None`, the default, takes
+  the mood preset's own displacement; an authored `(p5, p50, p95)` triple of
+  luma-unit displacements outranks the preset's, and an authored `(0, 0, 0)` is
+  a real, different answer from leaving it unset — *this mood, but leave my
+  colour alone*. `reel_brief build`'s CLI has no `--tone-bias` flag today, so
+  every brief this skill writes leaves it `None` (the preset's own taste).
+  Authoring it means constructing `Spec` directly — never hand-edit
+  `SPEC.json` to add it, the same rule as the line below.
 - You never hand-edit `SPEC.json`/`SPEC.md` — the CLI regenerates them from answers.

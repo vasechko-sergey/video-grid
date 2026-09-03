@@ -4,13 +4,104 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-02._
+_Last updated: 2026-09-03._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **The mood contract — a mood word declares only what it commands, closing
+  R1.1/R1.2/R1.3 (2026-09-03, 0.8.0)** — design
+  [2026-09-03-mood-contract-design.md](specs/2026-09-03-mood-contract-design.md),
+  plan [2026-09-03-mood-contract.md](plans/2026-09-03-mood-contract.md), Tasks 1–8
+  (branch `feat/mood-contract`, commits `d7a78f4`..`42c4ab0` + this docs sync).
+
+  Three of the retro's P1 rows, and **§0 overturned the premise of the middle one**
+  before any code moved: read-only against the 2026-06 run's own artifacts, of 1508
+  carved windows **72.9%** sit on the carve's 1.2s FLOOR and only **3 (0.2%)** ever
+  reach its 4.0s ceiling — median window 1.20s, the floor exactly, because
+  `carve._tight_unit` builds a window of exactly `win_min` per activity peak. The
+  footage was never the constraint (92.9% of scene spans run past 4.0s, median
+  15.98s), and a wider ceiling would not have changed the delivered cut anyway:
+  `edit_plan`'s span merge already joins adjacent windows past `WIN_MAX`, and 5 of
+  the shipped run's 8 episodes already exceed 4.0s (up to 5.80s). The operator's
+  "pull toward two seconds" is not explained by the `asl` band either — the
+  shipped reel's median shot was 4.10s, *above* `nostalgic`'s own declared ceiling.
+
+  **A — `tone_bias` becomes authorable (R1.1).** `Spec.tone_bias: tuple | None =
+  None`, validated exactly as `MoodPreset.tone_bias`. `None` and `(0, 0, 0)` are
+  different answers — the first takes the mood preset's own taste, the second means
+  *this mood, but leave my colour alone* — a zero default would make the second
+  inexpressible, the same shape `look` already got right. `match_grade._resolve_bias`
+  reads the authored triple before the preset's ("`balanced`" tested by name, exactly
+  as `write_edit_plan` tests it for `look`), and `MATCH.md`'s header now names WHICH
+  won (`from SPEC.tone_bias` / `from the nostalgic preset`) instead of printing a
+  displacement with no stated origin.
+
+  **B — the window band becomes a real intake parameter (R1.2, overturned).**
+  `WIN_MIN`/`WIN_MAX` module constants become `carve.DEFAULT_BAND = (1.2, 4.0)`,
+  threaded as a genuine parameter through `intake()` → `_process_clip()` →
+  `carve_windows()` → `carve.units_for_span`, with new `--win-min`/`--win-max` CLI
+  flags. The band joins `intake_cache.clip_key` (`CACHE_VERSION` 8→9), so a changed
+  band is a cache **miss**, never silently-stale boundaries carved under the old
+  numbers — the one live defect §0 found, and the only reason this half of the row
+  survives its own overturned premise. `Footage.band` records what a scan actually
+  carved with. Price named and paid once: the first intake after a band change
+  re-scans the whole pool, because every prior cache entry's key now differs.
+
+  **C — the two bands are reconciled before the cut, floor only (R1.3).**
+  `write_edit_plan` now checks `MoodPreset.asl` against `Footage.band` before the
+  variety gate — but only the FLOOR: `edit_plan`'s span merge means a preset
+  ceiling above the carved ceiling is always reachable and must not be refused (the
+  run's own 5.80s episode against a 4.0s carve ceiling proves it), while nothing
+  splits a window, so a preset floor below the carved floor names all three numbers
+  and refuses, with a remedy. A `Footage.band` of `None` (a pre-slice `FOOTAGE.json`)
+  reports not-checked, never a silent pass. At the shipped defaults it fires on
+  nothing — it goes live the moment `--win-min` is raised.
+
+  **Mutation battery: 10 rows, 10 red** — one only after closing a coverage hole
+  the battery itself surfaced. Row 4 (`_resolve_bias` treating `(0,0,0)` as
+  unauthored via `if spec.tone_bias:`) did **not** turn the named test red on the
+  first pass: a 3-tuple of zeros is truthy in Python regardless of its contents, so
+  `if spec.tone_bias:` and `if spec.tone_bias is not None:` agree on every value
+  `Spec.tone_bias` can actually hold (`None`, or a validated non-empty 3-tuple) —
+  the existing test could not have discriminated this mutation no matter how it was
+  written. Closed with a new permanent test
+  (`test_resolve_bias_checks_identity_not_truthiness`,
+  `tests/lib/test_match_grade.py`) that drives `_resolve_bias` directly with a
+  duck-typed stand-in carrying a falsy-but-non-`None` `tone_bias` (`()`), which no
+  real `Spec` can ever produce — confirmed red against the mutation and green
+  against the real code before moving on. Row 10 (`reconcile_band` also refusing on
+  the ceiling — the design's central asymmetry) broke 4 tests, not only its named
+  one, which is the mutation battery corroborating §0.3 from an independent angle.
+
+  **Full suite: 3445 passed, 1 skipped** (up from 3401/1 at 0.7.1 — the mood-contract
+  slice's own new tests plus the one coverage-hole closure above).
+
+  **Honest limits carried forward (design §7), unfixed in this slice:** no number in
+  `DEFAULT_BAND` was measured against taste — 1.2/4.0 stay the default, and R1.2's
+  real second half ("the right numbers are genre-dependent and must be measured")
+  is still open; the "pull toward two seconds" itself is still unexplained, since
+  §0.4 ruled out both the `asl` band and `WIN_MAX` as its cause; the reconciliation
+  proves a premise ("this mood wants shots the footage does not contain"), never a
+  result ("the shots the cut chose suit the mood") — the realized `asl` is still
+  reported and gated by nothing; `tone_bias` is reel-level, like `look`, with no
+  per-episode override; and the floor-vs-ceiling check is unreachable at shipped
+  defaults, proven only by its tests until an operator raises `--win-min`. All four
+  are now backlog rows (§8), plus a fifth found by this session's own docs audit:
+  `reel_brief.py`'s CLI exposes every other `Spec` field but has no `--tone-bias`
+  flag, so a brief written through the reel-brief skill can never actually author
+  the field this slice just built — flagged as a follow-up task, not fixed here (out
+  of this task's named file scope).
+
+  **Housekeeping, same pass:** four stale backlog rows this session's audit found
+  while touching the file are corrected in the same commit — R2.7 (`colour_cast`
+  deleted 2026-08-28), R10.4 (`episode_qc` now names the episode in every raise),
+  R11.2 (this project's Claude Code `memory/` is now populated), and R2.4 (its
+  `grade_delta_max` example renamed to `entropy_floor` in 0.7.0; the mechanism it
+  names is still live and the row stays open).
 
 - **One geometry, not two that agree — the fake-render fixture class closed
   (2026-09-02)** — design

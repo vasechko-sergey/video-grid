@@ -10,6 +10,38 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.8.0 — 2026-09-03
+
+**The mood contract: a mood word declares only what it commands.** Closes the
+retro's R1.1/R1.2/R1.3 — and R1.2 closes as **overturned**, not delivered as
+asked: measured read-only against the 2026-06 run's own artifacts, 72.9% of a
+1508-window pool sits on the carve's 1.2s floor and only 0.2% ever reaches its
+4.0s ceiling, the footage had room regardless (92.9% of scene spans run past
+4.0s), and the shipped reel already exceeds the ceiling in 5 of 8 episodes
+because `edit_plan` joins adjacent windows — so a wider ceiling would not have
+changed the delivered cut, and the operator's "pull toward two seconds" is not
+explained by the `asl` band either (the shipped reel's median shot was 4.10s,
+above `nostalgic`'s own declared ceiling). What actually needed fixing was that
+the band could change with nobody the wiser.
+
+- **`Spec.tone_bias` is now authorable** — `None` and `(0, 0, 0)` are different
+  answers (take the mood preset's own taste, vs. this mood but leave my colour
+  alone), and `match_grade` reads an authored value before the preset's.
+  `MATCH.md` now names which one won.
+- **The intake window band (`--win-min`/`--win-max`) is a real parameter**, not
+  a module constant — it joins the per-clip cache key (`CACHE_VERSION` 8→9), so
+  changing it is a cache miss, never silently-stale window boundaries. The
+  first scan after a band change re-scans the whole pool, once.
+- **`edit_plan` refuses a mood whose length floor the footage cannot supply** —
+  checked against what a scan actually carved with, floor only: nothing splits
+  a window, but `edit_plan`'s own span merge always reaches a taller ceiling,
+  so a preset ceiling above the carved one is legal and is not refused.
+
+Mutation battery: 10 rows, 10 red — one only after closing a coverage hole the
+battery itself found (`if spec.tone_bias:` cannot be told apart from `is not
+None` by any real `Spec`, since a 3-tuple of zeros is truthy regardless of its
+contents; closed with a test built to discriminate the two directly).
+
 ## 0.7.2 — 2026-09-02
 
 - `fake_render`'s docstring now states that `delivery` reaches no encode. `Delivery.dims()`
