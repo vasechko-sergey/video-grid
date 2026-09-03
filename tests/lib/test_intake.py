@@ -461,9 +461,9 @@ def test_intake_builds_footage_and_writes(monkeypatch, tmp_path):
     assert all(w.description for c in result.clips for w in c.windows)
 
 
-def test_cache_version_is_8_for_the_phase1_sensor_change():
+def test_cache_version_is_9_for_the_carve_band_key():
     from scripts.lib import intake_cache
-    assert intake_cache.CACHE_VERSION == 8
+    assert intake_cache.CACHE_VERSION == 9
 
 
 def test_process_clip_returns_clip_phashes_and_cast(monkeypatch):
@@ -854,9 +854,9 @@ def test_intake_threads_the_real_reid_model_into_the_cache_key(monkeypatch, tmp_
     monkeypatch.setattr(reid, "ensure_model", lambda: None)             # no real OSNet build/download
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)   # no real YOLO
     seen = {"load": [], "store": []}
-    def spy_load(out, p, sf, model, proxy, *, reid_model):
+    def spy_load(out, p, sf, model, proxy, *, reid_model, band):
         seen["load"].append(reid_model); return None                   # force a miss -> the pool runs
-    def spy_store(out, p, sf, r, model, proxy, *, reid_model):
+    def spy_store(out, p, sf, r, model, proxy, *, reid_model, band):
         seen["store"].append(reid_model); return r
     monkeypatch.setattr(intake.intake_cache, "load", spy_load)
     monkeypatch.setattr(intake.intake_cache, "store", spy_store)

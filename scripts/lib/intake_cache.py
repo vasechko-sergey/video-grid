@@ -36,11 +36,12 @@ from scripts.lib.footage import FootageClip
 # embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
 # result must miss. An all-or-nothing version beats a per-field logic hash nobody
 # can audit.
-CACHE_VERSION = 8   # 7→8 (2026-08-06): the Phase-1 people timeline carries per-track boxes and
-                    # _motion measures a track's own displacement instead of the largest bbox's
-                    # centre — a cached v7 ClipResult cannot supply the new measurement, and its
-                    # window BOUNDARIES were carved on the contaminated curve too (design
-                    # 2026-08-06-intake-motion-scoring §1.2/§1.3).
+CACHE_VERSION = 9   # 8→9 (2026-09-03): the carve band joins the key. carve_windows runs
+                    # inside the cached Phase 1, so before this a changed WIN_MIN/WIN_MAX
+                    # returned boundaries carved under the OLD band, silently — the band
+                    # was the only carve input absent from the key (design
+                    # 2026-09-03 §0.5). The bump exists so the reason is recorded rather
+                    # than inferred from a key that merely happens to differ.
 
 
 @dataclass
@@ -65,18 +66,21 @@ class ClipResult:
 
 
 def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
-             reid_model: str = "") -> dict:
+             reid_model: str = "", *, band: tuple[float, float]) -> dict:
     """Everything that changes a ClipResult. A mismatch on load → recompute. `model`
     is supplied by the driver (the fact is its), never imported from track.
     `proxy_long_side` is the analysis-proxy scale: change it and every result must
     miss, because the CV ran on differently downscaled pixels (design 2026-08-01).
     `reid_model` is whether (and with which model) cast was embedded: a scan run
     without torchreid caches an empty cast, and a later resume WITH torchreid must
-    not silently serve that stale empty cast (design 2026-08-04)."""
+    not silently serve that stale empty cast (design 2026-08-04).
+    `band` is the carve band (win_min, win_max): window BOUNDARIES are decided
+    inside the cached phase, so a changed band must miss (design 2026-09-03 §3)."""
     st = os.stat(path)
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
             "sample_fps": float(sample_fps), "model": model,
-            "proxy_long_side": int(proxy_long_side), "reid_model": str(reid_model),
+            "proxy_long_side": int(proxy_long_side),
+            "reid_model": str(reid_model), "band": [float(band[0]), float(band[1])],
             "version": CACHE_VERSION}
 
 
@@ -86,7 +90,8 @@ def _dir(out_dir: str, path: str) -> Path:
 
 
 def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
-          model: str, proxy_long_side: int, reid_model: str = "") -> ClipResult:
+          model: str, proxy_long_side: int, reid_model: str = "", *,
+          band: tuple[float, float]) -> ClipResult:
     """Write the crop PNGs, then commit clip.json atomically (os.replace), and
     return the result in cached form (crop_rgb arrays replaced by their PNG paths)
     so a just-scanned clip and a loaded one present one shape to Phase 2 (§2/§3).
@@ -102,7 +107,7 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
         Image.fromarray(e.crop_rgb.astype("uint8")).save(tmp_png, format="PNG")
         os.replace(tmp_png, png)                   # atomic; a torn crop never outlives the write
         cached.append(replace(e, crop=str(png), crop_rgb=None))
-    payload = {"key": clip_key(path, sample_fps, model, proxy_long_side, reid_model),
+    payload = {"key": clip_key(path, sample_fps, model, proxy_long_side, reid_model, band=band),
                "clip": result.clip.to_dict(),
                "phashes": list(result.phashes),
                "cast": [{"source": e.source, "tid": e.tid, "conf": e.conf,
@@ -115,7 +120,8 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
 
 
 def load(out_dir: str, path: str, sample_fps: float, model: str,
-         proxy_long_side: int, reid_model: str = "") -> ClipResult | None:
+         proxy_long_side: int, reid_model: str = "", *,
+         band: tuple[float, float]) -> ClipResult | None:
     """Return the cached-form ClipResult on a key match, else None. Any problem —
     absent, stale, truncated, wrong-shape, or a source file that has since moved —
     reads as a miss, never a crash: the cache is regenerable, and a corrupt entry
@@ -126,7 +132,8 @@ def load(out_dir: str, path: str, sample_fps: float, model: str,
         payload = json.loads(f.read_text())
         if not isinstance(payload, dict):
             return None
-        if payload.get("key") != clip_key(path, sample_fps, model, proxy_long_side, reid_model):
+        if payload.get("key") != clip_key(path, sample_fps, model, proxy_long_side, reid_model,
+                                          band=band):
             return None
         clip = FootageClip.from_dict(payload["clip"])
         cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],

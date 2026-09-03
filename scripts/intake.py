@@ -518,7 +518,8 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     misses: list[Path] = []
     for p in paths:
         hit = None if fresh else intake_cache.load(str(out), str(p), sample_fps, MODEL,
-                                                   PROXY_LONG_SIDE, reid_model=reid_model)
+                                                   PROXY_LONG_SIDE, reid_model=reid_model,
+                                                   band=band)
         if hit is not None:
             results[p] = hit
         else:
@@ -543,7 +544,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
             try:
                 results[p] = intake_cache.store(str(out), str(p), sample_fps,
                                                 fut.result(), MODEL, PROXY_LONG_SIDE,
-                                                reid_model=reid_model)
+                                                reid_model=reid_model, band=band)
                 print(f"intake: ✓ {p.name}", file=sys.stderr)
             except Exception as e:                     # quarantine (§5): name it, keep going
                 failed.append({"source": p.name, "error": str(e)})

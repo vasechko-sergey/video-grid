@@ -1,9 +1,10 @@
 import json
 
 import numpy as np
+import pytest
 from PIL import Image
 
-from scripts.lib import intake_cache
+from scripts.lib import carve, intake_cache
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.lib.footage import DESCRIPTOR_LEN, FootageClip, FootageWindow
 
@@ -36,8 +37,8 @@ def _src(tmp_path, name="a.mp4", data=b"x"):
 
 def test_store_then_load_round_trips(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    stored = intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
-    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY)
+    stored = intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
     assert loaded is not None
     assert loaded.clip.to_dict() == _clip().to_dict()
     assert loaded.phashes == ["8f3c2a1b0d4e5f60"]
@@ -48,71 +49,73 @@ def test_store_then_load_round_trips(tmp_path):
 
 
 def test_load_is_none_when_absent(tmp_path):
-    assert intake_cache.load(str(tmp_path / "out"), str(_src(tmp_path)), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(tmp_path / "out"), str(_src(tmp_path)), 3.0, _M, _PROXY,
+                             band=carve.DEFAULT_BAND) is None
 
 
 def test_load_is_none_on_changed_mtime(tmp_path):
     import os
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     os.utime(src, ns=(0, 0))
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_load_is_none_on_changed_sample_fps(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
-    assert intake_cache.load(str(out), str(src), 4.0, _M, _PROXY) is None
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert intake_cache.load(str(out), str(src), 4.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_load_is_none_on_changed_model(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), "m1", _PROXY)
-    assert intake_cache.load(str(out), str(src), 3.0, "m2", _PROXY) is None
+    intake_cache.store(str(out), str(src), 3.0, _result(), "m1", _PROXY, band=carve.DEFAULT_BAND)
+    assert intake_cache.load(str(out), str(src), 3.0, "m2", _PROXY,
+                             band=carve.DEFAULT_BAND) is None
 
 
 def test_load_is_none_on_bumped_version(tmp_path, monkeypatch):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     monkeypatch.setattr(intake_cache, "CACHE_VERSION", intake_cache.CACHE_VERSION + 1)
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_crops_without_clip_json_is_a_miss(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     (out / ".intake_cache" / "a.mp4" / "clip.json").unlink()
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_corrupt_clip_json_is_a_miss_not_a_crash(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     (out / ".intake_cache" / "a.mp4" / "clip.json").write_text("{ not json")
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_nondict_clip_json_is_a_miss_not_a_crash(tmp_path):
     # valid JSON, wrong shape: payload.get would AttributeError without the guard
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     (out / ".intake_cache" / "a.mp4" / "clip.json").write_text("null")
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_load_is_none_when_source_file_removed(tmp_path):
     # a raw clip moved/deleted between runs → clip_key's os.stat must not crash the
     # scan; a miss routes it back through the worker, where quarantine covers it
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
     src.unlink()
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
 def test_crop_png_round_trips_red(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)
-    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY)
-    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
     px = np.asarray(Image.open(loaded.cast[0].crop))
     assert px[0, 0, 0] == 255 and px[0, 0, 1] == 0
 
@@ -123,22 +126,24 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     src = tmp_path / "a.mp4"; src.write_bytes(b"x")
     out = tmp_path / "out"; out.mkdir()
     d = out / ".intake_cache" / "a.mp4"; d.mkdir(parents=True)
-    key = intake_cache.clip_key(str(src), 3.0, _M, _PROXY)
+    key = intake_cache.clip_key(str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
     stale = {**key, "version": 1}
     (d / "clip.json").write_text(json.dumps(
         {"key": stale, "clip": {"source": "a.mp4", "dur": 1.0, "res": [2, 2], "fps": 1.0,
                                 "shaky": False, "scene_cuts": [], "windows": []},
          "phashes": [], "cast": []}))
-    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY) is None
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v8(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v9(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
-    k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960)
-    assert k["version"] == 8
+    k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960,
+                              band=carve.DEFAULT_BAND)
+    assert k["version"] == 9
     assert k["proxy_long_side"] == 960
-    k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280)
+    k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280,
+                               band=carve.DEFAULT_BAND)
     assert k != k2                              # a scale change invalidates
 
 
@@ -151,10 +156,12 @@ def test_cast_entry_presence_round_trips(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
     stored = ic.store(str(out), str(src), 3.0,
                       ic.ClipResult(clip=clip, phashes=[], cast=[entry]),
-                      model="m", proxy_long_side=960, reid_model="osnet_x1_0")
+                      model="m", proxy_long_side=960, reid_model="osnet_x1_0",
+                      band=carve.DEFAULT_BAND)
     assert stored.cast[0].presence == 2.5
     loaded = ic.load(str(out), str(src), 3.0, model="m",
-                     proxy_long_side=960, reid_model="osnet_x1_0")
+                     proxy_long_side=960, reid_model="osnet_x1_0",
+                     band=carve.DEFAULT_BAND)
     assert loaded.cast[0].presence == 2.5
 
 
@@ -163,17 +170,46 @@ def test_reid_model_is_part_of_the_key(tmp_path):
     clip = _clip()
     out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
     ic.store(str(out), str(src), 3.0, ic.ClipResult(clip=clip, phashes=[], cast=[]),
-             model="m", proxy_long_side=960, reid_model="")           # cached reid-absent
+             model="m", proxy_long_side=960, reid_model="",           # cached reid-absent
+             band=carve.DEFAULT_BAND)
     # a later run WITH reid must MISS, not serve the stale empty-cast entry
     assert ic.load(str(out), str(src), 3.0, model="m",
-                   proxy_long_side=960, reid_model="osnet_x1_0") is None
+                   proxy_long_side=960, reid_model="osnet_x1_0",
+                   band=carve.DEFAULT_BAND) is None
 
 
-def test_cache_version_is_eight_for_the_track_consistent_motion_sensor():
-    # the Phase-1 sensor fix (design 2026-08-06-intake-motion-scoring §1.2/§1.3): the
-    # people timeline now carries per-track boxes and _motion measures a track's own
-    # displacement instead of the largest bbox's centre — a cached v7 ClipResult
-    # cannot supply the new measurement, and its window BOUNDARIES were carved on
-    # the contaminated curve too → v7 must miss
+def test_cache_version_is_nine_for_the_carve_band_key():
+    # the carve band joins clip_key (design 2026-09-03 §0.5/§3): carve_windows runs
+    # inside the cached Phase 1, so a cached v8 ClipResult was carved under whatever
+    # band scanned it, with no key term recording which — a changed WIN_MIN/WIN_MAX
+    # must miss instead of silently returning boundaries carved under the old band
     from scripts.lib import intake_cache as ic
-    assert ic.CACHE_VERSION == 8
+    assert ic.CACHE_VERSION == 9
+
+
+def test_clip_key_carries_the_band(tmp_path):
+    p = tmp_path / "a.mp4"
+    p.write_bytes(b"x")
+    k = intake_cache.clip_key(str(p), 2.0, "m.pt", 960, band=(1.2, 4.0))
+    assert k["band"] == [1.2, 4.0]
+
+
+def test_a_different_band_is_a_different_key(tmp_path):
+    p = tmp_path / "a.mp4"
+    p.write_bytes(b"x")
+    a = intake_cache.clip_key(str(p), 2.0, "m.pt", 960, band=(1.2, 4.0))
+    b = intake_cache.clip_key(str(p), 2.0, "m.pt", 960, band=(1.2, 6.0))
+    assert a != b
+
+
+def test_band_is_a_required_keyword(tmp_path):
+    # A silent default here would serve boundaries carved under another band —
+    # the same failure proxy_long_side is a required argument to prevent.
+    p = tmp_path / "a.mp4"
+    p.write_bytes(b"x")
+    with pytest.raises(TypeError):
+        intake_cache.clip_key(str(p), 2.0, "m.pt", 960)
+
+
+def test_cache_version_is_nine():
+    assert intake_cache.CACHE_VERSION == 9
