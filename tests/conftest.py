@@ -34,11 +34,11 @@ def multi_window_clip(tmp_path_factory):
     its own background colour and its own box trajectory.
 
     Exists because `sample_clip` is 3s with no cut, and carve.units_for_span
-    returns ONE whole unit for any span inside the [WIN_MIN, WIN_MAX] band — so
+    returns ONE whole unit for any span inside the `carve.DEFAULT_BAND` — so
     that fixture is structurally unable to carve more than one window, which is
     why the 2026-08-06 pool-relative scoring shipped with no real-bytes proof
     (that design's §8). Here the first two spans (5.0s / 4.5s) exceed
-    WIN_MAX = 4.0 and reach units_for_span's PEAK branch, while the third (2.5s)
+    `carve.DEFAULT_BAND[1]` (4.0) and reach units_for_span's PEAK branch, while the third (2.5s)
     is in-band and yields one whole unit: all three branches fire.
 
     MEASURED, not assumed: ffprobe reports dur 12.0 / fps 30.0, and

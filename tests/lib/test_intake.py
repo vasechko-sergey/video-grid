@@ -38,7 +38,7 @@ def test_carve_long_take_is_activity_units_not_equal_tiling():
           for t in range(13)]
     spans = intake.carve_windows([], tl, [], 1.0, 12.0)
     assert spans                                                     # carved something
-    assert all(intake.WIN_MIN <= d <= intake.WIN_MAX + 1e-6 for _, d in spans)
+    assert all(carve.DEFAULT_BAND[0] <= d <= carve.DEFAULT_BAND[1] + 1e-6 for _, d in spans)
     assert len({round(d, 3) for _, d in spans}) > 1                 # NOT one uniform tile size
 
 
@@ -50,7 +50,7 @@ def test_carve_splits_on_presence_transition():
 
 
 def test_carve_short_clip_yields_one_window():
-    spans = intake.carve_windows([], _line([(0, 1)]), [], 1.0, 0.8)   # < WIN_MIN
+    spans = intake.carve_windows([], _line([(0, 1)]), [], 1.0, 0.8)   # < carve.DEFAULT_BAND[0]
     assert spans == [(0.0, 0.8)]
 
 
@@ -515,7 +515,7 @@ def test_process_clip_analyses_proxy_and_crops_from_original(monkeypatch, tmp_pa
     monkeypatch.setattr(intake, "_people_timeline", _tl)
     monkeypatch.setattr(vidstab, "require", lambda: None)
     monkeypatch.setattr(vidstab, "detect", lambda src, trf, dur: calls["analysed"].append(("vidstab", src)) or [1.0])
-    monkeypatch.setattr(intake, "carve_windows", lambda *a: [(0.0, 2.0)])
+    monkeypatch.setattr(intake, "carve_windows", lambda *a, **k: [(0.0, 2.0)])
     monkeypatch.setattr(reid, "embed", lambda crops: [[1.0] + [0.0] * 511 for _ in crops])
     orig_frame = np.full((2160, 3840, 3), 128, dtype="uint8")
     monkeypatch.setattr(assembly, "frames_rgb", lambda src, times, fps: (calls.__setitem__("crop_src", src), [orig_frame for _ in times])[1])
@@ -583,7 +583,7 @@ def test_ensure_model_runs_before_any_worker(monkeypatch, tmp_path):
     seen = []
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: seen.append("ensure"))
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
                         (seen.append("pe"), _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(tmp_path / "out"), jobs=2)
     assert seen[0] == "ensure" and seen.count("ensure") == 1 and "pe" in seen
@@ -599,7 +599,7 @@ def test_pool_reaches_the_cap_and_never_exceeds_it(monkeypatch, tmp_path):
     lock = threading.Lock()
     barrier = threading.Barrier(jobs, timeout=10)
 
-    def fake_pe(path, sf=intake.SAMPLE_FPS, embed_cast=True):
+    def fake_pe(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
         with lock:
             live["n"] += 1; live["peak"] = max(live["peak"], live["n"])
         barrier.wait()                       # forces `jobs` workers to co-exist; times out if serial
@@ -616,7 +616,8 @@ def test_output_is_byte_identical_across_jobs(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path)
     _stub_cache(monkeypatch)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
+                        _fake_result(intake.Path(path).name))
     intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
     intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
     assert (tmp_path / "o1" / "FOOTAGE.json").read_text() == (tmp_path / "o3" / "FOOTAGE.json").read_text()
@@ -627,7 +628,7 @@ def test_only_cache_misses_reach_the_pool(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     submitted = []
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
                         (submitted.append(intake.Path(path).name),
                          _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(out))                 # first run: both are misses
@@ -649,7 +650,7 @@ def test_output_is_byte_identical_across_a_cache_mix(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
                         _scored_result(intake.Path(path).name))
     intake.intake(str(root), str(out))
     cold = (out / "FOOTAGE.json").read_text()
@@ -666,7 +667,7 @@ def test_fresh_bypasses_the_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     submitted = []
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True:
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
                         (submitted.append(intake.Path(path).name),
                          _fake_result(intake.Path(path).name))[1])
     intake.intake(str(root), str(out))
@@ -679,7 +680,8 @@ def test_output_is_byte_identical_scanned_vs_cached(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
+                        _fake_result(intake.Path(path).name))
     intake.intake(str(root), str(out))
     a = (out / "FOOTAGE.json").read_text()
     intake.intake(str(root), str(out))                 # all cache hits
@@ -691,7 +693,7 @@ def test_a_bad_clip_is_quarantined_not_fatal(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path); out = tmp_path / "out"
     _stub_cache(monkeypatch)
 
-    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True):
+    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
         name = intake.Path(path).name
         if name == "b.mp4":
             raise RuntimeError("corrupt moov atom")
@@ -719,7 +721,7 @@ def test_report_counts_a_mixed_run(monkeypatch, tmp_path):
                         if intake.Path(p).name in hits else None)
     monkeypatch.setattr(intake.intake_cache, "store", lambda o, p, s, r, *a, **k: r)
 
-    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True):
+    def flaky(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
         name = intake.Path(path).name
         if name == "d.mp4":
             raise RuntimeError("boom")
@@ -788,7 +790,7 @@ def test_intake_flushes_each_clip_as_its_worker_finishes(monkeypatch, tmp_path, 
     (root / "a.mp4").write_bytes(b"x"); (root / "b.mp4").write_bytes(b"x")
     a_stored = threading.Event()
 
-    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True):
+    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
         if str(path).endswith("b.mp4"):
             assert a_stored.wait(timeout=10), \
                 "store(a) never ran while b was in flight — intake is not flushing per clip"
@@ -819,7 +821,7 @@ def test_intake_without_reid_warns_and_skips_cast(monkeypatch, tmp_path, capsys)
     monkeypatch.setattr(reid, "available", lambda: False)
     monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)   # no real YOLO (mirrors sibling tests)
     seen = {}
-    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True):
+    def fake_process(path, sample_fps=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
         seen["embed_cast"] = embed_cast
         from scripts.lib.footage import FootageClip
         from scripts.lib.intake_cache import ClipResult
@@ -850,7 +852,8 @@ def test_intake_threads_the_real_reid_model_into_the_cache_key(monkeypatch, tmp_
     monkeypatch.setattr(intake.intake_cache, "load", spy_load)
     monkeypatch.setattr(intake.intake_cache, "store", spy_store)
     monkeypatch.setattr(intake, "_process_clip",
-                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True: _fake_result(intake.Path(path).name))
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND:
+                        _fake_result(intake.Path(path).name))
     root = _two_clip_root(tmp_path)
     intake.intake(str(root), str(tmp_path / "out"))
     assert reid.MODEL == "osnet_x1_0"                                   # the value the key carries
@@ -880,3 +883,36 @@ def test_intake_refuses_before_fetching_the_model(tmp_path, monkeypatch):
         intake.intake(str(root), str(root))
     assert called == []
     assert set(p.name for p in root.iterdir()) == set()   # and no artifact written
+
+
+from scripts.lib import carve
+
+
+def test_default_band_has_exactly_one_definition():
+    # intake must not re-declare the numbers: one constant, imported.
+    assert carve.DEFAULT_BAND == (1.2, 4.0)
+    assert not hasattr(intake, "WIN_MIN") and not hasattr(intake, "WIN_MAX")
+
+
+def test_carve_windows_honours_a_wider_band():
+    # A 6s span with no interior peak is one flat unit sized by win_max: at the
+    # default band that is 4.0s, at a (1.2, 6.0) band it is the whole 6.0s.
+    times = [i * 0.5 for i in range(13)]                   # 0.0 .. 6.0
+    line = [(t, 0, None, [], {}) for t in times]
+    mags = [1.0] * len(times)
+    narrow = intake.carve_windows([], line, mags, 2.0, 6.0)
+    wide = intake.carve_windows([], line, mags, 2.0, 6.0, band=(1.2, 6.0))
+    assert max(d for _, d in narrow) <= 4.0
+    assert max(d for _, d in wide) > 4.0
+
+
+def test_intake_records_the_band_it_carved_with(sample_clip, tmp_path):
+    out = tmp_path / "run"
+    f = intake.intake(str(sample_clip.parent), str(out), band=(1.0, 3.0))
+    assert f.band == (1.0, 3.0)
+    assert json.loads((out / "FOOTAGE.json").read_text())["band"] == [1.0, 3.0]
+
+
+def test_intake_records_the_default_band_when_none_is_given(sample_clip, tmp_path):
+    f = intake.intake(str(sample_clip.parent), str(tmp_path / "run"))
+    assert f.band == carve.DEFAULT_BAND

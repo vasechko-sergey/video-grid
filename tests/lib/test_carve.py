@@ -114,7 +114,7 @@ def _steps(times):
 
 
 def test_span_within_band_is_one_whole_unit():
-    # 3.0s span (<= WIN_MAX 4.0) → the whole span, no peak logic
+    # 3.0s span (<= the band's ceiling, 4.0) → the whole span, no peak logic
     assert carve.units_for_span(0.0, 3.0, [0.0, 1.0, 2.0], [0.0, 5.0, 0.0], 1.2, 4.0) == [(0.0, 3.0)]
 
 
@@ -140,24 +140,24 @@ def test_peak_gets_a_lead_in_and_a_tight_candidate():
     times = _steps(range(9))
     curve = [3, 0, 2, 5, 9, 5, 0, 2, 3]
     units = carve.units_for_span(0.0, 8.0, times, curve, 1.2, 4.0)
-    # a tight ~WIN_MIN window contains the peak; a wider lead-in window also contains it
+    # a tight ~1.2s (the band's floor) window contains the peak; a wider lead-in window also contains it
     assert any(abs(d - 1.2) < 1e-6 and s <= 4.0 <= s + d for s, d in units)   # tight
     assert any(d > 1.2 and s <= 4.0 <= s + d for s, d in units)               # lead-in
 
 
 def test_flat_span_is_one_max_mean_window_not_a_tiling():
-    # monotone-ish, no interior local max → one WIN_MAX window at the busiest position
+    # monotone-ish, no interior local max → one window sized to the band's ceiling (4.0) at the busiest position
     times = _steps(range(11))                      # 0..10 at 1s
     curve = [0, 0, 0, 0, 0, 5, 5, 5, 5, 0, 0]      # busiest around t=5..8
     units = carve.units_for_span(0.0, 10.0, times, curve, 1.2, 4.0)
     assert len(units) == 1
     s, d = units[0]
-    assert abs(d - 4.0) < 1e-6                      # exactly WIN_MAX
+    assert abs(d - 4.0) < 1e-6                      # exactly the band's ceiling
     assert 4.0 <= s <= 6.0                          # centred on the busy stretch
 
 
 def test_lead_in_longer_than_the_band_is_clamped_with_the_peak_inside():
-    # lull far before the peak (t=1) and peak at t=7 → raw lead-in 6s > WIN_MAX
+    # lull far before the peak (t=1) and peak at t=7 → raw lead-in 6s > the band's ceiling
     times = _steps(range(9))
     curve = [3, 0, 1, 2, 3, 4, 5, 9, 3]            # rises to a peak at t=7, lull at t=1
     units = carve.units_for_span(0.0, 8.0, times, curve, 1.2, 4.0)
@@ -184,7 +184,7 @@ def test_units_for_span_dedups_and_sorts_deterministically():
 
 
 def test_flat_span_tie_breaks_to_the_earliest_window():
-    # two equal-mean WIN_MAX windows in a flat span → the earliest wins (strict >);
+    # two equal-mean windows at the band's ceiling in a flat span → the earliest wins (strict >);
     # a >= tie-break would pick the later one
     times = _steps(range(11))
     curve = [9.0, 9.0, 9.0, 9.0, 0.0, 0.0, 9.0, 9.0, 9.0, 9.0, 0.0]

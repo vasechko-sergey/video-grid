@@ -1,13 +1,18 @@
 """Activity-anchored window carving (design 2026-07-25-intake-activity-units §4).
 
 Pure: floats in, (start, dur) spans out. No ffmpeg and no `scripts.intake` import —
-a lib module must not depend on a driver, so the band (WIN_MIN/WIN_MAX) is passed
+a lib module must not depend on a driver, so the band (win_min/win_max) is passed
 in, never imported. Mirrors lib/gridfit.py. Peaks are LOCAL maxima found relative
 to the clip, so no absolute activity threshold is invented (§2) — there is no real
 footage to tune one on.
 """
 from math import hypot
 from statistics import median
+
+DEFAULT_BAND = (1.2, 4.0)   # (win_min, win_max) seconds — units_for_span's band when a
+                            # caller states none. Lives here, not in intake, because
+                            # intake_cache must key on it too and a lib cannot import a
+                            # driver (design 2026-09-03 §3).
 
 
 def track_displacements(prev: dict[int, tuple[float, float, float, float]],

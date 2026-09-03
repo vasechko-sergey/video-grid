@@ -25,7 +25,6 @@ from scripts.track import MODEL, ensure_model       # reuse the tracker's model 
 
 SAMPLE_FPS = 3.0
 PROXY_LONG_SIDE = 960                             # analysis runs on a proxy downscaled to this long side (design 2026-08-01)
-WIN_MIN, WIN_MAX = 1.2, 4.0        # seconds — the episode length band carve.units_for_span enforces
 W_PRESENT, W_MOTION, W_STABLE = 0.44, 0.28, 0.28   # sum to 1. First cuts calibrated on ONE drone
                                                    # shoot (design 2026-08-06-intake-motion-scoring
                                                    # §8.1) — the SHAKY_CLIP precedent below.
@@ -58,15 +57,16 @@ DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x lib
 def carve_windows(scene_cuts: list[float],
                   timeline: list[tuple[float, int, tuple[float, float, float, float] | None, list[int],
                                        dict[int, tuple[float, float, float, float]]]],
-                  mags: list[float], fps: float, dur: float) -> list[tuple[float, float]]:
+                  mags: list[float], fps: float, dur: float,
+                  band: tuple[float, float] = carve.DEFAULT_BAND) -> list[tuple[float, float]]:
     """scene_cuts ∪ presence-transitions bound the raw spans; each span is carved on
     its activity curve by carve.units_for_span (design 2026-07-25-intake-activity-units
     §4). A span with people uses 2-D bbox displacement; a people-less span uses the
     resampled vidstab magnitudes. The subject curve is now identity-consistent (design
     2026-08-06-intake-motion-scoring §3.3): it used to be built from the primary bbox's
     centre, so in a crowd it tracked which person was largest and moved WINDOW
-    BOUNDARIES on that artifact. A single sub-WIN_MIN shot stays one whole window;
-    a clip shredded into many too-short spans yields NO windows (empty is valid)."""
+    BOUNDARIES on that artifact. A single shot shorter than the band's floor stays one
+    whole window; a clip shredded into many too-short spans yields NO windows (empty is valid)."""
     bounds = {0.0, float(dur)}
     for t in scene_cuts:
         if 0.0 < t < dur:
@@ -88,8 +88,8 @@ def carve_windows(scene_cuts: list[float],
             curve = carve.subject_curve([row[4] for row in samples])
         else:
             curve = carve.camera_curve(mags, fps, times)
-        spans.extend(carve.units_for_span(a, b, times, curve, WIN_MIN, WIN_MAX))
-    if not spans and len(raw) == 1:          # a single short shot (dur < WIN_MIN) — keep the whole clip
+        spans.extend(carve.units_for_span(a, b, times, curve, band[0], band[1]))
+    if not spans and len(raw) == 1:          # a single short shot (dur < the band's floor) — keep the whole clip
         a, b = raw[0]
         spans = [(round(a, 3), round(b - a, 3))]
     return spans
@@ -128,7 +128,7 @@ def score_pool(clips: list[footage.FootageClip]) -> None:
     a pool, and the absolute blend it used to compute could not rank. Three of its
     four terms were near-constant on real footage (`present` constant BY
     CONSTRUCTION, `_dur_fit` an exact zero for the 76% of windows carve emits at
-    WIN_MIN, `stability` compressed 2-14x below its own divisor), leaving `score`
+    the band's floor, `stability` compressed 2-14x below its own divisor), leaving `score`
     ~ 0.61 + 0.25*motion — and the motion term saturated (§1.1/§1.2).
 
     Each factor is scaled on the scale its question deserves: `motion` by rank
@@ -382,7 +382,8 @@ def _motion(samples: list, res: tuple[int, int]) -> float:
     return float(min(1.0, (sum(disps) / len(disps)) / w))
 
 
-def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True) -> ClipResult:
+def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True,
+                  band: tuple[float, float] = carve.DEFAULT_BAND) -> ClipResult:
     """One clip's CV (Phase 1, design §2): probe → build a decode-once analysis
     proxy → scene → YOLO seg → vidstab → carve → score, all on the PROXY, plus the
     two facts Phase 2 needs pre-computed so it stays pure — each window's midpoint
@@ -407,7 +408,7 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = 
         timeline, best, presence = _people_timeline(src, info.fps, pres, sample_fps)
         vidstab.require()
         mags = vidstab.detect(src, str(Path(d) / "t.trf"), dur)
-        spans = carve_windows(cuts, timeline, mags, info.fps, dur)
+        spans = carve_windows(cuts, timeline, mags, info.fps, dur, band=band)
         shakes = _windowed_shake(mags, spans, info.fps, pres[0])    # divide by the PROXY width
         windows = [_build_window(sp, timeline, sh, pres) for sp, sh in zip(spans, shakes)]
         mids = [w.start + w.dur / 2 for w in windows]
@@ -462,7 +463,8 @@ def _cast_from_original(path: str, best: dict, res: tuple[int, int],
 
 
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
-           jobs: int = DEFAULT_JOBS, fresh: bool = False) -> footage.Footage:
+           jobs: int = DEFAULT_JOBS, fresh: bool = False,
+           band: tuple[float, float] = carve.DEFAULT_BAND) -> footage.Footage:
     # Above ensure_model, so the refusal costs no YOLO weights fetch: a run dir equal
     # to the footage root puts this scan's own outputs into the listing the NEXT scan
     # reads (§0). The mkdir below it is NOT the reason — with out_dir equal to the
@@ -473,6 +475,12 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
         raise ValueError(f"intake: jobs must be an integer >= 1, got {jobs!r} — "
                          f"default {DEFAULT_JOBS} is a reasonable knee; lower it on a "
                          f"memory-constrained box, raise it only with a GPU")
+    if not (isinstance(band, (tuple, list)) and len(band) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in band)
+            and 0 < band[0] <= band[1]):
+        raise ValueError(f"intake: band must be (win_min, win_max) seconds with "
+                         f"0 < win_min <= win_max, got {band!r}")
+    band = (float(band[0]), float(band[1]))
     root = Path(footage_root)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -515,7 +523,8 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     # jobs/cache mix (the design invariant). as_completed iterates its own copy, so
     # mutating futs here is safe.
     with ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = {ex.submit(_process_clip, str(p), sample_fps, embed_cast=reid_ok): p for p in misses}
+        futs = {ex.submit(_process_clip, str(p), sample_fps, embed_cast=reid_ok,
+                          band=band): p for p in misses}
         for fut in as_completed(futs):
             p = futs.pop(fut)                          # free the future so its result can GC
             try:
@@ -527,7 +536,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
                 failed.append({"source": p.name, "error": str(e)})
                 print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
     ok = [results[p] for p in paths if p in results]
-    result = footage.Footage(clips=[r.clip for r in ok])
+    result = footage.Footage(clips=[r.clip for r in ok], band=band)
     score_pool(result.clips)          # Phase 2: pool-relative score + description (design §4.5)
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
                 for r in ok for w, h in zip(r.clip.windows, r.phashes)}
@@ -557,8 +566,17 @@ def main(argv: list[str] | None = None) -> None:
                     help="parallel clip workers (default %(default)s)")
     ap.add_argument("--fresh", action="store_true",
                     help="ignore the .intake_cache and rescan every clip")
+    ap.add_argument("--win-min", type=float, default=carve.DEFAULT_BAND[0],
+                    help="shortest carved window, seconds (default %(default)s). "
+                         "Changing either bound is a full cache MISS: window "
+                         "boundaries were carved under the old band")
+    ap.add_argument("--win-max", type=float, default=carve.DEFAULT_BAND[1],
+                    help="longest carved window, seconds (default %(default)s). "
+                         "edit_plan can JOIN adjacent windows, so this is not a "
+                         "ceiling on episode length")
     a = ap.parse_args(argv)
-    f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs, fresh=a.fresh)
+    f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs, fresh=a.fresh,
+               band=(a.win_min, a.win_max))
     print(f"{len(f.clips)} clips, {sum(len(c.windows) for c in f.clips)} windows → {a.out_dir}")
 
 
