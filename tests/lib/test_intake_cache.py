@@ -178,6 +178,24 @@ def test_reid_model_is_part_of_the_key(tmp_path):
                    band=carve.DEFAULT_BAND) is None
 
 
+def test_load_is_none_on_changed_band(tmp_path):
+    # test_a_different_band_is_a_different_key proves clip_key() differs IN MEMORY only;
+    # this exercises load()'s actual `payload.get("key") != clip_key(...)` comparison
+    # against a JSON-round-tripped disk entry — the layer that must reject a stale band.
+    from scripts.lib import intake_cache as ic
+    clip = _clip()
+    out, src = tmp_path / "out", _src(tmp_path)        # a real backing file: clip_key stats it
+    ic.store(str(out), str(src), 3.0, ic.ClipResult(clip=clip, phashes=[], cast=[]),
+             model="m", proxy_long_side=960, reid_model="", band=(1.2, 4.0))
+    # control: the SAME band a load must return the stored entry — otherwise this test
+    # would pass against a load() that always returns None regardless of band
+    assert ic.load(str(out), str(src), 3.0, model="m", proxy_long_side=960,
+                   reid_model="", band=(1.2, 4.0)) is not None
+    # a later run under a DIFFERENT band must MISS, not silently serve stale boundaries
+    assert ic.load(str(out), str(src), 3.0, model="m", proxy_long_side=960,
+                   reid_model="", band=(1.2, 6.0)) is None
+
+
 def test_cache_version_is_nine_for_the_carve_band_key():
     # the carve band joins clip_key (design 2026-09-03 §0.5/§3): carve_windows runs
     # inside the cached Phase 1, so a cached v8 ClipResult was carved under whatever
