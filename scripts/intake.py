@@ -465,6 +465,19 @@ def _cast_from_original(path: str, best: dict, res: tuple[int, int],
 def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
            jobs: int = DEFAULT_JOBS, fresh: bool = False,
            band: tuple[float, float] = carve.DEFAULT_BAND) -> footage.Footage:
+    """Scan footage_root into scored FootageWindows + a cast registry, writing
+    FOOTAGE.json/.md (+ cast_candidates.json) under out_dir. `band` sets the
+    (win_min, win_max) a NEW clip is carved with (carve.units_for_span, design
+    2026-09-03 §3).
+
+    CAVEAT: the returned Footage.band records the band THIS CALL was asked
+    for, not a guarantee that every window in it was carved under it.
+    intake_cache does not key on band yet — a clip already cached under a
+    DIFFERENT band still comes back as a hit here, keeping the boundaries it
+    was scanned with, while Footage.band reports whatever band this call
+    requested. Pass fresh=True (CLI: --fresh) to force every clip to
+    re-carve under the requested band.
+    """
     # Above ensure_model, so the refusal costs no YOLO weights fetch: a run dir equal
     # to the footage root puts this scan's own outputs into the listing the NEXT scan
     # reads (§0). The mkdir below it is NOT the reason — with out_dir equal to the
@@ -568,12 +581,16 @@ def main(argv: list[str] | None = None) -> None:
                     help="ignore the .intake_cache and rescan every clip")
     ap.add_argument("--win-min", type=float, default=carve.DEFAULT_BAND[0],
                     help="shortest carved window, seconds (default %(default)s). "
-                         "Changing either bound is a full cache MISS: window "
-                         "boundaries were carved under the old band")
+                         "The cache does not key on this yet: against a "
+                         "populated out_dir, a changed value still returns "
+                         "cached clips carved under whichever band scanned "
+                         "them before, not this one — pass --fresh to force "
+                         "a re-carve")
     ap.add_argument("--win-max", type=float, default=carve.DEFAULT_BAND[1],
                     help="longest carved window, seconds (default %(default)s). "
                          "edit_plan can JOIN adjacent windows, so this is not a "
-                         "ceiling on episode length")
+                         "ceiling on episode length. Same cache caveat as "
+                         "--win-min — pass --fresh to force a re-carve")
     a = ap.parse_args(argv)
     f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs, fresh=a.fresh,
                band=(a.win_min, a.win_max))

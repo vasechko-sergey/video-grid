@@ -5,7 +5,7 @@ import types
 import numpy as np
 import pytest
 from scripts import intake
-from scripts.lib import footage, reid
+from scripts.lib import carve, footage, reid
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
 
 
@@ -576,6 +576,15 @@ def test_jobs_validation_rejects(tmp_path, bad):
         intake.intake(str(root), str(tmp_path / "out"), jobs=bad)
 
 
+@pytest.mark.parametrize("bad", [(1.2,), (4.0, 1.2), (True, 4.0), ("1.2", 4.0)])
+def test_band_validation_rejects(tmp_path, bad):
+    # each `bad` trips a DIFFERENT clause of the compound check: a non-2-element
+    # band, an inverted (win_min > win_max) band, a bool element, and a non-number.
+    root = _two_clip_root(tmp_path)
+    with pytest.raises(ValueError, match="band"):
+        intake.intake(str(root), str(tmp_path / "out"), band=bad)
+
+
 def test_ensure_model_runs_before_any_worker(monkeypatch, tmp_path):
     root = _two_clip_root(tmp_path)
     monkeypatch.setattr(intake.intake_cache, "load", lambda *a, **k: None)
@@ -883,9 +892,6 @@ def test_intake_refuses_before_fetching_the_model(tmp_path, monkeypatch):
         intake.intake(str(root), str(root))
     assert called == []
     assert set(p.name for p in root.iterdir()) == set()   # and no artifact written
-
-
-from scripts.lib import carve
 
 
 def test_default_band_has_exactly_one_definition():
