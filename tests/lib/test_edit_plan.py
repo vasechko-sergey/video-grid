@@ -1633,3 +1633,18 @@ def test_write_edit_plan_passes_a_carved_band_the_preset_fits_inside(tmp_path):
     result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path),
                                        spec=_write_spec(tmp_path))
     assert result["status"] == "written"
+
+
+def test_write_edit_plan_reports_not_checked_on_a_legacy_footage_without_a_band(tmp_path, capsys):
+    # _write_inputs' default footage=None reuses _footage(), which never sets band
+    # so it defaults to None — exactly the legacy (pre-2026-09-03) FOOTAGE.json this
+    # arm guards, per tests/lib/test_footage.py's own promise that "edit_plan's
+    # reconciliation reports not-checked rather than passing green". Mirrors
+    # test_build_edl_names_the_not_checked_arm_and_falls_back_to_tempo's capsys
+    # pattern (line 1573) for a structurally identical not-checked gate.
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=_write_spec(tmp_path))
+    assert result["status"] == "written"
+    err = capsys.readouterr().err
+    assert "length band: not checked" in err
+    assert "Re-run footage-intake to record it" in err
