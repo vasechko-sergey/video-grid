@@ -678,15 +678,14 @@ Validate it beside the `jobs` check, so a bad band costs no scan:
     band = (float(band[0]), float(band[1]))
 ```
 
-Pass it to the worker:
+Pass it to the worker. The existing call passes `embed_cast` by keyword;
+keep that form and add `band` the same way — a positional rewrite here would
+put `band` where `embed_cast` is read:
 
 ```python
-        futs = {ex.submit(_process_clip, str(p), sample_fps, reid_ok, band): p for p in misses}
+        futs = {ex.submit(_process_clip, str(p), sample_fps, embed_cast=reid_ok,
+                          band=band): p for p in misses}
 ```
-
-(`_process_clip`'s third positional is `embed_cast`; the existing call uses
-the keyword `embed_cast=reid_ok`. Keep the keyword form and add
-`band=band` — do NOT switch to positionals.)
 
 And record it on the artifact:
 
@@ -1313,7 +1312,9 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A
+git add docs/backlog.md docs/build-status.md CLAUDE.md CHANGELOG.md \
+        .claude-plugin/plugin.json skills/footage-intake/SKILL.md \
+        skills/match-grade/SKILL.md skills/reel-brief/SKILL.md
 git commit -F - <<'EOF'
 docs: 0.8.0 — the mood contract, and four stale backlog rows closed
 
