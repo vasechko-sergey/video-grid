@@ -130,8 +130,8 @@ def _lead_in_unit(pk: int, minima: list[int], a: float, b: float, times: list[fl
 
 def _flat_unit(a: float, b: float, times: list[float], curve: list[float],
                win_max: float) -> tuple[float, float]:
-    """A flat span (no interior peak) yields ONE window of WIN_MAX at the position of
-    maximum mean activity — never a tiling (§4.3)."""
+    """A flat span (no interior peak) yields ONE window of `win_max` seconds at the
+    position of maximum mean activity — never a tiling (§4.3)."""
     best_s, best_mean = a, -1.0
     for t in times:
         if t + win_max > b + 1e-9:

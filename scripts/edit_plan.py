@@ -620,7 +620,8 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     and unwaived stops here too, before preflight, with its own reason
     `variety-gap` (never `edl-invalid`, so the two failure classes stay
     attributable without parsing prose). Returns {"status": "written", ...} or a
-    stop_and_report — from the variety gate or from preflight — verbatim.
+    stop_and_report — from constraints, the length-band check, the variety gate, or
+    preflight — verbatim.
 
     Editorial constraints (design 2026-08-07) are found BY CONVENTION beside
     project.json as CONSTRAINTS.json — there is no flag to forget. Absent means no
@@ -628,6 +629,18 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     rule survive a re-cut. A broken rule stops here with its own reason
     `constraint-violation`, before the variety gate and before preflight, and there is
     no waiver: the rule is the user's, not the agent's to overrule.
+
+    The footage's own carved length band (design 2026-09-03 §3/§4, `Footage.band`) is
+    reconciled against the preset's `asl` FLOOR right after constraints and before the
+    variety gate — only the floor, never the ceiling, since edit_plan's own span merge
+    can always reach a taller shot but nothing splits a window into a shorter one. A
+    preset floor below the carved floor stops here with its own reason `length-band`
+    (`episode_idx: null`, like `variety-gap` and `constraint-violation`: it judges the
+    whole cut, not one episode). The `balanced` fallback is exempt exactly as `look`
+    is (`preset.name == "balanced"`): a skipped or unmatched brief has no taste to
+    hold the cut to, so this check never reconciles or refuses for it. A FOOTAGE.json
+    written before this slice carries no recorded band; the check reports
+    `not-checked` rather than a silent pass.
 
     `music` (design 2026-08-14 §7, optional) is MUSIC.json — supplying it, together with
     `--pacing`, fits the reel's end to a bar line with a vocal-free tail after it (see
@@ -711,10 +724,23 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                 "finding": {"reason": "constraint-violation", "episode_idx": None,
                             "problems": [f"{v.stated} ({v.kind}): {v.message}"
                                          for v in c.violations]}}
-    band_problem = moodpreset.reconcile_band(preset, footage.band)
+    # The balanced fallback must never refuse a cut: preset.name == "balanced" is the
+    # SAME test `look` two paragraphs up and `match_grade._resolve_bias` both use, and
+    # for the same reason — an absent or unmatched brief carries no taste to hold the
+    # cut to, and BALANCED.asl's 1.5s floor is resolve()'s "nothing matched" artifact,
+    # not a decision (moodpreset.py's own comment on BALANCED says as much for `look`
+    # and `tone_bias`; nothing analogous was ever written for `asl`, which is how this
+    # gap survived review — final-findings.md I-1).
+    band_problem = (None if preset.name == "balanced"
+                    else moodpreset.reconcile_band(preset, footage.band))
     if footage.band is None:
         _log("length band: not checked — this FOOTAGE.json predates the recorded carve "
              "band (2026-09-03). Re-run footage-intake to record it")
+    elif preset.name == "balanced":
+        _log(f"length band: no SPEC mood matched a preset — the 'balanced' fallback's "
+             f"{preset.asl[0]:.1f}s floor is never reconciled against the footage's "
+             f"carved {footage.band[0]:.1f}s floor (a skipped or unmatched brief must "
+             f"not refuse a cut, exactly as the look and variety fallbacks above)")
     else:
         _log(f"length band: preset {preset.name} wants "
              f"{preset.asl[0]:.1f}–{preset.asl[1]:.1f}s, footage carved "

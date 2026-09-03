@@ -135,6 +135,17 @@ def test_to_markdown_singular_reel_and_empty_frees_dash():
     assert "**Cast:** –" in md
     assert "**Text:** –" in md
     assert "**Ending:** –" in md
+    assert "**Tone bias:** –" in md          # tone_bias defaults to None, unauthored
+
+
+def test_to_markdown_renders_an_authored_tone_bias_with_signs():
+    # M-2 (final-findings.md): every other Spec field reaches SPEC.md; tone_bias — this
+    # slice's own headline field — did not, so an authored colour displacement was
+    # invisible at Checkpoint 1 (using-montage/SKILL.md calls SPEC.md "what the user
+    # approves"). Explicit signs (+10/+18/-8) read as a DISPLACEMENT from neutral, not
+    # an absolute luma reading like match_grade's own report triples.
+    md = Spec(**{**GOOD, "tone_bias": (10.0, 18.0, -8.0)}).to_markdown()
+    assert "**Tone bias:** +10/+18/-8" in md
 
 
 def test_to_markdown_full_render_whole_string():
@@ -144,11 +155,12 @@ def test_to_markdown_full_render_whole_string():
     s = Spec(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open",
              reel_count=1, music="ODESZA", music_mode="local", style_lean="trend",
              platform="tiktok", text="captions", ending="freeze frame",
-             cast=["Anna", "Ben"], notes="keep it tight")
+             cast=["Anna", "Ben"], notes="keep it tight", tone_bias=(10.0, 18.0, 8.0))
     assert s.to_markdown() == (
         "# Reel brief — 1 reel, 30s, 9:16\n"
         "\n"
         "- **Mood:** energetic\n"
+        "- **Tone bias:** +10/+18/+8\n"
         "- **Hook:** jump-cut open\n"
         "- **Music:** ODESZA (mode: local)\n"
         "- **Style-lean:** trend\n"

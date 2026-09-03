@@ -226,9 +226,13 @@ def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
     (design 2026-09-03 §4). edit_plan joins adjacent windows through its span
     merge, so a preset ceiling above the carved ceiling is always reachable —
     the reference run shipped a 5.80s episode against a 4.0s carve ceiling, and
-    refusing that would be refusing a cut that works. Nothing splits a window,
-    so a preset FLOOR below the carved floor asks for a shot length that exists
-    nowhere in FOOTAGE.json, and no selection can supply it.
+    refusing that would be refusing a cut that works. Nothing SPLITS a window, so
+    a preset FLOOR below the carved floor asks for a shot length that a normal cut
+    has nothing to draw from (final-findings.md M-1: the one exception is a whole
+    clip that started shorter than the floor to begin with, kept as a single
+    undersized window rather than dropped or padded — carve_windows' short-clip
+    fallback, `tests/lib/test_intake.py`'s `test_carve_short_clip_yields_one_window` —
+    which is not a source a selection can rely on to supply a mood's worth of shots).
 
     `carved` is None on a FOOTAGE.json written before 2026-09-03. The check
     cannot run; the caller reports not-checked rather than a pass.
@@ -238,9 +242,12 @@ def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
     if preset.asl[0] >= carved[0]:
         return None
     return (f"preset {preset.name!r} wants shots from {preset.asl[0]:.1f}s, but the "
-            f"footage was carved with a {carved[0]:.1f}s floor, so no window in "
-            f"FOOTAGE.json is shorter than {carved[0]:.1f}s and nothing splits one. "
-            f"Re-scan with `--win-min {preset.asl[0]:g}`, choose a mood whose band "
-            f"starts at or above {carved[0]:.1f}s, or drop --spec to run without a "
-            f"preset. (The preset's CEILING is not checked: span merge joins adjacent "
-            f"windows, so a longer shot is always reachable.)")
+            f"footage was carved with a {carved[0]:.1f}s floor, so nothing splits a "
+            f"window to manufacture one shorter than {carved[0]:.1f}s on demand (the "
+            f"one exception is a whole clip that was itself shorter than the floor, "
+            f"kept as a single undersized window rather than dropped — not a source "
+            f"a selection can rely on). Re-scan with `--win-min {preset.asl[0]:g}`, "
+            f"choose a mood whose band starts at or above {carved[0]:.1f}s, or drop "
+            f"--spec to run without a preset. (The preset's CEILING is not checked: "
+            f"span merge joins adjacent windows, so a longer shot is always "
+            f"reachable.)")

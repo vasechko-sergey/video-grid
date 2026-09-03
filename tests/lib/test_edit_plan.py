@@ -1648,3 +1648,25 @@ def test_write_edit_plan_reports_not_checked_on_a_legacy_footage_without_a_band(
     err = capsys.readouterr().err
     assert "length band: not checked" in err
     assert "Re-run footage-intake to record it" in err
+
+
+def test_write_edit_plan_does_not_refuse_a_brief_less_run_against_a_high_carved_floor(tmp_path, capsys):
+    # I-1 (final-findings.md): the BALANCED fallback must never be held to its own
+    # asl[0]=1.5s floor — that number is resolve()'s "nothing matched" artifact, not
+    # a decision, exactly as `look` (edit_plan.py:681) and `match_grade._resolve_bias`
+    # already guard on `preset.name == "balanced"` for the SAME reason: an absent or
+    # unmatched brief must never have a taste imposed on it. Before this fix, a carved
+    # floor above 1.5s stopped a run that never passed --spec at all, with "reason":
+    # "length-band" and a remedy telling the operator to "drop --spec" on a run that
+    # had none — reproduced here almost verbatim from the reviewer's repro
+    # (`intake --win-min 2.0` then `edit_plan build` with NO --spec).
+    footage = replace(_footage(), band=(2.0, 4.0))
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(), footage=footage)
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))     # no spec= at all
+    assert result["status"] == "written"
+    # The log still says something (this file's own idiom: every fallback branch above
+    # — variety, look, platform — explains itself rather than going silent), but it must
+    # say the check was SKIPPED for the fallback, never claim a comparison happened.
+    err = capsys.readouterr().err
+    assert "length band: no SPEC mood matched a preset" in err
+    assert "never reconciled" in err

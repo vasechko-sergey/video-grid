@@ -476,7 +476,49 @@ def test_report_names_the_authored_source():
     assert "SPEC.tone_bias" in md
 
 
-def test_report_says_nothing_about_mood_when_no_bias_was_asked_for():
+def test_report_says_nothing_about_mood_when_no_spec_was_given_at_all():
+    # The TRUE no-brief state: no --spec, so write_match never resolves a preset and
+    # passes mood=None (its own default). Nothing about mood belongs in the report —
+    # there was no brief to have an opinion about. `bias_source == ""` alone cannot
+    # tell this apart from "a --spec was given but its mood matched nothing" (the case
+    # test_report_names_no_mood_matched_when_the_brief_matched_nothing below covers) —
+    # that is the exact ambiguity fix round 1 introduced (final-findings.md I-3) and
+    # `mood` exists to resolve.
     md = match_grade._report_md([], (10.0, 100.0, 200.0), [], 4.0,
-                                bias=(0.0, 0.0, 0.0), bias_source="")
+                                bias=(0.0, 0.0, 0.0), bias_source="", mood=None)
     assert "displaced" not in md
+    assert "mood" not in md.lower()
+
+
+def test_report_names_no_mood_matched_when_the_brief_matched_nothing():
+    # Fix round 1 (Important finding I-3): the pre-slice report had an
+    # `elif preset is not None:` arm printing this exact line whenever --spec was
+    # given but its mood text resolved to NOTHING (moodpreset.resolve fell back to
+    # `balanced`, unauthored). The rewrite for SPEC.tone_bias (design 2026-09-03 §2)
+    # deleted the arm rather than porting it, reasoning bias_source == "" already
+    # covered it — false: that string is IDENTICAL for "no --spec at all" (the test
+    # above), so a mood word that quietly failed to resolve became indistinguishable
+    # from a brief-less run, exactly the "silently" class this slice exists to close.
+    md = match_grade._report_md([], (10.0, 100.0, 200.0), [], 4.0,
+                                bias=(0.0, 0.0, 0.0), bias_source="", mood="balanced")
+    assert "No mood matched the brief" in md
+    assert "displaced" not in md
+
+
+def test_write_match_reports_no_mood_matched_end_to_end(tmp_path, monkeypatch):
+    # The end-to-end proof: a real SPEC.json whose mood text matches no preset (the
+    # same "unspecified" string test_edit_plan.py's own housekeeping-task fixture
+    # uses for exactly this reason) drives write_match through resolve() -> BALANCED
+    # -> _resolve_bias -> "" -> _report_md, and MATCH.md must say so rather than
+    # reading like a run with no brief at all.
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (20.0, 100.0, 200.0))
+    geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
+    spec_path = tmp_path / "SPEC.json"
+    spec_path.write_text(json.dumps(
+        Spec(canvas=(1080, 1920), length_s=10.0, mood="unspecified", hook="h").to_dict()))
+
+    status = match_grade.write_match(geometry_path, spec=str(spec_path))
+
+    assert status["mood"] == "balanced" and status["bias_source"] == ""
+    md = (tmp_path / "MATCH.md").read_text()
+    assert "No mood matched the brief" in md

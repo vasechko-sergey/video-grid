@@ -126,10 +126,18 @@ class Spec:
         # again the day fan-out lands, which is the same day the refusal comes out.
         reels = f"{self.reel_count} reel" + ("s" if self.reel_count != 1 else "")
         cast = ", ".join(self.cast) if self.cast else "–"
+        # (M-2, final-findings.md): every other Spec field reaches SPEC.md — this slice's
+        # own headline field must too, or an authored colour displacement is invisible at
+        # Checkpoint 1, the point using-montage's SKILL names as where the user approves
+        # SPEC.md. "–" (unauthored) reads exactly like every other optional field above;
+        # a signed triple (p5/p50/p95) shows the mood preset's own taste is being overridden.
+        tone_bias = ("–" if self.tone_bias is None
+                     else "/".join(f"{v:+.0f}" for v in self.tone_bias))
         lines = [
             f"# Reel brief — {reels}, {self.length_s:.0f}s, {w}:{h}",
             "",
             f"- **Mood:** {self.mood}",
+            f"- **Tone bias:** {tone_bias}",
             f"- **Hook:** {self.hook}",
             f"- **Music:** {self.music} (mode: {self.music_mode})",
             f"- **Style-lean:** {self.style_lean}",

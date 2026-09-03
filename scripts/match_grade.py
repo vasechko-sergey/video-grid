@@ -92,7 +92,7 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
 def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
                bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
-               bias_source: str = "", k: float = 1.0) -> str:
+               bias_source: str = "", mood: str | None = None, k: float = 1.0) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
@@ -101,7 +101,16 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     in the pixels and has nowhere else to be seen (design 2026-08-17 §5), and now name
     WHERE the bias came from — SPEC.tone_bias or a mood preset (design 2026-09-03 §2) —
     closing the "silently" half of the retro's R1.1. A scale under the floor is the one
-    thing in this report a human must act on."""
+    thing in this report a human must act on.
+
+    `mood` is the resolved preset's name, or None when no `--spec` was given at all — it
+    exists ONLY to tell those two apart from a THIRD state, `bias_source == ""` with
+    `mood` not None, which means a `--spec` WAS given but its mood text matched no preset
+    (moodpreset.resolve fell back to `balanced`) and no `SPEC.tone_bias` was authored
+    either. Losing that distinction (fix round 1, final-findings.md I-3) made a mood word
+    that quietly failed to resolve read identically to a run with no brief at all — the
+    exact "silently" class this slice exists to close, restoring the arm the pre-slice
+    report carried under `elif preset is not None`."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -118,6 +127,8 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
                      f"{matchgrade.MOOD_FLOOR:g} luma units, which is below this "
                      f"conductor's own delivery error, so the displacement will not be "
                      f"visible in the grade.")
+    elif mood is not None:
+        head += "\n\nNo mood matched the brief — the target is the plain median."
     lines = [head, "",
              f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
@@ -152,7 +163,8 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
                                   # output is the tool's output (design §4)
     md_path = Path(geo.edl).parent / "MATCH.md"
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
-                                  bias=bias, bias_source=bias_source, k=k))
+                                  bias=bias, bias_source=bias_source,
+                                  mood=preset.name if preset is not None else None, k=k))
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
             "target": list(target), "eps": eps,

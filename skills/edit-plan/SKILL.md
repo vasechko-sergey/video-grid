@@ -518,16 +518,20 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    the EDL from scratch and would otherwise silently drop both. It projects each
    window, **preflights** the EDL against the project, and writes `EDL.json` +
    `EDL.md`. On a `stop_and_report`, fix and re-run — never hand-edit `EDL.json`
-   (`selection.json` is the source; the EDL is generated). Three reasons exist.
+   (`selection.json` is the source; the EDL is generated). Four reasons exist.
    `edl-invalid` names the offending episode index for a per-episode failure —
    fix that episode in `selection.json` — but carries `episode_idx: null`
    instead when the failure is `EDL.cast` itself (an unreadable registry, no
-   one episode to blame). `variety-gap` and `constraint-violation` are always
-   `episode_idx: null` too: both judge the whole cut, not one row, so "the
-   named episode" is never the fix — `variety-gap`'s remedy is in step 2
-   above; `constraint-violation`'s is in Editorial rules below (revise
-   `selection.json` to satisfy the rule, or have the user change/delete it in
-   `CONSTRAINTS.json`).
+   one episode to blame). `variety-gap`, `constraint-violation` and
+   `length-band` are always `episode_idx: null` too: all three judge the whole
+   cut, not one row, so "the named episode" is never the fix — `variety-gap`'s
+   remedy is in step 2 above; `constraint-violation`'s is in Editorial rules
+   below (revise `selection.json` to satisfy the rule, or have the user
+   change/delete it in `CONSTRAINTS.json`); `length-band`'s is to re-scan
+   footage-intake with a lower `--win-min`, choose a mood whose `asl` band
+   starts at or above the carved floor the refusal names, or drop `--spec`
+   (never fired by the `balanced` fallback itself — an absent or unmatched
+   brief must not refuse a cut).
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.
