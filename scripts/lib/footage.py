@@ -244,11 +244,23 @@ class FootageClip:
 @dataclass
 class Footage:
     clips: list[FootageClip] = field(default_factory=list)
+    band: tuple | None = None        # (win_min, win_max) this scan carved with
 
     def __post_init__(self) -> None:
         for k, c in enumerate(self.clips):
             if not isinstance(c, FootageClip):
                 raise ValueError(f"Footage.clips[{k}] must be a FootageClip")
+        if self.band is not None:
+            if not (isinstance(self.band, (tuple, list)) and len(self.band) == 2
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                            for v in self.band)
+                    and 0 < self.band[0] <= self.band[1]):
+                raise ValueError(
+                    f"Footage.band must be (win_min, win_max) seconds with "
+                    f"0 < win_min <= win_max, or null on an artifact written before "
+                    f"2026-09-03. Got {self.band!r} — re-run footage-intake to "
+                    f"regenerate FOOTAGE.json")
+            self.band = (float(self.band[0]), float(self.band[1]))
 
     @classmethod
     def from_dict(cls, d: dict) -> "Footage":
@@ -270,7 +282,7 @@ class Footage:
             if not isinstance(c, dict):
                 raise ValueError(f"Footage.from_dict: clips[{k}] must be an object")
             clips.append(FootageClip.from_dict(c))
-        return cls(clips=clips)
+        return cls(clips=clips, band=d.get("band"))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Footage":
@@ -281,7 +293,8 @@ class Footage:
         return cls.from_dict(d)
 
     def to_dict(self) -> dict:
-        return {"clips": [c.to_dict() for c in self.clips]}
+        return {"clips": [c.to_dict() for c in self.clips],
+                "band": None if self.band is None else list(self.band)}
 
     def ranked_windows(self) -> list[tuple["FootageClip", "FootageWindow"]]:
         pairs = [(c, w) for c in self.clips for w in c.windows]

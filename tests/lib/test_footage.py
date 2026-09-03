@@ -476,3 +476,28 @@ def test_shot_at_refuses_a_time_outside_the_clip():
         clip.shot_at(20.0)
     with pytest.raises(ValueError, match=">= 0"):
         clip.shot_at(-1.0)
+
+
+def test_footage_band_defaults_to_none_for_a_legacy_artifact():
+    # A FOOTAGE.json written before 2026-09-03 carries no band. None is "unknown",
+    # and edit_plan's reconciliation reports not-checked rather than passing green.
+    assert footage.Footage.from_dict({"clips": []}).band is None
+
+
+def test_footage_round_trips_its_band():
+    f = footage.Footage(clips=[], band=(1.2, 4.0))
+    assert footage.Footage.from_dict(f.to_dict()).band == (1.2, 4.0)
+
+
+def test_footage_band_is_coerced_to_a_tuple_of_floats():
+    assert footage.Footage(clips=[], band=[1, 4]).band == (1.0, 4.0)
+
+
+def test_footage_rejects_a_one_element_band():
+    with pytest.raises(ValueError, match="band"):
+        footage.Footage(clips=[], band=(1.2,))
+
+
+def test_footage_rejects_an_inverted_band():
+    with pytest.raises(ValueError, match="band"):
+        footage.Footage(clips=[], band=(4.0, 1.2))
