@@ -15,7 +15,8 @@ from scripts.lib.spec import Spec
 def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                reel_count: int = 1, music: str = "auto", music_mode: str = "free",
                style_lean: str = "balanced", platform: str = "", text: str = "",
-               ending: str = "", cast: tuple = (), notes: str = "") -> Spec:
+               ending: str = "", cast: tuple = (), notes: str = "",
+               tone_bias: tuple | None = None) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
     of aspect; build_spec never sources canvas itself."""
@@ -23,7 +24,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
     return Spec(canvas=cfg.canvas, length_s=length_s, mood=mood, hook=hook,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,
-                ending=ending, cast=tuple(cast), notes=notes)
+                ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias)
 
 
 def write_reel_brief(spec: Spec, out_dir: str) -> dict:
@@ -54,12 +55,23 @@ def main() -> None:
     b.add_argument("--ending", default="", help="ending intent")
     b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")
     b.add_argument("--notes", default="")
+    b.add_argument("--tone-bias", default=None,
+                   help="colour displacement as p5,p50,p95 luma units (e.g. 20,0,-18) — "
+                        "outranks the mood preset's own. OMIT it to take the preset's "
+                        "taste; pass 0,0,0 to keep the mood and leave colour alone. The "
+                        "two are different answers (design 2026-09-03 §2)")
     b.add_argument("--out-dir", required=True, help="dir for SPEC.json + SPEC.md")
     a = ap.parse_args()
+    # Same shape as reframe's --rect: an omitted flag stays None, which Spec reads as
+    # "not authored, take the preset's taste" — never a zero triple, which says the
+    # opposite (design 2026-09-03 §2). A malformed triple fails loud in Spec's own
+    # validation rather than here, so there is one message for both callers.
+    tone_bias = tuple(float(v) for v in a.tone_bias.split(",")) if a.tone_bias else None
     spec = build_spec(a.project, length_s=a.length, mood=a.mood, hook=a.hook,
                       reel_count=a.reel_count, music=a.music, music_mode=a.music_mode,
                       style_lean=a.style_lean, platform=a.platform, text=a.text,
-                      ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes)
+                      ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes,
+                      tone_bias=tone_bias)
     result = write_reel_brief(spec, a.out_dir)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

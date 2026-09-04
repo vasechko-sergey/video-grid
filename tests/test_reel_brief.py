@@ -55,3 +55,64 @@ def test_cli_build_writes_and_exits_0(tmp_path, monkeypatch, capsys):
     assert payload["status"] == "written"
     spec = Spec.from_json(tmp_path / "SPEC.json")
     assert spec.cast == ("Anna", "Ben") and spec.length_s == 30.0
+
+
+def test_build_spec_leaves_tone_bias_none_when_unasked(tmp_path):
+    # None is not the same answer as (0,0,0): it means "take the mood preset's
+    # taste" (design 2026-09-03 §2), so an accidental default here would silently
+    # disable the preset's own displacement on every brief.
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h")
+    assert spec.tone_bias is None
+
+
+def test_build_spec_forwards_an_authored_tone_bias(tmp_path):
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                      tone_bias=(20, 0, -18))
+    assert spec.tone_bias == (20.0, 0.0, -18.0)
+
+
+def _cli(tmp_path, monkeypatch, *extra):
+    proj = _project(tmp_path)
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_brief", "build", "--project", proj, "--length", "30",
+                         "--mood", "calm", "--hook", "h", "--out-dir", str(tmp_path),
+                         *extra])
+    with pytest.raises(SystemExit) as e:
+        reel_brief.main()
+    assert e.value.code == 0
+    return Spec.from_json(tmp_path / "SPEC.json")
+
+
+def test_cli_round_trips_an_authored_tone_bias(tmp_path, monkeypatch, capsys):
+    spec = _cli(tmp_path, monkeypatch, "--tone-bias", "20,0,-18")
+    # The absolute value first, and deliberately: comparing only against build_spec's
+    # own output passes when BOTH sides drop the field, which is exactly what a
+    # missing forward looks like (caught by mutating the forward away).
+    assert spec.tone_bias == (20.0, 0.0, -18.0)
+    assert spec.to_dict() == build_spec(_project(tmp_path), length_s=30, mood="calm",
+                                        hook="h", tone_bias=(20, 0, -18)).to_dict()
+
+
+def test_cli_without_the_flag_writes_null_not_a_default(tmp_path, monkeypatch, capsys):
+    # The omitted flag must reach Spec as None, and SPEC.json must say null —
+    # match_grade._resolve_bias reads that null as "take the preset's taste".
+    spec = _cli(tmp_path, monkeypatch)
+    assert spec.tone_bias is None
+    assert json.loads((tmp_path / "SPEC.json").read_text())["tone_bias"] is None
+
+
+def test_cli_accepts_an_explicit_zero_bias(tmp_path, monkeypatch, capsys):
+    # "this mood, but leave my colour alone" — a real answer, and the one a
+    # truthiness test on the raw flag string would collapse into None.
+    spec = _cli(tmp_path, monkeypatch, "--tone-bias", "0,0,0")
+    assert spec.tone_bias == (0.0, 0.0, 0.0)
+
+
+def test_cli_refuses_a_two_element_tone_bias(tmp_path, monkeypatch, capsys):
+    proj = _project(tmp_path)
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_brief", "build", "--project", proj, "--length", "30",
+                         "--mood", "calm", "--hook", "h", "--tone-bias", "20,0",
+                         "--out-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match="tone_bias"):
+        reel_brief.main()

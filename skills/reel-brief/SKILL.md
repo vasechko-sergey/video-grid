@@ -66,12 +66,14 @@ edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
   wants several reels, run the conveyor one reel at a time (a project directory
   per reel).
 - **`tone_bias` is a brief-level colour field match-grade reads** (design
-  2026-09-03 §2) — `Spec.tone_bias: tuple | None`. `None`, the default, takes
-  the mood preset's own displacement; an authored `(p5, p50, p95)` triple of
-  luma-unit displacements outranks the preset's, and an authored `(0, 0, 0)` is
-  a real, different answer from leaving it unset — *this mood, but leave my
-  colour alone*. `reel_brief build`'s CLI has no `--tone-bias` flag today, so
-  every brief this skill writes leaves it `None` (the preset's own taste).
-  Authoring it means constructing `Spec` directly — never hand-edit
-  `SPEC.json` to add it, the same rule as the line below.
+  2026-09-03 §2) — `Spec.tone_bias: tuple | None`, authored with
+  `--tone-bias p5,p50,p95` (one comma-separated value, e.g. `--tone-bias
+  20,0,-18`). Ask for it only when the user says something about colour; it is
+  not one of the standing questions. **Omitting the flag and passing `0,0,0`
+  are different answers, and the difference is the point:** omitted leaves it
+  `None`, which takes the mood preset's own displacement, while `0,0,0` says
+  *this mood, but leave my colour alone*. A malformed triple is refused by
+  `Spec` with a message naming the value, so a typo stops the brief rather than
+  reaching `match_grade`. Never hand-edit `SPEC.json` to add it — re-run
+  `build` with the flag, the same rule as the line below.
 - You never hand-edit `SPEC.json`/`SPEC.md` — the CLI regenerates them from answers.
