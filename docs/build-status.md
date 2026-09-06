@@ -4,13 +4,54 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-03._
+_Last updated: 2026-09-06._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **The queue stops being a history — the backlog's closed rows move to an
+  archive (2026-09-06)** — branch `chore/backlog-archive`, docs only, no code.
+
+  Measured before moving anything: **39 of the 86 rows in `docs/backlog.md` were
+  closed**, and they held **54 KB of a 131 KB file — 41%**, against 19 KB (15%)
+  of actually-open rows. A file whose own first line calls it "the only document
+  that holds priority" had become three parts history to one part queue, because
+  the deferral rule says to file a row and nothing ever said to retire one.
+
+  The rows moved to [backlog-closed.md](backlog-closed.md) **with their closure
+  notes intact**, rather than being deleted, on a checked premise: the closure
+  note is the one thing no other document carries. `CHANGELOG.md` records what
+  changed and `build-status.md` what was built, but neither says why the
+  obstacle a row named turned out not to be the obstacle — and several of these
+  closed exactly that way (`Spec.tone_bias`'s row blamed argparse for having no
+  3-tuple type; the repo had already solved that shape five times, in `reframe`'s
+  `--color`/`--rect`/`--pan` and `track`'s `--seed`). Spot-checked rather than
+  assumed: grep `argparse` across the four documents and the retraction appears
+  in **exactly one** of them — the backlog row, now archived. `CHANGELOG.md` has
+  the field and not the correction; this file's only hit is an unrelated
+  `ambiguous option` note from 2026-08-26.
+
+  Also moved: the `#1–#20` real-run status table (19 of 20 closed) and the
+  2026-08-12 housekeeping record. `backlog.md` is now **60 KB**, the archive 73 KB,
+  and every row in the queue's P1/P2 tables is `○` or `◐`.
+
+  **Four stale pointers in the OPEN rows, found on the way and fixed** — the
+  kind the audit that created this file was built to catch:
+  `check_episode._colour_fidelity` (renamed `_subject_delta_advisory` by the
+  2026-08-31 slice, and demoted from blocking to advisory); a `SAT_DELTA_MAX`
+  row still marked "blocked on R1.1" after R1.1 shipped 2026-09-03; a `·`-list
+  entry pointing at a "row below" that had moved to ⊘ Won't do; and the file's
+  own `_Last updated_`, stuck at 2026-08-17 through eleven slices. The
+  `⊘ re-pick MUSIC.start_offset` entry moved out of P3's prose list into the
+  ⊘ Won't do table, where a measured-dead item belongs.
+
+  [development-workflow.md](development-workflow.md)'s deferral rule gains the
+  other half — a slice files its deferrals as rows AND moves the rows it closed
+  out — since flipping a row to `✅` in place is exactly how the file got here.
+  Like the rule it sits beside, nothing machine-checks it.
 
 - **The mood contract — a mood word declares only what it commands, closing
   R1.1/R1.2/R1.3 (2026-09-03, 0.8.0)** — design

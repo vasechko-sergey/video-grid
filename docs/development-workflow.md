@@ -111,6 +111,14 @@ Nothing machine-checks this rule; a lint that matched prose deferrals to rows
 would be guessing at both ends. It is a convention that survives only by being on
 this checklist.
 
+**And the same task closes rows out of the file.** A row that a slice finishes
+moves to [backlog-closed.md](./backlog-closed.md) carrying the closure note it
+was closed with — flipping it to `✅` in place is how the queue became 41%
+history by 2026-09-06, which defeats the one thing it is for. The note is worth
+carrying rather than deleting: it is the only place that records why the
+obstacle a row named turned out not to be the obstacle, and several rows closed
+exactly that way.
+
 ## Branches & Commits
 
 - Branch per slice: `feat/<slice>` for features, `chore/<...>` / `docs/<...>` for
