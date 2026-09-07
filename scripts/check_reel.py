@@ -28,7 +28,10 @@ _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               "transitions": "not checked — no per-episode geometry supplied",
               "brief_length": "not checked — the reel manifest carries no brief_len "
                               "(SPEC.length_s); a reel authored without --spec has no "
-                              "asked-for length to be measured against"}
+                              "asked-for length to be measured against — or an "
+                              "EDL.json/reel manifest written before 2026-09-07, which "
+                              "did not carry the field; re-run edit_plan build --spec "
+                              "and regenerate EPISODES.json"}
 
 _LENGTH_TOL = 0.5      # the length gate's own ± band; build_reel absorbs a further
                        # (_LENGTH_TOL, spec.length_retime_max] of SHORTFALL on top (§3)

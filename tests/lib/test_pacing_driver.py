@@ -6,6 +6,7 @@ import pytest
 
 from scripts import pacing as driver
 from scripts import pacing as pacing_driver
+from scripts.lib import gridfit
 from scripts.lib import pacing as pacing_lib
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -355,3 +356,20 @@ def test_the_fit_report_states_the_energy_agreement_beside_the_verdict(tmp_path)
     md = pacing_driver._report(spine, fit, rejected, "MUSIC.json", {})
     assert "- **Energy agreement:**" in md
     assert "A DESCRIPTION, not a verdict" in md
+
+
+def test_the_fit_report_renders_a_computed_agreement_number(tmp_path):
+    """The test above builds a TWO-slot spine, so energy_agreement returns None and
+    the rho-formatting branch (scripts/pacing.py's f"{rho:+.2f} (Spearman rho, {used}
+    of {total} slots used)") never executes — swapping its ternary, dropping the
+    sign, or transposing used/total all shipped with the suite green (final review
+    M-2). Three hand-built slots, durations and energies both strictly monotonic in
+    opposite directions, pin the exact rendered string instead."""
+    slots = (pacing_lib.Slot(0, 0.0, 4.0, 0.1, "hook", line=2.0, dev=0.0, beats_in=4),
+             pacing_lib.Slot(1, 4.0, 3.0, 0.5, "build", line=6.0, dev=0.0, beats_in=3),
+             pacing_lib.Slot(2, 7.0, 2.0, 0.9, "peak", line=None, dev=0.0, beats_in=2))
+    spine = pacing_lib.Spine(slots, 9.0, 120.0)
+    fit = gridfit.Fit(level="bar", level_n=2, phase=0, shifts=(0.0, 0.0, 0.0),
+                      devs=(0.0, 0.0), needs=(0.0, 0.0), worst=0.0, total=9.0, fits=True)
+    md = pacing_driver._report(spine, fit, [], "MUSIC.json", {})
+    assert "- **Energy agreement:** -1.00 (Spearman rho, 3 of 3 slots used)" in md

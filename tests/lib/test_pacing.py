@@ -428,6 +428,17 @@ def test_too_few_measured_slots_names_the_reason_instead_of_returning_zero():
     assert "1 of 3" in why and "needed to rank" in why
 
 
+def test_too_few_slots_when_every_one_was_measured_names_slot_count_not_measurement():
+    """len(usable) == total == 2: the shortfall is slot count, not measurement — the
+    prior single-arm message rendered "only 2 of 2 slots carry a measured energy",
+    telling a reader the energy measurement fell short when both slots WERE measured
+    (final review I-4). This is the default rendering for every two-episode reel."""
+    slots = (_slot(0, 0.0, 4.0, 0.2), _slot(1, 4.0, 3.0, 0.5))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert rho is None and (used, total) == (2, 2)
+    assert why == "the spine has only 2 slots and 3 are needed to rank"
+
+
 def test_a_constant_series_names_the_reason_instead_of_raising():
     """statistics.correlation raises StatisticsError on a constant input; the function
     owns that refusal rather than letting it escape into the report builder."""

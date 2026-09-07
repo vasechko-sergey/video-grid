@@ -54,8 +54,13 @@ CAUSE_WHY = {
                              "measured, because its source is not in FOOTAGE.json",
     "no-reachable-line": "the fit ran and no bar line within one bar of the cut's own "
                          "length was one the closing shot could reach",
-    "": "not recorded — this artifact predates 2026-09-07, when the five causes of an "
-        "unchanged fit became distinguishable",
+    # Reworded (final review M-12): the original read "...became distinguishable, so
+    # the reel keeps its footage-derived length" once edl.py's tail was appended —
+    # attaching the CONSEQUENCE to the documentation history rather than to the
+    # absence itself. This clause ends on the absence (no cause was ever recorded),
+    # which is what the appended "so" actually follows from.
+    "": "not recorded — this artifact predates 2026-09-07 and cannot say which of "
+        "five causes applied",
 }
 
 _EPS = 1e-9
@@ -123,7 +128,7 @@ class OutroFit:
                 f"OutroFit.cause must be '' when rung is {self.rung!r} — a fit that "
                 f"chose a bar line has no absence to name, so a cause beside a "
                 f"'gap'/'no-gap' rung is a contradiction the record must not hold. "
-                f"Got {self.cause!r}")
+                f"Got {self.cause!r}. Re-run edit_plan build --pacing --music")
         # A "gap"/"no-gap" fit always CHOSE a real length (line + fade, always > 0);
         # "unchanged" carries no such promise (from_dict defaults a missing key to
         # 0.0, which stays legitimate there — nothing downstream ever reads reel_dur

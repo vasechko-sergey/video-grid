@@ -364,3 +364,10 @@ def test_every_cause_has_a_clause_and_so_does_the_unrecorded_one():
     CAUSE_WHY. A cause with no clause would render as a KeyError or a blank."""
     assert set(outro.CAUSE_WHY) == set(outro.CAUSES) | {""}
     assert all(v.strip() for v in outro.CAUSE_WHY.values())
+    # edl.py APPENDS ", so the reel keeps its footage-derived length and the music ends
+    # mid-phrase" to whichever of these renders standalone (its own docstring says so).
+    # A clause that itself ends in ", so ..." reproduces "...so no fit ever ran, so the
+    # reel keeps..." with this whole suite green — a reviewer-found defect (final
+    # review M-3) that only a check on the table itself, not on any one rendering,
+    # catches. All six current values satisfy it.
+    assert not any(", so " in v for v in outro.CAUSE_WHY.values())

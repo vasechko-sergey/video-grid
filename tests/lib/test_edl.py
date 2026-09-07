@@ -1207,6 +1207,7 @@ def test_edl_carries_the_brief_length_and_round_trips_it():
     edl = _edl(brief_len=45.0)
     assert edl.brief_len == 45.0
     assert EDL.from_dict(edl.to_dict()).brief_len == 45.0
+    assert EDL.from_dict(edl.to_dict()) == edl
 
 
 def test_an_edl_written_before_this_slice_has_no_brief_length():

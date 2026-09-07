@@ -326,8 +326,10 @@ class EDL:
                 or self.brief_len <= 0):
             raise ValueError(
                 f"EDL.brief_len must be a positive number of seconds (SPEC.length_s) "
-                f"or None, got {self.brief_len!r} — this is what check_reel's "
-                f"brief_length row divides by; re-run edit_plan build --spec")
+                f"or None, got {self.brief_len!r} — this becomes ReelManifest.brief_len, "
+                f"which is what check_reel's brief_length row divides by; EDL.brief_len "
+                f"is the authoring-time guard one hop upstream. Re-run edit_plan build "
+                f"--spec")
         if self.tone_target is not None:
             tt = self.tone_target
             if not (isinstance(tt, (tuple, list)) and len(tt) == 3

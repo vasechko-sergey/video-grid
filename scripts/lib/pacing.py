@@ -3,8 +3,9 @@
 The pure core: given the cut durations the SCENARIO fixed and MUSIC.json's beat grid +
 RMS energy curve, snap each out-point onto the coarsest musical grid level it can reach
 and emit the fitted spine. Consumed by edit_plan (beat_slot + the snapped dur) and
-rendered as PACING.{json,md} by scripts/pacing.py. stdlib only (statistics.fmean) — NO
-numpy, NO librosa — so fit_spine is bit-exact and its goldens pin exact slots.
+rendered as PACING.{json,md} by scripts/pacing.py. stdlib only (statistics.fmean,
+statistics.correlation) — NO numpy, NO librosa — so fit_spine is bit-exact and its
+goldens pin exact slots.
 
 Until 2026-07-24 this module GENERATED lengths from energy (2/4/8 beats per slot), which
 capped a slot at 4.6s at 104 BPM and silently truncated any shot that WAS the content —
@@ -281,9 +282,17 @@ def energy_agreement(slots: Sequence[Slot]) -> tuple[float | None, int, int, str
     total = len(slots)
     usable = [s for s in slots if s.beats_in != 0]
     if len(usable) < AGREEMENT_MIN_SLOTS:
-        return None, len(usable), total, (
-            f"only {len(usable)} of {total} slots carry a measured energy, and "
-            f"{AGREEMENT_MIN_SLOTS} are needed to rank")
+        # Two distinct shortfalls share this arm: too few slots exist at all, or enough
+        # exist but too many were excluded as unmeasured. len(usable) == total means
+        # every slot IS usable and the count is simply too small to rank — saying
+        # "only 2 of 2 slots carry a measured energy" there would name the wrong
+        # shortfall (final review I-4): nothing was excluded, there just aren't three.
+        why = (f"the spine has only {total} slots and {AGREEMENT_MIN_SLOTS} are needed "
+               f"to rank"
+               if len(usable) == total else
+               f"only {len(usable)} of {total} slots carry a measured energy, and "
+               f"{AGREEMENT_MIN_SLOTS} are needed to rank")
+        return None, len(usable), total, why
     durs = [s.dur for s in usable]
     ens = [s.energy for s in usable]
     # correlation() raises StatisticsError when either input is constant, and under

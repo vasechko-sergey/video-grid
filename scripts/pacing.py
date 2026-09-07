@@ -55,7 +55,11 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
 
 def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
     rho, used, total, why = pacing.energy_agreement(spine.slots)
-    agreement = (f"{rho:+.2f} (Spearman rho, {used} of {total} slots measured)"
+    # "used", not "measured": energy_agreement COUNTS a beats_in == -1 slot (not
+    # recorded, design §5) as usable, so a pre-slice spine would otherwise claim
+    # "18 of 18 slots measured" when nothing was ever recorded as measured (free fix,
+    # final review).
+    agreement = (f"{rho:+.2f} (Spearman rho, {used} of {total} slots used)"
                  if rho is not None else f"not computed — {why}")
     lines = ["# Pacing — fit report", "",
              f"- **Music:** `{Path(music_path).name}`",
