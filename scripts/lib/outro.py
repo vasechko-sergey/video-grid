@@ -38,13 +38,20 @@ CAUSES = ("no-bars", "no-episodes", "ramped-closer",
 # section. Two readers writing their own sentences for the same five states is the
 # shape that drifts, and the sentence they used to share was FALSE for four of them:
 # it said "the fit chose no bar line" where no fit had run at all.
+#
+# Each clause is self-contained and does NOT end in its own "so ..." tail: edl.py's
+# outro section APPENDS ", so the reel keeps its footage-derived length and the music
+# ends mid-phrase" to whichever of these check_reel prints standalone, and a clause
+# already ending in "so ..." produced "...so no fit ever ran, so the reel keeps..." —
+# a reviewer-found defect, cosmetic but user-visible in every rendered EDL.md.
 CAUSE_WHY = {
-    "no-bars": "the analysed music window carries no bar grid, so no fit ever ran",
-    "no-episodes": "the cut has no episodes, so there is no closing shot to move",
-    "ramped-closer": "the closing episode carries a ramp, whose played length is not "
-                     "its source length, so the fit is skipped rather than guessed",
-    "closer-not-in-footage": "the closing episode's source is not in FOOTAGE.json, so "
-                             "the room it has left could not be measured",
+    "no-bars": "no fit ever ran, because the analysed music window carries no bar grid",
+    "no-episodes": "there is no closing shot to move, because the cut has no episodes",
+    "ramped-closer": "the fit is skipped rather than guessed, because the closing "
+                     "episode carries a ramp, whose played length is not its source "
+                     "length",
+    "closer-not-in-footage": "the room the closing episode has left could not be "
+                             "measured, because its source is not in FOOTAGE.json",
     "no-reachable-line": "the fit ran and no bar line within one bar of the cut's own "
                          "length was one the closing shot could reach",
     "": "not recorded — this artifact predates 2026-09-07, when the five causes of an "
