@@ -6,6 +6,7 @@ import pytest
 
 from scripts import check_reel
 from scripts.lib import models, provenance, reel_orchestration
+from scripts.lib import outro as outro_mod
 from scripts.lib.models import CheckResult, ReelCheckSpec, ReelFailure
 
 
@@ -461,6 +462,33 @@ def test_a_residual_past_the_reporting_tolerance_is_flagged_but_advisory(tmp_pat
                          str(tmp_path / "r.json"), outro=GAP)
     assert rep.checks["outro"].passed is False
     assert rep.overall is True
+
+
+# --- named-absence Task 3: the outro reason names WHICH absence (design
+# 2026-09-07-named-absence-design.md §3) ----------------------------------------
+
+
+def test_the_outro_check_does_not_claim_a_fit_ran_when_none_did(tmp_path, monkeypatch):
+    """The one sentence check_reel printed for every unchanged fit — "the fit chose no
+    bar line" — is true only for 'no-reachable-line'. On the real run the cause was
+    'no-bars' and no fit had run (design §0.1)."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"),
+                         outro={"rung": "unchanged", "cause": "no-bars"})
+    assert rep.checks["outro"] == CheckResult("outro", None, {
+        "status": "n/a", "cause": "no-bars",
+        "reason": outro_mod.CAUSE_WHY["no-bars"], "advisory": True})
+    assert rep.overall is True
+
+
+def test_an_outro_with_no_recorded_cause_reads_as_not_recorded(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"),
+                         outro={"rung": "unchanged"})
+    assert rep.checks["outro"].detail["cause"] == ""
+    assert rep.checks["outro"].detail["reason"] == outro_mod.CAUSE_WHY[""]
 
 
 # --- grade-sensor-references Task 6: grade_faithful, judged against the DECLARED

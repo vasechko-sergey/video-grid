@@ -324,23 +324,30 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     once a ramp is present, so growing it would need the ramp arithmetic. Skipped and
     logged, never guessed."""
     if not episodes or not music.bars:
-        return episodes, outro.OutroFit(reel_dur=sum(e.play_dur() for e in episodes),
-                                        line=None, fade=fade, tail=0.0,
-                                        rung="unchanged", moved=0.0, brief_len=brief_len)
+        # Two unrelated absences shared this guard. They are named apart: an empty cut
+        # has no closing shot to move at all, while a bar-grid-less window means the
+        # ladder never runs (design 2026-09-07 §3).
+        return episodes, outro.OutroFit(
+            reel_dur=sum(e.play_dur() for e in episodes),
+            line=None, fade=fade, tail=0.0, rung="unchanged", moved=0.0,
+            brief_len=brief_len,
+            cause="no-episodes" if not episodes else "no-bars")
     last = episodes[-1]
     realized = sum(e.play_dur() for e in episodes)
-    unchanged = outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
-                               rung="unchanged", moved=0.0, brief_len=brief_len)
     if last.ramp is not None:
         _log(f"outro: the closing episode carries a ramp — its played length is not its "
              f"source length, so the outro fit is skipped and the reel stays "
              f"{realized:.2f}s. Move the ramp off the last episode to fit the ending.")
-        return episodes, unchanged
+        return episodes, outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
+                                        rung="unchanged", moved=0.0, brief_len=brief_len,
+                                        cause="ramped-closer")
     clip = next((c for c in footage.clips if c.source == last.source), None)
     if clip is None:
         _log(f"outro: {last.source!r} is not in FOOTAGE — cannot measure the closing "
              f"shot's room, so the reel stays {realized:.2f}s")
-        return episodes, unchanged
+        return episodes, outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
+                                        rung="unchanged", moved=0.0, brief_len=brief_len,
+                                        cause="closer-not-in-footage")
     grow_max = max(0.0, clip.room_after(last.start) - last.dur)
     shrink_max = max(0.0, last.play_dur() - outro.MIN_LAST)
     fit = outro.fit_outro(music.bars, music.vocal_spans, realized,

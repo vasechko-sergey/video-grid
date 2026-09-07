@@ -1079,6 +1079,28 @@ def test_edl_outro_round_trips_the_brief_length():
     assert back == fit and back.brief_len == 30.0
 
 
+# --- named-absence Task 3: EDL.md states the cause, not a disjunction (design
+# 2026-09-07-named-absence-design.md §3) ----------------------------------------
+
+
+def _edl_with_outro(fit):
+    """The EDL(episodes=(_ep(),), outro=fit) shape every outro markdown test above
+    already builds by hand."""
+    return EDL(episodes=(_ep(),), outro=fit)
+
+
+def test_edl_markdown_states_the_outro_cause_instead_of_a_disjunction():
+    """EDL.md used to hedge: "none that the closing shot has room for, OR no bar grid
+    at all" — a disjunction, when the producer knew which (design §0.1)."""
+    edl = _edl_with_outro(OutroFit(reel_dur=34.93, line=None, fade=0.3, tail=0.0,
+                                   rung="unchanged", moved=0.0, brief_len=45.0,
+                                   cause="no-bars"))
+    md = edl.to_markdown()
+    assert outro_mod.CAUSE_WHY["no-bars"] in md
+    assert " or no bar " not in md          # the disjunction is gone
+    assert "-10.07s vs the brief's 45.0s" in md   # the existing clause is untouched
+
+
 # --- grade-shipped-pixels Task 1: EDL.tone_target — the reel's common tone target
 # (design docs/specs/2026-08-30-grade-shipped-pixels-design.md §2) ---
 

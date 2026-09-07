@@ -71,13 +71,17 @@ def test_window_to_episode_missing_required_composition_raises():
         edit_plan.window_to_episode(clip, clip.windows[0], grid="thirds")
 
 
-def _footage():
-    return Footage(clips=[
+def _footage(drop_last=False):
+    """`drop_last` (Task 3's outro-cause tests, below) omits the B.mp4 clip — the
+    source _two_episodes()'s closing episode uses — so a lookup by source misses,
+    without disturbing any of this file's many other zero-arg callers."""
+    clips = [
         _clip(source="A.mp4", windows=[
             FootageWindow(start=0.5, dur=2.0, shot_type="wide", people=1, motion=0.3, shake=0.0),
             FootageWindow(start=5.0, dur=3.0, shot_type="close", people=1, motion=0.5, shake=0.0)]),
         _clip(source="B.mp4", windows=[
-            FootageWindow(start=1.0, dur=2.5, shot_type="medium", people=2, motion=0.2, shake=0.0)])])
+            FootageWindow(start=1.0, dur=2.5, shot_type="medium", people=2, motion=0.2, shake=0.0)])]
+    return Footage(clips=clips[:-1] if drop_last else clips)
 
 
 def test_build_edl_resolves_refs_and_projects_in_order():
@@ -1391,6 +1395,71 @@ def test_write_edit_plan_threads_music_into_the_fit(tmp_path, monkeypatch):
                                        (0.0, 0.5, 1.0, 1.5), (0.3,), 2.0).to_dict()))
     edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), music=str(mj))
     assert isinstance(seen["music"], MusicSpec)
+
+
+# --- named-absence Task 3: the three causes _apply_outro knows itself (design
+# 2026-09-07-named-absence-design.md §3) ----------------------------------------
+
+
+def _two_episodes(*, ramp_last=False):
+    """Two back-to-back episodes on _footage()'s own two sources (A.mp4/B.mp4) —
+    _apply_outro only ever reads the LAST one (source/start/dur/ramp), so the first
+    exists only to make this a cut, not a single clip. `ramp_last` reuses
+    _ramped_episode's own region ([0.6s, 1.4s]), well inside this 2.5s window, so
+    validate_window never fights the fixture."""
+    last = dict(source="B.mp4", start=1.0, dur=2.5)
+    if ramp_last:
+        last["ramp"] = {"at": 1.0, "factor": 0.5, "ease": 0.3, "hold": 0.2}
+    return [_edl_ep(source="A.mp4", start=0.5, dur=2.0), _edl_ep(**last)]
+
+
+def _outro_music(**kw):
+    """MusicSpec built from this file's own outro fixtures' shape (e.g.
+    test_apply_outro_extends_the_last_episode) — bars/vocal_spans are the only
+    fields a caller below overrides; none of the four tests reach the ladder that
+    reads anything past them.
+
+    Named `_outro_music`, not the brief's own `_music`: a DIFFERENT `_music(tmp_path,
+    ...)` already lives at line ~1593 (the music_digest section, whose own comment
+    notes it is "kept exactly as named in task-3-brief.md" — a different slice's
+    Task 3). Both briefs independently reached for the same free name; this one loses
+    since it is defined first and would otherwise be silently shadowed by the later
+    def at module-exec time (the `_digest_spine`/`_digest_footage` rename just above
+    that section is the same move for `_spine`/`_footage`)."""
+    d = dict(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+             beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+             bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    d.update(kw)
+    return MusicSpec(**d)
+
+
+def test_apply_outro_names_the_absence_when_the_music_has_no_bar_grid():
+    """All four MUSIC*.json of the only real run carried `bars: []`; the whole
+    outro-fit feature reported "n/a" and did nothing (retro R7.1)."""
+    eps, fit = edit_plan._apply_outro(_two_episodes(), _footage(),
+                                      _outro_music(bars=()), fade=0.3, brief_len=45.0)
+    assert (fit.rung, fit.cause) == ("unchanged", "no-bars")
+    assert fit.brief_len == 45.0
+
+
+def test_apply_outro_names_a_ramped_closing_episode():
+    eps, fit = edit_plan._apply_outro(_two_episodes(ramp_last=True), _footage(),
+                                      _outro_music(), fade=0.3, brief_len=None)
+    assert (fit.rung, fit.cause) == ("unchanged", "ramped-closer")
+
+
+def test_apply_outro_names_a_closing_source_missing_from_footage():
+    eps, fit = edit_plan._apply_outro(_two_episodes(), _footage(drop_last=True),
+                                      _outro_music(), fade=0.3, brief_len=None)
+    assert (fit.rung, fit.cause) == ("unchanged", "closer-not-in-footage")
+
+
+def test_apply_outro_names_an_empty_cut():
+    """_apply_outro's guard is `not episodes or not music.bars` — one branch for two
+    unrelated absences. Unreachable through build_edl today; lumping it under
+    'no-bars' would re-create in miniature the collapse this field ends."""
+    eps, fit = edit_plan._apply_outro([], _footage(), _outro_music(), fade=0.3, brief_len=None)
+    assert (fit.rung, fit.cause) == ("unchanged", "no-episodes")
 
 
 # --- Task 7 mutation battery: two coverage holes a review found in the original

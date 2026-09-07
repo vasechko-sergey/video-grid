@@ -12,7 +12,7 @@ import imagehash
 from PIL import Image
 
 from scripts import color_measure
-from scripts.lib import color, ffbin, proc, provenance, reel_final, safezones
+from scripts.lib import color, ffbin, outro as outro_mod, proc, provenance, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -377,8 +377,14 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         # comment used to give was TAIL_MIN; that one WAS measured on 2026-08-18 and is
         # gone — the point survives, the illustration did not.)
         if outro.get("rung", "unchanged") == "unchanged":
+            # WHICH absence, not merely that there was one. Until 2026-09-07 this
+            # printed "the fit chose no bar line" for all five causes — true for
+            # exactly one of them, and not the one that fired on the only real run.
+            cause = outro.get("cause", "")
             checks["outro"] = CheckResult("outro", None, {
-                "status": "n/a", "reason": "the fit chose no bar line (rung 'unchanged')",
+                "status": "n/a", "cause": cause,
+                "reason": (outro_mod.CAUSE_WHY.get(cause)
+                           or f"unrecognized cause {cause!r}"),
                 "advisory": True})
         else:
             asked = float(outro["reel_dur"])

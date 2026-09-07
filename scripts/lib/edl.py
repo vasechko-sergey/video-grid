@@ -23,7 +23,7 @@ from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
 from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
-from scripts.lib.outro import OutroFit
+from scripts.lib.outro import CAUSE_WHY, OutroFit
 from scripts.lib.project import ProjectConfig, resolve_manifest
 
 
@@ -478,10 +478,12 @@ class EDL:
                        f"vocal-free space, so the reel ends on the nearest line at "
                        f"{o.line:.2f}s under a longer fade")
             else:
-                why = ("no bar line within one bar of the cut's own length could be "
-                       "reached (none that the closing shot has room for, or no bar "
-                       "grid at all), so the reel keeps its footage-derived length "
-                       "and the music ends mid-phrase")
+                # One wording table, shared with check_reel's outro reason. This used to
+                # be a disjunction — "none that the closing shot has room for, or no bar
+                # grid at all" — written by a producer that knew which (design §0.1).
+                why = (f"{CAUSE_WHY.get(o.cause) or f'unrecognized cause {o.cause!r}'}, "
+                       f"so the reel keeps its footage-derived length and the music "
+                       f"ends mid-phrase")
             line_txt = "–" if o.line is None else f"{o.line:.2f}s"
             # The distance from SPEC.length_s is the reported half of the length
             # tension (design §6). Absent brief -> say the comparison could not be
