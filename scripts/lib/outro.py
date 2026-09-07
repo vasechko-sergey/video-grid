@@ -6,7 +6,7 @@ slice reduces to picking ONE number, the reel's length, because mix already fade
 over [dur - fade, dur] — so a reel of `line + fade` starts its fade exactly on the
 bar line and no ffmpeg stage changes at all (design §1)."""
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 BAR_BEATS = 4       # 4/4 assumed — beats.py's downbeat detector reads this too (§11.3)
 TAIL_MARGIN = 0.05  # vocal-free seconds required ON TOP OF the fade. DERIVED, not
@@ -30,6 +30,27 @@ MIN_LAST = 1.0      # the last episode may not be shrunk below this. A floor, no
                     # finding (§11.7): without it a one-bar step down can leave a 2.5s
                     # closing shot at 0.3s, which is a glitch, not an ending.
 RUNGS = ("gap", "no-gap", "unchanged")
+
+CAUSES = ("no-bars", "no-episodes", "ramped-closer",
+          "closer-not-in-footage", "no-reachable-line")
+
+# One wording table for both readers — check_reel's outro reason and EDL.md's outro
+# section. Two readers writing their own sentences for the same five states is the
+# shape that drifts, and the sentence they used to share was FALSE for four of them:
+# it said "the fit chose no bar line" where no fit had run at all.
+CAUSE_WHY = {
+    "no-bars": "the analysed music window carries no bar grid, so no fit ever ran",
+    "no-episodes": "the cut has no episodes, so there is no closing shot to move",
+    "ramped-closer": "the closing episode carries a ramp, whose played length is not "
+                     "its source length, so the fit is skipped rather than guessed",
+    "closer-not-in-footage": "the closing episode's source is not in FOOTAGE.json, so "
+                             "the room it has left could not be measured",
+    "no-reachable-line": "the fit ran and no bar line within one bar of the cut's own "
+                         "length was one the closing shot could reach",
+    "": "not recorded — this artifact predates 2026-09-07, when the five causes of an "
+        "unchanged fit became distinguishable",
+}
+
 _EPS = 1e-9
 
 
@@ -71,10 +92,31 @@ class OutroFit:
                                      # requirement that was applied and met, which is
                                      # the opposite of what happened. 0.0 there means
                                      # "not applicable", not "nothing was asked".
+    cause: str = ""                  # WHY this fit is "unchanged" — one of CAUSES.
+                                     # "" on every gap/no-gap fit (a fit that chose a
+                                     # bar line has no absence to name) and on an
+                                     # artifact written before 2026-09-07. FIVE
+                                     # producers can reach "unchanged" and until this
+                                     # field every one wrote a byte-identical record,
+                                     # so check_reel asserted "the fit chose no bar
+                                     # line" for a run whose music had no bar grid and
+                                     # where no fit had run (design 2026-09-07 §3).
 
     def __post_init__(self) -> None:
         if self.rung not in RUNGS:
             raise ValueError(f"OutroFit.rung must be one of {RUNGS}, got {self.rung!r}")
+        if self.rung == "unchanged":
+            if self.cause != "" and self.cause not in CAUSES:
+                raise ValueError(
+                    f"OutroFit.cause must be one of {CAUSES}, or '' for an artifact "
+                    f"written before 2026-09-07 which recorded none; got "
+                    f"{self.cause!r}. Re-run edit_plan build --pacing --music")
+        elif self.cause:
+            raise ValueError(
+                f"OutroFit.cause must be '' when rung is {self.rung!r} — a fit that "
+                f"chose a bar line has no absence to name, so a cause beside a "
+                f"'gap'/'no-gap' rung is a contradiction the record must not hold. "
+                f"Got {self.cause!r}")
         # A "gap"/"no-gap" fit always CHOSE a real length (line + fade, always > 0);
         # "unchanged" carries no such promise (from_dict defaults a missing key to
         # 0.0, which stays legitimate there — nothing downstream ever reads reel_dur
@@ -96,7 +138,7 @@ class OutroFit:
     def to_dict(self) -> dict:
         return {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,
                 "tail": self.tail, "rung": self.rung, "moved": self.moved,
-                "brief_len": self.brief_len, "need": self.need}
+                "brief_len": self.brief_len, "need": self.need, "cause": self.cause}
 
     @classmethod
     def from_dict(cls, d: dict) -> "OutroFit":
@@ -106,7 +148,8 @@ class OutroFit:
         return cls(reel_dur=d.get("reel_dur", 0.0), line=d.get("line"),
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
                    rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
-                   brief_len=d.get("brief_len"), need=d.get("need", 0.0))
+                   brief_len=d.get("brief_len"), need=d.get("need", 0.0),
+                   cause=d.get("cause", ""))
 
 
 def bar_seconds(tempo: float) -> float:
@@ -181,10 +224,16 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         raise ValueError(f"outro.fit_outro: bar_s must be a positive number of seconds "
                          f"(one bar) — got {bar_s!r}; derive it with outro.bar_seconds")
     reel_dur = float(reel_dur)
+    # The FINAL return's cause: the ladder ran and rejected every candidate.
     unchanged = OutroFit(reel_dur=reel_dur, line=None, fade=float(fade), tail=0.0,
-                         rung="unchanged", moved=0.0, brief_len=brief_len)
+                         rung="unchanged", moved=0.0, brief_len=brief_len,
+                         cause="no-reachable-line")
     if not bars:
-        return unchanged
+        # A DIFFERENT absence: with no bar grid the ladder below never runs at all.
+        # It must be its own object — returning the shared `unchanged` here would
+        # label it "no-reachable-line" and re-create in one line exactly the collapse
+        # this field exists to end (design 2026-09-07 §3).
+        return replace(unchanged, cause="no-bars")
 
     def pick(cands, f):
         ref = brief_len if brief_len is not None else reel_dur

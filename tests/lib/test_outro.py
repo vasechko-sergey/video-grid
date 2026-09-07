@@ -62,7 +62,7 @@ def test_unchanged_when_no_bars():
     fit = outro.fit_outro((), ((0.0, 5.0),), reel_dur=34.044, bar_s=BAR, fade=0.5,
                           music_dur=42.0, grow_max=11.5, shrink_max=3.0)
     assert fit == OutroFit(reel_dur=34.044, line=None, fade=0.5, tail=0.0,
-                           rung="unchanged", moved=0.0)
+                           rung="unchanged", moved=0.0, cause="no-bars")
 
 
 def test_the_music_window_bounds_the_candidates():
@@ -309,3 +309,58 @@ def test_from_dict_refuses_a_gap_rung_missing_reel_dur():
     # that gap instead of moving it.
     with pytest.raises(ValueError, match="reel_dur must be a positive number"):
         OutroFit.from_dict({"rung": "gap"})
+
+
+def test_no_bars_and_no_reachable_line_are_different_causes():
+    """Both return rung 'unchanged'; until 2026-09-07 the two records were
+    byte-identical, and check_reel asserted "the fit chose no bar line" for runs
+    where no fit ever ran (design §0.1)."""
+    no_bars = outro.fit_outro([], [], reel_dur=10.0, bar_s=2.0, fade=0.3,
+                              music_dur=30.0, grow_max=1.0, shrink_max=1.0)
+    assert (no_bars.rung, no_bars.cause) == ("unchanged", "no-bars")
+    # bars exist but every one is more than a bar away from the cut's length, so the
+    # ladder runs and the +/- one-bar band rejects all of them.
+    unreachable = outro.fit_outro([40.0, 42.0], [], reel_dur=10.0, bar_s=2.0, fade=0.3,
+                                  music_dur=60.0, grow_max=1.0, shrink_max=1.0)
+    assert (unreachable.rung, unreachable.cause) == ("unchanged", "no-reachable-line")
+
+
+def test_a_successful_fit_carries_no_cause():
+    """A fit that chose a bar line has no absence to name."""
+    fit = outro.fit_outro([9.7], [(0.0, 5.0), (9.0, 20.0)], reel_dur=10.0, bar_s=2.0,
+                          fade=0.3, music_dur=30.0, grow_max=1.0, shrink_max=1.0)
+    assert fit.rung == "gap" and fit.cause == ""
+
+
+def test_a_cause_beside_a_chosen_rung_is_refused():
+    with pytest.raises(ValueError, match="must be '' when rung is"):
+        outro.OutroFit(reel_dur=10.0, line=9.7, fade=0.3, tail=1.0, rung="gap",
+                       moved=0.0, cause="no-bars")
+
+
+def test_an_unknown_cause_is_refused():
+    with pytest.raises(ValueError, match="OutroFit.cause must be one of"):
+        outro.OutroFit(reel_dur=10.0, line=None, fade=0.3, tail=0.0, rung="unchanged",
+                       moved=0.0, cause="because")
+
+
+def test_an_edl_written_before_this_slice_loads_with_no_cause():
+    """'' is not-recorded, never 'no reason'. Pre-2026-09-07 EDL.json must load."""
+    fit = outro.OutroFit.from_dict({"reel_dur": 34.93, "line": None, "fade": 0.3,
+                                    "tail": 0.0, "rung": "unchanged", "moved": 0.0,
+                                    "brief_len": 45.0, "need": 0.0})
+    assert fit.cause == ""
+
+
+def test_the_cause_round_trips():
+    fit = outro.OutroFit(reel_dur=10.0, line=None, fade=0.3, tail=0.0,
+                         rung="unchanged", moved=0.0, cause="ramped-closer")
+    assert outro.OutroFit.from_dict(fit.to_dict()) == fit
+    assert fit.to_dict()["cause"] == "ramped-closer"
+
+
+def test_every_cause_has_a_clause_and_so_does_the_unrecorded_one():
+    """Both readers (check_reel's outro reason, EDL.md's outro section) print from
+    CAUSE_WHY. A cause with no clause would render as a KeyError or a blank."""
+    assert set(outro.CAUSE_WHY) == set(outro.CAUSES) | {""}
+    assert all(v.strip() for v in outro.CAUSE_WHY.values())
