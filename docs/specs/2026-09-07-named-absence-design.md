@@ -306,13 +306,14 @@ A new **advisory** row, added to `models._ADVISORY_CHECKS` and to
 not-checked and never as "on target"):
 
 ```json
-"brief_length": {"passed": false,
-                 "detail": {"brief": 45.0, "delivered": 34.93,
-                            "gap": -10.07, "gap_frac": -0.224,
-                            "budget": 1.5, "advisory": true}}
+{"brief": 45.0, "delivered": 34.93, "gap": -10.07, "gap_frac": -0.2238,
+ "budget": 1.5, "advisory": true, "pass": false}
 ```
 
-`gap` is signed (negative = short). `gap_frac` is `gap / brief`.
+`gap` is signed (negative = short). `gap_frac` is `gap / brief`. The flattening —
+`detail`'s fields sitting beside a `pass` key, no separate `passed`/`detail`
+envelope — is `CheckResult.to_dict`'s doing, not something `_brief_length_check`
+constructs itself.
 
 `EDL.brief_len` validates as a positive number or `None` — the same contract
 `Spec.length_s` already enforces at the source, and it means a corrupt value
@@ -418,10 +419,14 @@ Rendered into `_report`'s header, beside the existing `Verdict` line:
 
 ```
 - **Verdict:** fits
-- **Energy agreement:** -0.57 (Spearman rho over 8 of 8 measured slots)
+- **Energy agreement:** -0.57 (Spearman rho, 8 of 8 slots used)
   Negative = shorter shots where the music is louder. A DESCRIPTION, not a
   verdict — no threshold has been measured (design 2026-09-07 §7).
 ```
+
+("used", not "measured" — `energy_agreement` counts a `beats_in == -1` slot
+(not recorded) as usable, so "measured" would claim a measurement a pre-slice
+spine never made. Free fix taken in the final review.)
 
 **Not stored on `Spine`.** It is a pure function of the slots, and a stored copy
 would be a golden re-pin plus a second thing to keep in step for a derived

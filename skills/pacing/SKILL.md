@@ -67,16 +67,21 @@ say so rather than guessing a path.
    Add `--anchors --footage-root <root>` to also measure action anchors (one ffmpeg pass
    per episode).
 4. **Read the report.** `PACING.md` names the level chosen and every coarser level it
-   rejected WITH the number that rejected it. A miss is actionable, not fatal: try
-   another window, change a scenario length, or accept an off-grid reel (check_reel's
-   beat gate is advisory).
+   rejected WITH the number that rejected it, plus an **Energy agreement** line
+   (Spearman rho between each slot's duration and the music's energy there — a
+   description, not a verdict, no threshold is calibrated) and, when any slot's
+   energy is `fit_spine`'s `0.5` fallback rather than a measurement, a footnote
+   naming how many. A miss is actionable, not fatal: try another window, change a
+   scenario length, or accept an off-grid reel (check_reel's beat gate is advisory).
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/reels/<reel>/PACING.json
    [--spec <run>/reels/<reel>/SPEC.json] [--music <run>/reels/<reel>/MUSIC.json]` — this is what writes the
    snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a
    brief exists: this pass re-stamps the EDL from scratch, so a dropped `--spec`
    re-resolves the variety preset to `balanced` **and wipes `EDL.platform` back to
    `""`**, which reverts `check_reel`'s safe zone and the bottom title's y layout to
-   the generic table. `edit_plan build` logs the platform it resolved on every run —
+   the generic table. It also clears `EDL.brief_len` (`SPEC.length_s`), which turns
+   the advisory `brief_length` check not-checked instead of comparing the reel
+   against the brief. `edit_plan build` logs the platform it resolved on every run —
    read that line to confirm the second pass kept it. Also pass `--music` (the SAME
    `MUSIC.json` step 3 analysed): it fits the reel's *end* to a bar line —
    `edit_plan`'s own outro ladder, distinct from this skill's cut-grid fit — by

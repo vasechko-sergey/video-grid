@@ -31,13 +31,17 @@ cut is a new review).
 
 - **`<run>/reels/<reel>/deliveries/REEL_v{n}.mp4`** (required) — the delivered reel.
 - **`report.json`** (required) — `check_reel`'s report: the mechanical gates + the
-  **Slice A advisory signals** (`key_action`/`pad_bars`/`transitions`/`safe_zones`/
-  `beat`) the reviewer cites as evidence.
+  **advisory signals** (`key_action`/`pad_bars`/`transitions`/`safe_zones`/`beat`/
+  `brief_length`/`outro`) the reviewer cites as evidence. `brief_length` is
+  advisory by design and expected to be frequently red (design 2026-09-07 §7) —
+  a red row there is a real gap to weigh, not a mechanical failure.
 - **`SPEC.json`** (optional) — the brief's intent. Absent (a bare autonomous run) →
   review against the `EDL` + the run's stated intent; say so.
 - **`EDL.md`** (required) — the realized plan (per-episode source/window/shot/
   layout/comp/motion/beat/notes).
-- **`MUSIC.json` / `PACING.json`** (optional) — the mood target + energy spine.
+- **`MUSIC.json` / `PACING.json` / `PACING.md`** (optional) — the mood target +
+  energy spine; `PACING.md`'s Verdict and Energy agreement lines are what the
+  `spine` axis's evidence actually cites (design 2026-09-07 §6).
 
 ## Procedure
 

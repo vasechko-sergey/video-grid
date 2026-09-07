@@ -223,7 +223,9 @@ say so rather than guessing a path.
    --music <run>/reels/<reel>/MUSIC.json` — carry `--spec` through when reel-brief (step 5) ran,
    same as step 6's first build. This second pass re-stamps `EDL.json` from scratch,
    so a dropped `--spec` silently re-resolves the variety preset to `balanced` and
-   re-stamps that instead of the brief's mood. `--music` here does a SECOND job
+   re-stamps that instead of the brief's mood. It also clears `EDL.brief_len`, which
+   turns the advisory `brief_length` check not-checked instead of comparing the
+   reel against the brief. `--music` here does a SECOND job
    beyond feeding the beat grid: it fits the reel's *end* to a bar line
    (`lib/outro.fit_outro`, applied after this pass binds every slot) so the music
    resolves on a downbeat instead of stopping mid-phrase — read `EDL.md`'s **Music

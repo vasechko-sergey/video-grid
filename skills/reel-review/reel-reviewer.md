@@ -17,10 +17,14 @@ read by a human; your deliverable is the file you write.
 
 ## Mechanical + advisory signals (check_reel report.json)
 {REPORT_JSON — paste report.json. The advisory signals key_action / pad_bars /
- transitions / safe_zones / beat are yours to cite as evidence.}
+ transitions / safe_zones / beat / brief_length / outro are yours to cite as
+ evidence. `brief_length` is advisory by design and expected to be frequently
+ red (design 2026-09-07 §7) — a red row there is a real gap to weigh, not a
+ mechanical failure.}
 
 ## Music / pacing (if present)
-{MUSIC_JSON / PACING_JSON — mood_features + the energy spine, or "silent reel".}
+{MUSIC_JSON / PACING_MD — mood_features + the fit report's Verdict and Energy
+ agreement lines, or "silent reel".}
 
 ## The reel + stills
 The reel is at {REEL_PATH}. Contact-sheet stills: {STILL_PATHS} (hook, ending,
@@ -35,7 +39,7 @@ in your summary.
 - mood             — mood/story land?                            (SPEC.mood vs MUSIC mood_features; the stills)
 - hook             — opening strong, first ~1–3s?                (ep0 shot/layout/description + hook still)
 - ending           — ending right, last ~3s?                    (last-ep + ending still + SPEC.ending)
-- spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; beat advisory)
+- spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; the Energy agreement number; beat advisory)
 - edl_completeness — anything from the EDL missing/weak?         (EDL episodes vs SPEC; variety/transitions signals)
 - trend_flavor     — classic base AND trend flavor?              (general knowledge — NO source of truth)
 - colour           — do the episodes read as ONE grade?          (the per-episode mid stills side by side + EDL.md's shot descriptions)

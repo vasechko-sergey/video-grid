@@ -484,11 +484,30 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      silence) and says so in the report. A known-imperfect ending, not a failure —
      weigh whether a different closing shot (more `room_after`) or a different music
      window would do better before accepting it.
-   - **`unchanged`** — no bar line was reachable within one bar in either direction,
-     bounded by the closing shot's own room to grow or shrink; the reel keeps its
-     footage-derived length and the music will end mid-phrase. The log names the
-     grow/shrink room it had to work with — a shot with more `room_after` (a longer
-     take, or moving the outro to a different episode) is the usual fix.
+   - **`unchanged`** — nothing moved; the reel keeps its footage-derived length and
+     the music will end mid-phrase. `EDL.md`'s **Music outro** section now names
+     WHICH of five causes it was (`OutroFit.cause`) instead of one reading for all
+     five — the exact collapse this field replaced (design 2026-09-07 §3). Each
+     has its own remedy:
+     - **`no-bars`** — the analysed music window carries no bar grid, so the fit
+       never ran; re-analyse the window or pick a track with a detectable bar grid.
+     - **`ramped-closer`** — the closing episode carries a ramp, whose played
+       length is not its source length, so the fit is skipped rather than
+       guessed; move the ramp off the last episode.
+     - **`closer-not-in-footage`** — the closing episode's source is not in
+       `FOOTAGE.json`, so its remaining room could not be measured; re-run intake
+       so the closing source is in `FOOTAGE.json`.
+     - **`no-reachable-line`** — the fit ran and no bar line within one bar of the
+       cut's own length was one the closing shot could reach. Only this cause's
+       log line names the grow/shrink room it had to work with — a shot with more
+       `room_after` (a longer take, or moving the outro to a different episode),
+       or a different music window, is the usual fix.
+     - **`""`** (empty) — a pre-2026-09-07 `EDL.json`, written before the five
+       causes became distinguishable; re-run `edit_plan build --pacing --music`
+       to regenerate it.
+     - **`no-episodes`** — the cut has no episodes to move. Unreachable through
+       `edit_plan build` today (design §3); named here only so the vocabulary is
+       complete, not because you will see it.
 
    `EDL.md`'s outro section also shows the move (seconds, signed) and, when
    `--spec` supplied a brief, the distance from `SPEC.length_s` — the fit does not
