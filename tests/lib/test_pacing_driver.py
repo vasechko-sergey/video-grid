@@ -341,3 +341,17 @@ def test_build_pacing_warns_when_the_edl_has_no_base_dur(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "predates the 2026-08-16 fixed-point slice" in err
     assert "rebuild the EDL WITHOUT --pacing/--music" in err
+
+
+# --- energy_agreement reaches the fit report (design 2026-09-07-named-absence-design.md
+# §7) --------------------------------------------------------------------------------
+
+
+def test_the_fit_report_states_the_energy_agreement_beside_the_verdict(tmp_path):
+    beats = [i * 0.5 for i in range(40)]
+    energy = [0.1] * 20 + [0.9] * 20
+    spine, fit, rejected = pacing_lib.fit_spine([4.0, 2.0], beats, energy, 1.0, 120.0,
+                                                [(-0.25, 0.25)] * 2)
+    md = pacing_driver._report(spine, fit, rejected, "MUSIC.json", {})
+    assert "- **Energy agreement:**" in md
+    assert "A DESCRIPTION, not a verdict" in md

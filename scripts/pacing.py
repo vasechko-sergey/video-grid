@@ -54,10 +54,21 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
 
 
 def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
+    rho, used, total, why = pacing.energy_agreement(spine.slots)
+    agreement = (f"{rho:+.2f} (Spearman rho, {used} of {total} slots measured)"
+                 if rho is not None else f"not computed — {why}")
     lines = ["# Pacing — fit report", "",
              f"- **Music:** `{Path(music_path).name}`",
              f"- **Level:** {fit.level} (every {fit.level_n} beat(s), phase {fit.phase})",
-             f"- **Verdict:** {'fits' if fit.fits else 'OFF-GRID — see below'}", "",
+             f"- **Verdict:** {'fits' if fit.fits else 'OFF-GRID — see below'}",
+             # `dev` and `fits` were the whole summary, and they cannot tell a
+             # wrong-but-aligned cut from a right one: the run's shipped spine and the
+             # 18-episode cut it came from both fit, and differ by 1.08 in this number
+             # (design 2026-09-07 §0.3).
+             f"- **Energy agreement:** {agreement}",
+             "  Negative = shorter shots where the music is louder. A DESCRIPTION, not "
+             "a verdict — no threshold has been measured (design 2026-09-07 §7).",
+             "",
              "| level | step | worst | needed | verdict |",
              "|-------|-----:|------:|-------:|---------|"]
     for f in list(rejected) + ([fit] if fit.fits else []):

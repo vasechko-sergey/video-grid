@@ -371,3 +371,67 @@ def test_the_markdown_of_a_fully_measured_spine_carries_no_footnote():
     spine, _, _ = pacing.fit_spine([2.0, 2.0], beats, energy, 1.0, 120.0,
                                    [(-0.25, 0.25)] * 2)
     assert "contain no beat" not in spine.to_markdown()
+
+
+# --- energy_agreement: does the cut agree with the music's energy? (design
+# 2026-09-07-named-absence-design.md §6) -----------------------------------------------
+
+
+def _slot(i, start, dur, energy, beats_in=4):
+    return pacing.Slot(i, start, dur, energy, "hook" if i == 0 else "build",
+                       line=None, dev=0.0, beats_in=beats_in)
+
+
+def test_energy_agreement_is_negative_when_short_shots_sit_where_it_is_loud():
+    slots = (_slot(0, 0.0, 4.0, 0.2), _slot(1, 4.0, 3.0, 0.5),
+             _slot(2, 7.0, 2.0, 0.9))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert rho == pytest.approx(-1.0)
+    assert (used, total, why) == (3, 3, "")
+
+
+def test_energy_agreement_is_positive_when_the_cut_inverts_the_curve():
+    slots = (_slot(0, 0.0, 2.0, 0.2), _slot(1, 2.0, 3.0, 0.5),
+             _slot(2, 5.0, 4.0, 0.9))
+    rho, _, _, _ = pacing.energy_agreement(slots)
+    assert rho == pytest.approx(1.0)
+
+
+def test_energy_agreement_excludes_slots_whose_energy_was_never_measured():
+    """Including them moves the number: measured on the real run's pacing_B, the
+    Pearson correlation is +0.276 over all 18 slots and +0.160 over the 14 measured
+    ones (design §0.4). The hole in the report biases the statistic that describes
+    the report."""
+    slots = (_slot(0, 0.0, 4.0, 0.5, beats_in=0), _slot(1, 4.0, 4.0, 0.2),
+             _slot(2, 8.0, 3.0, 0.5), _slot(3, 11.0, 2.0, 0.9))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert (used, total, why) == (3, 4, "")
+    assert rho == pytest.approx(-1.0)     # the three measured slots agree perfectly
+
+
+def test_a_pre_slice_spine_is_included_rather_than_reported_unmeasurable():
+    """beats_in == -1 means the count was not recorded, not that it was zero.
+    Excluding every slot of an old spine would report "not measurable" for a spine
+    that is merely unlabelled."""
+    slots = (_slot(0, 0.0, 4.0, 0.2, beats_in=-1), _slot(1, 4.0, 3.0, 0.5, beats_in=-1),
+             _slot(2, 7.0, 2.0, 0.9, beats_in=-1))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert (used, total, why) == (3, 3, "")
+    assert rho == pytest.approx(-1.0)
+
+
+def test_too_few_measured_slots_names_the_reason_instead_of_returning_zero():
+    slots = (_slot(0, 0.0, 4.0, 0.5, beats_in=0), _slot(1, 4.0, 3.0, 0.5, beats_in=0),
+             _slot(2, 7.0, 2.0, 0.9))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert rho is None and (used, total) == (1, 3)
+    assert "1 of 3" in why and "needed to rank" in why
+
+
+def test_a_constant_series_names_the_reason_instead_of_raising():
+    """statistics.correlation raises StatisticsError on a constant input; the function
+    owns that refusal rather than letting it escape into the report builder."""
+    slots = (_slot(0, 0.0, 3.0, 0.5), _slot(1, 3.0, 3.0, 0.5), _slot(2, 6.0, 3.0, 0.5))
+    rho, used, total, why = pacing.energy_agreement(slots)
+    assert rho is None and (used, total) == (3, 3)
+    assert "no ordering to correlate" in why

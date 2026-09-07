@@ -14,7 +14,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from statistics import fmean
+from statistics import correlation, fmean
 
 from scripts.lib import gridfit, provenance
 
@@ -248,6 +248,53 @@ def _beat_energy(beats: Sequence[float], energy: Sequence[float], energy_hz: flo
         raw.append(fmean(seg))
     lo, hi = min(raw), max(raw)
     return [0.5 if (hi - lo) < _FLAT_EPS else (r - lo) / (hi - lo) for r in raw]
+
+
+AGREEMENT_MIN_SLOTS = 3   # Spearman over fewer than three ranked points describes
+                          # nothing: with two, rho is +1 or -1 by construction.
+
+
+def energy_agreement(slots: Sequence[Slot]) -> tuple[float | None, int, int, str]:
+    """Spearman rho between a slot's DURATION and its music energy, over the slots
+    whose energy was actually measured (design 2026-09-07 §6).
+
+    Negative = shorter shots where the music is louder. Returns
+    (rho, used, total, reason); `rho` is None exactly when `reason` is non-empty —
+    never a silent 0.0, which would read as "no relationship" for a spine that was
+    never measurable at all.
+
+    A DESCRIPTION, not a verdict. No threshold has been measured: the only two real
+    cuts on record are -0.571 (the reel that shipped) and +0.509 (the 18-episode cut
+    it was cut down from), one shoot and one song, and nothing says where a line
+    would go. Reporting only `dev` and `fits` made those two indistinguishable, which
+    is the whole of retro R7.2.
+
+    Ranked, not linear: the question is ordinal, and eight points do not support a
+    fitted slope. statistics.correlation keeps this module's stdlib-only promise.
+
+    beats_in == 0 slots are excluded — their energy is fit_spine's 0.5 fallback, and
+    including them moves the number (on the real run's pacing_B, +0.276 over all 18
+    slots against +0.160 over the 14 measured ones). beats_in == -1 is INCLUDED: it
+    means the count was not recorded, not that it was zero, and excluding every slot
+    of a pre-2026-09-07 spine would report "not measurable" for one that is merely
+    unlabelled."""
+    total = len(slots)
+    usable = [s for s in slots if s.beats_in != 0]
+    if len(usable) < AGREEMENT_MIN_SLOTS:
+        return None, len(usable), total, (
+            f"only {len(usable)} of {total} slots carry a measured energy, and "
+            f"{AGREEMENT_MIN_SLOTS} are needed to rank")
+    durs = [s.dur for s in usable]
+    ens = [s.energy for s in usable]
+    # correlation() raises StatisticsError when either input is constant, and under
+    # method="ranked" that is exactly `len(set(...)) == 1`: ranking maps distinct
+    # values to distinct ranks and ties to a shared one, so constant ranks means every
+    # value was tied. Own the refusal here rather than let it escape into _report.
+    if len(set(durs)) == 1 or len(set(ens)) == 1:
+        return None, len(usable), total, (
+            "every measured slot has the same duration or the same energy, so there "
+            "is no ordering to correlate")
+    return correlation(durs, ens, method="ranked"), len(usable), total, ""
 
 
 def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
