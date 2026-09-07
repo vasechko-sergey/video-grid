@@ -359,17 +359,49 @@ def test_the_fit_report_states_the_energy_agreement_beside_the_verdict(tmp_path)
 
 
 def test_the_fit_report_renders_a_computed_agreement_number(tmp_path):
-    """The test above builds a TWO-slot spine, so energy_agreement returns None and
-    the rho-formatting branch (scripts/pacing.py's f"{rho:+.2f} (Spearman rho, {used}
-    of {total} slots used)") never executes — swapping its ternary, dropping the
-    sign, or transposing used/total all shipped with the suite green (final review
-    M-2). Three hand-built slots, durations and energies both strictly monotonic in
-    opposite directions, pin the exact rendered string instead."""
-    slots = (pacing_lib.Slot(0, 0.0, 4.0, 0.1, "hook", line=2.0, dev=0.0, beats_in=4),
-             pacing_lib.Slot(1, 4.0, 3.0, 0.5, "build", line=6.0, dev=0.0, beats_in=3),
-             pacing_lib.Slot(2, 7.0, 2.0, 0.9, "peak", line=None, dev=0.0, beats_in=2))
+    """The version of this test the fix wave first shipped used three slots, ALL
+    measured (used == total == 3) and a perfectly-monotonic rho of exactly -1.0. A
+    re-review simulating the three mutations this test exists to catch found it
+    discriminates only one: transposing {used}/{total} renders "3 of 3" either way,
+    and f"{-1.0:+.2f}" == f"{-1.0:.2f}" — the + flag only changes how a POSITIVE
+    value renders, so dropping it from the format spec is invisible when rho is
+    negative. Only a genuine sign inversion (abs(rho)) and a swapped ternary were
+    actually caught (final review M-2, parked rather than spent on a second fix
+    wave).
+
+    This fixture adds a fourth, EXCLUDED slot (beats_in=0) so used=3 != total=4 —
+    a transposition now renders "4 of 3" instead of "3 of 4" — while keeping rho
+    negative so the sign-inversion catch survives. The dropped-+ mutation needs a
+    POSITIVE rho instead (see the sibling test below): abs() of a positive number
+    is a no-op, so no single rho value can discriminate both mutations at once."""
+    slots = (pacing_lib.Slot(0, 0.0, 1.0, 0.5, "hook", line=1.0, dev=0.0, beats_in=0),
+             pacing_lib.Slot(1, 1.0, 4.0, 0.1, "build", line=3.0, dev=0.0, beats_in=4),
+             pacing_lib.Slot(2, 5.0, 3.0, 0.5, "build", line=6.0, dev=0.0, beats_in=3),
+             pacing_lib.Slot(3, 8.0, 2.0, 0.9, "peak", line=None, dev=0.0, beats_in=2))
+    spine = pacing_lib.Spine(slots, 10.0, 120.0)
+    fit = gridfit.Fit(level="bar", level_n=2, phase=0, shifts=(0.0, 0.0, 0.0, 0.0),
+                      devs=(0.0, 0.0, 0.0), needs=(0.0, 0.0, 0.0), worst=0.0, total=10.0,
+                      fits=True)
+    md = pacing_driver._report(spine, fit, [], "MUSIC.json", {})
+    assert "- **Energy agreement:** -1.00 (Spearman rho, 3 of 4 slots used)" in md
+
+
+def test_the_fit_report_renders_the_plus_sign_on_a_positive_agreement(tmp_path):
+    """Companion to the test above: that one's rho is negative (-1.0), which already
+    carries its own sign, so it cannot tell f"{rho:+.2f}" apart from f"{rho:.2f}" —
+    the missing case M-2 named. This fixture uses a POSITIVE rho instead, which the
+    + flag actually changes the rendering of ("+0.50" against "0.50").
+
+    With exactly three measured slots a Spearman rank correlation can only land on
+    +-1.0 or +-0.5 — six permutations of three ranks, no other value is reachable —
+    so +0.50 (not +1.0, which a naive off-by-one on the format spec could still get
+    right by accident) is the value to aim for: durs rank strictly increasing while
+    energies rank (1, 3, 2)."""
+    slots = (pacing_lib.Slot(0, 0.0, 2.0, 0.1, "hook", line=2.0, dev=0.0, beats_in=2),
+             pacing_lib.Slot(1, 2.0, 3.0, 0.9, "peak", line=5.0, dev=0.0, beats_in=3),
+             pacing_lib.Slot(2, 5.0, 4.0, 0.5, "build", line=None, dev=0.0, beats_in=4))
     spine = pacing_lib.Spine(slots, 9.0, 120.0)
     fit = gridfit.Fit(level="bar", level_n=2, phase=0, shifts=(0.0, 0.0, 0.0),
                       devs=(0.0, 0.0), needs=(0.0, 0.0), worst=0.0, total=9.0, fits=True)
     md = pacing_driver._report(spine, fit, [], "MUSIC.json", {})
-    assert "- **Energy agreement:** -1.00 (Spearman rho, 3 of 3 slots used)" in md
+    assert "- **Energy agreement:** +0.50 (Spearman rho, 3 of 3 slots used)" in md
