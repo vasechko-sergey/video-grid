@@ -10,6 +10,40 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.8.1 — 2026-09-07
+
+**A measurement survives a pass: three reports stop collapsing a distinguishable
+absence into something that reads as a normal reading.** Each already computed
+the number a reader needed and then discarded it (`variety`, `pacing`) or
+reported it under one sentence true for only one of five causes (`outro`). The
+only real run's own artifacts are the evidence: all four `MUSIC*.json` carry
+`bars: []`, so the outro-fit feature reported "n/a" for the one cause it did
+not mean; the shipped `EDL.json` was 22.4% short of `SPEC.length_s` with
+nothing anywhere comparing the two; and the shipped pacing spine's Spearman
+agreement (dur vs. energy, −0.571, the correct direction) and the earlier cut
+it was trimmed from (+0.509, inverted) were both real, in two different files,
+with no report naming either number.
+
+- **`variety`'s detail now reports the global minimum distance on every
+  path**, not only a failing one — beside the pair it came from and the bar
+  it was judged against. A passing check used to report `{}`.
+- **`OutroFit.cause` names WHICH of five absences made a fit "unchanged"**
+  (`no-bars`/`no-episodes`/`ramped-closer`/`closer-not-in-footage`/
+  `no-reachable-line`) instead of the one sentence — "the fit chose no bar
+  line" — that was true for exactly one of them.
+- **A new advisory `brief_length` check** compares the delivered reel against
+  `SPEC.length_s` for the first time at any gate; `EDL.brief_len` and
+  `ReelManifest.brief_len` carry the brief's length end to end to reach it.
+- **`Slot.beats_in` distinguishes a measured energy from `fit_spine`'s `0.5`
+  fallback**, and a new `pacing.energy_agreement` reports the Spearman
+  correlation between cut length and music energy over measured slots — a
+  description, not a verdict; no threshold is claimed.
+
+PATCH, not MINOR: no new stage, no flag, no renamed signature, and no changed
+default that alters output — `check_reel.run` gains one defaulted keyword and
+`ReelReport.overall` cannot move. Mutation battery: 13 rows, 13 red, zero
+coverage holes.
+
 ## 0.8.0 — 2026-09-03
 
 **The mood contract: a mood word declares only what it commands.** Closes the

@@ -167,11 +167,12 @@ change is: *carry what was measured, and name what was not.*
 
 `min_distance` becomes the **global** minimum across all adjacent pairs, present
 in the detail on every path where the check ran at all, beside the pair it came
-from and the bar it was judged against:
+from and the bar it was judged against. `CheckResult.to_dict()` flattens
+`detail` into the result alongside a `"pass"` key, so the serialized shape
+carries no nested `"detail"`:
 
 ```json
-"variety": {"passed": true,
-            "detail": {"min_distance": 14, "pair": [3, 4], "min": 8}}
+"variety": {"min_distance": 14, "pair": [3, 4], "min": 8, "pass": true}
 ```
 
 `"min"` is `spec.variety_min`, so a reader can see the margin without holding
@@ -314,10 +315,22 @@ not-checked and never as "on target"):
 `gap` is signed (negative = short). `gap_frac` is `gap / brief`.
 
 `EDL.brief_len` validates as a positive number or `None` — the same contract
-`Spec.length_s` already enforces at the source. That is what makes `gap_frac`'s
-division safe without a second guard at the check, and it means a corrupt value
-fails where it was accepted rather than as a `ZeroDivisionError` two stages
-later.
+`Spec.length_s` already enforces at the source, and it means a corrupt value
+fails where it was accepted rather than reaching a downstream artifact.
+
+**Correcting this section:** it originally claimed that `EDL` validation was
+what makes `gap_frac`'s division safe "without a second guard at the check."
+False — `check_reel` never reads an `EDL`. It is fed from a `ReelManifest`,
+and two production entry points build one straight from JSON with
+`from_json`, bypassing `EDL` entirely: `build_reel.main()` and
+`edl_to_reel.assemble_reel()` (the `--from-episodes` path). A guard on `EDL`
+alone leaves both unguarded. The validation that actually makes the division
+safe is `ReelManifest.brief_len`'s own — added during this branch's review
+loop (`scripts/lib/models.py`, in `__post_init__` beside `tone_target`) — the
+same positive-or-`None` contract, re-asserted on the object the check
+actually receives. `EDL.brief_len`'s validation stays real and useful; it is
+the earlier, complementary guard, one hop upstream, not the one doing the
+work at the check.
 
 ### §4.3 `passed` borrows a budget rather than inventing a threshold
 
@@ -369,7 +382,11 @@ own field; the **readers** change:
   `beats_in == 0`, and appends one line under the table naming how many slots
   were unmeasured and what that means. `beats_in == -1` prints the values as
   today, because a pre-slice artifact genuinely does not know.
-- The agreement number (§6) is computed over `beats_in > 0` slots only.
+- The agreement number (§6) is computed over `beats_in != 0` slots, not
+  `beats_in > 0`: `-1` means "not recorded", not "zero", so excluding a
+  pre-slice spine's every slot on top of the genuinely-unmeasured ones would
+  report "not measurable" for a spine that is merely unlabelled, not one that
+  was measured and found empty.
 
 `Slot.from_dict` defaults the key rather than requiring it, matching
 `Spine.music_digest` and `OutroFit.need`: an old `PACING.json` loads, and reads

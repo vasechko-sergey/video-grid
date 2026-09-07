@@ -54,13 +54,11 @@ is still P3.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **R7.2 · `pacing` reported a perfect fit — `dev: 0.0` on all 8 slots — while the cut rhythm inverted the music's energy curve.** Reporting only grid deviation makes a wrong-but-aligned cut indistinguishable from a right one. | M | [retro](retro/2026-08-25-first-real-run.md) R7 |
 | ○ | **R5.3 · A 10-minute Bash timeout killed `deliver` mid-write and left the delivery directory half-corrected**, with no marker saying so. Delivery must be atomic or must record that it was interrupted. | S | [retro](retro/2026-08-25-first-real-run.md) R5 |
 | ◐ | **R2.1 · Grade against named subjects, not the frame mean.** The operator's own three anchors: skin, the black wetsuit, the water. That gap was originally found on `color_across_cuts`, which compared whole-frame means — on ep5, a frame that is mostly dark water, the correction it authored lifted Lena's face to **156 luma, above her own ungraded plate**. That check and its corrector are deleted (colour-convergence-retire, 2026-08-29), but the gap is not: `matchgrade.measure_profile`, which now sets the reel's one common tone target, still reads a whole source frame at the window midpoint rather than the named subjects — the same frame-vs-subject mismatch, on the stage that survived. Five of the run's six days went here. — **✅ closed 2026-08-30 by "Grade the pixels that ship"**, though not the way this row asked: the target is still (p5, p50, p95) of luma and still knows nothing about skin, wetsuit or water. What changed is the REGION — the conductor now measures each episode's tracked crop, the pixels that actually ship, so the "mostly dark water" frame that lifted Lena's face is no longer what any anchor is computed from. **`◐` and not `✅`, because the row's own title is still open**: no stage names skin, wetsuit or water, and two other rows point here as their home — the P3 `color_fidelity` sampling-box item is folded into this one, and the P3 chroma row carries the across-episode half. What is closed is the frame-vs-crop mismatch that made the anchors wrong; what remains is naming the subjects, which is a different instrument. | L | [retro](retro/2026-08-25-first-real-run.md) R2, [design](specs/2026-08-30-grade-shipped-pixels-design.md) §3 |
 | ○ | **R4.1 · Every CLI and every skill line states what the tool is FOR.** 56 Bash calls in the run grepped the product's own source to find out. A name is not a purpose. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R5.2 · Extend digest binding to every report.** `episode_qc` stamps a `clip_digest` from disk and refuses a stale verdict — the one binding that held all week. Nothing else has one: `MATCH.md` claimed 8/8 authored tone pairs against an `EDL.json` written an hour later carrying 5; `REVIEW.json` was two days and two reel versions stale (reviewed 37.1 s, shipped 34.93 s). | M | [retro](retro/2026-08-25-first-real-run.md) R5 |
-| ○ | **R7.1 · A stage that did nothing must say so and escalate.** `MUSIC.json` carried `bars: []`, so the whole outro-fit feature reported `"n/a"` and silently did nothing; `outro.brief_len 45.0` against `reel_dur 34.93` is 22% short and escalated nowhere; `vocal_spans` showed the reel both starting and ending inside vocals against the operator's belief. | M | [retro](retro/2026-08-25-first-real-run.md) R7 |
 | ○ | **R10.1 · The QC judge is nearly blind.** The evidence strip is **200×406 px per frame** with no zoom helper; three judges reached for tools absent from their harness and one hit `magick not found`. Judging is a required stage with no waiver. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 
 ## P2 — soon
@@ -85,7 +83,6 @@ is still P3.
 | ○ | **R10.12 · Eight of 22 `AskUserQuestion` turns were the human arbitrating a per-episode sensor failure** — the clearest measure of where a person's attention was actually spent. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R2.4 · A threshold widened by hand needs a reason attached, not just a bigger number.** Concretely, this was `color_delta_max`: 12 → 44 → **56** across the run, each widening silencing a complaint that was correct. That specific knob is deleted (colour-convergence-retire, 2026-08-29), but the mechanism that let it happen silently is generic, not particular to it: `provenance.spec_overrides` records that a `ReelCheckSpec`/`CheckSpec` field changed from its default, never why. Nothing today stops the same pattern on `variety_min`, `entropy_floor`, or any other threshold. **Example corrected by this session's audit, 2026-09-03**: this row named `grade_delta_max`, which was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) — the stale field name is fixed above; the mechanism (`spec_overrides` still records no reason) is unchanged and this row stays open. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
 | ○ | **R4.3 · Survive a compaction.** After one context compaction, **12 of 13 `--help` calls** fall in the next 2 h 17 min — and `probe` still was not found. | S | [retro](retro/2026-08-25-first-real-run.md) R4 |
-| ○ | **R6.1 · A passing check throws its measurement away.** Originally found on `color_across_cuts`: `check_reel.py` assigned `worst` only inside its failure branch, so a passing colour check reported `{"pass": true}` and nothing else, and the worst-junction delta was re-derived by hand on three separate days. That check is deleted (colour-convergence-retire, 2026-08-29 — `check_reel.py:180` is unrelated `outro` code now), but the identical shape survives in `variety` (`check_reel.py:154`): `worst`/`min_distance` is set only inside its failure branch too, so a passing `variety` still reports `{"pass": true}` with no sense of how close the nearest pair came to `variety_min`. The fix (report the measurement on a pass, not only a fail) is still undone. | S | [retro](retro/2026-08-25-first-real-run.md) R6 |
 | ○ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
 | ○ | **R10.2 · Cast candidates shown too small to identify**, and better one at a time than tiled — the operator asked for this during the run. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.3 · 95% of conveyor calls were piped through `tail`/`grep`/`head`**, twice losing the answer — once costing a 173-second re-render to read output already produced. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
@@ -335,7 +332,18 @@ stale `PACING.json` ever disagreed (length-retime §9,
 shadow-red-length-reconcile §2) ·
 music-less dual-emit + trending-sound sidecar, §5.14 (music-spine §9, using-montage §5) ·
 a SPEC field for ambient / SFX instead of only `ReelManifest` flags (ambient §9, sfx §9) ·
-per-episode ambient level or mute (ambient §9)
+per-episode ambient level or mute (ambient §9) ·
+rank candidate music windows on energy agreement, not only grid quality —
+`build_pacing` picks the winner with `(fit.level_n if fit.fits else 0, -fit.worst)`
+and nothing in that tuple sees whether the window's energy arc matches the cut's
+rhythm, which is the stage's one real choice. Deferred on evidence, not doubt: the
+only A/B pair on disk agrees on both criteria (window A wins the grid AND the
+agreement), so any weighting between them would be typed rather than measured
+(named-absence §1, §7) ·
+a window whose beats start well into the reel is accepted — `pacing_B`'s first beat
+is at 9.74s, its slot 0 carries `dev: 7.14`, and `build_pacing` neither refuses it
+nor ranks it down; `Slot.beats_in` now makes the resulting hole visible in the
+report, which is the whole of what this slice did about it (named-absence §7)
 
 **Reel / QC / delivery**
 secondary-aspect re-reframe on deliver — *the item that pointed at a "Phase F" which never existed* (reel-back-half §9) ·
@@ -527,4 +535,4 @@ turned up after the three it set out to fix.
 
 ---
 
-_Last updated: 2026-09-06._
+_Last updated: 2026-09-07._

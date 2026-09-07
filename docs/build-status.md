@@ -4,13 +4,103 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-06._
+_Last updated: 2026-09-07._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **A measurement survives a pass — three reports stop collapsing an absence
+  (2026-09-07)** — design
+  [2026-09-07-named-absence-design.md](specs/2026-09-07-named-absence-design.md),
+  plan [2026-09-07-named-absence.md](plans/2026-09-07-named-absence.md), Tasks
+  1–8 (branch `docs/named-absence`, commits `74a1a8f`..`4db4e03` + this docs
+  sync).
+
+  Closes the retro's R7.1, R7.2 and R6.1. Three reports each already computed
+  the number a reader needed, then either discarded it or emitted it under a
+  description that was false for the case at hand — this slice adds no sensor
+  and no threshold; every change is *carry what was measured, and name what
+  was not*.
+
+  **The artifacts, read off the only real run:** all four `MUSIC*.json` on
+  disk carry `bars: []`, so the outro fit was structurally impossible on
+  every candidate window — not merely unlucky on one. The shipped `EDL.json`
+  carries `brief_len: 45.0` beside `reel_dur: 34.93` — `-10.07s`, `-22.4%` —
+  and nothing at any gate ever subtracted the two. `rung: "unchanged"` was
+  written from **five** distinguishable producers, and all five wrote a
+  byte-identical record; `check_reel` printed one sentence for all five, true
+  of exactly one, and not the one that actually fired on the real run.
+
+  **A — `variety` reports the global minimum on every path (design §2).**
+  `min_distance` is now the minimum across ALL adjacent pairs, present beside
+  its pair and `spec.variety_min` whether the check passes or fails — a
+  passing check used to report `{}`. §2.1's proof is what makes this safe to
+  ship: whenever a failure exists, the failing pair's distance is
+  `< variety_min`, so the global minimum IS that pair — the two definitions
+  coincide on every failing reel and diverge only on a passing one, which is
+  therefore the only thing a test can discriminate.
+
+  **B — `OutroFit.cause` names WHICH absence, not one disjunction (design
+  §3).** Five causes (`no-bars`/`no-episodes`/`ramped-closer`/
+  `closer-not-in-footage`/`no-reachable-line`, plus `""` for a pre-slice
+  artifact) replace the single sentence `check_reel`/`EDL.md` used to share.
+  `"no-episodes"` was found while writing the plan, not the design —
+  `_apply_outro`'s guard was `if not episodes or not music.bars`, one branch
+  for two unrelated absences.
+
+  **C — `brief_length`, the one length not derived from the cut (design
+  §4).** `EDL` and `ReelManifest` both carry `brief_len` (`SPEC.length_s`),
+  and a new advisory `brief_length` check compares the delivered master
+  against it — nothing did, at any gate, before this. **The review loop's
+  one Important finding**: the design's own division-safety argument
+  (`EDL.brief_len` validates positive-or-`None`, so `gap_frac`'s division is
+  safe) was false on the real path — `check_reel` is fed from a
+  `ReelManifest`, and two production entry points (`build_reel.main()`,
+  `edl_to_reel.assemble_reel()`) build one straight from JSON with
+  `from_json`, bypassing `EDL` entirely. Reproduced against the live tree:
+  `brief_len` of `0` raised `ZeroDivisionError`, `"x"` raised `TypeError`,
+  and `-5.0` produced a silently-garbage `gap_frac` of `-7.986` shown as
+  data. Fixed by giving `ReelManifest.brief_len` its own validation, the
+  same positive-or-`None` guard, in `__post_init__` beside `tone_target`.
+
+  **D — a `Slot` says when its energy was not measured, and the report says
+  how well the cut agrees with the music (design §5/§6).** `Slot.beats_in`
+  (`0` = the `fit_spine` fallback fired, `-1` = not recorded) stops
+  `energy: 0.500` from reading as a measurement; `pacing.energy_agreement`
+  reports the Spearman ρ between cut duration and slot energy over
+  `beats_in != 0` slots (`-1` is included — it means unrecorded, not zero).
+  Measured on the three real spines on disk: the shipped 8-slot spine is
+  **-0.571** (the *correct* direction — shorter shots where the music is
+  louder); `pacing_A`, the 18-episode cut it was trimmed from, is **+0.509**
+  (inverted); `pacing_B`, the same cut at a second window, is **+0.484** over
+  the 14 of 18 slots actually measured. `pacing_B`'s own four unmeasured
+  slots read `energy: 0.500` against a first beat at **9.7387s**, and
+  including them as if measured moves the Pearson agreement from **+0.160**
+  (14 measured) to **+0.276** (all 18) — the hole in the report biases the
+  very statistic meant to describe it, which is why §5 and §6 are one slice
+  and not two.
+
+  **Mutation battery: 13 rows, 13 red, zero coverage holes.**
+
+  **Full suite: 3507 passed, 1 skipped** (up from 3455/1 at the pre-branch
+  baseline).
+
+  **Honest limits carried forward (design §7):** the agreement number has no
+  calibrated threshold and N is 8–18 slots — it separates the run's own two
+  cuts and says nothing about where a line would go. `beats_in` fixes the
+  report, not the fit: a music window whose beats begin at 9.74s is still
+  accepted by `build_pacing`, and ranking candidate windows on energy
+  agreement instead of grid quality alone is filed, not built — the only A/B
+  pair on disk agrees on both criteria, so a weighting would be typed rather
+  than measured. `brief_length`'s budget (`_LENGTH_TOL + length_retime_max`)
+  is an analogy borrowed from a neighbouring check, not a measured answer to
+  how far a reel may drift from its brief, and it will be red often — which
+  is the finding, not a misfire. Nothing machine-checks the principle itself
+  ("a measurement survives a pass") beyond the three checks this slice
+  touched.
 
 - **The queue stops being a history — the backlog's closed rows move to an
   archive (2026-09-06)** — branch `chore/backlog-archive`, docs only, no code.
