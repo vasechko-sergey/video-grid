@@ -1607,6 +1607,15 @@ class ReelManifest:
                     and tt[0] <= tt[1] <= tt[2]):
                 raise ValueError(f"ReelManifest.tone_target must be 3 non-decreasing luma "
                                  f"values (p5 <= p50 <= p95) in 0-255, or null, got {tt!r}")
+        if self.brief_len is not None and (
+                isinstance(self.brief_len, bool)
+                or not isinstance(self.brief_len, (int, float))
+                or self.brief_len <= 0):
+            raise ValueError(
+                f"ReelManifest.brief_len must be a positive number of seconds "
+                f"(SPEC.length_s) or None, got {self.brief_len!r} — this is what "
+                f"check_reel's brief_length row divides by; re-run edl_to_reel "
+                f"--stop-after-episodes to regenerate EPISODES.json from a valid EDL")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")

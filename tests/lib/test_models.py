@@ -912,6 +912,51 @@ def test_reel_manifest_tone_target_refuses_a_wrong_length():
             m.ReelManifest.from_dict(_reel_dict(tone_target=bad))
 
 
+# --- named-absence Task 5 review fix: ReelManifest.brief_len validation (design
+# docs/specs/2026-09-07-named-absence-design.md §4.2 claims "EDL.brief_len validates
+# as a positive number or None ... that is what makes gap_frac's division safe
+# without a second guard at the check" — true of EDL, but ReelManifest is the object
+# check_reel's two real production callers (build_reel.py's CLI and edl_to_reel.py's
+# --from-episodes path) actually build from a JSON file, and it had no equivalent
+# guard. Same shape as the tone_target tests just above, added the same slice. ---
+
+def test_reel_manifest_brief_len_defaults_to_none():
+    rm = m.ReelManifest.from_dict(_reel_dict())
+    assert rm.brief_len is None
+
+
+def test_reel_manifest_carries_a_positive_brief_len():
+    rm = m.ReelManifest.from_dict(_reel_dict(brief_len=45.0))
+    assert rm.brief_len == 45.0
+
+
+def test_reel_manifest_brief_len_refuses_zero():
+    # The reviewer's reproduction: brief_len=0 on a real ReelManifest.from_json
+    # path drives check_reel's `gap / brief_len` straight into a ZeroDivisionError.
+    with pytest.raises(ValueError, match="brief_len"):
+        m.ReelManifest.from_dict(_reel_dict(brief_len=0))
+
+
+def test_reel_manifest_brief_len_refuses_a_negative_value():
+    # No crash without this guard, but a silently-garbage gap_frac (the reviewer
+    # measured -7.986) shown as though it were a real reading.
+    with pytest.raises(ValueError, match="brief_len"):
+        m.ReelManifest.from_dict(_reel_dict(brief_len=-5.0))
+
+
+def test_reel_manifest_brief_len_refuses_a_non_numeric_string():
+    with pytest.raises(ValueError, match="brief_len"):
+        m.ReelManifest.from_dict(_reel_dict(brief_len="x"))
+
+
+def test_reel_manifest_brief_len_refuses_a_bool():
+    # isinstance(True, int) is True, so a bare numeric-type check alone would let a
+    # JSON `true` through as brief_len == 1 second — tone_target guards the same
+    # trap just above, and EDL.brief_len (the field this one mirrors) already does.
+    with pytest.raises(ValueError, match="brief_len"):
+        m.ReelManifest.from_dict(_reel_dict(brief_len=True))
+
+
 def test_reel_manifest_rejects_null_manifest():
     with pytest.raises(ValueError, match="manifest"):
         m.ReelManifest.from_dict(_reel_dict(
