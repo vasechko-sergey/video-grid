@@ -491,6 +491,71 @@ def test_an_outro_with_no_recorded_cause_reads_as_not_recorded(tmp_path, monkeyp
     assert rep.checks["outro"].detail["reason"] == outro_mod.CAUSE_WHY[""]
 
 
+# --- named-absence Task 5: `brief_length`, the one length not derived from the cut
+# (design 2026-09-07-named-absence-design.md §4) --------------------------------
+
+
+def test_brief_length_measures_the_reel_against_the_length_that_was_asked_for(tmp_path, monkeypatch):
+    """The real run: a 45.0s brief delivered as 34.93s, past every gate, because the
+    only length anything compared against came from the cut (design §0.2)."""
+    # the two episode midpoints are 17.465/2=8.7325 and 17.465*1.5=26.1975; _Stub's
+    # lookup does round(t, 3) (8.732 / 26.197), so the hash keys are given at THAT
+    # precision — keying at the unrounded 4-decimal midpoint would never match and
+    # both episodes would silently collide on the fallback 0, failing variety on a
+    # test that has nothing to do with variety.
+    _Stub([17.465, 17.465], hashes={8.732: 0, 26.197: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=34.93), str(tmp_path / "r.json"),
+                         brief_len=45.0)
+    assert rep.checks["brief_length"] == CheckResult("brief_length", False, {
+        "brief": 45.0, "delivered": 34.93, "gap": -10.07, "gap_frac": -0.2238,
+        "budget": 1.5, "advisory": True})
+    # length itself still passes — it is measured against the cut's own target
+    assert rep.checks["length"].passed is True
+
+
+def test_brief_length_is_advisory_and_cannot_block(tmp_path, monkeypatch):
+    # see the identical hash-precision note on the test above
+    _Stub([17.465, 17.465], hashes={8.732: 0, 26.197: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=34.93), str(tmp_path / "r.json"),
+                         brief_len=45.0)
+    assert rep.checks["brief_length"].passed is False
+    assert rep.overall is True
+    assert not [f for f in rep.fail_reasons if f.check == "brief_length"]
+
+
+def test_brief_length_passes_inside_the_budget_the_pipeline_already_absorbs(tmp_path, monkeypatch):
+    """_LENGTH_TOL (0.5) + length_retime_max (1.0) is what the conveyor already says
+    it absorbs without comment. Not a measured answer to how far a reel may drift
+    from its brief — the least-invented number available (design §4.3)."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"),
+                         brief_len=7.5)
+    assert rep.checks["brief_length"].passed is True     # gap -1.5, exactly the budget
+
+
+def test_brief_length_treats_over_and_under_alike(tmp_path, monkeypatch):
+    """The borrowed budget is one-sided — reel_orchestration absorbs a shortfall only,
+    because mix.mix refuses dur > music.duration. That reason is a mixer constraint
+    and says nothing about a brief, so it is deliberately not carried over (§4.3)."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"),
+                         brief_len=4.4)
+    assert rep.checks["brief_length"].passed is False    # gap +1.6, past the budget
+    assert rep.checks["brief_length"].detail["gap"] == 1.6
+
+
+def test_no_brief_reads_as_not_checked_never_as_on_target(tmp_path, monkeypatch):
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
+                         ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"))
+    assert rep.checks["brief_length"].passed is None
+    assert rep.checks["brief_length"].detail["status"] == "not-checked"
+
+
 # --- grade-sensor-references Task 6: grade_faithful, judged against the DECLARED
 # chain (design 2026-08-31 §2) ---
 # predicted/tone_target/tone_dsts are PARALLEL lists, the same idiom `geometry=`

@@ -25,7 +25,10 @@ _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               "safe_zones": "not checked — no per-episode geometry supplied",
               "key_action": "not checked — no per-episode geometry supplied",
               "pad_bars": "not checked — no per-episode geometry supplied",
-              "transitions": "not checked — no per-episode geometry supplied"}
+              "transitions": "not checked — no per-episode geometry supplied",
+              "brief_length": "not checked — the reel manifest carries no brief_len "
+                              "(SPEC.length_s); a reel authored without --spec has no "
+                              "asked-for length to be measured against"}
 
 _LENGTH_TOL = 0.5      # the length gate's own ± band; build_reel absorbs a further
                        # (_LENGTH_TOL, spec.length_retime_max] of SHORTFALL on top (§3)
@@ -140,6 +143,34 @@ def _loudness_check(measured: float, spec: ReelCheckSpec) -> tuple[CheckResult, 
     detail = {"measured": round(measured, 2), "target": spec.loudness_target}
     fail = None if ok else ReelFailure("loudness", "audio-mix", None, dict(detail))
     return CheckResult("loudness", ok, detail), fail
+
+
+def _brief_length_check(total: float, brief_len: float, spec: ReelCheckSpec) -> CheckResult:
+    """BRIEF_LENGTH — advisory. The delivered master against SPEC.length_s, the one
+    length in a reel that is NOT derived from the cut (design 2026-09-07 §4).
+
+    `length` above measures the master against spec.target_dur, which edl_to_reel took
+    from EDL.target_dur, which edit_plan._back_edge_target computed from the footage —
+    so it is circular with respect to the brief and could not notice the only real run
+    shipping 34.93s against a 45.0s brief. Nothing else in the tree compares them.
+
+    `passed` keys on _LENGTH_TOL + spec.length_retime_max: the length gate's own band
+    plus the further shortfall build_reel will silently re-time the target by. That sum
+    is exactly what the conveyor already declares it absorbs without comment, so no new
+    constant is invented here — and it is NOT a measured answer to how far a reel may
+    drift from its brief (§7).
+
+    Applied symmetrically, though the borrowed budget is one-sided: reel_orchestration
+    absorbs a shortfall only, and its reason is local and mechanical (the stem is cut
+    from a fixed fragment and mix.mix refuses dur > music.duration). A reel LONGER than
+    its brief is not blocked by anything — it is merely not the reel that was asked
+    for — so that asymmetry stays where its cause is."""
+    budget = _LENGTH_TOL + spec.length_retime_max
+    gap = total - brief_len
+    return CheckResult("brief_length", abs(gap) <= budget,
+                       {"brief": round(brief_len, 3), "delivered": round(total, 3),
+                        "gap": round(gap, 3), "gap_frac": round(gap / brief_len, 4),
+                        "budget": round(budget, 3), "advisory": True})
 
 
 def _grade_faithful_check(master: str, durations: list[float], cuts: list[float],
@@ -302,7 +333,8 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         outro: dict | None = None,
         predicted: list | None = None,
         tone_target: tuple[float, float, float] | None = None,
-        tone_dsts: list | None = None) -> ReelReport:
+        tone_dsts: list | None = None,
+        brief_len: float | None = None) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -320,6 +352,9 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     if not length_ok:
         fails.append(ReelFailure("length", "pacing", None,
                                  {"dur": round(total, 3), "target": spec.target_dur}))
+
+    if brief_len is not None:
+        checks["brief_length"] = _brief_length_check(total, brief_len, spec)
 
     cuts = _boundaries(durations)      # _beat_check reads these below
     mids = _midpoints(durations)       # the phash variety check reads these below

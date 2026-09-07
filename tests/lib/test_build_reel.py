@@ -41,7 +41,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None,
-            "tone_target": None, "tone_dsts": None, "predicted": None}
+            "tone_target": None, "tone_dsts": None, "predicted": None, "brief_len": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -50,8 +50,8 @@ def _wire(monkeypatch, reports, pe_results=None):
     # these silent-reel tests, matching check_reel.run's real defaults) — not the subject
     # of this fixture, which only exercises the reprocess/deliver escalation ladder. titles=
     # IS captured into seen["titles"] so a test can assert build_reel forwards it to deliver.
-    # geometry=/platform=/outro=/tone_target=/tone_dsts=/predicted= ARE captured into seen so
-    # a test can assert build_reel builds and forwards them to check_reel.run.
+    # geometry=/platform=/outro=/tone_target=/tone_dsts=/predicted=/brief_len= ARE captured
+    # into seen so a test can assert build_reel builds and forwards them to check_reel.run.
     #
     # fix round 1 (Important): tone_target=/tone_dsts= used to be accepted-and-dropped here,
     # with a comment claiming their forwarding was "proven at the check_reel.run level" —
@@ -74,14 +74,21 @@ def _wire(monkeypatch, reports, pe_results=None):
     # kwarg — the two tests below exercise outro_fixed, not this forward. Conflating the two
     # left the outro= forward with no coverage at all: flipping build_reel.py's
     # `outro=rm.outro` to `outro=None` changed nothing either test could see.
+    #
+    # brief_len= is the same shape of risk again (2026-09-07, named-absence Task 5): a bare
+    # `brief_len=None` parameter that nothing asserts would let build_reel silently drop
+    # rm.brief_len, leaving check_reel.run's advisory brief_length row reading not-checked
+    # forever while every test in this file stays green — see
+    # test_build_reel_forwards_brief_len_to_check_reel below.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
-                predicted=None, tone_target=None, tone_dsts=None):
+                predicted=None, tone_target=None, tone_dsts=None, brief_len=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
         seen["predicted"] = predicted
         seen["tone_target"] = tone_target
         seen["tone_dsts"] = tone_dsts
+        seen["brief_len"] = brief_len
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
@@ -356,6 +363,22 @@ def test_build_reel_forwards_the_tone_convergence_pair_to_check_reel(monkeypatch
     assert res["status"] == "delivered"
     assert seen["tone_target"] == (20.0, 100.0, 200.0)
     assert seen["tone_dsts"] == [[20.0, 100.0, 200.0], None]
+
+
+def test_build_reel_forwards_brief_len_to_check_reel(monkeypatch, tmp_path):
+    """named-absence Task 5: rm.brief_len is a plain attribute read, so a manifest
+    carrying it proves nothing about whether build_reel actually hands it to
+    check_reel.run — mirroring the tone_target/tone_dsts precedent immediately above.
+    Without this test, dropping `brief_len=rm.brief_len` at the real call site would
+    leave check_reel's advisory brief_length row reading not-checked forever and the
+    whole suite green."""
+    seen = _wire(monkeypatch, [_pass()])
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json"),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, brief_len=45.0)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["brief_len"] == 45.0
 
 
 # --- music integration (Task 6) --------------------------------------------
