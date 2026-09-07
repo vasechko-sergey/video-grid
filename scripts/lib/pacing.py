@@ -36,6 +36,13 @@ class Slot:
     kind: str
     line: float | None = None
     dev: float = 0.0
+    beats_in: int = -1   # beats of the analysed window that fall inside this slot's
+                         # span. 0 => `energy` is fit_spine's `or [0.5]` FALLBACK and
+                         # `kind` is a label computed from that constant, not a
+                         # measurement. -1 => not recorded (a PACING.json written
+                         # before 2026-09-07). _beat_energy min-max normalizes into
+                         # [0, 1], so a genuine 0.5 exists and was indistinguishable
+                         # from the fallback until this field (design 2026-09-07 §5).
 
     def __post_init__(self) -> None:
         if isinstance(self.index, bool) or not isinstance(self.index, int) or self.index < 0:
@@ -61,10 +68,17 @@ class Slot:
             object.__setattr__(self, "line", float(self.line))
         if self.dev < 0:
             raise ValueError(f"Slot.dev must be >= 0 (it is a distance), got {self.dev}")
+        if (isinstance(self.beats_in, bool) or not isinstance(self.beats_in, int)
+                or self.beats_in < -1):
+            raise ValueError(
+                f"Slot.beats_in must be a non-negative count of beats, or -1 for a "
+                f"PACING.json written before 2026-09-07 which recorded none; got "
+                f"{self.beats_in!r} — re-run pacing to regenerate PACING.json")
 
     def to_dict(self) -> dict:
         return {"index": self.index, "start": self.start, "dur": self.dur,
-                "energy": self.energy, "kind": self.kind, "line": self.line, "dev": self.dev}
+                "energy": self.energy, "kind": self.kind, "line": self.line, "dev": self.dev,
+                "beats_in": self.beats_in}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Slot":
@@ -82,7 +96,8 @@ class Slot:
                              f"index, start, dur, energy, kind, line, dev. A PACING.json "
                              f"written before 2026-07-24 has no fit; re-run pacing")
         return cls(index=d["index"], start=d["start"], dur=d["dur"],
-                   energy=d["energy"], kind=d["kind"], line=d["line"], dev=d["dev"])
+                   energy=d["energy"], kind=d["kind"], line=d["line"], dev=d["dev"],
+                   beats_in=d.get("beats_in", -1))
 
 
 @dataclass(frozen=True)
@@ -165,11 +180,25 @@ class Spine:
                  f"{self.target_dur:.1f}s @ {self.tempo:.0f} BPM)", "",
                  "| # | start–end | dur | energy | kind | line | dev |",
                  "|--:|-----------|----:|-------:|------|-----:|----:|"]
+        unmeasured = 0
         for s in self.slots:
             line = f"{s.line:.2f}" if s.line is not None else "–"
             dev = f"{s.dev:.3f}" if s.line is not None else "–"
+            # beats_in == -1 is a pre-2026-09-07 spine that did not record the count:
+            # print what it has rather than claim it was unmeasured.
+            if s.beats_in == 0:
+                unmeasured += 1
+                energy, kind = "–", "–"
+            else:
+                energy, kind = f"{s.energy:.2f}", s.kind
             lines.append(f"| {s.index} | {s.start:.2f}–{s.start + s.dur:.2f} | "
-                         f"{s.dur:.2f} | {s.energy:.2f} | {s.kind} | {line} | {dev} |")
+                         f"{s.dur:.2f} | {energy} | {kind} | {line} | {dev} |")
+        if unmeasured:
+            lines += ["", f"*{unmeasured} of {len(self.slots)} slots contain no beat of "
+                          f"the analysed window, so their energy and kind are not "
+                          f"measurements — `fit_spine` falls back to 0.5 and labels "
+                          f"from it. A window whose beats start well into the reel is "
+                          f"the usual cause.*"]
         return "\n".join(lines) + "\n"
 
 
@@ -246,8 +275,11 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
     grid_lines = gridfit.lines_at(beats, fit.level_n, fit.phase)
     slots, pos = [], 0.0
     for i, dur in enumerate(fitted):
-        span = [n[k] for k, b in enumerate(beats) if pos <= b < pos + dur] or [0.5]
-        e = fmean(span)
+        inside = [n[k] for k, b in enumerate(beats) if pos <= b < pos + dur]
+        # `or [0.5]` is a FALLBACK for a slot no beat reaches, not a measurement, and
+        # _kind below labels the slot from it. beats_in records the count so a reader
+        # can tell the two apart (design 2026-09-07 §0.4).
+        e = fmean(inside or [0.5])
         tail = i == len(fitted) - 1
         dev = 0.0 if tail else fit.devs[i]
         # The tail's out-point is the reel's end, not a cut: it has no line to be near.
@@ -256,6 +288,6 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
             want = pos + dur
             line = min(grid_lines, key=lambda L: abs(L - want))
         slots.append(Slot(i, pos, dur, e, "hook" if i == 0 else _kind(e),
-                          line=line, dev=dev))
+                          line=line, dev=dev, beats_in=len(inside)))
         pos += dur
     return Spine(tuple(slots), total, float(tempo)), fit, rejected

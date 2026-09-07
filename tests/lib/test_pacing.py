@@ -11,7 +11,7 @@ def test_slot_round_trips():
     s = Slot(index=0, start=0.0, dur=1.5, energy=0.4, kind="hook")
     assert Slot.from_dict(s.to_dict()) == s
     assert s.to_dict() == {"index": 0, "start": 0.0, "dur": 1.5, "energy": 0.4, "kind": "hook",
-                           "line": None, "dev": 0.0}
+                           "line": None, "dev": 0.0, "beats_in": -1}
 
 
 def test_slot_coerces_ints_to_float():
@@ -312,3 +312,62 @@ def test_the_anchor_table_reports_the_curve_contrast_beside_the_anchors():
     assert "| 0 | 8% | 1.50, 3.00 |" in md
     assert "| 1 | 100% | flat — no moment is distinguishable |" in md   # the plateau
     assert "| 2 | 10% | – |" in md      # low contrast, genuinely no local maximum
+
+
+def test_a_slot_no_beat_reaches_records_that_its_energy_is_a_fallback():
+    """fit_spine's `or [0.5]` is not a measurement, and _kind labels the slot from it.
+    On the real run four slots of pacing_B read energy 0.500 / kind 'build' because
+    that window's first beat is at 9.74s (design 2026-09-07 §0.4)."""
+    beats = [4.0 + i * 0.5 for i in range(40)]      # nothing before t=4.0
+    energy = [0.5] * 60
+    spine, _, _ = pacing.fit_spine([2.0, 2.0, 2.0], beats, energy, 1.0, 120.0,
+                                   [(-0.25, 0.25)] * 3)
+    assert spine.slots[0].beats_in == 0             # [0.0, 2.0) holds no beat
+    assert spine.slots[0].energy == pytest.approx(0.5)   # the value is unchanged
+    assert spine.slots[2].beats_in > 0
+
+
+def test_a_measured_slot_counts_the_beats_it_contains():
+    beats = [i * 0.5 for i in range(40)]
+    energy = [0.5] * 40
+    spine, _, _ = pacing.fit_spine([2.0, 2.0], beats, energy, 1.0, 120.0,
+                                   [(-0.25, 0.25)] * 2)
+    # slot 0 spans [0.0, 2.0): beats at 0.0, 0.5, 1.0, 1.5
+    assert spine.slots[0].beats_in == 4
+
+
+def test_beats_in_round_trips_and_defaults_to_not_recorded():
+    s = pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=0.0, beats_in=4)
+    assert pacing.Slot.from_dict(s.to_dict()) == s
+    old = {"index": 0, "start": 0.0, "dur": 2.0, "energy": 0.5, "kind": "hook",
+           "line": 2.0, "dev": 0.0}          # a PACING.json written before this slice
+    assert pacing.Slot.from_dict(old).beats_in == -1
+
+
+@pytest.mark.parametrize("bad", [-2, 1.5, True, "4"])
+def test_a_malformed_beats_in_is_refused(bad):
+    with pytest.raises(ValueError, match="Slot.beats_in must be"):
+        pacing.Slot(0, 0.0, 2.0, 0.5, "hook", line=2.0, dev=0.0, beats_in=bad)
+
+
+def test_the_markdown_shows_a_dash_where_nothing_was_measured():
+    beats = [4.0 + i * 0.5 for i in range(40)]
+    energy = [0.5] * 60
+    spine, _, _ = pacing.fit_spine([2.0, 2.0, 2.0], beats, energy, 1.0, 120.0,
+                                   [(-0.25, 0.25)] * 3)
+    md = spine.to_markdown()
+    # slot 0's own out-point (t=2.0) is far from the first beat (t=4.0), so gridfit's
+    # snap moves it by the full +0.25s allowance trying to reach that line anyway —
+    # dur is 2.25, not the un-shifted 2.0 (confirmed against fit_spine's actual output;
+    # test_fit_spine_keeps_every_episode_s_own_length_when_it_already_lands is the
+    # sibling case where the grid starts at 0.0 and no shift is needed).
+    assert "| 0 | 0.00–2.25 | 2.25 | – | – |" in md
+    assert "contain no beat of the analysed window" in md
+
+
+def test_the_markdown_of_a_fully_measured_spine_carries_no_footnote():
+    beats = [i * 0.5 for i in range(40)]
+    energy = [0.5] * 40
+    spine, _, _ = pacing.fit_spine([2.0, 2.0], beats, energy, 1.0, 120.0,
+                                   [(-0.25, 0.25)] * 2)
+    assert "contain no beat" not in spine.to_markdown()
