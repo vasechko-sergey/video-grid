@@ -792,6 +792,6 @@ def test_a_passing_variety_report_survives_json(tmp_path, monkeypatch):
     check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"],
                    ReelCheckSpec(target_dur=9.0, variety_min=8), str(out))
     d = json.loads(out.read_text())
-    # CheckResult.to_dict() flattens the detail dict into the result alongside "pass"
-    variety = d["checks"]["variety"]
-    assert variety["min_distance"] == 20 and variety["pair"] == [1, 2] and variety["min"] == 8
+    # CheckResult.to_dict() flattens the detail dict into the result alongside "pass";
+    # a whole-object assertion catches regressions in the "pass" key and stray extra keys.
+    assert d["checks"]["variety"] == {"min_distance": 20, "pair": [1, 2], "min": 8, "pass": True}
