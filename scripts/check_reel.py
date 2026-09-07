@@ -327,16 +327,25 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     if len(episodes) > 1:
         hashes = [_phash_bits(master, m) for m in mids]
         var_ok = True
-        worst = None
+        # The nearest pair is measured on EVERY path, not only the failing one. A
+        # passing variety used to report `{}`, so the worst junction of the only real
+        # run was re-derived by hand on three separate days (retro R6). Where a failure
+        # exists the value does not change — if any pair is below variety_min then the
+        # global minimum IS that pair — so this is observable only on a pass, which is
+        # therefore the only thing a test can discriminate (design 2026-09-07 §2.1).
+        worst, worst_pair = None, None
         for i in range(len(hashes) - 1):
-            dist = _hamming(hashes[i], hashes[i + 1])
+            dist = _hamming(hashes[i], hashes[i + 1])   # already coerced to int
+            if worst is None or dist < worst:
+                worst, worst_pair = dist, [i, i + 1]
             if dist < spec.variety_min:
                 var_ok = False
                 fails.append(ReelFailure("variety", "edit-plan", i + 1,
                                          {"pair": [i, i + 1], "distance": dist}))
-                worst = dist if worst is None else min(worst, dist)
+        # len(episodes) > 1 guarantees at least one pair, so worst is never None here.
         checks["variety"] = CheckResult("variety", var_ok,
-                                        {"min_distance": worst} if worst is not None else {})
+                                        {"min_distance": worst, "pair": worst_pair,
+                                         "min": spec.variety_min})
     else:
         checks["variety"] = CheckResult("variety", None,
                                         {"status": "n/a", "reason": "single episode"})

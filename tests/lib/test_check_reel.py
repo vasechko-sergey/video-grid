@@ -753,3 +753,45 @@ def test_grade_faithful_escalates_and_is_never_reprocessed():
     action = reel_orchestration.next_action([f], attempts={}, cap=3)
     assert action.kind == "escalate"
     assert action.finding["escalate_to"] == "process-episode" and action.finding["episode_idx"] == 1
+
+
+def test_a_passing_variety_reports_the_nearest_pair_it_measured(tmp_path, monkeypatch):
+    """A pass used to report `{}` — every distance computed and none kept, so the
+    worst junction was re-derived by hand on three separate days of the only real
+    run (retro R6). The measurement now survives the pass (design 2026-09-07 §2)."""
+    # ep0..ep2 at hashes 0, 1000, 1020 → pair distances 1000 and 20; both clear a
+    # variety_min of 8, and the nearest pair is (1, 2) at 20.
+    _Stub([3.0, 3.0, 3.0], hashes={1.5: 0, 4.5: 1000, 7.5: 1020}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"],
+                         ReelCheckSpec(target_dur=9.0, variety_min=8),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["variety"] == CheckResult(
+        "variety", True, {"min_distance": 20, "pair": [1, 2], "min": 8})
+
+
+def test_a_failing_variety_still_reports_the_global_minimum(tmp_path, monkeypatch):
+    """The value is unchanged wherever a failure exists, and that is provable: if any
+    pair is below variety_min then the global minimum IS that pair. Pinned so a later
+    reader can see the fail path was not quietly re-specified (design §2.1)."""
+    # pair (0,1) distance 4 fails; pair (1,2) distance 1000 passes.
+    _Stub([3.0, 3.0, 3.0], hashes={1.5: 0, 4.5: 4, 7.5: 1004}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"],
+                         ReelCheckSpec(target_dur=9.0, variety_min=8),
+                         str(tmp_path / "r.json"))
+    assert rep.checks["variety"] == CheckResult(
+        "variety", False, {"min_distance": 4, "pair": [0, 1], "min": 8})
+    f = [x for x in rep.fail_reasons if x.check == "variety"][0]
+    assert f == ReelFailure("variety", "edit-plan", 1, {"pair": [0, 1], "distance": 4})
+
+
+def test_a_passing_variety_report_survives_json(tmp_path, monkeypatch):
+    """rep.write() json.dumps the detail. The failing path already had this guard;
+    the passing path now carries values too and needs its own."""
+    _Stub([3.0, 3.0, 3.0], hashes={1.5: 0, 4.5: 1000, 7.5: 1020}).install(monkeypatch)
+    out = tmp_path / "r.json"
+    check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4", "c.mp4"],
+                   ReelCheckSpec(target_dur=9.0, variety_min=8), str(out))
+    d = json.loads(out.read_text())
+    # CheckResult.to_dict() flattens the detail dict into the result alongside "pass"
+    variety = d["checks"]["variety"]
+    assert variety["min_distance"] == 20 and variety["pair"] == [1, 2] and variety["min"] == 8
