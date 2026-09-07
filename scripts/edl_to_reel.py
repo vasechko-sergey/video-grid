@@ -282,6 +282,10 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
                       # records what the conductor aimed at rather than only the
                       # per-episode pairs it authored (design 2026-08-30 §6)
                       tone_target=edl.tone_target,
+                      # SPEC.length_s. The only length in the manifest that did not
+                      # come from the cut, so it is the only one check_reel's length
+                      # arithmetic cannot be circular about (design 2026-09-07 §4)
+                      brief_len=edl.brief_len,
                       **extra)
     # The run's record, assembled where all three parts are in hand (design §6). The
     # override list is a DIFF of the effective check spec against a default one, so a

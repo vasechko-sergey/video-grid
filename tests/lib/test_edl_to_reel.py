@@ -1201,6 +1201,24 @@ def test_an_unramped_reel_target_is_unchanged_from_before_the_ramp_slice(monkeyp
     assert rm.target_dur == pytest.approx(5.0)
 
 
+# --- named-absence Task 4: EDL.brief_len -> ReelManifest.brief_len (design
+# docs/specs/2026-09-07-named-absence-design.md §4) ---
+# NOTE: the task brief's literal test calls a `_build_manifest_for(tmp_path, monkeypatch,
+# brief_len=...)` helper this file has never defined under that name. `_manifest_for`
+# (monkeypatch, tmp_path, eps, **edl_kw), defined above and already used by the ramp
+# target-duration tests just above to call the real `_build_manifest` directly, IS this
+# file's existing manifest-building helper — reused here with one `_plain_episode()`
+# rather than adding a second one.
+
+def test_the_manifest_carries_the_brief_length_off_the_edl(monkeypatch, tmp_path):
+    """check_reel's `length` gate measures against EDL.target_dur, which came from the
+    footage — a tautology with respect to the brief. brief_len is the one length that
+    is not derived from the cut, so it must reach the manifest (design §4)."""
+    rm = _manifest_for(monkeypatch, tmp_path, [_plain_episode()], brief_len=45.0)
+    assert rm.brief_len == 45.0
+    assert ReelManifest.from_dict(rm.to_dict()).brief_len == 45.0
+
+
 def test_edl_to_reel_refuses_an_out_dir_equal_to_the_footage_root(tmp_path):
     """deliver writes ep{i}.mp4 and REEL_v{n}.mp4 into out_dir. Pointed at the
     footage folder those become source clips for the next intake — the same

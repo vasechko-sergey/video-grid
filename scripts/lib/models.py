@@ -1541,6 +1541,13 @@ class ReelManifest:
                                        # measured; travels separately from
                                        # check_spec's grade_residual_max, which is a
                                        # threshold and not data about this reel.
+    brief_len: float | None = None     # SPEC.length_s, carried off EDL.brief_len so
+                                       # check_reel can measure the delivered reel
+                                       # against the length that was ASKED FOR rather
+                                       # than only against target_dur, which came from
+                                       # the cut (design 2026-09-07 §4). None = no
+                                       # brief; the brief_length row then reads
+                                       # not-checked, never "on target".
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1639,6 +1646,7 @@ class ReelManifest:
                    look=LookSpec.from_dict(d["look"]) if d.get("look") is not None else None,
                    outro=d.get("outro"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
+                   brief_len=d.get("brief_len"),
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1654,6 +1662,7 @@ class ReelManifest:
                 "look": self.look.to_dict() if self.look is not None else None,
                 "outro": self.outro,
                 "tone_target": list(self.tone_target) if self.tone_target is not None else None,
+                "brief_len": self.brief_len,
                 "provenance": dict(self.provenance)}
 
     def write(self, path: str | Path) -> None:

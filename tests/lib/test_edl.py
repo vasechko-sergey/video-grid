@@ -1191,3 +1191,32 @@ def test_base_dur_survives_the_replace_the_pacing_binding_uses():
 def test_base_dur_refuses_a_non_positive_or_non_number(bad):
     with pytest.raises(ValueError, match="base_dur must be a positive number"):
         _ep(base_dur=bad)
+
+
+# --- named-absence Task 4: EDL.brief_len — SPEC.length_s, the one length in a reel
+# that is NOT derived from the cut (design docs/specs/2026-09-07-named-absence-design.md
+# §4) ---
+# NOTE: the task brief's literal snippets call a `_minimal_edl(...)` helper this file has
+# never defined under that name. `_edl(**kw)` (defined above at module scope, used by
+# e.g. test_edl_platform_round_trips_and_defaults_empty — EDL.platform being the exact
+# precedent brief_len follows) already builds a small two-episode EDL from reel-level
+# kwargs via EDL.from_dict, which is the same "small EDL" shape the brief's helper
+# implies, so it is reused here rather than adding a second EDL-building helper.
+
+def test_edl_carries_the_brief_length_and_round_trips_it():
+    edl = _edl(brief_len=45.0)
+    assert edl.brief_len == 45.0
+    assert EDL.from_dict(edl.to_dict()).brief_len == 45.0
+
+
+def test_an_edl_written_before_this_slice_has_no_brief_length():
+    d = _edl().to_dict()
+    d.pop("brief_len")
+    assert EDL.from_dict(d).brief_len is None
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, "45", True])
+def test_a_non_positive_brief_length_is_refused(bad):
+    """gap_frac divides by this two stages later; it fails where it is accepted."""
+    with pytest.raises(ValueError, match="EDL.brief_len must be a positive number"):
+        _edl(brief_len=bad)

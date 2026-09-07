@@ -274,6 +274,15 @@ class EDL:
                                     # never "the ending is fine". Provenance only:
                                     # nothing downstream reads it, but the reel's length
                                     # cannot otherwise say which rung chose it.
+    brief_len: float | None = None   # SPEC.length_s — the ONE length in a reel that is
+                                     # NOT derived from the cut. target_dur comes from
+                                     # edit_plan._back_edge_target, i.e. from the
+                                     # footage, so check_reel's length gate is a
+                                     # tautology with respect to the brief and could
+                                     # not notice the real run shipping 34.93s against
+                                     # a 45.0s brief. check_reel's advisory
+                                     # brief_length row measures against this (design
+                                     # 2026-09-07 §4). None = no brief was supplied.
     tone_target: tuple[float, float, float] | None = None   # (p5, p50, p95) — the
                                     # reel's common tone, measured on the tracked crop
                                     # (design 2026-08-30 §2). None = never measured.
@@ -311,6 +320,14 @@ class EDL:
         if self.outro is not None and not isinstance(self.outro, OutroFit):
             raise ValueError(f"EDL.outro must be an OutroFit or None, got "
                              f"{type(self.outro).__name__} — re-run edit_plan build")
+        if self.brief_len is not None and (
+                isinstance(self.brief_len, bool)
+                or not isinstance(self.brief_len, (int, float))
+                or self.brief_len <= 0):
+            raise ValueError(
+                f"EDL.brief_len must be a positive number of seconds (SPEC.length_s) "
+                f"or None, got {self.brief_len!r} — this is what check_reel's "
+                f"brief_length row divides by; re-run edit_plan build --spec")
         if self.tone_target is not None:
             tt = self.tone_target
             if not (isinstance(tt, (tuple, list)) and len(tt) == 3
@@ -358,6 +375,7 @@ class EDL:
                    constraints=(ConstraintReport.from_dict(d["constraints"])
                                 if d.get("constraints") else None),
                    outro=OutroFit.from_dict(d["outro"]) if d.get("outro") else None,
+                   brief_len=d.get("brief_len"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    provenance=d.get(provenance.PROV_KEY) or {})
 
@@ -391,6 +409,7 @@ class EDL:
              "variety": self.variety.to_dict() if self.variety is not None else None,
              "constraints": self.constraints.to_dict() if self.constraints is not None else None,
              "outro": self.outro.to_dict() if self.outro is not None else None,
+             "brief_len": self.brief_len,
              "tone_target": list(self.tone_target) if self.tone_target is not None else None}
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)

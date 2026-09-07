@@ -606,7 +606,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     cons = check_constraints(rules, tuple(placed), footage) if rules is not None else None
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
                cap=cap if cap is not None else 3, platform=platform, look=resolved_look,
-               target_dur=target, variety=variety, constraints=cons, outro=fit)
+               target_dur=target, variety=variety, constraints=cons, outro=fit,
+               brief_len=brief_len)
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
