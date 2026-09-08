@@ -108,15 +108,13 @@ def test_strip_renders_the_requested_frames_in_time_order(sample_clip, tmp_path)
     res = contact_sheet.build_strip(str(sample_clip), str(out), start=0.0, dur=3.0,
                                     frames=6)
     assert res["times"] == sorted(res["times"]) and len(res["times"]) == 6
-    # The layout is fitted to the clip's aspect, so cols and cell dimensions come from
-    # fit_layout, not hardcoded values. Verify they are in the response and the image
-    # was rendered with those dimensions.
-    assert "cols" in res and "cell_px" in res and "frames" in res
-    cell_w, cell_h = res["cell_px"]
-    rows = (res["frames"] + res["cols"] - 1) // res["cols"]  # ceiling division
-    expected_size = (res["cols"] * cell_w, rows * (cell_h + sheet.LABEL_H))
+    # Pinned literals, NOT recomputed from `res`: this file exists to catch a
+    # real-decode regression, and a size derived from the function's own return
+    # value agrees with itself no matter what the layout got wrong. sample_clip is
+    # 1920x1080, so fit_layout(6, 16/9) is (2, 784), cell_h 441, two rows.
+    assert (res["cols"], res["cell_px"]) == (2, [784, 441])
     img = Image.open(out)
-    assert img.size == expected_size
+    assert img.size == (1568, 1425)
 
 
 def test_strip_window_sugar_matches_the_explicit_range(sample_clip, tmp_path):
