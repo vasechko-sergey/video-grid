@@ -454,6 +454,21 @@ def test_a_cached_form_crop_is_sized_from_its_png(tmp_path):
     assert picked[0].crop == str(wide)               # the cached PNG's header decided it
 
 
+def test_save_cast_candidates_refuses_an_entry_with_no_crop_at_all(tmp_path):
+    # surface_crops never RAISES on a crop-less member (it just never wins the
+    # representative slot, test_a_member_with_no_crop_never_wins_the_representative_slot
+    # above) — but when EVERY member of a cluster carries neither crop form, the pick
+    # itself has none, and save_cast_candidates must refuse it BY NAME rather than
+    # reach Image.fromarray(None.astype(...)) as a bare AttributeError. This is the
+    # refusal _crop_area's own comment already claimed existed (design 2026-09-08
+    # task 5 — the final whole-branch review).
+    from scripts.lib.intake_cache import CastEntry
+    e = CastEntry("a.mp4", tid=7, conf=0.9, descriptor=_desc(1.0))   # crop=None, crop_rgb=None
+    with pytest.raises(ValueError, match="a.mp4") as exc:
+        intake.save_cast_candidates([e], str(tmp_path))
+    assert "7" in str(exc.value)
+
+
 def test_save_cast_candidates_records_each_crops_pixel_size(tmp_path):
     from scripts.lib.intake_cache import CastEntry
     red = np.zeros((19, 16, 3), "uint8"); red[:, :, 0] = 255      # 16x19, the run's ep1

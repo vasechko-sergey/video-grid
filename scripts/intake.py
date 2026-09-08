@@ -341,8 +341,16 @@ def save_cast_candidates(entries: list[CastEntry], out_dir: str, max_cast: int =
         dest = str(crop_dir / f"candidate_{i}.png")
         if e.crop is not None:
             shutil.copy(e.crop, dest)
-        else:
+        elif e.crop_rgb is not None:
             Image.fromarray(e.crop_rgb.astype("uint8")).save(dest)
+        else:
+            # The refusal _crop_area's own comment promises: a crop-less entry is
+            # caught HERE, at the point it would otherwise have to write one, not
+            # left to reach Image.fromarray(None.astype(...)) as a bare AttributeError.
+            raise ValueError(
+                f"save_cast_candidates: entry source={e.source!r} tid={e.tid} carries "
+                f"neither `crop` nor `crop_rgb` — a candidate with no crop cannot be "
+                f"shown to a human to name")
         # Read back from the file the human will actually open, not from the entry:
         # crop_px is what makes "too small to name" a reported state instead of an
         # invisible one (design §5/§7.3). Nothing here creates pixels — if a person
