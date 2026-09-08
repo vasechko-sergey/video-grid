@@ -255,16 +255,48 @@ def _centroid(descs: list[list[float]]) -> list[float]:
     return (m / n).tolist()
 
 
-def _medoid(members: list[CastEntry], centroid: list[float]) -> CastEntry:
-    return min(members, key=lambda e: descriptor_dist(e.descriptor, centroid))
+def _crop_area(e: CastEntry) -> int:
+    """Pixel area of a member's crop, in either CastEntry form: the live array's
+    shape, or the cached PNG's header (Image.open reads the header, not the pixels).
+    A member carrying neither answers 0 and so never wins, rather than raising —
+    save_cast_candidates is where a crop-less entry is refused, at the point it would
+    have to write one."""
+    if e.crop_rgb is not None:
+        h, w = e.crop_rgb.shape[:2]
+        return int(w) * int(h)
+    if e.crop:
+        try:
+            with Image.open(e.crop) as im:
+                w, h = im.size
+        except (OSError, ValueError):
+            return 0
+        return int(w) * int(h)
+    return 0
+
+
+def _largest(members: list[CastEntry]) -> CastEntry:
+    """The member whose crop carries the most pixels — the one a HUMAN can name.
+
+    Deliberately NOT the medoid this replaced. The medoid is the member closest to the
+    cluster's embedding centroid, and identity-centrality is not legibility: measured
+    over the 2026-06 run's 15 candidates, presence and crop area are ANTI-correlated
+    (Spearman -0.486). The person with 479 s on screen was surfaced as a 16x19 crop —
+    304 pixels — while the one with 32 s got 535x373, because a long presence averages
+    over many distances and its centroid lands on a middling, usually distant, view
+    (design §0.4).
+
+    max() returns the first maximum, so a tie goes to the earlier member and the pick
+    is deterministic."""
+    return max(members, key=_crop_area)
 
 
 def surface_crops(entries: list[CastEntry], max_cast: int = MAX_CAST) -> list[CastEntry]:
     """Cluster ALL tracks' embeddings into real identities (agglomerative, average
     linkage, cosine, cut at CLUSTER_COS), one CastEntry per cluster: descriptor =
-    centroid (mean, re-L2-normed), representative crop = medoid, presence = sum
-    over members. Ranked by presence (design §4.1); capped at max_cast with a
-    logged drop — never a silent cap."""
+    centroid (mean, re-L2-normed), representative crop = the LARGEST member's (design
+    2026-09-08 §5 — the medoid picked for embedding centrality, which is
+    anti-correlated with legibility), presence = sum over members. Ranked by presence
+    (design §4.1); capped at max_cast with a logged drop — never a silent cap."""
     if not entries:
         return []
     if len(entries) == 1:
@@ -282,7 +314,7 @@ def surface_crops(entries: list[CastEntry], max_cast: int = MAX_CAST) -> list[Ca
     picked: list[CastEntry] = []
     for members in groups.values():
         cent = _centroid([m.descriptor for m in members])
-        rep = _medoid(members, cent)
+        rep = _largest(members)
         picked.append(replace(rep, descriptor=cent,
                               presence=float(sum(m.presence for m in members))))
     picked.sort(key=lambda e: e.presence, reverse=True)
@@ -311,9 +343,16 @@ def save_cast_candidates(entries: list[CastEntry], out_dir: str, max_cast: int =
             shutil.copy(e.crop, dest)
         else:
             Image.fromarray(e.crop_rgb.astype("uint8")).save(dest)
+        # Read back from the file the human will actually open, not from the entry:
+        # crop_px is what makes "too small to name" a reported state instead of an
+        # invisible one (design §5/§7.3). Nothing here creates pixels — if a person
+        # was only ever 13px tall, the largest member is still 13px.
+        with Image.open(dest) as im:
+            crop_w, crop_h = im.size
         manifest.append({"id": i, "source": e.source, "conf": round(float(e.conf), 3),
                          "presence": round(float(e.presence), 2),
-                         "crop": dest, "descriptor": e.descriptor})
+                         "crop": dest, "crop_px": [crop_w, crop_h],
+                         "descriptor": e.descriptor})
     (Path(out_dir) / "cast_candidates.json").write_text(json.dumps(manifest, indent=2))
     return manifest
 

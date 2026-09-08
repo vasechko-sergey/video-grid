@@ -377,6 +377,73 @@ def test_surface_crops_dedups_identities():
     picked = intake.surface_crops(entries, max_cast=8)
     assert len(picked) == 2                            # the two identical embeddings collapse to one
 
+
+def test_the_representative_crop_is_the_largest_not_the_medoid():
+    # Three members of ONE identity. The medoid (closest to the centroid) carries a
+    # tiny crop; another member carries a big one. Presence and crop area are
+    # anti-correlated on real footage (Spearman -0.486, design §0.4), so the pick
+    # must be by pixels, not by embedding centrality.
+    from scripts.lib.intake_cache import CastEntry
+    tiny = np.zeros((12, 13, 3), "uint8")            # 13x12 -- the run's worst
+    big = np.full((373, 535, 3), 200, "uint8")
+    mid = np.zeros((80, 60, 3), "uint8")
+    d = _desc(1.0)
+    entries = [CastEntry("a.mp4", 1, 0.9, list(d), presence=9.0, crop_rgb=tiny),
+               CastEntry("a.mp4", 2, 0.9, list(d), presence=1.0, crop_rgb=big),
+               CastEntry("a.mp4", 3, 0.9, list(d), presence=1.0, crop_rgb=mid)]
+    picked = intake.surface_crops(entries, max_cast=8)
+    assert len(picked) == 1
+    assert picked[0].crop_rgb.shape[:2] == (373, 535)
+
+
+def test_the_representative_descriptor_is_still_the_centroid():
+    # The picture changes; the identity mathematics does not. Every downstream
+    # consumer (hero.resolve, track.build_route, cast.json) reads `descriptor`.
+    from scripts.lib.intake_cache import CastEntry
+    big = np.full((300, 300, 3), 200, "uint8")
+    entries = [CastEntry("a.mp4", 1, 0.9, _emb(0), presence=5.0,
+                         crop_rgb=np.zeros((4, 4, 3), "uint8")),
+               CastEntry("a.mp4", 2, 0.9, _emb(0), presence=5.0, crop_rgb=big)]
+    picked = intake.surface_crops(entries, max_cast=8)
+    assert picked[0].descriptor == _emb(0)           # the re-L2-normed mean, unchanged
+    assert picked[0].presence == 10.0                # summed, unchanged
+    assert picked[0].crop_rgb.shape[:2] == (300, 300)
+
+
+def test_a_member_with_no_crop_never_wins_the_representative_slot():
+    from scripts.lib.intake_cache import CastEntry
+    small = np.zeros((4, 4, 3), "uint8")
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0),   # no crop at all
+               CastEntry("a.mp4", 2, 0.9, _desc(1.0), presence=1.0, crop_rgb=small)]
+    picked = intake.surface_crops(entries, max_cast=8)
+    assert picked[0].crop_rgb is not None            # the 4x4 wins over nothing
+
+
+def test_a_cached_form_crop_is_sized_from_its_png(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
+    wide = tmp_path / "wide.png"
+    _Img.fromarray(np.full((200, 400, 3), 180, "uint8")).save(wide)
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0,
+                         crop_rgb=np.zeros((10, 10, 3), "uint8")),
+               CastEntry("a.mp4", 2, 0.9, _desc(1.0), presence=1.0, crop=str(wide))]
+    picked = intake.surface_crops(entries, max_cast=8)
+    assert picked[0].crop == str(wide)               # the cached PNG's header decided it
+
+
+def test_save_cast_candidates_records_each_crops_pixel_size(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
+    red = np.zeros((19, 16, 3), "uint8"); red[:, :, 0] = 255      # 16x19, the run's ep1
+    blue = np.zeros((373, 535, 3), "uint8"); blue[:, :, 2] = 255
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), crop_rgb=red),
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), crop_rgb=blue)]
+    manifest = intake.save_cast_candidates(entries, str(tmp_path))
+    by_source = {m["source"]: m for m in manifest}
+    assert by_source["a.mp4"]["crop_px"] == [16, 19]
+    assert by_source["b.mp4"]["crop_px"] == [535, 373]
+    # read from the file the human will actually open, not from the entry
+    for m in manifest:
+        assert _Img.open(m["crop"]).size == tuple(m["crop_px"])
+
 def test_save_cast_candidates_saves_and_manifests(tmp_path):
     from scripts.lib.intake_cache import CastEntry
     red = np.zeros((8, 8, 3), "uint8"); red[:, :, 0] = 255
