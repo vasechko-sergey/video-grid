@@ -271,18 +271,31 @@ them chose for themselves. Filed in §8.
 ## §5 · The representative crop is the largest, the descriptor is still the centroid
 
 `surface_crops` keeps clustering, keeps the centroid descriptor, keeps the
-presence sum and the presence ranking. Only the **picture** changes: the cluster's
-representative crop becomes its largest-area member's, not its medoid's.
+presence sum and the presence ranking. The cluster's representative crop
+becomes its largest-area member's, not its medoid's — and it is **not only the
+picture** that moves when the pick changes.
 
 ```python
 picked.append(replace(_largest(members), descriptor=cent,
                       presence=float(sum(m.presence for m in members))))
 ```
 
-The identity mathematics is untouched — `descriptor` is still the re-L2-normed
-mean, so every downstream consumer (`hero.resolve`, `track.build_route`,
+`replace` overrides exactly the two fields that are properties of the whole
+cluster — `descriptor` and `presence` — and nothing else. Every other field
+`picked[i]` carries, crop included, comes from whichever member `rep` names:
+medoid before this slice, largest-area now. `source`, `conf` and `tid` were
+never independent of the picture — they always described the same member the
+crop came from — so swapping which member wins moves them together with the
+picture, not the picture alone; `save_cast_candidates` writes `source` and
+`conf` straight into `cast_candidates.json`. **This is the right shape, not
+merely a tolerated side effect**: the manifest's `source`/`conf` now describe
+the crop the human is actually looking at, where the medoid pick could have
+named a detection on a different clip than the one shown. The identity
+mathematics alone is untouched — `descriptor` is still the re-L2-normed mean,
+so every downstream consumer of it (`hero.resolve`, `track.build_route`,
 `cast.json`) sees exactly what it sees today. What changes is which of the
-cluster's own crops the human is shown.
+cluster's own crops the human is shown, and which member's own detection now
+accompanies it.
 
 `_largest` reads each member's crop size: `crop_rgb.shape` for the live form,
 `Image.open(path).size` for the cached form (a header read, not a decode), and 0

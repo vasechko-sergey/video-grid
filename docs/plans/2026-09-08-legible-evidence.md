@@ -1050,6 +1050,22 @@ def test_the_template_names_the_extraction_tool():
     assert "$VG" in text
 ```
 
+**Amended 2026-09-08 (final whole-branch review).** The sketch above shipped
+scoped to `episode-reviewer.md` alone, then was legitimately widened: the
+review found `skills/reel-review/reel-reviewer.md` — the OTHER judge
+template — carried the identical two unnamed gates against
+`scripts/lib/review.py`'s `Finding`. Both tests above are now parametrized
+over both templates instead of duplicated. `test_every_gated_finding_field_is_named_in_the_rules_block`
+kept its name (now `[episode-reviewer]`/`[reel-reviewer]` per
+`pytest.mark.parametrize`); `test_the_five_axes_are_named_in_the_rules_block`
+could not keep "five" once it also checks `reel-reviewer.md`'s eight-member
+`REVIEW_AXES`, and shipped as `test_the_axes_are_named_in_the_rules_block`,
+parametrized the same way. `test_the_template_names_the_extraction_tool`
+stays scoped to `episode-reviewer.md` alone — `reel-reviewer.md` has no
+equivalent instruction to check. All three now live in the rewritten
+`tests/test_skills_contract.py`, not in the single-template shape sketched
+here.
+
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `.venv/bin/python -m pytest tests/test_skills_contract.py -q`

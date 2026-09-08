@@ -54,8 +54,8 @@ _Last updated: 2026-09-08._
   source_width)` so a small source is never upscaled into a claim, and
   `contact_sheet.STRIP_COLS` — the fixed column count that forced every
   strip through a landscape layout — is deleted. On the run's own case:
-  95×169 becomes 313×556, landing inside the budget — 3.8× linear, 14.3×
-  area.
+  83×147 as read becomes 313×556, landing inside the budget — 3.8× linear,
+  14.3× area.
 
   **B — the packet names its own pixels (Task 3, design §3).**
   `episode_qc._evidence` gains `strip` (never named before — its path only
@@ -78,12 +78,19 @@ _Last updated: 2026-09-08._
   **D — the representative crop is the largest, not the medoid (Task 5,
   design §5).** `_largest` (by rendered pixel area) replaces `_medoid`
   (nearest to the cluster's embedding centroid) as `surface_crops`'s pick for
-  which member's PICTURE a human sees; the descriptor stays the re-L2-normed
-  centroid, so `hero.resolve`/`track.build_route`/`cast.json` — every
-  downstream consumer of `descriptor` — sees exactly what it saw before.
-  `save_cast_candidates` now records `crop_px`, read back from the PNG the
-  human will actually open, so a 13×12 crop is a reported state instead of
-  an invisible one. Phase 2 only, over already-cached results:
+  which member becomes the cluster's representative — and it is not only the
+  PICTURE that moves: `replace(_largest(members), descriptor=cent,
+  presence=…)` overrides exactly the two fields that are properties of the
+  whole cluster, so `source`, `conf` and `tid` all come along with the crop,
+  from whichever member wins. That is the right shape, not merely tolerated:
+  `cast_candidates.json`'s `source`/`conf` now describe the crop a human is
+  actually looking at, where the medoid pick could have named a detection on
+  a different clip than the one shown. The descriptor alone stays the
+  re-L2-normed centroid, so `hero.resolve`/`track.build_route`/`cast.json` —
+  every downstream consumer of `descriptor` — sees exactly what it saw
+  before. `save_cast_candidates` now records `crop_px`, read back from the
+  PNG the human will actually open, so a 13×12 crop is a reported state
+  instead of an invisible one. Phase 2 only, over already-cached results:
   `CACHE_VERSION` does not move and no footage is re-scanned.
 
   **E — the judge's contract is stated in full, and checked (Task 6, design
@@ -117,7 +124,7 @@ _Last updated: 2026-09-08._
   different enough that the centroid lands on the diagonal 1/√2 and is
   provably neither raw vector).
 
-  **Full suite: 3542 passed, 1 skipped** (up from 3510/1 at the pre-branch
+  **Full suite: 3543 passed, 1 skipped** (up from 3510/1 at the pre-branch
   baseline).
 
   A one-line dead-import fix rode along in the same commit: `scripts/intake.py`
@@ -131,6 +138,72 @@ _Last updated: 2026-09-08._
   from inside this pipeline, so `fit_layout` maximizes UNDER it rather than
   guessing a truer number; and nothing here creates pixels — if a person was
   only ever 13px tall, `crop_px` is what makes that reportable, not fixable.
+
+  **Final whole-branch review — five findings, all fixed in one pass
+  (2026-09-08), commits `50dbe5f`/`c51ae6f`/`cf5459e`/`baa750e` on top of
+  `109b5f2`.** The review read both judge templates and both drivers, not
+  only the one this slice's own tasks touched.
+
+  **1 — the OTHER judge template carried R10.6/R10.7 verbatim.**
+  `skills/reel-review/reel-reviewer.md`'s Rules block named neither `axis`
+  nor `suggestion` against `scripts/lib/review.py`'s `Finding` — the
+  identical shape as episode-qc's R10.7, just in the reel-level judge
+  instead of the episode-level one. Fixed the same way (an `axis` bullet and
+  a `suggestion` bullet, in the block's own bare-`∈` style, not
+  `episode-reviewer.md`'s backtick style). `reel_review.build_review` also
+  raised on the first malformed finding instead of collecting every
+  complaint — the identical shape as R10.6 — rewritten to mirror
+  `episode_qc.build_qc`'s one-pass collection (numbered complaints, "every
+  complaint from this run is listed above, so one pass names them all").
+  `tests/test_skills_contract.py` is rewritten to parametrize over both
+  templates (`episode-reviewer.md`/`EpisodeFinding`/`QC_AXES` and
+  `reel-reviewer.md`/`Finding`/`REVIEW_AXES`) instead of checking one, using
+  a word-boundary regex on each field name instead of a backtick-wrapped
+  substring match, so the same check reads both a backtick-wrapped name
+  (`episode-reviewer.md`'s style) and a bare one (`reel-reviewer.md`'s);
+  `test_the_five_axes_are_named_in_the_rules_block`
+  could not keep "five" once it also checks `reel-reviewer.md`'s
+  eight-member `REVIEW_AXES`, and is now `test_the_axes_are_named_in_the_rules_block`.
+  `test_build_review_names_every_bad_finding_inside_one_raise` pins the
+  reel-side collection the way `test_episode_qc.py` already pinned the
+  episode side.
+
+  **2 — `build_strip` rounded past `fit_layout`'s own budget.**
+  `cell_h = max(1, round(cell_w * h0 / w0))` could round the sheet's long
+  side past the budget `fit_layout` exists to respect; reverting to `round`
+  reproduces the finding's own numbers exactly (n=13, cell_w=497, cell_h=280,
+  sheet 1491×1570 against a 1568 budget — one pixel-row over, at 13-15
+  frames on a 16:9 clip). `cell_h` now truncates (`int`, not `round`),
+  matching `cell_w`'s own truncation.
+  `test_strip_sheet_never_exceeds_the_reader_budget_across_frame_counts`
+  sweeps frame counts 9–16 against a real PIL-decoded sheet.
+
+  **3+4 — the judge template's two prose gaps.**
+  `skills/episode-qc/episode-reviewer.md`'s `## What shipped` section never
+  said what to do when `{STORYBOARD_PATH}` reads `none recorded` — the strip
+  plus the judge's own pulled frames are then the whole of the pixel
+  evidence, and the summary should say so — and its `$VG` preamble never
+  carried the absolute-path sentence every other runner skill states
+  (`bin/vg` `cd`s to the repo root before running, so a relative `--out`
+  writes into the plugin checkout). Both added; prose-only judge-instruction
+  changes, no new test asked or added.
+
+  **5 — `save_cast_candidates` had no refusal `_crop_area`'s own comment
+  promised.** A `CastEntry` carrying neither `crop` nor `crop_rgb` reached
+  `Image.fromarray(e.crop_rgb.astype(...))` as a bare `AttributeError` on
+  `None`. Split into an explicit `if e.crop is not None / elif e.crop_rgb is
+  not None / else: raise ValueError(...)` naming the entry's `source` and
+  `tid`, read-back unguarded since it reads the file this function just
+  wrote. `test_save_cast_candidates_refuses_an_entry_with_no_crop_at_all`
+  reproduces the original `AttributeError` before the fix and the named
+  `ValueError` after.
+
+  **Full suite: 3548 passed, 1 skipped** (3543 before this wave's five new
+  tests: one in `tests/test_reel_review.py`, two net in
+  `tests/test_skills_contract.py` — two single tests became two tests
+  parametrized over two templates each, i.e. 2→4, plus the untouched
+  extraction-tool test — one in `tests/lib/test_contact_sheet.py`, one in
+  `tests/lib/test_intake.py`).
 
 - **A measurement survives a pass — three reports stop collapsing an absence
   (2026-09-07)** — design

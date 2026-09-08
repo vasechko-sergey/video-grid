@@ -38,8 +38,9 @@ content of the slice:
 - `sheet.fit_layout` picks the column count whose cell picture is widest inside a
   named `READER_LONG_SIDE`; `sheet.tile`/`_fit` take the cell box as a parameter
   defaulting to today's values, so the footage contact sheet is byte-identical.
-  `contact_sheet.STRIP_COLS` is deleted. On the run's own case, 95×169 becomes
-  313×556 with the sheet landing inside the budget — 3.8× linear, 14.3× area.
+  `contact_sheet.STRIP_COLS` is deleted. On the run's own case, 83×147 as read
+  becomes 313×556 with the sheet landing inside the budget — 3.8× linear, 14.3×
+  area.
 - `episode_qc`'s packet names the strip it never named and records `strip_px` and
   `storyboard_px`, the rendered per-frame size of each artifact. Reported, never
   gated — no threshold is introduced.
@@ -54,6 +55,23 @@ content of the slice:
   distinguishes the timeline index from the composition evidence.
   `tests/test_skills_contract.py` machine-checks the Rules block against
   `EpisodeFinding`'s own fields.
+- The final whole-branch review found the same two unnamed gates and the same
+  raise-on-first-failure shape in the OTHER judge template:
+  `reel-reviewer.md`'s Rules block named neither `axis` nor `suggestion` either,
+  and `reel_review.build_review` raised on the first malformed finding instead
+  of collecting every complaint. Both fixed the same way as their `episode-qc`
+  counterparts, and `tests/test_skills_contract.py` now checks both templates
+  against their own dataclasses.
+- `build_strip`'s cell height rounded up like its width, undoing `fit_layout`'s
+  own "never past budget" guarantee — a 16:9 clip at 13-15 frames landed one
+  pixel-row over. Height truncates too now.
+- `episode-reviewer.md` states what the judge should do when
+  `{STORYBOARD_PATH}` reads `none recorded`, and names the reason its `$VG`
+  preamble needs an absolute `--out` path (`bin/vg` `cd`s to the repo root
+  first).
+- `intake.save_cast_candidates` refuses a candidate carrying neither `crop`
+  nor `crop_rgb`, naming its source and track id, instead of crashing inside
+  `Image.fromarray`.
 
 **Honest limits** — nothing here proves a judge looked; `READER_LONG_SIDE` is
 inherited from `PER_SHEET`'s own comment and cannot be measured from inside this
