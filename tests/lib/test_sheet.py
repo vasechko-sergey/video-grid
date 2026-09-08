@@ -45,10 +45,10 @@ def test_cols_is_honoured_for_the_strip_layout():
 
 
 def test_a_full_sheet_fits_inside_the_image_size_limit():
-    # 1568px is where a viewer downsamples the image; past it the labels that tie a
-    # thumbnail to its window index stop being legible (design §3).
+    # READER_LONG_SIDE is where a viewer downsamples the image; past it the labels
+    # that tie a thumbnail to its window index stop being legible (design §7.2).
     img = sheet.tile(_cells(sheet.PER_SHEET))
-    assert max(img.size) <= 1568
+    assert max(img.size) <= sheet.READER_LONG_SIDE
 
 
 # ---- contain-fit ----
@@ -131,6 +131,71 @@ def test_paginate_of_nothing_is_no_pages_not_one_blank_page():
 def test_paginate_refuses_a_non_positive_page_size():
     with pytest.raises(ValueError, match="per_sheet must be >= 1"):
         sheet.paginate(_cells(2), per_sheet=0)
+
+
+# ---- fit_layout ----
+
+def test_fit_layout_beats_a_single_row_for_portrait_content():
+    # Nine 9:16 frames: 5x2 gives a 313px-wide picture; one row of nine gives 174,
+    # because a single row spends the whole budget on width and leaves the height
+    # unused. The column count is FITTED, not typed (design §2).
+    cols, cell_w = sheet.fit_layout(9, 9 / 16)
+    assert (cols, cell_w) == (5, 313)
+
+
+def test_fit_layout_answers_each_aspect_from_the_same_function():
+    assert sheet.fit_layout(9, 16 / 9) == (3, 522)
+    assert sheet.fit_layout(9, 1.0) == (3, 488)
+    assert sheet.fit_layout(6, 9 / 16) == (3, 421)
+
+
+def test_a_fitted_sheet_lands_inside_the_reader_budget():
+    for n, aspect in ((9, 9 / 16), (9, 16 / 9), (9, 1.0), (6, 9 / 16), (1, 9 / 16),
+                      (12, 4 / 3), (30, 9 / 16)):
+        cols, cell_w = sheet.fit_layout(n, aspect)
+        cell_h = round(cell_w / aspect)
+        img = sheet.tile([Cell(image=_arr(cell_w, cell_h), lines=("x",))] * n,
+                         cols=cols, cell_w=cell_w, cell_h=cell_h)
+        assert max(img.size) <= sheet.READER_LONG_SIDE, (n, aspect, img.size)
+
+
+def test_fit_layout_refuses_a_non_positive_cell_count():
+    with pytest.raises(ValueError, match="n must be an int >= 1"):
+        sheet.fit_layout(0, 9 / 16)
+
+
+def test_fit_layout_refuses_a_bool_cell_count():
+    with pytest.raises(ValueError, match="n must be an int >= 1"):
+        sheet.fit_layout(True, 9 / 16)
+
+
+def test_fit_layout_refuses_a_non_positive_aspect():
+    with pytest.raises(ValueError, match="aspect must be w/h > 0"):
+        sheet.fit_layout(9, 0.0)
+
+
+def test_fit_layout_refuses_a_budget_nothing_fits_in():
+    with pytest.raises(ValueError, match="do not fit"):
+        sheet.fit_layout(9, 9 / 16, budget=30)
+
+
+# ---- the cell box is a parameter with an identity default ----
+
+def test_tile_defaults_are_byte_identical_to_the_explicit_box():
+    a = sheet.tile(_cells(7))
+    b = sheet.tile(_cells(7), cell_w=sheet.CELL_W, cell_h=sheet.CELL_H)
+    assert a.tobytes() == b.tobytes()
+
+
+def test_an_explicit_box_shaped_like_the_content_letterboxes_nothing():
+    # A 9:16 frame in a 9:16 box fills it edge to edge; the same frame in the
+    # default 16:9 box uses 95 of 300 columns (design §0.1).
+    frame = _arr(180, 320, value=200)
+    fitted = sheet.tile([Cell(image=frame, lines=("t",))], cell_w=180, cell_h=320)
+    assert fitted.getpixel((2, 2)) == (200, 200, 200)
+    assert fitted.getpixel((177, 317)) == (200, 200, 200)
+    default = sheet.tile([Cell(image=frame, lines=("t",))])
+    assert default.getpixel((2, 2)) == (0, 0, 0)          # black padding at the edge
 
 
 # ---- determinism ----

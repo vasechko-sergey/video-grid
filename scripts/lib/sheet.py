@@ -19,7 +19,13 @@ from scripts.lib import fonts
 CELL_W = 300                       # thumbnail box width, px
 CELL_H = round(CELL_W * 9 / 16)    # 169 — a 16:9 box; any other aspect letterboxes into it
 COLS = 5
-PER_SHEET = 30                     # COLS * 6 rows: 1500 x 1218 px, inside the 1568 limit
+READER_LONG_SIDE = 1568            # px — the long-side budget a sheet must stay inside.
+# INHERITED, NOT MEASURED (design §7.2). Past this a reader downsamples the whole
+# image and the per-frame picture shrinks with it; PER_SHEET's own sizing has assumed
+# this number since 2026-08-05. Nothing in this repository can observe a reader's
+# image pipeline, so it cannot be measured here — which is why fit_layout maximizes
+# UNDER the budget: a wrong value yields a suboptimal sheet, never a broken one.
+PER_SHEET = 30                     # COLS * 6 rows: 1500 x 1218 px, inside READER_LONG_SIDE
 LABEL_H = 34                       # two FONT_PX lines plus padding
 FONT_PX = 13
 MARK_PX = 3                        # `best` border width
@@ -39,16 +45,19 @@ class Cell:
     marked: bool = False
 
 
-def _fit(arr: np.ndarray) -> Image.Image:
-    """Contain-fit `arr` into a CELL_W x CELL_H black box, aspect preserved. A source
+def _fit(arr: np.ndarray, cell_w: int, cell_h: int) -> Image.Image:
+    """Contain-fit `arr` into a cell_w x cell_h black box, aspect preserved. A source
     of any aspect (a portrait phone clip beside 16:9 drone footage) lands in the SAME
     box, so the grid is never ragged and no frame is ever distorted — a stretched
-    thumbnail would misinform exactly the composition judgement this sheet exists for."""
+    thumbnail would misinform exactly the composition judgement this sheet exists for.
+
+    When the box already carries the content's own aspect (sheet.fit_layout picks one
+    that does), the fit is exact and nothing is letterboxed."""
     im = Image.fromarray(arr).convert("RGB")
-    scale = min(CELL_W / im.width, CELL_H / im.height)
+    scale = min(cell_w / im.width, cell_h / im.height)
     w, h = max(1, round(im.width * scale)), max(1, round(im.height * scale))
-    box = Image.new("RGB", (CELL_W, CELL_H), _BG)
-    box.paste(im.resize((w, h), Image.LANCZOS), ((CELL_W - w) // 2, (CELL_H - h) // 2))
+    box = Image.new("RGB", (cell_w, cell_h), _BG)
+    box.paste(im.resize((w, h), Image.LANCZOS), ((cell_w - w) // 2, (cell_h - h) // 2))
     return box
 
 
@@ -63,10 +72,53 @@ def _truncate(text: str, font: ImageFont.FreeTypeFont, max_w: int) -> str:
     return text + "…"
 
 
-def tile(cells: Sequence[Cell], *, cols: int = COLS) -> Image.Image:
+def fit_layout(n: int, aspect: float, *, budget: int = READER_LONG_SIDE) -> tuple[int, int]:
+    """(cols, cell_w) for `n` cells of `aspect` (w/h): the column count whose cell
+    PICTURE is widest with the whole sheet's long side inside `budget`.
+
+    The count is fitted rather than typed because the answer depends on both n and the
+    aspect and is not monotone in either. Nine 9:16 frames want 5 columns (a 313px
+    picture); one row of nine gives 174, because a single row spends the entire budget
+    on width and leaves the height unused (design §2).
+
+    The cell box carries the CONTENT's aspect, so tile's contain-fit letterboxes
+    nothing — that is the point, and it is why a caller sheeting MIXED aspects
+    (contact_sheet build, whose sources range from portrait phone clips to 16:9 drone
+    footage) must keep the default 16:9 box instead. This is for a strip of ONE clip.
+
+    Truncates rather than rounds the picture width, so the sheet is always <= budget
+    and never one pixel past it. Ties go to the smaller column count, so the answer is
+    deterministic."""
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        raise ValueError(f"sheet.fit_layout: n must be an int >= 1, got {n!r}")
+    if isinstance(aspect, bool) or not isinstance(aspect, (int, float)) or aspect <= 0:
+        raise ValueError(f"sheet.fit_layout: aspect must be w/h > 0, got {aspect!r}")
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:
+        raise ValueError(f"sheet.fit_layout: budget must be an int >= 1, got {budget!r}")
+    best_cols, best_w = 1, 0
+    for cols in range(1, n + 1):
+        rows = (n + cols - 1) // cols
+        by_width = budget / cols                          # the sheet's width bound
+        by_height = (budget / rows - LABEL_H) * aspect    # its height bound, less the label
+        cell_w = int(min(by_width, by_height))
+        if cell_w > best_w:
+            best_cols, best_w = cols, cell_w
+    if best_w < 1:
+        raise ValueError(
+            f"sheet.fit_layout: {n} cells of aspect {aspect:.3f} do not fit a "
+            f"{budget}px budget at any column count — every layout leaves under one "
+            f"pixel of picture per cell")
+    return best_cols, best_w
+
+
+def tile(cells: Sequence[Cell], *, cols: int = COLS,
+         cell_w: int = CELL_W, cell_h: int = CELL_H) -> Image.Image:
     """Lay `cells` out left-to-right, top-to-bottom on black: cell k at column
-    k % cols, row k // cols, each occupying exactly CELL_W x (CELL_H + LABEL_H).
+    k % cols, row k // cols, each occupying exactly cell_w x (cell_h + LABEL_H).
     `cols` narrows to len(cells) so a short strip is not padded with empty columns.
+
+    The box defaults to the module's 16:9 CELL_W/CELL_H, so the footage contact sheet
+    is unchanged; a strip passes its own content's shape from sheet.fit_layout.
 
     Refuses an empty list: an image with no cells is not a contact sheet, and what an
     empty selection MEANS is the caller's call (the driver says so in SHEETS.md rather
@@ -77,21 +129,23 @@ def tile(cells: Sequence[Cell], *, cols: int = COLS) -> Image.Image:
             "decides what an empty selection means; it must not become a blank PNG")
     if cols < 1:
         raise ValueError(f"sheet.tile: cols must be >= 1, got {cols}")
+    if cell_w < 1 or cell_h < 1:
+        raise ValueError(f"sheet.tile: cell box must be positive, got {cell_w}x{cell_h}")
     cols = min(cols, len(cells))
     rows = (len(cells) + cols - 1) // cols
-    ch = CELL_H + LABEL_H
-    canvas = Image.new("RGB", (cols * CELL_W, rows * ch), _BG)
+    ch = cell_h + LABEL_H
+    canvas = Image.new("RGB", (cols * cell_w, rows * ch), _BG)
     font = ImageFont.truetype(fonts.resolve_font(), FONT_PX)
     draw = ImageDraw.Draw(canvas)
     for k, cell in enumerate(cells):
-        x, y = (k % cols) * CELL_W, (k // cols) * ch
-        canvas.paste(_fit(cell.image), (x, y))
+        x, y = (k % cols) * cell_w, (k // cols) * ch
+        canvas.paste(_fit(cell.image, cell_w, cell_h), (x, y))
         if cell.marked:
-            draw.rectangle([x, y, x + CELL_W - 1, y + CELL_H - 1],
+            draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1],
                            outline=_MARK, width=MARK_PX)
         for i, line in enumerate(cell.lines[:2]):
-            draw.text((x + 4, y + CELL_H + 2 + i * (FONT_PX + 2)),
-                      _truncate(line, font, CELL_W - 8), font=font, fill=_FG)
+            draw.text((x + 4, y + cell_h + 2 + i * (FONT_PX + 2)),
+                      _truncate(line, font, cell_w - 8), font=font, fill=_FG)
     return canvas
 
 
