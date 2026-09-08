@@ -15,13 +15,33 @@ from scripts.lib.review import Finding, Review
 def build_review(raw_findings: list, reel: str, *, summary: str = "", spec_ref: str = "",
                  platform: str = "", reviewer: str = "") -> Review:
     """Validate a list of raw finding dicts (the reviewer subagent's output) into a typed
-    Review. A malformed finding raises here (nothing is written) — the reviewer never writes
-    REVIEW.json directly, so a bad finding fails loud at this boundary, not silently."""
+    Review. Every finding is validated and every complaint is collected before raising
+    (design 2026-09-08 §6, mirroring episode_qc.build_qc) — the reviewer has already
+    exited by the time this runs, so raising on the first bad finding buys nothing about
+    the rest of the list and costs a whole round to learn about the second. The refusal's
+    STRENGTH is unchanged: any complaint still refuses the whole review and writes
+    nothing — the reviewer never writes REVIEW.json directly, so a bad finding fails loud
+    at this boundary, not silently."""
     if not isinstance(raw_findings, (tuple, list)):
         raise ValueError(f"build_review: findings must be a list, got {type(raw_findings).__name__} "
                          f"— the reviewer writes a JSON list of finding objects")
-    findings = tuple(f if isinstance(f, Finding) else Finding.from_dict(f) for f in raw_findings)
-    return Review(reel=reel, findings=findings, summary=summary, spec_ref=spec_ref,
+    findings: list[Finding] = []
+    problems: list[str] = []
+    for k, f in enumerate(raw_findings):
+        if isinstance(f, Finding):
+            findings.append(f)
+            continue
+        try:
+            findings.append(Finding.from_dict(f))
+        except ValueError as e:
+            problems.append(f"  finding {k}: {e}")
+    if problems:
+        raise ValueError(
+            f"build_review: {len(problems)} complaint(s) across {len(raw_findings)} "
+            f"finding(s).\n" + "\n".join(problems)
+            + "\nEvery complaint from this run is listed above, so one pass names them "
+              "all. Fix or re-dispatch the reviewer, then re-run build.")
+    return Review(reel=reel, findings=tuple(findings), summary=summary, spec_ref=spec_ref,
                   platform=platform, reviewer=reviewer)
 
 

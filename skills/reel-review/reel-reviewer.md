@@ -45,9 +45,14 @@ in your summary.
 - colour           — do the episodes read as ONE grade?          (the per-episode mid stills side by side + EDL.md's shot descriptions)
 
 ## Rules
+- axis ∈ (idea, mood, hook, ending, spine, edl_completeness, trend_flavor, colour) — the
+  eight axes judged above, and only those. A finding on any other axis has no stage to
+  be routed to and reel_review refuses the whole review over it.
 - severity ∈ (blocking, important, minor). blocking = the reel does NOT deliver the brief.
 - route ∈ (edit-plan, pacing, music, reprocess, titles, match-grade, none) — the fixer stage to re-run.
 - confidence ∈ (high, medium, low).
+- suggestion — REQUIRED, non-empty: the concrete change. A finding that names no change
+  is not actionable, and reel_review refuses the whole review over it.
 - trend_flavor: ALWAYS confidence "low", NEVER blocking, and name §5.4 (no TRENDS.md source) in evidence.
 - colour: judge the episodes side by side, and read EDL.md first — a shot of open
   water SHOULD look different from a shot of bright sand. Flag only a difference the

@@ -30,6 +30,22 @@ def test_build_review_rejects_bad_finding_writes_nothing():
         build_review(bad, "out/REEL_v1.mp4")
 
 
+def test_build_review_names_every_bad_finding_inside_one_raise():
+    # Modeled on test_episode_qc.py's test_build_names_every_bad_finding_inside_one_packet:
+    # the reviewer has already exited by the time build_review runs, so raising on the
+    # first bad finding buys nothing about the second and costs a whole round to learn
+    # about it (design 2026-09-08 §6, task 1b).
+    bad = [
+        {"axis": "framing", "severity": "minor", "evidence": "e", "route": "none",
+         "suggestion": "s"},                                    # bad axis
+        {"axis": "colour", "severity": "minor", "evidence": "e", "route": "none"},   # no suggestion
+    ]
+    with pytest.raises(ValueError) as e:
+        build_review(bad, "out/REEL_v1.mp4")
+    msg = str(e.value)
+    assert "finding 0" in msg and "finding 1" in msg
+
+
 def test_build_review_rejects_non_list_findings():
     with pytest.raises(ValueError, match="list"):
         build_review({"axis": "hook"}, "out/REEL_v1.mp4")
