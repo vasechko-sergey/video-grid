@@ -150,6 +150,10 @@ def _raw(packets: str, i: int) -> dict:
         raise ValueError(f"episode {i} has no findings.json in {p.parent} — every episode "
                          f"must be judged before the reel is assembled; dispatch the "
                          f"episode-qc judge for it, or delete the packet and re-pack")
+    # read_text can raise OSError of its own (a findings.json that is a directory, a
+    # permission error); that is NOT caught here, deliberately — build_qc's call site
+    # collects it alongside every other complaint rather than letting one packet's
+    # filesystem trouble abort the other episodes.
     try:
         d = json.loads(p.read_text())
     except json.JSONDecodeError as e:
@@ -179,7 +183,7 @@ def build_qc(episodes_path: str, packets: str) -> ReelQC:
     for i, ep in enumerate(rm.episodes):
         try:
             raw = _raw(packets, i)                 # read once: three reads = three failure surfaces
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             problems.append(f"  ep{i}: {e}")
             continue
         findings = raw.get("findings") or []

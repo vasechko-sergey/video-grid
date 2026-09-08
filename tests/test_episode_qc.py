@@ -365,3 +365,20 @@ def test_build_still_refuses_the_whole_run_over_one_bad_packet(tmp_path):
     # EPISODE_QC.json describes the REEL; a partial one would be a reel partly
     # unjudged, so collecting complaints must not weaken the refusal.
     assert not (tmp_path / "EPISODE_QC.json").exists()
+
+
+def test_build_collects_a_packet_whose_findings_file_is_unreadable(tmp_path):
+    # findings.json exists but is a DIRECTORY: read_text raises OSError, not
+    # ValueError. It must be collected like any other complaint, not escape as a
+    # traceback that aborts every later episode.
+    rm = _rm(tmp_path, n=2)
+    ep_path = tmp_path / "EPISODES.json"
+    rm.write(ep_path)
+    packets = tmp_path / "qc"
+    (packets / "ep0" / "findings.json").mkdir(parents=True)
+    _findings(packets, 1)
+    with pytest.raises(ValueError) as e:
+        episode_qc.build(str(ep_path), str(packets), str(tmp_path))
+    msg = str(e.value)
+    assert "ep0" in msg and "complaint(s) across" in msg
+    assert not (tmp_path / "EPISODE_QC.json").exists()
