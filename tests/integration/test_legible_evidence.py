@@ -1,7 +1,12 @@
 """Real-ffmpeg proof that a strip cell shaped like its content carries picture edge
 to edge, and that the footage contact sheet did not move (design §2, §8).
 
-Each claim has a control that must NOT move.
+Two of the four tests are genuine CONTROLS — they assert behaviour this slice was not
+supposed to change, and both would have passed before it: 16:9 content was already
+edge to edge in the 16:9 box, and sheet.tile's defaults still letterbox a portrait
+thumbnail in the mixed-aspect contact sheet. The other two assert behaviour the slice
+INTRODUCED. Do not read a failure of those two as "something unrelated moved" — read
+it as "the layout fit, or the never-upscale cap, broke".
 """
 import pytest
 from PIL import Image
@@ -71,6 +76,10 @@ def test_control_the_default_cell_box_still_letterboxes_a_portrait_frame(tmp_pat
 
 
 def test_a_strip_never_renders_more_pixels_than_the_source_carries(tmp_path):
+    # NOT a control, despite sitting beside two: before this slice build_strip
+    # returned no cell_px at all and a 96-wide source was upscaled into the fixed
+    # 300-wide box. This asserts the never-upscale cap the slice ADDED, and it fails
+    # if that cap is dropped (fit_layout would allow 313).
     src = _solid_clip(tmp_path / "small.mp4", 96, 160)
     out = tmp_path / "small_strip.png"
     res = contact_sheet.build_strip(src, str(out), start=0.0, dur=2.0, frames=9)
