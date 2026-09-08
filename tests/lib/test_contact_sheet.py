@@ -6,6 +6,7 @@ import pytest
 from PIL import Image
 
 from scripts import contact_sheet
+from scripts.lib import sheet
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
 
 
@@ -338,6 +339,27 @@ def test_strip_of_landscape_content_gets_the_landscape_fit(tmp_path, monkeypatch
     contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0, dur=4.0,
                               frames=9, fps=30.0)
     assert seen["cols"] == 3 and seen["cell_w"] == 320      # fit allows 522, source has 320
+
+
+def test_strip_sheet_never_exceeds_the_reader_budget_across_frame_counts(tmp_path, monkeypatch):
+    # sheet.fit_layout is proven never to exceed the budget (tests/lib/test_sheet.py),
+    # but build_strip THEN derives cell_h by rounding the picture height back UP —
+    # undoing that guarantee one function later, unless it truncates too. A 16:9
+    # source at n=13-15 (cols=3, cell_w=497) is exactly where round() pushes the
+    # sheet 2px past the 1568 budget (design 2026-09-08 §2, task 2); the seven-pair
+    # sample in test_sheet.py never lands on this n, which is why it went unseen.
+    wide = np.zeros((900, 1600, 3), np.uint8)      # 16:9, and wide enough that the
+                                                    # never-upscale cap never binds —
+                                                    # a fitted cell_w cannot exceed the
+                                                    # 1568 budget at ANY column count.
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb",
+                        lambda src, times, fps: [wide] * len(times))
+    for n in range(9, 17):
+        out = tmp_path / f"strip_{n}.png"
+        res = contact_sheet.build_strip("a.mp4", str(out), start=0.0, dur=4.0,
+                                        frames=n, fps=30.0)
+        img = Image.open(out)
+        assert max(img.size) <= sheet.READER_LONG_SIDE, (n, img.size, res["cell_px"])
 
 
 def test_strip_refuses_a_decode_that_returned_nothing(tmp_path, monkeypatch):

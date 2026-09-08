@@ -217,7 +217,12 @@ def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
     # picture and would report its BOX as the evidence's resolution; nothing here
     # creates pixels (design §7.3), and cell_px is read by the QC packet.
     cell_w = min(cell_w, w0)
-    cell_h = max(1, round(cell_w * h0 / w0))
+    # int(), not round(): fit_layout TRUNCATES cell_w precisely so the sheet never
+    # lands past its budget, and rounding the derived height back UP undoes that
+    # guarantee one function later — measured, a 1920x1080 source at 13-15 frames
+    # (cols=3, cell_w=497) rounds to cell_h 280 -> a 1491x1570 sheet, 2px past the
+    # 1568 budget, where int() gives 279 -> 1565 (design 2026-09-08 §2).
+    cell_h = max(1, int(cell_w * h0 / w0))
     cells = [sheet.Cell(image=im, lines=(f"{t:.2f}s",)) for im, t in zip(images, times)]
     path = Path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
