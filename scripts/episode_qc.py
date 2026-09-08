@@ -38,7 +38,8 @@ def _epdir(ep, i: int) -> Path:
     return Path(ep.path).parent
 
 
-def _evidence(ep, i: int, clip_stats: dict) -> dict:
+def _evidence(ep, i: int, clip_stats: dict, strip: dict,
+              clip_px: tuple[int, int]) -> dict:
     """What the judge reads besides the pixels. The episode's declared INTENT is in
     here deliberately: composition is judged against what this episode asked for, never
     against a global rule (design §6)."""
@@ -54,6 +55,20 @@ def _evidence(ep, i: int, clip_stats: dict) -> dict:
         # `hero` axis stands on (design §6): a judge must be able to tell "there was no
         # storyboard" from "there was one".
         "storyboard": str(storyboard) if storyboard.exists() else None,
+        # The strip was never named here at all: its path reached the judge only
+        # through the SKILL's template fill, so a reader of this file alone could not
+        # tell whether one existed (design §3).
+        "strip": strip["strip"],
+        # The picture size of ONE frame, in each artifact. RENDERED, not what a
+        # reader's own downsample leaves — the packet cannot know that. Reported,
+        # never gated: there is nothing here to derive a "below X you cannot judge"
+        # threshold from, and the point is that the judge can prefer the right
+        # artifact and say which one it used (design §3).
+        "strip_px": list(strip["cell_px"]),
+        # storyboard.build pastes each sampled frame at FULL resolution, so one of its
+        # cells IS the delivered clip's own frame — 129x the strip's area rendered,
+        # 22x as read (design §0.2).
+        "storyboard_px": [clip_px[0], clip_px[1]] if storyboard.exists() else None,
         "naturalness": clip_stats,
     }
     for name, key in (("report.json", "checks"), ("route.meta.json", "track"),
@@ -117,13 +132,14 @@ def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
         d.mkdir(parents=True, exist_ok=True)
         info = assembly.probe_stream(ep.clip)
         dur = assembly.probe_duration(ep.clip)
-        contact_sheet.build_strip(ep.clip, str(d / "strip.jpg"), start=0.0, dur=dur,
-                                  frames=frames, fps=info.fps)
+        strip = contact_sheet.build_strip(ep.clip, str(d / "strip.jpg"), start=0.0,
+                                          dur=dur, frames=frames, fps=info.fps)
         times = color.sample_times(dur, SENSOR_FRAMES)
         stats = naturalness.measure(assembly.frames_rgb(ep.clip, times, info.fps))
         clip_stats = {"stats": stats, "flags": naturalness.evaluate(stats),
                       **_source_reading(ep, stats)}
-        (d / "evidence.json").write_text(json.dumps(_evidence(ep, i, clip_stats), indent=2))
+        (d / "evidence.json").write_text(json.dumps(
+            _evidence(ep, i, clip_stats, strip, (info.w, info.h)), indent=2))
         packets.append(str(d))
     return {"status": "packed", "episodes": len(packets), "packets": packets}
 

@@ -93,7 +93,7 @@ def test_evidence_reports_a_missing_storyboard_as_none(tmp_path):
     # must be able to tell "there was no storyboard" from "there was one", the same
     # distinction _evidence already draws for report.json/route.meta.json/path.meta.json.
     ep, _ = _episode_with_scratch(tmp_path)
-    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}})
+    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}}, {"strip": "s.jpg", "cell_px": [1, 1]}, (10, 10))
     assert ev["storyboard"] is None
     assert ev["checks"] is None and ev["track"] is None and ev["geometry"] is None
 
@@ -101,7 +101,7 @@ def test_evidence_reports_a_missing_storyboard_as_none(tmp_path):
 def test_evidence_reports_an_existing_storyboard_path(tmp_path):
     ep, d = _episode_with_scratch(tmp_path)
     (d / "storyboard.jpg").write_bytes(b"x")
-    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}})
+    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}}, {"strip": "s.jpg", "cell_px": [1, 1]}, (10, 10))
     assert ev["storyboard"] == str(d / "storyboard.jpg")
 
 
@@ -248,3 +248,59 @@ def test_source_reading_reads_the_stabilized_file_not_the_raw_segment(monkeypatc
     assert seen["planned"][1] == str(stabilized)
     assert seen["planned"][1] != raw
     assert d_out["source"] is not None
+
+
+# --- Task 3: legible-evidence slice ---
+
+def _stub_strip(monkeypatch, cell_px=(313, 556)):
+    """Replace the decode+tile with a recorder, so _evidence's wiring is observable
+    without ffmpeg."""
+    def _build(src, out, *, start, dur, frames, fps=None):
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_bytes(b"strip")
+        return {"status": "written", "strip": str(out), "frames": frames,
+                "cols": 5, "cell_px": list(cell_px), "times": []}
+    monkeypatch.setattr(episode_qc.contact_sheet, "build_strip", _build)
+
+
+def test_evidence_names_the_strip_and_its_rendered_pixel_size(tmp_path):
+    rm = _rm(tmp_path, n=1)
+    ep = rm.episodes[0]
+    Path(ep.path).parent.mkdir(parents=True, exist_ok=True)
+    (Path(ep.path).parent / "storyboard.jpg").write_bytes(b"sb")
+    strip = {"strip": str(tmp_path / "qc" / "ep0" / "strip.jpg"), "cell_px": [313, 556]}
+    ev = episode_qc._evidence(ep, 0, {"stats": {}}, strip, (1080, 1922))
+    assert ev["strip"] == strip["strip"]
+    assert ev["strip_px"] == [313, 556]
+    # storyboard.build pastes each sampled frame at FULL resolution, so one of its
+    # cells IS the delivered clip's own frame (design §3).
+    assert ev["storyboard_px"] == [1080, 1922]
+
+
+def test_evidence_reports_no_storyboard_pixels_when_there_is_no_storyboard(tmp_path):
+    rm = _rm(tmp_path, n=1)
+    ep = rm.episodes[0]
+    Path(ep.path).parent.mkdir(parents=True, exist_ok=True)
+    strip = {"strip": "s.jpg", "cell_px": [313, 556]}
+    ev = episode_qc._evidence(ep, 0, {"stats": {}}, strip, (1080, 1922))
+    assert ev["storyboard"] is None and ev["storyboard_px"] is None
+    assert ev["strip_px"] == [313, 556]      # the strip is still reported
+
+
+def test_pack_writes_the_strips_own_measurements_into_evidence(tmp_path, monkeypatch):
+    rm = _rm(tmp_path, n=1)
+    ep_path = tmp_path / "EPISODES.json"
+    rm.write(ep_path)
+    Path(rm.episodes[0].path).parent.mkdir(parents=True, exist_ok=True)
+    _stub_strip(monkeypatch, cell_px=(222, 395))
+    monkeypatch.setattr(episode_qc.assembly, "probe_stream",
+                        lambda p: SimpleNamespace(w=1080, h=1922, fps=30.0))
+    monkeypatch.setattr(episode_qc.assembly, "probe_duration", lambda p: 4.0)
+    monkeypatch.setattr(episode_qc.assembly, "frames_rgb",
+                        lambda src, times, fps: [np.zeros((8, 8, 3), np.uint8)])
+    monkeypatch.setattr(episode_qc, "_source_reading",
+                        lambda ep, graded: {"source": None, "delta": None})
+    episode_qc.pack(str(ep_path), str(tmp_path / "qc"))
+    ev = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())
+    assert ev["strip"].endswith("strip.jpg")
+    assert ev["strip_px"] == [222, 395] and ev["storyboard_px"] is None
