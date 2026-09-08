@@ -179,6 +179,14 @@ def test_fit_layout_refuses_a_budget_nothing_fits_in():
         sheet.fit_layout(9, 9 / 16, budget=30)
 
 
+def test_fit_layout_refuses_a_non_positive_or_non_int_budget():
+    # Distinct from test_fit_layout_refuses_a_budget_nothing_fits_in, which passes a
+    # VALID budget that merely fits nothing: this pins the parameter's own guard.
+    for bad in (0, -1, True, 1.5):
+        with pytest.raises(ValueError, match="budget must be an int >= 1"):
+            sheet.fit_layout(9, 9 / 16, budget=bad)
+
+
 # ---- the cell box is a parameter with an identity default ----
 
 def test_tile_defaults_are_byte_identical_to_the_explicit_box():
