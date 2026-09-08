@@ -41,7 +41,8 @@ episode in one image.
 
 Storyboard: {STORYBOARD_PATH} — {STORYBOARD_PX} px per frame, with the
 composition grid and the hero marker on every sampled frame when one was
-tracked. This is the **composition evidence**; it is far larger per frame than
+tracked. Both read `none recorded` when evidence.json's `storyboard` /
+`storyboard_px` are null. This is the **composition evidence**; it is far larger per frame than
 the strip and is what you judge framing from.
 
 Both sizes are in `evidence.json` as `strip_px` and `storyboard_px`. They are

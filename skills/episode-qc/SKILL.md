@@ -92,7 +92,10 @@ say so rather than guessing a path.
    episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json` — which now names its
    own artifacts: `strip`, `strip_px`, `storyboard`, `storyboard_px`. Fill
    `{STRIP_PATH}`/`{STRIP_PX}` and `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from
-   those four keys, and pass nothing else. A judge reads only its own episode:
+   those four keys, writing `none recorded` for either storyboard key that is
+   null — the same substitution the CHECKS/TRACK/GEOMETRY placeholders already
+   ask for, and what the template's no-storyboard branch keys on. Pass nothing
+   else. A judge reads only its own episode:
    never another's packet, never the EDL as a whole, never a comparison
    across episodes (adjacency and rhythm are reel-review's question, not
    this one). Dispatch with the Task tool (`general-purpose`), batching up
