@@ -4,13 +4,133 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-07._
+_Last updated: 2026-09-08._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Illegible is a state, not a clean pass — three artifacts sized against a
+  reader for the first time, closing R10.1/R10.2/R10.6/R10.7 (2026-09-08,
+  0.8.2)** — design
+  [2026-09-08-legible-evidence-design.md](specs/2026-09-08-legible-evidence-design.md),
+  plan [2026-09-08-legible-evidence.md](plans/2026-09-08-legible-evidence.md),
+  Tasks 1–8 (branch `docs/legible-evidence`, commits `08f7505`..`59cba39` +
+  this docs sync).
+
+  The QC frame strip, the cast candidate crop, and the judge's own output
+  contract are all evidence handed to a reader, and each was built with no
+  model of that reader. **§0 overturns two of the four rows before any code
+  moved.** R10.1's "200×406 px per frame" was a misreading of the sheet's own
+  dimensions: today's code reproduces the run's strip byte-exactly at
+  1800×406 — 6 cols × 2 rows of 300×203, not one row of nine — the real
+  per-frame picture is 95×169 (83×147 after the reader's own downscale), and
+  nothing had regressed since 2026-08-05. What is real is that `CELL_H` is a
+  16:9 box against a delivered 9:16 reel, so 68% of every cell was black, and
+  that the SAME packet already carried a storyboard of the SAME clip at 129×
+  the area rendered (22.4× as read) — a better artifact sitting right beside
+  the worse one, unnamed. The row's actual content is §0.3: six of eight
+  judges say in their own summaries that they pulled their own
+  full-resolution frames (ep2 names five timestamps, ep7 a "3x zoom", ep0/ep6
+  reconstruct the crop rect by hand) and one hit `magick not found` —
+  `contact_sheet strip` already does exactly this and was named nowhere in
+  their template. R10.2 is not "too small" either: measured over the run's
+  15 candidates, Spearman(presence, crop area) = −0.486 — the person with
+  479s on screen surfaced as a 16×19 crop, the one with 32s got 535×373 —
+  because `_medoid` picks for embedding centrality, which is anti-correlated
+  with legibility.
+
+  **A — the strip's layout follows its content (Tasks 1–2, design §2).**
+  `sheet.fit_layout(n, aspect, *, budget=READER_LONG_SIDE)` picks the column
+  count whose cell picture is widest with the sheet's own long side inside
+  the budget — nine 9:16 frames want 5 columns at 313px, not one row of nine
+  at 174px, because a single row spends the whole budget on width and leaves
+  the height unused. `tile`/`_fit` take the cell box as a parameter
+  defaulting to today's `CELL_W`/`CELL_H`, so the footage contact sheet
+  (mixed aspects, one box) stays byte-identical; `build_strip` fits its own
+  layout from the frames it already decoded, capped at `min(fitted,
+  source_width)` so a small source is never upscaled into a claim, and
+  `contact_sheet.STRIP_COLS` — the fixed column count that forced every
+  strip through a landscape layout — is deleted. On the run's own case:
+  95×169 becomes 313×556, landing inside the budget — 3.8× linear, 14.3×
+  area.
+
+  **B — the packet names its own pixels (Task 3, design §3).**
+  `episode_qc._evidence` gains `strip` (never named before — its path only
+  ever reached the judge through the SKILL template's own fill), `strip_px`
+  and `storyboard_px` — the RENDERED size of one frame in each artifact, so
+  the judge can prefer the right one and say which it used. Reported, never
+  gated: there is nothing here to derive a "below X you cannot judge"
+  threshold from.
+
+  **C — `build_qc` collects every complaint in one pass (Task 4, design
+  §6).** It used to raise on the first bad finding, after every judge had
+  already exited — one malformed field killed the validation of all eight
+  episodes and bought nothing about the other seven. It now walks every
+  episode, validates every finding, and raises once with the episode and
+  finding index for each; a `findings.json` that is unreadable (`OSError`,
+  not `ValueError` — a directory where a file should be) is collected the
+  same way, found by the task's own review. The refusal's STRENGTH is
+  unchanged: one bad packet still refuses the whole run.
+
+  **D — the representative crop is the largest, not the medoid (Task 5,
+  design §5).** `_largest` (by rendered pixel area) replaces `_medoid`
+  (nearest to the cluster's embedding centroid) as `surface_crops`'s pick for
+  which member's PICTURE a human sees; the descriptor stays the re-L2-normed
+  centroid, so `hero.resolve`/`track.build_route`/`cast.json` — every
+  downstream consumer of `descriptor` — sees exactly what it saw before.
+  `save_cast_candidates` now records `crop_px`, read back from the PNG the
+  human will actually open, so a 13×12 crop is a reported state instead of
+  an invisible one. Phase 2 only, over already-cached results:
+  `CACHE_VERSION` does not move and no footage is re-scanned.
+
+  **E — the judge's contract is stated in full, and checked (Task 6, design
+  §4/§6).** `suggestion` was hard-gated by `EpisodeFinding` and appeared in
+  the template exactly once — the placeholder inside the output JSON
+  example; the Rules block enumerated `severity`/`route`/`confidence`/
+  `evidence` and named neither `suggestion` nor `axis`, and both refuse the
+  whole run. Both are now stated, and `tests/test_skills_contract.py`
+  machine-checks the Rules block against `EpisodeFinding`'s own fields, so a
+  field added later cannot go unstated the same way. The template also now
+  names the extraction six of eight judges already performed by hand.
+
+  **Mutation battery: 14 rows.** 11 discriminated exactly as selected; one
+  (row 9, `_evidence` reporting `storyboard_px` unconditionally) has a
+  selection defect in the brief itself — `-k storyboard_px` matches no test
+  NAME in `tests/test_episode_qc.py` (the substring appears only inside
+  assertion bodies) and collects zero tests — confirmed discriminating only
+  after substituting the whole file. Two rows were flagged expected-uncertain
+  going in: row 3 (`round` vs `int`) discriminates — some `(n, aspect)` in
+  the pinned table lands exactly on the boundary where rounding up pushes
+  the sheet past budget; row 4 (tie-break direction) does not — no pinned
+  `(n, aspect)` produces two column counts with the same `cell_w`, so the
+  tie-break stays documented but unpinned, accepted as such. Row 13
+  (`surface_crops` using `_largest(members).descriptor` instead of the
+  recomputed centroid) was a real, unflagged coverage hole: every existing
+  cluster fixture gives its members an IDENTICAL descriptor, so the centroid
+  and any one member's own value coincide by construction and no test could
+  have told the two apart. Closed with
+  `test_the_representative_descriptor_is_recomputed_not_the_largest_members_own`
+  (a 3-4-5-triangle pair, cosine distance 0.04 — close enough to cluster,
+  different enough that the centroid lands on the diagonal 1/√2 and is
+  provably neither raw vector).
+
+  **Full suite: 3542 passed, 1 skipped** (up from 3510/1 at the pre-branch
+  baseline).
+
+  A one-line dead-import fix rode along in the same commit: `scripts/intake.py`
+  still imported `descriptor_dist` from `scripts.lib.appearance` for the
+  deleted `_medoid`; removed, confirmed unreferenced anywhere through
+  `intake` by grep, `tests/lib/test_intake.py` re-run green.
+
+  **Honest limits carried forward (design §7):** nothing here proves a judge
+  looked — the gate is presence, not diligence; `READER_LONG_SIDE` is
+  inherited from `PER_SHEET`'s own 2026-08-05 comment and cannot be measured
+  from inside this pipeline, so `fit_layout` maximizes UNDER it rather than
+  guessing a truer number; and nothing here creates pixels — if a person was
+  only ever 13px tall, `crop_px` is what makes that reportable, not fixable.
 
 - **A measurement survives a pass — three reports stop collapsing an absence
   (2026-09-07)** — design
@@ -5201,6 +5321,14 @@ _Last updated: 2026-09-07._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **R10.1, a P1 row, is closed 2026-09-08 by "Legible evidence"** (see the Done
+> entry above); `docs/backlog.md`'s P1 table is the current list and this
+> narrative has not tracked it slice by slice since 2026-09-02 below — the mood
+> contract (0.8.0) and named-absence (0.8.1) each closed further P1 rows
+> (R1.1–R1.3, R7.2) that this section still names as open two paragraphs down.
+> Read `docs/backlog.md` for what is actually next; this file's own "Deferred /
+> open" section says the same about its stage-by-stage detail further below.
 
 > **The two P1 rows added 2026-08-30 are closed 2026-09-02** —
 > `docs/backlog.md` is the only document that holds priority, and its P1

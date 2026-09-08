@@ -19,7 +19,7 @@ from PIL import Image
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
 from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, vidstab
-from scripts.lib.appearance import crop_bbox, descriptor_dist
+from scripts.lib.appearance import crop_bbox
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
 

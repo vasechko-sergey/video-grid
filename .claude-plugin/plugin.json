@@ -1,6 +1,6 @@
 {
   "name": "video-grid",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "AI-assisted video montage: a folder of raw footage plus a natural-language brief becomes a delivered reel, for any platform. Requires a one-time `bash setup.sh` runtime install.",
   "license": "AGPL-3.0-only",
   "author": {

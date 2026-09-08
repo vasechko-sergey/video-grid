@@ -59,7 +59,6 @@ is still P3.
 | ○ | **R4.1 · Every CLI and every skill line states what the tool is FOR.** 56 Bash calls in the run grepped the product's own source to find out. A name is not a purpose. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R5.2 · Extend digest binding to every report.** `episode_qc` stamps a `clip_digest` from disk and refuses a stale verdict — the one binding that held all week. Nothing else has one: `MATCH.md` claimed 8/8 authored tone pairs against an `EDL.json` written an hour later carrying 5; `REVIEW.json` was two days and two reel versions stale (reviewed 37.1 s, shipped 34.93 s). | M | [retro](retro/2026-08-25-first-real-run.md) R5 |
-| ○ | **R10.1 · The QC judge is nearly blind.** The evidence strip is **200×406 px per frame** with no zoom helper; three judges reached for tools absent from their harness and one hit `magick not found`. Judging is a required stage with no waiver. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 
 ## P2 — soon
 
@@ -72,8 +71,6 @@ is still P3.
 | ○ | **`EPISODES.json` does not record the retry-adjusted reframe params, so a retried episode cannot reproduce its own render.** Found on ep1 of the real run while proving the geometry oracle (design §0.9): `process_episode`'s ladder may raise `max_speed` or lower `smooth_window_s` between attempts, the manifest keeps the authored values, and `probe._refuse_on_drift` then correctly refuses the episode — the recomputed path really does differ from the frozen one. The oracle is right; what is missing is the record. Carry the attempt's effective params onto `ReelEpisode` so a probe can rebuild the plan that actually rendered. | S | [design](specs/2026-08-30-grade-shipped-pixels-design.md) §10.2, §0.9 |
 | ○ | **Migrate a pre-0.3.0 run into the lifetime layout.** Not a `mv`: `out/EPISODES.json` alone carries **57** absolute paths, and moving the tree breaks the QC digest bindings and the delivery attestation that exist to notice exactly that kind of change. A path rewrite. `montage status` already reports `legacy_layout` so the router asks instead of re-scanning 99 clips into an apparently empty run — that is the mitigation, not the fix. | M | [design](specs/2026-08-26-run-layout-lifetimes-design.md) §7 |
 | ○ | **`build_reel`'s automatic retry loop writes a reprocessed episode's scratch one level deeper than `EPISODES.json` records.** Phase 1 writes `build/ep{i}/`; the retry loop is handed `build/reel` as its work dir and so writes `build/reel/ep{i}/`, while `ReelEpisode` is frozen and its `path`/`meta` still point at the phase-1 location. The clip itself is overwritten in place, so the digest gate is unaffected — but a re-`pack` after an automatic retry reads the STALE mechanical report, storyboard and path meta. Predates this slice (the same nesting existed under `<run>/work`); surfaced by the layout review. | M | Task 5 review, 2026-08-27 |
-| ○ | **R10.6 · The findings validator rejects a judge only after it has spent its entire budget.** Validate the shape early, or state it in the template — see R10.7. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
-| ○ | **R10.7 · `suggestion` is required by the validator but appears only inside a JSON example** in `episode-reviewer.md:84`. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.8 · A judge's "clean pass" means "nothing I was told to look for".** Coverage tracked the prompt, not the episode: an episode passed clean, one sentence was added to the brief, and the next judge found something. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.9 · A stale evidence packet was dispatched to three judges**; only a judge's blocking verdict caught it. The packet needs the same digest binding the verdict already has. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R2.8 · `color.grade_chain` composes pre-built fragments under a three-way comma convention and validates none of it** — it produced 1.5 KB of ffmpeg garbage during the run. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
@@ -84,7 +81,6 @@ is still P3.
 | ○ | **R2.4 · A threshold widened by hand needs a reason attached, not just a bigger number.** Concretely, this was `color_delta_max`: 12 → 44 → **56** across the run, each widening silencing a complaint that was correct. That specific knob is deleted (colour-convergence-retire, 2026-08-29), but the mechanism that let it happen silently is generic, not particular to it: `provenance.spec_overrides` records that a `ReelCheckSpec`/`CheckSpec` field changed from its default, never why. Nothing today stops the same pattern on `variety_min`, `entropy_floor`, or any other threshold. **Example corrected by this session's audit, 2026-09-03**: this row named `grade_delta_max`, which was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) — the stale field name is fixed above; the mechanism (`spec_overrides` still records no reason) is unchanged and this row stays open. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
 | ○ | **R4.3 · Survive a compaction.** After one context compaction, **12 of 13 `--help` calls** fall in the next 2 h 17 min — and `probe` still was not found. | S | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
-| ○ | **R10.2 · Cast candidates shown too small to identify**, and better one at a time than tiled — the operator asked for this during the run. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.3 · 95% of conveyor calls were piped through `tail`/`grep`/`head`**, twice losing the answer — once costing a 173-second re-render to read output already produced. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.5 · QC has no "judge only what changed" and no memory between rounds** — ~14 rounds, **97 judges, 160 MB, 8 episodes**, two blocking verdicts, one of them a false alarm from a stale evidence packet. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R11.1 · Infrastructure ate 16 of 98 subagents** — 11 killed by the machine sleeping (episodes 0, 4 and 7 each needed three dispatches), 5 stopped deliberately. Incremental writing belongs in every subagent brief by default; it was proven necessary twice again while writing this retro. | S | [retro](retro/2026-08-25-first-real-run.md) R11 |
@@ -373,7 +369,18 @@ retry loop already reprocesses ONE episode in place for a `black` hit
 (`process_episode.process_episode` on that episode's own manifest and
 directory); a CLI entry point onto the same call, or widening
 `_REPROCESS_CLASS`'s reach into a bounded per-episode retry, would close it for
-`grade_faithful` too (grade-sensor-references, final review I-2)
+`grade_faithful` too (grade-sensor-references, final review I-2) ·
+`episode_qc zoom` subcommand — wraps contact_sheet strip and would itself need
+naming in the same template it exists to serve (legible-evidence §4/§8) ·
+pack a high-resolution artifact per episode by default — pays decode on every
+episode to guess timestamps the judges choose themselves (legible-evidence §4/§8) ·
+`episode_qc validate` so a judge can check its own findings.json before it stops —
+R10.6 asked "validate early OR state it", and stating it was the root
+(legible-evidence §6/§8) ·
+re-tile the storyboard 3×2 for portrait content — 392×698 → 441×784, 12 % on
+process_episode's hot path behind a golden (legible-evidence §8) ·
+measure READER_LONG_SIDE — not observable from inside this pipeline, so the 1568
+stays inherited from PER_SHEET's own comment (legible-evidence §7.2)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -535,4 +542,4 @@ turned up after the three it set out to fix.
 
 ---
 
-_Last updated: 2026-09-07._
+_Last updated: 2026-09-08._

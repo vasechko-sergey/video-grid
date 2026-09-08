@@ -410,6 +410,30 @@ def test_the_representative_descriptor_is_still_the_centroid():
     assert picked[0].crop_rgb.shape[:2] == (300, 300)
 
 
+def test_the_representative_descriptor_is_recomputed_not_the_largest_members_own():
+    # The sibling test above gives both members the SAME embedding, so the centroid
+    # and either member's own descriptor are bit-identical and the assertion cannot
+    # tell "recompute the centroid" apart from "just take the largest member's own
+    # descriptor" (task-8 mutation battery row 13, design 2026-09-08). These two
+    # differ (3-4-5 triangle, cosine distance 0.04 < CLUSTER_COS so they still
+    # cluster), and the mean of (3, 4) and (4, 3) lands EXACTLY on the diagonal, so
+    # the re-L2-normed centroid is provably neither raw vector.
+    from scripts.lib.intake_cache import CastEntry
+    v_small, v_big = _desc(3.0, 4.0), _desc(4.0, 3.0)
+    small = np.zeros((4, 4, 3), "uint8")
+    big = np.full((300, 300, 3), 200, "uint8")
+    entries = [CastEntry("a.mp4", 1, 0.9, v_small, presence=5.0, crop_rgb=small),
+               CastEntry("a.mp4", 2, 0.9, v_big, presence=5.0, crop_rgb=big)]
+    picked = intake.surface_crops(entries, max_cast=8)
+    assert len(picked) == 1
+    assert picked[0].crop_rgb.shape[:2] == (300, 300)      # the largest crop still wins
+    assert picked[0].descriptor != v_small and picked[0].descriptor != v_big
+    diag = 1 / 2 ** 0.5
+    assert picked[0].descriptor[0] == pytest.approx(diag)
+    assert picked[0].descriptor[1] == pytest.approx(diag)
+    assert all(x == 0.0 for x in picked[0].descriptor[2:])
+
+
 def test_a_member_with_no_crop_never_wins_the_representative_slot():
     from scripts.lib.intake_cache import CastEntry
     small = np.zeros((4, 4, 3), "uint8")

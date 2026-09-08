@@ -10,6 +10,57 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.8.2 — 2026-09-08
+
+Three artifacts in this tree are evidence handed to a judge — the QC frame strip,
+the cast candidate crop, and the judge's own output contract — and each was
+produced with no model of its reader. Backlog R10.1, R10.2, R10.6, R10.7.
+
+Two of the four rows' premises needed correcting, and one correction is the
+content of the slice:
+
+- **R10.1's number was a misreading.** Today's code reproduces the run's strip
+  byte-exactly (1800×406 = 6 cols × 2 rows of 300×203); the real per-frame picture
+  is 95×169, and 83×147 after the reader's downscale. Nothing had regressed. 68 %
+  of every cell was black because `CELL_H` is a 16:9 box and a delivered reel is
+  9:16.
+- **Six of eight judges say in their own summaries that they pulled their own
+  full-resolution frames**, one of them hitting `magick not found`.
+  `contact_sheet strip` already does exactly that and was named nowhere in the
+  template. That, not the cell size, is R10.1.
+- **R10.2 is not "too small".** Over the run's 15 candidates,
+  Spearman(presence, crop area) = **−0.486**: the person with 479 s on screen was
+  a 16×19 crop, the one with 32 s got 535×373.
+- **R10.7 was larger than filed** — the Rules block named neither `suggestion`
+  nor `axis`, and both refuse the whole run.
+
+**Changed**
+- `sheet.fit_layout` picks the column count whose cell picture is widest inside a
+  named `READER_LONG_SIDE`; `sheet.tile`/`_fit` take the cell box as a parameter
+  defaulting to today's values, so the footage contact sheet is byte-identical.
+  `contact_sheet.STRIP_COLS` is deleted. On the run's own case, 95×169 becomes
+  313×556 with the sheet landing inside the budget — 3.8× linear, 14.3× area.
+- `episode_qc`'s packet names the strip it never named and records `strip_px` and
+  `storyboard_px`, the rendered per-frame size of each artifact. Reported, never
+  gated — no threshold is introduced.
+- `episode_qc.build` collects every validation complaint across every packet and
+  raises once, with the episode and finding index for each. The refusal's strength
+  is unchanged: one bad packet still refuses the whole run.
+- `intake.surface_crops` surfaces the cluster's largest crop instead of its
+  medoid; the descriptor is still the re-L2-normed centroid, so no downstream
+  consumer changes. `cast_candidates.json` records `crop_px`. Phase 2 only —
+  `CACHE_VERSION` does not move and no footage is re-scanned.
+- The judge template states `axis` and `suggestion`, names the extraction, and
+  distinguishes the timeline index from the composition evidence.
+  `tests/test_skills_contract.py` machine-checks the Rules block against
+  `EpisodeFinding`'s own fields.
+
+**Honest limits** — nothing here proves a judge looked; `READER_LONG_SIDE` is
+inherited from `PER_SHEET`'s own comment and cannot be measured from inside this
+pipeline (`fit_layout` maximizes *under* it, so a wrong budget is a suboptimal
+sheet and never a broken one); and nothing creates pixels — if a person was only
+ever 13 px tall, `crop_px` is what makes that reportable.
+
 ## 0.8.1 — 2026-09-07
 
 **A measurement survives a pass: three reports stop collapsing a distinguishable
