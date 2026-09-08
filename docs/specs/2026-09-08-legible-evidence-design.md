@@ -40,7 +40,7 @@ halves matter:
 the run is **9:16**. `_fit` contains by the shorter dimension, so a portrait frame
 uses 95 of the box's 300 columns and **68 % of every cell is black padding**. What
 that costs is measured in §2: the same pixel budget spent on a box shaped like the
-content gives 314×558.
+content gives 313×556.
 
 Nothing regressed. `CELL_W`/`CELL_H` have carried these values since `4efe976`
 (2026-08-05), and the run used exactly this code.
@@ -191,8 +191,8 @@ Measured, for the run's own case — nine frames of a 9:16 delivered clip:
 
 ```
 today    6x2   picture  95x169 rendered  ->  83x147 as read   (sheet 1800x406)
-fitted   5x2   picture 314x558 rendered  ->  314x558          (sheet 1568x1183)
-                                             3.8x linear, 14.4x area
+fitted   5x2   picture 313x556 rendered  ->  313x556          (sheet 1565x1180)
+                                             3.8x linear, 14.3x area
 ```
 
 The fitted sheet lands **at** the budget, so nothing is downscaled and rendered
@@ -200,13 +200,13 @@ equals seen. The same function serves every other aspect without a second table:
 
 | content | n | grid | picture |
 |---|---|---|---|
-| 9:16 | 9 | 5×2 | 314×558 |
-| 16:9 | 9 | 3×3 | 523×294 |
-| 1:1 | 9 | 3×3 | 489×489 |
-| 9:16 | 6 | 3×2 | 422×750 |
+| 9:16 | 9 | 5×2 | 313×556 |
+| 16:9 | 9 | 3×3 | 522×294 |
+| 1:1 | 9 | 3×3 | 488×488 |
+| 9:16 | 6 | 3×2 | 421×748 |
 
 Note that one row of nine is **not** the answer — 9×1 gives 174×309, worse than
-5×2's 314×558, because a single row spends the whole budget on width and leaves
+5×2's 313×556, because a single row spends the whole budget on width and leaves
 the height unused. This is why the column count is fitted rather than re-typed.
 
 ---
