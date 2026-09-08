@@ -165,19 +165,50 @@ def build_qc(episodes_path: str, packets: str) -> ReelQC:
     """Validate every episode's raw findings into a typed ReelQC. The clip digest is
     computed HERE from the file on disk — whatever `clip_digest` the judge's file
     carries is ignored, which is what turns "this episode was judged" into "this
-    RENDER was judged" (design §7)."""
+    RENDER was judged" (design 2026-08-08 §7).
+
+    Every complaint from one run is collected and raised TOGETHER (design 2026-09-08
+    §6). The judges have all exited by the time this runs, so raising on the first bad
+    finding buys nothing about the other seven episodes and costs a whole round to
+    learn about the second. The refusal's STRENGTH is unchanged: one bad packet still
+    refuses the whole run, because EPISODE_QC.json describes the reel and a partial one
+    would be a reel partly unjudged."""
     rm = ReelManifest.from_json(episodes_path)
-    verdicts = []
+    verdicts: list[EpisodeVerdict] = []
+    problems: list[str] = []
     for i, ep in enumerate(rm.episodes):
-        raw = _raw(packets, i)                     # read once: three reads = three failure surfaces
+        try:
+            raw = _raw(packets, i)                 # read once: three reads = three failure surfaces
+        except ValueError as e:
+            problems.append(f"  ep{i}: {e}")
+            continue
         findings = raw.get("findings") or []
         if not isinstance(findings, (tuple, list)):
-            raise ValueError(f"episode {i}: 'findings' must be a JSON list, got "
-                             f"{type(findings).__name__}")
-        verdicts.append(EpisodeVerdict(
-            idx=i, clip=ep.clip, clip_digest=provenance.digest_file(ep.clip),
-            findings=tuple(EpisodeFinding.from_dict(f) for f in findings),
-            summary=raw.get("summary") or "", reviewer=raw.get("reviewer") or ""))
+            problems.append(f"  ep{i}: 'findings' must be a JSON list, got "
+                            f"{type(findings).__name__}")
+            continue
+        built: list[EpisodeFinding] = []
+        before = len(problems)
+        for k, f in enumerate(findings):
+            try:
+                built.append(EpisodeFinding.from_dict(f))
+            except ValueError as e:
+                problems.append(f"  ep{i} finding {k}: {e}")
+        if len(problems) != before:
+            continue                               # a packet with a bad finding builds no verdict
+        try:
+            verdicts.append(EpisodeVerdict(
+                idx=i, clip=ep.clip, clip_digest=provenance.digest_file(ep.clip),
+                findings=tuple(built),
+                summary=raw.get("summary") or "", reviewer=raw.get("reviewer") or ""))
+        except (ValueError, OSError) as e:
+            problems.append(f"  ep{i}: {e}")
+    if problems:
+        raise ValueError(
+            f"episode_qc build: {len(problems)} complaint(s) across "
+            f"{len(rm.episodes)} packets.\n" + "\n".join(problems)
+            + "\nEvery complaint from this run is listed above, so one pass names them "
+              "all. Fix or re-dispatch the judges named, then re-run build.")
     return ReelQC(episodes=tuple(verdicts))
 
 

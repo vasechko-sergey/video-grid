@@ -304,3 +304,64 @@ def test_pack_writes_the_strips_own_measurements_into_evidence(tmp_path, monkeyp
     ev = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())
     assert ev["strip"].endswith("strip.jpg")
     assert ev["strip_px"] == [222, 395] and ev["storyboard_px"] is None
+
+
+# --- Task 4: legible-evidence slice: every complaint in one pass ---
+
+def _bad_findings(packets, i, finding):
+    d = packets / f"ep{i}"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "findings.json").write_text(json.dumps({
+        "summary": "s", "reviewer": "r", "findings": [finding]}))
+
+
+def test_build_names_every_bad_packet_in_one_pass(tmp_path):
+    rm = _rm(tmp_path, n=3)
+    ep_path = tmp_path / "EPISODES.json"
+    rm.write(ep_path)
+    packets = tmp_path / "qc"
+    _bad_findings(packets, 0, {"axis": "colour", "severity": "minor",
+                               "evidence": "e", "route": "none"})       # no suggestion
+    _findings(packets, 1)                                               # fine
+    # ep2 has no findings.json at all
+    with pytest.raises(ValueError) as e:
+        episode_qc.build(str(ep_path), str(packets), str(tmp_path))
+    msg = str(e.value)
+    assert "ep0 finding 0" in msg and "suggestion must be a non-empty string" in msg
+    assert "ep2" in msg and "has no findings.json" in msg
+    assert "ep1" not in msg
+
+
+def test_build_names_every_bad_finding_inside_one_packet(tmp_path):
+    rm = _rm(tmp_path, n=1)
+    ep_path = tmp_path / "EPISODES.json"
+    rm.write(ep_path)
+    packets = tmp_path / "qc"
+    d = packets / "ep0"
+    d.mkdir(parents=True)
+    (d / "findings.json").write_text(json.dumps({"summary": "s", "reviewer": "r",
+        "findings": [
+            {"axis": "framing", "severity": "minor", "evidence": "e",
+             "route": "none", "suggestion": "s"},               # bad axis
+            {"axis": "colour", "severity": "minor", "evidence": "e",
+             "route": "none"},                                  # no suggestion
+        ]}))
+    with pytest.raises(ValueError) as e:
+        episode_qc.build(str(ep_path), str(packets), str(tmp_path))
+    msg = str(e.value)
+    assert "ep0 finding 0" in msg and "ep0 finding 1" in msg
+
+
+def test_build_still_refuses_the_whole_run_over_one_bad_packet(tmp_path):
+    rm = _rm(tmp_path, n=2)
+    ep_path = tmp_path / "EPISODES.json"
+    rm.write(ep_path)
+    packets = tmp_path / "qc"
+    _findings(packets, 0)
+    _bad_findings(packets, 1, {"axis": "colour", "severity": "catastrophic",
+                               "evidence": "e", "route": "none", "suggestion": "s"})
+    with pytest.raises(ValueError, match="severity 'catastrophic'"):
+        episode_qc.build(str(ep_path), str(packets), str(tmp_path))
+    # EPISODE_QC.json describes the REEL; a partial one would be a reel partly
+    # unjudged, so collecting complaints must not weaken the refusal.
+    assert not (tmp_path / "EPISODE_QC.json").exists()
