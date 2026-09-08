@@ -300,14 +300,52 @@ def test_strip_labels_each_cell_with_its_absolute_timestamp(tmp_path, monkeypatc
     assert seen == [("10.50s",), ("11.50s",)]
 
 
-def test_strip_columns_cap_at_strip_cols(tmp_path, monkeypatch):
+def test_strip_fits_its_layout_to_the_clips_own_aspect(tmp_path, monkeypatch):
     seen = {}
-    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _grey_frames)
+    portrait = [np.zeros((640, 360, 3), np.uint8) for _ in range(9)]
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb",
+                        lambda src, times, fps: list(portrait))
+    monkeypatch.setattr(contact_sheet.sheet, "tile",
+                        _stub_tile(lambda cells, kw: seen.update(kw)))
+    res = contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0,
+                                    dur=4.0, frames=9, fps=30.0)
+    # 9 cells of 360x640 (aspect 0.5625) fit 5 wide at 313px; the source carries
+    # 360, above the fitted width, so no cap applies.
+    assert (seen["cols"], seen["cell_w"], seen["cell_h"]) == (5, 313, 556)
+    assert res["cols"] == 5 and res["cell_px"] == [313, 556]
+
+
+def test_strip_never_upscales_past_the_sources_own_width(tmp_path, monkeypatch):
+    seen = {}
+    tiny = [np.zeros((160, 90, 3), np.uint8) for _ in range(9)]
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb",
+                        lambda src, times, fps: list(tiny))
+    monkeypatch.setattr(contact_sheet.sheet, "tile",
+                        _stub_tile(lambda cells, kw: seen.update(kw)))
+    res = contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0,
+                                    dur=4.0, frames=9, fps=30.0)
+    # the fit would allow 313, the source carries 90; rendering 313 would report an
+    # interpolated box as the evidence's resolution (design §7.3)
+    assert seen["cell_w"] == 90 and seen["cell_h"] == 160
+    assert res["cell_px"] == [90, 160]
+
+
+def test_strip_of_landscape_content_gets_the_landscape_fit(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _grey_frames)  # 320x180
     monkeypatch.setattr(contact_sheet.sheet, "tile",
                         _stub_tile(lambda cells, kw: seen.update(kw)))
     contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0, dur=4.0,
-                              frames=10, fps=30.0)
-    assert seen["cols"] == contact_sheet.STRIP_COLS
+                              frames=9, fps=30.0)
+    assert seen["cols"] == 3 and seen["cell_w"] == 320      # fit allows 522, source has 320
+
+
+def test_strip_refuses_a_decode_that_returned_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb",
+                        lambda src, times, fps: [])
+    with pytest.raises(ValueError, match="decoded no frames"):
+        contact_sheet.build_strip("a.mp4", str(tmp_path / "s.png"), start=0.0,
+                                  dur=4.0, frames=9, fps=30.0)
 
 
 def test_strip_probes_fps_when_not_given(tmp_path, fake_frames, monkeypatch):

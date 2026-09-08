@@ -17,9 +17,6 @@ from pathlib import Path
 from scripts.lib import assembly, sheet
 from scripts.lib.footage import Footage, FootageWindow
 
-STRIP_COLS = 6      # a strip reads left-to-right in time; 6 keeps the row inside the
-                    # image-size limit while staying wide enough to see a motion arc.
-
 
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
@@ -197,7 +194,12 @@ def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
     midpoint frame on the overview sheet cannot give.
 
     Not a conveyor stage: it writes only where --out says and leaves no artifact
-    behind, because it is asked for when a question arises."""
+    behind, because it is asked for when a question arises.
+
+    The layout is FITTED to this clip's own aspect and to sheet.READER_LONG_SIDE
+    (design §2) — a delivered 9:16 reel gets a 9:16 cell instead of losing 68% of
+    every cell to a 16:9 box — and `cell_px` reports what one frame actually
+    rendered at, which is what the QC packet passes to its judge."""
     if isinstance(frames, bool) or not isinstance(frames, int) or frames < 1:
         raise ValueError(f"strip: frames must be >= 1, got {frames!r}")
     if dur <= 0:
@@ -205,11 +207,23 @@ def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
     rate = fps if fps is not None else assembly.probe_stream(source).fps
     times = [start + (k + 0.5) * dur / frames for k in range(frames)]
     images = assembly.frames_rgb(source, times, rate)
+    if not images:
+        raise ValueError(f"strip: decoded no frames from {source} over "
+                         f"[{start:.3f}, {start + dur:.3f}]s — the range may sit past "
+                         f"the clip's end, or the decode dropped every frame")
+    h0, w0 = images[0].shape[:2]
+    cols, cell_w = sheet.fit_layout(len(images), w0 / h0)
+    # Never upscale. A cell wider than the source frame renders an interpolated
+    # picture and would report its BOX as the evidence's resolution; nothing here
+    # creates pixels (design §7.3), and cell_px is read by the QC packet.
+    cell_w = min(cell_w, w0)
+    cell_h = max(1, round(cell_w * h0 / w0))
     cells = [sheet.Cell(image=im, lines=(f"{t:.2f}s",)) for im, t in zip(images, times)]
     path = Path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
-    sheet.tile(cells, cols=min(frames, STRIP_COLS)).save(path)
+    sheet.tile(cells, cols=cols, cell_w=cell_w, cell_h=cell_h).save(path)
     return {"status": "written", "strip": str(path), "frames": frames,
+            "cols": cols, "cell_px": [cell_w, cell_h],
             "times": [round(t, 3) for t in times]}
 
 
