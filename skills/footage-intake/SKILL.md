@@ -84,7 +84,13 @@ are later stages.
    downstream that reads it instead of assuming the default.
 
 3. **Cast pass — only when people matter to the reel.** Read
-   `cast_candidates.json` and look at each `candidate_*.png`. Candidates are
+   `cast_candidates.json` and look at each `candidate_*.png`. Each entry
+   records `crop_px` — the crop's real pixel size. **Say it out loud when you
+   show a small one**: on the 2026-06 run seven of fifteen candidates were
+   under 5000 px total and three were about 13x13, and the operator was asked
+   to name them anyway. A candidate too small to identify is a candidate to
+   skip, not to guess at; nothing upscales it, because an interpolated 13x12
+   crop looks like evidence and is not. Candidates are
    **presence-ranked** — clustered into real identities (a person re-ID
    embedding, not a colour/clothing feature) and sorted by on-screen seconds
    across all clips, most-visible first — so each entry is one real person, not

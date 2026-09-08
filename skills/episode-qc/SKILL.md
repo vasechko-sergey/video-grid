@@ -77,14 +77,22 @@ say so rather than guessing a path.
    sampled across the DELIVERED clip, in timeline order) and `evidence.json`
    (the episode's declared intent, the mechanical `report.json`, the tracker
    provenance, the `path.meta` geometry, and the naturalness sensor's
-   stats/flags plus its source-relative delta). This refuses in milliseconds,
-   before any decode, if some episode has no scratch dir to read.
+   stats/flags plus its source-relative delta).
+
+   `evidence.json` also records what each pixel artifact actually rendered at
+   (`strip_px`, `storyboard_px`) — reported, never gated. A judge that needs a
+   closer look pulls its own frames with `contact_sheet strip`; the template
+   tells it how.
+
+   This refuses in milliseconds, before any decode, if some episode has no
+   scratch dir to read.
 
 2. **Dispatch one fresh judge per episode — at most 3 concurrently.** For each
    episode `i`, fill `skills/episode-qc/episode-reviewer.md` with THAT
-   episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json`, `<run>/reels/<reel>/episodes/qc/ep{i}/strip.jpg`,
-   and the storyboard path `evidence.json` names (inside
-   `<run>/reels/<reel>/build/ep{i}/`) — nothing else. A judge reads only its own episode:
+   episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json` — which now names its
+   own artifacts: `strip`, `strip_px`, `storyboard`, `storyboard_px`. Fill
+   `{STRIP_PATH}`/`{STRIP_PX}` and `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from
+   those four keys, and pass nothing else. A judge reads only its own episode:
    never another's packet, never the EDL as a whole, never a comparison
    across episodes (adjacency and rhythm are reel-review's question, not
    this one). Dispatch with the Task tool (`general-purpose`), batching up

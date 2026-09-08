@@ -34,10 +34,33 @@ read by a human; your deliverable is the file you write.
  against source; null alongside it).}
 
 ## What shipped
-Frame strip: {STRIP_PATH} (frames sampled across the DELIVERED clip, in
-timeline order). Storyboard: {STORYBOARD_PATH} (the composition grid, and the
-hero marker on every sampled frame when one was tracked). Open and look at
-both — this is the pixel evidence itself, not a summary of it.
+Frame strip: {STRIP_PATH} — {STRIP_PX} px per frame, sampled across the
+DELIVERED clip in timeline order and labelled with absolute timestamps. This is
+the **timeline index**: it tells you WHEN, at a size chosen to fit a whole
+episode in one image.
+
+Storyboard: {STORYBOARD_PATH} — {STORYBOARD_PX} px per frame, with the
+composition grid and the hero marker on every sampled frame when one was
+tracked. This is the **composition evidence**; it is far larger per frame than
+the strip and is what you judge framing from.
+
+Both sizes are in `evidence.json` as `strip_px` and `storyboard_px`. They are
+RENDERED sizes — your own viewer may downsample further.
+
+**When you need a closer look, take one.** Do not guess from a thumbnail and do
+not reach for a tool that is not here. Resolve the launcher once —
+
+    VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"
+
+— and pull any frames you want from the delivered clip itself
+(`evidence.json`'s `clip`), at timestamps YOU choose:
+
+    "$VG" scripts.contact_sheet strip --source <evidence.json "clip"> \
+          --out <a path of your own> --start <seconds> --dur <seconds> --frames <n>
+
+A short `--dur` around one moment gives you a near-full-resolution look at it.
+Name in your summary which timestamps you pulled and why — the next round's
+judge reads it.
 
 ## Judge each axis; emit a finding ONLY where the episode falls short
 - **composition** — does the frame honor ITS OWN declared intent (above),
@@ -80,12 +103,19 @@ both — this is the pixel evidence itself, not a summary of it.
 - `severity` ∈ (blocking, important, minor). `blocking` means this episode is
   UNUSABLE in the reel, and a blocking finding stops the WHOLE reel, not just
   this episode — reserve it for that, never for a preference.
+- `axis` ∈ (composition, colour, impression, path, hero) — the five judged
+  above, and only those. A finding on any other axis has no stage to be
+  routed to and `episode_qc build` refuses the whole run over it.
 - `route` ∈ (reprocess, edit-plan, match-grade, none) — the stage that owns
   the fix: `reprocess` (re-render this episode — colour/composition params),
   `edit-plan` (the window or the hero pin itself is wrong), `match-grade`
   (the tone pair across episodes), `none` (nothing to route, incl. a
   not-judgeable report).
 - `confidence` ∈ (high, medium, low); omit it to default to `high`.
+- `suggestion` — REQUIRED, non-empty: the concrete change that would fix what
+  you found. A finding that names no change is not actionable, and
+  `episode_qc build` refuses the whole run over it. "Consider revisiting the
+  framing" is not a suggestion; "re-render at crop_scale 1.0" is.
 - `evidence` MUST cite a frame timestamp, a storyboard mark, or a measured
   number from the packet — a finding with no anchor is not admissible.
 - Never write `idx`, `clip`, or `clip_digest` — `episode_qc build` stamps
