@@ -47,13 +47,19 @@ the strip and is what you judge framing from.
 Both sizes are in `evidence.json` as `strip_px` and `storyboard_px`. They are
 RENDERED sizes — your own viewer may downsample further.
 
+When {STORYBOARD_PATH} reads `none recorded`, there is no composition evidence
+beyond it: the strip, plus whatever frames you pull yourself (below), are the
+whole of the pixel evidence for this episode — say so in your summary.
+
 **When you need a closer look, take one.** Do not guess from a thumbnail and do
 not reach for a tool that is not here. Resolve the launcher once —
 
     VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"
 
-— and pull any frames you want from the delivered clip itself
-(`evidence.json`'s `clip`), at timestamps YOU choose:
+— run every step as `"$VG" scripts.X`, passing **absolute** paths: `bin/vg`
+`cd`s to the repo root before it runs, so a relative `--out` writes into the
+plugin checkout, not where you think — and pull any frames you want from the
+delivered clip itself (`evidence.json`'s `clip`), at timestamps YOU choose:
 
     "$VG" scripts.contact_sheet strip --source <evidence.json "clip"> \
           --out <a path of your own> --start <seconds> --dur <seconds> --frames <n>
