@@ -159,6 +159,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
     status = match_grade.write_match(geometry_path)
     target = (25.0, 110.0, 195.0)                      # median of the two measured profiles
     assert status == {"status": "written", "edl": edl_path, "md": str(tmp_path / "MATCH.md"),
+                      "json": str(tmp_path / "MATCH.json"),
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
                       "mood": None, "bias_source": "", "bias_scale": 1.0,  # no --spec: the plain median
                       "authored": 2, "skipped": {}}
@@ -522,3 +523,61 @@ def test_write_match_reports_no_mood_matched_end_to_end(tmp_path, monkeypatch):
     assert status["mood"] == "balanced" and status["bias_source"] == ""
     md = (tmp_path / "MATCH.md").read_text()
     assert "No mood matched the brief" in md
+
+
+def test_write_match_writes_a_json_twin_carrying_every_decision(tmp_path, monkeypatch):
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (10.0, 90.0, 150.0) if "d.mp4" in src
+                        else (40.0, 130.0, 240.0))
+    ep0, ep1 = _ep("d.mp4"), _ep("b.mp4")
+    geometry_path, edl_path = _write_geometry(tmp_path, ep0, ep1)
+    status = match_grade.write_match(geometry_path)
+    assert status["json"] == str(tmp_path / "MATCH.json")
+    target = (25.0, 110.0, 195.0)
+    report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    assert report == matchgrade.MatchReport(
+        target=target, eps=matchgrade.MATCH_EPS, edl=edl_path,
+        decisions=(
+            matchgrade.ToneDecision(0, "author", "authored", measured=(10.0, 90.0, 150.0),
+                                    tone_src=(10.0, 90.0, 150.0), tone_dst=target),
+            matchgrade.ToneDecision(1, "author", "authored", measured=(40.0, 130.0, 240.0),
+                                    tone_src=(40.0, 130.0, 240.0), tone_dst=target)),
+        bias=(0.0, 0.0, 0.0), bias_source="", bias_scale=1.0, mood=None)
+
+
+def test_the_json_twin_names_the_edl_verbatim_as_geometry_gave_it(tmp_path, monkeypatch):
+    """geo.edl is used verbatim, never resolve()d (write_match's own rule) — the twin
+    must record the same string, or the freshness reader looks at a different file."""
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"))
+    match_grade.write_match(geometry_path)
+    assert matchgrade.MatchReport.from_json(tmp_path / "MATCH.json").edl == edl_path
+
+
+def test_the_json_twin_records_a_skip_with_its_reason(tmp_path, monkeypatch):
+    # a flat source cannot be a tone_src, so the conductor skips it — and a reader must
+    # be able to tell that skip from a pair that was wiped after the fact
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (10.0, 11.0, 12.0) if "d.mp4" in src
+                        else (40.0, 130.0, 240.0))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
+    match_grade.write_match(geometry_path)
+    report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    assert (report.decisions[0].action, report.decisions[0].reason) == ("skip", "flat-source")
+    assert report.decisions[0].tone_src is None
+
+
+def test_the_json_twin_carries_the_mood_displacement(tmp_path, monkeypatch):
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"))
+    spec = tmp_path / "SPEC.json"
+    # canvas/hook added (task-2-report.md): Spec.__post_init__ gates both as
+    # required (scripts/lib/spec.py) — the brief's dict omitted them, which
+    # raises "Spec.canvas must be [w, h] positive, got None" before write_match
+    # ever reaches the mood/bias assertions below.
+    spec.write_text(json.dumps({"idea": "a calm ride", "mood": "nostalgic", "length_s": 30.0,
+                                "canvas": [1080, 1920], "hook": "h"}))
+    match_grade.write_match(geometry_path, spec=str(spec))
+    report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    assert (report.mood, report.bias_source) == ("nostalgic", "the nostalgic preset")
+    assert report.bias == moodpreset.resolve("nostalgic").tone_bias

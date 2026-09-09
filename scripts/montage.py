@@ -67,7 +67,7 @@ V1_STAGES: tuple[Stage, ...] = (
           "edl_to_reel --stop-after-geometry (stabilize, track and gate every "
           "episode; no encode) — the seam match-grade measures the shipped crop in",
           None, "episodes"),
-    Stage("match-grade", "MATCH.md", "required",
+    Stage("match-grade", "MATCH.json", "required",
           "match-grade SKILL -> match_grade build --geometry (measures each episode's "
           "own crop; run AFTER episodes-geometry, before the render)", None, "reel"),
     Stage("assemble-draft", "draft.mp4", "optional",

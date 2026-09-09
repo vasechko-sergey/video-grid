@@ -142,9 +142,11 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
 def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
                 force: bool = False, spec: str | None = None) -> dict:
     """Read GEOMETRY.json → the EDL it names → conduct → write the enriched EDL BACK IN
-    PLACE (the stage enriches the EDL a human then reviews) + a sibling MATCH.md. One
-    measure pass (inside conduct); the decisions carry the measured profiles the report
-    needs. Returns a status dict.
+    PLACE (the stage enriches the EDL a human then reviews) + a sibling MATCH.md and
+    MATCH.json. One measure pass (inside conduct); the decisions carry the measured
+    profiles the report needs, and MATCH.json carries the decisions themselves so the
+    report's claim can be checked against the EDL later (design 2026-09-09 §2).
+    Returns a status dict.
 
     `geo.edl` is used VERBATIM, never resolve()d against geometry_path's directory: it is
     stored exactly as edl_to_reel wrote it (design 2026-08-30 §2.2), and a relative path
@@ -165,8 +167,20 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
                                   bias=bias, bias_source=bias_source,
                                   mood=preset.name if preset is not None else None, k=k))
+    # The machine-readable twin (design 2026-09-09 §2). MATCH.md's claim — "8/8
+    # episodes authored a tone pair" — was prose, and the EDL written an hour later
+    # carried five with nothing able to notice. The decisions are what the report
+    # ASSERTS, so they are what a reader compares against the EDL; `geo.edl` is
+    # recorded verbatim, exactly as it was used, so the reader opens the same file
+    # this wrote back into.
+    json_path = Path(geo.edl).parent / "MATCH.json"
+    matchgrade.MatchReport(
+        target=target, eps=eps, decisions=tuple(decisions), edl=geo.edl,
+        bias=bias, bias_source=bias_source, bias_scale=k,
+        mood=preset.name if preset is not None else None).write(json_path)
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
+            "json": str(json_path),
             "target": list(target), "eps": eps,
             "mood": preset.name if preset is not None else None,
             "bias_source": bias_source, "bias_scale": k,

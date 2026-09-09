@@ -76,7 +76,7 @@ def test_v1_stages_kinds_and_flags():
     assert by["edit-plan"].checkpoint == "edl"
     assert by["deliver"].checkpoint == "final"
     assert by["match-grade"].kind == "required"
-    assert by["match-grade"].artifact == "MATCH.md"
+    assert by["match-grade"].artifact == "MATCH.json"
     assert by["match-grade"].checkpoint is None
     assert by["match-grade"].bucket == "reel"
     assert by["episodes-geometry"].kind == "required"
@@ -610,3 +610,10 @@ def test_status_softens_nothing_the_loader_still_refuses(tmp_path):
     (tmp_path / "CONSTRAINTS.json").write_text('{"rules": [{"kind": "bogus", "stated": "no idea"}]}')
     with pytest.raises(ValueError, match="bogus"):
         constraints.Constraints.from_json(tmp_path / "CONSTRAINTS.json")
+
+
+def test_the_match_grade_stage_keys_on_the_json_not_the_markdown():
+    """Every other stage's presence marker is its X.json; match-grade was the
+    exception, and MATCH.md alone carries nothing a reader can check."""
+    row = next(s for s in montage.V1_STAGES if s.key == "match-grade")
+    assert row.artifact == "MATCH.json"
