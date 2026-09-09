@@ -1761,8 +1761,12 @@ def test_match_grade_goes_stale_on_a_wipe_and_stays_fresh_on_an_unrelated_rewrit
     match_grade.write_match(gp)
     assert montage._match_grade_state(lay.reel_dir) == ("fresh", "")
 
-    # CONTROL: rewrite the EDL touching something that is not tone. The file's bytes
-    # and its provenance stamp both change; the report's claim does not.
+    # CONTROL: rewrite the EDL touching something that is not tone. Only the file's
+    # bytes change: this EDL carries no provenance stamp at all (built via
+    # EDL(...).to_dict(), which emits the provenance key only when non-empty) — and
+    # even where a stamp exists, an unrelated key leaves the stored block
+    # byte-identical; it is the block's VALIDITY that flips on recompute, not the
+    # block itself. Either way, the report's claim does not move.
     raw = json.loads(edl_path.read_text())
     raw["changelog"] = "an unrelated edit"
     edl_path.write_text(json.dumps(raw, indent=2))
@@ -1844,10 +1848,12 @@ test: prove the bindings through the drivers, with the control that matters
 
 Four end-to-end proofs, each with a control that must not move. The
 load-bearing one is the unrelated EDL rewrite: it changes the file's
-bytes and its provenance stamp while leaving the tone pairs alone, and
-match-grade must stay FRESH. A digest of the EDL — the obvious
-instrument, and the one the design rejected — fails that test, which is
-the whole reason the check compares the report's own claim instead.
+bytes — this EDL carries no provenance stamp, and even a stamped one
+keeps its provenance block's own bytes untouched here — while leaving
+the tone pairs alone, and match-grade must stay FRESH. A digest of the
+EDL — the obvious instrument, and the one the design rejected — fails
+that test, which is the whole reason the check compares the report's
+own claim instead.
 
 Not proved here and said so in the docstring: a genuinely SIGKILLed
 ffmpeg. The stubbed kill leaves the state a killed subprocess leaves.

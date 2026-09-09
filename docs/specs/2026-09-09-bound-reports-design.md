@@ -174,11 +174,14 @@ byte-for-byte, so the report a human reads does not change. There is no golden o
 `MATCH.md` today — the claim is about not moving what a reader already relies on,
 not about a fixture.
 
-**The freshness check** (`matchgrade.tone_drift(match, edl)`, pure): for every
-decision with `action == "author"`, is that episode's `tone_src`/`tone_dst` in the
-EDL *today* equal to what the decision recorded? A legitimate rewrite that does not
-touch tone changes nothing. A `--pacing` re-run that wipes tone is caught on the
-first wiped episode. The check needs no digest and no timestamp.
+**The freshness check** (`matchgrade.tone_drift(decisions, pairs)`, pure — `pairs`
+is the caller's own read of the EDL's tone fields today, not the EDL object itself,
+so the function keeps no IO and montage's inspector need not import the EDL
+contract): for every decision with `action == "author"`, is that episode's
+`tone_src`/`tone_dst` in the EDL *today* equal to what the decision recorded? A
+legitimate rewrite that does not touch tone changes nothing. A `--pacing` re-run
+that wipes tone is caught on the first wiped episode. The check needs no digest and
+no timestamp.
 
 The `V1_STAGES` row for `match-grade` moves from `MATCH.md` to `MATCH.json`,
 matching every other stage.
@@ -206,10 +209,13 @@ one the record describes*"):
 - `montage verify` — re-hashes the named reel against `reel_digest`, alongside the
   delivery re-hash it already does.
 
-A `Review.reel` naming something that is not the newest delivery — an older
-version, or a path outside the deliveries bucket entirely — reads as stale, and the
-reason names both what the review judged and what is newest. That is the honest
-answer for a hand-pointed path too: nothing binds it to a delivery.
+A `Review.reel` naming an older or now-superseded version reads as stale, and the
+reason names both what the review judged and what is newest — because the
+comparison is `Path(judged).name` against the newest delivery's name, not the full
+path or its location. That leaves a hand-pointed path outside the deliveries bucket
+unclosed when it happens to share the newest delivery's filename: nothing here
+checks that the reviewed file actually lives in the bucket, only that its name
+matches (backlog, whole-branch review M-2).
 
 The cheap check is what catches the run's actual failure (two versions stale). It
 is blind to a file replaced in place under the same name — which 0.3.0 made

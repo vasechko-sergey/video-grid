@@ -398,7 +398,44 @@ machine-readable form for any future reader (bound-reports §2/§8) ·
 extend the `montage status` staleness reader to the optional stages —
 `pacing` against `MUSIC.json` (already answerable off `Spine.music_digest`)
 and `titles` against the delivered reel; neither ever blocked the real run
-(bound-reports §6/§8)
+(bound-reports §6/§8) ·
+`tone_drift` binds only the authored pairs and the episode count, so a report
+where every decision is `skip` — the `within-eps` single-camera reel
+`skills/match-grade/SKILL.md` calls routine, and the shape the router
+produces on every reel — cannot go stale for any same-length rewrite:
+measured, an all-skip report reads `fresh` against a totally re-cut EDL, and
+a same-length re-cut that keeps the pairs also reads `fresh`. The design
+cites `ReelGeometry.provenance.cuts` (`{source, start, dur, ramp}`, built
+precisely so a re-cut is caught) as its own model; `MATCH.json` already
+carries `measured` per episode and could carry the cut identity for free —
+the design's §7 does not name this limit (bound-reports §1/§2, whole-branch
+review I-3) ·
+`_review_state`'s freshness check compares `Path(judged).name` only, though
+design §3 promises a `Review.reel` naming a path outside the deliveries
+bucket reads as stale — "the honest answer for a hand-pointed path too."
+Measured: a review naming `<run>/elsewhere/REEL_v1.mp4` while
+`deliveries/REEL_v1.mp4` is newest reads `fresh`, and `verify` then re-hashes
+the OUTSIDE file and calls it `bound`. The one-line fix is the full-path
+comparison the design already argued for (bound-reports §3, whole-branch
+review M-2) ·
+a combined tidy of small `bound-reports` nits, most still open:
+`_verify_review`'s docstring says "Three states" but the function returns
+six (`absent`/`unreadable`/`unbound`/`missing`/`digest-mismatch`/`bound`);
+`_verify_review(reel_dir, out)` never reads `out`; the reused `missing`
+detail renders a double space and implies a file existed and vanished when
+the reel was never named at all; `runlayout.partial_path`'s docstring still
+says "all three globs" now that a fourth reader, `montage._newest_delivery`,
+globs the same bucket (the claim itself still holds — the dot prefix
+excludes the partial here too — only the census is stale); and four
+spellings of one remedy are scattered across `matchgrade.py`/`montage.py`,
+two of which omit `--geometry` and so name a command argparse rejects
+outright. **One item already fixed by this session's audit, 2026-09-09**:
+`docs/build-status.md` and the design both named a `tone_drift` signature
+that never existed (`tone_drift(report, pairs)` / `tone_drift(match, edl)`
+against the shipped `tone_drift(decisions, pairs)`) — corrected in both
+places; the rest of this row stays open. The natural first instalment of the
+existing open row on `grade_damage`/`grade_faithful` naming the same shape
+of absence in different words (bound-reports, whole-branch review)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for

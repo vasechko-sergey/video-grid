@@ -44,7 +44,7 @@ _Last updated: 2026-09-09._
   **A — `MATCH.json`, the twin the required stage never had (design §2).**
   `write_match` now writes it beside the byte-identical `MATCH.md`, carrying
   the `ToneDecision`s the report renders — index, action, reason, measured
-  profile, the pair. `matchgrade.tone_drift(report, pairs)` compares the
+  profile, the pair. `matchgrade.tone_drift(decisions, pairs)` compares the
   authored PAIRS against the EDL as it is now, not a digest of the file:
   `match_grade` rewrites that EDL itself and `edit_plan build --pacing`
   rewrites it again, so a whole-file digest would fire on the sanctioned
