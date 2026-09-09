@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
+from scripts.lib import provenance
 from scripts.lib.review import Finding, Review
 
 
@@ -41,8 +42,15 @@ def build_review(raw_findings: list, reel: str, *, summary: str = "", spec_ref: 
             f"finding(s).\n" + "\n".join(problems)
             + "\nEvery complaint from this run is listed above, so one pass names them "
               "all. Fix or re-dispatch the reviewer, then re-run build.")
+    # The digest is computed HERE from the file on disk, never taken from the reviewer's
+    # findings file — episode_qc.build_qc's rule verbatim, and for the same reason: it is
+    # what turns "a reel was reviewed" into "THIS reel was reviewed" (design 2026-09-09
+    # §3). An absent file leaves it empty rather than raising: Review is also the typed
+    # sink for a hand-authored review, and an unbound review is reported as unbound.
+    # The one path a real run takes — the CLI — refuses an absent reel outright.
+    digest = provenance.digest_file(reel) if Path(reel).exists() else ""
     return Review(reel=reel, findings=tuple(findings), summary=summary, spec_ref=spec_ref,
-                  platform=platform, reviewer=reviewer)
+                  platform=platform, reviewer=reviewer, reel_digest=digest)
 
 
 def write_review(review: Review, out_dir: str) -> dict:
@@ -86,6 +94,11 @@ def main() -> None:
     b.add_argument("--reviewer", default="", help="free note — which agent/model reviewed")
     b.add_argument("--out-dir", required=True, help="dir for REVIEW.json + REVIEW.md")
     a = ap.parse_args()
+    if not Path(a.reel).exists():
+        raise ValueError(
+            f"--reel {a.reel} names no file, so this review would be bound to nothing. "
+            f"Point it at the delivered reel (the deliveries bucket's newest "
+            f"REEL_v{{n}}.mp4); run `montage status` if you are not sure which that is")
     raw, summary = _load_findings(a.findings)
     review = build_review(raw, a.reel, summary=summary, spec_ref=a.spec,
                           platform=a.platform, reviewer=a.reviewer)

@@ -70,6 +70,11 @@ class Review:
     spec_ref: str = ""         # echo of the intent judged (or the SPEC.json path)
     platform: str = ""         # from SPEC.platform, header only
     reviewer: str = ""         # free note — which agent/model reviewed
+    reel_digest: str = ""      # sha256 of the reviewed file, stamped from disk by
+                               # build_review — never from the reviewer's claim (the
+                               # episode_qc.clip_digest idiom). "" means unbound: a
+                               # review written before this field existed, or one whose
+                               # reel was not on disk.
 
     def __post_init__(self) -> None:
         if not (isinstance(self.reel, str) and self.reel.strip()):
@@ -79,7 +84,7 @@ class Review:
             raise ValueError("Review.findings must be a list of Finding objects "
                              "(build via reel_review.build_review, which validates each)")
         self.findings = tuple(self.findings)
-        for name in ("summary", "spec_ref", "platform", "reviewer"):
+        for name in ("summary", "spec_ref", "platform", "reviewer", "reel_digest"):
             v = getattr(self, name)
             if not isinstance(v, str):
                 raise ValueError(f"Review.{name} must be a string, got {v!r}")
@@ -107,11 +112,11 @@ class Review:
             return default if v is None else v
         return cls(reel=d.get("reel"), findings=findings, summary=opt("summary", ""),
                    spec_ref=opt("spec_ref", ""), platform=opt("platform", ""),
-                   reviewer=opt("reviewer", ""))
+                   reviewer=opt("reviewer", ""), reel_digest=opt("reel_digest", ""))
 
     def to_dict(self) -> dict:
         # verdict is emitted for the .md/.json readers but recomputed on load (never trusted)
-        return {"reel": self.reel, "verdict": self.verdict,
+        return {"reel": self.reel, "reel_digest": self.reel_digest, "verdict": self.verdict,
                 "findings": [f.to_dict() for f in self.findings], "summary": self.summary,
                 "spec_ref": self.spec_ref, "platform": self.platform, "reviewer": self.reviewer}
 
@@ -131,7 +136,12 @@ class Review:
         head = f"# Reel review — {icon} {self.verdict}"
         if self.platform:
             head += f" · {self.platform}"
-        lines = [head, "", f"**Reel:** `{self.reel}`", ""]
+        lines = [head, "", f"**Reel:** `{self.reel}`"]
+        lines.append(f"**Bound to:** `{self.reel_digest[:12]}…`" if self.reel_digest
+                     else "**Bound to:** _nothing_ — this review is not bound to the "
+                          "file's bytes, so nothing can tell whether the reel it judged "
+                          "is the reel that shipped")
+        lines.append("")
         if self.summary:
             lines += [self.summary, ""]
         if not self.findings:

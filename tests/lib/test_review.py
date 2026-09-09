@@ -180,3 +180,31 @@ def test_to_markdown_revise_orders_blocking_first():
 def test_to_markdown_empty_findings_is_clean():
     md = Review(reel="r.mp4", summary="clean").to_markdown()
     assert "✅ No findings" in md
+
+
+def test_reel_digest_defaults_to_empty_and_round_trips(tmp_path):
+    r = Review(reel="out/REEL_v1.mp4", reel_digest="a" * 64)
+    assert Review(reel="out/REEL_v1.mp4").reel_digest == ""
+    assert Review.from_dict(r.to_dict()) == r
+
+
+def test_reel_digest_must_be_a_string():
+    with pytest.raises(ValueError, match="Review.reel_digest must be a string"):
+        Review(reel="out/REEL_v1.mp4", reel_digest=12345)
+
+
+def test_a_pre_slice_review_loads_as_unbound_not_as_a_failure():
+    """An artifact written before this field existed must still load: the honest
+    reading is 'nothing binds this review', not 'this file is corrupt'."""
+    assert Review.from_dict({"reel": "out/REEL_v1.mp4", "findings": []}).reel_digest == ""
+
+
+def test_to_markdown_names_the_digest_when_it_has_one():
+    md = Review(reel="out/REEL_v1.mp4", reel_digest="abc123def456" + "0" * 52,
+                summary="clean").to_markdown()
+    assert "`abc123def456…`" in md
+
+
+def test_to_markdown_says_unbound_when_it_has_none():
+    md = Review(reel="out/REEL_v1.mp4", summary="clean").to_markdown()
+    assert "not bound to the file's bytes" in md

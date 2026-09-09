@@ -1,5 +1,7 @@
 import pytest
 
+from scripts import reel_review
+from scripts.lib import provenance
 from scripts.lib.review import Review
 from scripts.reel_review import build_review, write_review
 
@@ -78,9 +80,11 @@ def _write_findings(tmp_path, obj):
 def test_cli_build_writes_and_exits_0(tmp_path, monkeypatch, capsys):
     from scripts import reel_review
     findings = _write_findings(tmp_path, {"summary": "good", "findings": RAW})
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered-bytes")
     monkeypatch.setattr(sys, "argv",
                         ["reel_review", "build", "--findings", findings,
-                         "--reel", "out/REEL_v1.mp4", "--platform", "tiktok",
+                         "--reel", str(reel), "--platform", "tiktok",
                          "--out-dir", str(tmp_path)])
     with pytest.raises(SystemExit) as e:
         reel_review.main()
@@ -94,9 +98,11 @@ def test_cli_build_writes_and_exits_0(tmp_path, monkeypatch, capsys):
 def test_cli_accepts_bare_list_findings(tmp_path, monkeypatch, capsys):
     from scripts import reel_review
     findings = _write_findings(tmp_path, RAW)   # bare list, no summary object
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered-bytes")
     monkeypatch.setattr(sys, "argv",
                         ["reel_review", "build", "--findings", findings,
-                         "--reel", "out/REEL_v1.mp4", "--out-dir", str(tmp_path)])
+                         "--reel", str(reel), "--out-dir", str(tmp_path)])
     with pytest.raises(SystemExit) as e:
         reel_review.main()
     assert e.value.code == 0
@@ -107,8 +113,40 @@ def test_cli_bad_findings_json_fails_loud(tmp_path, monkeypatch):
     from scripts import reel_review
     p = tmp_path / "review_findings.json"
     p.write_text("{not json")
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered-bytes")
     monkeypatch.setattr(sys, "argv",
                         ["reel_review", "build", "--findings", str(p),
-                         "--reel", "out/REEL_v1.mp4", "--out-dir", str(tmp_path)])
+                         "--reel", str(reel), "--out-dir", str(tmp_path)])
     with pytest.raises(ValueError, match="valid JSON"):
+        reel_review.main()
+
+
+def test_build_review_stamps_the_digest_from_disk(tmp_path):
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered-bytes")
+    r = build_review(RAW, str(reel), summary="ok")
+    assert r.reel_digest == provenance.digest_file(reel)
+
+
+def test_build_review_ignores_a_digest_nobody_computed_from_disk(tmp_path):
+    """The episode_qc idiom verbatim: the digest is computed HERE, so a reviewer
+    cannot hand one in. There is no parameter to pass one through."""
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"delivered-bytes")
+    with pytest.raises(TypeError):
+        build_review(RAW, str(reel), reel_digest="deadbeef")
+
+
+def test_build_review_leaves_the_digest_empty_when_the_file_is_absent():
+    assert build_review(RAW, "out/REEL_v1.mp4").reel_digest == ""
+
+
+def test_the_cli_refuses_a_reel_that_names_no_file(tmp_path, monkeypatch, capsys):
+    findings = tmp_path / "f.json"
+    findings.write_text(json.dumps(RAW))
+    monkeypatch.setattr(sys, "argv",
+                        ["reel_review", "build", "--findings", str(findings),
+                         "--reel", str(tmp_path / "nope.mp4"), "--out-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match="names no file"):
         reel_review.main()
