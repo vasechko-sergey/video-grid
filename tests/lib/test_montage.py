@@ -883,3 +883,125 @@ def test_next_action_survives_a_review_json_that_is_bare_null(tmp_path):
     row = next(s for s in res["stages"] if s["key"] == "reel-review")
     assert row["state"] == "stale"
     assert row["stale_reason"]
+
+
+# ---- residual review (2026-09-09): a well-shaped REVIEW.json whose "reel"/
+# "reel_digest" VALUES are the wrong JSON type must not raise either. The C-1 fix
+# above closed the top-level shape (REVIEW.json itself a list/null, so `.get()`
+# fails); this is one layer in — REVIEW.json is a plain object, `.get("reel")`
+# succeeds, and the value it returns is a number/bool/list/dict that `Path()` (or
+# `[:12]` slicing, for reel_digest) raises on regardless. Both `_as_str`'s guard and
+# each site it protects are exercised only through the real public entry points.
+
+def test_next_action_survives_a_review_json_whose_reel_is_a_number(tmp_path):
+    """The exact repro from the finding: {"reel": 42, "findings": []}."""
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps({"reel": 42, "findings": []}))
+    res = montage.next_action(str(tmp_path))               # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "reel-review")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_verify_survives_a_review_json_whose_reel_is_a_number_and_unbound(tmp_path):
+    """No reel_digest recorded — the finding's first crash site, montage.py:334."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v1.mp4").write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps({"reel": 42, "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "unbound"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_whose_reel_is_a_number_with_a_digest(tmp_path):
+    """A reel_digest is also present — the finding's second crash site, montage.py:337."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": 42, "reel_digest": provenance.digest_file(reel), "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "missing"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_with_no_reel_field_but_a_digest_is_recorded(tmp_path):
+    """A sibling landmine found while sweeping, not in the finding's own repro: an
+    absent (or null) reel already read as "" before this fix via `or ""`, and a
+    present reel_digest pushes past the unbound check to `Path("").exists()` — True,
+    because pathlib normalizes "" to the cwd — and on into digest_file(""), whose raw
+    open() does NOT do that normalization and raises FileNotFoundError instead.
+    Confirmed by direct repro against the pre-fix code before writing this test."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel_digest": provenance.digest_file(reel), "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "missing"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_whose_reel_digest_is_a_number(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": 42, "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "unbound"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_whose_reel_digest_is_a_bool(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": True, "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "unbound"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_whose_reel_digest_is_a_list(tmp_path):
+    """[1, 2, 3][:12] does not itself raise, so this one already returned rather than
+    raised before the fix — but landed on "digest-mismatch" with a garbled detail
+    ("...but the review records [1, 2, 3]..."). Hardening folds it into the same
+    clean "unbound" every other non-string digest gets, which is what makes this
+    "hardened" rather than merely "lucky"; the assertion below still discriminates
+    pre/post fix even though neither raises."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": [1, 2, 3], "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "unbound"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_whose_reel_digest_is_a_dict(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": {"a": 1}, "findings": []}))
+    got = montage.verify(str(tmp_path))["review"]           # must not raise
+    assert got["state"] == "unbound"
+    assert got["detail"]

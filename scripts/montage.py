@@ -204,6 +204,18 @@ def _newest_delivery(out: Path) -> str | None:
     return None if best is None else best[1]
 
 
+def _as_str(v: object) -> str:
+    """A raw JSON scalar, kept only if it is already a string.
+
+    `Path()` raises on a number/bool/list/dict — and both `_review_state` and
+    `_verify_review` read `reel`/`reel_digest` from hand-editable JSON with no typed
+    constructor in front of them, the same reason they read raw JSON at all. Anything
+    but a string reads as "", the same value an absent or null field already
+    produces: the reader's job is to notice a mismatch, not to validate REVIEW.json's
+    shape."""
+    return v if isinstance(v, str) else ""
+
+
 def _review_state(reel_dir: Path, out: Path) -> tuple[str, str]:
     """("fresh"|"stale", reason) for REVIEW.json against the newest delivery.
 
@@ -220,7 +232,7 @@ def _review_state(reel_dir: Path, out: Path) -> tuple[str, str]:
     if not rp.exists():
         return "stale", "there is no REVIEW.json — run the reel-review stage"
     try:
-        judged = json.loads(rp.read_text()).get("reel") or ""
+        judged = _as_str(json.loads(rp.read_text()).get("reel"))
     except (OSError, ValueError, AttributeError) as e:
         return "stale", f"REVIEW.json is corrupt or unreadable ({e})"
     newest = _newest_delivery(out)
@@ -327,14 +339,19 @@ def _verify_review(reel_dir: Path, out: Path) -> dict:
         return {"state": "absent", "detail": "no REVIEW.json in this reel"}
     try:
         d = json.loads(rp.read_text())
-        reel, want = d.get("reel") or "", d.get("reel_digest") or ""
+        reel, want = _as_str(d.get("reel")), _as_str(d.get("reel_digest"))
     except (OSError, ValueError, AttributeError) as e:
         return {"state": "unreadable", "detail": f"REVIEW.json is corrupt ({e})"}
     if not want:
         return {"state": "unbound", "reel": Path(reel).name,
                 "detail": "this review records no reel digest, so nothing binds it to "
                           "the bytes it judged — re-run the reel-review stage"}
-    if not Path(reel).exists():
+    if not reel or not Path(reel).exists():
+        # `Path("").exists()` alone would say True here (pathlib normalizes "" to
+        # ".", the cwd, which always exists) while the raw `open()` behind
+        # digest_file() below does NOT do that normalization and raises
+        # FileNotFoundError on "" — so an empty/malformed `reel` must be caught
+        # explicitly, before it ever reaches Path.exists()'s cwd-shaped answer.
         return {"state": "missing", "reel": Path(reel).name,
                 "detail": f"the reviewed reel {reel} is not on disk any more"}
     actual = provenance.digest_file(reel)
