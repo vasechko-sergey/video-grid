@@ -249,3 +249,15 @@ def test_verify_delivery_surfaces_the_stale_state(tmp_path):
          episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [0]}).write(
         provenance.attest_path(reel))
     assert provenance.verify_delivery(reel)["episode_qc"] == "stale"
+
+
+def test_an_unattested_file_detail_does_not_assert_the_least_likely_cause(tmp_path):
+    """deliver DOES write the file before the look gate withholds an attestation, and
+    (since 2026-09-09) before the attestation is written at all — so 'this file was not
+    produced by deliver()' is the one reading that is usually false."""
+    p = tmp_path / "REEL_v1.mp4"
+    p.write_text("x")
+    detail = provenance.verify_delivery(p)["detail"]
+    assert "no attestation sidecar" in detail
+    assert "was not produced by deliver()" not in detail
+    assert "look gate" in detail and "interrupted" in detail

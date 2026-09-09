@@ -7,10 +7,11 @@ next_action() for the resume/next decision. Mirrors intake.py <-> footage-intake
 mechanical inspection here, judgment in the SKILL."""
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import constraints, provenance, runlayout
+from scripts.lib import constraints, matchgrade, provenance, runlayout
 
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
@@ -134,6 +135,116 @@ def _constraints(run: Path) -> dict:
             "error": None}
 
 
+def _match_grade_state(reel_dir: Path) -> tuple[str, str]:
+    """("fresh"|"stale", reason) for the conductor's report against the EDL today.
+
+    The instrument is the authored PAIRS, not a digest — match_grade rewrites the EDL
+    itself and edit_plan --pacing rewrites it again, so a whole-file digest would fire
+    on the sanctioned rewrite too (design 2026-09-09 §1/§2).
+
+    Both files are read as RAW JSON on purpose. EDL.from_json refuses a tampered file,
+    and this is the inspector the router calls constantly: a typo or a tampered stamp
+    must not replace the whole status report with a traceback. That is the rule
+    _constraints already records, for the same reason.
+
+    Anything that cannot be read — corrupt MATCH.json, a named EDL that is not there —
+    is reported as `stale` with the cause named, never as fresh: a report that cannot
+    be shown to describe the EDL is not one a reader should trust, and the remedy is
+    the same either way (re-run the conductor).
+
+    Hashes nothing: status is called constantly.
+    """
+    mp = reel_dir / "MATCH.json"
+    if not mp.exists():
+        return "stale", "there is no MATCH.json — run `match_grade build --geometry`"
+    try:
+        report = matchgrade.MatchReport.from_json(mp)
+    except (ValueError, OSError) as e:
+        return "stale", f"MATCH.json is corrupt or unreadable ({e})"
+    try:
+        edl_raw = json.loads(Path(report.edl).read_text())
+        episodes = edl_raw["episodes"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return "stale", (f"MATCH.json names {report.edl}, which cannot be read as an EDL "
+                         f"({e}) — nothing can check what this report claims")
+    pairs = [(_opt_profile(e.get("tone_src")), _opt_profile(e.get("tone_dst")))
+             for e in episodes]
+    drift = matchgrade.tone_drift(report.decisions, pairs)
+    if not drift:
+        return "fresh", ""
+    return "stale", ("; ".join(drift) + ". Re-run `match_grade build --geometry` — a "
+                     "later `edit_plan build --pacing` wipes authored tone, which is "
+                     "what this reports")
+
+
+def _opt_profile(v) -> tuple[float, float, float] | None:
+    """A raw JSON tone anchor triple, or None. Anything malformed reads as None, which
+    tone_drift reports as a wiped pair — the reader's job is to notice a difference,
+    not to validate the EDL, whose own constructor does that where it is loaded."""
+    if not (isinstance(v, (list, tuple)) and len(v) == 3):
+        return None
+    try:
+        return (float(v[0]), float(v[1]), float(v[2]))
+    except (TypeError, ValueError):
+        return None
+
+
+def _newest_delivery(out: Path) -> str | None:
+    """The highest-numbered REEL_v{n} file in the deliveries bucket, by name.
+
+    The same monotone identity _next_version defends: v10 sorts before v2 as a string,
+    so the version number is parsed, never sorted lexically."""
+    best: tuple[int, str] | None = None
+    for p in out.glob("REEL_v*"):
+        m = re.match(r"REEL_v(\d+)\.", p.name)
+        if m and p.suffix != ".json" and (best is None or int(m.group(1)) > best[0]):
+            best = (int(m.group(1)), p.name)
+    return None if best is None else best[1]
+
+
+def _review_state(reel_dir: Path, out: Path) -> tuple[str, str]:
+    """("fresh"|"stale", reason) for REVIEW.json against the newest delivery.
+
+    Names, not bytes — this is the cheap half of the split the module already declares
+    for deliveries: status answers "is there a record", verify answers "is this file
+    the one the record describes". The run's actual failure was a review two VERSIONS
+    stale, which a name comparison catches for free; a file swapped in place under the
+    same name is verify's business, and 0.3.0's monotone versioning already stops the
+    pipeline producing one.
+
+    Hashes nothing.
+    """
+    rp = reel_dir / "REVIEW.json"
+    if not rp.exists():
+        return "stale", "there is no REVIEW.json — run the reel-review stage"
+    try:
+        judged = json.loads(rp.read_text()).get("reel") or ""
+    except (OSError, ValueError) as e:
+        return "stale", f"REVIEW.json is corrupt or unreadable ({e})"
+    newest = _newest_delivery(out)
+    if newest is None:
+        return "stale", "no delivered reel to review — deliver first"
+    if Path(judged).name != newest:
+        return "stale", (f"this review judged {Path(judged).name or '(nothing named)'} "
+                         f"and the newest delivery is {newest} — re-run the reel-review "
+                         f"stage against the reel that shipped")
+    return "fresh", ""
+
+
+def _partials(out: Path) -> list[str]:
+    """Deliveries that were interrupted mid-encode: the dotted partials deliver leaves
+    behind (design 2026-09-09 §5). The partial IS the record — there is no separate
+    marker to go stale."""
+    return sorted(p.name for p in out.glob(runlayout.PARTIAL_GLOB))
+
+
+# The two stages whose artifact asserts something checkable about another file. Every
+# other stage's artifact is its own statement, and existence is the whole of what
+# status can say about it.
+_FRESHNESS = {"match-grade": lambda lay: _match_grade_state(lay.reel_dir),
+              "reel-review": lambda lay: _review_state(lay.reel_dir, lay.deliveries)}
+
+
 def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
     """Inspect a run dir -> the ordered v1 stages with each stage's state, the next
     required action, and whether the reel is delivered. Every artifact is resolved
@@ -145,14 +256,19 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
       pending  - a required stage after `next` still missing its artifact
       optional - an optional built stage not yet produced (music/pacing); never blocks
       skip     - a deferred stage (trend-scan); named, not silent
+      stale    - the artifact exists but no longer describes what is on disk: a
+                 match-grade report whose authored pairs the EDL has lost, or a review
+                 of an older delivery. Not done, so `next` points back at it — that is
+                 the teeth, and there is no separate refusal (design 2026-09-09 §6)
     `deliveries` reports each delivered file's attestation state from the sidecar
     alone — cheap, because the router calls status constantly. `verify()` re-hashes.
     `constraints` reports the editorial rules that bind a re-cut (see _constraints).
     `legacy_layout` marks a 0.2.x run whose artifacts sit at the run root: the skill
     asks rather than re-scanning every clip into an apparently empty run (§7).
-    Returns {"stages":[{key,artifact,bucket,path,kind,state,checkpoint,runner}, ...],
-             "next": <stage key | None>, "delivered": <bool>, "deliveries": [...],
-             "constraints": {...}, "reel": <str>, "reels": [...],
+    Returns {"stages":[{key,artifact,bucket,path,kind,state,stale_reason,checkpoint,
+             runner}, ...], "next": <stage key | None>, "delivered": <bool>,
+             "deliveries": [...], "interrupted": [...], "constraints": {...},
+             "reel": <str>, "reels": [...],
              "layout": {bucket: path}, "legacy_layout": <bool>}."""
     run = Path(run_dir)
     lay = runlayout.RunLayout(run, reel)
@@ -162,12 +278,23 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
     for st in V1_STAGES:
         base = lay.bucket(st.bucket)
         done = _exists(base, st.artifact)
+        stale_reason = ""
+        if done and st.key in _FRESHNESS:
+            state_name, stale_reason = _FRESHNESS[st.key](lay)
+            done = state_name == "fresh"
         if st.kind == "deferred":
             state = "skip"
         elif st.kind == "optional":
             state = "done" if done else "optional"
         elif done:
             state = "done"
+        elif stale_reason:
+            # the artifact IS there; it just no longer describes what is on disk. A
+            # fifth state, because "next" alone would say the stage never ran
+            # (design 2026-09-09 §6).
+            state = "stale"
+            if next_key is None:
+                next_key = st.key
         elif next_key is None:
             state = "next"
             next_key = st.key
@@ -177,19 +304,53 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
             delivered = done
         stages.append({"key": st.key, "artifact": st.artifact, "bucket": st.bucket,
                        "path": str(base / st.artifact), "kind": st.kind,
-                       "state": state, "checkpoint": st.checkpoint, "runner": st.runner})
+                       "state": state, "stale_reason": stale_reason,
+                       "checkpoint": st.checkpoint, "runner": st.runner})
     return {"stages": stages, "next": next_key, "delivered": delivered,
-            "deliveries": _deliveries(lay.deliveries), "constraints": _constraints(run),
+            "deliveries": _deliveries(lay.deliveries), "interrupted": _partials(lay.deliveries),
+            "constraints": _constraints(run),
             "reel": reel, "reels": runlayout.reel_names(run),
             "layout": lay.to_dict(), "legacy_layout": runlayout.is_legacy_run(run)}
 
 
+def _verify_review(reel_dir: Path, out: Path) -> dict:
+    """Re-hash the reel REVIEW.json judged against the digest it recorded — the
+    expensive half of the split status declares (design 2026-09-09 §3).
+
+    Three states, each a different true statement: `unbound` (no digest — a review
+    written before this binding, which asserts nothing about bytes), `bound` (the file
+    is the one reviewed), `digest-mismatch` (it is not)."""
+    rp = reel_dir / "REVIEW.json"
+    if not rp.exists():
+        return {"state": "absent", "detail": "no REVIEW.json in this reel"}
+    try:
+        d = json.loads(rp.read_text())
+    except (OSError, ValueError) as e:
+        return {"state": "unreadable", "detail": f"REVIEW.json is corrupt ({e})"}
+    reel, want = d.get("reel") or "", d.get("reel_digest") or ""
+    if not want:
+        return {"state": "unbound", "reel": Path(reel).name,
+                "detail": "this review records no reel digest, so nothing binds it to "
+                          "the bytes it judged — re-run the reel-review stage"}
+    if not Path(reel).exists():
+        return {"state": "missing", "reel": Path(reel).name,
+                "detail": f"the reviewed reel {reel} is not on disk any more"}
+    actual = provenance.digest_file(reel)
+    if actual != want:
+        return {"state": "digest-mismatch", "reel": Path(reel).name,
+                "detail": (f"the file hashes to {actual[:12]}… but the review records "
+                           f"{want[:12]}… — this is not the reel that was reviewed")}
+    return {"state": "bound", "reel": Path(reel).name, "detail": ""}
+
+
 def verify(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
-    """Re-hash every delivered reel against its attestation (design §6). Run once at
-    CP3, where the cost is irrelevant and the answer matters: status answers "is there
-    a record", verify answers "is this file the one the record describes"."""
-    return {"deliveries": _deliveries(
-        runlayout.RunLayout(Path(run_dir), reel).deliveries, rehash=True)}
+    """Re-hash every delivered reel against its attestation, and the reviewed reel
+    against REVIEW.json's own digest (design §6, 2026-09-09 §3). Run once at CP3, where
+    the cost is irrelevant and the answer matters: status answers "is there a record",
+    verify answers "is this file the one the record describes"."""
+    lay = runlayout.RunLayout(Path(run_dir), reel)
+    return {"deliveries": _deliveries(lay.deliveries, rehash=True),
+            "review": _verify_review(lay.reel_dir, lay.deliveries)}
 
 
 def main() -> None:

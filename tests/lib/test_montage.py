@@ -1,19 +1,41 @@
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
 from scripts import montage
-from scripts.lib import constraints, runlayout
+from scripts.lib import constraints, matchgrade, provenance, runlayout
 from scripts.montage import Stage, V1_STAGES, next_action
 
 
 def _touch(run, stage_key, name=None):
-    """Create the artifact that marks `stage_key` done, in its own bucket."""
+    """Create the artifact that marks `stage_key` done, in its own bucket.
+
+    match-grade and reel-review each gained a real freshness reader this task (design
+    2026-09-09 §6) that a bare "{}" cannot satisfy — it is not fresh, so `_exists`-only
+    "done" is no longer true for these two. Both get minimal but self-consistent content
+    instead: match-grade an empty decisions list against an equally-empty EDL (0 == 0
+    episodes, so tone_drift reports nothing); reel-review a REVIEW.json naming whatever
+    delivery already exists. Touch reel-review AFTER deliver, or it binds to nothing on
+    disk yet and reads stale — same as no review at all.
+    """
     st = next(s for s in montage.V1_STAGES if s.key == stage_key)
     lay = runlayout.RunLayout(run)
     d = lay.bucket(st.bucket)
     d.mkdir(parents=True, exist_ok=True)
+    if stage_key == "match-grade":
+        edl = lay.reel_dir / "EDL.json"
+        edl.parent.mkdir(parents=True, exist_ok=True)
+        edl.write_text(json.dumps({"episodes": []}))
+        matchgrade.MatchReport(target=(0.0, 128.0, 255.0), eps=matchgrade.MATCH_EPS,
+                               decisions=(), edl=str(edl)).write(d / "MATCH.json")
+        return
+    if stage_key == "reel-review":
+        newest = montage._newest_delivery(lay.deliveries)
+        reel = str(lay.deliveries / newest) if newest else ""
+        (d / "REVIEW.json").write_text(json.dumps({"reel": reel, "findings": []}))
+        return
     (d / (name or st.artifact.replace("*", "1"))).write_text("{}")
 
 
@@ -144,7 +166,7 @@ def test_empty_run_next_is_project_init(tmp_path):
     assert res["stages"][0] == {
         "key": "project-init", "artifact": "project.json", "bucket": "run",
         "path": str(tmp_path / "project.json"), "kind": "required",
-        "state": "next", "checkpoint": "spec",
+        "state": "next", "stale_reason": "", "checkpoint": "spec",
         "runner": "project-init SKILL -> project_init CLI"}
 
 
@@ -453,11 +475,13 @@ def test_reel_review_is_next_after_delivery(tmp_path):
 def test_a_run_is_only_finished_when_the_review_exists(tmp_path):
     run = tmp_path / "run"
     for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
-               "episodes-geometry", "match-grade", "reel-review"):
+               "episodes-geometry", "match-grade"):
         _touch(run, key)
     _touch(run, "episodes")
     _touch(run, "episode-qc")
     _touch(run, "deliver", name="REEL_v1.mp4")
+    _touch(run, "reel-review")    # AFTER deliver: _touch binds REVIEW.json to whatever
+                                   # delivery already exists on disk (see _touch's docstring)
     assert montage.next_action(str(run))["next"] is None
 
 
@@ -469,7 +493,11 @@ def test_status_reports_an_unattested_delivery(tmp_path):
     got = montage.next_action(str(run))["deliveries"]
     assert got == [{"file": "REEL_v1.mp4", "state": "unattested", "overall": None,
                     "overrides": [], "engine_drift": False, "episode_qc": "unknown",
-                    "detail": "no attestation sidecar — this file was not produced by deliver()"}]
+                    "detail": ("no attestation sidecar — the look gate withheld it, the "
+                               "delivery was interrupted after the encode, or this file "
+                               "was not produced by deliver at all. The file itself is "
+                               "complete: deliver renames the encode into place before any "
+                               "of the three (design 2026-09-09 §5)")}]
 
 
 def test_status_does_not_list_the_sidecar_as_a_delivery(tmp_path):
@@ -482,7 +510,6 @@ def test_status_does_not_list_the_sidecar_as_a_delivery(tmp_path):
 
 
 def test_verify_rehashes_and_catches_a_swapped_reel(tmp_path):
-    from scripts.lib import provenance
     run = tmp_path / "run"
     lay = runlayout.RunLayout(run)
     lay.deliveries.mkdir(parents=True)
@@ -503,7 +530,6 @@ def test_status_does_not_rehash_but_verify_does(tmp_path):
     # swapped_reel above, but this time asserting BOTH sides in one test — status
     # must stay "attested" (stale, but that is the cheap-read contract) while verify
     # alone catches the swap as "digest-mismatch".
-    from scripts.lib import provenance
     run = tmp_path / "run"
     lay = runlayout.RunLayout(run)
     lay.deliveries.mkdir(parents=True)
@@ -617,3 +643,149 @@ def test_the_match_grade_stage_keys_on_the_json_not_the_markdown():
     exception, and MATCH.md alone carries nothing a reader can check."""
     row = next(s for s in montage.V1_STAGES if s.key == "match-grade")
     assert row.artifact == "MATCH.json"
+
+
+# ---- stale reports: a fifth state (design 2026-09-09 §6) ----
+# `_full_run` does not exist in this file under that name (checked: no helper by any
+# name fills every required stage in one call). The equivalent already repeated inline
+# three times — test_reel_review_is_next_after_delivery, test_delivered_when_deliver_
+# artifact_exists and (with reel-review touched too, the fully-done case this task
+# needs) test_a_run_is_only_finished_when_the_review_exists — is promoted here to a
+# helper rather than being typed a fourth time.
+def _full_run(run):
+    for key in ("project-init", "footage-intake", "contact-sheet", "edit-plan",
+               "episodes-geometry", "match-grade"):
+        _touch(run, key)
+    _touch(run, "episodes")
+    _touch(run, "episode-qc")
+    _touch(run, "deliver", name="REEL_v1.mp4")
+    _touch(run, "reel-review")    # AFTER deliver — see _touch's docstring
+
+
+def _match_json(reel_dir, edl_path, *, authored=((0, (1.0, 2.0, 3.0), (4.0, 5.0, 6.0)),)):
+    """A MATCH.json whose decisions author a pair on each listed episode index."""
+    decisions = [matchgrade.ToneDecision(i, "author", "authored", measured=src,
+                                         tone_src=src, tone_dst=dst)
+                 for i, src, dst in authored]
+    matchgrade.MatchReport(target=(4.0, 5.0, 6.0), eps=4.0, decisions=tuple(decisions),
+                           edl=str(edl_path)).write(Path(reel_dir) / "MATCH.json")
+
+
+def _edl_json(path, pairs):
+    """A minimal EDL.json — raw, because the reader reads raw."""
+    Path(path).write_text(json.dumps({"episodes": [
+        {"source": f"s{i}.mp4", "start": 0.0, "dur": 2.0,
+         "tone_src": None if s is None else list(s),
+         "tone_dst": None if d is None else list(d)}
+        for i, (s, d) in enumerate(pairs)]}))
+
+
+def test_match_grade_is_fresh_when_the_edl_still_carries_its_pairs(tmp_path):
+    lay = runlayout.RunLayout(tmp_path, "reel")
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    edl = lay.reel_dir / "EDL.json"
+    _edl_json(edl, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))])
+    _match_json(lay.reel_dir, edl)
+    assert montage._match_grade_state(lay.reel_dir) == ("fresh", "")
+
+
+def test_match_grade_is_stale_when_a_pacing_rerun_wiped_the_pairs(tmp_path):
+    lay = runlayout.RunLayout(tmp_path, "reel")
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    edl = lay.reel_dir / "EDL.json"
+    _edl_json(edl, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))])
+    _match_json(lay.reel_dir, edl)
+    _edl_json(edl, [(None, None)])                      # edit_plan --pacing wiped the tone
+    state, why = montage._match_grade_state(lay.reel_dir)
+    assert state == "stale"
+    assert "episode 0 was authored a tone pair" in why
+
+
+def test_an_unreadable_match_json_is_stale_and_says_so_rather_than_raising(tmp_path):
+    """The inspector must never replace a whole status report with a traceback —
+    _constraints' rule, for the same reason."""
+    lay = runlayout.RunLayout(tmp_path, "reel")
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.reel_dir / "MATCH.json").write_text("{not json")
+    state, why = montage._match_grade_state(lay.reel_dir)
+    assert state == "stale" and "corrupt" in why
+
+
+def test_a_stale_match_grade_stage_is_not_done_and_next_points_back_at_it(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)                  # the reel next_action inspects
+    _full_run(tmp_path)                                  # by default ("main") — see above
+    edl = lay.reel_dir / "EDL.json"
+    _edl_json(edl, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))])
+    _match_json(lay.reel_dir, edl)
+    _edl_json(edl, [(None, None)])
+    res = montage.next_action(str(tmp_path))
+    row = next(s for s in res["stages"] if s["key"] == "match-grade")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+    assert res["next"] == "match-grade"
+
+
+def test_a_review_of_the_newest_delivery_is_fresh(tmp_path):
+    lay = runlayout.RunLayout(tmp_path, "reel")
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v2.mp4").write_text("x")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(lay.deliveries / "REEL_v2.mp4"), "findings": []}))
+    assert montage._review_state(lay.reel_dir, lay.deliveries) == ("fresh", "")
+
+
+def test_a_review_of_an_older_version_is_stale_and_names_both(tmp_path):
+    lay = runlayout.RunLayout(tmp_path, "reel")
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v1.mp4").write_text("x")
+    (lay.deliveries / "REEL_v2.mp4").write_text("x")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(lay.deliveries / "REEL_v1.mp4"), "findings": []}))
+    state, why = montage._review_state(lay.reel_dir, lay.deliveries)
+    assert state == "stale"
+    assert "REEL_v1.mp4" in why and "REEL_v2.mp4" in why
+
+
+def test_the_status_check_hashes_nothing(tmp_path, monkeypatch):
+    """status is called constantly by the router; re-hashing a 100 MB reel on every
+    call is the one thing these two checks must never do."""
+    _full_run(tmp_path)
+    monkeypatch.setattr(montage.provenance, "digest_file",
+                        lambda p: pytest.fail(f"status hashed {p}"))
+    montage.next_action(str(tmp_path))
+
+
+def test_an_interrupted_delivery_is_reported_and_does_not_read_as_delivered(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)                  # the reel next_action inspects
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / ".REEL_v1.part.mp4").write_text("half")
+    res = montage.next_action(str(tmp_path))
+    assert res["interrupted"] == [".REEL_v1.part.mp4"]
+    assert res["delivered"] is False
+
+
+def test_verify_rehashes_the_review_against_the_reel_it_judged(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)                  # the reel verify inspects
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": provenance.digest_file(reel), "findings": []}))
+    assert montage.verify(str(tmp_path))["review"]["state"] == "bound"
+    reel.write_text("a different reel entirely")
+    assert montage.verify(str(tmp_path))["review"]["state"] == "digest-mismatch"
+
+
+def test_verify_calls_an_unstamped_review_unbound_not_mismatched(tmp_path):
+    """A review written before the digest existed asserts nothing about bytes — the
+    honest word for that is unbound, not a failed comparison."""
+    lay = runlayout.RunLayout(tmp_path)                  # the reel verify inspects
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v1.mp4").write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(lay.deliveries / "REEL_v1.mp4"), "findings": []}))
+    assert montage.verify(str(tmp_path))["review"]["state"] == "unbound"

@@ -207,7 +207,11 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
                  "engine_drift": False, "episode_qc": "unknown",
-                 "detail": "no attestation sidecar — this file was not produced by deliver()"}
+                 "detail": ("no attestation sidecar — the look gate withheld it, the "
+                            "delivery was interrupted after the encode, or this file "
+                            "was not produced by deliver at all. The file itself is "
+                            "complete: deliver renames the encode into place before any "
+                            "of the three (design 2026-09-09 §5)")}
     ap = attest_path(p)
     if not ap.exists():
         return out
