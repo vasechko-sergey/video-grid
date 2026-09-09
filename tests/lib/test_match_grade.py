@@ -554,6 +554,22 @@ def test_the_json_twin_names_the_edl_verbatim_as_geometry_gave_it(tmp_path, monk
     assert matchgrade.MatchReport.from_json(tmp_path / "MATCH.json").edl == edl_path
 
 
+def test_the_json_twin_names_a_relative_edl_verbatim_not_resolved(tmp_path, monkeypatch):
+    """The test above cannot actually tell verbatim apart from resolve()d: tmp_path is
+    always already-absolute-and-resolved, so `geo.edl` and `str(Path(geo.edl).resolve())`
+    are the same string on that fixture (2026-09-09 task-2 review, minor, deferred to this
+    battery — battery row 7 came back GREEN and confirmed it). A RELATIVE edl path does
+    discriminate: resolve() turns "EDL.json" into an absolute path, which is not the
+    string write_match's own docstring says it stores."""
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    ep0 = _ep("d.mp4")
+    Path("EDL.json").write_text(json.dumps(_edl(ep0).to_dict(), indent=2))
+    geo = _geo((ep0.source, "r0.json"), edl_path="EDL.json")
+    geo.write(tmp_path / "GEOMETRY.json")
+    match_grade.write_match(str(tmp_path / "GEOMETRY.json"))
+    assert matchgrade.MatchReport.from_json("MATCH.json").edl == "EDL.json"
+
+
 def test_the_json_twin_records_a_skip_with_its_reason(tmp_path, monkeypatch):
     # a flat source cannot be a tone_src, so the conductor skips it — and a reader must
     # be able to tell that skip from a pair that was wiped after the fact

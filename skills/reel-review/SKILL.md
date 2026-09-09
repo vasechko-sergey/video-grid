@@ -27,6 +27,20 @@ At **Checkpoint 3**, once `<run>/reels/<reel>/deliveries/REEL_v{n}.mp4` exists a
 before delivery (there is no reel to judge). Re-run it after any fix round (a new
 cut is a new review).
 
+**`--reel` must name a file that exists, and the review is bound to its bytes,
+not to the path.** Since 2026-09-09 `reel_review build`'s CLI refuses a
+`--reel` naming no file outright (`names no file` in the error), and
+`build_review` stamps `Review.reel_digest` from that file on disk — never
+from the reviewer's claim, the same rule `episode_qc`'s clip digest already
+follows. Always resolve `{n}` to the ACTUAL newest delivered version via
+`montage status` before invoking this stage; a review naming an older or
+now-deleted `REEL_v{n}` reads as **`stale`** in `montage status` (it compares
+the review's filename against the newest delivery — free, no hashing) and
+`montage verify` re-hashes the file to prove the bytes still match. A review
+written before this field existed loads as **unbound**, not corrupt —
+`REVIEW.md` says so plainly rather than pretending a digest that was never
+computed.
+
 ## Inputs (the context packet — resolve paths under the run dir)
 
 - **`<run>/reels/<reel>/deliveries/REEL_v{n}.mp4`** (required) — the delivered reel.

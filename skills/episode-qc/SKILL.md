@@ -1,6 +1,6 @@
 ---
 name: episode-qc
-description: Conveyor stage — the per-episode quality gate between rendering and delivery. using-montage invokes this after edl_to_reel --from-geometry writes EPISODES.json, and before the --from-episodes call that assembles the reel. Packs one evidence directory per episode (a frame strip of the delivered clip, the storyboard, the mechanical report, and a colour-naturalness reading), dispatches one fresh judge subagent per episode — at most 3 concurrently — against composition/colour/impression/path/hero, then validates their findings into EPISODE_QC.json/.md, stamping each verdict's clip digest itself so a re-render cannot inherit a stale verdict. Required — a reel is never assembled over an episode nobody judged; a blocking finding stops the run there, routed to the stage that owns the fix. No waiver exists to lower this gate.
+description: Conveyor stage — the per-episode quality gate between rendering and delivery. using-montage invokes this after edl_to_reel --from-geometry writes EPISODES.json, and before the --from-episodes call that assembles the reel. Packs one evidence directory per episode (a frame strip of the delivered clip, the storyboard, the mechanical report, and a colour-naturalness reading) — each evidence.json now stamped with the clip's own digest too, so a re-render after packing but before judging is refused by name, not judged on stale pixels — dispatches one fresh judge subagent per episode — at most 3 concurrently — against composition/colour/impression/path/hero, then validates their findings into EPISODE_QC.json/.md, stamping each verdict's clip digest itself so a re-render cannot inherit a stale verdict. Required — a reel is never assembled over an episode nobody judged; a blocking finding stops the run there, routed to the stage that owns the fix. No waiver exists to lower this gate.
 ---
 
 # episode-qc (per-episode QC gate)
@@ -79,6 +79,18 @@ say so rather than guessing a path.
    provenance, the `path.meta` geometry, and the naturalness sensor's
    stats/flags plus its source-relative delta).
 
+   **Since 2026-09-09, `evidence.json` also records the digest of the clip it
+   just decoded** (`clip_digest`), and `build` (step 4) refuses a packet whose
+   digest no longer matches the clip on disk — "packed from a different
+   render", remedy named inline. **Pack AGAIN, after any re-render, before
+   dispatching judges** — not only before `build`: a judge reading a stale
+   `strip.jpg`/`storyboard.jpg` off an old render forms a verdict about
+   pixels that no longer exist, and `build`'s refusal only catches this once
+   you get to step 4, after every judge has already spent a turn on the
+   wrong pixels. This is a **gate**, not merely a staler report: a packet
+   with no recorded digest at all (one from before this binding existed)
+   is refused the same way, by name, not read as if it were still current.
+
    `evidence.json` also records what each pixel artifact actually rendered at
    (`strip_px`, `storyboard_px`) — reported, never gated. A judge that needs a
    closer look pulls its own frames with `contact_sheet strip`; the template
@@ -149,6 +161,15 @@ say so rather than guessing a path.
   was judged" into "**this render** was judged" — a verdict survives a
   re-render only if nobody rebuilds the clip; if someone does,
   `episode-qc-stale` catches it before delivery.
+- **Two bindings, not one.** The verdict's digest (above) says WHICH render
+  was judged; the packet's `clip_digest` (stamped by `pack`, from the file it
+  just decoded — never handed in) says which render the JUDGE LOOKED AT.
+  `build` refuses when they disagree — a packet made before a re-render lets
+  a judge form an opinion about pixels that are no longer what ships, and a
+  verdict claiming to bind pixels nobody actually saw is worse than no
+  binding at all. The remedy is always the same: `pack` again, then
+  re-dispatch the judge for that episode — never argue the old packet is
+  close enough.
 - **An empty findings list is a claim, not proof.** The stage gates the
   artifact's presence and its digest binding — never proof that anyone
   looked (design §12). A judge can write an empty list without opening the

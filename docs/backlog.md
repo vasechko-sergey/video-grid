@@ -54,11 +54,9 @@ is still P3.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **R5.3 · A 10-minute Bash timeout killed `deliver` mid-write and left the delivery directory half-corrected**, with no marker saying so. Delivery must be atomic or must record that it was interrupted. | S | [retro](retro/2026-08-25-first-real-run.md) R5 |
 | ◐ | **R2.1 · Grade against named subjects, not the frame mean.** The operator's own three anchors: skin, the black wetsuit, the water. That gap was originally found on `color_across_cuts`, which compared whole-frame means — on ep5, a frame that is mostly dark water, the correction it authored lifted Lena's face to **156 luma, above her own ungraded plate**. That check and its corrector are deleted (colour-convergence-retire, 2026-08-29), but the gap is not: `matchgrade.measure_profile`, which now sets the reel's one common tone target, still reads a whole source frame at the window midpoint rather than the named subjects — the same frame-vs-subject mismatch, on the stage that survived. Five of the run's six days went here. — **✅ closed 2026-08-30 by "Grade the pixels that ship"**, though not the way this row asked: the target is still (p5, p50, p95) of luma and still knows nothing about skin, wetsuit or water. What changed is the REGION — the conductor now measures each episode's tracked crop, the pixels that actually ship, so the "mostly dark water" frame that lifted Lena's face is no longer what any anchor is computed from. **`◐` and not `✅`, because the row's own title is still open**: no stage names skin, wetsuit or water, and two other rows point here as their home — the P3 `color_fidelity` sampling-box item is folded into this one, and the P3 chroma row carries the across-episode half. What is closed is the frame-vs-crop mismatch that made the anchors wrong; what remains is naming the subjects, which is a different instrument. | L | [retro](retro/2026-08-25-first-real-run.md) R2, [design](specs/2026-08-30-grade-shipped-pixels-design.md) §3 |
 | ○ | **R4.1 · Every CLI and every skill line states what the tool is FOR.** 56 Bash calls in the run grepped the product's own source to find out. A name is not a purpose. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
-| ○ | **R5.2 · Extend digest binding to every report.** `episode_qc` stamps a `clip_digest` from disk and refuses a stale verdict — the one binding that held all week. Nothing else has one: `MATCH.md` claimed 8/8 authored tone pairs against an `EDL.json` written an hour later carrying 5; `REVIEW.json` was two days and two reel versions stale (reviewed 37.1 s, shipped 34.93 s). | M | [retro](retro/2026-08-25-first-real-run.md) R5 |
 
 ## P2 — soon
 
@@ -72,7 +70,6 @@ is still P3.
 | ○ | **Migrate a pre-0.3.0 run into the lifetime layout.** Not a `mv`: `out/EPISODES.json` alone carries **57** absolute paths, and moving the tree breaks the QC digest bindings and the delivery attestation that exist to notice exactly that kind of change. A path rewrite. `montage status` already reports `legacy_layout` so the router asks instead of re-scanning 99 clips into an apparently empty run — that is the mitigation, not the fix. | M | [design](specs/2026-08-26-run-layout-lifetimes-design.md) §7 |
 | ○ | **`build_reel`'s automatic retry loop writes a reprocessed episode's scratch one level deeper than `EPISODES.json` records.** Phase 1 writes `build/ep{i}/`; the retry loop is handed `build/reel` as its work dir and so writes `build/reel/ep{i}/`, while `ReelEpisode` is frozen and its `path`/`meta` still point at the phase-1 location. The clip itself is overwritten in place, so the digest gate is unaffected — but a re-`pack` after an automatic retry reads the STALE mechanical report, storyboard and path meta. Predates this slice (the same nesting existed under `<run>/work`); surfaced by the layout review. | M | Task 5 review, 2026-08-27 |
 | ○ | **R10.8 · A judge's "clean pass" means "nothing I was told to look for".** Coverage tracked the prompt, not the episode: an episode passed clean, one sentence was added to the brief, and the next judge found something. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
-| ○ | **R10.9 · A stale evidence packet was dispatched to three judges**; only a judge's blocking verdict caught it. The packet needs the same digest binding the verdict already has. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R2.8 · `color.grade_chain` composes pre-built fragments under a three-way comma convention and validates none of it** — it produced 1.5 KB of ffmpeg garbage during the run. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
 | ○ | **R10.10 · The `_review/` stills packet is mis-indexed** — the reviewer noticed and it was never fixed. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R8.2 · The pool was never widened after day 1.** The delivered reel uses 8 windows out of 1508, and the required contact-sheet "look at the pixels" stage ran **once**, for 177 seconds, on day 1, and was never re-run against a revised cut. | S | [retro](retro/2026-08-25-first-real-run.md) R8 |
@@ -380,7 +377,28 @@ R10.6 asked "validate early OR state it", and stating it was the root
 re-tile the storyboard 3×2 for portrait content — 392×698 → 441×784, 12 % on
 process_episode's hot path behind a golden (legible-evidence §8) ·
 measure READER_LONG_SIDE — not observable from inside this pipeline, so the 1568
-stays inherited from PER_SHEET's own comment (legible-evidence §7.2)
+stays inherited from PER_SHEET's own comment (legible-evidence §7.2) ·
+give `provenance.stamp(inputs=)` a reader, or delete it — written once
+(`EDL.json` recording its own `selection.json` input) and read in production
+nowhere; either wire it into a freshness report for the eight artifacts that
+carry no provenance at all, or stop the field implying a check that does not
+exist (bound-reports §0.5) ·
+find what rewrote the real run's EDL and dropped three authored tone pairs an
+hour after the conductor — `MATCH.json` (this slice) makes the contradiction
+VISIBLE, it does not diagnose it, and the tool transcript that would show the
+cause was deleted before the retro (bound-reports §0.1/§7) ·
+a marker with a lifetime for the window between `os.replace` and the
+attestation — a process killed there leaves a complete, unattested reel
+indistinguishable from a look-gate-withheld one; seconds of exposure against
+the minutes §5 already closed (bound-reports §7) ·
+`SHEETS.md` is the second markdown-only run artifact with no JSON twin
+(`MATCH.md` was the first, fixed this slice) — it asserts nothing checkable
+about another file, so it has no binding to gain, but it also has no
+machine-readable form for any future reader (bound-reports §2/§8) ·
+extend the `montage status` staleness reader to the optional stages —
+`pacing` against `MUSIC.json` (already answerable off `Spine.music_digest`)
+and `titles` against the delivered reel; neither ever blocked the real run
+(bound-reports §6/§8)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -542,4 +560,4 @@ turned up after the three it set out to fix.
 
 ---
 
-_Last updated: 2026-09-08._
+_Last updated: 2026-09-09._

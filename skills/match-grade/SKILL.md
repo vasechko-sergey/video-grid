@@ -1,6 +1,6 @@
 ---
 name: match-grade
-description: Conveyor stage — the match-grade conductor. Measures every EDL episode's own tracked crop (the pixels that actually ship, read through GEOMETRY.json's frozen route), computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.md report. using-montage invokes this after episodes-geometry (there is no crop to measure before a route is frozen) and before the render; run it directly only to re-grade. Required — the router runs it on every reel, even a single-camera one, since it costs seconds and reports within-eps for free.
+description: Conveyor stage — the match-grade conductor. Measures every EDL episode's own tracked crop (the pixels that actually ship, read through GEOMETRY.json's frozen route), computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.json twin (the router's presence marker since 2026-09-09) and its rendered MATCH.md report. using-montage invokes this after episodes-geometry (there is no crop to measure before a route is frozen) and before the render; run it directly only to re-grade. Required — the router runs it on every reel, even a single-camera one, since it costs seconds and reports within-eps for free.
 ---
 
 # match-grade (design §10, tone conductor)
@@ -52,6 +52,20 @@ after that. Same "settle the cut first" rule pacing itself carries, now also
 enforced mechanically: a re-cut after freezing the geometry is refused, not
 silently graded.
 
+**If this order is missed anyway, `montage status` now says so.** Since
+2026-09-09, `montage status`/`next_action` compares `MATCH.json`'s authored
+decisions against the EDL as it is right now — not a digest of the file, the
+pairs themselves, because a legitimate re-conduct rewrites the same file. A
+`--pacing` re-run (or any other rewrite) that drops a pair this stage
+authored makes the `match-grade` row read **`stale`**, not `done`, with a
+reason naming which episode lost its pair — so `next` points back at this
+stage instead of skipping it as already finished. This is a `status`/`next`
+signal only: it does not stop a render already in flight, and the mechanical
+gate (`grade_faithful`) still cannot see the loss either, since it predicts
+each episode against its OWN (now pair-less) declared chain and the two
+agree — re-run this stage before delivering, do not rely on a render-time
+check to catch it.
+
 ## The Process
 
 Announce on entry: **"Using match-grade to pull the episodes to one tone."**
@@ -76,9 +90,11 @@ say so rather than guessing a path.
    (the per-anchor median across episodes), and rewrites the EDL
    `GEOMETRY.json` itself names IN PLACE — `tone_src`/`tone_dst` land on every
    episode that deviates past `--eps` (default 4 luma units). Also writes a
-   sibling `MATCH.md` beside that EDL. No `--edl` and no `--footage-root`:
-   the geometry file names the EDL, and every episode's source is already an
-   absolute path inside it.
+   sibling `MATCH.json` — the decisions themselves (index/action/reason/
+   measured profile/pair), what `montage status` reads to notice a later wipe
+   — and its rendered `MATCH.md`, byte-identical to before this twin existed.
+   No `--edl` and no `--footage-root`: the geometry file names the EDL, and
+   every episode's source is already an absolute path inside it.
 
    **Pass `--spec` when a brief exists.** Without it the conductor is pure
    consistency: it makes the cameras agree and has no view on what they should

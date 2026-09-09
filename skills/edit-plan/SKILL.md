@@ -316,9 +316,15 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    is genuinely ungraded too, the two agree, and the check reports a clean
    **pass**. The advisory `target_dev` goes silently empty in the same stroke
    (it needs `EDL.tone_target` to have anything to compare against), so
-   nothing in `report.json` flags the loss at all. `MATCH.md` and
-   `montage status` both still read match-grade as done. Skip the re-run and
-   the reel ships ungraded with a green mechanical gate.
+   nothing in `report.json` flags the loss at all. `MATCH.md` does not
+   change — it still shows whatever it said before the rebuild — but since
+   2026-09-09 `montage status` compares `MATCH.json`'s authored pairs against
+   the EDL as it is NOW and reports match-grade **`stale`**, not `done`, the
+   moment a pair the report authored is gone (bound-reports design §2/§6).
+   That is a `status`/`next` signal only, not a render-time gate: it does not
+   stop `edl_to_reel --from-geometry` from rendering, so skip the re-run and
+   the reel still ships ungraded with a green mechanical gate unless you
+   check status first.
 
    This is also simpler than the post-render path below: once satisfied,
    `edl_to_reel --from-geometry` renders directly off the converged
@@ -382,10 +388,13 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    something was off — goes silently empty for the same reason (no
    `EDL.tone_target` means nothing to compare it against). So an ungraded reel
    passes the one gate that exists to catch it, with no signal anywhere in
-   `report.json`, while `MATCH.md` and `montage status` both still read as
-   done. Re-running **match-grade** after the last rebuild is what closes it,
-   every time — not only when the edit should move the common target, and now
-   the only thing standing between a silently ungraded reel and delivery.
+   `report.json` — though `montage status` now names it: the same
+   `stale`-on-a-wipe check above fires here too, since `selection.json`
+   dropping the pair reads identically to a rebuild dropping it. Re-running
+   **match-grade** after the last rebuild is still what closes it, every
+   time — not only when the edit should move the common target, and still the
+   only thing standing between a silently ungraded reel and delivery, since
+   `status` is something you have to go read.
 
    Only when it converges is the full render worth paying for — and re-render
    **that one episode**, never the reel, so the tracker never runs again. There is

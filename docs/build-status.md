@@ -4,13 +4,141 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-08._
+_Last updated: 2026-09-09._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Bound reports — three artifacts state a conclusion and now record what
+  they concluded from, closing R5.2/R5.3/R10.9 (2026-09-09, 0.9.0)** — design
+  [2026-09-09-bound-reports-design.md](specs/2026-09-09-bound-reports-design.md),
+  plan [2026-09-09-bound-reports.md](plans/2026-09-09-bound-reports.md), Tasks
+  1–8 (branch `docs/bound-reports`, commits `5aeb96d`..`b83e5c1` + this docs
+  sync).
+
+  `MATCH.md`, `REVIEW.json` and the QC evidence packet each asserted something
+  about a file and recorded nothing that would let a reader tell a current
+  report from one describing a file that had since moved; `deliver` handed
+  ffmpeg the delivered filename directly, so a killed encode left a truncated
+  file wearing it. The fix is the same idiom five bindings already in this
+  tree share (§0.5) — `master_digest`, `EpisodeVerdict.clip_digest`,
+  `Attestation.reel_digest`, `Spine.music_digest`, `ReelGeometry.cuts` — placed
+  at the three spots that never got it, plus one atomic rename. The generic
+  half of the idiom, `provenance.stamp(inputs=)`, gets **no** new reader here —
+  it is written at one site and read in production at none, and stays that
+  way (§0.5, §7; filed below).
+
+  **The artifacts, read off the 2026-06 run:** `MATCH.md` (written `Aug 24
+  20:57`) says "8/8 episodes authored a tone pair"; `EDL.json` (`Aug 24
+  22:00`, an hour later) carries five, with episodes 0/2/7 at a max Δ of 10, 6
+  and 49 against an `eps` of 4 — not `within-eps` skips. `REVIEW.json`
+  (`Aug 23 10:55`) approved `out/REEL_v1.mp4`; the file at that path is dated
+  `Aug 24 20:23`, a day and a half later. `episode_qc pack`'s `evidence.json`
+  carried no digest of the clip it read, so a re-render between packing and
+  judging sent three judges a stale packet — caught only by one judge's own
+  blocking verdict.
+
+  **A — `MATCH.json`, the twin the required stage never had (design §2).**
+  `write_match` now writes it beside the byte-identical `MATCH.md`, carrying
+  the `ToneDecision`s the report renders — index, action, reason, measured
+  profile, the pair. `matchgrade.tone_drift(report, pairs)` compares the
+  authored PAIRS against the EDL as it is now, not a digest of the file:
+  `match_grade` rewrites that EDL itself and `edit_plan build --pacing`
+  rewrites it again, so a whole-file digest would fire on the sanctioned
+  rewrite as loudly as on a silent wipe — the same "a gate that cries wolf
+  gets its ceiling raised" mechanism this project already measured on
+  `color_delta_max` (12 → 44 → 56). `V1_STAGES`' `match-grade` row keys on the
+  JSON now, like every other stage.
+
+  **B — `Review.reel_digest`, stamped from disk (design §3).** `build_review`
+  computes it from the reviewed file, never from the reviewer's claim — the
+  `episode_qc.clip_digest` idiom verbatim. Defaulted to `""` so a pre-slice
+  `REVIEW.json` loads as *unbound* rather than corrupt; the CLI, the one path
+  a real run takes, refuses a `--reel` naming no file outright. Two readers at
+  two costs, mirroring the split `montage` already draws for deliveries:
+  `status` compares the reel's FILENAME against the newest delivered
+  `REEL_v{n}` (free, no hashing — this is what would have caught the run's
+  actual failure, two versions stale); `verify` re-hashes the named file
+  against `reel_digest` alongside the delivery re-hash it already does.
+
+  **C — the QC evidence packet binds too, and refuses rather than reports
+  (design §4).** `pack` records `clip_digest` in each `evidence.json`;
+  `build_qc` refuses a packet whose recorded digest does not match the clip
+  on disk, folded into the same one-pass complaint list every other packet
+  failure already uses, remedy named (re-pack, then re-dispatch the judge). A
+  packet written before this slice carries no digest and is refused too, on
+  purpose — reading a pre-slice packet as `stale` costs nothing except
+  re-packing eight episodes. This one is a gate and the other two are
+  reports, and the difference is not severity: a false binding claims a
+  verdict rests on pixels the judge never saw, which is worse than no binding
+  at all.
+
+  **D — `deliver` is atomic, and `montage status` gets a fifth state (design
+  §5/§6).** The encode lands on `.REEL_v{n}.part.<container>` — same
+  directory as the delivery (so the rename is same-filesystem), a leading dot
+  (out of all three delivery globs), the container extension last (so ffmpeg
+  can still infer a muxer) — and `os.replace`s onto the delivered name only
+  on success. A killed encode now consumes no version, is invisible to every
+  delivery glob, and the leftover partial **is** the record that a delivery
+  was interrupted; `-y` means a retry overwrites rather than accumulates.
+  `next_action` gains `stale` — the artifact exists, but what it asserts no
+  longer describes what is on disk — so a stale `match-grade` or `reel-review`
+  is not `done` and `next` points back at it; every stale row carries a
+  `stale_reason`. Both freshness checks stay cheap on purpose (§2 reads two
+  small JSON files, §3 compares filenames; neither hashes) — `verify` is
+  where bytes are proven. `provenance.verify_delivery`'s unattested-file
+  detail no longer asserts "this file was not produced by deliver()", which
+  was already false for a look-gate-withheld reel and is now false for a
+  delivery interrupted after the rename too; it names all three possibilities.
+
+  **Mutation battery: 18 rows, 18 red.** One needed a new test, not a
+  shrug: row 7 (`match_grade.py`, resolving `geo.edl` before storing it) came
+  back GREEN against the brief's own selector, because the existing verbatim
+  test's `tmp_path` fixture is always already absolute — `geo.edl` and
+  `str(Path(geo.edl).resolve())` are the same string on it, so nothing could
+  tell them apart (a gap Task 2's own review had already flagged and
+  deferred). `test_the_json_twin_names_a_relative_edl_verbatim_not_resolved`
+  closes it with a genuinely relative `"EDL.json"` path, confirmed red under
+  the mutation and green on the real code. Row 15's selector needed the
+  correction Task 5's review made mid-branch: the obvious
+  `test_a_partial_is_invisible_to_every_delivery_glob` hand-types the excluded
+  filename and never calls `partial_path`, so it cannot see the dot go
+  missing — `test_the_partial_ends_in_the_container_so_ffmpeg_can_pick_a_muxer`
+  is the one that does. Two of this branch's OWN tests
+  (`test_the_partial_does_not_raise_the_version_floor`,
+  `test_the_partial_sits_beside_the_delivery_not_in_scratch`) pass with the
+  feature fully reverted and were not re-targeted by any of the 18 rows —
+  Task 5's own review finding, triaged separately and named here rather than
+  left silently covered by the two tests beside them that DO discriminate; no
+  backlog row exists for it, since three OTHER tests in the same file already
+  cover the feature.
+  Two of the eighteen selectors as literally given also pointed at the wrong
+  file (`tests/lib/test_episode_qc.py` instead of `tests/test_episode_qc.py`
+  for rows 13/14 — the identical contract-vs-driver split Task 4's own review
+  already hit); the wrong path for row 14 was worse than "no tests ran" — it
+  quietly collected two unrelated `reprocess_gate` tests that happened to
+  share the word "re_rendered" and passed, which would have misreported a
+  real gap as covered.
+
+  **Full suite: 3618 passed, 1 skipped** (up from 3548/1 at the pre-branch
+  baseline).
+
+  **Honest limits carried forward (design §7):** a process killed between the
+  rename and the attestation — mid look-gate, mid version-log append, mid
+  hashing a 100 MB file — still leaves a complete, unattested reel
+  indistinguishable from a look-gate-withheld one; closing it needs a marker
+  with its own lifetime, filed below rather than built for a window of
+  seconds. Nothing proves a human read a `stale` row — `next` pointing back
+  at it is the strongest mechanical statement available, the same limit the
+  contact-sheet stage and the episode-QC gate both already carry. §0.1 (what
+  rewrote the real run's EDL and dropped three tone pairs) is diagnosed as
+  *visible* now, not explained — the `match-grade`-wipes-on-`--pacing`
+  warning stays a hypothesis. `provenance.stamp(inputs=)` is written once and
+  read by tests only; this slice reports the five-times-proven idiom into
+  three more places, it does not give the generic form a reader.
 
 - **Illegible is a state, not a clean pass — three artifacts sized against a
   reader for the first time, closing R10.1/R10.2/R10.6/R10.7 (2026-09-08,
@@ -5394,6 +5522,12 @@ _Last updated: 2026-09-08._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **R5.2 and R5.3, both P1 rows, and R10.9, a P2 row, are closed 2026-09-09 by
+> "Bound reports"** (see the Done entry above); `docs/backlog.md`'s P1/P2
+> tables are the current list. The blockquote below still names R5.3 as open
+> two paragraphs down — read `docs/backlog.md`, not this narrative, for what
+> is actually next.
 
 > **R10.1, a P1 row, is closed 2026-09-08 by "Legible evidence"** (see the Done
 > entry above); `docs/backlog.md`'s P1 table is the current list and this

@@ -94,8 +94,17 @@ say so rather than guessing a path.
 
 1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run> --reel <reel>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from
-   `next`** — a stage whose artifact already exists is done; do not redo it. Read
-   the brief and parse intent into params (table below).
+   `next`** — a stage whose artifact already exists and still describes what is
+   on disk is `done`; do not redo it. **Since 2026-09-09 a required stage can
+   also read `stale`** (match-grade, reel-review) — the artifact exists but no
+   longer describes the current cut or delivery, each row carries a
+   `stale_reason` naming what moved, and `next` points BACK at a stale stage
+   exactly as if it had never run: re-run it, do not skip past it because
+   something with the right filename is already on disk. Also check
+   `interrupted` — a non-empty list names a delivery killed mid-encode (a
+   leftover `.REEL_v{n}.part.<container>`); it consumed no version and needs
+   no cleanup, just a re-run of `deliver`. Read the brief and parse intent into
+   params (table below).
    **A run from before the `montage/` convention** lives directly in the footage
    folder. If `<run>` is empty but `<footage_root>/project.json` exists, say so and
    ask which to use — starting fresh silently would re-scan every clip.
@@ -267,13 +276,16 @@ say so rather than guessing a path.
     ```
 
     rewriting the EDL `GEOMETRY.json` itself names IN PLACE plus a sibling
-    `MATCH.md`. **Run it AFTER episodes-geometry (step 9)** — there is no crop
-    to measure before a route is frozen. Unlike before 2026-08-30 this is
-    unconditional: even a single-camera reel costs a few seconds (eight crops
-    in about five seconds on a real reel) and writes a `MATCH.md` saying every
-    episode already lands `within-eps` — cheaper than silently walking past
-    the only stage that would have caught it NOT agreeing (the retro's R4.2).
-    `montage status` now points `next` here like any other required stage.
+    `MATCH.json` — the decisions themselves, since 2026-09-09 the artifact
+    `montage status` keys this stage's `done` on, like every other stage —
+    and its rendered `MATCH.md`. **Run it AFTER episodes-geometry (step 9)**
+    — there is no crop to measure before a route is frozen. Unlike before
+    2026-08-30 this is unconditional: even a single-camera reel costs a few
+    seconds (eight crops in about five seconds on a real reel) and writes a
+    `MATCH.md` saying every episode already lands `within-eps` — cheaper than
+    silently walking past the only stage that would have caught it NOT
+    agreeing (the retro's R4.2). `montage status` now points `next` here like
+    any other required stage.
 
     > **Before the render, look.** `probe grade --geometry
     > <run>/reels/<reel>/episodes/GEOMETRY.json --index <N>` renders three
@@ -293,8 +305,11 @@ say so rather than guessing a path.
     > clean **pass**, not a visible `not-checked`. The advisory `target_dev`
     > goes silently empty in the same stroke (it needs `EDL.tone_target` to
     > compare against). So the reel ships ungraded with a green mechanical
-    > gate and no signal in `report.json`, while `MATCH.md` survives on disk
-    > and `montage status` still reads match-grade as done.
+    > gate and no signal in `report.json` — but not silently past `montage
+    > status`: since 2026-09-09 it compares `MATCH.json`'s authored pairs
+    > against the EDL as it is NOW and reports match-grade **`stale`**, not
+    > `done`, naming the episode that lost its pair. That is a `status`/`next`
+    > signal only, not a render-time gate — check it before delivering.
     > **Nothing is encoded until you stop.** See the **edit-plan** skill's
     > colour-grade section for the full loop and its footguns, and
     > `--from-geometry` (step 13) refuses a `GEOMETRY.json` whose cut no
@@ -495,9 +510,23 @@ say so rather than guessing a path.
     presenting the reel as final, run
     `"$VG" scripts.montage verify --run-dir <run> --reel <reel>` and
     show its result — a delivery whose state is not `attested` (most notably
-    `unattested`: no `REEL_v{n}.attest.json`, meaning the file did not come
-    out of `deliver`) must be named plainly as such, never presented as a
-    finished reel. Its `episode_qc` field needs the same treatment when it
+    `unattested`: no `REEL_v{n}.attest.json`) must be named plainly as such,
+    never presented as a finished reel. **Do not say "the file did not come
+    out of `deliver`" — since 2026-09-09 that is the LEAST likely of three
+    causes**: most often the look gate withheld the attestation on purpose (a
+    declared vignette/fade did not reach the pixels — the file is complete,
+    look at it, `deliver` renamed it into place before the gate ever ran);
+    next most often the process was killed AFTER the rename but before the
+    attestation was written (a window of seconds now, not the old window of
+    an entire encode); rarest of all, the file genuinely predates `deliver`.
+    `montage status`'s own `interrupted` list is the separate, cheaper signal
+    for the failure that used to hide behind this one: a non-empty list
+    names a leftover `.REEL_v{n}.part.<container>` from an encode killed
+    mid-write — that delivery consumed no version and is invisible as one,
+    so there is nothing to clean up and nothing to explain away; just
+    re-run `deliver` (or `edl_to_reel --from-episodes`) and it overwrites
+    the partial. Its
+    `episode_qc` field needs the same treatment when it
     is not `judged` (`absent`: shipped via the single-command `edl_to_reel`
     or `build_reel`'s own CLI, neither of which this router uses; `stale`:
     judged, then an episode was re-rendered after its verdict — which on this
@@ -571,7 +600,7 @@ aspect (project-init's own "ask, don't guess").
   (`PACING.md`, 5.6) is optional too — it runs automatically whenever
   `MUSIC.json` exists; a music-less reel skips it and edit-plan runs pacing-less
   (`beat_slot` stays unset). **episodes-geometry (`GEOMETRY.json`) and
-  match-grade (`MATCH.md`, §10) are both required, since 2026-08-30** — not
+  match-grade (`MATCH.json`, §10) are both required, since 2026-08-30** — not
   named here as skippable, unlike everything else in this bullet: the router
   runs match-grade on every reel, even a single-camera one, because it costs
   seconds and a stage nobody is told to run at the moment of need is a stage

@@ -10,6 +10,47 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.9.0 — 2026-09-09
+
+Three reports stated a conclusion and recorded nothing about what they concluded
+from, so nothing could tell a current one from a report describing a file that had
+moved. Measured on the 2026-06 run: `MATCH.md` claimed 8/8 authored tone pairs
+against an `EDL.json` carrying 5 (episodes 0/2/7 empty at a max Δ of 10, 6 and 49,
+so not `within-eps` skips); `REVIEW.json` named a path whose file is dated a day and
+a half after the review that approved it; and the QC evidence packet carried no
+digest while the verdict stamped from it did.
+
+- **`MATCH.json`** — the conductor writes the twin every other stage already had.
+  `MATCH.md` is unchanged and byte-identical; the JSON carries the decisions the
+  report renders, so its claim can be checked. The router's `match-grade` row keys
+  on it.
+- **`Review.reel_digest`** — stamped by `build_review` from the file on disk, never
+  from the reviewer's claim. A review written before this field loads as *unbound*,
+  which `montage verify` reports as such rather than as a failed comparison.
+- **The QC evidence packet binds too.** `pack` records the clip's digest and
+  `build_qc` refuses a packet that was made from a different render. This one
+  refuses rather than reports: an unbound packet makes the verdict claim to bind
+  pixels the judge never saw.
+- **`deliver` is atomic.** The encode lands on `.REEL_v{n}.part.<container>` and is
+  `os.replace`d into position, so a killed encode — the 2026-06 run lost one to a
+  Bash timeout — consumes no version, is invisible to every delivery glob, and
+  leaves the partial as the record that a delivery was interrupted.
+- **`montage status` has a fifth stage state, `stale`** — the artifact exists and no
+  longer describes what is on disk. It is not `done`, so `next` points back at it.
+  Both checks hash nothing: match-grade compares the pairs its own report authored,
+  reel-review compares version names. Bytes are `montage verify`'s business.
+
+The instrument is deliberately the report's own claim rather than a digest of the
+file it read. `match_grade` rewrites the EDL itself and `edit_plan build --pacing`
+rewrites it again, so a whole-file digest would fire on the sanctioned rewrite as
+loudly as on the wipe — and a gate that cries wolf gets its ceiling raised, which
+is this project's own measured history on `color_delta_max` (12 → 44 → 56).
+
+Closes R5.2, R5.3 and R10.9. Two of the retro's four R5 bullets were already closed
+by 0.3.0, and R5.2's own claim that `episode_qc` held "the one binding" is now wrong
+by four — `master_digest`, `reel_digest`, `music_digest` and `ReelGeometry.cuts` all
+landed since it was written.
+
 ## 0.8.2 — 2026-09-08
 
 Three artifacts in this tree are evidence handed to a judge — the QC frame strip,
