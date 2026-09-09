@@ -3,8 +3,11 @@ episode's measured (p5,p50,p95) luma profile, compute ONE common reel target (th
 per-anchor median) and decide, per episode, whether a tone pair is worth authoring.
 No ffmpeg, no numpy — the driver (match_grade.py) measures; this only decides. Mirrors
 color.percentiles / pacing / offset: pure decision here, IO in the driver."""
+import json
 import statistics
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from scripts.lib import color
 
@@ -127,6 +130,22 @@ class ToneDecision:
     tone_src: Profile | None = None
     tone_dst: Profile | None = None
 
+    def to_dict(self) -> dict:
+        return {"index": self.index, "action": self.action, "reason": self.reason,
+                "measured": list(self.measured),
+                "tone_src": None if self.tone_src is None else list(self.tone_src),
+                "tone_dst": None if self.tone_dst is None else list(self.tone_dst)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ToneDecision":
+        if not isinstance(d, dict):
+            raise ValueError(f"ToneDecision.from_dict: expected an object, got "
+                             f"{type(d).__name__}")
+        return cls(index=int(d["index"]), action=str(d["action"]), reason=str(d["reason"]),
+                   measured=_triple(d.get("measured"), "ToneDecision.measured"),
+                   tone_src=_opt_triple(d.get("tone_src"), "ToneDecision.tone_src"),
+                   tone_dst=_opt_triple(d.get("tone_dst"), "ToneDecision.tone_dst"))
+
 
 def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
          *, eps: float = MATCH_EPS, force: bool = False) -> list[ToneDecision]:
@@ -147,4 +166,118 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
             out.append(ToneDecision(i, "skip", "within-eps", measured=p))
         else:
             out.append(ToneDecision(i, "author", "authored", measured=p, tone_src=p, tone_dst=target))
+    return out
+
+
+def _triple(v, what: str) -> Profile:
+    """A JSON list of three numbers back into a Profile, refusing anything else by name."""
+    if not (isinstance(v, (list, tuple)) and len(v) == 3
+            and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v)):
+        raise ValueError(f"{what} must be three numbers (p5, p50, p95), got {v!r}")
+    return (float(v[0]), float(v[1]), float(v[2]))
+
+
+def _opt_triple(v, what: str) -> Profile | None:
+    return None if v is None else _triple(v, what)
+
+
+@dataclass(frozen=True)
+class MatchReport:
+    """MATCH.json — the conductor's decisions in machine-readable form (design §2).
+
+    MATCH.md said "8/8 episodes authored a tone pair" while the EDL written an hour
+    later carried five, and nothing could check the claim because the claim was prose
+    (design §0.1). This is the same content MATCH.md renders, in the form a reader can
+    compare against the EDL — every other stage in the conveyor writes X.json + X.md,
+    and match-grade was one of only two that did not.
+
+    `edl` is the path this conductor wrote back into, stored exactly as write_match
+    received it — the same verbatim-not-resolved rule ReelGeometry.edl follows.
+    """
+    target: Profile
+    eps: float
+    decisions: tuple[ToneDecision, ...]
+    edl: str
+    bias: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bias_source: str = ""
+    bias_scale: float = 1.0
+    mood: str | None = None
+
+    def __post_init__(self) -> None:
+        if not (isinstance(self.edl, str) and self.edl):
+            raise ValueError("MatchReport.edl is empty — it names the EDL this report's "
+                             "decisions were written into, and the freshness check has "
+                             "nothing to compare against without it")
+        if not all(isinstance(d, ToneDecision) for d in self.decisions):
+            raise ValueError("MatchReport.decisions must be ToneDecision objects — build "
+                             "them with matchgrade.plan()")
+
+    def to_dict(self) -> dict:
+        return {"target": list(self.target), "eps": self.eps, "edl": self.edl,
+                "bias": list(self.bias), "bias_source": self.bias_source,
+                "bias_scale": self.bias_scale, "mood": self.mood,
+                "decisions": [d.to_dict() for d in self.decisions]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MatchReport":
+        if not isinstance(d, dict):
+            raise ValueError(f"MatchReport.from_dict: expected a MATCH.json object, got "
+                             f"{type(d).__name__} — produce it with `match_grade build`")
+        raw = d.get("decisions")
+        if not isinstance(raw, list):
+            raise ValueError("MatchReport.decisions must be a JSON list — re-run match-grade")
+        return cls(target=_triple(d.get("target"), "MatchReport.target"),
+                   eps=float(d.get("eps", MATCH_EPS)),
+                   decisions=tuple(ToneDecision.from_dict(x) for x in raw),
+                   edl=d.get("edl") or "",
+                   bias=_triple(d.get("bias") or [0.0, 0.0, 0.0], "MatchReport.bias"),
+                   bias_source=d.get("bias_source") or "",
+                   bias_scale=float(d.get("bias_scale", 1.0)),
+                   mood=d.get("mood"))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "MatchReport":
+        try:
+            return cls.from_dict(json.loads(Path(path).read_text()))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path} is corrupt ({e}) — re-run `match_grade build`") from e
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+
+def tone_drift(decisions: Sequence[ToneDecision],
+               pairs: Sequence[tuple[Profile | None, Profile | None]]) -> list[str]:
+    """Which of this report's authored pairs the EDL no longer carries — [] when the
+    report still describes the EDL (design §2).
+
+    The instrument is the PAIRS, not a digest of the EDL, and that is deliberate:
+    match_grade rewrites the EDL itself and `edit_plan build --pacing` legitimately
+    rewrites it again afterwards, so a whole-file digest would fire on the sanctioned
+    rewrite exactly as loudly as on the wipe — and a gate that cries wolf gets its
+    ceiling raised (design §1, the R2.4 mechanism measured on color_delta_max).
+
+    A `skip` decision asserts nothing about that episode's pair, so a pair appearing
+    where one was skipped is not drift. Comparison is exact equality: both sides are
+    the same floats round-tripped through json, and a re-conducted episode rewrites
+    this report too.
+
+    `pairs` is per-episode (tone_src, tone_dst) read from the EDL as it is NOW —
+    supplied by the caller as plain data so this module keeps its no-IO contract and
+    montage's inspector need not import the EDL contract (whose from_json refuses a
+    tampered file, which must not take the whole status report down with it).
+    """
+    if len(decisions) != len(pairs):
+        return [f"this report describes {len(decisions)} episodes and the EDL now has "
+                f"{len(pairs)} — the cut changed"]
+    out: list[str] = []
+    for d, (src, dst) in zip(decisions, pairs):
+        if d.action != "author":
+            continue
+        if src is None and dst is None:
+            out.append(f"episode {d.index} was authored a tone pair, and the EDL now "
+                       f"carries none")
+        elif (src, dst) != (d.tone_src, d.tone_dst):
+            out.append(f"episode {d.index}'s tone pair in the EDL is not the one this "
+                       f"report authored")
     return out

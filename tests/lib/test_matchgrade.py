@@ -184,3 +184,76 @@ def test_biased_target_scales_for_the_GAP_bound_not_only_the_0_255_one():
     assert got == pytest.approx((54.0, 60.0, 190.45))
     # and because 20 * 0.225 = 4.5 is under the floor, the report must call it out
     assert matchgrade.bias_ineffective((20.0, 0.0, -18.0), k) is True
+
+
+def test_tone_decision_round_trips_through_a_dict():
+    d = matchgrade.ToneDecision(2, "author", "authored", measured=(10.0, 100.0, 200.0),
+                                tone_src=(10.0, 100.0, 200.0), tone_dst=(20.0, 110.0, 210.0))
+    assert matchgrade.ToneDecision.from_dict(d.to_dict()) == d
+
+
+def test_a_skip_round_trips_with_its_null_pair():
+    d = matchgrade.ToneDecision(0, "skip", "flat-source", measured=(10.0, 11.0, 12.0))
+    assert d.to_dict()["tone_src"] is None
+    assert matchgrade.ToneDecision.from_dict(d.to_dict()) == d
+
+
+def test_match_report_round_trips_through_a_file(tmp_path):
+    r = matchgrade.MatchReport(
+        target=(76.0, 108.0, 176.0), eps=4.0, edl=str(tmp_path / "EDL.json"),
+        decisions=(matchgrade.ToneDecision(0, "author", "authored", measured=(71.0, 102.0, 166.0),
+                                           tone_src=(71.0, 102.0, 166.0),
+                                           tone_dst=(76.0, 108.0, 176.0)),),
+        bias=(20.0, 0.0, -18.0), bias_source="the nostalgic preset", bias_scale=1.0,
+        mood="nostalgic")
+    p = tmp_path / "MATCH.json"
+    r.write(p)
+    assert matchgrade.MatchReport.from_json(p) == r
+
+
+def test_match_report_refuses_a_non_object():
+    with pytest.raises(ValueError, match="expected a MATCH.json object"):
+        matchgrade.MatchReport.from_dict([1, 2, 3])
+
+
+def test_match_report_refuses_an_empty_edl_path():
+    with pytest.raises(ValueError, match="MatchReport.edl is empty"):
+        matchgrade.MatchReport(target=(1.0, 2.0, 3.0), eps=4.0, decisions=(), edl="")
+
+
+def test_no_drift_when_every_authored_pair_is_still_in_the_edl():
+    d = [matchgrade.ToneDecision(0, "author", "authored", measured=(1.0, 2.0, 3.0),
+                                 tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0)),
+         matchgrade.ToneDecision(1, "skip", "within-eps", measured=(1.0, 2.0, 3.0))]
+    pairs = [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0)), (None, None)]
+    assert matchgrade.tone_drift(d, pairs) == []
+
+
+def test_a_wiped_pair_is_drift_and_the_reason_names_the_episode():
+    d = [matchgrade.ToneDecision(0, "author", "authored", measured=(1.0, 2.0, 3.0),
+                                 tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0))]
+    assert matchgrade.tone_drift(d, [(None, None)]) == [
+        "episode 0 was authored a tone pair, and the EDL now carries none"]
+
+
+def test_a_changed_pair_is_drift_and_says_changed_not_wiped():
+    d = [matchgrade.ToneDecision(0, "author", "authored", measured=(1.0, 2.0, 3.0),
+                                 tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0))]
+    assert matchgrade.tone_drift(d, [((9.0, 9.0, 9.0), (4.0, 5.0, 6.0))]) == [
+        "episode 0's tone pair in the EDL is not the one this report authored"]
+
+
+def test_a_skipped_episode_that_gained_a_pair_is_not_drift():
+    # the report asserts nothing about an episode it skipped, so a pair appearing
+    # there (a human authoring one by hand) is outside what this report claims
+    d = [matchgrade.ToneDecision(0, "skip", "within-eps", measured=(1.0, 2.0, 3.0))]
+    assert matchgrade.tone_drift(d, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))]) == []
+
+
+def test_an_episode_count_change_is_drift_before_any_pair_is_compared():
+    d = [matchgrade.ToneDecision(0, "author", "authored", measured=(1.0, 2.0, 3.0),
+                                 tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0)),
+         matchgrade.ToneDecision(1, "author", "authored", measured=(1.0, 2.0, 3.0),
+                                 tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0))]
+    assert matchgrade.tone_drift(d, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))]) == [
+        "this report describes 2 episodes and the EDL now has 1 — the cut changed"]
