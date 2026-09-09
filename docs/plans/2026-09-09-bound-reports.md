@@ -1887,10 +1887,19 @@ For each row: make the edit, run the selector, record RED or GREEN, then restore
 | 12 | `scripts/episode_qc.py` | delete the `"clip_digest"` key from `_evidence` | `tests/integration/test_episode_qc.py -m integration -k decoded` | RED |
 | 13 | `scripts/episode_qc.py` | delete `build_qc`'s `if not packed:` branch | `tests/lib/test_episode_qc.py -k records_no_digest` | RED |
 | 14 | `scripts/episode_qc.py` | delete `build_qc`'s `if packed != actual:` branch | `tests/lib/test_episode_qc.py -k re_rendered` | RED |
-| 15 | `scripts/lib/runlayout.py` | in `partial_path`, drop the leading dot (`f"REEL_v{n}.part.{container}"`) | `tests/lib/test_runlayout.py -k invisible_to_every_delivery_glob` | RED |
+| 15 | `scripts/lib/runlayout.py` | in `partial_path`, drop the leading dot (`f"REEL_v{n}.part.{container}"`) | `tests/lib/test_runlayout.py -k ends_in_the_container` | RED |
 | 16 | `scripts/deliver.py` | pass `out` to both `proc.run` calls and delete the `os.replace` | `tests/lib/test_deliver.py -k killed_encode` | RED |
 | 17 | `scripts/montage.py` | in `next_action`, delete `done = state_name == "fresh"` | `tests/lib/test_montage.py -k next_points_back` | RED |
 | 18 | `scripts/lib/provenance.py` | restore the old `"this file was not produced by deliver()"` detail | `tests/lib/test_provenance.py -k least_likely_cause` | RED |
+
+**Row 15's selector was corrected after Task 5's review**, which caught that the
+obvious choice does not discriminate: `test_a_partial_is_invisible_to_every_delivery_glob`
+hand-types the excluded filename and never calls `partial_path`, so dropping the dot
+leaves it GREEN. `test_the_partial_ends_in_the_container_so_ffmpeg_can_pick_a_muxer`
+asserts `partial_path`'s exact output string and is the one that catches it. The same
+review recorded two of this branch's own tests as passing with the feature reverted —
+see the ledger's Task 5 deferred minors; the whole-branch review should triage whether
+either is worth strengthening.
 
 Run each as, for example:
 
