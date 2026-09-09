@@ -26,6 +26,12 @@ def _rm(tmp_path, n=2):
 def _findings(packets, i, severity="minor"):
     d = packets / f"ep{i}"
     d.mkdir(parents=True, exist_ok=True)
+    # Task 4 (2026-09-09 bound-reports): build_qc now refuses a packet whose
+    # evidence.json is missing or names a stale digest, so a hand-built packet must
+    # carry one too — naming the same clip _rm() already wrote to tmp_path/f"ep{i}.mp4".
+    clip = Path(packets).parent / f"ep{i}.mp4"
+    (d / "evidence.json").write_text(json.dumps(
+        {"idx": i, "clip": str(clip), "clip_digest": provenance.digest_file(clip)}))
     (d / "findings.json").write_text(json.dumps({
         "summary": f"ep{i} reads well", "reviewer": "test-judge",
         "findings": [{"axis": "colour", "severity": severity, "evidence": "warm cast",
@@ -83,7 +89,9 @@ def test_pack_refuses_an_episode_with_no_sidecar_path(tmp_path):
 def _episode_with_scratch(tmp_path):
     d = tmp_path / "ep0"
     d.mkdir()
-    ep = ReelEpisode(manifest={"segment": "s.mp4"}, clip=str(tmp_path / "ep0.mp4"),
+    clip = tmp_path / "ep0.mp4"
+    clip.write_bytes(b"x")     # Task 4: _evidence digests ep.clip itself now
+    ep = ReelEpisode(manifest={"segment": "s.mp4"}, clip=str(clip),
                      path=str(d / "path.json"), meta=str(d / "path.meta.json"))
     return ep, d
 
@@ -382,3 +390,74 @@ def test_build_collects_a_packet_whose_findings_file_is_unreadable(tmp_path):
     msg = str(e.value)
     assert "ep0" in msg and "complaint(s) across" in msg
     assert not (tmp_path / "EPISODE_QC.json").exists()
+
+
+# --- 2026-09-09 bound-reports Task 4: the evidence packet binds to its own clip ---
+
+def _ep(clip: str, tmp_path, name: str = "ep0") -> ReelEpisode:
+    """A single ReelEpisode for a caller-supplied clip path, mirroring _rm's own
+    per-episode construction (this file's existing build_qc tests) but for a clip a
+    test needs to hold a reference to and mutate (re-render) after building the
+    manifest — which is exactly what the tests below need to do."""
+    return ReelEpisode(manifest={"segment": f"{name}.mp4", "target_dur": 2.0},
+                       clip=clip, route=None,
+                       path=str(tmp_path / name / "path.json"),
+                       meta=str(tmp_path / name / "path.meta.json"))
+
+
+def test_build_qc_refuses_a_packet_whose_clip_has_been_re_rendered(tmp_path):
+    clip = tmp_path / "ep0.mp4"
+    clip.write_bytes(b"first-render")
+    ep = _ep(str(clip), tmp_path)                     # the file's existing helper
+    p = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=3.0, changelog="x").write(p)
+    packets = tmp_path / "qc"
+    (packets / "ep0").mkdir(parents=True)
+    (packets / "ep0" / "evidence.json").write_text(json.dumps(
+        {"idx": 0, "clip": str(clip), "clip_digest": provenance.digest_file(clip)}))
+    (packets / "ep0" / "findings.json").write_text(json.dumps(
+        {"summary": "ok", "reviewer": "t", "findings": []}))
+    clip.write_bytes(b"second-render")                # re-rendered after packing
+    with pytest.raises(ValueError, match="was packed from a different render"):
+        episode_qc.build_qc(str(p), str(packets))
+
+
+def test_build_qc_refuses_a_packet_that_records_no_digest_at_all(tmp_path):
+    clip = tmp_path / "ep0.mp4"
+    clip.write_bytes(b"render")
+    ep = _ep(str(clip), tmp_path)
+    p = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=3.0, changelog="x").write(p)
+    packets = tmp_path / "qc"
+    (packets / "ep0").mkdir(parents=True)
+    (packets / "ep0" / "evidence.json").write_text(json.dumps({"idx": 0, "clip": str(clip)}))
+    (packets / "ep0" / "findings.json").write_text(json.dumps(
+        {"summary": "ok", "reviewer": "t", "findings": []}))
+    with pytest.raises(ValueError, match="records no clip digest"):
+        episode_qc.build_qc(str(p), str(packets))
+
+
+def test_a_packet_digest_complaint_joins_the_others_in_one_raise(tmp_path):
+    """One pass names every complaint (the build_qc rule since 2026-09-08): a digest
+    mismatch on ep0 must not hide a malformed finding on ep1."""
+    clips = []
+    for i in range(2):
+        c = tmp_path / f"ep{i}.mp4"
+        c.write_bytes(f"render{i}".encode())
+        clips.append(c)
+    eps = [_ep(str(c), tmp_path, name=f"ep{i}") for i, c in enumerate(clips)]
+    p = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=eps, target_dur=3.0, changelog="x").write(p)
+    packets = tmp_path / "qc"
+    for i, c in enumerate(clips):
+        (packets / f"ep{i}").mkdir(parents=True)
+        (packets / f"ep{i}" / "evidence.json").write_text(json.dumps(
+            {"idx": i, "clip": str(c), "clip_digest": provenance.digest_file(c)}))
+    (packets / "ep0" / "findings.json").write_text(json.dumps(
+        {"summary": "ok", "reviewer": "t", "findings": []}))
+    (packets / "ep1" / "findings.json").write_text(json.dumps(
+        {"summary": "ok", "reviewer": "t", "findings": [{"axis": "nope"}]}))
+    clips[0].write_bytes(b"re-rendered")
+    with pytest.raises(ValueError) as e:
+        episode_qc.build_qc(str(p), str(packets))
+    assert "ep0" in str(e.value) and "ep1 finding 0" in str(e.value)

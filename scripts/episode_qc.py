@@ -48,6 +48,12 @@ def _evidence(ep, i: int, clip_stats: dict, strip: dict,
     storyboard = d / "storyboard.jpg"
     out: dict = {
         "idx": i, "clip": ep.clip,
+        # What these pixels ARE (design 2026-09-09 §4). The verdict has carried a
+        # clip digest since 2026-08-08 and the packet never did, so a re-render
+        # between pack and judge left the judge reading one render while its verdict
+        # was stamped against another — which is what happened on the real run, and
+        # only a judge's own blocking verdict caught it.
+        "clip_digest": provenance.digest_file(ep.clip),
         "intent": {k: m.get(k) for k in ("composition", "grid", "hero", "target_dur",
                                          "layout", "pan", "stabilize", "canvas")},
         # Absent is reported as absent, never as a path that resolves to nothing — the
@@ -165,6 +171,24 @@ def _raw(packets: str, i: int) -> dict:
     return d
 
 
+def _packed_digest(packets: str, i: int) -> str:
+    """The clip digest `pack` recorded in this episode's evidence.json.
+
+    An absent file or an absent key both return "" — reported by the caller as
+    'records no clip digest', which is the true statement about a packet written
+    before this binding existed. read_text's own OSError is not caught here, exactly
+    as _raw does not catch its own: build_qc's call site collects it with every other
+    complaint rather than letting one packet's filesystem trouble abort the rest."""
+    p = Path(packets) / f"ep{i}" / "evidence.json"
+    if not p.exists():
+        return ""
+    try:
+        d = json.loads(p.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{p} is not valid JSON ({e}) — re-run `episode_qc pack`") from e
+    return d.get("clip_digest") or "" if isinstance(d, dict) else ""
+
+
 def build_qc(episodes_path: str, packets: str) -> ReelQC:
     """Validate every episode's raw findings into a typed ReelQC. The clip digest is
     computed HERE from the file on disk — whatever `clip_digest` the judge's file
@@ -176,7 +200,12 @@ def build_qc(episodes_path: str, packets: str) -> ReelQC:
     finding buys nothing about the other seven episodes and costs a whole round to
     learn about the second. The refusal's STRENGTH is unchanged: one bad packet still
     refuses the whole run, because EPISODE_QC.json describes the reel and a partial one
-    would be a reel partly unjudged."""
+    would be a reel partly unjudged.
+
+    Two bindings, not one (design 2026-09-09 §4). The verdict's digest says WHICH
+    render was judged; the packet's says which render the judge LOOKED AT. They must
+    agree, or the verdict claims to bind pixels nobody saw — and a false binding is
+    worse than an absent one, which is why this refuses rather than reports."""
     rm = ReelManifest.from_json(episodes_path)
     verdicts: list[EpisodeVerdict] = []
     problems: list[str] = []
@@ -201,8 +230,29 @@ def build_qc(episodes_path: str, packets: str) -> ReelQC:
         if len(problems) != before:
             continue                               # a packet with a bad finding builds no verdict
         try:
+            actual = provenance.digest_file(ep.clip)
+            packed = _packed_digest(packets, i)
+        except (ValueError, OSError) as e:
+            problems.append(f"  ep{i}: {e}")
+            continue
+        if not packed:
+            problems.append(
+                f"  ep{i}: its evidence packet records no clip digest, so nothing says "
+                f"which render the judge looked at. A packet written before this binding "
+                f"existed reads exactly like a stale one — re-run `episode_qc pack`, then "
+                f"re-dispatch the judge for this episode")
+            continue
+        if packed != actual:
+            problems.append(
+                f"  ep{i}: its evidence packet was packed from a different render than "
+                f"the clip on disk (packet {packed[:12]}…, clip {actual[:12]}…). The "
+                f"judge read pixels that no longer exist, so its verdict cannot be "
+                f"stamped against this render — re-run `episode_qc pack`, then re-dispatch "
+                f"the judge for this episode")
+            continue
+        try:
             verdicts.append(EpisodeVerdict(
-                idx=i, clip=ep.clip, clip_digest=provenance.digest_file(ep.clip),
+                idx=i, clip=ep.clip, clip_digest=actual,
                 findings=tuple(built),
                 summary=raw.get("summary") or "", reviewer=raw.get("reviewer") or ""))
         except (ValueError, OSError) as e:

@@ -244,8 +244,16 @@ def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_
     assert "episode 1" in res["finding"]["problems"][0]
     assert list(p.parent.glob("REEL_v*")) == []          # no version spent, no attestation
 
-    # the re-judge: ONLY ep1's findings are rewritten — ep0's verdict is about bytes
-    # that did not change, and episode_qc build re-stamps every digest from disk.
+    # the re-judge: re-pack FIRST (Task 4, design 2026-09-09 §4) — ep1's evidence.json
+    # still names the PREVIOUS render's digest, and re-judging over it unrefreshed is
+    # exactly the silent gap this binding exists to close: the judge would be
+    # re-validated against a packet describing pixels that no longer exist, even
+    # though its findings.json is freshly written. Re-packing costs both episodes a
+    # real decode (pack has no --only), but this module's own docstring already
+    # promises "real pack/build" end to end. Only THEN are ep1's findings rewritten —
+    # ep0's verdict is about bytes that did not change, and episode_qc build
+    # re-stamps every digest from disk.
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
     _judge(tmp_path / "qc", 1)
     episode_qc.build(str(p), str(tmp_path / "qc"), str(p.parent))
     monkeypatch.setattr(build_reel.check_reel, "run", real_run)
@@ -259,3 +267,26 @@ def test_a_reprocess_after_the_verdict_stops_the_delivery_and_a_re_judge_clears_
     # ep0 was never re-judged and never needed to be: its bytes are the judged ones
     assert att["episode_qc"]["judged"]["0"] == judged_ep0
     assert provenance.verify_delivery(again["output"])["episode_qc"] == "judged"
+
+
+@pytest.mark.integration
+def test_the_packet_records_the_digest_of_the_clip_it_decoded(tmp_path, sample_clip):
+    p, rm = _episodes_json(tmp_path, sample_clip)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    ev = json.loads((tmp_path / "qc" / "ep0" / "evidence.json").read_text())
+    assert ev["clip_digest"] == provenance.digest_file(rm.episodes[0].clip)
+
+
+@pytest.mark.integration
+def test_a_re_rendered_clip_invalidates_its_own_packet(tmp_path, sample_clip):
+    """The gate the run needed: pack, re-render, and the judge's verdict must not be
+    stamped against pixels nobody judged."""
+    p, rm = _episodes_json(tmp_path, sample_clip)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    for i in range(2):
+        _judge(str(tmp_path / "qc"), i)
+    # control: nothing moved, the gate is silent
+    assert episode_qc.build_qc(str(p), str(tmp_path / "qc")).ok
+    Path(rm.episodes[0].clip).write_bytes(b"a different render entirely")
+    with pytest.raises(ValueError, match="was packed from a different render"):
+        episode_qc.build_qc(str(p), str(tmp_path / "qc"))
