@@ -789,3 +789,97 @@ def test_verify_calls_an_unstamped_review_unbound_not_mismatched(tmp_path):
     (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
         {"reel": str(lay.deliveries / "REEL_v1.mp4"), "findings": []}))
     assert montage.verify(str(tmp_path))["review"]["state"] == "unbound"
+
+
+# ---- C-1 fix: wrong-shaped (but syntactically valid) JSON must not raise ----
+# Review finding on this task: `_match_grade_state` indexed `e.get(...)` over
+# `episodes` outside any guard, and `_review_state`/`_verify_review` called `.get()`
+# on whatever `json.loads` returned without checking it was a dict. Six inputs from
+# the review's own repro table, each driven through the real public entry point
+# (never the private function) exactly as the review reproduced it.
+
+def test_next_action_survives_an_edl_whose_episodes_is_a_dict(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "EDL.json").write_text(json.dumps({"episodes": {"0": {}}}))
+    res = montage.next_action(str(tmp_path))              # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "match-grade")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_next_action_survives_an_edl_whose_episodes_is_a_string(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "EDL.json").write_text(json.dumps({"episodes": "abc"}))
+    res = montage.next_action(str(tmp_path))              # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "match-grade")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_next_action_survives_an_edl_whose_episodes_is_a_list_of_non_dicts(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "EDL.json").write_text(json.dumps({"episodes": [1, 2, 3]}))
+    res = montage.next_action(str(tmp_path))              # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "match-grade")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_next_action_survives_an_edl_whose_episodes_is_null(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "EDL.json").write_text(json.dumps({"episodes": None}))
+    res = montage.next_action(str(tmp_path))              # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "match-grade")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_verify_survives_a_review_json_that_is_a_bare_list(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v1.mp4").write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(["x"]))
+    got = montage.verify(str(tmp_path))["review"]          # must not raise
+    assert got["state"] != "bound"
+    assert got["detail"]
+
+
+def test_verify_survives_a_review_json_that_is_bare_null(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    (lay.deliveries / "REEL_v1.mp4").write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text("null")
+    got = montage.verify(str(tmp_path))["review"]          # must not raise
+    assert got["state"] != "bound"
+    assert got["detail"]
+
+
+# `_review_state` (next_action's own freshness reader for reel-review) reads
+# REVIEW.json too, independently of `_verify_review` — the same two malformed
+# shapes must not raise there either, or `montage status` would crash on a run
+# whose REVIEW.json is a list/null even though `montage verify` was fixed.
+
+def test_next_action_survives_a_review_json_that_is_a_bare_list(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(["x"]))
+    res = montage.next_action(str(tmp_path))               # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "reel-review")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]
+
+
+def test_next_action_survives_a_review_json_that_is_bare_null(tmp_path):
+    lay = runlayout.RunLayout(tmp_path)
+    _full_run(tmp_path)
+    (lay.reel_dir / "REVIEW.json").write_text("null")
+    res = montage.next_action(str(tmp_path))               # must not raise
+    row = next(s for s in res["stages"] if s["key"] == "reel-review")
+    assert row["state"] == "stale"
+    assert row["stale_reason"]

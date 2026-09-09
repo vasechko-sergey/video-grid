@@ -164,6 +164,8 @@ def _match_grade_state(reel_dir: Path) -> tuple[str, str]:
     try:
         edl_raw = json.loads(Path(report.edl).read_text())
         episodes = edl_raw["episodes"]
+        if not isinstance(episodes, list) or not all(isinstance(e, dict) for e in episodes):
+            raise TypeError("'episodes' is not a list of episode objects")
     except (OSError, ValueError, KeyError, TypeError) as e:
         return "stale", (f"MATCH.json names {report.edl}, which cannot be read as an EDL "
                          f"({e}) — nothing can check what this report claims")
@@ -219,7 +221,7 @@ def _review_state(reel_dir: Path, out: Path) -> tuple[str, str]:
         return "stale", "there is no REVIEW.json — run the reel-review stage"
     try:
         judged = json.loads(rp.read_text()).get("reel") or ""
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, AttributeError) as e:
         return "stale", f"REVIEW.json is corrupt or unreadable ({e})"
     newest = _newest_delivery(out)
     if newest is None:
@@ -325,9 +327,9 @@ def _verify_review(reel_dir: Path, out: Path) -> dict:
         return {"state": "absent", "detail": "no REVIEW.json in this reel"}
     try:
         d = json.loads(rp.read_text())
-    except (OSError, ValueError) as e:
+        reel, want = d.get("reel") or "", d.get("reel_digest") or ""
+    except (OSError, ValueError, AttributeError) as e:
         return {"state": "unreadable", "detail": f"REVIEW.json is corrupt ({e})"}
-    reel, want = d.get("reel") or "", d.get("reel_digest") or ""
     if not want:
         return {"state": "unbound", "reel": Path(reel).name,
                 "detail": "this review records no reel digest, so nothing binds it to "
