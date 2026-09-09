@@ -257,3 +257,23 @@ def test_an_episode_count_change_is_drift_before_any_pair_is_compared():
                                  tone_src=(1.0, 2.0, 3.0), tone_dst=(4.0, 5.0, 6.0))]
     assert matchgrade.tone_drift(d, [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))]) == [
         "this report describes 2 episodes and the EDL now has 1 — the cut changed"]
+
+
+def test_match_report_from_dict_refuses_a_null_eps_with_a_value_error():
+    # review finding I-1: eps/bias_scale bypassed the None-safe `d.get(k) or default`
+    # pattern used two lines away for bias/bias_source/edl, so an explicit JSON `null`
+    # (the key IS present) reached float(None) and raised a bare TypeError instead of
+    # the ValueError-with-remedy every other malformed field in this module raises.
+    with pytest.raises(ValueError, match="MatchReport.eps"):
+        matchgrade.MatchReport.from_dict(
+            {"target": [1, 2, 3], "eps": None, "edl": "x.json", "decisions": []})
+
+
+def test_tone_decision_from_dict_refuses_a_missing_index_with_a_value_error():
+    # review finding I-2: index/action/reason were read by bare d["key"] instead of
+    # routing through a validated helper the way measured/tone_src/tone_dst do via
+    # _triple/_opt_triple, so a decision object missing any of the three raised a bare
+    # KeyError instead of the ValueError-with-remedy every other malformed field raises.
+    with pytest.raises(ValueError, match="ToneDecision.index"):
+        matchgrade.ToneDecision.from_dict(
+            {"measured": [1, 2, 3], "action": "skip", "reason": "within-eps"})

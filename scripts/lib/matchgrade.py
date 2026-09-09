@@ -141,7 +141,9 @@ class ToneDecision:
         if not isinstance(d, dict):
             raise ValueError(f"ToneDecision.from_dict: expected an object, got "
                              f"{type(d).__name__}")
-        return cls(index=int(d["index"]), action=str(d["action"]), reason=str(d["reason"]),
+        return cls(index=_required_int(d.get("index"), "ToneDecision.index"),
+                   action=_required_str(d.get("action"), "ToneDecision.action"),
+                   reason=_required_str(d.get("reason"), "ToneDecision.reason"),
                    measured=_triple(d.get("measured"), "ToneDecision.measured"),
                    tone_src=_opt_triple(d.get("tone_src"), "ToneDecision.tone_src"),
                    tone_dst=_opt_triple(d.get("tone_dst"), "ToneDecision.tone_dst"))
@@ -179,6 +181,43 @@ def _triple(v, what: str) -> Profile:
 
 def _opt_triple(v, what: str) -> Profile | None:
     return None if v is None else _triple(v, what)
+
+
+def _required_int(v, what: str) -> int:
+    """A required integer field, refusing a missing/null/wrong-type value by name — the
+    is-None-safe counterpart to `_triple` for a scalar that carries no default, so a
+    missing key surfaces the same ValueError-with-remedy as a malformed one instead of
+    a bare KeyError out of `d["..."]`."""
+    if v is None or isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f"{what} is required and must be an integer, got {v!r} — "
+                         "re-run match-grade to regenerate it")
+    return int(v)
+
+
+def _required_str(v, what: str) -> str:
+    """A required non-empty string field, refusing a missing/null/wrong-type value by
+    name — the is-None-safe counterpart to `_triple` for a scalar that carries no
+    default, so a missing key surfaces the same ValueError-with-remedy as a malformed
+    one instead of a bare KeyError out of `d["..."]`."""
+    if not (isinstance(v, str) and v):
+        raise ValueError(f"{what} is required and must be a non-empty string, got "
+                         f"{v!r} — re-run match-grade to regenerate it")
+    return v
+
+
+def _num_or_default(d: dict, key: str, what: str, default: float) -> float:
+    """A number field that defaults only when `key` is genuinely ABSENT from `d` — a
+    present-but-`null` value is validated (and refused) like any other malformed field,
+    never silently swapped for `default`. `d.get(key, default)` cannot make that
+    distinction: when the JSON value is `null` the key IS present, so the built-in
+    default never fires and `float(None)` raises a bare TypeError instead of the
+    ValueError-with-remedy every other malformed field in this module raises."""
+    if key not in d:
+        return default
+    v = d[key]
+    if v is None or isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f"{what} must be a number, got {v!r} — re-run match-grade")
+    return float(v)
 
 
 @dataclass(frozen=True)
@@ -227,12 +266,12 @@ class MatchReport:
         if not isinstance(raw, list):
             raise ValueError("MatchReport.decisions must be a JSON list — re-run match-grade")
         return cls(target=_triple(d.get("target"), "MatchReport.target"),
-                   eps=float(d.get("eps", MATCH_EPS)),
+                   eps=_num_or_default(d, "eps", "MatchReport.eps", MATCH_EPS),
                    decisions=tuple(ToneDecision.from_dict(x) for x in raw),
                    edl=d.get("edl") or "",
                    bias=_triple(d.get("bias") or [0.0, 0.0, 0.0], "MatchReport.bias"),
                    bias_source=d.get("bias_source") or "",
-                   bias_scale=float(d.get("bias_scale", 1.0)),
+                   bias_scale=_num_or_default(d, "bias_scale", "MatchReport.bias_scale", 1.0),
                    mood=d.get("mood"))
 
     @classmethod
