@@ -114,7 +114,9 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
 
    The driver validates every finding (a malformed one raises — fix the reviewer's
    output and re-run; never hand-write `REVIEW.json`) and writes `REVIEW.json` +
-   `REVIEW.md`.
+   `REVIEW.md`. Then run `montage verify` and surface its `review` block beside
+   them — report the state, and the `detail` whenever it reads anything but
+   `bound`.
 
 4. **Surface to the human — CP3.** Present `REVIEW.md` **beside** the reel and the
    `check_reel` report. Read back the verdict (approve / revise) and the findings.

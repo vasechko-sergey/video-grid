@@ -176,7 +176,10 @@ def _match_grade_state(reel_dir: Path) -> tuple[str, str]:
         return "fresh", ""
     return "stale", ("; ".join(drift) + ". Re-run `match_grade build --geometry` — a "
                      "later `edit_plan build --pacing` wipes authored tone, which is "
-                     "what this reports")
+                     "what this reports. If a reel already shipped from this EDL, "
+                     "re-render (`edl_to_reel --from-geometry`) and re-deliver too — "
+                     "re-conducting alone rewrites only the pairs, never pixels already "
+                     "rendered")
 
 
 def _opt_profile(v) -> tuple[float, float, float] | None:

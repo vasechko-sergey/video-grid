@@ -535,6 +535,10 @@ say so rather than guessing a path.
     should always read `judged`, so anything else means an unjudged reel is
     about to be called final and must be named plainly, not passed over. A `stop_and_report` (a failed gate) is surfaced verbatim —
     never fixed forward; route it to the culprit stage's skill.
+    `verify`'s `review` block is not yet meaningful at this call — `REVIEW.json`
+    does not exist until reel-review below writes it, so reading `absent` here
+    is expected, not a fault; reel-review's own procedure re-runs `montage
+    verify` once it has, and that later reading is the one to report.
 
     Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
     that judges the reel against `SPEC` (idea/mood/hook/ending/spine/colour) and writes

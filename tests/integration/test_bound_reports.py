@@ -119,8 +119,12 @@ def test_match_grade_goes_stale_on_a_wipe_and_stays_fresh_on_an_unrelated_rewrit
     match_grade.write_match(gp)
     assert montage._match_grade_state(lay.reel_dir) == ("fresh", "")
 
-    # CONTROL: rewrite the EDL touching something that is not tone. The file's bytes
-    # and its provenance stamp both change; the report's claim does not.
+    # CONTROL: rewrite the EDL touching something that is not tone. Only the file's
+    # bytes change: this EDL carries no provenance stamp at all (built via
+    # EDL(...).to_dict(), which emits the provenance key only when non-empty) — and
+    # even where a stamp exists, an unrelated key leaves the stored block
+    # byte-identical; it is the block's VALIDITY that flips on recompute, not the
+    # block itself. Either way, the report's claim does not move.
     raw = json.loads(edl_path.read_text())
     raw["changelog"] = "an unrelated edit"
     edl_path.write_text(json.dumps(raw, indent=2))
