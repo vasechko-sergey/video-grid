@@ -154,6 +154,27 @@ def wipe_build(work_dir: str, out_dir: str) -> list[str] | None:
     return removed
 
 
+PARTIAL_GLOB = ".REEL_v*.part.*"   # what montage looks for to report an interrupted delivery
+
+
+def partial_path(out_dir: str, n: int, container: str) -> Path:
+    """Where the encode lands before it is a delivery (design 2026-09-09 §5).
+
+    Three details are load-bearing. It sits in `out_dir`, not scratch_dir, so the
+    os.replace below is a same-filesystem rename and therefore atomic — a caller may
+    point scratch_dir at another mount. It starts with a DOT, which takes it out of
+    all three globs that look for deliveries (_next_version's REEL_v*.{container},
+    montage._deliveries' REEL_v*, and the router's Stage("deliver", "REEL_v*.*")), so
+    a killed encode consumes no version and does not make the stage read done. And the
+    container extension comes LAST, because ffmpeg picks its muxer from the output
+    filename — `.REEL_v3.part` would fail to guess one.
+
+    A leftover partial is not litter: it is the record that a delivery was interrupted,
+    which is the second half of what the retro's R5.3 asked for. `-y` stays on the
+    encode, so a retry overwrites it rather than accumulating."""
+    return Path(out_dir) / f".REEL_v{n}.part.{container}"
+
+
 def refuse_output_in_footage(footage_root: str, out_dir: str, what: str) -> None:
     """Raise unless `out_dir` is somewhere other than the footage root itself.
 

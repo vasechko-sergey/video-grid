@@ -103,7 +103,7 @@ def test_deliver_encodes_v1_and_logs(tmp_path, monkeypatch):
                           scratch_dir=str(tmp_path / "scratch"))
     assert out.endswith("REEL_v1.mp4")
     cmd = calls[0]
-    assert "-an" in cmd and cmd[-1].endswith("REEL_v1.mp4") and master in cmd
+    assert "-an" in cmd and cmd[-1].endswith(".REEL_v1.part.mp4") and master in cmd
     assert "scale=" not in " ".join(map(str, cmd))          # no re-scale
     assert (tmp_path / "VERSIONS.md").read_text().count("- v1 |") == 1
 
@@ -419,3 +419,64 @@ def test_deliver_requires_a_scratch_dir():
     p = inspect.signature(deliver.deliver).parameters["scratch_dir"]
     assert p.kind is inspect.Parameter.KEYWORD_ONLY
     assert p.default is inspect.Parameter.empty
+
+
+def test_the_partial_does_not_raise_the_version_floor(tmp_path):
+    """_next_version's glob must skip it, or a killed encode burns a version."""
+    (tmp_path / "REEL_v1.mp4").write_text("x")
+    (tmp_path / ".REEL_v2.part.mp4").write_text("half")
+    assert deliver._next_version(str(tmp_path), "mp4") == 2
+
+
+def test_ffmpeg_is_handed_a_partial_never_the_delivered_name(tmp_path, monkeypatch):
+    calls = []
+    _fake_encode(monkeypatch, calls)
+    master, rep = _bound(tmp_path)
+    out = deliver.deliver(master, REEL_H264, str(tmp_path), "first cut", rep,
+                          scratch_dir=str(tmp_path / "scratch"))
+    assert calls[0][-1] == str(tmp_path / ".REEL_v1.part.mp4")
+    assert out == str(tmp_path / "REEL_v1.mp4")
+    assert not (tmp_path / ".REEL_v1.part.mp4").exists()      # renamed, not copied
+
+
+def test_the_partial_sits_beside_the_delivery_not_in_scratch(tmp_path, monkeypatch):
+    """Same directory, so os.replace is a same-filesystem rename and therefore atomic;
+    scratch_dir may be on another mount."""
+    calls = []
+    _fake_encode(monkeypatch, calls)
+    master, rep = _bound(tmp_path)
+    out_dir = tmp_path / "deliveries"
+    deliver.deliver(master, REEL_H264, str(out_dir), "x", rep,
+                    scratch_dir=str(tmp_path / "scratch"))
+    assert Path(calls[0][-1]).parent == out_dir
+
+
+def test_a_killed_encode_leaves_a_partial_and_no_delivery(tmp_path, monkeypatch):
+    """The whole point: the process dies inside ffmpeg. Nothing is renamed, so no file
+    bears a delivered name, no version is logged, and the partial is the record."""
+    real_run = deliver.proc.run
+    def run(cmd, *a, **k):
+        if cmd and cmd[0] == "git":
+            return real_run(cmd, *a, **k)
+        Path(cmd[-1]).write_bytes(b"half-an-encode")   # ffmpeg wrote some bytes...
+        raise RuntimeError("killed")                    # ...then the process died
+    monkeypatch.setattr(deliver.proc, "run", run)
+    master, rep = _bound(tmp_path)
+    with pytest.raises(RuntimeError, match="killed"):
+        deliver.deliver(master, REEL_H264, str(tmp_path), "x", rep,
+                        scratch_dir=str(tmp_path / "scratch"))
+    assert not (tmp_path / "REEL_v1.mp4").exists()
+    assert (tmp_path / ".REEL_v1.part.mp4").read_bytes() == b"half-an-encode"
+    assert not (tmp_path / "VERSIONS.md").exists()
+    assert not (tmp_path / "REEL_v1.attest.json").exists()
+
+
+def test_the_next_delivery_after_a_kill_reuses_the_version_and_clears_the_partial(
+        tmp_path, monkeypatch):
+    (tmp_path / ".REEL_v1.part.mp4").write_bytes(b"half-an-encode")
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out = deliver.deliver(master, REEL_H264, str(tmp_path), "retry", rep,
+                          scratch_dir=str(tmp_path / "scratch"))
+    assert out.endswith("REEL_v1.mp4")                 # the killed version is retried
+    assert not (tmp_path / ".REEL_v1.part.mp4").exists()

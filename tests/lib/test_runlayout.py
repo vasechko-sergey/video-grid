@@ -177,3 +177,16 @@ def test_the_build_wipe_matches_through_a_symlinked_spelling(tmp_path):
     link = tmp_path / "link"
     link.symlink_to(reel / "build")
     assert runlayout.wipe_build(str(link), str(reel / "episodes")) == []
+
+
+def test_the_partial_ends_in_the_container_so_ffmpeg_can_pick_a_muxer(tmp_path):
+    assert runlayout.partial_path(str(tmp_path), 3, "mp4").name.endswith(".mp4")
+    assert runlayout.partial_path(str(tmp_path), 3, "mov").name == ".REEL_v3.part.mov"
+
+
+def test_a_partial_is_invisible_to_every_delivery_glob(tmp_path):
+    (tmp_path / "REEL_v1.mp4").write_text("x")
+    (tmp_path / ".REEL_v2.part.mp4").write_text("half")
+    assert sorted(p.name for p in tmp_path.glob("REEL_v*")) == ["REEL_v1.mp4"]
+    assert sorted(p.name for p in tmp_path.glob("REEL_v*.*")) == ["REEL_v1.mp4"]
+    assert sorted(p.name for p in tmp_path.glob(runlayout.PARTIAL_GLOB)) == [".REEL_v2.part.mp4"]

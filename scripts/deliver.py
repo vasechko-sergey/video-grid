@@ -4,12 +4,13 @@ encode of the back half; a hard gate refuses a failed reel."""
 import argparse
 import json
 import math
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 
 from scripts.lib import (assembly, ffbin, look as look_lib, lookcheck, proc,
-                         provenance, titles as titles_lib)
+                         provenance, runlayout, titles as titles_lib)
 from scripts.lib.look import LookSpec
 from scripts.lib.models import ExportProfile, ReelReport
 from scripts.lib.titles import Title, Titles, build_filterchain
@@ -236,6 +237,14 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
     writes.
 
+    The encode lands on `.REEL_v{n}.part.{container}` and is os.replace()d onto its
+    delivered name (design 2026-09-09 §5). Until that rename no file in the deliveries
+    bucket bears a delivered name, so a killed encode — the 2026-06 run lost one to a
+    Bash timeout — consumes no version and leaves the partial as the record that a
+    delivery was interrupted. The look gate below stays AFTER the rename: its subject is
+    a complete delivered file, and its deliberate behaviour on failure (the file stays,
+    the attestation is withheld) is unchanged.
+
     A third refusal fires AFTER the encode: `_verify_look` (design 2026-08-15 §7)
     samples the shipped file against the master and refuses when a declared vignette,
     fade or titles did not reach the delivered pixels — check_reel never sees this
@@ -308,9 +317,10 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         graph = ["-vf", ",".join(parts)]
     n = _next_version(out_dir, profile.container)
     out = str(Path(out_dir) / f"REEL_v{n}.{profile.container}")
+    part = runlayout.partial_path(out_dir, n, profile.container)
     if audio is None:
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, *graph, *vmap,
-                  *profile.args(), out])
+                  *profile.args(), str(part)])
     else:
         # mux the pre-normalized aac stem: profile audio settings don't apply — we
         # stream-copy to preserve the stem's −14 LUFS — so use video-only args + copy.
@@ -320,7 +330,12 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         aidx = 2 if mask_in else 1
         proc.run([ffbin.ffmpeg(), "-y", "-i", master, *mask_in, "-i", audio, *graph,
                   *_video_only_args(profile), *(vmap or ["-map", "0:v:0"]),
-                  "-map", f"{aidx}:a:0", "-c:a", "copy", "-shortest", out])
+                  "-map", f"{aidx}:a:0", "-c:a", "copy", "-shortest", str(part)])
+    # Atomic commit (design 2026-09-09 §5), the same shape intake_cache.store uses:
+    # until this line no file bears a delivered name, so a process killed inside the
+    # encode above leaves the partial and nothing else — no version consumed, no
+    # truncated file reading as a delivery.
+    os.replace(part, out)
     # The look gate (design 2026-08-15 §7). AFTER the encode, because the honest
     # subject is the file that shipped, not a prediction of it. On a failure the file
     # stays on disk — deleting output nobody asked to delete is worse than leaving the
