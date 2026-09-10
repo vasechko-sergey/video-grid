@@ -1150,3 +1150,14 @@ def test_presence_ranks_pool_wide_even_when_every_clip_is_big_enough_to_rank_alo
     b = [_w(dur=2.0, people=1, motion=0.1 * i, shake=0.0, present=0.0) for i in range(1, n + 1)]
     rep = intake.score_pool([_clip("a.mp4", a), _clip("b.mp4", b)])
     assert rep["separated"]["present"] == n
+
+
+def test_intake_builds_footage_with_the_scoring_report_through_validation():
+    # The report must pass Footage.__post_init__, not be assigned onto a built object:
+    # a field that skips its own validation is a field nothing checks.
+    ws = [_w(dur=2.0, people=1, motion=m, shake=0.0, present=1.0) for m in (0.1, 0.9)]
+    clips = [_clip("a.mp4", ws)]
+    scoring = intake.score_pool(clips)
+    f = footage.Footage(clips=clips, band=(1.2, 4.0), scoring=scoring)
+    assert f.scoring["windows"] == 2
+    assert set(f.scoring["separated"]) == set(footage.SCORE_TERMS)
