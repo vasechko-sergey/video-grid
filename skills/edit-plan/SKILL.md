@@ -97,7 +97,11 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    once the 9:16 crop is taken; trust the refusal's numbers over the tag. The
    census reads a window's measured geometry directly, never an episode's
    `shot_type` label — relabelling an episode in `selection.json` cannot clear a
-   gap. If the cut is genuinely right as it stands — every close window is soft,
+   gap. That geometry comes from a person detector, so a window with nobody in
+   it reads as `wide` by construction; when that happens, `unmeasured`
+   (printed beside `available` once non-zero) says how much of the census is
+   the detector's silence, not evidence the footage lacks close-ups. If the
+   cut is genuinely right as it stands — every close window is soft,
    or the reel is deliberately one texture — state why in `selection.json`:
 
        {"episodes": [...], "variety_waiver": "every close window is out of focus"}

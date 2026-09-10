@@ -17,7 +17,9 @@ report fields nothing is required to read, and a blend term corrected from an
 absolute fraction to a rank, measured as a no-op on the only real pool.
 `score` moves in its third decimal, but `FOOTAGE.md` itself documents `score`
 as a percentile within one footage set, "never an absolute quality bar." The
-driving is unchanged.
+driving is unchanged **on the only real pool this shipped against** — the
+design's §3.2 is explicit that on a mixed-presence pool the change is meant to
+move the ordering, and `best` with it; that pool does not exist yet (§0.3/§6).
 
 Two reports stop reading as a finished measurement when they were actually
 silent. The window scorer's largest blend weight (`W_PRESENT`, 0.44)

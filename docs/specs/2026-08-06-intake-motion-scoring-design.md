@@ -7,6 +7,14 @@ priority 3) — the `_motion_fit` re-tune deliberately deferred by
 `docs/specs/2026-08-06-mood-preset-variety-design.md` §1.1
 **Predecessors:** S1 contact sheets (2026-08-05), S2 mood presets + shot variety (2026-08-06)
 
+> **Superseded in part (2026-09-10):** `present` (§4.1) is no longer left
+> absolute — it becomes a pool-wide percentile rank alongside `motion`/`shake`,
+> and `score_pool` (§4.5) now returns a report and runs BEFORE `Footage` is
+> assembled, not between assembly and `cull` — see
+> [2026-09-10-unmeasured-named-design.md](2026-09-10-unmeasured-named-design.md).
+> The four affected passages are annotated in place below; the sensor rewrite
+> itself (§1–§3, §5–§7) and the honest limits not called out are unchanged.
+
 ---
 
 ## 0. Why this is not the re-tune that was chartered
@@ -212,7 +220,7 @@ relative where the scale is a property of the footage**.
 |---|---|---|
 | `motion` | percentile **within its own clip**, falling back to the pool below `CLIP_POOL_MIN` windows | "the active moment of this shot" is the editorial question; measured within-clip spread is 87% of pool spread, so almost nothing is lost |
 | `shake` | percentile across the **pool**, inverted | steadiness is a camera property; comparing a window to the other windows of its own clip asks nothing (§1.1) |
-| `present` | absolute fraction, unchanged | its [0, 1] scale already means what it says |
+| `present` | absolute fraction, unchanged | its [0, 1] scale already means what it says — **superseded 2026-09-10**: now a pool-wide rank, see [unmeasured-named](2026-09-10-unmeasured-named-design.md) §3 |
 | `dur` | **removed** | §4.3 |
 
 `CLIP_POOL_MIN = 5` windows. Below it a clip has no distribution to speak of —
@@ -272,6 +280,13 @@ score_pool(clips: list[FootageClip]) -> None      # mutates w.score and w.descri
 called in `intake()` between `footage.Footage(...)` assembly and `cull(...)` —
 the same Phase-2 position `cull` already occupies. `_build_window` stops computing
 `score`; the field keeps its `0.0` default until Phase 2 fills it.
+
+> **Superseded 2026-09-10:** `score_pool` now returns a `dict` report (not
+> `None`) and is called BEFORE `footage.Footage(...)` is assembled, not between
+> assembly and `cull` — so the report passes `__post_init__` validation instead
+> of being assigned onto a built object. See
+> [2026-09-10-unmeasured-named-design.md](2026-09-10-unmeasured-named-design.md)
+> §4.2.
 
 `_describe`'s dynamic/calm word moves with it. That word is a comparison
 (`motion >= MOTION_PEAK`) and every comparison in this design is now pool-relative,
@@ -386,6 +401,14 @@ people-full window's blend floors at 0.44 (`W_PRESENT` alone, its worst) — so
 regardless of how those windows move or hold steady. Until B-roll exists, `present`
 contributes a constant and this asymmetry stays invisible.
 
+> **Closed 2026-09-10:** the new design's §3.2 turns `present` into a
+> pool-wide rank alongside `motion`/`shake`, removing the units mismatch this
+> asymmetry depended on — a rank cannot cap or floor the blend the way an
+> absolute fraction summed against two ranks could. See
+> [2026-09-10-unmeasured-named-design.md](2026-09-10-unmeasured-named-design.md)
+> §3.2. This paragraph's reasoning was correct when written and stays as the
+> record of why the fix mattered.
+
 **8.4 A v7 `FOOTAGE.json` loads silently with the old meaning.** §5 adds no new
 required key, because the change is semantic and `from_dict` can only see shape.
 Anyone holding a pre-slice file gets old-meaning numbers in new-meaning columns
@@ -444,6 +467,15 @@ same order always produce the same output, so the cross-`--jobs` byte-identity
 invariant (`docs/specs/2026-07-25-intake-parallel-checkpoint-design.md`'s central
 invariant) does not break — but "equal inputs give equal ranks" (§4.2) holds only
 for bit-identical floats, not for every pair a human would call equal.
+
+> **Basis updated 2026-09-10:** `present` is no longer a raw fraction that can
+> sit fixed at 1.0 — it is now `_percentile_rank`'s own output (§3), so the
+> literal `W_PRESENT*present` term above no longer occurs in that form. The
+> float phenomenon it illustrates is unchanged: summing the same three ranks in
+> a different order can still land one ULP apart, so the blend can still put
+> two values a human would call equal on adjacent ranks instead of a shared
+> one. See
+> [2026-09-10-unmeasured-named-design.md](2026-09-10-unmeasured-named-design.md).
 
 **8.11 The largest behavioural change has no real-bytes coverage.**
 Window-boundary movement (§3.3) and `score_pool` ranking ACROSS multiple windows
