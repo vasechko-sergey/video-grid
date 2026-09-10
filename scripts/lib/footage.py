@@ -29,6 +29,12 @@ def _num(v: object) -> bool:
 SHOT_TYPES = ("close", "medium", "wide")
 CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08     # subject-area fractions bounding the three tags
 
+# The three terms intake's window score blends, in the order they are reported.
+# Lives here rather than in intake.py because it is an ON-DISK vocabulary: Footage
+# validates a FOOTAGE.json against it, and lib may not import a driver (the same
+# reason SHOT_TYPES lives here and moodpreset imports it).
+SCORE_TERMS = ("present", "motion", "shake")
+
 
 def shot_type(subject_w: float, subject_h: float) -> str:
     """close/medium/wide from the subject's area as a fraction of the FRAME it is
@@ -245,6 +251,7 @@ class FootageClip:
 class Footage:
     clips: list[FootageClip] = field(default_factory=list)
     band: tuple | None = None        # (win_min, win_max) this scan carved with
+    scoring: dict | None = None      # what each score term separated (design 2026-09-10 §4)
 
     def __post_init__(self) -> None:
         for k, c in enumerate(self.clips):
@@ -261,6 +268,28 @@ class Footage:
                     f"2026-09-03. Got {self.band!r} — re-run footage-intake to "
                     f"regenerate FOOTAGE.json")
             self.band = (float(self.band[0]), float(self.band[1]))
+        if self.scoring is not None:
+            s = self.scoring
+            if not isinstance(s, dict) or set(s) != {"windows", "separated"}:
+                raise ValueError(
+                    f"Footage.scoring must be {{'windows': int, 'separated': {{term: int}}}}, "
+                    f"or null on an artifact written before 2026-09-10. Got {s!r} — re-run "
+                    f"footage-intake to regenerate FOOTAGE.json")
+            n = s["windows"]
+            if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+                raise ValueError(f"Footage.scoring['windows'] must be an int >= 0, got {n!r}")
+            sep = s["separated"]
+            if not isinstance(sep, dict) or set(sep) != set(SCORE_TERMS):
+                raise ValueError(
+                    f"Footage.scoring['separated'] must carry one count per {SCORE_TERMS}, "
+                    f"got {sep!r}")
+            for k in SCORE_TERMS:
+                v = sep[k]
+                if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= n:
+                    raise ValueError(
+                        f"Footage.scoring['separated'][{k!r}] must be an int in [0, {n}] — a "
+                        f"term cannot separate more windows than the pool holds; got {v!r}")
+            self.scoring = {"windows": n, "separated": {k: int(sep[k]) for k in SCORE_TERMS}}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Footage":
@@ -282,7 +311,7 @@ class Footage:
             if not isinstance(c, dict):
                 raise ValueError(f"Footage.from_dict: clips[{k}] must be an object")
             clips.append(FootageClip.from_dict(c))
-        return cls(clips=clips, band=d.get("band"))
+        return cls(clips=clips, band=d.get("band"), scoring=d.get("scoring"))
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Footage":
@@ -294,7 +323,10 @@ class Footage:
 
     def to_dict(self) -> dict:
         return {"clips": [c.to_dict() for c in self.clips],
-                "band": None if self.band is None else list(self.band)}
+                "band": None if self.band is None else list(self.band),
+                "scoring": None if self.scoring is None else {
+                    "windows": self.scoring["windows"],
+                    "separated": dict(self.scoring["separated"])}}
 
     def ranked_windows(self) -> list[tuple["FootageClip", "FootageWindow"]]:
         pairs = [(c, w) for c in self.clips for w in c.windows]
@@ -308,6 +340,13 @@ class Footage:
                  "2026-08-06-intake-motion-scoring §4.2) — never an absolute quality bar, and "
                  "never comparable to another shoot's numbers. `motion` is mean per-sample "
                  "subject displacement as a fraction of frame width.", ""]
+        if self.scoring is not None:
+            n, sep = self.scoring["windows"], self.scoring["separated"]
+            lines += ["Each blend term's `separated` count is how many of those windows it "
+                      "told apart. A term near zero contributed nothing to THIS pool's "
+                      "ordering — it is not a quality signal here, whatever its weight "
+                      "(design 2026-09-10 §4): "
+                      + ", ".join(f"**{t}** {sep[t]}/{n}" for t in SCORE_TERMS) + ".", ""]
         for c in self.clips:
             flag = " · shaky" if c.shaky else ""
             lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")

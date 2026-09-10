@@ -501,3 +501,43 @@ def test_footage_rejects_a_one_element_band():
 def test_footage_rejects_an_inverted_band():
     with pytest.raises(ValueError, match="band"):
         footage.Footage(clips=[], band=(4.0, 1.2))
+
+
+def test_footage_scoring_round_trips_and_defaults_to_none():
+    f = footage.Footage(clips=[], scoring={"windows": 4,
+                                           "separated": {"present": 0, "motion": 3, "shake": 4}})
+    back = footage.Footage.from_dict(f.to_dict())
+    assert back.scoring == {"windows": 4,
+                            "separated": {"present": 0, "motion": 3, "shake": 4}}
+    # an artifact written before 2026-09-10 carries no key at all
+    assert footage.Footage.from_dict({"clips": []}).scoring is None
+
+
+def test_footage_scoring_refuses_a_term_outside_the_vocabulary():
+    with pytest.raises(ValueError, match="one count per"):
+        footage.Footage(clips=[], scoring={"windows": 2,
+                                           "separated": {"present": 1, "motion": 1}})
+
+
+def test_footage_scoring_refuses_separating_more_windows_than_the_pool_holds():
+    with pytest.raises(ValueError, match="cannot separate more windows"):
+        footage.Footage(clips=[], scoring={"windows": 2,
+                                           "separated": {"present": 0, "motion": 3, "shake": 1}})
+
+
+def test_footage_scoring_refuses_a_non_dict():
+    with pytest.raises(ValueError, match="Footage.scoring must be"):
+        footage.Footage(clips=[], scoring=[1, 2, 3])
+
+
+def test_footage_markdown_names_a_term_that_separated_nothing():
+    f = footage.Footage(clips=[], scoring={"windows": 1508,
+                                           "separated": {"present": 3, "motion": 1429,
+                                                         "shake": 1458}})
+    md = f.to_markdown()
+    assert "**present** 3/1508" in md
+    assert "separated" in md
+
+
+def test_footage_markdown_says_nothing_about_scoring_on_an_older_artifact():
+    assert "separated" not in footage.Footage(clips=[]).to_markdown()
