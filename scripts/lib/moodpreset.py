@@ -146,7 +146,9 @@ class VarietyReport:
     Both censuses are measured in the SAME geometry (the project's default framing —
     design §6); comparing a delivered `used` against a source `available` would put
     the two sides of the comparison in different units. `gaps` survives a waiver on
-    purpose: the waiver records a decision, it does not delete the finding."""
+    purpose: the waiver records a decision, it does not delete the finding. `unmeasured`
+    is the census's own blind spot, not a fourth size: it counts how many of the SAME
+    windows were measured against a detector that found nothing."""
     preset: str
     available: dict[str, int]
     used: dict[str, int]
@@ -154,6 +156,14 @@ class VarietyReport:
     asl_band: tuple[float, float]
     gaps: tuple[str, ...] = ()
     waiver: str | None = None
+    # How many of the windows counted in `available` carried no detected subject at
+    # all. They ARE in the census, tagged `wide`, and correctly so: shot size is the
+    # subject's area fraction and nothing fills the frame (design 2026-09-10 §0.5).
+    # The count exists because `available` is otherwise read as a description of the
+    # footage — and on a shoot with no people in it, every window lands in `wide` and
+    # the census states that the footage offers no close-ups about footage that may be
+    # entirely close-ups (§0.2). A subset of the census, never a fourth bucket.
+    unmeasured: int = 0
 
     def __post_init__(self) -> None:
         if not (isinstance(self.preset, str) and self.preset):
@@ -180,6 +190,19 @@ class VarietyReport:
                 "VarietyReport.waiver must be a non-empty reason or null — a blank waiver is a "
                 'bypass wearing the costume of a decision. State why the cut stays one size in '
                 'selection.json\'s "variety_waiver"')
+        if isinstance(self.unmeasured, bool) or not isinstance(self.unmeasured, int) \
+                or self.unmeasured < 0:
+            raise ValueError(
+                f"VarietyReport.unmeasured must be an int >= 0 (windows in `available` whose "
+                f"subject was never detected), got {self.unmeasured!r} — re-run `edit_plan "
+                f"build` to regenerate EDL.json")
+        total = sum(self.available.values())
+        if self.unmeasured > total:
+            raise ValueError(
+                f"VarietyReport.unmeasured {self.unmeasured} exceeds the {total} windows in "
+                f"`available` — the unmeasured windows are a SUBSET of the census (counted in "
+                f"it as `wide`), not a fourth bucket beside it. Re-run `edit_plan build` to "
+                f"regenerate EDL.json")
 
     @property
     def ok(self) -> bool:
@@ -189,7 +212,7 @@ class VarietyReport:
     def to_dict(self) -> dict:
         return {"preset": self.preset, "available": dict(self.available),
                 "used": dict(self.used), "asl": self.asl, "asl_band": list(self.asl_band),
-                "gaps": list(self.gaps), "waiver": self.waiver}
+                "gaps": list(self.gaps), "waiver": self.waiver, "unmeasured": self.unmeasured}
 
     @classmethod
     def from_dict(cls, d: dict) -> "VarietyReport":
@@ -198,11 +221,13 @@ class VarietyReport:
                              f"used fields, got {type(d).__name__} — re-run edit_plan build")
         return cls(preset=d.get("preset"), available=d.get("available"), used=d.get("used"),
                    asl=d.get("asl"), asl_band=d.get("asl_band"),
-                   gaps=tuple(d.get("gaps") or ()), waiver=d.get("waiver"))
+                   gaps=tuple(d.get("gaps") or ()), waiver=d.get("waiver"),
+                   unmeasured=d.get("unmeasured") or 0)
 
 
 def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
-             preset: MoodPreset, waiver: str | None = None) -> VarietyReport:
+             preset: MoodPreset, waiver: str | None = None,
+             unmeasured: int = 0) -> VarietyReport:
     """Refuse only on a size the cut uses ZERO of, that the footage genuinely offers,
     and that the preset genuinely wants (design §7, decision 6). Deviation from the
     target fractions when the size IS used, and the realized ASL, are carried in the
@@ -215,7 +240,8 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
     return VarietyReport(preset=preset.name,
                          available={s: int(available.get(s, 0)) for s in SHOT_TYPES},
                          used={s: int(used.get(s, 0)) for s in SHOT_TYPES},
-                         asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver)
+                         asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver,
+                         unmeasured=unmeasured)
 
 
 def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:

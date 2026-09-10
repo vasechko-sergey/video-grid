@@ -226,3 +226,42 @@ def test_reconcile_never_fires_at_the_shipped_defaults():
     # so this check goes live only when an operator raises --win-min.
     for p in moodpreset.PRESETS + (moodpreset.BALANCED,):
         assert moodpreset.reconcile_band(p, carve.DEFAULT_BAND) is None
+
+
+# --- VarietyReport.unmeasured: the census's blind spot (design 2026-09-10) ----------
+
+
+def _variety(unmeasured=0):
+    return moodpreset.VarietyReport(preset="fun", available=_counts(close=1, medium=1, wide=8),
+                                    used=_counts(close=1, wide=1), asl=2.0, asl_band=(1.0, 3.0),
+                                    unmeasured=unmeasured)
+
+
+def test_variety_unmeasured_round_trips_and_defaults_to_zero():
+    r = _variety(unmeasured=6)
+    assert moodpreset.VarietyReport.from_dict(r.to_dict()).unmeasured == 6
+    # an EDL.json written before 2026-09-10 carries no key
+    d = r.to_dict()
+    del d["unmeasured"]
+    assert moodpreset.VarietyReport.from_dict(d).unmeasured == 0
+
+
+def test_variety_unmeasured_refuses_to_exceed_the_census_it_is_a_subset_of():
+    with pytest.raises(ValueError, match="exceeds the 10 windows"):
+        _variety(unmeasured=11)
+
+
+def test_variety_unmeasured_refuses_a_non_int():
+    with pytest.raises(ValueError, match="unmeasured must be an int"):
+        _variety(unmeasured=2.5)
+
+
+def test_evaluate_carries_unmeasured_through_without_touching_the_gaps():
+    # the gate still judges only what it COULD measure: a size below MIN_AVAIL is not a
+    # gap, whether or not the census had blind windows (design 2026-09-10 §2.2).
+    preset = moodpreset.resolve("fun")
+    r = moodpreset.evaluate(_counts(wide=40), _counts(wide=8), 2.0, preset,
+                            unmeasured=40)
+    assert r.unmeasured == 40
+    assert r.gaps == ()
+    assert r.ok
