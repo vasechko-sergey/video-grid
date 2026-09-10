@@ -630,13 +630,15 @@ At the END of `VarietyReport.__post_init__`, after the `waiver` check:
                 or self.unmeasured < 0:
             raise ValueError(
                 f"VarietyReport.unmeasured must be an int >= 0 (windows in `available` whose "
-                f"subject was never detected), got {self.unmeasured!r}")
+                f"subject was never detected), got {self.unmeasured!r} — re-run `edit_plan "
+                f"build` to regenerate EDL.json")
         total = sum(self.available.values())
         if self.unmeasured > total:
             raise ValueError(
                 f"VarietyReport.unmeasured {self.unmeasured} exceeds the {total} windows in "
                 f"`available` — the unmeasured windows are a SUBSET of the census (counted in "
-                f"it as `wide`), not a fourth bucket beside it")
+                f"it as `wide`), not a fourth bucket beside it. Re-run `edit_plan build` to "
+                f"regenerate EDL.json")
 ```
 
 - [ ] **Step 5: Round-trip it**
