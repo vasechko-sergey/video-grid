@@ -693,6 +693,11 @@ def _variety_edl(unmeasured):
 def test_edl_markdown_names_the_unmeasured_windows():
     md = _variety_edl(9).to_markdown()
     assert "9 of the 9 available windows carried no detected subject" in md
+    # The trailing clause names the mechanism: windows are COUNTED ALREADY as wide,
+    # and the census reports what it COULD NOT SEE — so they read as blind spots,
+    # not as a fourth shot-size bucket. These two phrases are load-bearing.
+    assert "and are counted above as `wide`" in md
+    assert "census describes what it could not see" in md
 
 
 def test_edl_markdown_stays_silent_at_zero_unmeasured():
