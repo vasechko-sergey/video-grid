@@ -670,6 +670,74 @@ def test_available_census_counts_windows_not_seconds():
     assert edl.variety.available["close"] == 3
 
 
+def test_available_census_counts_windows_with_no_detected_subject():
+    clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.0, subject_h=0.0),
+                                            _window(subject_w=0.0, subject_h=0.4),
+                                            _window(subject_w=0.5, subject_h=0.6)])
+    counts, unmeasured = edit_plan._available_census(Footage(clips=[clip]), (9, 16))
+    assert unmeasured == 2          # (0, 0) and (0, 0.4) both have zero subject AREA
+    assert sum(counts.values()) == 3
+
+
+def test_available_census_reports_no_blind_windows_when_every_subject_was_found():
+    clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.3, subject_h=0.4)])
+    counts, unmeasured = edit_plan._available_census(Footage(clips=[clip]), (9, 16))
+    assert unmeasured == 0
+    assert sum(counts.values()) == 1
+
+
+def test_build_edl_carries_the_call_sites_own_unmeasured_count():
+    # Review question for this task: the two tests above call `_available_census`
+    # directly, so neither one exercises build_edl's call site at all -- a call site
+    # that hardcoded unmeasured=0 instead of forwarding the counted value would pass
+    # both of them in silence. Two close windows a person detector measured (used,
+    # so no variety-gap on "close") plus one wide window it found nobody in
+    # (unmeasured, and left unused -- "wide" has only 1 available window, under
+    # MIN_AVAIL, so leaving it unused cannot trip the gate either).
+    clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.8, subject_h=0.8),
+                                            _window(subject_w=0.8, subject_h=0.8),
+                                            _window(subject_w=0.0, subject_h=0.0)])
+    footage = Footage(clips=[clip])
+    sel = {"episodes": [{"source": clip.source, "window": 0, "composition": "center", "grid": "thirds"},
+                        {"source": clip.source, "window": 1, "composition": "center", "grid": "thirds"}]}
+    edl = edit_plan.build_edl(footage, sel, aspect=(9, 16), preset=moodpreset.resolve("fun"))
+    assert edl.variety.gaps == ()                    # fixture sanity: the gate must not stop here
+    assert edl.variety.unmeasured == 1
+
+
+def test_write_edit_plan_logs_and_writes_the_unmeasured_count(tmp_path, capsys):
+    # The companion to the test above, one level up: write_edit_plan is the gate that
+    # actually LOGS the count (edit_plan.py's `_log("variety: ...")` line) and writes
+    # it into EDL.json -- neither is reached by calling build_edl directly.
+    clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.8, subject_h=0.8),
+                                            _window(subject_w=0.8, subject_h=0.8),
+                                            _window(subject_w=0.0, subject_h=0.0)])
+    footage = Footage(clips=[clip])
+    sel = {"episodes": [{"source": clip.source, "window": 0, "composition": "center", "grid": "thirds"},
+                        {"source": clip.source, "window": 1, "composition": "center", "grid": "thirds"}]}
+    fp, sp, pp = _write_inputs(tmp_path, sel, footage)
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["status"] == "written"
+    written = json.loads((tmp_path / "EDL.json").read_text())
+    assert written["variety"]["unmeasured"] == 1
+    err = capsys.readouterr().err
+    assert "(1 with no detected subject)" in err
+
+
+def test_write_edit_plan_logs_no_clause_when_every_subject_was_measured(tmp_path, capsys):
+    # The control for the test above: _varied_footage()'s nine windows are ALL
+    # explicitly measured (subject_w/subject_h > 0), so the gate must add no clause at
+    # all -- a regression that rendered the clause unconditionally (or on `is not
+    # None` rather than truthiness) would slip past every test above, none of which
+    # drives write_edit_plan on all-measured footage.
+    sel = {**_wide_only_selection(), "variety_waiver": "close windows are soft"}
+    fp, sp, pp = _write_inputs(tmp_path, sel, _varied_footage())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))
+    assert result["status"] == "written"
+    err = capsys.readouterr().err
+    assert "no detected subject" not in err
+
+
 def test_variety_asl_reads_played_time_not_source_time():
     # Final-review finding (the eighth length consumer, design §6): a ramped episode's
     # `dur` is how much SOURCE it consumes, not how long it PLAYS — summing `dur` for

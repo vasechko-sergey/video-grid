@@ -368,7 +368,7 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     return out, fit
 
 
-def _available_census(footage: Footage, aspect: tuple[int, int]) -> dict[str, int]:
+def _available_census(footage: Footage, aspect: tuple[int, int]) -> tuple[dict[str, int], int]:
     """Every window the footage offers, bucketed in DELIVERED geometry (design §6).
 
     Every window, never only the `best` ones: `best` is a threshold on a score whose
@@ -377,12 +377,24 @@ def _available_census(footage: Footage, aspect: tuple[int, int]) -> dict[str, in
     own. Windows are candidate SPANS, not distinct moments: `intake.cull` only
     demotes a duplicate's `best` flag, it never removes a window from FOOTAGE.json,
     and `carve.units_for_span` deliberately emits overlapping candidates — so one
-    real moment can contribute several windows to this count (design §13.9)."""
+    real moment can contribute several windows to this count (design §13.9).
+
+    Returns (counts, unmeasured). `unmeasured` is how many of those SAME windows
+    carried no detected subject: intake measures subject_w/subject_h with a person
+    detector, and a window it found nobody in reads (0.0, 0.0), whose delivered shot
+    size is `wide` — correctly, since nothing fills the frame (design 2026-09-10
+    §0.5). The count exists so `available` stops reading as a complete description
+    of the footage: on a shoot with no people in it every window lands in `wide`,
+    and the census would otherwise state that the footage offers no close-ups about
+    footage that may be entirely close-ups (§0.2)."""
     counts = {s: 0 for s in SHOT_TYPES}
+    unmeasured = 0
     for clip in footage.clips:
         for w in clip.windows:
             counts[delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)] += 1
-    return counts
+            if w.subject_w * w.subject_h == 0.0:
+                unmeasured += 1
+    return counts, unmeasured
 
 
 def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
@@ -598,8 +610,10 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     variety = None
     if aspect is not None and preset is not None:
         asl = (sum(e.play_dur() for e in episodes) / len(episodes)) if episodes else 0.0
-        variety = moodpreset.evaluate(_available_census(footage, aspect), used, asl,
-                                      preset, waiver=selection.get("variety_waiver"))
+        avail, unmeasured = _available_census(footage, aspect)
+        variety = moodpreset.evaluate(avail, used, asl, preset,
+                                      waiver=selection.get("variety_waiver"),
+                                      unmeasured=unmeasured)
     # After pacing: binding rewrites `dur` only, which none of the four rule kinds
     # reads — but evaluating the FINAL episode list keeps the report describing the
     # EDL that is actually written.
@@ -758,8 +772,9 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                 "finding": {"reason": "length-band", "episode_idx": None,
                             "problems": [band_problem]}}
     v = edl.variety
-    _log("variety: preset {} — footage offers {}".format(
-        v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES)))
+    _log("variety: preset {} — footage offers {}{}".format(
+        v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES),
+        f" ({v.unmeasured} with no detected subject)" if v.unmeasured else ""))
     if not v.ok:
         problems = []
         for s in v.gaps:

@@ -464,6 +464,12 @@ class EDL:
             lines += ["", f"## Variety — preset `{v.preset}`", "",
                       "| shot | available | used |", "|------|----------:|-----:|"]
             lines += [f"| {s} | {v.available[s]} | {v.used[s]} |" for s in v.available]
+            if v.unmeasured:
+                lines += ["", f"**{v.unmeasured} of the {sum(v.available.values())} available "
+                              f"windows carried no detected subject** and are counted above as "
+                              f"`wide`. Shot size is the subject's share of the frame, measured "
+                              f"with a person detector — so on footage without people this "
+                              f"census describes what it could not see (design 2026-09-10 §2)."]
             lines += ["", f"ASL {v.asl:.2f}s against the preset's "
                           f"{v.asl_band[0]:.1f}–{v.asl_band[1]:.1f}s band "
                           f"(reported, not enforced)."]

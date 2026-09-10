@@ -683,6 +683,22 @@ def test_markdown_prints_available_against_used_and_the_waiver():
     assert "close windows are soft" in md
 
 
+def _variety_edl(unmeasured):
+    r = moodpreset.evaluate({"close": 0, "medium": 0, "wide": 9},
+                            {"close": 0, "medium": 0, "wide": 3}, 2.0,
+                            moodpreset.resolve("fun"), unmeasured=unmeasured)
+    return EDL(episodes=(_ep(),), variety=r)
+
+
+def test_edl_markdown_names_the_unmeasured_windows():
+    md = _variety_edl(9).to_markdown()
+    assert "9 of the 9 available windows carried no detected subject" in md
+
+
+def test_edl_markdown_stays_silent_at_zero_unmeasured():
+    assert "no detected subject" not in _variety_edl(0).to_markdown()
+
+
 # --- editorial-constraints Task 3: EDL.constraints (design docs/specs/2026-08-07-editorial-constraints-design.md §8)
 
 def _report(ok=True):
