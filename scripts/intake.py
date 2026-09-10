@@ -9,6 +9,7 @@ crops and embeds them (512-d OSNet via lib/reid, design 2026-08-04).
 import argparse, json, statistics, tempfile
 import shutil
 import sys
+from collections import Counter
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
@@ -120,7 +121,26 @@ def _percentile_rank(values: list[float]) -> list[float]:
     return out
 
 
-def score_pool(clips: list[footage.FootageClip]) -> None:
+def _separated(vec: list[float]) -> int:
+    """How many windows a blend term told apart: the pool size minus its largest tie
+    group. A term whose every window shares one value separated NOTHING — it shifts
+    the blend by a constant, which the final `_percentile_rank` then makes invisible
+    to the ordering (design 2026-09-10 §4).
+
+    Measured on the RANKED vector the blend consumes, not the raw input: that is
+    what the ordering was actually built from. `motion` ranks per-clip above
+    CLIP_POOL_MIN, so two clips can land a window on the same rank by coincidence
+    (every clip's top window ranks 1.0) — its count is exact for the blend and a
+    LOWER BOUND on what the raw measurement distinguished (§4.1). That asymmetry is
+    safe in the direction that matters: a coincidence can only merge two values,
+    never split one, so an inert term cannot be inflated into looking useful.
+    """
+    if not vec:
+        return 0
+    return len(vec) - max(Counter(vec).values())
+
+
+def score_pool(clips: list[footage.FootageClip]) -> dict:
     """Fill every window's `score` and `description` from the WHOLE pool — Phase 2
     (design 2026-08-06-intake-motion-scoring §4). Mutates in place, like cull.
 
@@ -134,18 +154,27 @@ def score_pool(clips: list[footage.FootageClip]) -> None:
     Each factor is scaled on the scale its question deserves: `motion` by rank
     WITHIN ITS OWN CLIP ("the active moment of this shot"), falling back to the pool
     below CLIP_POOL_MIN windows; `shake` by rank across the pool (steadiness is a
-    camera property, so a within-clip comparison asks nothing); `present` absolutely,
-    its fraction already meaning what it says. The blend is then ranked across the
-    pool, so `score` IS a percentile — which makes a constant factor unable to
-    distort the ordering, restores BEST_FLOOR's meaning, and makes saturation
-    unrepresentable.
+    camera property, so a within-clip comparison asks nothing); `present` by rank
+    across the pool too — "does this window hold the subject" is a whole-shoot
+    comparison, and a pool where nobody is present then ties at a constant instead
+    of contributing a uniform zero that still outweighs two ranks (design
+    2026-09-10 §3). It was absolute until 2026-09-10, which summed a raw fraction
+    against two percentiles: on the only real pool that was harmless because the
+    term was near-constant, and it separated 3 windows of 1508 (§0.1). The blend is
+    then ranked across the pool, so `score` IS a percentile — which makes a
+    constant factor unable to distort the ordering, restores BEST_FLOOR's meaning,
+    and makes saturation unrepresentable.
 
     Deterministic in the order of `clips`, which intake() has already re-sorted into
     `paths` order — so output stays byte-identical at any --jobs and cache mix
-    (intake-parallel §2)."""
+    (intake-parallel §2).
+
+    Returns the separation report `Footage.scoring` carries: how many windows each
+    term told apart, so a weight that bought nothing on this pool is visible instead
+    of implied by its size."""
     windows = [w for c in clips for w in c.windows]
     if not windows:
-        return
+        return {"windows": 0, "separated": {t: 0 for t in footage.SCORE_TERMS}}
     motion_fit = _percentile_rank([w.motion for w in windows])
     at = 0
     for c in clips:                      # a big enough clip ranks its own windows in place
@@ -154,11 +183,16 @@ def score_pool(clips: list[footage.FootageClip]) -> None:
             motion_fit[at:at + n] = _percentile_rank([w.motion for w in c.windows])
         at += n
     stability = _percentile_rank([-w.shake for w in windows])
-    blend = [W_PRESENT * w.present + W_MOTION * m + W_STABLE * s
-             for w, m, s in zip(windows, motion_fit, stability)]
+    presence = _percentile_rank([w.present for w in windows])
+    blend = [W_PRESENT * p + W_MOTION * m + W_STABLE * s
+             for p, m, s in zip(presence, motion_fit, stability)]
     for w, sc, m in zip(windows, _percentile_rank(blend), motion_fit):
         w.score = round(sc, 3)
         w.description = _describe(w.people, w.shot_type, m)
+    return {"windows": len(windows),
+            "separated": {"present": _separated(presence),
+                          "motion": _separated(motion_fit),
+                          "shake": _separated(stability)}}
 
 
 def _describe(people: int, shot: str, motion_rank: float) -> str:

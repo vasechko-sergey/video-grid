@@ -1028,3 +1028,47 @@ def test_intake_records_the_band_it_carved_with(sample_clip, tmp_path):
 def test_intake_records_the_default_band_when_none_is_given(sample_clip, tmp_path):
     f = intake.intake(str(sample_clip.parent), str(tmp_path / "run"))
     assert f.band == carve.DEFAULT_BAND
+
+
+def test_separated_is_the_pool_minus_its_largest_tie_group():
+    assert intake._separated([]) == 0
+    assert intake._separated([0.5, 0.5, 0.5, 0.5]) == 0        # one tie group: nothing told apart
+    assert intake._separated([0.0, 1.0]) == 1                   # two groups of one
+    assert intake._separated([0.5, 0.5, 0.5, 0.9]) == 1         # the outlier alone
+
+
+def test_score_pool_reports_a_presence_term_that_separated_nothing():
+    # every window holds people for its whole span — the 2026-06 run's shape (99.8%)
+    ws = [_w(dur=2.0, people=1, motion=m, shake=0.0, present=1.0)
+          for m in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)]
+    rep = intake.score_pool([_clip("a.mp4", ws)])
+    assert rep["windows"] == 6
+    assert rep["separated"]["present"] == 0
+    assert rep["separated"]["motion"] == 5      # six distinct motions, largest tie 1
+
+
+def test_score_pool_reports_a_presence_term_that_did_separate():
+    ws = [_w(dur=2.0, people=1, motion=0.5, shake=0.0, present=p)
+          for p in (0.0, 0.25, 0.5, 0.75, 1.0, 1.0)]
+    rep = intake.score_pool([_clip("a.mp4", ws)])
+    assert rep["separated"]["present"] == 4     # six windows, largest tie group is the two 1.0s
+
+
+def test_score_pool_on_an_empty_pool_reports_zero_windows_not_none():
+    # an empty pool is a MEASUREMENT (zero windows), not an absent one. Footage.scoring
+    # is None only on an artifact written before this slice.
+    assert intake.score_pool([]) == {"windows": 0,
+                                     "separated": {"present": 0, "motion": 0, "shake": 0}}
+
+
+def test_presence_is_ranked_across_the_pool_not_summed_absolutely():
+    # A pool where NOBODY is present must not have 0.44 of its blend zeroed away: the
+    # ranked term ties at a constant, which _percentile_rank's tie rule then makes
+    # invisible to the ordering. So the ordering must be the SAME as an identical pool
+    # where everybody is present (design 2026-09-10 §3.1).
+    def scores(present):
+        ws = [_w(dur=2.0, people=0, motion=m, shake=s, present=present)
+              for m, s in ((0.1, 0.9), (0.5, 0.2), (0.9, 0.5))]
+        intake.score_pool([_clip("a.mp4", ws)])
+        return [w.score for w in ws]
+    assert scores(0.0) == scores(1.0)
