@@ -56,7 +56,7 @@ is still P3.
 |---|------|------|--------|
 | ◐ | **R2.1 · Grade against named subjects, not the frame mean.** The operator's own three anchors: skin, the black wetsuit, the water. That gap was originally found on `color_across_cuts`, which compared whole-frame means — on ep5, a frame that is mostly dark water, the correction it authored lifted Lena's face to **156 luma, above her own ungraded plate**. That check and its corrector are deleted (colour-convergence-retire, 2026-08-29), but the gap is not: `matchgrade.measure_profile`, which now sets the reel's one common tone target, still reads a whole source frame at the window midpoint rather than the named subjects — the same frame-vs-subject mismatch, on the stage that survived. Five of the run's six days went here. — **✅ closed 2026-08-30 by "Grade the pixels that ship"**, though not the way this row asked: the target is still (p5, p50, p95) of luma and still knows nothing about skin, wetsuit or water. What changed is the REGION — the conductor now measures each episode's tracked crop, the pixels that actually ship, so the "mostly dark water" frame that lifted Lena's face is no longer what any anchor is computed from. **`◐` and not `✅`, because the row's own title is still open**: no stage names skin, wetsuit or water, and two other rows point here as their home — the P3 `color_fidelity` sampling-box item is folded into this one, and the P3 chroma row carries the across-episode half. What is closed is the frame-vs-crop mismatch that made the anchors wrong; what remains is naming the subjects, which is a different instrument. | L | [retro](retro/2026-08-25-first-real-run.md) R2, [design](specs/2026-08-30-grade-shipped-pixels-design.md) §3 |
 | ○ | **R4.1 · Every CLI and every skill line states what the tool is FOR.** 56 Bash calls in the run grepped the product's own source to find out. A name is not a purpose. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
-| ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
+| ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. **A fresh instance, filed 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §4) lands in `FOOTAGE.json`/`FOOTAGE.md`, and no skill line tells an agent to read it — this row's exact shape, not a new one; belongs with this slice rather than scattered ahead of it. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 
 ## P2 — soon
 
@@ -92,6 +92,7 @@ is still P3.
 | ○ | **`grade_faithful`'s report exposes no sample count anywhere, so nothing downstream would notice a silently changed N.** `build_reel.py`'s `color.sample_times(plan.dur)` call — feeding both `_predict` and the master read `check_reel.run` does — picks the frame count with no parameter and no record. `grade_damage`'s report carries a `frames` key precisely so a silently reduced or enlarged sample count is visible (a real hazard: Task 9's own mutation-battery finding measured the sampling spread across N as LARGER than the x264 entropy bias this slice's headline measurement reports); `grade_faithful` has no analogous field. Confirmed by Task 9's re-review, carried forward by Task 10. | S | grade-sensor-references, Task 9 review, Task 10 report |
 | ○ | **Measure the length band against real footage and genre — R1.2's second half.** `carve.DEFAULT_BAND = (1.2, 4.0)` is the same first-cut pair the old `WIN_MIN`/`WIN_MAX` module constants held; mood-contract (0.8.0) made the band selectable and impossible to change silently, not *right* — no number in it was measured against taste. The right floor/ceiling are unknown and genre-dependent and must be measured, not typed. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §7, R1.2 |
 | ○ | **Explain the operator's "pull toward two seconds" against the run's own drafts.** mood-contract (0.8.0) ruled out both mechanisms the retro's R1.2 named, without explaining the impression itself: the delivered reel's median shot was 4.10s — *above* `nostalgic`'s own declared 2.0–4.0s `asl` ceiling — and the carve floor was already 1.2s before this slice touched anything, so neither the preset band nor `WIN_MAX` produced it. Whatever did is still unexplained. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §0.4/§8 |
+| ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
 
 ## P3 — someday
 
@@ -126,7 +127,12 @@ there is any signal (deferred-measurements §4.5) ·
 `carve._tight_unit` emits a window of exactly `win_min` per activity peak, which is
 why 72.9% of a real 1508-window pool is one length, the floor exactly (mood-contract
 §0.1/§8) — whether a tight candidate should scale with its own peak's width instead
-of pinning to the band's floor is untouched here, a carve-sensor question
+of pinning to the band's floor is untouched here, a carve-sensor question ·
+a **non-person subject sensor** — `classes=[0]` is right for heroes (a hero is a
+person, deliberately out of scope), but nothing measures what a people-free frame
+CONTAINS, so `VarietyReport.unmeasured` can only name the census's silence on such
+footage and never fill it — a new instrument, not a report fix
+(unmeasured-named §7)
 
 **Identity**
 hero-conditioned re-scan — re-measure windows holding a named hero after cast naming; **blocked on a face detector** (mood-preset §14, playbook P3) ·
@@ -264,7 +270,13 @@ clip"` against `check_reel`'s `"no-predictions"`/`"no-episode-predicted"`/
 `target_dev_advisory`/`target_dev_reason` on the other. Real, but a convention
 pass over strings a QC judge and a router both read is its own change, not one
 folded into a merge-eve review (grade-sensor-references, final review,
-deliberately out of scope)
+deliberately out of scope) ·
+the **L3 colour-knob one-shoot constants** — `MID_BLUE_BAND`'s "the midtone
+window skin sits in on this footage" and `shadow_red_arg`'s neoprene reference
+are the same class of leak the unmeasured-named audit found elsewhere in this
+tree, in optional knobs a reel that never sets them does not touch — a
+separate blast radius, deliberately split out when that slice was scoped
+(unmeasured-named §7)
 
 **Moves — geometry and time.** These move the frame or the clock, ride the
 tracked route, and are judged by `check_episode` like any crop.
@@ -597,4 +609,4 @@ turned up after the three it set out to fix.
 
 ---
 
-_Last updated: 2026-09-09._
+_Last updated: 2026-09-10._

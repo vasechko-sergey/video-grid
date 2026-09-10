@@ -1053,6 +1053,34 @@ def test_score_pool_reports_a_presence_term_that_did_separate():
     assert rep["separated"]["present"] == 4     # six windows, largest tie group is the two 1.0s
 
 
+def test_separated_motion_is_measured_on_the_per_clip_rank_not_the_raw_pool():
+    # Task 7 mutation battery, row 6 ("the report's `separated` reads the RAW
+    # [w.present ...] instead of `presence`"): applying that exact mutation to
+    # `present` comes back GREEN, and must -- ranking is a monotone map, so raw
+    # and ranked `present` share the SAME tie structure and _separated returns
+    # the same count either way, for ANY input, not just this pool's. The
+    # docstring's "measured on the RANKED vector, not the raw input" claim is
+    # therefore unobservable for `present` by construction. It is NOT vacuous
+    # for `motion`, because motion's rank is per-clip (above CLIP_POOL_MIN),
+    # not pool-wide, and per-clip ranking can introduce ties a pool-wide
+    # reading of the same raw numbers would not have (_separated's own
+    # docstring: "every clip's top window ranks 1.0").
+    #
+    # Two clips, each >= CLIP_POOL_MIN(5), raw motions ALL DISTINCT across the
+    # whole 10-window pool (0.10..0.50, 0.60..1.00) -- so a report built on the
+    # RAW pooled motion would see 10 distinct values, largest tie 1,
+    # separated=9. Both clips independently increase, so each one's own
+    # per-clip rank fills the SAME five slots (0, 0.25, 0.5, 0.75, 1.0) --
+    # motion_fit, the vector the blend and the report actually consume, ties
+    # every one of those five values across the two clips, separated=8.
+    a = [_w(dur=2.0, people=1, motion=m, shake=0.0, present=1.0)
+         for m in (0.10, 0.20, 0.30, 0.40, 0.50)]
+    b = [_w(dur=2.0, people=1, motion=m, shake=0.0, present=1.0)
+         for m in (0.60, 0.70, 0.80, 0.90, 1.00)]
+    rep = intake.score_pool([_clip("a.mp4", a), _clip("b.mp4", b)])
+    assert rep["separated"]["motion"] == 8      # NOT 9 -- the per-clip-rank coincidence fires
+
+
 def test_score_pool_on_an_empty_pool_reports_zero_windows_not_none():
     # an empty pool is a MEASUREMENT (zero windows), not an absent one. Footage.scoring
     # is None only on an artifact written before this slice. Folded in the old
@@ -1096,6 +1124,34 @@ def test_presence_is_ranked_across_the_pool_not_summed_absolutely():
     ws = [w1, w2, w3]
     intake.score_pool([_clip("a.mp4", ws)])
     assert [w.score for w in ws] == [0.5, 0.0, 1.0]
+
+
+def test_presence_ranks_pool_wide_even_when_a_single_clip_meets_CLIP_POOL_MIN():
+    # Coverage hole found running the Task 7 mutation battery: row 4 ("presence
+    # ranked per-clip like motion") is invisible to
+    # test_a_pool_where_everyone_is_present_reports_presence_separated_nothing
+    # (tests/integration/test_unmeasured_named.py), because that fixture is a
+    # SINGLE clip -- ranking "per clip" and ranking "pool-wide" are the same
+    # computation over the same list when the pool holds only one clip, so the
+    # mutation applies and nothing observes it (confirmed RED-battery-negative
+    # by hand before writing this test).
+    #
+    # Two clips, each >= CLIP_POOL_MIN(5) so a per-clip override WOULD activate
+    # on both; clip A's presence is uniformly low, clip B's uniformly high, so a
+    # correct pool-wide rank must place all of A below all of B -- ten distinct
+    # ranks, nothing tied. A per-clip rank instead rescales each clip's own five
+    # values to fill [0, 1] independently, so A's top window (barely present at
+    # all) ties with B's top window at rank 1.0 -- the exact "every clip's top
+    # window ranks 1.0" coincidence _separated's own docstring names for motion
+    # (design 2026-09-10 §4.1), here misapplied to presence, which §3.1 says
+    # must stay a WHOLE-SHOOT comparison, unlike motion's "active moment of
+    # THIS shot".
+    a = [_w(dur=2.0, people=0, motion=0.3, shake=0.0, present=p)
+         for p in (0.00, 0.05, 0.10, 0.15, 0.20)]
+    b = [_w(dur=2.0, people=1, motion=0.3, shake=0.0, present=p)
+         for p in (0.80, 0.85, 0.90, 0.95, 1.00)]
+    rep = intake.score_pool([_clip("a.mp4", a), _clip("b.mp4", b)])
+    assert rep["separated"]["present"] == 9      # pool-wide: 10 distinct ranks, none tied
 
 
 def test_a_middling_peopleless_window_can_outrank_the_worst_peopled_one():

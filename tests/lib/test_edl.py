@@ -704,6 +704,18 @@ def test_edl_markdown_stays_silent_at_zero_unmeasured():
     assert "no detected subject" not in _variety_edl(0).to_markdown()
 
 
+def test_edl_markdown_names_the_unmeasured_count_distinct_from_the_total():
+    # Coverage hole found running the Task 7 mutation battery: row 18 ("the block
+    # prints v.unmeasured where it prints the total") is invisible to
+    # test_edl_markdown_names_the_unmeasured_windows just above, because that
+    # fixture (_variety_edl(9)) has unmeasured == total == 9 by construction --
+    # printing v.unmeasured in EITHER position of the sentence renders the exact
+    # same text ("9 of the 9 ..."). A census where the two numbers genuinely
+    # differ is what actually discriminates the swap.
+    md = _variety_edl(3).to_markdown()
+    assert "3 of the 9 available windows carried no detected subject" in md
+
+
 # --- editorial-constraints Task 3: EDL.constraints (design docs/specs/2026-08-07-editorial-constraints-design.md §8)
 
 def _report(ok=True):

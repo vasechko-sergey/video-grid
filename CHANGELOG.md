@@ -10,6 +10,52 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.9.1 — 2026-09-10
+
+**PATCH.** No flag, no stage, no required artifact, and nothing renamed — two
+report fields nothing is required to read, and a blend term corrected from an
+absolute fraction to a rank, measured as a no-op on the only real pool.
+`score` moves in its third decimal, but `FOOTAGE.md` itself documents `score`
+as a percentile within one footage set, "never an absolute quality bar." The
+driving is unchanged.
+
+Two reports stop reading as a finished measurement when they were actually
+silent. The window scorer's largest blend weight (`W_PRESENT`, 0.44)
+separated **3 of 1508** windows on the only real pool and said so nowhere;
+the variety census counts a person detector's silence as a `wide` shot, so a
+people-free reel would read "the footage offers zero close-ups" about
+footage that may be entirely close-ups.
+
+- **`Footage.scoring`** — `{"windows": N, "separated": {term: count}}`,
+  written by `intake` and rendered as one paragraph in `FOOTAGE.md`; `null`
+  on a `FOOTAGE.json` written before this slice. `separated[t]` is the pool
+  size minus the term's largest tie group, measured on the RANKED vector the
+  blend actually consumes.
+- **`VarietyReport.unmeasured`** — how many of the `available` census's
+  windows carried no detected subject at all. They stay counted as `wide`
+  (correctly — shot size is the subject's area fraction, and nothing fills
+  an empty frame), but the count says how much of that bucket is the
+  detector's silence rather than a measurement of the footage. Threaded
+  through `edit_plan`'s census, the gate's log line, and a new `EDL.md`
+  sentence rendered only when non-zero.
+- **`present` becomes a pool-wide percentile rank**, joining `motion`/
+  `shake`, instead of a raw fraction summed against two ranks. Measured as a
+  no-op on the only real pool (Spearman 0.999039 between the two orderings,
+  identical `best` set, identical top-8/top-30/top-100) — the argument for
+  fixing it now, for free: on a mixed shoot a people-free window otherwise
+  needs a mean rank of 0.786 across motion and shake merely to tie the WORST
+  window that has a person in it.
+
+Two plausible-looking statistics were measured and overturned before
+shipping: "ranking presence changes 555 windows' scores" and "leave-one-out
+says presence moves 493" both re-round a percentile rather than measure a
+term's contribution — separation is the number that survives, because it
+asks about the term's own input, not the downstream rounding. And
+`shot_type(0.0, 0.0) == "wide"` is not the defect: a drone shot of empty
+coastline really is a wide shot; the defect was one level up, in a census
+that reads as a description of the footage rather than of what the detector
+could see.
+
 ## 0.9.0 — 2026-09-09
 
 Three reports stated a conclusion and recorded nothing about what they concluded

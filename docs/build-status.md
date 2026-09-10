@@ -4,13 +4,149 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-09._
+_Last updated: 2026-09-10._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Unmeasured, named — two reports stop claiming a measurement they never
+  made (2026-09-10, 0.9.1)** — design
+  [2026-09-10-unmeasured-named-design.md](specs/2026-09-10-unmeasured-named-design.md),
+  plan [2026-09-10-unmeasured-named.md](plans/2026-09-10-unmeasured-named.md),
+  Tasks 1–7 (branch `docs/unmeasured-named`, commits `80f58ad`..`881a51d` +
+  this docs sync).
+
+  The L1/L2 half of the "domain leaks into general machinery" audit: the
+  window scorer's largest blend weight and the variety census's shot-size
+  count both read as findings while quietly measuring nothing on part of
+  their own domain. On the only real pool (`FOOTAGE.json` from the 2026-06
+  run, 99 clips, 1508 windows) `W_PRESENT` — 0.44, the largest of the three
+  blend weights — separated **3 windows of 1508** and said so nowhere: not
+  that the score was ignored, but that 44% of it had nothing to say (the
+  number open backlog row R8.1 was missing). The variety census counts a
+  window a person detector found nobody in as `wide` — correctly, nothing
+  fills the frame — but on a people-free shoot every window lands there and
+  the report would read "the footage offers zero close-ups" about footage
+  that may be entirely close-ups; the real pool is 99.8% people, so it
+  exercises the census defect exactly once and cannot show the fix mattering.
+
+  **A — `Footage.scoring`.** `intake.score_pool` now returns
+  `{"windows": N, "separated": {term: count}}` — the pool size minus each
+  ranked term's largest tie group, i.e. how many windows that term actually
+  told apart — and `intake()` constructs `Footage` AFTER scoring so the field
+  passes `__post_init__` validation rather than being assigned onto a built
+  object. `None` on a `FOOTAGE.json` written before this slice. Rendered as
+  one paragraph in `FOOTAGE.md`, beside the sentence that already explains
+  `score` is a percentile.
+
+  **B — `VarietyReport.unmeasured`.** How many of the SAME windows counted in
+  `available` carried no detected subject — a subset of the census, never a
+  fourth bucket. Threaded through `edit_plan._available_census` (now
+  returning `(counts, unmeasured)`), the gate's own log line, and a new
+  `EDL.md` sentence rendered only when non-zero (a zero line on a people-shoot
+  is noise, and this project already refuses rendering a section that says
+  nothing). The gate's `gaps` logic is UNCHANGED — it keeps judging only what
+  it could measure; `unmeasured` makes the silence legible, it does not make
+  the gate work on people-free footage, and must not (design §2.2).
+
+  **C — `present` becomes a rank.** `score_pool` blended `present` as an
+  ABSOLUTE fraction against two percentile ranks (`motion`, `shake`) — a
+  units mismatch that is harmless only because `present` is near-constant on
+  real footage (99.8% at `1.0`). `present` now ranks pool-wide too — "does
+  this window hold the subject" is a whole-shoot comparison, unlike
+  `motion`'s per-clip "active moment of this shot" — so a pool with no
+  presence variance ties at a constant instead of contributing a uniform
+  value that still outweighs two ranks. Measured on the real pool the change
+  is a **no-op** (Spearman 0.999039 between the two orderings, identical
+  `best` set of 755, identical top-8/top-30/top-100) — the argument for
+  making it now, at zero measured cost: a people-free window otherwise needs
+  a mean rank of 0.786 across motion and shake merely to tie the WORST window
+  with a person in it, and no mixed-presence pool exists yet to catch it
+  happening.
+
+  **§0.4 — two overturned premises**, recorded because both were plausible
+  and both answer the wrong question. "Ranking presence changes the stored
+  score of 555 windows" is true and meaningless: `score` is
+  `round(percentile, 3)`, and when ONE window reorders, every percentile
+  below it shifts by ~1/n and the third decimal catches ~555 of those — one
+  window reordered, not 555. "Leave-one-out says presence moves 493 windows"
+  is the same artifact from the other side: zeroing a near-constant term
+  shifts 1505 windows by a constant (no reorder among them) and the 3
+  outliers re-sort, churning the rounding. Neither measures the term's
+  CONTRIBUTION; `separated` survives because it asks about the term's own
+  input, immune to the downstream rounding that fooled the other two.
+
+  **§0.5 — what is NOT the defect.** The first shape of this design proposed
+  a fourth `shot_type` tag for `(0.0, 0.0)`. Wrong: `shot_type` is a claim
+  about the FRAME, not a person — a drone shot of empty coastline really is
+  wide, and three existing tests plus the function's own docstring already
+  pin that answer deliberately. The defect sits one level up, in the census
+  that AGGREGATES `shot_type` and presents the aggregate as a description of
+  the footage.
+
+  **Mutation battery: 18 rows — 13 red immediately** (including rows 12 and
+  14, which Task 4's own fix round had already closed against their
+  "uncertain" flag in the brief). **Rows 4, 6, 15 and 18 came back GREEN**
+  against the brief's given selector, each a real, distinct finding rather
+  than a shrug, each closed here with a new test:
+  - Row 4 (presence ranked per-clip like motion) is invisible to the given
+    integration test because that fixture is a SINGLE clip — "per-clip" and
+    "pool-wide" are the identical computation when the pool holds only one
+    clip.
+    `test_presence_ranks_pool_wide_even_when_a_single_clip_meets_CLIP_POOL_MIN`
+    uses two clips with disjoint presence ranges instead.
+  - Row 6 (the report reads raw `present` instead of ranked) is
+    MATHEMATICALLY unobservable for `present`: ranking is a monotone map, so
+    raw and ranked share the same tie structure and `_separated` returns the
+    same count either way, for ANY input — confirmed, not assumed. Closed on
+    `motion` instead, where a per-clip rank genuinely CAN collide across
+    clips by coincidence, with
+    `test_separated_motion_is_measured_on_the_per_clip_rank_not_the_raw_pool`.
+  - Row 15 (`_available_census` checks `subject_w == 0.0` alone) is invisible
+    to the given test because none of its windows pairs a non-zero width
+    with a zero height.
+    `test_available_census_counts_a_zero_height_subject_as_unmeasured_too`
+    adds one.
+  - Row 18 (the `EDL.md` sentence prints `unmeasured` where it prints the
+    total) is invisible to the given test because that fixture's
+    `unmeasured` equals its `available` total (9 of 9) by construction, so
+    swapping one for the other renders identical text.
+
+  **Row 16** (the call site hardcodes `unmeasured=0`) is likewise GREEN
+  against the brief's literal selector — the whole of
+  `test_unmeasured_named.py`, which calls `_available_census`/`score_pool`
+  directly and never reaches `build_edl` — but Task 5's own review had
+  already closed this exact gap with
+  `test_build_edl_carries_the_call_sites_own_unmeasured_count` and
+  `test_write_edit_plan_logs_and_writes_the_unmeasured_count`; both read RED
+  against the mutation, so no new test was needed, only the right selector.
+
+  **Full suite: 3656 passed, 1 skipped** (up from 3618/1 at the pre-slice
+  baseline on `main`; 3648/1 after Task 5, +4 for Task 6's proofs, +4 for
+  this task's four coverage-hole closures).
+
+  **Version: 0.9.0 → 0.9.1 (PATCH).** No flag, no stage, no required
+  artifact, and nothing renamed — two report fields nothing is required to
+  read, and a blend term corrected from an absolute fraction to a rank,
+  measured as a no-op. `score` moves in its third decimal, but `FOOTAGE.md`
+  itself documents `score` as a percentile, "never an absolute quality bar."
+
+  **Honest limits carried forward (design §6):** neither fix makes a reel
+  better — one makes a silent gate legible, the other corrects a units
+  mismatch that is currently inert. The only real pool cannot validate
+  either: it shows the presence fix is safe and cannot show it useful, and it
+  exercises the census defect exactly once. Nothing proves anyone reads the
+  new numbers — `Footage.scoring` and `VarietyReport.unmeasured` are reports,
+  not gates (filed below, pointing at the R4.1/R4.2 discoverability slice
+  rather than a new one). `separated` is a LOWER BOUND for `motion`
+  specifically — its per-clip rank can coincidentally MERGE two distinct raw
+  values, never split one, so an inert term cannot look falsely useful. The
+  census still cannot see a subject the detector was never asked about — a
+  food shoot correctly reports it measured nothing, never what the plates
+  were doing.
 
 - **Bound reports — three artifacts state a conclusion and now record what
   they concluded from, closing R5.2/R5.3/R10.9 (2026-09-09, 0.9.0)** — design

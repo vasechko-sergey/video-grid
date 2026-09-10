@@ -679,6 +679,23 @@ def test_available_census_counts_windows_with_no_detected_subject():
     assert sum(counts.values()) == 3
 
 
+def test_available_census_counts_a_zero_height_subject_as_unmeasured_too():
+    # Coverage hole found running the Task 7 mutation battery: row 15 ("counts
+    # subject_w == 0.0 only, drops the * subject_h product") is invisible to
+    # test_available_census_counts_windows_with_no_detected_subject just above,
+    # because every window there with subject_w == 0.0 also has subject_h ==
+    # 0.0 -- checking subject_w alone gives the same count as checking the
+    # product on that fixture. `unmeasured` is defined on the subject's AREA
+    # (design 2026-09-10 §0.5, and shot_type/delivered_shot both key on w*h
+    # too) -- a degenerate box with ONE dimension at zero still has zero area
+    # and must count as unmeasured even though the OTHER dimension is not.
+    clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.5, subject_h=0.0),
+                                            _window(subject_w=0.0, subject_h=0.5),
+                                            _window(subject_w=0.5, subject_h=0.6)])
+    counts, unmeasured = edit_plan._available_census(Footage(clips=[clip]), (9, 16))
+    assert unmeasured == 2          # both zero-AREA windows, regardless of which factor is zero
+
+
 def test_available_census_reports_no_blind_windows_when_every_subject_was_found():
     clip = _clip(res=(3840, 2160), windows=[_window(subject_w=0.3, subject_h=0.4)])
     counts, unmeasured = edit_plan._available_census(Footage(clips=[clip]), (9, 16))
