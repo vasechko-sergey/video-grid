@@ -513,10 +513,35 @@ def test_footage_scoring_round_trips_and_defaults_to_none():
     assert footage.Footage.from_dict({"clips": []}).scoring is None
 
 
-def test_footage_scoring_refuses_a_term_outside_the_vocabulary():
+def test_footage_scoring_refuses_a_missing_score_term():
     with pytest.raises(ValueError, match="one count per"):
         footage.Footage(clips=[], scoring={"windows": 2,
                                            "separated": {"present": 1, "motion": 1}})
+
+
+def test_footage_scoring_refuses_an_extra_unknown_score_term():
+    with pytest.raises(ValueError, match="one count per"):
+        footage.Footage(clips=[], scoring={"windows": 2,
+                                           "separated": {"present": 1, "motion": 1, "shake": 1, "blur": 1}})
+
+
+def test_footage_scoring_refuses_a_bad_windows_value():
+    # negative int
+    with pytest.raises(ValueError, match="windows.*must be an int >= 0"):
+        footage.Footage(clips=[], scoring={"windows": -1,
+                                           "separated": {"present": 0, "motion": 0, "shake": 0}})
+    # bool (a subclass of int in Python)
+    with pytest.raises(ValueError, match="windows.*must be an int >= 0"):
+        footage.Footage(clips=[], scoring={"windows": True,
+                                           "separated": {"present": 0, "motion": 0, "shake": 0}})
+    # non-int string
+    with pytest.raises(ValueError, match="windows.*must be an int >= 0"):
+        footage.Footage(clips=[], scoring={"windows": "4",
+                                           "separated": {"present": 0, "motion": 0, "shake": 0}})
+    # float
+    with pytest.raises(ValueError, match="windows.*must be an int >= 0"):
+        footage.Footage(clips=[], scoring={"windows": 4.0,
+                                           "separated": {"present": 0, "motion": 0, "shake": 0}})
 
 
 def test_footage_scoring_refuses_separating_more_windows_than_the_pool_holds():

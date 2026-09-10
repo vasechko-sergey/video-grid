@@ -277,18 +277,21 @@ class Footage:
                     f"footage-intake to regenerate FOOTAGE.json")
             n = s["windows"]
             if isinstance(n, bool) or not isinstance(n, int) or n < 0:
-                raise ValueError(f"Footage.scoring['windows'] must be an int >= 0, got {n!r}")
+                raise ValueError(
+                    f"Footage.scoring['windows'] must be an int >= 0, got {n!r} — re-run "
+                    f"footage-intake to regenerate FOOTAGE.json")
             sep = s["separated"]
             if not isinstance(sep, dict) or set(sep) != set(SCORE_TERMS):
                 raise ValueError(
                     f"Footage.scoring['separated'] must carry one count per {SCORE_TERMS}, "
-                    f"got {sep!r}")
+                    f"got {sep!r} — re-run footage-intake to regenerate FOOTAGE.json")
             for k in SCORE_TERMS:
                 v = sep[k]
                 if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= n:
                     raise ValueError(
                         f"Footage.scoring['separated'][{k!r}] must be an int in [0, {n}] — a "
-                        f"term cannot separate more windows than the pool holds; got {v!r}")
+                        f"term cannot separate more windows than the pool holds; got {v!r} — "
+                        f"re-run footage-intake to regenerate FOOTAGE.json")
             self.scoring = {"windows": n, "separated": {k: int(sep[k]) for k in SCORE_TERMS}}
 
     @classmethod
