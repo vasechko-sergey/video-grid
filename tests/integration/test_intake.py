@@ -103,6 +103,10 @@ def test_intake_wiring_on_real_bytes(monkeypatch, tmp_path, sample_clip):
             best=True, track_ids=[1], subject_w=0.1042, subject_h=0.2778,
             present=1.0)])
     assert "# Footage —" in result.to_markdown()
+    # Verify the scoring report is threaded through `intake()` → `Footage` construction.
+    assert result.scoring is not None
+    assert result.scoring["windows"] > 0
+    assert all(k in result.scoring["separated"] for k in footage.SCORE_TERMS)
 
 
 @pytest.mark.skipif(not _has_vidstab(), reason="needs vidstab-enabled ffmpeg (bash setup.sh)")
