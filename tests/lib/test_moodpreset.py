@@ -240,10 +240,18 @@ def _variety(unmeasured=0):
 def test_variety_unmeasured_round_trips_and_defaults_to_zero():
     r = _variety(unmeasured=6)
     assert moodpreset.VarietyReport.from_dict(r.to_dict()).unmeasured == 6
-    # an EDL.json written before 2026-09-10 carries no key
+    # an EDL.json written before 2026-09-10 carries no key at all
     d = r.to_dict()
     del d["unmeasured"]
     assert moodpreset.VarietyReport.from_dict(d).unmeasured == 0
+    # an EDL.json written by a version that DOES emit the key, but as an explicit
+    # JSON null (e.g. a writer that always serializes every field). `from_dict` uses
+    # `d.get("unmeasured") or 0` rather than `d.get("unmeasured", 0)` for exactly this
+    # case -- `or 0` treats a present-but-None value the same as an absent one, so
+    # neither reaches `__post_init__`'s type check as `None`.
+    d_null = r.to_dict()
+    d_null["unmeasured"] = None
+    assert moodpreset.VarietyReport.from_dict(d_null).unmeasured == 0
 
 
 def test_variety_unmeasured_refuses_to_exceed_the_census_it_is_a_subset_of():
@@ -251,17 +259,50 @@ def test_variety_unmeasured_refuses_to_exceed_the_census_it_is_a_subset_of():
         _variety(unmeasured=11)
 
 
+def test_variety_unmeasured_allows_the_exact_census_total():
+    # the refusal is a strict `>`, so `unmeasured == total` must PASS: every window in
+    # `available` (10, from _counts(close=1, medium=1, wide=8)) coming back unmeasured
+    # is a legitimate (if extreme) reading, not an overflow.
+    r = _variety(unmeasured=10)
+    assert r.unmeasured == 10
+
+
 def test_variety_unmeasured_refuses_a_non_int():
     with pytest.raises(ValueError, match="unmeasured must be an int"):
         _variety(unmeasured=2.5)
 
 
+def test_variety_unmeasured_refuses_a_bool():
+    # isinstance(True, int) is True in Python, which is why the guard checks bool
+    # explicitly ahead of the int check -- this must be pinned separately from the
+    # plain non-int case above, or a guard that dropped the isinstance(..., bool)
+    # clause would still pass every other test.
+    with pytest.raises(ValueError, match="unmeasured must be an int"):
+        _variety(unmeasured=True)
+
+
+def test_variety_unmeasured_refuses_a_negative_int():
+    with pytest.raises(ValueError, match="unmeasured must be an int"):
+        _variety(unmeasured=-1)
+
+
 def test_evaluate_carries_unmeasured_through_without_touching_the_gaps():
-    # the gate still judges only what it COULD measure: a size below MIN_AVAIL is not a
-    # gap, whether or not the census had blind windows (design 2026-09-10 §2.2).
+    # the gate still judges only what it COULD measure (design 2026-09-10 §2.2). The
+    # census below deliberately makes `close` a REAL gap -- available["close"] clears
+    # MIN_AVAIL, and the resolved preset wants >= WANT_FLOOR of it -- so this test can
+    # actually discriminate a version that let `unmeasured` change `gaps`. (A fixture
+    # where every non-`wide` size sits below MIN_AVAIL regardless would report
+    # `gaps == ()` no matter what `unmeasured` touched, proving nothing.)
     preset = moodpreset.resolve("fun")
-    r = moodpreset.evaluate(_counts(wide=40), _counts(wide=8), 2.0, preset,
-                            unmeasured=40)
+    assert preset.shot_mix["close"] >= moodpreset.WANT_FLOOR
+    available = _counts(close=5, wide=40)
+    assert available["close"] >= moodpreset.MIN_AVAIL
+    used = _counts(wide=8)
+
+    baseline = moodpreset.evaluate(available, used, 2.0, preset, unmeasured=0)
+    assert baseline.gaps == ("close",)            # the gap genuinely fires
+
+    r = moodpreset.evaluate(available, used, 2.0, preset, unmeasured=40)
     assert r.unmeasured == 40
-    assert r.gaps == ()
-    assert r.ok
+    assert r.gaps == baseline.gaps                # identical regardless of `unmeasured`
+    assert r.ok is False                          # a real, unwaived gap is never `ok`

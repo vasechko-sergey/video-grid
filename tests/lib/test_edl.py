@@ -647,6 +647,20 @@ def test_edl_carries_a_variety_report_and_round_trips():
     assert back.variety.to_dict() == r.to_dict()
 
 
+def test_edl_variety_report_round_trips_a_nonzero_unmeasured():
+    # the test above never passes unmeasured=, so both sides of its equality are 0 and
+    # a break in the field's own EDL round trip would surface only once Task 5 starts
+    # rendering `unmeasured` out of an EDL (review finding on Task 4).
+    r = moodpreset.evaluate({"close": 11, "medium": 0, "wide": 40},
+                            {"close": 0, "medium": 0, "wide": 8}, 2.0,
+                            moodpreset.resolve("fun"), waiver="close windows are soft",
+                            unmeasured=7)
+    e = EDL(episodes=(_ep(),), variety=r)
+    back = EDL.from_dict(e.to_dict())
+    assert back.variety.unmeasured == 7
+    assert back.variety.to_dict() == r.to_dict()
+
+
 def test_edl_without_a_variety_report_round_trips_as_none():
     # a hand-authored EDL through edl_to_reel's SP1 front door was never evaluated
     e = EDL(episodes=(_ep(),))
