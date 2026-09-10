@@ -163,11 +163,6 @@ def test_score_pool_fills_description_from_the_motion_rank():
     assert ws[-1].description == "2 people, wide, dynamic"
 
 
-def test_score_pool_on_an_empty_pool_is_a_no_op():
-    intake.score_pool([])
-    intake.score_pool([_clip("a.mp4", [])])
-
-
 def test_describe_reads_a_rank_not_a_raw_motion():
     assert intake._describe(1, "medium", 0.9) == "1 person, medium, dynamic"
     assert intake._describe(0, "wide", 0.1) == "no people, wide, calm"
@@ -1038,13 +1033,17 @@ def test_separated_is_the_pool_minus_its_largest_tie_group():
 
 
 def test_score_pool_reports_a_presence_term_that_separated_nothing():
-    # every window holds people for its whole span — the 2026-06 run's shape (99.8%)
-    ws = [_w(dur=2.0, people=1, motion=m, shake=0.0, present=1.0)
-          for m in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)]
+    # every window holds people for its whole span — the 2026-06 run's shape (99.8%).
+    # shake varies (independently of motion) too, so a bug that mislabelled or
+    # zeroed the "shake" key would not hide behind an all-constant fixture the way
+    # the original version of this test did (review follow-up, MINOR 1).
+    ws = [_w(dur=2.0, people=1, motion=m, shake=s, present=1.0)
+          for m, s in zip((0.1, 0.2, 0.3, 0.4, 0.5, 0.6), (0.6, 0.5, 0.4, 0.3, 0.2, 0.1))]
     rep = intake.score_pool([_clip("a.mp4", ws)])
     assert rep["windows"] == 6
     assert rep["separated"]["present"] == 0
     assert rep["separated"]["motion"] == 5      # six distinct motions, largest tie 1
+    assert rep["separated"]["shake"] == 5       # six distinct shakes, largest tie 1
 
 
 def test_score_pool_reports_a_presence_term_that_did_separate():
@@ -1056,19 +1055,98 @@ def test_score_pool_reports_a_presence_term_that_did_separate():
 
 def test_score_pool_on_an_empty_pool_reports_zero_windows_not_none():
     # an empty pool is a MEASUREMENT (zero windows), not an absent one. Footage.scoring
-    # is None only on an artifact written before this slice.
-    assert intake.score_pool([]) == {"windows": 0,
-                                     "separated": {"present": 0, "motion": 0, "shake": 0}}
+    # is None only on an artifact written before this slice. Folded in the old
+    # "...is_a_no_op" test's other empty shape (a clip that carved zero windows) --
+    # that test passed only because it discarded score_pool's return value, which is
+    # no longer a no-op's `None` but this same report (review follow-up, MINOR 2).
+    empty = {"windows": 0, "separated": {"present": 0, "motion": 0, "shake": 0}}
+    assert intake.score_pool([]) == empty
+    assert intake.score_pool([_clip("a.mp4", [])]) == empty
 
 
 def test_presence_is_ranked_across_the_pool_not_summed_absolutely():
-    # A pool where NOBODY is present must not have 0.44 of its blend zeroed away: the
-    # ranked term ties at a constant, which _percentile_rank's tie rule then makes
-    # invisible to the ordering. So the ordering must be the SAME as an identical pool
-    # where everybody is present (design 2026-09-10 §3.1).
-    def scores(present):
-        ws = [_w(dur=2.0, people=0, motion=m, shake=s, present=present)
-              for m, s in ((0.1, 0.9), (0.5, 0.2), (0.9, 0.5))]
-        intake.score_pool([_clip("a.mp4", ws)])
-        return [w.score for w in ws]
-    assert scores(0.0) == scores(1.0)
+    # Reverting `presence` to a raw absolute fraction (W_PRESENT * w.present, summed
+    # straight into the blend instead of through _percentile_rank) must change the
+    # ORDERING it produces, not just its bit pattern. Three windows, deliberately
+    # mixed presence (0.0 / 0.9 / 1.0) so the raw and ranked scales genuinely
+    # disagree -- not two separate all-constant pools compared against each other,
+    # which the original version of this test did: that comparison is mathematically
+    # invariant to swapping "ranked" for "raw absolute" (both are still a per-call
+    # CONSTANT shift of every window alike, and the final _percentile_rank(blend) is
+    # shift-invariant), so it could only ever fail by a float re-association accident
+    # of its specific numbers -- confirmed by hand: swapping in either
+    # ((0.0,1.0),(0.25,0.75),(0.75,0.25)) or ((0.1,0.6),(0.3,0.3),(0.6,0.1)) for the
+    # (motion, shake) pairs makes the OLD absolute code pass too, silently losing all
+    # discriminating power (review follow-up, IMPORTANT 1).
+    #
+    # Here the divergence is a real value, not a coincidence of bit re-association:
+    # w1 has no subject at all but the best motion+shake in the pool; w2 has a
+    # subject for 90% of its span but the worst motion; w3 is fully present with
+    # middling motion+shake. Hand-verified (and cross-checked against a live run of
+    # score_pool, not just this assertion):
+    #   ranked   presence = [0.0, 0.5, 1.0]  -> blend = [.49, .43, .58] -> score [.5, 0, 1]
+    #   raw/old  presence = [0.0, 0.9, 1.0]  -> blend = [.49, .606, .58] -> score [0, 1, .5]
+    # w1 and w2 fully swap rank (w1 last under the old code, first under the new one)
+    # -- an order flip of ~0.12 in blend terms, three orders of magnitude past any
+    # float rounding noise, so this discriminates for the reason the design gives,
+    # not by luck (design 2026-09-10 §3.1).
+    w1 = _w(dur=2.0, people=0, motion=0.9, shake=0.5, present=0.0)   # no subject, best motion+shake
+    w2 = _w(dur=2.0, people=1, motion=0.1, shake=0.5, present=0.9)   # subject 90%, worst motion
+    w3 = _w(dur=2.0, people=1, motion=0.5, shake=0.9, present=1.0)   # fully present, middling rest
+    ws = [w1, w2, w3]
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert [w.score for w in ws] == [0.5, 0.0, 1.0]
+
+
+def test_a_middling_peopleless_window_can_outrank_the_worst_peopled_one():
+    # Task 2's own commit message: under the deleted absolute code, a people-free
+    # window needed a mean rank of W_PRESENT / (W_MOTION + W_STABLE) ~= 0.786 across
+    # motion and shake merely to TIE the worst window that had people in it -- a
+    # fixed bar, the SAME on every pool, because a raw present of 0 or 1 contributes
+    # 0 or 0.44 to the blend with no reference to the rest of the shoot. That claim
+    # was never asserted anywhere (review follow-up, IMPORTANT 2) -- the two tests
+    # that vary `present` within a pool assert only on rep["separated"]["present"],
+    # never on `w.score`.
+    #
+    # This pool is shaped like the real one (mostly present, one absent window, per
+    # the design's 1505-of-1508 real ratio): 9 of 10 windows fully present, 1 not.
+    # Ranking that ratio makes "present" and "absent" only ~0.556 apart (not the raw
+    # scale's full 1.0), so the peopleless window needs nowhere near the old 0.786
+    # bar -- a middling rank (~0.56 on each of motion and shake, not the extreme
+    # 1.0 the earlier test used) already beats the worst peopled window outright,
+    # which the deleted absolute code could never do at ANY pool shape, since its
+    # 0.786 bar did not move with the pool (design 2026-09-10 §3, §0.1).
+    assert round(intake.W_PRESENT / (intake.W_MOTION + intake.W_STABLE), 3) == 0.786
+    worst_present = _w(dur=2.0, people=2, motion=0.01, shake=0.99, present=1.0)  # bottom of both
+    peopleless = _w(dur=2.0, people=0, motion=0.5, shake=0.5, present=0.0)       # middling, not extreme
+    padding = [_w(dur=2.0, people=2, motion=m, shake=m, present=1.0)
+               for m in (0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9)]   # fills out "mostly present"
+    ws = [worst_present, peopleless] + padding
+    intake.score_pool([_clip("a.mp4", ws)])
+    assert peopleless.score > worst_present.score
+
+
+def test_presence_ranks_pool_wide_even_when_every_clip_is_big_enough_to_rank_alone():
+    # `motion` ranks per-clip once a clip reaches CLIP_POOL_MIN windows (lines
+    # 179-184) precisely because motion is a within-shot question. `present` is
+    # deliberately NOT given that override -- "does this window hold the subject"
+    # is a whole-shoot comparison (design 2026-09-10 §3) -- but nothing in the
+    # existing suite would notice if a future edit mirrored motion_fit's override
+    # onto presence: every pre-existing fixture gives every window in one
+    # score_pool call the SAME present value, so a per-clip presence rank and a
+    # pool-wide one produce an identical constant shift either way (review
+    # follow-up, CRITICAL).
+    #
+    # Both clips here carry exactly CLIP_POOL_MIN windows -- big enough that a
+    # per-clip override on `presence`, if one existed, would actually fire (not
+    # silently no-op below the floor). Clip A is present the whole time, clip B
+    # never. Pool-wide, that is two same-size tie groups: separated ==
+    # 2*n - n == n. A per-clip rank instead ties each clip's own CONSTANT present
+    # value at ITS OWN mid-rank (0.5) -- both clips collapse to the identical
+    # constant across the whole pool and separated collapses to 0.
+    n = intake.CLIP_POOL_MIN
+    assert n == 5     # the fixture below assumes clips of exactly this size
+    a = [_w(dur=2.0, people=1, motion=0.1 * i, shake=0.0, present=1.0) for i in range(1, n + 1)]
+    b = [_w(dur=2.0, people=1, motion=0.1 * i, shake=0.0, present=0.0) for i in range(1, n + 1)]
+    rep = intake.score_pool([_clip("a.mp4", a), _clip("b.mp4", b)])
+    assert rep["separated"]["present"] == n
