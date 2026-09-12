@@ -238,7 +238,7 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="build the reel audio stem from MUSIC.json")
     ap.add_argument("music", help="MUSIC.json path")
-    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--out-dir", required=True, help="where the audio stem goes")
     ap.add_argument("--dur", type=float, required=True, help="reel length (seconds)")
     return ap
 

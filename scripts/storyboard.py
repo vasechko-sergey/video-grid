@@ -90,9 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="render a grid-overlaid contact sheet of one clip for editorial "
                     "verification → one .jpg. process_episode writes one per "
                     "episode; the QC judge reads it beside the frame strip.")
-    ap.add_argument("src"); ap.add_argument("out")
-    ap.add_argument("--n", type=int, default=8)
-    ap.add_argument("--grids", default="thirds,phi")
+    ap.add_argument("src", help="the clip to sheet")
+    ap.add_argument("out", help="sheet .jpg output path")
+    ap.add_argument("--n", type=int, default=8, help="how many frames to sample")
+    ap.add_argument("--grids", default="thirds,phi",
+                    help="comma-separated overlays: thirds,phi")
     return ap
 
 

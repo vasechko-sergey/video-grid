@@ -166,12 +166,14 @@ def mood_features(track: str) -> mood.MoodVector:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="analyse a track → MUSIC.json (tempo + beats + energy)")
-    ap.add_argument("track")
+    ap.add_argument("track", help="the audio file to analyse")
     g = ap.add_mutually_exclusive_group()
-    g.add_argument("--start-offset", type=float, default=0.0)
+    g.add_argument("--start-offset", type=float, default=0.0,
+                   help="in-point in the track, seconds (default 0)")
     g.add_argument("--auto-start", action="store_true",
                    help="auto-pick the in-point (strongest fragment, vocal-pause start); needs --duration")
-    ap.add_argument("--duration", type=float, default=None)
+    ap.add_argument("--duration", type=float, default=None,
+                    help="window length, seconds (default: the whole track)")
     ap.add_argument("--out", required=True, help="MUSIC.json output path")
     return ap
 

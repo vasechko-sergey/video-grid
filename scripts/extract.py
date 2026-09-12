@@ -90,9 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="cut one EDL window out of a source clip into a standalone "
                     "segment, normalized to tv range — the pipeline's canonical "
                     "form. edl_to_reel runs it per episode before any tracking.")
-    ap.add_argument("src"); ap.add_argument("out")
-    ap.add_argument("--start", type=float, required=True)
-    ap.add_argument("--dur", type=float, required=True)
+    ap.add_argument("src", help="source clip the EDL window refers to")
+    ap.add_argument("out", help="segment .mp4 output path")
+    ap.add_argument("--start", type=float, required=True,
+                    help="window start in the source, seconds")
+    ap.add_argument("--dur", type=float, required=True, help="window length, seconds")
     return ap
 
 

@@ -400,23 +400,27 @@ def build_parser() -> argparse.ArgumentParser:
                                                        "CURRENT colour block (the EDL "
                                                        "itself is the file GEOMETRY.json "
                                                        "names, not a separate flag)")
-    g.add_argument("--index", type=int, required=True)
+    g.add_argument("--index", type=int, required=True, help="which episode, 0-based")
     g.add_argument("--edl", default=None, help="--episodes only: take the colour block "
                                                "from this (edited) EDL.json instead of "
                                                "the grade that was rendered")
     g.add_argument("--out-dir", default=None, help="default: <epdir>/probe")
-    g.add_argument("--frames", type=int, default=color.FRAMES)
+    g.add_argument("--frames", type=int, default=color.FRAMES,
+                   help="how many frames to render and measure")
 
     lk = sub.add_parser("look", help="re-check a delivered reel against its master",
                         description="re-check a delivered reel against its master for a "
                                     "declared vignette, bookend fade and title ink — the "
                                     "same gate deliver runs after its encode, runnable by "
                                     "hand.")
-    lk.add_argument("master")
-    lk.add_argument("delivered")
-    lk.add_argument("--vignette", type=float, default=0.0)
-    lk.add_argument("--fade", type=float, default=0.0)
-    lk.add_argument("--titles", action="store_true")
+    lk.add_argument("master", help="the reel master the delivery was encoded from")
+    lk.add_argument("delivered", help="the delivered reel to re-check")
+    lk.add_argument("--vignette", type=float, default=0.0,
+                    help="the vignette strength that was declared, 0..0.6")
+    lk.add_argument("--fade", type=float, default=0.0,
+                    help="the bookend fade that was declared, seconds per end")
+    lk.add_argument("--titles", action="store_true",
+                    help="also check that title ink reached the pixels")
     return ap
 
 

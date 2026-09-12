@@ -81,3 +81,15 @@ def test_every_help_surface_states_a_purpose(name):
     assert blank == [], (
         f"{blank} print no description on their own --help. A subcommand needs "
         f"description=, not only help=: help= renders in the parent's listing.")
+
+
+@pytest.mark.parametrize("name", CLI)
+def test_every_argument_says_what_it_is(name):
+    """Positionals first: they are 74% of the deficit and carry the least
+    meaning in their own name. `--target-dur` says 'a target duration' before
+    anything explains it; `src` says nothing at all (design §0.4)."""
+    mod = importlib.import_module(f"scripts.{name}")
+    blank = [f"{label}: {a.dest}"
+             for label, parser in surfaces(mod.build_parser(), name)
+             for a in arguments(parser) if not (a.help or "").strip()]
+    assert blank == [], f"{blank} render with no help text under their surface's --help"

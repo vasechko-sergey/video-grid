@@ -371,13 +371,15 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Deliver a checked reel master.")
-    ap.add_argument("master")
-    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("master", help="the checked reel master to deliver")
+    ap.add_argument("--out-dir", required=True,
+                    help="deliveries dir — append-only, nothing ever deletes it")
     ap.add_argument("--scratch-dir", required=True,
                     help="where the vignette mask and title sidecars go — NOT the "
                          "deliveries dir, which is append-only")
     ap.add_argument("--report", required=True, help="ReelReport JSON from check_reel")
-    ap.add_argument("--changelog", default="")
+    ap.add_argument("--changelog", default="",
+                    help="one line recorded in the version log beside the delivery")
     ap.add_argument("--titles", default=None, help="TITLES.json — burn on-screen text into the encode (§5.16)")
     ap.add_argument("--platform", default="", help="safe-zone table key (reel/tiktok/shorts/…) — "
                                                    "where the app's chrome sits; titles lay out inside it")

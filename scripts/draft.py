@@ -99,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
                        description="concat the EDL's raw segments into draft.mp4 with "
                                    "processing-note labels and a rough music bed. A QA "
                                    "preview — nothing downstream consumes it.")
-    b.add_argument("--edl", required=True)
+    b.add_argument("--edl", required=True, help="EDL.json — the cut to preview")
     b.add_argument("--project", required=True, help="project.json — the SPEC canvas")
     b.add_argument("--footage-root", required=True, help="dir the EDL 'source' paths resolve against")
     b.add_argument("--work-dir", required=True, help="scratch for segments / labels / burned / master")

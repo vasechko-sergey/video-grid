@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--quality", default="native", help="native (default) / social / 4k")
     ap.add_argument("--canvas", default=None, help="explicit W:H (required for --purpose custom)")
     ap.add_argument("--delivery", default=None, help="explicit delivery spec (overrides --quality)")
-    ap.add_argument("--notes", default="")
+    ap.add_argument("--notes", default="", help="free text recorded in project.json")
     ap.add_argument("--project-dir", required=True, help="dir to write project.json into")
     return ap
 

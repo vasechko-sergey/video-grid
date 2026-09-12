@@ -341,15 +341,18 @@ def build_parser() -> argparse.ArgumentParser:
                     "clip with its route.json and path.json; process_episode runs "
                     "it after every reframe attempt and the retry ladder reads the "
                     "verdict.")
-    ap.add_argument("clip")
+    ap.add_argument("clip", help="the rendered episode .mp4 to judge")
     ap.add_argument("route", nargs="?", default=None,
                     help="route.json (omit under a generated pan — the sidecar says so)")
-    ap.add_argument("path")
-    ap.add_argument("out")
-    ap.add_argument("--composition", default="lead")
-    ap.add_argument("--grid", default="thirds")
-    ap.add_argument("--target-dur", type=float, required=True)
-    ap.add_argument("--attempt", type=int, default=1)
+    ap.add_argument("path", help="path.json — the per-frame crop rect reframe recorded")
+    ap.add_argument("out", help="report.json output path")
+    ap.add_argument("--composition", default="lead",
+                    help="the rule the subject is judged against: lead | center | thirds")
+    ap.add_argument("--grid", default="thirds", help="the guide grid: thirds | phi")
+    ap.add_argument("--target-dur", type=float, required=True,
+                    help="the length this episode was cut to, seconds")
+    ap.add_argument("--attempt", type=int, default=1,
+                    help="which retry attempt this is, 1-based — recorded in the report")
     return ap
 
 

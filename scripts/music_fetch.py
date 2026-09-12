@@ -27,7 +27,9 @@ def fetch_named(name: str, mode: str, cache_dir: str, date: str) -> fetch.Fetche
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="download a sourced track → cache + sidecar")
-    ap.add_argument("--mode", required=True, choices=("free", "any"))
+    ap.add_argument("--mode", required=True, choices=("free", "any"),
+                    help="free = CC sources only | any = YouTube and friends, "
+                         "copyrighted and the user's responsibility")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--from-shortlist", help="MUSIC_SHORTLIST.json to pick from")
     g.add_argument("--track", help="explicit track name to resolve directly")

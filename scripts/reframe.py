@@ -664,25 +664,33 @@ def build_parser() -> argparse.ArgumentParser:
                     "→ the episode clip plus a path.meta.json sidecar. Driven by "
                     "process_episode; this is where every pixel of an episode is "
                     "decided.")
-    ap.add_argument("src"); ap.add_argument("route", nargs="?", default=None)
-    ap.add_argument("out")
-    ap.add_argument("--composition", default="lead")
-    ap.add_argument("--grid", default="thirds")
-    ap.add_argument("--canvas", default="9:16")
-    ap.add_argument("--color", default="105,122,137")
+    ap.add_argument("src", help="the segment to compose")
+    ap.add_argument("route", nargs="?", default=None,
+                    help="route.json from track — omit for a generated --pan")
+    ap.add_argument("out", help="episode .mp4 output path")
+    ap.add_argument("--composition", default="lead",
+                    help="where the subject sits: lead | center | thirds")
+    ap.add_argument("--grid", default="thirds", help="the guide grid: thirds | phi")
+    ap.add_argument("--canvas", default="9:16", help="delivery aspect as W:H")
+    ap.add_argument("--color", default="105,122,137",
+                    help="grey-world white-balance reference as R,G,B")
     ap.add_argument("--delivery", default=None,
                     help="native (default) | short_edge:N | long_edge:N | exact:WxH")
     ap.add_argument("--layout", default="fill", help="fill | fit | insert")
     ap.add_argument("--crop-aspect", default=None, help="canvas | source | W:H")
-    ap.add_argument("--crop-scale", type=float, default=1.0)
+    ap.add_argument("--crop-scale", type=float, default=1.0,
+                    help="crop size as a fraction of the maximum, 0..1")
     ap.add_argument("--rect", default=None, help="insert only: x,y,w as canvas fractions")
     ap.add_argument("--background", default="blur",
                     help="blur | solid — the filler behind a fit/insert")
     ap.add_argument("--background-color", default="black",
                     help="solid only: ffmpeg colour name or hex")
-    ap.add_argument("--border-px", type=int, default=0)
-    ap.add_argument("--border-color", default="white")
-    ap.add_argument("--path-out", required=True)
+    ap.add_argument("--border-px", type=int, default=0,
+                    help="insert only: border width in pixels")
+    ap.add_argument("--border-color", default="white",
+                    help="insert only: ffmpeg colour name or hex")
+    ap.add_argument("--path-out", required=True,
+                    help="path.json output path — the per-frame crop rect this render used")
     ap.add_argument("--pan", default=None,
                     help="generated pan as FROM,TO — fractions of horizontal freedom "
                          "(e.g. 0,1 or 1,0 for right-to-left); replaces the route")

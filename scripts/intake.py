@@ -656,9 +656,10 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips → FOOTAGE.json/.md")
-    ap.add_argument("footage_root")
-    ap.add_argument("out_dir")
-    ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS)
+    ap.add_argument("footage_root", help="dir of raw clips to scan — never the run dir")
+    ap.add_argument("out_dir", help="where FOOTAGE.json and FOOTAGE.md go")
+    ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS,
+                    help="analysis sampling rate, frames per second (default %(default)s)")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                     help="parallel clip workers (default %(default)s)")
     ap.add_argument("--fresh", action="store_true",

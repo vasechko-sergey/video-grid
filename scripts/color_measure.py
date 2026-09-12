@@ -165,7 +165,7 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="measure a clip's (p5,p50,p95) luma for ReframeSpec.tone")
-    ap.add_argument("clip")
+    ap.add_argument("clip", help="the clip to measure")
     ap.add_argument("--at", type=float, default=None, help="sample time in seconds (default 1.0)")
     return ap
 

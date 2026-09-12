@@ -556,7 +556,8 @@ def build_parser() -> argparse.ArgumentParser:
                     "the per-frame subject box every later stage composes against. "
                     "Takes one hero pin in any of four spellings; process_episode "
                     "runs it before reframe.")
-    ap.add_argument("src"); ap.add_argument("out")
+    ap.add_argument("src", help="the segment to track through")
+    ap.add_argument("out", help="route.json output path")
     ap.add_argument("--fps", type=float, default=None,
                     help="override probed fps (default: probe the source — "
                          "never trust a caller-supplied default)")

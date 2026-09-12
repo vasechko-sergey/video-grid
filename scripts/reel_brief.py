@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--text", default="", help="on-screen text intent")
     b.add_argument("--ending", default="", help="ending intent")
     b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")
-    b.add_argument("--notes", default="")
+    b.add_argument("--notes", default="", help="free text recorded in SPEC.json")
     b.add_argument("--tone-bias", default=None,
                    help="colour displacement as p5,p50,p95 luma units (e.g. 20,0,-18) — "
                         "outranks the mood preset's own. OMIT it to take the preset's "

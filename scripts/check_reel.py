@@ -506,10 +506,11 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Whole-reel mechanical check.")
-    ap.add_argument("master")
+    ap.add_argument("master", help="the assembled reel master to judge")
     ap.add_argument("episodes", nargs="+", help="ordered locked episode paths")
-    ap.add_argument("--target-dur", type=float, required=True)
-    ap.add_argument("--report", required=True)
+    ap.add_argument("--target-dur", type=float, required=True,
+                    help="the reel's intended length, seconds")
+    ap.add_argument("--report", required=True, help="ReelReport JSON output path")
     return ap
 
 
