@@ -67,8 +67,10 @@ The retro measured where an agent goes when the middle rung evaporates:
 the recovery behaviour, and today the recovery route answers with almost
 nothing.
 
-The first rung is already good and is not this slice's business. The second is
-the 84 KB the operator declined to cut. The third is the defect.
+The first rung states each *skill's* purpose well and states no *tool's* at
+all — it is where §2.4 puts the registry pointer, for the one property nothing
+else has: it cannot be spent. The second is the 84 KB declined as scope. The
+third is the defect §0.4 measures.
 
 ### 0.4 The third rung, measured
 
@@ -141,7 +143,7 @@ pointer for the purpose:** `(stage 5.2b)`, `(§5.13 Slice B)`, `(montage §5.9)`
 `(design 2026-08-01)`. Those resolve only against a design document the reader
 must first find and then read. They are pointers, not statements — but note
 that none of the ten is *only* a pointer, so this is a quality observation, not
-a machine-checkable defect (§3.4).
+a machine-checkable defect (§3.5).
 
 ### 0.5 Seven tools are named by no stage, no skill of their own, and no skill body
 
@@ -169,11 +171,19 @@ what an agent does. §5 carries this.
 **A tool's purpose must live where it can be re-derived, not only where it was
 once read.**
 
-A skill body is context, and context is spent. The tool's own `--help` is the
-one description that can be recovered on demand at any context age, for the
-price of one Bash call — which is precisely why the retro found an agent
-reaching for it after a compaction, and precisely why finding it empty is the
-defect worth fixing.
+A skill body is context, and context is spent. Two surfaces are not: the tool's
+own `--help`, recoverable on demand at any context age for the price of one
+Bash call, and a skill's `description:` frontmatter, which is in the listing
+and therefore never leaves. The retro measured an agent reaching for the first
+after a compaction and finding it empty. The second is not empty, but it points
+at nothing — so a tool an agent has not already thought of is unreachable from
+either.
+
+So the thesis has two halves, one per durable surface: **`--help` must answer
+*how do I run this*, and the always-resident rung must answer *which tool do I
+want*.** The first is filled by §2.1–2.3, the second by §2.4's registry. Fixing
+only the first leaves an agent who never types the name exactly where it
+started, which is what §0.2 shows actually happened.
 
 ---
 
@@ -193,8 +203,34 @@ are 74% of the deficit and carry the least meaning in their own name.
 **2.3 A description states what the tool reads, what it writes, and when to run
 it.** The arguments carry the input *formats* (2.2), so the description carries
 the *purpose* and the *moment*. This is a prose standard enforced by review,
-not by machine — §3.4 explains why inventing a predicate for it would be worse
+not by machine — §3.5 explains why inventing a predicate for it would be worse
 than admitting it.
+
+**2.4 One registry names every tool, and the durable rung points at it.**
+`--help` answers *how do I run this*; it cannot answer *which tool do I want*,
+because reading it requires already having typed the name. That second question
+needs a list, and the list needs to be reachable from a surface that survives a
+compaction.
+
+- **`references/tools.md`** — one row per help surface: the module, the
+  subcommand if it has one, whether it is a `V1_STAGES` stage and which, the
+  artifact that stage writes, and the one-line purpose. 46 rows. It answers
+  *which tool*; it deliberately does **not** list arguments, because that is
+  what `--help` is for and duplicating it is how a registry starts lying.
+- **`references/` is the established home.** Three reference files already live
+  there and skills already send readers to them — `edit-plan` calls
+  `references/editing-canon.md` a **required read**. The shape exists; what is
+  new is where the pointer lives.
+- **The pointer goes in every skill's `description:` frontmatter**, which §0.3
+  measured as the one rung always in context. One identical sentence across all
+  14, not 14 variants — an agent entering through `episode-qc` alone must meet
+  the same pointer as one entering through `using-montage`.
+
+This is what closes R4.2 by construction rather than by measurement alone. §0.1
+proved that naming a tool inside a perishable body did not reach; naming the
+*registry* on the durable rung is a different instrument, and it is the one
+answer to §0.2's "it outcompeted them" that does not require the agent to
+already suspect the tool exists.
 
 ---
 
@@ -225,13 +261,28 @@ Two instruments, because they answer different questions:
   correct but no longer wired into `main()`. Measured cost: the 31-module sweep
   is **7.29 s**, ~2% of the suite's 365 s, and every module exits 0 today.
 
-**3.3 The surfaces are discovered, not listed.** The test enumerates
+**3.3 The registry is generated, and a test pins the committed copy.**
+`references/tools.md` is rendered from the same `build_parser()` objects the
+check walks, plus `montage.V1_STAGES` for the stage and artifact columns — so
+no fact in it is typed twice. `montage tools` prints it; the committed file is
+that render, and a test asserts the two are byte-identical. A new flag, a
+renamed subcommand or an edited description fails the suite until the file is
+regenerated.
+
+The precedent is `tests/test_plugin_manifests.py`, which pins `CHANGELOG.md`'s
+top entry against `plugin.json`'s version — and its own comment records why a
+stale committed fact is worse than none: the version-keyed install path let
+`episode-qc` stay missing for **316 commits**. A registry that has drifted is
+the same hazard wearing the word "registry", which is why it is generated and
+pinned rather than written.
+
+**3.4 The surfaces are discovered, not listed.** The test enumerates
 `scripts/*.py` and each parser's own subparsers, so a new script or a new
 subcommand is covered on the day it lands — the same shape as
 `tests/test_skills_contract.py`, which derives its expectations from the
 dataclass rather than from a copy of it.
 
-**3.4 What it deliberately does not assert.** §2.3's "reads → writes → when"
+**3.5 What it deliberately does not assert.** §2.3's "reads → writes → when"
 has no honest predicate. The candidates were considered and rejected:
 
 - *A minimum length.* An unmeasured constant policing prose — the class of knob
@@ -253,18 +304,24 @@ design says which is which rather than dressing the third up as the first.
 
 - **No skill is rewritten.** The 84 KB perishable middle stays as it is; that
   was considered as a scope and declined. It is filed in §6.
-- **No new command.** R4.3 ("survive a compaction") needs no `montage tools`
-  map: the recovery route an agent already takes is `--help`, and the row
-  closes when that route stops answering with nothing. A new command would
-  recurse the same reachability problem one level up.
+- **A new command, after all — and the first draft of this design was wrong to
+  refuse it.** That draft rejected a `montage tools` map on the ground that
+  reaching the map recurses the same reachability problem one level up. That
+  objection holds only while the pointer lives somewhere perishable. Put the
+  pointer on the frontmatter — the one rung §0.3 measured as always in context
+  — and the recursion stops at a surface that cannot be spent. The objection
+  was right about the mechanism and wrong about the conclusion, because it
+  assumed the pointer would live in a skill body like every other pointer in
+  this tree does today.
 - **No `Stage` field.** Adding `Stage.purpose` would cover 16 of 31 tools and
   introduce a second place for a description to live. The CLI's own description
   is the single source.
 - **No behaviour changes.** Every edit is a `description=` or `help=` string,
-  the mechanical `build_parser()` extraction (§3.1), and one new test file. No
-  argv changes, no filter changes, no golden moves. `build_parser()` is a pure
-  move: the same parser, constructed by the same statements, returned instead
-  of consumed in place.
+  the mechanical `build_parser()` extraction (§3.1), the `montage tools`
+  renderer, the generated `references/tools.md`, one frontmatter sentence in
+  each of 14 skills, and the tests. No argv changes, no filter changes, no
+  golden moves. `build_parser()` is a pure move: the same parser, constructed
+  by the same statements, returned instead of consumed in place.
 
 ---
 
@@ -287,6 +344,23 @@ design says which is which rather than dressing the third up as the first.
   and still say nothing useful. The check pins presence, never quality — the
   same shape as the contact-sheet stage, which gates that a sheet exists and
   never that anyone looked.
+- **The registry's pointer is permanently resident, and that is a real cost.**
+  The 14 skill descriptions are 7244 characters — roughly **1811 tokens** — and
+  they sit in context in every session, including sessions that never touch
+  video-grid. One identical pointer sentence across 14 skills adds about **340
+  tokens, a 19% increase on that always-resident block**. Cheap against the
+  84 KB of skill body it is meant to outlive, and not free. The sentence is
+  identical across all 14 precisely so it is one memorized phrase rather than
+  14 near-duplicates.
+- **A registry is a fifth place a description can live** — frontmatter, skill
+  body, CLI description, registry, `CLAUDE.md`. Generation and the pin test
+  keep exactly one of those pairs — registry against CLI — from drifting. The
+  other three still drift independently, as they do today.
+- **Nothing proves an agent reads the registry either.** A frontmatter sentence
+  is a directive, which is stronger than a fact buried in a body, and it is
+  still only a directive. The same limit as §2.3's unenforced prose standard,
+  and the same limit the contact-sheet stage carries: presence is gateable,
+  attention is not.
 - **This slice makes no reel better.** It changes no pixel, no cut, and no
   gate. It is a change to what the product can tell its own operator.
 
@@ -307,11 +381,18 @@ Rows for `docs/backlog.md`:
    check needs a deferred exemption; worth building only if a rename ever
    breaks a runner pointer. (P3, S)
 3. **The ten repo-internal pointers in CLI descriptions** (`stage 5.2b`,
-   `§5.13 Slice B`) substitute a reference for a statement. §3.4 shows no
+   `§5.13 Slice B`) substitute a reference for a statement. §3.5 shows no
    honest machine predicate separates them from a description that merely
    *also* cites; a prose pass is a review item, not a gate. (P3, S)
-4. **R4.2 closes by measurement, not by construction** — both of its examples
+4. **The registry answers "which tool", never "is this tool right here".**
+   A row says `probe grade` exists and renders stills over a frozen route; it
+   cannot say that this is the moment in *your* run to reach for it. That is
+   the judgement the skill body carries, and it is the half that stays
+   perishable. (P3, M)
+5. **R4.2 closes by measurement AND construction** — both of its examples
    were addressed before this slice (§0.1/§0.2). What the row named as the
    cause was not the cause, and the retro's own text carries the real one. The
    generalizable residue — a tool whose CLI cannot be run at the moment its
-   user needs it — has no open instance today and is not filed as a row.
+   user needs it — has no open instance today and is not filed as a row. What
+   this slice builds for it is §2.4's registry, which addresses the shape of
+   the complaint rather than either of its two settled instances.
