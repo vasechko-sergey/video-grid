@@ -1,6 +1,6 @@
 ---
 name: reel-review
-description: Conveyor stage — the reel's final editorial review. using-montage invokes this at checkpoint CP3, after edl_to_reel delivers <run>/reels/<reel>/deliveries/REEL_v{n}.mp4, to judge whether the reel delivers SPEC's idea/mood/hook/ending/spine/colour. Dispatch a fresh reviewer subagent, validate its findings into REVIEW.json + REVIEW.md, surface them beside the reel, and route the ones the human picks to the fixer stage (edit-plan/pacing/music). Human-gated — the reviewer proposes, the human disposes. Required — montage.py has carried it as a required stage since the attested-run slice; the description said optional until 2026-08-30.
+description: "Conveyor stage — the reel's final editorial review at CP3: a fresh reviewer subagent judges the delivered reel against SPEC, findings validated into REVIEW.json + REVIEW.md and routed to the stage that owns each fix. Human-gated. Required. Conveyor position: after deliver, last. Tool index: references/tools.md."
 ---
 
 # reel-review (stage 5.13, editorial half)

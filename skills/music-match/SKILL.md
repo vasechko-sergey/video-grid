@@ -1,6 +1,6 @@
 ---
 name: music-match
-description: Conveyor stage — pick the reel's track from a LOCAL folder of candidates by mood. using-montage invokes this when the brief has a mood but no chosen track and the user has a music folder; run it directly only to re-rank. Ranks every track by fit to SPEC.mood into MUSIC_SHORTLIST.md; you present the top few, the user picks, then `beats --auto-start` writes MUSIC.json. Optional — skip when a track is already chosen; see music-source for the network lanes.
+description: "Pick the reel's track from a LOCAL folder of candidates by mood-fit, ranked into MUSIC_SHORTLIST.md for the user to choose from. Serves the music-and-mood stage. Optional — skip when a track is already chosen; see music-source for the network lanes. Tool index: references/tools.md."
 ---
 
 # music-match (stage 5.5, local lane)

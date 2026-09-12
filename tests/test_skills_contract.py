@@ -18,6 +18,7 @@ import pytest
 
 from scripts.lib.episode_qc import QC_AXES, EpisodeFinding
 from scripts.lib.review import REVIEW_AXES, Finding
+from scripts.lib import toolindex
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,3 +71,48 @@ def test_the_template_names_the_extraction_tool():
     text = (ROOT / "skills/episode-qc/episode-reviewer.md").read_text()
     assert "scripts.contact_sheet strip" in text
     assert "$VG" in text
+
+
+SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
+POINTER = "Tool index: references/tools.md."
+
+
+def _description(path: Path) -> str:
+    m = re.search(r"^description:\s*(.+)$", path.read_text(), re.M)
+    assert m, f"{path} has no description: line"
+    return m.group(1)
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda p: p.parent.name)
+def test_every_skill_points_at_the_tool_index(skill):
+    """The one rung always in context. A tool an agent has not already thought
+    of is unreachable from --help, which requires typing its name first."""
+    assert POINTER in _description(skill), (
+        f"{skill.parent.name}'s description does not carry {POINTER!r} — the "
+        f"index is only reachable from a surface that survives a compaction")
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda p: p.parent.name)
+def test_every_skill_states_its_conveyor_place(skill):
+    """A stage skill carries its generated position; a non-stage skill says
+    what it is instead. Inventing a predecessor for verify-runtime would be
+    worse than omitting one (design §0.7)."""
+    name, desc = skill.parent.name, _description(skill)
+    if name in toolindex.SKILL_ROLES:
+        role = toolindex.SKILL_ROLES[name]
+        # Case-insensitive: a role that opens a sentence is capitalised there
+        # ("Serves the music-and-mood stage.") and lowercase in the table.
+        assert role.lower() in desc.lower(), (
+            f"{name} is not a conveyor stage; its description must say what it "
+            f"is instead: {role!r}")
+    else:
+        assert toolindex.position(name) in desc, (
+            f"{name}'s description does not carry its generated position "
+            f"sentence verbatim: {toolindex.position(name)!r}")
+
+
+def test_the_router_carries_the_generated_chain():
+    desc = _description(ROOT / "skills/using-montage/SKILL.md")
+    assert toolindex.chain() in desc, (
+        f"using-montage's description does not carry the chain rendered from "
+        f"V1_STAGES: {toolindex.chain()!r}")

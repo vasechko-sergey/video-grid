@@ -1,6 +1,6 @@
 ---
 name: using-montage
-description: Router — the montage conveyor's front door. Turns a folder of raw footage + a natural-language brief ("a 9:16 reel from this trip, no music") into a delivered reel. Use when the user wants a reel from footage — the 1%-chance montage router. Verifies the runtime, then conducts every stage in order (project-init → footage-intake → contact-sheet → [reel-brief] → edit-plan → [music] → [pacing] → episodes-geometry → match-grade → [assemble-draft] → [titles] → edl_to_reel episodes → episode-qc → edl_to_reel deliver → reel-review), stopping only at the three checkpoints, resuming a half-finished run, and naming any stage it skips. Required — the entry point.
+description: "Router — the montage conveyor's front door: a folder of raw footage plus a natural-language brief (\"a 9:16 reel from this trip, no music\") becomes a delivered reel. Use when the user wants a reel from footage — the router itself — it conducts every stage in order, stops at the three checkpoints, resumes a half-finished run, and names any stage it skips. Required — the entry point. Conveyor: project-init -> footage-intake -> contact-sheet -> [reel-brief] -> edit-plan -> [music-and-mood] -> [pacing] -> episodes-geometry -> match-grade -> [assemble-draft] -> [titles] -> episodes -> episode-qc -> deliver -> reel-review. Tool index: references/tools.md."
 ---
 
 # using-montage (stage 5.1)

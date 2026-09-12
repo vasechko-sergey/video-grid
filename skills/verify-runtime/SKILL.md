@@ -1,6 +1,6 @@
 ---
 name: verify-runtime
-description: Preflight — verify the video-grid runtime is fully installed; on any gap, print the exact command to fix it. Use before a montage run, after `bash setup.sh` or a plugin reinstall, or when a run won't start; using-montage also calls it as step 0. Checks deps, ffmpeg, drawtext/vidstab filters, font, YOLO weights, demucs (reid advisory); read-only, never installs. Required — gates the conveyor.
+description: "Preflight — verify the video-grid runtime is fully installed and print the exact command to fix any gap: deps, ffmpeg, drawtext and vidstab filters, font, YOLO weights, demucs. Read-only, never installs. Required — step 0, before every stage. Tool index: references/tools.md."
 ---
 
 # verify-runtime

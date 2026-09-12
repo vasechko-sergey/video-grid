@@ -1,6 +1,6 @@
 ---
 name: process-episode
-description: Conveyor stage (per-episode worker) — turn one approved EDL episode manifest into a checked, reframed clip at its chosen canvas/delivery (track → reframe → storyboard → postcheck). edl_to_reel drives this, one subagent per episode — not invoked directly. Asks before starting only if the manifest is ambiguous; stops to report when the tracker contradicts the manifest.
+description: "Per-episode worker — turn one approved EDL episode manifest into a checked, reframed clip at its chosen canvas and delivery (track -> reframe -> storyboard -> postcheck). Driven by edl_to_reel, one subagent per episode; not invoked directly. A per-episode worker under the episodes stage. Tool index: references/tools.md."
 ---
 
 # process-episode

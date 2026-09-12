@@ -19,10 +19,16 @@ def test_frontmatter_name_and_description():
     assert re.search(r"^name:\s*process-episode\s*$", fm, re.M)
     desc = re.search(r"^description:\s*(.+)$", fm, re.M)
     assert desc, "description required"
-    assert len(desc.group(1)) <= 500
-    # role-led descriptions (2026-08-01): the lead names how you reach the skill,
-    # not the old "Use when …" opener. process-episode is a conveyor sub-worker.
-    assert desc.group(1).lstrip().lower().startswith("conveyor stage")
+    # A description containing ": " is a double-quoted YAML scalar (2026-09-12
+    # rederivable-purpose) -- strip the bounding quote before judging content,
+    # never the mandated colon inside it.
+    text = desc.group(1).strip().strip('"')
+    assert len(text) <= 500
+    # role-led descriptions (2026-08-01, relabelled 2026-09-12): the lead names
+    # how you reach the skill. process-episode is a per-episode WORKER, not a
+    # stage of its own (toolindex.SKILL_ROLES) -- its lead now says so directly
+    # instead of borrowing "Conveyor stage".
+    assert text.lower().startswith("per-episode worker")
 
 
 def test_required_sections_present():

@@ -1,6 +1,6 @@
 ---
 name: pacing
-description: Conveyor stage — fit the cuts edit-plan already chose onto the music's beat grid (PACING.json/.md). using-montage invokes this after edit-plan and music; run it directly only to re-fit. Snaps each cut to the coarsest grid level it can reach within a half-beat, then re-run `edit_plan build --pacing` to apply; the footage owns each cut's length, pacing only picks which musical lines cuts land on. Optional — a music-less reel skips it.
+description: "Conveyor stage — fit the cuts edit-plan already chose onto the music's beat grid (PACING.json/.md); re-run edit-plan build --pacing to apply. The footage owns each cut's length; pacing only picks which musical lines they land on. Optional — a music-less reel skips it. Conveyor position: after music-and-mood, before episodes-geometry. Tool index: references/tools.md."
 ---
 
 # pacing (stage 5.6, grid fit)

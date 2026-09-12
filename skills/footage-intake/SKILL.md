@@ -1,6 +1,6 @@
 ---
 name: footage-intake
-description: Conveyor stage — scan a folder of raw clips into scored moment-windows (FOOTAGE.json/.md) and, when people matter, name the heroes into cast.json. using-montage invokes this after project-init; run it directly only to (re)scan footage. Needs project.json. Mechanical scan in Python; you own only the human-in-the-loop naming. Required — feeds edit-plan.
+description: "Conveyor stage — scan a folder of raw clips into scored moment-windows (FOOTAGE.json/.md) and, when people matter, name the heroes into cast.json. Needs project.json. Required — feeds edit-plan. Conveyor position: after project-init, before contact-sheet. Tool index: references/tools.md."
 ---
 
 # footage-intake

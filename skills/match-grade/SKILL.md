@@ -1,6 +1,6 @@
 ---
 name: match-grade
-description: Conveyor stage — the match-grade conductor. Measures every EDL episode's own tracked crop (the pixels that actually ship, read through GEOMETRY.json's frozen route), computes one common reel target (the per-anchor median), and auto-authors tone_src/tone_dst on episodes that deviate past --eps (default 4 luma units), rewriting EDL.json in place plus a MATCH.json twin (the router's presence marker since 2026-09-09) and its rendered MATCH.md report. using-montage invokes this after episodes-geometry (there is no crop to measure before a route is frozen) and before the render; run it directly only to re-grade. Required — the router runs it on every reel, even a single-camera one, since it costs seconds and reports within-eps for free.
+description: "Conveyor stage — the match-grade conductor: measure every episode's tracked crop, compute one common reel tone target, and author tone_src/tone_dst on the episodes that deviate. Required. Conveyor position: after episodes-geometry, before assemble-draft. Tool index: references/tools.md."
 ---
 
 # match-grade (design §10, tone conductor)

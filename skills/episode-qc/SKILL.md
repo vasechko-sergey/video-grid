@@ -1,6 +1,6 @@
 ---
 name: episode-qc
-description: Conveyor stage — the per-episode quality gate between rendering and delivery. using-montage invokes this after edl_to_reel --from-geometry writes EPISODES.json, and before the --from-episodes call that assembles the reel. Packs one evidence directory per episode (a frame strip of the delivered clip, the storyboard, the mechanical report, and a colour-naturalness reading) — each evidence.json now stamped with the clip's own digest too, so a re-render after packing but before judging is refused by name, not judged on stale pixels — dispatches one fresh judge subagent per episode — at most 3 concurrently — against composition/colour/impression/path/hero, then validates their findings into EPISODE_QC.json/.md, stamping each verdict's clip digest itself so a re-render cannot inherit a stale verdict. Required — a reel is never assembled over an episode nobody judged; a blocking finding stops the run there, routed to the stage that owns the fix. No waiver exists to lower this gate.
+description: "Conveyor stage — the per-episode quality gate between rendering and delivery: pack an evidence directory per episode, dispatch one judge subagent each, and validate their findings into EPISODE_QC.json. Required; no waiver. Conveyor position: after episodes, before deliver. Tool index: references/tools.md."
 ---
 
 # episode-qc (per-episode QC gate)

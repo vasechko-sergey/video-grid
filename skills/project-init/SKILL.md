@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Start here — the montage's first step. Learn what the video is for and set its aspect + delivery quality, writing project.json. Run this to begin a montage; from here the conveyor (using-montage) carries on through the remaining stages. Asks purpose (reel/youtube/square/cinema/custom) and quality (native/1080/4K or explicit spec); every episode inherits canvas/delivery unless it overrides. Required — nothing runs before it.
+description: "Start here — the montage's first step: learn what the video is for and set its aspect and delivery quality, writing project.json. Every episode inherits canvas and delivery unless it overrides. Required — nothing runs before it. Conveyor position: first, before footage-intake. Tool index: references/tools.md."
 ---
 
 # project-init
