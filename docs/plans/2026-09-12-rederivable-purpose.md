@@ -810,13 +810,32 @@ tests/test_plugin_manifests.py, whose own comment records the cost — a
 version-keyed install path let episode-qc stay missing for 316 commits.
 """
 import importlib
+import importlib.util
 from pathlib import Path
 
-import tests.test_cli_help as test_cli_help
 from scripts.lib import toolindex
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "references/tools.md"
+
+
+def _load_cli_help():
+    """Load the sibling test module by PATH, not by name.
+
+    `import tests.test_cli_help` cannot work: ultralytics ships its own
+    top-level `tests/__init__.py` into site-packages, which shadows this
+    repo's tests package no matter the sys.path order — measured, not
+    feared. Loading by path keeps the fix inside this one file: adding
+    `tests/__init__.py` breaks tests/integration/test_grade_shipped_pixels.py,
+    and a conftest shim is a repo-wide workaround for a one-file need."""
+    spec = importlib.util.spec_from_file_location(
+        "_cli_help_for_index", ROOT / "tests/test_cli_help.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+cli_help = _load_cli_help()
 
 
 def test_the_committed_index_matches_what_the_renderer_produces():
@@ -833,20 +852,30 @@ def test_every_help_surface_has_a_row():
     rows and report none missing. The second copy of the four-line walk is what
     makes this assertion mean anything."""
     text = INDEX.read_text()
-    expected = [label for name in test_cli_help.CLI
-                for label, _ in test_cli_help.surfaces(
+    expected = [label for name in cli_help.CLI
+                for label, _ in cli_help.surfaces(
                     importlib.import_module(f"scripts.{name}").build_parser(), name)]
-    assert len(expected) == 46, f"expected 46 help surfaces, the walk found {len(expected)}"
+    # 47, not 46: Step 4 of this task adds `montage tools` as a 16th subcommand.
+    assert len(expected) == 47, f"expected 47 help surfaces, the walk found {len(expected)}"
     for label in expected:
         assert f"`{label}`" in text, f"{label} is a help surface with no index row"
 
 
-def test_the_index_lists_no_arguments():
-    rows = [ln for ln in INDEX.read_text().splitlines() if ln.startswith("| `")]
-    offenders = [ln for ln in rows if " --" in ln]
-    assert offenders == [], (
-        f"{len(offenders)} index rows name a flag. --help answers 'how'; the "
-        f"index answers 'which'. Duplicating arguments is how an index lies.")
+def test_the_index_has_no_argument_column():
+    """--help answers 'how'; the index answers 'which'. An arguments column
+    would duplicate --help, and duplication is how an index starts lying
+    (design §2.4).
+
+    This replaces a first draft that scanned rows for a ` --` token. Measured
+    during execution: that heuristic fires on legitimate content — `montage
+    tools`'s own description names `--help`, and `match_grade build`'s names
+    `--eps`. A check that fails on correct input is worse than none, so the
+    claim is made structurally."""
+    header = [ln for ln in INDEX.read_text().splitlines() if ln.startswith("| surface")]
+    assert header == ["| surface | stage | writes | purpose |"], (
+        f"the index's columns changed: {header}. It names which tool, never "
+        f"which flag — regenerate with "
+        f"`python -m scripts.montage tools > references/tools.md`")
 
 
 def test_the_script_to_stage_map_names_only_real_stages():
@@ -957,6 +986,13 @@ def surface_labels() -> list[str]:
     return out
 
 
+def _cell(text: str) -> str:
+    """A markdown table cell cannot hold a bare pipe. `build_reel`'s own
+    description carries one ("delivered reel | stop-and-report"), so this is
+    reached by real content, not defensive."""
+    return text.replace("|", "\\|")
+
+
 def _one_line(text: str) -> str:
     """Collapse a wrapped description to one cell, and cut at the first full stop
     so a row is a row. The full text stays in --help, which is the point."""
@@ -987,7 +1023,8 @@ def render_index() -> str:
         stage = ", ".join(f"`{k}`" for k in keys) or "—"
         writes = ", ".join(f"`{stage_of[k].artifact}`" for k in keys) or "—"
         for label, parser in _surfaces(mod.build_parser(), name):
-            lines.append(f"| `{label}` | {stage} | {writes} | {_one_line(parser.description)} |")
+            lines.append(f"| `{_cell(label)}` | {stage} | {writes} | "
+                         f"{_cell(_one_line(parser.description))} |")
     return "\n".join(lines) + "\n"
 
 
@@ -1044,13 +1081,13 @@ with `from scripts.lib import toolindex` at the top, alongside the other
 .venv/bin/python -m pytest tests/test_tool_index.py -q
 ```
 
-Expected: **5 passed**, and `references/tools.md` holds 46 data rows.
+Expected: **5 passed**, and `references/tools.md` holds 47 data rows.
 
 ```bash
 grep -c '^| `' references/tools.md
 ```
 
-Expected: `46`.
+Expected: `47` — 31 top-level parsers plus 16 subcommands, `montage tools` included.
 
 - [ ] **Step 6: Prove the pin bites**
 
@@ -1317,7 +1354,7 @@ uncommitted `references/tools.md` use the `.bak` copy pattern from Task 4.
 | 6 | drop `help=` from `deliver`'s `--changelog` flag | `tests/test_cli_help.py::test_every_argument_says_what_it_is` | FAIL |
 | 7 | set `scripts/track.py`'s description to `"   "` (whitespace) | `tests/test_cli_help.py::test_every_help_surface_states_a_purpose` | FAIL |
 | 8 | append a bogus row to `references/tools.md` | `tests/test_tool_index.py::test_the_committed_index_matches_what_the_renderer_produces` | FAIL |
-| 9 | add a `--flag` mention into one index row | `tests/test_tool_index.py::test_the_index_lists_no_arguments` | FAIL |
+| 9 | rename a column in `render_index`'s header row | `tests/test_tool_index.py::test_the_index_has_no_argument_column` | FAIL |
 | 9b | point `STAGES_OF_SCRIPT["intake"]` at `("intake",)` — the naive `name.replace("_","-")` answer | `tests/test_tool_index.py::test_the_script_to_stage_map_names_only_real_stages` | FAIL |
 | 9c | delete the `"beats"` row from `STAGES_OF_SCRIPT` | `tests/test_tool_index.py::test_every_built_stage_is_claimed_by_some_script` | FAIL |
 | 10 | reorder two entries in `montage.V1_STAGES` | `tests/test_skills_contract.py::test_every_skill_states_its_conveyor_place` | FAIL |
@@ -1479,6 +1516,35 @@ second copy is what makes the assertion mean anything, the same reasoning the
 grade-sensor slice recorded for `grade_faithful`'s shared prediction path
 (design §9.4 of 2026-08-31). The `len(expected) == 46` assertion is the
 backstop against BOTH walks being wrong the same way.
+
+**Three further defects found in execution, by the Task 4 implementer's
+NEEDS_CONTEXT and confirmed independently** — recorded here because all three
+were the plan's, not the implementer's:
+
+A. **`import tests.test_cli_help` cannot work in this venv.** `ultralytics`
+   ships its own top-level `tests/__init__.py` into site-packages, which
+   shadows the repo's `tests` package regardless of `sys.path` order. Two
+   fixes were tried and rightly refused as too broad — a repo-level
+   `tests/__init__.py` breaks
+   `tests/integration/test_grade_shipped_pixels.py`, and a `conftest.py` shim
+   is a repo-wide workaround for a one-file need. The module is now loaded by
+   path inside `tests/test_tool_index.py`.
+B. **The hardcoded surface count was 46 and must be 47** — Task 4's own Step 4
+   adds `montage tools` as a sixteenth subcommand. The plan asserted a number
+   its own next step invalidated.
+C. **`test_the_index_lists_no_arguments` fired on legitimate content.**
+   `montage tools`'s description names `--help`; `match_grade build`'s names
+   `--eps`. Battery row 9 flagged the risk in the opposite direction — that
+   the check might be vacuous — and the real failure was the mirror image. The
+   check is now structural (the table's header columns), and the two
+   descriptions it would have forced into worse wording stand unchanged: a
+   check that fails on correct input is worse than no check, and bending
+   reviewed content to satisfy it is backwards.
+
+A fourth finding was real and not a plan defect: `build_reel`'s description
+carries a literal `|` ("delivered reel | stop-and-report") that breaks a
+markdown table cell. Fixed in the renderer with `_cell()`, not in the
+description — the pipe is meaningful prose, and any description may hold one.
 
 **Five defects this self-review found in its own first draft**, recorded
 because the last slice's every Critical finding originated in the plan and not
