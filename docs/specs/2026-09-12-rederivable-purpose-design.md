@@ -143,7 +143,7 @@ pointer for the purpose:** `(stage 5.2b)`, `(§5.13 Slice B)`, `(montage §5.9)`
 `(design 2026-08-01)`. Those resolve only against a design document the reader
 must first find and then read. They are pointers, not statements — but note
 that none of the ten is *only* a pointer, so this is a quality observation, not
-a machine-checkable defect (§3.6).
+a machine-checkable defect (§3.7).
 
 ### 0.5 Seven tools are named by no stage, no skill of their own, and no skill body
 
@@ -157,7 +157,43 @@ these seven.
 `probe` is **not** in this list: it is named three times across skill bodies.
 The homelessness hypothesis does not explain it either. §0.2 does.
 
-### 0.6 What cannot be measured, ever
+### 0.6 The router's own chain does not match the registry it describes
+
+`using-montage`'s `description:` names the conveyor in order, and
+`montage.V1_STAGES` **is** that order — so the two can be compared. They do not
+agree. Three of the description's fifteen names are not stage keys at all:
+
+| in the description | the registry's key |
+|---|---|
+| `music` | `music-and-mood` |
+| `edl_to_reel episodes` | `episodes` |
+| `edl_to_reel deliver` | `deliver` |
+
+The order is right and `trend-scan` is correctly omitted as deferred, so this
+is drift in vocabulary, not in sequence — today. Nothing checks it, and the
+same description also declares each stage's optionality by hand, with brackets
+that no test compares against `Stage.kind`.
+
+Rendering the chain from the registry produces a **228-character** string,
+shorter than the hand-written one it replaces and correct by construction:
+
+    project-init -> footage-intake -> contact-sheet -> [reel-brief] ->
+    edit-plan -> [music-and-mood] -> [pacing] -> episodes-geometry ->
+    match-grade -> [assemble-draft] -> [titles] -> episodes -> episode-qc ->
+    deliver -> reel-review
+
+### 0.7 Nine of fourteen skills are stages; five are not, and seven stages have no skill
+
+| | |
+|---|---|
+| skill **is** a stage key (9) | `project-init`, `footage-intake`, `reel-brief`, `edit-plan`, `pacing`, `match-grade`, `titles`, `episode-qc`, `reel-review` |
+| skill is **not** a stage (5) | `using-montage` (the router itself), `verify-runtime` (step 0, before every stage), `music-match` / `music-source` (both serve the one `music-and-mood` stage), `process-episode` (a per-episode worker under `episodes`) |
+| stage has **no** same-named skill (7) | `contact-sheet`, `trend-scan`, `music-and-mood`, `episodes-geometry`, `assemble-draft`, `episodes`, `deliver` — CLI stages the router drives directly |
+
+The mapping is not 1:1 in either direction, which is why §2.5 states a
+*position* rather than assuming every skill has a predecessor and a successor.
+
+### 0.8 What cannot be measured, ever
 
 The run's transcripts are deleted — the retro was written against them and says
 so. Reach cannot be re-measured. Every number in this design comes from
@@ -168,8 +204,8 @@ what an agent does. §5 carries this.
 
 ## 1. Thesis
 
-**A tool's purpose must live where it can be re-derived, not only where it was
-once read.**
+**A tool's purpose, and its place in the order, must live where they can be
+re-derived — not only where they were once read.**
 
 A skill body is context, and context is spent. Two surfaces are not: the tool's
 own `--help`, recoverable on demand at any context age for the price of one
@@ -179,11 +215,18 @@ after a compaction and finding it empty. The second is not empty, but it points
 at nothing — so a tool an agent has not already thought of is unreachable from
 either.
 
-So the thesis has two halves, one per durable surface: **`--help` must answer
-*how do I run this*, and the always-resident rung must answer *which tool do I
-want*.** The first is filled by §2.1–2.3, the second by §2.4's index. Fixing
-only the first leaves an agent who never types the name exactly where it
-started, which is what §0.2 shows actually happened.
+So the thesis has three questions and two durable surfaces to answer them on:
+
+| question | answered by | resident? |
+|---|---|---|
+| *how do I run this* | `--help` (§2.1–2.3) | no — one Bash call, any context age |
+| *which tool do I want* | `references/tools.md` (§2.4) | no — the pointer is, the index is not |
+| *which skill comes next* | the position sentence and the front door's chain (§2.5) | yes, and it is 56 characters |
+
+Fixing only the first leaves an agent who never types the name exactly where it
+started, which is what §0.2 shows actually happened. Fixing the first two leaves
+an agent who knows every tool and has to reconstruct the order — which is the
+same failure one level up.
 
 ---
 
@@ -203,7 +246,7 @@ are 74% of the deficit and carry the least meaning in their own name.
 **2.3 A description states what the tool reads, what it writes, and when to run
 it.** The arguments carry the input *formats* (2.2), so the description carries
 the *purpose* and the *moment*. This is a prose standard enforced by review,
-not by machine — §3.6 explains why inventing a predicate for it would be worse
+not by machine — §3.7 explains why inventing a predicate for it would be worse
 than admitting it.
 
 **2.4 One index names every tool; the durable rung points at it, and sheds what
@@ -236,6 +279,39 @@ from a surface that survives a compaction.
   trigger: what this is, when to reach for it, required or optional. Everything
   past that is documentation filed in the one place that is never unloaded.
 
+**2.5 Every skill states its conveyor position; the front door states the whole
+path.** An index answers *which tool*. It does not answer *which skill comes
+next*, and an agent that knows the tools and not the order still has to
+reconstruct the sequence — which is what §0.2's private colour lab was, one
+level up.
+
+- **Each of the 9 stage skills carries one generated sentence** naming its
+  predecessor and successor in the declared order: `Conveyor position: after
+  <prev>, before <next>.` Measured at 43–66 characters, mean 56.
+- **The 5 non-stage skills state what they actually are** (§0.7) — the router,
+  the step-0 preflight, the two that serve `music-and-mood`, the per-episode
+  worker under `episodes`. Saying "this skill has no conveyor position, it
+  serves X" is the honest form; inventing a predecessor for `verify-runtime`
+  would be worse than omitting one.
+- **`using-montage` carries the full chain, rendered from `V1_STAGES`** —
+  **228 characters**, with `[brackets]` taken from `Stage.kind` rather than
+  typed, and `deferred` stages omitted. It is the one description that
+  legitimately holds the whole sequence, and it is what makes the user's
+  observation work: an agent that reads the front door once knows which skills
+  exist and in what order, and each skill it later enters confirms its own
+  place from the same source.
+- **Neither is hand-written.** Both the per-skill sentence and the chain are
+  generated from `montage.V1_STAGES`, and a test pins the exact string inside
+  each description — the same shape as §3.3's index pin. §0.6 is why: the
+  hand-written chain has **already drifted** from the registry it describes.
+
+The per-skill sentence names the *declared* order, not a guarantee that the
+neighbour runs — optional stages are skipped, and only the front door's chain
+shows which. That division is deliberate: the neighbour is the cheap fact worth
+carrying everywhere, the skippability is the expensive one worth carrying once.
+
+**2.6 What §2.4 and §2.5 cost, and why the trade works.**
+
 **The mechanism: a pointer is resident, the thing it points at is not.** This
 is why the trade works and why it keeps working. A skill's `description:` is
 paid in **every** session, read or not, needed or not — 6172 of today's 7244
@@ -254,13 +330,18 @@ invocation needs it.
 
 **Measured effect on always-resident context.** Three real drafts
 (`episode-qc` 989 → 383, `match-grade` 740 → 275, `using-montage` 659 → 392)
-average **350 characters including the pointer**. Every one of the 14 is above
-that today, so at that length the block goes **7244 → 5348 characters, ~1811 →
-~1337 tokens, −27%** — about **474 tokens freed in every session**, including
-sessions that never touch video-grid. The pointer pays for itself and leaves
-change. The first draft of this design costed the pointer as a **+19%
-addition**; that was arithmetic on the assumption that descriptions stay as
-they are, and the assumption was the error.
+average **350 characters** with the pointer and the position clause both
+included. Every one of the 14 is above that today. `using-montage` is the
+exception that keeps its chain: 392 for the trigger plus the generated 228, so
+**625**. Thirteen at 350 plus the router at 625 is **7244 → 5175 characters,
+~1811 → ~1293 tokens, −29%** — about **517 tokens freed in every session**,
+including sessions that never touch video-grid. The router alone is then 12% of
+the block, which is the right shape: one description holds the map, thirteen
+hold a pointer and a place.
+
+The first draft of this design costed the pointer as a **+19% addition**; that
+was arithmetic on the assumption that descriptions stay as they are, and the
+assumption was the error.
 
 This is what closes R4.2 by construction rather than by measurement alone. §0.1
 proved that naming a tool inside a perishable body did not reach; naming the
@@ -321,13 +402,27 @@ generated index. The test pins **presence**, never length: the 350-character
 figure in §2.4 is a target read off three drafts, not a measurement of what a
 description needs, and it has no business in a gate (§3.5).
 
-**3.5 The surfaces are discovered, not listed.** The test enumerates
+**3.5 The position sentence and the chain are pinned, not trusted.**
+The same `tests/test_skills_contract.py` case that checks the pointer (§3.4)
+checks that each of the 9 stage skills carries its generated position sentence
+verbatim, that the 5 non-stage skills carry their declared role, and that
+`using-montage` carries the chain rendered from `V1_STAGES` — brackets from
+`Stage.kind`, `deferred` omitted. The skill file stays hand-written; one
+substring in it is pinned to a code fact, exactly as
+`test_the_changelog_top_entry_matches_the_plugin_version` pins one heading to
+`plugin.json`.
+
+§0.6 is the evidence that this check is not theoretical: the hand-written chain
+has already drifted, in three of its fifteen names, with the optionality
+brackets typed by hand and compared to nothing.
+
+**3.6 The surfaces are discovered, not listed.** The test enumerates
 `scripts/*.py` and each parser's own subparsers, so a new script or a new
 subcommand is covered on the day it lands — the same shape as
 `tests/test_skills_contract.py`, which derives its expectations from the
 dataclass rather than from a copy of it.
 
-**3.6 What it deliberately does not assert.** §2.3's "reads → writes → when"
+**3.7 What it deliberately does not assert.** §2.3's "reads → writes → when"
 has no honest predicate. The candidates were considered and rejected:
 
 - *A minimum length.* An unmeasured constant policing prose — the class of knob
@@ -363,8 +458,9 @@ design says which is which rather than dressing the third up as the first.
   is the single source.
 - **No behaviour changes.** Every edit is a `description=` or `help=` string,
   the mechanical `build_parser()` extraction (§3.1), the `montage tools`
-  renderer, the generated `references/tools.md`, and a rewrite of all 14 skill
-  `description:` lines down to trigger-plus-pointer (§2.4), and the tests. No argv changes, no filter changes, no
+  renderer, the generated `references/tools.md`, a rewrite of all 14 skill
+  `description:` lines down to trigger plus pointer plus position (§2.4/§2.5),
+  and the tests. No argv changes, no filter changes, no
   golden moves. `build_parser()` is a pure move: the same parser, constructed
   by the same statements, returned instead of consumed in place.
 
@@ -375,7 +471,7 @@ design says which is which rather than dressing the third up as the first.
 - **Nothing here proves an agent will run `--help`.** It proves the route
   answers when taken. The retro's 12-of-13 measurement says the route *is*
   taken after a compaction; it does not say it is taken before one.
-- **Reach can never be re-measured.** The transcripts are deleted (§0.6). No
+- **Reach can never be re-measured.** The transcripts are deleted (§0.8). No
   future run can be compared against this one on this axis, because the
   baseline is gone.
 - **The retro's verdict is that the agent outcompeted the tools**, building a
@@ -398,6 +494,12 @@ design says which is which rather than dressing the third up as the first.
   to reach for it, required or optional** stays; everything past that goes. A
   skill that fires less often is the failure mode to watch for, and it will
   show up as a stage being skipped, not as a red test.
+- **A generated position sentence names the declared order, not what will
+  actually run.** `match-grade`'s successor in `V1_STAGES` is the optional
+  `assemble-draft`; on a run that skips it the real next stage is `episodes`.
+  The sentence is accurate about the registry and can mislead about the run.
+  Only the front door's chain shows optionality, and that asymmetry is chosen
+  (§2.5), not overlooked.
 - **The 350-character figure is three drafts, not a measurement.** It is a
   target for the plan to aim at, and a fourth description may honestly need
   450. §3.4's check pins the pointer's presence and deliberately pins no
@@ -438,7 +540,7 @@ Rows for `docs/backlog.md`:
    check needs a deferred exemption; worth building only if a rename ever
    breaks a runner pointer. (P3, S)
 3. **The ten repo-internal pointers in CLI descriptions** (`stage 5.2b`,
-   `§5.13 Slice B`) substitute a reference for a statement. §3.6 shows no
+   `§5.13 Slice B`) substitute a reference for a statement. §3.7 shows no
    honest machine predicate separates them from a description that merely
    *also* cites; a prose pass is a review item, not a gate. (P3, S)
 4. **The index as its own skill, reachable by name instead of by path.**
