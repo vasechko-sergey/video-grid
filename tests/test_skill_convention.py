@@ -22,14 +22,11 @@ RUNNERS = {"using-montage", "music-source", "music-match", "pacing",
 # number limped, so it is gone from descriptions). "Per-episode worker —" joined
 # the set 2026-09-12: process-episode is a toolindex.SKILL_ROLES worker, not a
 # stage, so its lead now names that directly instead of borrowing "Conveyor stage".
+# "Music lane —" joined the same day: music-match/music-source are the two lanes
+# of the one music-and-mood stage, and the tag names that instead of leaving them
+# with no lead at all.
 ROLE_LEADS = ("Start here —", "Router —", "Conveyor stage", "Preflight —",
-              "Per-episode worker —")
-# music-match/music-source (2026-09-12): the other two toolindex.SKILL_ROLES
-# skills dropped the categorical lead entirely for a plain action opener ("Pick
-# the reel's track…" / "Source the reel's track…"); their role ("serves the
-# music-and-mood stage") is asserted separately, mid-description, by
-# tests/test_skills_contract.py::test_every_skill_states_its_conveyor_place.
-_NO_ROLE_LEAD = {"music-match", "music-source"}
+              "Per-episode worker —", "Music lane —")
 
 
 def test_no_skill_invokes_a_bare_venv_python():
@@ -70,15 +67,13 @@ def test_using_montage_orders_edit_plan_before_music():
 def test_every_skill_description_leads_with_a_role_tag():
     """Uniform, role-led descriptions: the lead names the skill's place in the
     conveyor (Start here / Router / Conveyor stage / Preflight / Per-episode
-    worker), so a reader sees at a glance what to run and what the conveyor
-    drives. Guards against drift. music-match/music-source opted out (see
-    _NO_ROLE_LEAD); a description containing ": " is a double-quoted YAML
-    scalar (2026-09-12), so the bounding quote is stripped before comparing,
-    never the mandated colon inside it."""
+    worker / Music lane), so a reader sees at a glance what to run and what the
+    conveyor drives. Guards against drift -- every skill is checked, none
+    exempted. A description containing ": " is a double-quoted YAML scalar
+    (2026-09-12), so the bounding quote is stripped before comparing, never the
+    mandated colon inside it."""
     offenders = []
     for path in sorted(SKILLS.glob("*/SKILL.md")):
-        if path.parent.name in _NO_ROLE_LEAD:
-            continue
         fm = path.read_text().split("---", 2)[1]
         m = re.search(r"^description:\s*(.+)$", fm, re.M)
         desc = m.group(1).strip().strip('"') if m else ""

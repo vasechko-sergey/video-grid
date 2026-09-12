@@ -1,6 +1,6 @@
 ---
 name: music-source
-description: "Source the reel's track from the internet by mood: discover candidates (free = CC; any = YouTube and friends, copyrighted and the user's responsibility), rank, download, and write MUSIC.json. Serves the music-and-mood stage. Optional — see music-match for a local folder. Tool index: references/tools.md."
+description: "Music lane — source the reel's track from the internet by mood: discover candidates (free = CC; any = YouTube and friends, copyrighted and the user's responsibility), rank, download, and write MUSIC.json. Serves the music-and-mood stage. Optional — see music-match for a local folder. Tool index: references/tools.md."
 ---
 
 # music-source (stage 5.5, network lanes)

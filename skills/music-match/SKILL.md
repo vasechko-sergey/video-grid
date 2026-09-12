@@ -1,6 +1,6 @@
 ---
 name: music-match
-description: "Pick the reel's track from a LOCAL folder of candidates by mood-fit, ranked into MUSIC_SHORTLIST.md for the user to choose from. Serves the music-and-mood stage. Optional — skip when a track is already chosen; see music-source for the network lanes. Tool index: references/tools.md."
+description: "Music lane — pick the reel's track from a LOCAL folder of candidates by mood-fit, ranked into MUSIC_SHORTLIST.md for the user to choose from. Serves the music-and-mood stage. Optional — skip when a track is already chosen; see music-source for the network lanes. Tool index: references/tools.md."
 ---
 
 # music-match (stage 5.5, local lane)
