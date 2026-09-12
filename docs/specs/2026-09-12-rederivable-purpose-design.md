@@ -335,7 +335,10 @@ included. Every one of the 14 is above that today. `using-montage` is the
 exception that keeps its chain: 392 for the trigger plus the generated 228, so
 **625**. Thirteen at 350 plus the router at 625 is **7244 → 5175 characters,
 ~1811 → ~1293 tokens, −29%** — about **517 tokens freed in every session**,
-including sessions that never touch video-grid. The router alone is then 12% of
+including sessions that never touch video-grid. *(The finished set drafted in
+the plan beats this: it averages **302** outside the router and lands at
+**4569 characters, ~1142 tokens, −37%**, about 668 tokens freed. 350 was a
+target read off three samples; the fourteen real strings came in under it.)* The router alone is then 12% of
 the block, which is the right shape: one description holds the map, thirteen
 hold a pointer and a place.
 
