@@ -380,13 +380,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="montage router status inspector (stage 5.1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("status",
-                       help="report which conveyor stage is next in a run dir")
+                       help="report which conveyor stage is next in a run dir",
+                       description="report which conveyor stage is next in a run "
+                                   "directory, and how far the artifacts on disk already "
+                                   "reach. Read-only — it inspects, it never runs a stage.")
     s.add_argument("--run-dir", required=True,
                    help="the project/run dir where stage artifacts land")
     s.add_argument("--reel", default=runlayout.DEFAULT_REEL,
                    help=f"which reel variant to inspect (default {runlayout.DEFAULT_REEL})")
     v = sub.add_parser("verify",
-                       help="re-hash delivered reels against their attestations (CP3)")
+                       help="re-hash delivered reels against their attestations (CP3)",
+                       description="re-hash every delivered reel against its attestation "
+                                   "and report any that no longer match. Read-only — the "
+                                   "CP3 check that a delivery is the file its report "
+                                   "describes.")
     v.add_argument("--run-dir", required=True,
                    help="the project/run dir where stage artifacts land")
     v.add_argument("--reel", default=runlayout.DEFAULT_REEL,

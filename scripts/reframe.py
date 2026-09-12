@@ -658,7 +658,12 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="compose one episode — crop a segment over its route into the "
+                    "delivery canvas, applying layout, colour and any generated pan "
+                    "→ the episode clip plus a path.meta.json sidecar. Driven by "
+                    "process_episode; this is where every pixel of an episode is "
+                    "decided.")
     ap.add_argument("src"); ap.add_argument("route", nargs="?", default=None)
     ap.add_argument("out")
     ap.add_argument("--composition", default="lead")

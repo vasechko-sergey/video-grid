@@ -62,7 +62,22 @@ def test_the_real_entry_point_routes_through_build_parser(name):
                          capture_output=True, text=True, cwd=ROOT)
     assert run.returncode == 0, (
         f"python -m scripts.{name} --help exited {run.returncode}: {run.stderr.strip()}")
-    if declared:
-        assert " ".join(declared.split()) in " ".join(run.stdout.split()), (
-            f"scripts/{name}.py declares a description in build_parser() that its "
-            f"--help does not print — main() is not using build_parser()")
+    assert declared, f"scripts/{name}.py declares no description"
+    assert " ".join(declared.split()) in " ".join(run.stdout.split()), (
+        f"scripts/{name}.py declares a description in build_parser() that its "
+        f"--help does not print — main() is not using build_parser()")
+
+
+@pytest.mark.parametrize("name", CLI)
+def test_every_help_surface_states_a_purpose(name):
+    """A subparser's own --help shows `description`, never `help`.
+
+    `help=` renders in the PARENT's subcommand listing. Passing only `help=` —
+    the state of all 15 subcommands before this slice — leaves the surface an
+    agent reaches by drilling in completely blank (design §0.4)."""
+    mod = importlib.import_module(f"scripts.{name}")
+    blank = [label for label, parser in surfaces(mod.build_parser(), name)
+             if not (parser.description or "").strip()]
+    assert blank == [], (
+        f"{blank} print no description on their own --help. A subcommand needs "
+        f"description=, not only help=: help= renders in the parent's listing.")

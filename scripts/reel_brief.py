@@ -39,7 +39,10 @@ def write_reel_brief(spec: Spec, out_dir: str) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="write SPEC.json + SPEC.md — the reel brief (stage 5.3)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="build SPEC.json + SPEC.md from brief fields")
+    b = sub.add_parser("build", help="build SPEC.json + SPEC.md from brief fields",
+                       description="write SPEC.json + SPEC.md from the brief's fields — "
+                                   "mood, hook, length, music intent, cast. Gates on mood, "
+                                   "hook and length; refuses more than one reel.")
     b.add_argument("--project", required=True, help="project.json — canvas source (from project-init)")
     b.add_argument("--length", type=float, required=True, help="target reel length, seconds")
     b.add_argument("--mood", required=True, help="the reel's mood (gate)")

@@ -60,11 +60,17 @@ def write_titles(titles: Titles, out_dir: str) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="write TITLES.json + TITLES.md — the reel titles (§5.16)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="draft TITLES from SPEC + reel length")
+    b = sub.add_parser("build", help="draft TITLES from SPEC + reel length",
+                       description="draft TITLES.json + TITLES.md from SPEC and the reel's "
+                                   "length — hook, mid text and ending, positioned inside "
+                                   "the platform's safe zone.")
     b.add_argument("--spec", required=True, help="SPEC.json (from reel-brief) — hook/text/ending source")
     b.add_argument("--total", type=float, required=True, help="reel length, seconds (EDL sum / probed master)")
     b.add_argument("--out-dir", required=True, help="dir for TITLES.json + TITLES.md")
-    c = sub.add_parser("check", help="refuse a TITLES.json whose text leaves the safe zone")
+    c = sub.add_parser("check", help="refuse a TITLES.json whose text leaves the safe zone",
+                       description="refuse a TITLES.json whose rendered ink leaves the "
+                                   "platform's safe zone. Measures the text with real font "
+                                   "metrics; deliver burns only what passes.")
     c.add_argument("--titles", required=True, help="TITLES.json to validate")
     c.add_argument("--platform", default="",
                    help="tiktok|reels|shorts — the safe-zone table titles lay out "

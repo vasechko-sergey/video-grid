@@ -551,7 +551,11 @@ def _parse_seed(text: str) -> list[float]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="track the episode's subject through a segment → route.json, "
+                    "the per-frame subject box every later stage composes against. "
+                    "Takes one hero pin in any of four spellings; process_episode "
+                    "runs it before reframe.")
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--fps", type=float, default=None,
                     help="override probed fps (default: probe the source — "

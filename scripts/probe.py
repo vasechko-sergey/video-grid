@@ -383,7 +383,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("grade", help="render+measure N frames of one episode over its "
-                                     "frozen route")
+                                     "frozen route",
+                       description="render and measure N frames of one episode over its "
+                                   "frozen route, through the same chain the real encode "
+                                   "uses → probe.jpg + probe.json. Converges a colour "
+                                   "grade without re-rendering the reel.")
     mode = g.add_mutually_exclusive_group()
     mode.add_argument("--episodes", default=None, help="EPISODES.json from "
                                                        "edl_to_reel --from-geometry (or "
@@ -403,7 +407,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--out-dir", default=None, help="default: <epdir>/probe")
     g.add_argument("--frames", type=int, default=color.FRAMES)
 
-    lk = sub.add_parser("look", help="re-check a delivered reel against its master")
+    lk = sub.add_parser("look", help="re-check a delivered reel against its master",
+                        description="re-check a delivered reel against its master for a "
+                                    "declared vignette, bookend fade and title ink — the "
+                                    "same gate deliver runs after its encode, runnable by "
+                                    "hand.")
     lk.add_argument("master")
     lk.add_argument("delivered")
     lk.add_argument("--vignette", type=float, default=0.0)

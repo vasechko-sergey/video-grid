@@ -236,14 +236,22 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="footage contact sheets (stage 5.2b): look before you cut")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="one frame per FOOTAGE window -> sheets + SHEETS.md")
+    b = sub.add_parser("build", help="one frame per FOOTAGE window -> sheets + SHEETS.md",
+                       description="one frame per FOOTAGE.json window, tiled into sheets "
+                                   "in timeline order → the sheets plus SHEETS.md. The "
+                                   "required look-before-you-cut stage between intake "
+                                   "and edit-plan.")
     b.add_argument("--footage", required=True, help="FOOTAGE.json from footage-intake")
     b.add_argument("--footage-root", required=True,
                    help="dir the FOOTAGE 'source' paths resolve against")
     b.add_argument("--out-dir", required=True, help="dir for SHEETS.md + sheets/")
     b.add_argument("--best-only", action="store_true",
                    help="show only intake's `best` windows (default: every window)")
-    s = sub.add_parser("strip", help="many frames inside ONE window -> one image")
+    s = sub.add_parser("strip", help="many frames inside ONE window -> one image",
+                       description="many frames from inside ONE window — or any file and "
+                                   "time range — tiled into a single image. Use it to "
+                                   "look closer at a window the sheets flagged, or at a "
+                                   "delivered clip.")
     s.add_argument("--source", required=True,
                    help="clip path, or the FOOTAGE clip source when --footage is given")
     s.add_argument("--out", required=True, help="the image to write")

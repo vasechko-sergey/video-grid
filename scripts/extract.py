@@ -86,7 +86,10 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="cut one EDL window out of a source clip into a standalone "
+                    "segment, normalized to tv range — the pipeline's canonical "
+                    "form. edl_to_reel runs it per episode before any tracking.")
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--start", type=float, required=True)
     ap.add_argument("--dur", type=float, required=True)

@@ -335,7 +335,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="judge one rendered episode mechanically — composition, path "
+                    "quality, black frames, grade damage → report.json. Reads the "
+                    "clip with its route.json and path.json; process_episode runs "
+                    "it after every reframe attempt and the retry ladder reads the "
+                    "verdict.")
     ap.add_argument("clip")
     ap.add_argument("route", nargs="?", default=None,
                     help="route.json (omit under a generated pan — the sidecar says so)")

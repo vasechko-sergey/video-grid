@@ -192,7 +192,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="match-grade conductor — author tone_src/tone_dst across an EDL (§10)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="measure every episode → common target → author tone pairs")
+    b = sub.add_parser("build", help="measure every episode → common target → author tone pairs",
+                       description="measure every episode's tracked crop, compute one "
+                                   "common reel tone target, and author tone_src/tone_dst "
+                                   "on the episodes that deviate past --eps → a rewritten "
+                                   "EDL.json plus MATCH.json and MATCH.md.")
     b.add_argument("--geometry", required=True,
                   help="GEOMETRY.json from edl_to_reel --stop-after-geometry; it names "
                        "the EDL this writes back")

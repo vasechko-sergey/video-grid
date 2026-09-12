@@ -95,7 +95,10 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="render a QA-preview draft.mp4 (montage §5.9)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="build draft.mp4 from an EDL.json + project.json")
+    b = sub.add_parser("build", help="build draft.mp4 from an EDL.json + project.json",
+                       description="concat the EDL's raw segments into draft.mp4 with "
+                                   "processing-note labels and a rough music bed. A QA "
+                                   "preview — nothing downstream consumes it.")
     b.add_argument("--edl", required=True)
     b.add_argument("--project", required=True, help="project.json — the SPEC canvas")
     b.add_argument("--footage-root", required=True, help="dir the EDL 'source' paths resolve against")

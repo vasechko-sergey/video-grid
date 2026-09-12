@@ -283,11 +283,19 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="per-episode QC: pack the evidence, then validate the judges' findings")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("pack", help="one evidence dir per episode (strip + storyboard + numbers)")
+    p = sub.add_parser("pack", help="one evidence dir per episode (strip + storyboard + numbers)",
+                       description="write one evidence directory per episode — a frame "
+                                   "strip of the delivered clip, its storyboard, its "
+                                   "mechanical report, a colour reading, and the clip's "
+                                   "own digest. A judge subagent reads what this writes.")
     p.add_argument("--episodes", required=True, help="EPISODES.json from edl_to_reel --from-geometry (or --stop-after-episodes)")
     p.add_argument("--out-dir", required=True, help="dir for the ep{i}/ packet dirs")
     p.add_argument("--frames", type=int, default=FRAMES, help=f"strip cells per episode (default {FRAMES})")
-    b = sub.add_parser("build", help="validate every judge's findings.json -> EPISODE_QC.json + .md")
+    b = sub.add_parser("build", help="validate every judge's findings.json -> EPISODE_QC.json + .md",
+                       description="validate every judge's findings.json into "
+                                   "EPISODE_QC.json + .md, stamping each verdict with the "
+                                   "clip digest read from disk. Refuses a verdict whose "
+                                   "clip was re-rendered after it was packed.")
     b.add_argument("--episodes", required=True, help="the same EPISODES.json")
     b.add_argument("--packets", required=True, help="the pack --out-dir holding ep{i}/findings.json")
     b.add_argument("--out-dir", required=True,

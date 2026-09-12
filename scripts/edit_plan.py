@@ -802,7 +802,11 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="author EDL.json + EDL.md from FOOTAGE + a selection (stage 5.7)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="build EDL.json + EDL.md from a selection")
+    b = sub.add_parser("build", help="build EDL.json + EDL.md from a selection",
+                       description="project a selection.json over FOOTAGE.json's windows "
+                                   "into EDL.json + EDL.md — the cut. Gates on the "
+                                   "variety census, CONSTRAINTS.json and the length band "
+                                   "before it writes anything.")
     b.add_argument("--footage", required=True, help="FOOTAGE.json from intake (stage 5.2)")
     b.add_argument("--selection", required=True, help="selection.json — window refs + editorial fields")
     b.add_argument("--project", required=True, help="project.json — canvas/delivery for the preflight")

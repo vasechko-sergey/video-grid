@@ -85,7 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="write REVIEW.json + REVIEW.md — the editorial reel review (§5.13 Slice B)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build", help="validate the reviewer's raw findings -> REVIEW.json + REVIEW.md")
+    b = sub.add_parser("build", help="validate the reviewer's raw findings -> REVIEW.json + REVIEW.md",
+                       description="validate the reviewer subagent's raw findings into "
+                                   "REVIEW.json + REVIEW.md, stamping the reel's own "
+                                   "digest read from disk. The CP3 editorial verdict.")
     b.add_argument("--findings", required=True,
                    help="the reviewer subagent's raw findings JSON (list or {summary,findings})")
     b.add_argument("--reel", required=True, help="the reviewed reel path (e.g. out/REEL_v1.mp4)")
