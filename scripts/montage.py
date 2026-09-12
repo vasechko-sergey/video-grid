@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import constraints, matchgrade, provenance, runlayout
+from scripts.lib import constraints, matchgrade, provenance, runlayout, toolindex
 
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
@@ -398,11 +398,19 @@ def build_parser() -> argparse.ArgumentParser:
                    help="the project/run dir where stage artifacts land")
     v.add_argument("--reel", default=runlayout.DEFAULT_REEL,
                    help=f"which reel variant to inspect (default {runlayout.DEFAULT_REEL})")
+    tl = sub.add_parser("tools", help="print the tool index (references/tools.md)",
+                        description="print the generated tool index — one row per --help "
+                                    "surface, naming which tool does what and which "
+                                    "conveyor stage it belongs to. references/tools.md is "
+                                    "this output, committed.")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
+    if a.cmd == "tools":
+        print(toolindex.render_index(), end="")
+        return
     result = next_action(a.run_dir, a.reel) if a.cmd == "status" else verify(a.run_dir, a.reel)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)
