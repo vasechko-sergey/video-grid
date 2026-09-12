@@ -232,7 +232,7 @@ def build_strip(source: str, out: str, *, start: float, dur: float, frames: int,
             "times": [round(t, 3) for t in times]}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="footage contact sheets (stage 5.2b): look before you cut")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -261,6 +261,11 @@ def main() -> None:
                         "together with --footage/--window)")
     s.add_argument("--window", type=int, help="window index into --footage's clip "
                    "(with --footage, takes precedence over --start/--dur)")
+    return ap
+
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     if a.cmd == "build":
         result = build_sheets(a.footage, a.footage_root, a.out_dir, best_only=a.best_only)

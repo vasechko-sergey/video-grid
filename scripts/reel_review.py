@@ -81,7 +81,7 @@ def _load_findings(path: str) -> tuple[list, str]:
                      f"got {type(data).__name__}")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="write REVIEW.json + REVIEW.md — the editorial reel review (§5.13 Slice B)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -93,7 +93,11 @@ def main() -> None:
     b.add_argument("--platform", default="", help="platform label for the report header")
     b.add_argument("--reviewer", default="", help="free note — which agent/model reviewed")
     b.add_argument("--out-dir", required=True, help="dir for REVIEW.json + REVIEW.md")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     if not Path(a.reel).exists():
         raise ValueError(
             f"--reel {a.reel} names no file, so this review would be bound to nothing. "

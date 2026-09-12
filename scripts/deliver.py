@@ -369,7 +369,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     return out
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Deliver a checked reel master.")
     ap.add_argument("master")
     ap.add_argument("--out-dir", required=True)
@@ -385,7 +385,11 @@ def main() -> None:
                     help="corner darkening 0..0.6 (0 = off) — the reel's plateau vignette")
     ap.add_argument("--fade", type=float, default=0.0,
                     help="bookend fade seconds per end 0..2.0 (0 = off)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
     out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report,
                   scratch_dir=a.scratch_dir, titles=a.titles, platform=a.platform,

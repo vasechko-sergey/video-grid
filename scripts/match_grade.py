@@ -188,7 +188,7 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
             "skipped": dict(skipped)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="match-grade conductor — author tone_src/tone_dst across an EDL (§10)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -206,7 +206,11 @@ def main() -> None:
                         "unless SPEC.tone_bias is authored, which outranks the "
                         "preset's own displacement (absent --spec: the plain "
                         "median, exactly as before)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     result = write_match(a.geometry, eps=a.eps, force=a.force, spec=a.spec)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

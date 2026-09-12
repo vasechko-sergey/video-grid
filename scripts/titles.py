@@ -57,7 +57,7 @@ def write_titles(titles: Titles, out_dir: str) -> dict:
     return {"status": "written", "titles": str(tj), "md": str(tm), "count": len(titles.items)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="write TITLES.json + TITLES.md — the reel titles (§5.16)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="draft TITLES from SPEC + reel length")
@@ -69,7 +69,11 @@ def main() -> None:
     c.add_argument("--platform", default="",
                    help="tiktok|reels|shorts — the safe-zone table titles lay out "
                         "against; unset takes the generic margins")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     if a.cmd == "check":
         print(json.dumps(check_titles(Titles.from_json(a.titles), a.platform), indent=2))
         raise SystemExit(0)

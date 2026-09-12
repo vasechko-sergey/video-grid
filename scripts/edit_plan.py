@@ -799,7 +799,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
             "episodes": len(edl.episodes)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="author EDL.json + EDL.md from FOOTAGE + a selection (stage 5.7)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="build EDL.json + EDL.md from a selection")
@@ -813,7 +813,11 @@ def main() -> None:
                                   "(optional; without it the 'balanced' preset applies)")
     b.add_argument("--music", help="MUSIC.json — fit the reel's end to a bar line "
                                    "with a vocal-free tail (optional, §5.5/backlog #2)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     result = write_edit_plan(a.footage, a.selection, a.project, a.out_dir, a.pacing,
                              cast=a.cast, spec=a.spec, music=a.music)
     print(json.dumps(result, indent=2))

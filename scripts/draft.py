@@ -92,7 +92,7 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
             "episodes": len(edl.episodes), "music": src is not None}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="render a QA-preview draft.mp4 (montage §5.9)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="build draft.mp4 from an EDL.json + project.json")
@@ -103,7 +103,11 @@ def main() -> None:
     b.add_argument("--out", required=True, help="draft.mp4 path (using-montage: <run-dir>/draft.mp4)")
     b.add_argument("--music", default=None, help="MUSIC.json path; overrides the EDL's music field")
     b.add_argument("--font", default=None, help="drawtext .ttf/.ttc/.otf (default: first system candidate)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     result = build_draft(a.edl, a.project, a.footage_root, a.work_dir, a.out,
                          music=a.music, font=a.font)
     print(json.dumps(result, indent=2))

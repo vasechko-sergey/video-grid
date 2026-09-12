@@ -377,7 +377,7 @@ def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
         titles=titles)]
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="cheap frame probes: converge a grade, "
                                              "or re-check a delivered look")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -409,7 +409,11 @@ def main() -> None:
     lk.add_argument("--vignette", type=float, default=0.0)
     lk.add_argument("--fade", type=float, default=0.0)
     lk.add_argument("--titles", action="store_true")
+    return ap
 
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     if a.cmd == "grade":
         if not a.episodes and not a.geometry:

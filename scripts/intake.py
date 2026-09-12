@@ -654,7 +654,7 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     return result
 
 
-def main(argv: list[str] | None = None) -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips → FOOTAGE.json/.md")
     ap.add_argument("footage_root")
     ap.add_argument("out_dir")
@@ -674,7 +674,11 @@ def main(argv: list[str] | None = None) -> None:
                          "ceiling on episode length. Same cache-key behaviour "
                          "as --win-min: a changed value re-carves rather than "
                          "serving a stale hit")
-    a = ap.parse_args(argv)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> None:
+    a = build_parser().parse_args(argv)
     f = intake(a.footage_root, a.out_dir, a.sample_fps, jobs=a.jobs, fresh=a.fresh,
                band=(a.win_min, a.win_max))
     print(f"{len(f.clips)} clips, {sum(len(c.windows) for c in f.clips)} windows → {a.out_dir}")

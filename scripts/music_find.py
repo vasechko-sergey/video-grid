@@ -84,7 +84,7 @@ def _to_markdown(payload: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="source candidate tracks by mood → MUSIC_SHORTLIST.{json,md}")
     ap.add_argument("--mode", required=True, choices=("free", "any"),
@@ -97,7 +97,11 @@ def main() -> None:
     ap.add_argument("--catalog", choices=("youtube", "itunes", "deezer"),
                     help="any-lane catalog (default youtube)")
     ap.add_argument("--out-dir", required=True, help="where to write MUSIC_SHORTLIST.{json,md}")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     mood_text = Spec.from_json(a.spec).mood if a.spec else a.mood
     res = build_shortlist(a.mode, mood_text, a.out_dir, n=a.n, query=a.query, cat=a.catalog)
     print(res["json"])

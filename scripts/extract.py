@@ -85,10 +85,18 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str) -> list[str]:
     return segments
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--start", type=float, required=True)
     ap.add_argument("--dur", type=float, required=True)
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     extract(a.src, a.start, a.dur, a.out)
+
+
+if __name__ == "__main__":
+    main()

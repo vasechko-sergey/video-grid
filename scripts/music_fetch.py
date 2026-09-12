@@ -25,7 +25,7 @@ def fetch_named(name: str, mode: str, cache_dir: str, date: str) -> fetch.Fetche
     return fetch.download(catalog.search(mode, name, 1)[0], mode, cache_dir, date)
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="download a sourced track → cache + sidecar")
     ap.add_argument("--mode", required=True, choices=("free", "any"))
     g = ap.add_mutually_exclusive_group(required=True)
@@ -34,6 +34,11 @@ def main() -> None:
     ap.add_argument("--pick", type=int, help="1-based row of --from-shortlist")
     ap.add_argument("--cache-dir", required=True, help="cache dir (e.g. <run>/music/cache)")
     ap.add_argument("--date", required=True, help="YYYY-MM-DD stamp for the sidecar")
+    return ap
+
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     if a.from_shortlist:
         if a.pick is None:

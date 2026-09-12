@@ -163,11 +163,15 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
     return crop_percentiles(plan, src, color.sample_times(plan.dur, frames))
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="measure a clip's (p5,p50,p95) luma for ReframeSpec.tone")
     ap.add_argument("clip")
     ap.add_argument("--at", type=float, default=None, help="sample time in seconds (default 1.0)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     p5, p50, p95 = measure_profile(a.clip, a.at)
     print(f"p5={p5:.1f} p50={p50:.1f} p95={p95:.1f}")
     print(f'tone_src: [{p5:.0f}, {p50:.0f}, {p95:.0f}]')

@@ -334,7 +334,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     return report
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("clip")
     ap.add_argument("route", nargs="?", default=None,
@@ -345,7 +345,15 @@ if __name__ == "__main__":
     ap.add_argument("--grid", default="thirds")
     ap.add_argument("--target-dur", type=float, required=True)
     ap.add_argument("--attempt", type=int, default=1)
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
                      attempt=a.attempt)
     run(a.clip, a.route, a.path, spec, a.out)
+
+
+if __name__ == "__main__":
+    main()

@@ -657,7 +657,7 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
     return out
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("route", nargs="?", default=None)
     ap.add_argument("out")
@@ -681,7 +681,11 @@ if __name__ == "__main__":
     ap.add_argument("--pan", default=None,
                     help="generated pan as FROM,TO — fractions of horizontal freedom "
                          "(e.g. 0,1 or 1,0 for right-to-left); replaces the route")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     cw, ch = (int(v) for v in a.canvas.split(":"))
     means = tuple(float(v) for v in a.color.split(","))
     aspect: str | tuple[int, int] = a.crop_aspect or ("canvas" if a.layout == "fill" else "source")
@@ -700,3 +704,7 @@ if __name__ == "__main__":
                        color_means=means, delivery=Delivery.from_spec(a.delivery),
                        layout=lspec, pan=pan)
     reframe(spec, a.src, a.route, a.out, a.path_out)
+
+
+if __name__ == "__main__":
+    main()

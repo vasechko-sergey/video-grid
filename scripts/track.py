@@ -550,7 +550,7 @@ def _parse_seed(text: str) -> list[float]:
                          f"--seed '900,540,220,480'") from None
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--fps", type=float, default=None,
@@ -576,7 +576,11 @@ def main() -> None:
     ap.add_argument("--cast-json", default=None, help="cast.json — required with --cast-name")
     ap.add_argument("--intent", default="action", choices=["action", "static"],
                     help="hero scoring mode (spec §6.1a)")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     # the group guarantees at most one is set, so this reads "whichever pin was
     # given" (or None for no pin at all) — it is not a tiebreak. Each rung tests
     # PRESENCE, not truth, and that is what makes the claim above true: --seed '' and

@@ -36,7 +36,7 @@ def write_reel_brief(spec: Spec, out_dir: str) -> dict:
     return {"status": "written", "spec": str(sj), "md": str(sm)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="write SPEC.json + SPEC.md — the reel brief (stage 5.3)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="build SPEC.json + SPEC.md from brief fields")
@@ -61,7 +61,11 @@ def main() -> None:
                         "taste; pass 0,0,0 to keep the mood and leave colour alone. The "
                         "two are different answers (design 2026-09-03 §2)")
     b.add_argument("--out-dir", required=True, help="dir for SPEC.json + SPEC.md")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     # Same shape as reframe's --rect: an omitted flag stays None, which Spec reads as
     # "not authored, take the preset's taste" — never a zero triple, which says the
     # opposite (design 2026-09-03 §2). A malformed triple fails loud in Spec's own

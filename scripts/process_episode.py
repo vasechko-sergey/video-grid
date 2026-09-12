@@ -532,7 +532,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     return result
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="process one episode manifest → checked clip")
     ap.add_argument("manifest", help="path to a JSON manifest file (§5.10)")
     ap.add_argument("--project-dir", required=True, help="scratch dir for route/path/report")
@@ -542,9 +542,17 @@ if __name__ == "__main__":
                          "automatic trackers give nothing (design 2026-07-21 §4)")
     ap.add_argument("--project", default=None,
                     help="path to project.json — the episode inherits its canvas/delivery")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     md = json.loads(Path(a.manifest).read_text())
     result = process_episode(md, a.project_dir, route_path=a.route, project=a.project,
                              keyframes_path=a.keyframes)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)
+
+
+if __name__ == "__main__":
+    main()

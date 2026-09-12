@@ -504,13 +504,17 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     return rep
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Whole-reel mechanical check.")
     ap.add_argument("master")
     ap.add_argument("episodes", nargs="+", help="ordered locked episode paths")
     ap.add_argument("--target-dur", type=float, required=True)
     ap.add_argument("--report", required=True)
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     rep = run(a.master, a.episodes, ReelCheckSpec(target_dur=a.target_dur), a.report)
     raise SystemExit(0 if rep.overall else 1)
 

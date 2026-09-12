@@ -130,12 +130,16 @@ def run() -> preflight.RuntimeReport:
     return preflight.evaluate(raw, root=str(_ROOT))
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="verify the video-grid runtime is installed (design 2026-08-01)")
     ap.add_argument("--json", action="store_true",
                     help="machine-readable report instead of the text table")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     report = run()
     print(json.dumps(report.to_dict(), indent=2) if a.json else report.to_text())
     raise SystemExit(0 if report.ok else 1)

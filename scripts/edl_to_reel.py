@@ -608,7 +608,7 @@ def assemble_reel(episodes_path: str, work_dir: str, *, deliveries_dir: str | No
                                  str(Path(work_dir) / "reel"), titles=titles)
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="drive a hand-authored EDL.json → delivered REEL_v1.mp4")
     ap.add_argument("edl", nargs="?", default=None,
                     help="path to an EDL.json (omit with --from-episodes / --from-geometry)")
@@ -652,6 +652,11 @@ def main() -> None:
                        help="render every episode over the routes that file froze, with the "
                             "EDL's CURRENT colour block, and stop at EPISODES.json. Refuses "
                             "a changed cut.")
+    return ap
+
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     # The three phase-1 arms that stop before delivery. Titles are burned into the ONE
     # encode at delivery and REEL_v{n} lands in the deliveries dir there, so neither

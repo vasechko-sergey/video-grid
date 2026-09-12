@@ -279,7 +279,7 @@ def build(episodes_path: str, packets: str, out_dir: str) -> dict:
             "qc": str(qj), "md": str(qm)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="per-episode QC: pack the evidence, then validate the judges' findings")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -292,7 +292,11 @@ def main() -> None:
     b.add_argument("--packets", required=True, help="the pack --out-dir holding ep{i}/findings.json")
     b.add_argument("--out-dir", required=True,
                    help="dir for EPISODE_QC.json/.md — must be the dir holding EPISODES.json")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     result = (pack(a.episodes, a.out_dir, frames=a.frames) if a.cmd == "pack"
               else build(a.episodes, a.packets, a.out_dir))
     print(json.dumps(result, indent=2))

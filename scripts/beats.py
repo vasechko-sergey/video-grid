@@ -164,7 +164,7 @@ def mood_features(track: str) -> mood.MoodVector:
                            pace=mood.norm01(tempo, *mood.PACE_BPM))
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="analyse a track → MUSIC.json (tempo + beats + energy)")
     ap.add_argument("track")
     g = ap.add_mutually_exclusive_group()
@@ -173,6 +173,11 @@ def main() -> None:
                    help="auto-pick the in-point (strongest fragment, vocal-pause start); needs --duration")
     ap.add_argument("--duration", type=float, default=None)
     ap.add_argument("--out", required=True, help="MUSIC.json output path")
+    return ap
+
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     if a.auto_start:
         if a.duration is None:

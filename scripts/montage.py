@@ -375,7 +375,7 @@ def verify(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
             "review": _verify_review(lay.reel_dir, lay.deliveries)}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="montage router status inspector (stage 5.1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -391,7 +391,11 @@ def main() -> None:
                    help="the project/run dir where stage artifacts land")
     v.add_argument("--reel", default=runlayout.DEFAULT_REEL,
                    help=f"which reel variant to inspect (default {runlayout.DEFAULT_REEL})")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     result = next_action(a.run_dir, a.reel) if a.cmd == "status" else verify(a.run_dir, a.reel)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

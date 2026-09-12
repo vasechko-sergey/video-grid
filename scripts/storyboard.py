@@ -85,11 +85,19 @@ def build(src: str, out: str, spec: StoryboardSpec, route: list[RoutePoint] | No
     return out, times
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("out")
     ap.add_argument("--n", type=int, default=8)
     ap.add_argument("--grids", default="thirds,phi")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     spec = StoryboardSpec(n=a.n, grids=tuple(a.grids.split(",")))
     build(a.src, a.out, spec)
+
+
+if __name__ == "__main__":
+    main()

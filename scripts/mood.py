@@ -66,7 +66,7 @@ def _to_markdown(payload: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="rank a folder of tracks by mood-fit → MUSIC_SHORTLIST.{json,md}")
     ap.add_argument("--folder", required=True, help="folder of candidate audio tracks")
@@ -74,7 +74,11 @@ def main() -> None:
     g.add_argument("--spec", help="SPEC.json — reads its mood field")
     g.add_argument("--mood", help="mood text directly (e.g. 'energetic')")
     ap.add_argument("--out-dir", required=True, help="where to write MUSIC_SHORTLIST.{json,md}")
-    a = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    a = build_parser().parse_args()
     mood_text = Spec.from_json(a.spec).mood if a.spec else a.mood
     res = build_shortlist(a.folder, mood_text, a.out_dir)
     print(res["json"])

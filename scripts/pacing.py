@@ -178,7 +178,7 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
             "music": music_path}
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="fit the EDL's cuts onto a musical grid -> PACING.{json,md}")
     ap.add_argument("--edl", required=True, help="EDL.json from edit-plan (the cuts)")
@@ -190,6 +190,11 @@ def main() -> None:
                                            "(required with --anchors)")
     ap.add_argument("--anchors", action="store_true",
                     help="measure action anchors for each episode (one ffmpeg pass each)")
+    return ap
+
+
+def main() -> None:
+    ap = build_parser()
     a = ap.parse_args()
     if a.anchors and not a.footage_root:
         ap.error("--anchors needs --footage-root to find the clips")
