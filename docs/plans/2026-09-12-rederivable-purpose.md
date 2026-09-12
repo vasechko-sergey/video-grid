@@ -809,8 +809,10 @@ A stale index is worse than no index: it reads as authority. The precedent is
 tests/test_plugin_manifests.py, whose own comment records the cost — a
 version-keyed install path let episode-qc stay missing for 316 commits.
 """
+import importlib
 from pathlib import Path
 
+import tests.test_cli_help as test_cli_help
 from scripts.lib import toolindex
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -824,8 +826,18 @@ def test_the_committed_index_matches_what_the_renderer_produces():
 
 
 def test_every_help_surface_has_a_row():
+    """Enumerated by test_cli_help's OWN walk, never toolindex's.
+
+    Asking toolindex which surfaces exist and then checking it rendered those
+    is circular: a walk that missed every subparser would render no subcommand
+    rows and report none missing. The second copy of the four-line walk is what
+    makes this assertion mean anything."""
     text = INDEX.read_text()
-    for label in toolindex.surface_labels():
+    expected = [label for name in test_cli_help.CLI
+                for label, _ in test_cli_help.surfaces(
+                    importlib.import_module(f"scripts.{name}").build_parser(), name)]
+    assert len(expected) == 46, f"expected 46 help surfaces, the walk found {len(expected)}"
+    for label in expected:
         assert f"`{label}`" in text, f"{label} is a help surface with no index row"
 
 
@@ -1458,11 +1470,15 @@ form to use; the implementer writes the second, not the first.
 
 **Type consistency.** `build_parser() -> argparse.ArgumentParser` everywhere.
 `surfaces()`/`arguments()` in `tests/test_cli_help.py` and `_surfaces()` in
-`toolindex.py` are deliberately separate copies of the same four lines: the
-test must not import the module it is checking the output of, or a bug in the
-walk would hide itself on both sides — the same reasoning the grade-sensor
-slice recorded for `grade_faithful`'s shared prediction path (design §9.4 of
-2026-08-31).
+`toolindex.py` are deliberately separate copies of the same four lines, and
+`tests/test_tool_index.py` imports the TEST's copy rather than the module's.
+Found in the pre-flight scan: the first draft enumerated expected index rows
+with `toolindex.surface_labels()`, which is circular — a walk that missed
+every subparser would render no subcommand rows and report none missing. The
+second copy is what makes the assertion mean anything, the same reasoning the
+grade-sensor slice recorded for `grade_faithful`'s shared prediction path
+(design §9.4 of 2026-08-31). The `len(expected) == 46` assertion is the
+backstop against BOTH walks being wrong the same way.
 
 **Five defects this self-review found in its own first draft**, recorded
 because the last slice's every Critical finding originated in the plan and not
