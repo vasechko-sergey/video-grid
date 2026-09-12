@@ -68,7 +68,7 @@ the recovery behaviour, and today the recovery route answers with almost
 nothing.
 
 The first rung states each *skill's* purpose well and states no *tool's* at
-all — it is where §2.4 puts the registry pointer, for the one property nothing
+all — it is where §2.4 puts the index pointer, for the one property nothing
 else has: it cannot be spent. The second is the 84 KB declined as scope. The
 third is the defect §0.4 measures.
 
@@ -143,7 +143,7 @@ pointer for the purpose:** `(stage 5.2b)`, `(§5.13 Slice B)`, `(montage §5.9)`
 `(design 2026-08-01)`. Those resolve only against a design document the reader
 must first find and then read. They are pointers, not statements — but note
 that none of the ten is *only* a pointer, so this is a quality observation, not
-a machine-checkable defect (§3.5).
+a machine-checkable defect (§3.6).
 
 ### 0.5 Seven tools are named by no stage, no skill of their own, and no skill body
 
@@ -181,7 +181,7 @@ either.
 
 So the thesis has two halves, one per durable surface: **`--help` must answer
 *how do I run this*, and the always-resident rung must answer *which tool do I
-want*.** The first is filled by §2.1–2.3, the second by §2.4's registry. Fixing
+want*.** The first is filled by §2.1–2.3, the second by §2.4's index. Fixing
 only the first leaves an agent who never types the name exactly where it
 started, which is what §0.2 shows actually happened.
 
@@ -203,34 +203,70 @@ are 74% of the deficit and carry the least meaning in their own name.
 **2.3 A description states what the tool reads, what it writes, and when to run
 it.** The arguments carry the input *formats* (2.2), so the description carries
 the *purpose* and the *moment*. This is a prose standard enforced by review,
-not by machine — §3.5 explains why inventing a predicate for it would be worse
+not by machine — §3.6 explains why inventing a predicate for it would be worse
 than admitting it.
 
-**2.4 One registry names every tool, and the durable rung points at it.**
-`--help` answers *how do I run this*; it cannot answer *which tool do I want*,
-because reading it requires already having typed the name. That second question
-needs a list, and the list needs to be reachable from a surface that survives a
-compaction.
+**2.4 One index names every tool; the durable rung points at it, and sheds what
+the index now carries.** `--help` answers *how do I run this*; it cannot answer
+*which tool do I want*, because reading it requires already having typed the
+name. That second question needs an index, and the index needs to be reachable
+from a surface that survives a compaction.
 
-- **`references/tools.md`** — one row per help surface: the module, the
-  subcommand if it has one, whether it is a `V1_STAGES` stage and which, the
-  artifact that stage writes, and the one-line purpose. 46 rows. It answers
-  *which tool*; it deliberately does **not** list arguments, because that is
-  what `--help` is for and duplicating it is how a registry starts lying.
+- **`references/tools.md` is an index, not a manual.** One row per help
+  surface: the module, the subcommand if it has one, whether it is a
+  `V1_STAGES` stage and which, the artifact that stage writes, and the one-line
+  purpose. 46 rows. It lists no arguments — that is what `--help` is for, and
+  duplicating it is how an index starts lying.
 - **`references/` is the established home.** Three reference files already live
   there and skills already send readers to them — `edit-plan` calls
   `references/editing-canon.md` a **required read**. The shape exists; what is
   new is where the pointer lives.
-- **The pointer goes in every skill's `description:` frontmatter**, which §0.3
-  measured as the one rung always in context. One identical sentence across all
-  14, not 14 variants — an agent entering through `episode-qc` alone must meet
-  the same pointer as one entering through `using-montage`.
+- **One identical pointer sentence in every skill's `description:`
+  frontmatter** — §0.3's one rung always in context. Identical across all 14 so
+  it is one memorized phrase, not 14 variants, and present on every skill so an
+  agent entering through `episode-qc` alone meets the same pointer as one
+  entering through `using-montage`.
+- **And the descriptions shed the documentation that has crept into them.**
+  This is the half that makes the pointer free. Measured: the 14 descriptions
+  are 7244 characters, and only **1072 of those are first sentences** — the
+  remaining 6172 are detail. `episode-qc`'s description is **989 characters**
+  and spends them on digest stamping, a concurrency cap of three, and five
+  named axes; none of that helps an agent decide whether to invoke the skill,
+  and all of it belongs in the body or the index. A description's job is to
+  trigger: what this is, when to reach for it, required or optional. Everything
+  past that is documentation filed in the one place that is never unloaded.
+
+**The mechanism: a pointer is resident, the thing it points at is not.** This
+is why the trade works and why it keeps working. A skill's `description:` is
+paid in **every** session, read or not, needed or not — 6172 of today's 7244
+characters are detail that is resident whether any tool is ever reached. A
+pointer costs 32 characters in that block; the 46 rows it names cost nothing
+until an agent actually asks *which tool*, and `--help` costs nothing until it
+asks *how*.
+
+The corollary is the part worth keeping: **the index can be as detailed as it
+needs to be at zero resident cost, and a description cannot.** That is not a
+preference about where documentation reads nicest — it is the reason detail
+belongs in the index and nowhere near a frontmatter line. It is also the same
+principle as §6's first deferred row, applied one level up: a skill body with
+no reference subfiles is a 43 KB payload that loads whether or not the
+invocation needs it.
+
+**Measured effect on always-resident context.** Three real drafts
+(`episode-qc` 989 → 383, `match-grade` 740 → 275, `using-montage` 659 → 392)
+average **350 characters including the pointer**. Every one of the 14 is above
+that today, so at that length the block goes **7244 → 5348 characters, ~1811 →
+~1337 tokens, −27%** — about **474 tokens freed in every session**, including
+sessions that never touch video-grid. The pointer pays for itself and leaves
+change. The first draft of this design costed the pointer as a **+19%
+addition**; that was arithmetic on the assumption that descriptions stay as
+they are, and the assumption was the error.
 
 This is what closes R4.2 by construction rather than by measurement alone. §0.1
 proved that naming a tool inside a perishable body did not reach; naming the
-*registry* on the durable rung is a different instrument, and it is the one
-answer to §0.2's "it outcompeted them" that does not require the agent to
-already suspect the tool exists.
+*index* on the durable rung is a different instrument, and it is the one answer
+to §0.2's "it outcompeted them" that does not require the agent to already
+suspect the tool exists.
 
 ---
 
@@ -261,7 +297,7 @@ Two instruments, because they answer different questions:
   correct but no longer wired into `main()`. Measured cost: the 31-module sweep
   is **7.29 s**, ~2% of the suite's 365 s, and every module exits 0 today.
 
-**3.3 The registry is generated, and a test pins the committed copy.**
+**3.3 The index is generated, and a test pins the committed copy.**
 `references/tools.md` is rendered from the same `build_parser()` objects the
 check walks, plus `montage.V1_STAGES` for the stage and artifact columns — so
 no fact in it is typed twice. `montage tools` prints it; the committed file is
@@ -272,17 +308,26 @@ regenerated.
 The precedent is `tests/test_plugin_manifests.py`, which pins `CHANGELOG.md`'s
 top entry against `plugin.json`'s version — and its own comment records why a
 stale committed fact is worse than none: the version-keyed install path let
-`episode-qc` stay missing for **316 commits**. A registry that has drifted is
-the same hazard wearing the word "registry", which is why it is generated and
+`episode-qc` stay missing for **316 commits**. An index that has drifted is
+the same hazard wearing the word "index", which is why it is generated and
 pinned rather than written.
 
-**3.4 The surfaces are discovered, not listed.** The test enumerates
+**3.4 Every skill's frontmatter is checked for the pointer.**
+`tests/test_skills_contract.py` already machine-checks a skill file against a
+dataclass; it gains one case asserting each of the 14 `description:` lines
+carries the index pointer verbatim. A fifteenth skill added later fails the
+suite until it carries it too — the same self-extending shape as §3.3's
+generated index. The test pins **presence**, never length: the 350-character
+figure in §2.4 is a target read off three drafts, not a measurement of what a
+description needs, and it has no business in a gate (§3.5).
+
+**3.5 The surfaces are discovered, not listed.** The test enumerates
 `scripts/*.py` and each parser's own subparsers, so a new script or a new
 subcommand is covered on the day it lands — the same shape as
 `tests/test_skills_contract.py`, which derives its expectations from the
 dataclass rather than from a copy of it.
 
-**3.5 What it deliberately does not assert.** §2.3's "reads → writes → when"
+**3.6 What it deliberately does not assert.** §2.3's "reads → writes → when"
 has no honest predicate. The candidates were considered and rejected:
 
 - *A minimum length.* An unmeasured constant policing prose — the class of knob
@@ -318,8 +363,8 @@ design says which is which rather than dressing the third up as the first.
   is the single source.
 - **No behaviour changes.** Every edit is a `description=` or `help=` string,
   the mechanical `build_parser()` extraction (§3.1), the `montage tools`
-  renderer, the generated `references/tools.md`, one frontmatter sentence in
-  each of 14 skills, and the tests. No argv changes, no filter changes, no
+  renderer, the generated `references/tools.md`, and a rewrite of all 14 skill
+  `description:` lines down to trigger-plus-pointer (§2.4), and the tests. No argv changes, no filter changes, no
   golden moves. `build_parser()` is a pure move: the same parser, constructed
   by the same statements, returned instead of consumed in place.
 
@@ -344,19 +389,31 @@ design says which is which rather than dressing the third up as the first.
   and still say nothing useful. The check pins presence, never quality — the
   same shape as the contact-sheet stage, which gates that a sheet exists and
   never that anyone looked.
-- **The registry's pointer is permanently resident, and that is a real cost.**
-  The 14 skill descriptions are 7244 characters — roughly **1811 tokens** — and
-  they sit in context in every session, including sessions that never touch
-  video-grid. One identical pointer sentence across 14 skills adds about **340
-  tokens, a 19% increase on that always-resident block**. Cheap against the
-  84 KB of skill body it is meant to outlive, and not free. The sentence is
-  identical across all 14 precisely so it is one memorized phrase rather than
-  14 near-duplicates.
-- **A registry is a fifth place a description can live** — frontmatter, skill
-  body, CLI description, registry, `CLAUDE.md`. Generation and the pin test
-  keep exactly one of those pairs — registry against CLI — from drifting. The
+- **The −27% depends on shrinking descriptions, and shrinking a description
+  risks triggering.** A skill's `description:` is what a model reads to decide
+  whether to invoke it. Cutting documentation out of it is right; cutting the
+  trigger out with it is a regression nothing in this repo can detect — there
+  is no eval that measures whether a skill fires on the prompts it should.
+  The rule that keeps this safe is stated, not enforced: **what this is, when
+  to reach for it, required or optional** stays; everything past that goes. A
+  skill that fires less often is the failure mode to watch for, and it will
+  show up as a stage being skipped, not as a red test.
+- **The 350-character figure is three drafts, not a measurement.** It is a
+  target for the plan to aim at, and a fourth description may honestly need
+  450. §3.4's check pins the pointer's presence and deliberately pins no
+  length.
+- **Resolving `references/tools.md` costs a step after a compaction.** The path
+  is relative to the runtime root, which `setup.sh` records at
+  `~/.config/video-grid/root` — a resolution every skill body teaches and no
+  frontmatter can afford to spell out. An agent that has lost the body pays one
+  `cat` to get it back. `montage tools` prints the same index for an agent that
+  already has `$VG` resolved. The alternative — making the index its own
+  skill, reachable by name with no path at all — is filed in §6.
+- **An index is a fifth place a description can live** — frontmatter, skill
+  body, CLI description, index, `CLAUDE.md`. Generation and the pin test
+  keep exactly one of those pairs — index against CLI — from drifting. The
   other three still drift independently, as they do today.
-- **Nothing proves an agent reads the registry either.** A frontmatter sentence
+- **Nothing proves an agent reads the index either.** A frontmatter sentence
   is a directive, which is stronger than a fact buried in a body, and it is
   still only a directive. The same limit as §2.3's unenforced prose standard,
   and the same limit the contact-sheet stage carries: presence is gateable,
@@ -381,18 +438,24 @@ Rows for `docs/backlog.md`:
    check needs a deferred exemption; worth building only if a rename ever
    breaks a runner pointer. (P3, S)
 3. **The ten repo-internal pointers in CLI descriptions** (`stage 5.2b`,
-   `§5.13 Slice B`) substitute a reference for a statement. §3.5 shows no
+   `§5.13 Slice B`) substitute a reference for a statement. §3.6 shows no
    honest machine predicate separates them from a description that merely
    *also* cites; a prose pass is a review item, not a gate. (P3, S)
-4. **The registry answers "which tool", never "is this tool right here".**
+4. **The index as its own skill, reachable by name instead of by path.**
+   A `video-grid:tools` skill whose body is the index would need no runtime
+   root, no `$VG` and no path — one Skill call at any context age. It costs a
+   fifteenth row in the always-resident listing and gives the same content a
+   second home. Worth building if the path resolution proves to be the barrier
+   in practice; not built ahead of that evidence. (P3, S)
+5. **The index answers "which tool", never "is this tool right here".**
    A row says `probe grade` exists and renders stills over a frozen route; it
    cannot say that this is the moment in *your* run to reach for it. That is
    the judgement the skill body carries, and it is the half that stays
    perishable. (P3, M)
-5. **R4.2 closes by measurement AND construction** — both of its examples
+6. **R4.2 closes by measurement AND construction** — both of its examples
    were addressed before this slice (§0.1/§0.2). What the row named as the
    cause was not the cause, and the retro's own text carries the real one. The
    generalizable residue — a tool whose CLI cannot be run at the moment its
    user needs it — has no open instance today and is not filed as a row. What
-   this slice builds for it is §2.4's registry, which addresses the shape of
+   this slice builds for it is §2.4's index, which addresses the shape of
    the complaint rather than either of its two settled instances.
