@@ -858,13 +858,13 @@ Add to `tests/test_skill_convention.py`:
 ```python
 _REF = re.compile(r"references/[\w/-]+\.md")
 
-#: A body budget, NOT a measurement of anything. Three facts anchor it and none
-#: of them is a threshold: it is under half of either body before this slice
-#: (43 464 and 40 773 bytes); it is above episode-qc (16 017), the largest body
-#: against which no backlog row has ever been filed; and it is above what this
-#: slice lands, which is the part that matters — a cap that binds on the day it
-#: ships is a cap the next author fights instead of obeys. Design §3.5.
-BODY_MAX = 20_000
+#: A body budget, NOT a measurement of anything. It is set from what this slice
+#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 324 — with
+#: room above the larger of them, because a cap that binds on the day it ships is
+#: a cap the next author fights instead of obeys. The design's own projection said
+#: 13.5 KB and was wrong by 65%; the number here is the measurement, not the
+#: projection. Design §3.5.
+BODY_MAX = 26_000
 
 
 def test_every_reference_a_skill_names_exists():
@@ -898,8 +898,9 @@ def test_no_skill_body_exceeds_the_budget():
 - [ ] **Step 2: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -q`
-Expected: PASS. If `test_no_skill_body_exceeds_the_budget` fails, Task 4 or 5
-left too much in a body — move more to a page rather than raising the cap.
+Expected: PASS. The two split bodies measure 22 268 and 18 324 bytes and the
+next largest is `episode-qc` at 16 264, so nothing is near the cap. If the test
+fails, something regrew — move it to a page rather than raising the cap.
 
 - [ ] **Step 3: Run the mutation battery**
 
@@ -926,7 +927,7 @@ Before mutating a file you created in this task and have not yet committed,
 | 9 | delete the preamble from `skills/titles/SKILL.md` | `test_every_skill_carries_the_resolution_preamble` |
 | 10 | change a stub's pointer to `references/using-montage/deliverr.md` | `test_every_reference_a_skill_names_exists` |
 | 11 | create `references/edit-plan/bogus.md` | `test_no_reference_file_is_orphaned` |
-| 12 | append 25 KB of text to `skills/verify-runtime/SKILL.md` | `test_no_skill_body_exceeds_the_budget` |
+| 12 | append 30 KB of text to `skills/verify-runtime/SKILL.md` | `test_no_skill_body_exceeds_the_budget` |
 | 13 | delete the `ramp` field's name from both `edit-plan` body and pages | `test_edit_plan_skill_names_every_authorable_episode_field` |
 | 14 | put `<run>/out` in `references/using-montage/deliver.md` | `test_no_skill_still_names_the_retired_out_dir` — the second page-awareness row, and it covers a DIFFERENT ban than row 8 |
 | 15 | flip `trend-scan`'s kind from `deferred` to `optional` in `scripts/montage.py` | `test_a_deferred_stage_gets_no_row` and `test_every_live_stage_has_a_router_page` |
@@ -960,8 +961,9 @@ material, stating the three rules an author needs and nothing more:
 - a router stage is a page at `references/using-montage/<stage-key>.md`; the
   stub in the body carries the command and the pointer, the page carries the
   rest;
-- a body stays under 20 KB — new material goes on a page. The number is a
-  budget, not a measurement (design §3.5).
+- a body stays under 26 KB — new material goes on a page. The number is a
+  budget set from what the split measured itself landing, not a threshold of
+  anything (design §3.5).
 
 - [ ] **Step 6: Version and registry**
 

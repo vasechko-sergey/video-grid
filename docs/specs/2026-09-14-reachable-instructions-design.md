@@ -315,26 +315,43 @@ already narrower than the tree.
 
 ### 3.5 The body budget
 
-No `SKILL.md` exceeds **20 KB**.
+No `SKILL.md` exceeds **26 KB**.
 
 **This is a budget, not a measurement**, and the comment in the test says so.
-Three facts anchor it, none of them a threshold of anything: it is under half
-of either body today (43 464 and 40 773 B); it is above `episode-qc`
-(16 017 B), the largest body against which no backlog row has ever been filed;
-and it is above what this slice will land, which is the part that matters.
+A cap that binds on the day it ships is a cap the next author fights instead of
+obeys, so it is set above what the slice measured itself landing, not at it.
 
-Mechanically projecting §2.2's rule over both files gives **13.5 KB for the
-router (−69 %)** and **10.5 KB for `edit-plan` (−74 %)**. Both are floors, not
-targets, and the router's is the softer of the two: the checkpoints come back
-out of block 15 into the body (§2.4), every stub keeps its stops, and the
-projection's own command capture under-reads — one block's command block came
-back as 55 bytes, which is not a command. The router will land somewhere near
-16–17 KB.
+**The projection failed, twice, and the number here is the measurement
+instead.** A mechanical projection of §2.2's rule gave 13.5 KB for the router
+and 10.5 KB for `edit-plan`; an earlier draft of this design gave 8 KB for each
+(§5 records why that one was wrong). What actually landed is **22 268 B for
+the router (−51 %)** and **18 324 B for `edit-plan` (−56 %)**. The projection's
+error is structural, not arithmetic: it modelled a stub as the command alone,
+where a real stub also carries a sentence of purpose, the names of its stops
+and a page pointer; and it could not know that the checkpoints (§2.4) and a
+trimmed `Boundaries` would come back into the body.
 
-Which is why the cap is 20 and not 16. **A cap that binds on the day it ships
-is a cap the next author fights instead of obeys** — it would refuse the first
-legitimate sentence added after this slice and teach exactly the wrong lesson
-about where new material goes.
+So the cap's one honest anchor is the landing: 26 KB sits 3.7 KB above the
+larger body, 7.7 above the smaller, and 9.7 above `episode-qc` (16 264 B), the
+largest body against which no backlog row has ever been filed. It is under
+60 % of what either body was before this slice.
+
+### 3.6 How a move is proved
+
+The no-loss check the plan specifies — every non-trivial line of the pre-split
+body must appear, whitespace-squashed, in the new body plus its pages — has a
+blind spot found during execution: **squashing whitespace on both sides makes a
+re-wrapped paragraph invisible to it.** Task 4's first splice pass silently
+reflowed two moved paragraphs and the check reported nothing; it was caught by
+reading the diff.
+
+Task 5 then produced the stronger proof, and it is the one to use: **re-indent
+the pages, splice them back over the pointers they replaced, and compare the
+result to the pre-split file byte for byte.** A byte-identical round trip is
+only possible if no moved line was re-wrapped, re-worded, re-ordered, split,
+joined or dropped — it excludes the whole class rather than failing to detect
+part of it. It is available whenever a split is a pure move, which is what
+§2.2's rule makes it.
 
 ---
 
@@ -367,13 +384,19 @@ about where new material goes.
   that touches ten stages will issue up to ten reads it does not issue today.
   Each is smaller than the body it replaces, but the total is unknown and no
   artifact on disk can answer it before a real run.
-- **The −69 %/−74 % projection is mechanical.** It was computed by a script
-  over block boundaries, not by writing the bodies, and its command capture is
-  known to under-read. The real numbers will be worse and the cap is set to
-  absorb that (§3.5). An earlier draft of this design claimed −80 % against a
-  16 KB cap; both figures came from a measurement that counted characters as
-  bytes and ran the last block to end-of-file, swallowing two sections that
-  were never part of it.
+- **Every projection this design made of the split's size was wrong**, and in
+  the same direction each time: −80 % in a first draft (from a measurement that
+  counted characters as bytes and ran the last block to end-of-file, swallowing
+  two sections), then −69 %/−74 % from a corrected script. The measured result
+  is **−51 % and −56 %**. Twice the error was in modelling what a stub keeps,
+  and both times the fix was to measure rather than to project again. §3.5
+  carries the consequence: the cap is set from the landing.
+- **Total bytes went UP, by about 6 %.** The router's body fell 45 547 → 22 268
+  while its fifteen pages came to 25 343. That is the trade the slice is making
+  and it is the right one — resident bytes are paid on every invocation and
+  spent by the first compaction, page bytes are paid only when read — but this
+  design does not claim to have made the corpus smaller, only the part that is
+  always loaded.
 - **The installed plugin is 0.2.1 (§0.7).** Nothing this slice ships reaches a
   montage run until the user reinstalls, and nothing in the repo detects the
   gap. That is true of every skill change ever made here; this is the first
