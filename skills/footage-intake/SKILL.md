@@ -27,6 +27,21 @@ conveyor, before edit-plan. One invocation covers the whole footage folder.
 Do NOT use for: choosing episodes, ordering, music/mood, or any encoding — those
 are later stages.
 
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
+
 ## The Process
 
 1. **Ensure env.** Intake needs a vidstab-enabled ffmpeg (it is the first runtime
@@ -37,7 +52,7 @@ are later stages.
    wrong binary. The scan already fails loud with a remedy if the resolved
    binary lacks the filter.
 
-2. **Scan.** `python -m scripts.intake <footage_root> <out_dir>`, where
+2. **Scan.** `"$VG" scripts.intake <footage_root> <out_dir>`, where
    `<out_dir>` is `<footage_root>/montage/footage` — the run dir's `footage/`
    bucket, shared by every reel cut from this shoot; never the run root and never
    the footage folder itself (intake refuses a path that resolves to the footage

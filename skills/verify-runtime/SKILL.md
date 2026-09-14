@@ -20,6 +20,21 @@ time you want to confirm the environment before conducting a montage.
 
 Announce on entry: **"Using verify-runtime to check the environment."**
 
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
+
 1. **Resolve the runtime root (pre-venv layer).** Read the recorded root:
    `ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"`. If that file
    is missing, the user has never run `bash setup.sh` — say exactly that and stop

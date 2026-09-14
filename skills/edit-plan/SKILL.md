@@ -60,6 +60,21 @@ motion. A span stays within **one clip**, its indices must be **adjacent**, and 
 **cannot cross a scene cut** — the build refuses that, naming the cut (split into two
 episodes there). `start_offset` still applies, moving the merged in-point later.
 
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
+
 ## Procedure
 
 1. **Recon.** Read `FOOTAGE.md`, `project.json`, `references/editing-canon.md`, and
@@ -70,7 +85,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    matters — the peak of a manoeuvre, the frame a person turns to camera —
    zoom in before deciding:
 
-       python -m scripts.contact_sheet strip --footage <run>/footage/FOOTAGE.json \
+       "$VG" scripts.contact_sheet strip --footage <run>/footage/FOOTAGE.json \
          --footage-root <footage_root> --source MVI_3739.mp4 --window 2 \
          --frames 12 --out <run>/reels/<reel>/build/w2.png
 
@@ -239,7 +254,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
      bare tone pair — a post-tone knob moves the prediction and the delivery
      together and cancels). If you do author one, read `tone_src` off the crop — `probe grade
      --geometry ... --index N` prints `tone_profile`, ONE pooled `(p5, p50, p95)` of
-     the pixels that ship. `python -m scripts.color_measure <clip>` measures a WHOLE
+     the pixels that ship. `"$VG" scripts.color_measure <clip>` measures a WHOLE
      source frame instead, which on real footage differs from the crop by a median of
      14 and a maximum of 36 luma units — useful for a quick look at a file, wrong as
      the source anchor of a pair. A banding `tone` curve fails loud at render
@@ -291,7 +306,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    command with the SAME flags the earlier build used), then probe the
    freshly-written `EDL.json` straight through the frozen geometry:
 
-       python -m scripts.probe grade --geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
+       "$VG" scripts.probe grade --geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
          --index <N>
 
    No `--edl`: geometry mode always applies the EDL's CURRENT colour block,
@@ -349,7 +364,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    command with the SAME flags the earlier build used — omitting `--pacing`/
    `--music` here silently discards the pacing binding and the outro fit):
 
-       python -m scripts.edit_plan build \
+       "$VG" scripts.edit_plan build \
          --footage <run>/footage/FOOTAGE.json \
          --selection <run>/reels/<reel>/selection.json \
          --project <run>/project.json \
@@ -360,7 +375,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    — a pure projection, no ffmpeg, that re-stamps `EDL.json` — then probe the
    freshly-written file:
 
-       python -m scripts.probe grade --episodes <run>/reels/<reel>/episodes/EPISODES.json \
+       "$VG" scripts.probe grade --episodes <run>/reels/<reel>/episodes/EPISODES.json \
          --index <N> --edl <run>/reels/<reel>/EDL.json
 
    It writes `<run>/reels/<reel>/build/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
@@ -450,7 +465,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
    in either case is wrong, not merely redundant. Read the `stabilize`/`pan` line
    the command above printed before choosing:
 
-       python -m scripts.process_episode <run>/reels/<reel>/build/ep<N>/manifest.json \
+       "$VG" scripts.process_episode <run>/reels/<reel>/build/ep<N>/manifest.json \
          --project-dir <run>/reels/<reel>/build/ep<N> [--route <run>/reels/<reel>/build/ep<N>/route.json]
 
    Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
@@ -474,7 +489,7 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
 3. **Build.** Run the authoring script (explicit args; the user never types flags):
 
-       python -m scripts.edit_plan build \
+       "$VG" scripts.edit_plan build \
          --footage <run>/footage/FOOTAGE.json \
          --selection <run>/reels/<reel>/selection.json \
          --project <run>/project.json \

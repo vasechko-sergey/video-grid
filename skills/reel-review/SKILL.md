@@ -41,6 +41,21 @@ written before this field existed loads as **unbound**, not corrupt —
 `REVIEW.md` says so plainly rather than pretending a digest that was never
 computed.
 
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
+
 ## Inputs (the context packet — resolve paths under the run dir)
 
 - **`<run>/reels/<reel>/deliveries/REEL_v{n}.mp4`** (required) — the delivered reel.
@@ -106,7 +121,7 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
 
 3. **Validate + write.** Turn the raw findings into the typed artifact:
 
-       python -m scripts.reel_review build \
+       "$VG" scripts.reel_review build \
          --findings <run>/reels/<reel>/review_findings.json \
          --reel <run>/reels/<reel>/deliveries/REEL_v{n}.mp4 \
          --spec <run>/reels/<reel>/SPEC.json --platform <platform> \

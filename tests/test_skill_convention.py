@@ -13,9 +13,6 @@ from scripts.lib.edl import EDLEpisode
 
 REPO = Path(__file__).resolve().parents[1]
 SKILLS = REPO / "skills"
-# the 7 skills that issue pipeline commands (design §2.5; episode-qc added 2026-08-08)
-RUNNERS = {"using-montage", "music-source", "music-match", "pacing",
-           "process-episode", "project-init", "episode-qc"}
 # every skill description leads with one of these role tags (2026-08-01, widened
 # 2026-09-12 rederivable-purpose): the lead says HOW you reach the skill, not a
 # design §5.x stage number (run order != §5.x, and two skills have no number — the
@@ -68,20 +65,50 @@ def test_no_skill_invokes_a_bare_venv_python():
     assert offenders == [], f"skills bypassing bin/vg: {offenders}"
 
 
-def test_the_runner_skills_route_through_bin_vg():
-    for name in sorted(RUNNERS):
-        text = (SKILLS / name / "SKILL.md").read_text()
-        assert "bin/vg" in text, f"{name} lost its bin/vg launcher"
+PREAMBLE = """\
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path."""
+
+# Command spellings a skill must never contain. The first is the bypass the
+# packaging design closed; the second is what the first failed to catch — the
+# guard tested one literal and eleven `python -m scripts.X` examples walked
+# past it, five of them in edit-plan and one in footage-intake, whose CLI is
+# the reason the cd into the clone is mandatory at all (ultralytics writes YOLO
+# weights into the working directory). Design 2026-09-14 §0.4.
+BANNED_SPELLINGS = (".venv/bin/python", "python -m scripts")
 
 
-def test_the_runner_skills_read_the_recorded_root():
-    """The launcher path must come from setup.sh's recorded root, not from the
-    skill's own base directory — the install copies skills to a runtime-less cache,
-    so a base-dir-relative launcher (design §2.2, since corrected) would hit the
-    broken cache venv. (design 2026-07-22 runtime-resolution §2)"""
-    for name in sorted(RUNNERS):
-        text = (SKILLS / name / "SKILL.md").read_text()
-        assert "video-grid/root" in text, f"{name} does not read the recorded root"
+def test_no_skill_spells_a_command_it_cannot_resolve():
+    offenders = sorted(f"{p.relative_to(REPO)}: {spell}"
+                       for p in all_skill_docs()
+                       for spell in BANNED_SPELLINGS
+                       if spell in p.read_text())
+    assert offenders == [], (
+        f"{len(offenders)} command(s) anchored to a working directory nobody "
+        f"guarantees: {offenders}. Use \"$VG\" scripts.X — see PREAMBLE")
+
+
+def test_every_skill_carries_the_resolution_preamble():
+    """All fourteen, not the seven `RUNNERS` used to name.
+
+    Every skill names at least one path it cannot resolve without this block:
+    all fourteen carry `Tool index: references/tools.md.` in their description,
+    which the previous slice made resident and this one makes reachable."""
+    missing = sorted(n for n in skill_names()
+                     if PREAMBLE not in (SKILLS / n / "SKILL.md").read_text())
+    assert missing == [], f"skills without the resolution preamble: {missing}"
 
 
 def test_the_pacing_skill_documents_the_two_pass_flow():

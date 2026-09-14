@@ -41,13 +41,20 @@ Announce on entry: **"Using music-source to source and shortlist the reel's trac
    with the user — and for `any`, confirm they accept the copyright/rights responsibility
    before sourcing.
 
-**Launcher.** Run every pipeline step through the repo's launcher `bin/vg`, never a
-bare venv `python` binary. Resolve it once: `setup.sh` records the runtime's location
-at `${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so set
-`VG="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")/bin/vg"` and run every
-step as `"$VG" scripts.X`, passing **absolute** paths for every footage / run / output
-directory. If that file is missing, the user has not run `bash setup.sh` — stop and
-say so rather than guessing a path.
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
 
 2. **Find** (you type the flags; the user never does):
    `"$VG" scripts.music_find --mode <free|any> --spec <run>/reels/<reel>/SPEC.json --out-dir <run>/reels/<reel>`

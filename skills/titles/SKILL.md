@@ -29,6 +29,21 @@ step 3).
   (`draft.mp4`, a prior `<run>/reels/<reel>/deliveries/REEL_v*.*`) with ffprobe. Whichever is at hand; never
   guess or hardcode it — `--total` drives every title's timing.
 
+**Launcher and references.** Run every pipeline step through the repo's launcher
+`bin/vg`, never a bare `python`, and resolve every `references/…` read the same
+way. `setup.sh` records the runtime's location at
+`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+
+    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    VG="$ROOT/bin/vg"
+
+Then run every step as `"$VG" scripts.X`, read every reference as
+`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
+output directory. Nothing here is relative to your working directory — a skill
+runs from the user's footage project, not from the clone. If that file is
+missing, the user has not run `bash setup.sh` — stop and say so rather than
+guessing a path.
+
 ## Procedure
 
 Announce on entry: **"Using titles to author the reel's on-screen text."**
@@ -50,7 +65,7 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
 3. **Build.** Run the authoring script (explicit args; the user never types
    flags):
 
-       python -m scripts.titles build --spec <run>/reels/<reel>/SPEC.json \
+       "$VG" scripts.titles build --spec <run>/reels/<reel>/SPEC.json \
          --total <reel-length-seconds> --out-dir <run>/reels/<reel>
 
    `--spec`/`--total`/`--out-dir` are its only flags: it projects `hook`/`text`/
