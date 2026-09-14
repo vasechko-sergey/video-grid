@@ -15,10 +15,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-#: Skills that are not conveyor stages, and what they are instead (design §0.7).
-#: The mapping is not 1:1 in either direction: 9 of 14 skills are stage keys,
-#: 5 are not, and 7 stages have no same-named skill. Inventing a predecessor
-#: for verify-runtime would be worse than omitting one.
 STAGES_OF_SCRIPT: dict[str, tuple[str, ...]] = {
     # A script's module name is NOT its stage key: four of them differ, and one
     # script runs three stages. Measured — `intake` is the `footage-intake`
@@ -40,6 +36,10 @@ STAGES_OF_SCRIPT: dict[str, tuple[str, ...]] = {
     "reel_review": ("reel-review",),
 }
 
+#: Skills that are not conveyor stages, and what they are instead (design §0.7).
+#: The mapping is not 1:1 in either direction: 9 of 14 skills are stage keys,
+#: 5 are not, and 7 stages have no same-named skill. Inventing a predecessor
+#: for verify-runtime would be worse than omitting one.
 SKILL_ROLES: dict[str, str] = {
     "using-montage": "the router itself — it conducts every stage",
     "verify-runtime": "step 0, before every stage",
