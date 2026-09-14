@@ -515,7 +515,40 @@ description with `.strip('"')`, which strips every leading or trailing quote
 rather than parsing — latent only today (no current description starts or
 ends with a literal quote), but a duplicated ad-hoc parser where
 `yaml.safe_load` is already available (rederivable-purpose, Task 5/6 review
-loop)
+loop) ·
+`toolindex.surface_labels()` ships with zero readers — it is the exact
+function the plan ruled out wiring the index test to, since a walk that
+missed every subparser would render no subcommand rows and report none
+missing; it also carries no docstring saying so. Either delete it or give
+it one (rederivable-purpose, final review) ·
+`toolindex.SKILL_ROLES` is a second hand-written table and nothing pins
+it — no test asserts its keys are real skill directories or that they are
+disjoint from the stage keys, so a future `V1_STAGES` key colliding with a
+`SKILL_ROLES` name would make `test_every_skill_states_its_conveyor_place`
+silently take the role branch and stop requiring that skill's generated
+position sentence (rederivable-purpose, final review) ·
+the index's byte-pin compares the committed `references/tools.md` to
+`toolindex.render_index()` in-process; nothing runs
+`python -m scripts.montage tools` as a subprocess, the same emission gap
+`test_the_real_entry_point_routes_through_build_parser` closes for
+`--help` but unapplied here — a broken `tools` branch in `main()` would
+leave the pin green while the regeneration command every failure message
+names emits a file that fails it (rederivable-purpose, final review) ·
+design §3.2 specifies two subprocess `--help` sweeps, top-level and
+`<sub> --help`; only the top-level one was built. Run by hand for the
+final review, all 16 subcommands exit 0 and print their description, so
+nothing is masked today — but the sweep itself is still missing
+(rederivable-purpose §3.2, final review) ·
+`tests/test_tool_index.py::test_every_help_surface_has_a_row`'s hardcoded
+`47` lands a newly added script RED on a count assertion whose message
+reads as though the walk is broken; name the constant and the file
+(`references/tools.md`) in the message so the failure reads as staleness,
+not a bug (rederivable-purpose, final review) ·
+`toolindex.position()` raises a bare `ValueError: 'x' is not in list` for
+a skill that is neither a stage key nor named in `SKILL_ROLES`, instead of
+failing through the crafted assertion message two lines below it in
+`tests/test_skills_contract.py` — a fifteenth such skill gets a traceback
+instead of the intended guidance (rederivable-purpose, final review)
 
 **Packaging / runtime**
 migrating a **pre-convention run** into `montage/` — not a `mv`: measured 2026-08-25,

@@ -22,7 +22,7 @@ _Last updated: 2026-09-12._
   surface; R4.2 asked for skills to name a tool "at the moment of need," and
   **its own two examples overturn its own remedy**. §0.1: `CONSTRAINTS.json`
   and `scripts.probe` were both already named in the skills before the
-  2026-08-25 run — 12 and 3 days early — so naming was never the binding
+  2026-08-19 run — 12 and 3 days early — so naming was never the binding
   constraint; the retro's own text, three sections above the row that files
   it, names `probe`'s real blocker as a CLI precondition (`--episodes
   EPISODES.json`, which exists only after every episode is rendered) that

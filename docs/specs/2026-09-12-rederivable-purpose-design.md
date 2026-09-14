@@ -258,7 +258,7 @@ from a surface that survives a compaction.
 - **`references/tools.md` is an index, not a manual.** One row per help
   surface: the module, the subcommand if it has one, whether it is a
   `V1_STAGES` stage and which, the artifact that stage writes, and the one-line
-  purpose. 46 rows. It lists no arguments — that is what `--help` is for, and
+  purpose. 47 rows. It lists no arguments — that is what `--help` is for, and
   duplicating it is how an index starts lying.
 - **`references/` is the established home.** Three reference files already live
   there and skills already send readers to them — `edit-plan` calls
@@ -316,7 +316,7 @@ carrying everywhere, the skippability is the expensive one worth carrying once.
 is why the trade works and why it keeps working. A skill's `description:` is
 paid in **every** session, read or not, needed or not — 6172 of today's 7244
 characters are detail that is resident whether any tool is ever reached. A
-pointer costs 32 characters in that block; the 46 rows it names cost nothing
+pointer costs 32 characters in that block; the 47 rows it names cost nothing
 until an agent actually asks *which tool*, and `--help` costs nothing until it
 asks *how*.
 
@@ -338,7 +338,10 @@ exception that keeps its chain: 392 for the trigger plus the generated 228, so
 including sessions that never touch video-grid. *(The finished set drafted in
 the plan beats this: it averages **302** outside the router and lands at
 **4569 characters, ~1142 tokens, −37%**, about 668 tokens freed. 350 was a
-target read off three samples; the fourteen real strings came in under it.)* The router alone is then 12% of
+target read off three samples; the fourteen real strings came in under it.
+What shipped is **4685 characters, ~1171 tokens, −35%**, about 640 tokens
+freed instead — `toolindex.SKILL_ROLES` requires its role phrases verbatim,
+and the YAML quoting adds the rest of the gap.)* The router alone is then 12% of
 the block, which is the right shape: one description holds the map, thirteen
 hold a pointer and a place.
 
@@ -371,7 +374,7 @@ Two instruments, because they answer different questions:
 
 - `tests/test_cli_help.py` imports every `scripts/*.py`, calls `build_parser()`,
   and walks `parser._actions` plus every subparser's actions. It asserts a
-  non-empty `description` on all 46 surfaces and a non-empty `help` on every
+  non-empty `description` on all 47 surfaces and a non-empty `help` on every
   argument. Exact — no line-wrap parsing, no guessing where argparse broke a
   line — and in-process, so it costs an import, not a spawn.
 - A second test invokes `python -m scripts.<name> --help` and
@@ -463,9 +466,10 @@ design says which is which rather than dressing the third up as the first.
   the mechanical `build_parser()` extraction (§3.1), the `montage tools`
   renderer, the generated `references/tools.md`, a rewrite of all 14 skill
   `description:` lines down to trigger plus pointer plus position (§2.4/§2.5),
-  and the tests. No argv changes, no filter changes, no
-  golden moves. `build_parser()` is a pure move: the same parser, constructed
-  by the same statements, returned instead of consumed in place.
+  and the tests. No *existing* argv changes — `montage tools` above is the
+  one new subcommand — no filter changes, no golden moves. `build_parser()`
+  is a pure move: the same parser, constructed by the same statements,
+  returned instead of consumed in place.
 
 ---
 
@@ -482,13 +486,15 @@ design says which is which rather than dressing the third up as the first.
   complete `--help` does not address that. It addresses the 56 greps of the
   product's own source, which is a different complaint by the same reader.
 - **A complete `--help` does not make a tool findable by someone who never
-  types its name.** That is the first rung, and the first rung is already in
-  good shape — which is why this slice touches the third and says so.
+  types its name.** That gap sits on the first rung, and this slice does not
+  leave it alone: §2.4/§2.5 rewrote all 14 first-rung descriptions to carry
+  the index pointer and the conveyor position, the one property nothing else
+  has — it cannot be spent (§0.3).
 - **§2.3 is unenforced.** A future description can satisfy both machine checks
   and still say nothing useful. The check pins presence, never quality — the
   same shape as the contact-sheet stage, which gates that a sheet exists and
   never that anyone looked.
-- **The −27% depends on shrinking descriptions, and shrinking a description
+- **The −35% depends on shrinking descriptions, and shrinking a description
   risks triggering.** A skill's `description:` is what a model reads to decide
   whether to invoke it. Cutting documentation out of it is right; cutting the
   trigger out with it is a regression nothing in this repo can detect — there
@@ -517,7 +523,11 @@ design says which is which rather than dressing the third up as the first.
 - **An index is a fifth place a description can live** — frontmatter, skill
   body, CLI description, index, `CLAUDE.md`. Generation and the pin test
   keep exactly one of those pairs — index against CLI — from drifting. The
-  other three still drift independently, as they do today.
+  other three still drift independently, as they do today. Two more
+  hand-written tables carry a fact a second time: `toolindex.STAGES_OF_SCRIPT`
+  (script → stage) is checked against `Stage.runner` so a transposition
+  cannot pass silently; `toolindex.SKILL_ROLES` (skill → non-stage role) is
+  checked by nothing, and is filed as a backlog row.
 - **Nothing proves an agent reads the index either.** A frontmatter sentence
   is a directive, which is stronger than a fact buried in a body, and it is
   still only a directive. The same limit as §2.3's unenforced prose standard,

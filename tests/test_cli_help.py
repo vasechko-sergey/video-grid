@@ -3,8 +3,8 @@
 A skill body is context and context is spent; `--help` is one Bash call at any
 context age (design 2026-09-12 §0.3). The retro measured an agent reaching for
 it after a compaction — 12 of 13 `--help` calls in the following 2 h 17 min —
-and finding 5 of 31 top-level parsers and 0 of 15 subcommands with anything to
-say (§0.4).
+and finding 5 of 31 top-level parsers printing no purpose at all, and 0 of 15
+subcommands printing any (§0.4).
 
 Two instruments, because they answer different questions. The walk below is
 EXACT: it reads the parser objects, so no line-wrapped help text has to be

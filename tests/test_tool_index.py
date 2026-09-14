@@ -97,3 +97,23 @@ def test_every_built_stage_is_claimed_by_some_script():
     assert built - claimed == set(), (
         f"{sorted(built - claimed)} are built stages that no script claims in "
         f"STAGES_OF_SCRIPT — either the map is stale or the stage has no runner")
+
+
+def test_every_mapped_script_is_named_by_its_own_stage_runner():
+    """Membership is not pairing. The two existing map pins hold under ANY
+    permutation — transposing intake and contact_sheet passes both, and the
+    byte-pin passes too because the renderer regenerates a transposed index.
+    Stage.runner already names the script for every built stage, so the
+    pairing has a second source to be checked against.
+
+    One-directional on purpose: `assemble` appears in deliver's runner,
+    `montage` in contact-sheet's and `track` in episodes-geometry's, so the
+    reverse check would fire on prose that is correct."""
+    from scripts import montage
+    runner = {s.key: s.runner for s in montage.V1_STAGES}
+    wrong = [(script, key) for script, keys in toolindex.STAGES_OF_SCRIPT.items()
+             for key in keys if script not in runner[key]]
+    assert wrong == [], (
+        f"{wrong} are mapped script->stage but the stage's own Stage.runner does "
+        f"not name that script — one of the two is wrong, and references/tools.md "
+        f"is rendered from the map")

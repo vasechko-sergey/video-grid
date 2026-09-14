@@ -1,10 +1,14 @@
 """Render the tool index, each skill's conveyor position, and the router's chain.
 
 Pure — no I/O, no argv. Three readers: `montage tools`, tests/test_tool_index.py
-and tests/test_skills_contract.py. The facts come from two places that already
-exist: each script's own build_parser() and montage.V1_STAGES. Nothing here is
-typed twice, which is the point — the router's hand-written chain had already
-drifted from the registry it describes (design §0.6)."""
+and tests/test_skills_contract.py. Most facts come from two places that already
+exist: each script's own build_parser() and montage.V1_STAGES — which is why
+the router's hand-written chain had already drifted from the registry it
+describes (design §0.6). The one exception is STAGES_OF_SCRIPT below: a
+script's module name is not its stage key for four of them, and edl_to_reel
+runs three stages, so the map cannot be derived from either source — it is the
+one hand-written table here, and it is checked against Stage.runner
+(tests/test_tool_index.py) rather than trusted."""
 import argparse
 import importlib
 from pathlib import Path
