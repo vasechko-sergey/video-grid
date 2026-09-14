@@ -95,7 +95,7 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
    `EPISODES.json` phase 1 already wrote (swap in whichever `REEL_v{n}.mp4`
    `montage status` names as latest):
 
-       python -c "
+       "$VG" -c "
        import json
        from itertools import accumulate
        from pathlib import Path

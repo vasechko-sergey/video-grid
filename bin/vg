@@ -11,4 +11,10 @@ if [ ! -x "$ROOT/.venv/bin/python" ]; then
   exit 1
 fi
 cd "$ROOT"
+# A `-c` snippet needs the same cd and the same venv guard as a module run, and
+# cannot go through `-m`. The launcher is the one door either way (design
+# 2026-07-22 §2.1); this is the second spelling of the same contract.
+if [ "${1:-}" = "-c" ]; then
+  exec "$ROOT/.venv/bin/python" "$@"
+fi
 exec "$ROOT/.venv/bin/python" -m "$@"

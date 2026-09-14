@@ -423,7 +423,7 @@ guessing a path.
    field the EDL edit just deleted (see `_COLOUR_KEYS` in `scripts/probe.py`) — and
    write it back into **both** places that carry a copy, not only the scratch file:
 
-       python -c "
+       "$VG" -c "
        import json
        from scripts import probe
        ep_path = '<run>/reels/<reel>/episodes/EPISODES.json'

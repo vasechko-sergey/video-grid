@@ -84,10 +84,15 @@ guessing a path."""
 # Command spellings a skill must never contain. The first is the bypass the
 # packaging design closed; the second is what the first failed to catch — the
 # guard tested one literal and eleven `python -m scripts.X` examples walked
-# past it, five of them in edit-plan and one in footage-intake, whose CLI is
-# the reason the cd into the clone is mandatory at all (ultralytics writes YOLO
-# weights into the working directory). Design 2026-09-14 §0.4.
-BANNED_SPELLINGS = (".venv/bin/python", "python -m scripts")
+# past it, seven of them in edit-plan and one each in footage-intake,
+# reel-brief, reel-review and titles, whose CLI is the reason the cd into the
+# clone is mandatory at all (ultralytics writes YOLO weights into the working
+# directory). The third is what the second still missed, found in review: a
+# bare `python -c` snippet importing `scripts` directly needs the clone cwd
+# exactly as much as a `-m scripts.X` run does, and the brief's own table —
+# built from a grep for one spelling — walked past the two sites that use it
+# (edit-plan, reel-review). Design 2026-09-14 §0.4.
+BANNED_SPELLINGS = (".venv/bin/python", "python -m scripts", "python -c")
 
 
 def test_no_skill_spells_a_command_it_cannot_resolve():
