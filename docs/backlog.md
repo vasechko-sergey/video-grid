@@ -55,8 +55,6 @@ is still P3.
 | | Item | Size | Source |
 |---|------|------|--------|
 | ◐ | **R2.1 · Grade against named subjects, not the frame mean.** The operator's own three anchors: skin, the black wetsuit, the water. That gap was originally found on `color_across_cuts`, which compared whole-frame means — on ep5, a frame that is mostly dark water, the correction it authored lifted Lena's face to **156 luma, above her own ungraded plate**. That check and its corrector are deleted (colour-convergence-retire, 2026-08-29), but the gap is not: `matchgrade.measure_profile`, which now sets the reel's one common tone target, still reads a whole source frame at the window midpoint rather than the named subjects — the same frame-vs-subject mismatch, on the stage that survived. Five of the run's six days went here. — **✅ closed 2026-08-30 by "Grade the pixels that ship"**, though not the way this row asked: the target is still (p5, p50, p95) of luma and still knows nothing about skin, wetsuit or water. What changed is the REGION — the conductor now measures each episode's tracked crop, the pixels that actually ship, so the "mostly dark water" frame that lifted Lena's face is no longer what any anchor is computed from. **`◐` and not `✅`, because the row's own title is still open**: no stage names skin, wetsuit or water, and two other rows point here as their home — the P3 `color_fidelity` sampling-box item is folded into this one, and the P3 chroma row carries the across-episode half. What is closed is the frame-vs-crop mismatch that made the anchors wrong; what remains is naming the subjects, which is a different instrument. | L | [retro](retro/2026-08-25-first-real-run.md) R2, [design](specs/2026-08-30-grade-shipped-pixels-design.md) §3 |
-| ○ | **R4.1 · Every CLI and every skill line states what the tool is FOR.** 56 Bash calls in the run grepped the product's own source to find out. A name is not a purpose. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
-| ○ | **R4.2 · Skills must name the tool at the moment of need.** `scripts.probe` was invoked **0** times and `CONSTRAINTS` mentioned **0** times in 831 tool inputs, although the 0.2.0 plugin cache was stamped two hours before the run and shipped both, and `using-montage` names "no repeated episodes" as its own worked example. The agent did not skip them — it **rebuilt** them, as a 2.0 GB / 676-file private colour lab. **A fresh instance, filed 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §4) lands in `FOOTAGE.json`/`FOOTAGE.md`, and no skill line tells an agent to read it — this row's exact shape, not a new one; belongs with this slice rather than scattered ahead of it. | M | [retro](retro/2026-08-25-first-real-run.md) R4 |
 
 ## P2 — soon
 
@@ -76,7 +74,6 @@ is still P3.
 | ○ | **R10.11 · "(silent reel)" in the pre-mix loudness check made the agent conclude the music had been lost.** A diagnostic message that reads as a failure. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.12 · Eight of 22 `AskUserQuestion` turns were the human arbitrating a per-episode sensor failure** — the clearest measure of where a person's attention was actually spent. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R2.4 · A threshold widened by hand needs a reason attached, not just a bigger number.** Concretely, this was `color_delta_max`: 12 → 44 → **56** across the run, each widening silencing a complaint that was correct. That specific knob is deleted (colour-convergence-retire, 2026-08-29), but the mechanism that let it happen silently is generic, not particular to it: `provenance.spec_overrides` records that a `ReelCheckSpec`/`CheckSpec` field changed from its default, never why. Nothing today stops the same pattern on `variety_min`, `entropy_floor`, or any other threshold. **Example corrected by this session's audit, 2026-09-03**: this row named `grade_delta_max`, which was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) — the stale field name is fixed above; the mechanism (`spec_overrides` still records no reason) is unchanged and this row stays open. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
-| ○ | **R4.3 · Survive a compaction.** After one context compaction, **12 of 13 `--help` calls** fall in the next 2 h 17 min — and `probe` still was not found. | S | [retro](retro/2026-08-25-first-real-run.md) R4 |
 | ○ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. **Measured and named, 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §0.1/§4) is the number this row was missing — the largest weight, `W_PRESENT` at 0.44, separated **3 of 1508** windows on the only real pool: not that the score was ignored, but that 44% of it had nothing to say. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
 | ○ | **R10.3 · 95% of conveyor calls were piped through `tail`/`grep`/`head`**, twice losing the answer — once costing a 173-second re-render to read output already produced. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.5 · QC has no "judge only what changed" and no memory between rounds** — ~14 rounds, **97 judges, 160 MB, 8 episodes**, two blocking verdicts, one of them a false alarm from a stale evidence packet. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
@@ -93,6 +90,7 @@ is still P3.
 | ○ | **Measure the length band against real footage and genre — R1.2's second half.** `carve.DEFAULT_BAND = (1.2, 4.0)` is the same first-cut pair the old `WIN_MIN`/`WIN_MAX` module constants held; mood-contract (0.8.0) made the band selectable and impossible to change silently, not *right* — no number in it was measured against taste. The right floor/ceiling are unknown and genre-dependent and must be measured, not typed. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §7, R1.2 |
 | ○ | **Explain the operator's "pull toward two seconds" against the run's own drafts.** mood-contract (0.8.0) ruled out both mechanisms the retro's R1.2 named, without explaining the impression itself: the delivered reel's median shot was 4.10s — *above* `nostalgic`'s own declared 2.0–4.0s `asl` ceiling — and the carve floor was already 1.2s before this slice touched anything, so neither the preset band nor `WIN_MAX` produced it. Whatever did is still unexplained. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §0.4/§8 |
 | ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
+| ○ | **The two biggest skill bodies load whole and are lost to compaction.** `using-montage` (646 lines) and `edit-plan` (629) have no reference subfiles, so every invocation pays the full body — 43 KB and 41 KB — and a compaction spends all of it. Progressive disclosure (a short `SKILL.md` plus `references/*.md` loaded on demand) is the shape; declined as this slice's own scope. | M | [rederivable-purpose design](specs/2026-09-12-rederivable-purpose-design.md) §6 |
 
 ## P3 — someday
 
@@ -492,6 +490,32 @@ assertion alone would pass a `_predict` wired to the wrong file too
 (grade-sensor-references Task 7, same shape as Task 5's own finding on the
 preflight-probe test; mis-attributed to `tests/test_episode_qc.py` until
 corrected by the whole-branch final review, M-2)
+
+**CLI / tool index**
+`Stage.runner` names a tool and nothing checks the tool exists — `trend-scan`'s
+runner is the literal string `"5.4 - not built"`, so any check needs a
+deferred exemption; worth building only if a rename ever breaks a runner
+pointer (rederivable-purpose §6) ·
+ten CLI descriptions substitute a repo-internal pointer (`stage 5.2b`,
+`§5.13 Slice B`) for a statement — §3.7 shows no honest machine predicate
+separates them from a description that merely also cites; a prose pass is a
+review item, not a gate (rederivable-purpose §3.7/§6) ·
+the index as its own skill, reachable by name instead of by path — a
+`video-grid:tools` skill whose body is the index would need no runtime root,
+no `$VG` and no path, but costs a fifteenth row in the always-resident
+listing and gives the same content a second home; worth building only if
+path resolution proves to be the barrier in practice (rederivable-purpose §6) ·
+the index answers *which tool*, never *is this tool right here* — a row says
+`probe grade` exists and renders stills over a frozen route, but cannot say
+that this is the moment in your run to reach for it; that judgement stays in
+the perishable skill body (rederivable-purpose §6) ·
+`tests/test_skill_convention.py` and
+`tests/integration/test_skill_process_episode.py` both dequote a YAML
+description with `.strip('"')`, which strips every leading or trailing quote
+rather than parsing — latent only today (no current description starts or
+ends with a literal quote), but a duplicated ad-hoc parser where
+`yaml.safe_load` is already available (rederivable-purpose, Task 5/6 review
+loop)
 
 **Packaging / runtime**
 migrating a **pre-convention run** into `montage/` — not a `mv`: measured 2026-08-25,

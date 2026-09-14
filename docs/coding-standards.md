@@ -91,6 +91,23 @@ and travels typed.
 - Scripts run as modules: `.venv/bin/python -m scripts.<name>`; explicit paths
   always, never rely on cwd.
 
+## CLI help
+
+Every `argparse` parser and subparser carries a `description`, and every
+argument carries a `help`. Both are machine-checked by
+`tests/test_cli_help.py`, and a subparser needs `description=` in addition
+to `help=` — `help=` renders only in the parent's subcommand listing.
+
+A description states **what the tool reads, what it writes, and when to run
+it**. The arguments already carry the input formats, so the description
+carries the purpose and the moment. This half is **not** machine-checked:
+no honest predicate separates a description that merely also cites a design
+section from one that substitutes the citation for a statement (design
+2026-09-12 §3.7). It is a review item.
+
+`references/tools.md` is generated — never hand-edit it. Regenerate with
+`python -m scripts.montage tools > references/tools.md`.
+
 ## Related
 
 - [testing-guide.md](./testing-guide.md) — TDD, whole-object asserts, golden fixtures.

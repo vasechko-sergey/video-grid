@@ -10,6 +10,24 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.9.2 — 2026-09-12
+
+**PATCH: a tool's purpose is re-derivable.** No behaviour changes, no argv
+changes, no pixel moves. What changes is what the product can tell its own
+operator.
+
+- Every `scripts/*.py` exposes `build_parser()`; 47 help surfaces are now
+  walkable objects rather than scrapeable text.
+- 5 top-level parsers and **all 15 subcommands** gained a description.
+  `probe grade --help` printed nothing about itself before this.
+- 56 of 210 arguments gained `help` — 20 of 27 positionals among them.
+- `references/tools.md`: a generated 47-row index, printed by
+  `montage tools` and pinned byte-for-byte by a test.
+- All 14 skill descriptions rewritten to trigger plus pointer plus a
+  conveyor position rendered from `V1_STAGES`: 7244 → 4685 characters,
+  ~1811 → ~1171 tokens, **−35%**, about 640 tokens freed in every session.
+- Closes backlog R4.1, R4.2 and R4.3.
+
 ## 0.9.1 — 2026-09-10
 
 **PATCH.** No flag, no stage, no required artifact, and nothing renamed — two

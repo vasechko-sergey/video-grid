@@ -4,13 +4,62 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-10._
+_Last updated: 2026-09-12._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Re-derivable purpose — a tool's purpose survives a compaction (2026-09-12,
+  0.9.2)** — design
+  [2026-09-12-rederivable-purpose-design.md](specs/2026-09-12-rederivable-purpose-design.md),
+  plan [2026-09-12-rederivable-purpose.md](plans/2026-09-12-rederivable-purpose.md),
+  Tasks 1–6 (branch `docs/rederivable-purpose`, commits `658dce2`..`HEAD`).
+
+  Two rows (R4.1, R4.3) asked for a purpose statement on every `--help`
+  surface; R4.2 asked for skills to name a tool "at the moment of need," and
+  **its own two examples overturn its own remedy**. §0.1: `CONSTRAINTS.json`
+  and `scripts.probe` were both already named in the skills before the
+  2026-08-25 run — 12 and 3 days early — so naming was never the binding
+  constraint; the retro's own text, three sections above the row that files
+  it, names `probe`'s real blocker as a CLI precondition (`--episodes
+  EPISODES.json`, which exists only after every episode is rendered) that
+  0.6.0 had already removed via `probe grade --geometry`. §0.6 found a second,
+  unfiled drift while building the fix: `using-montage`'s own hand-written
+  chain had already fallen out of sync with `montage.V1_STAGES` in
+  vocabulary (`music` vs `music-and-mood`, `edl_to_reel episodes`/`deliver`
+  vs `episodes`/`deliver`) — not in sequence, but enough that the router was
+  describing a registry slightly different from the one it runs.
+
+  **The fix.** Every `scripts/*.py` exposes `build_parser()` (31 scripts, 47
+  `--help` surfaces — 31 top-level + 16 subcommands, Task 4 adding `montage
+  tools` as the newest one); 5 top-level parsers and all 15 pre-existing
+  subcommands gain a `description`, 56 of 210 arguments gain a `help` (20 of
+  27 positionals); `scripts/lib/toolindex.py` renders `references/tools.md`
+  (one row per surface, pinned byte-for-byte by a test), each stage skill's
+  `Conveyor position:` sentence, and the router's whole chain — all three
+  from `montage.V1_STAGES` and each script's own parser, never hand-typed
+  twice. All 14 skill descriptions are rewritten to trigger + a `Tool index:
+  references/tools.md.` pointer + the generated position: **7244 → 4685
+  characters, ~1811 → ~1171 tokens, −35%**, about 640 tokens freed in every
+  session.
+
+  **Mutation battery: 16 rows, all 16 discriminating** — no coverage holes,
+  unlike the prior two slices. Three rows were flagged uncertain going in
+  (9, 13, 14): row 9's structural header check — the plan's own Task 4 fix
+  round had already replaced the vacuous `" --"`-token heuristic it was
+  originally written against — still fires; row 13 confirmed by reading the
+  assertion message (not by assuming) that it discriminates on the ROLE half
+  and never reaches `position()`, exactly as predicted; row 14 confirmed the
+  selection reaches `project-init` specifically. `docs/coding-standards.md`
+  gains a `## CLI help` section naming the one half that stays a review item,
+  not a gate: a description that only *cites* a design section instead of
+  stating the purpose has no honest machine predicate to catch it (§3.7).
+  Closes backlog R4.1, R4.2 and R4.3; six deferred rows filed (design §6's
+  five plus the `.strip('"')` YAML-dequoting duplication this slice's own
+  review loop found).
 
 - **Unmeasured, named — two reports stop claiming a measurement they never
   made (2026-09-10, 0.9.1)** — design
