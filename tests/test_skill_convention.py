@@ -313,3 +313,41 @@ def test_skill_docs_never_reaches_a_shared_reference():
     reached = {p.name for p in all_skill_docs()}
     assert reached & shared == set(), (
         f"skill_docs() reached a shared repo-level reference: {reached & shared}")
+
+
+def test_every_live_stage_has_a_router_page():
+    """Set equality with the registry, both directions, no exemption list.
+
+    This is the check the drift would have failed: `reel-review` is required
+    and had no block of its own, living inside the deliver block below
+    Checkpoint 3 (design 2026-09-14 §0.5)."""
+    from scripts import montage
+    keys = {s.key for s in montage.V1_STAGES if s.kind != "deferred"}
+    pages = {p.stem for p in (REPO / "references/using-montage").glob("*.md")}
+    assert pages == keys, (
+        f"pages without a stage: {sorted(pages - keys)}; "
+        f"stages without a page: {sorted(keys - pages)}")
+
+
+_STUB = re.compile(r"^(\d+)\. \*\*([a-z][a-z-]*)\*\* — ")
+
+
+def test_the_router_stubs_are_the_table_s_stages_in_order():
+    """The generated table owns the set, the order and the numbers; the stubs
+    own the commands. This is the only thing binding the two, which is why it
+    asserts the whole list at once rather than membership: a stub pair that
+    swapped places is exactly the failure a membership check cannot see."""
+    from scripts.lib import toolindex
+    text = (SKILLS / "using-montage" / "SKILL.md").read_text()
+    found = [(int(m.group(1)), m.group(2)) for m in
+             (_STUB.match(l) for l in text.splitlines()) if m]
+    assert found == [(n, s.key) for n, s in toolindex.stage_steps()]
+
+
+def test_every_router_stub_points_at_its_own_page():
+    """A stub without its pointer is a page nobody reaches."""
+    from scripts.lib import toolindex
+    text = (SKILLS / "using-montage" / "SKILL.md").read_text()
+    missing = [s.key for _, s in toolindex.stage_steps()
+               if f"{toolindex.ROUTER_PAGES}/{s.key}.md" not in text]
+    assert missing == [], f"stubs with no pointer to their page: {missing}"

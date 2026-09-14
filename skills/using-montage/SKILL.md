@@ -68,8 +68,8 @@ at `<run>` itself: `project_init --project-dir <run>`, `intake <footage_root>
 ## The stages
 
 Generated from `montage.V1_STAGES` — the registry the inspector resolves against.
-Read a stage's page before running it; the stub below each row carries the
-command and nothing else.
+Read a stage's page before running it; each row's stub, under **The steps**
+below, carries the command and nothing else.
 
 <!-- generated: stages — "$VG" scripts.montage stages -->
 | step | stage | kind | gate | writes | page |
@@ -90,6 +90,84 @@ command and nothing else.
 | 15 | `deliver` | required | CP3 | `REEL_v*.*` | `references/using-montage/deliver.md` |
 | 16 | `reel-review` | required | CP3 | `REVIEW.json` | `references/using-montage/reel-review.md` |
 <!-- /generated -->
+
+## Checkpoints
+
+The three user gates (design §4.1). They stay here, resident: a stage
+page that goes unread costs detail, a checkpoint that goes unread is a
+user gate silently skipped. The table above says which stage sits at
+which gate.
+
+**Checkpoint 1 — SPEC approval:** read back the
+resolved `{canvas, delivery}` and the intent you parsed; confirm before moving on.
+When reel-brief runs, its SPEC.md is the fuller CP1 artifact; without it, the
+resolved {canvas, delivery} is the CP1 surface.
+
+**Checkpoint 2 — EDL approval + curation:** show the user `EDL.md`. To swap
+or re-order an episode, edit `selection.json` and re-run the build — never
+hand-edit `EDL.json`.
+**`draft.mp4` is CP2's richer artifact** — when it exists (the optional
+assemble-draft step below), it is what the user approves at Checkpoint 2; on a
+run without it, `EDL.md` still anchors CP2. **Ask explicitly at this checkpoint
+(#6):** *"titles? effects (slow-mo / speed ramp, transitions, SFX)?"* — CP2 is
+the right place because the EDL now exists, so the reel length is known and a
+title can actually be timed. Name what you are skipping on "no" (e.g. "no
+titles — the reel will carry no on-screen text") rather than silently passing
+over the optional stages below.
+
+**Checkpoint 3 — final
+review:** present `<run>/reels/<reel>/deliveries/REEL_v1.mp4`, the `check_reel`
+report, and (when titles were authored) `TITLES.md` alongside them. Before
+presenting the reel as final, run
+`"$VG" scripts.montage verify --run-dir <run> --reel <reel>` and
+show its result — a delivery whose state is not `attested` (most notably
+`unattested`: no `REEL_v{n}.attest.json`) must be named plainly as such,
+never presented as a finished reel. **Do not say "the file did not come
+out of `deliver`" — since 2026-09-09 that is the LEAST likely of three
+causes**: most often the look gate withheld the attestation on purpose (a
+declared vignette/fade did not reach the pixels — the file is complete,
+look at it, `deliver` renamed it into place before the gate ever ran);
+next most often the process was killed AFTER the rename but before the
+attestation was written (a window of seconds now, not the old window of
+an entire encode); rarest of all, the file genuinely predates `deliver`.
+`montage status`'s own `interrupted` list is the separate, cheaper signal
+for the failure that used to hide behind this one: a non-empty list
+names a leftover `.REEL_v{n}.part.<container>` from an encode killed
+mid-write — that delivery consumed no version and is invisible as one,
+so there is nothing to clean up and nothing to explain away; just
+re-run `deliver` (or `edl_to_reel --from-episodes`) and it overwrites
+the partial. Its
+`episode_qc` field needs the same treatment when it
+is not `judged` (`absent`: shipped via the single-command `edl_to_reel`
+or `build_reel`'s own CLI, neither of which this router uses; `stale`:
+judged, then an episode was re-rendered after its verdict — which on this
+path means something bypassed phase 2's own `episode-qc-reprocessed`
+refusal (step 15); `unknown`: an
+old sidecar predating the field) — a reel this router delivered itself
+should always read `judged`, so anything else means an unjudged reel is
+about to be called final and must be named plainly, not passed over. A `stop_and_report` (a failed gate) is surfaced verbatim —
+never fixed forward; route it to the culprit stage's skill.
+`verify`'s `review` block is not yet meaningful at this call — `REVIEW.json`
+does not exist until reel-review below writes it, so reading `absent` here
+is expected, not a fault; reel-review's own procedure re-runs `montage
+verify` once it has, and that later reading is the one to report.
+
+**Standing rules — at every checkpoint.** The `EDL.json` sentence below
+applies from Checkpoint 2 on; at Checkpoint 1 there is no cut yet to
+re-judge.
+
+When the user states an editorial rule that must hold across re-cuts ("one hero
+opens, the other closes", "no repeated episodes", "don't use that take"), append it
+to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
+SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
+being told. A rule outside the four kinds cannot be stored: tell the user it will
+not be enforced instead of leaving them to assume it is. `EDL.json` already exists
+at this checkpoint, so writing the rule down does not by itself re-judge the cut
+already on disk — re-run `edit_plan build` (and on a paced run, `pacing` followed
+by `edit_plan build --pacing`) so the rule binds the cut that already exists, not
+only the next one.
+
+## The steps
 
 0. **Verify the runtime (gate).** After resolving `$VG` (below), run
    `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
@@ -142,145 +220,68 @@ guessing a path.
    folder. If `<run>` is empty but `<footage_root>/project.json` exists, say so and
    ask which to use — starting fresh silently would re-scan every clip.
 
-2. **project-init** — if `next`. `"$VG" scripts.project_init
-   --purpose <p> --quality <q> --project-dir <run>` (custom aspect:
-   `--purpose custom --canvas W:H`). **Checkpoint 1 — SPEC approval:** read back the
-   resolved `{canvas, delivery}` and the intent you parsed; confirm before moving on.
-   When reel-brief runs, its SPEC.md is the fuller CP1 artifact; without it, the
-   resolved {canvas, delivery} is the CP1 surface.
+2. **project-init** — if `next`, resolve the canvas and delivery.
 
-   When the user states an editorial rule that must hold across re-cuts ("one hero
-   opens, the other closes", "no repeated episodes", "don't use that take"), append it
-   to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
-   SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
-   being told. A rule outside the four kinds cannot be stored: tell the user it will
-   not be enforced instead of leaving them to assume it is.
+   ```bash
+   "$VG" scripts.project_init --purpose <p> --quality <q> --project-dir <run>
+   ```
 
-3. **footage-intake** — if `next`. Invoke the **footage-intake** skill (it scans ->
-   `FOOTAGE.json`/`FOOTAGE.md` and, when people matter, runs the interactive
-   cast-naming -> `cast.json`). Point its out-dir at `<run>/footage`.
+   Before running it, read `"$ROOT/references/using-montage/project-init.md"`.
 
-4. **contact-sheet** — if `next`. `"$VG" scripts.contact_sheet build
-   --footage <run>/footage/FOOTAGE.json --footage-root <footage_root> --out-dir <run>/footage`
-   (`<footage_root>` is the same raw-clips folder footage-intake scanned —
-   `FOOTAGE.json`'s `source` is a bare filename, not a path, so the build needs
-   the root to resolve it). Then **read every sheet it wrote** — `SHEETS.md`
-   links them. This is the only point in the conveyor where you see the raw
-   footage; every later stage works from your reading of it, so a skipped look
-   is a guess propagated through the whole reel. The sheets do not replace
-   `FOOTAGE.md` — the table carries the numbers, the sheets carry what the
-   numbers cannot say. Read both, and offer the sheets to the user at CP1
-   alongside the brief. **A run dir from before this stage existed** simply
-   needs the build run once — `next` reports `contact-sheet` forever until
-   `SHEETS.md` exists, even for a run already delivered and reviewed; running
-   the command above resolves it, it is not a sign anything is wrong.
+3. **footage-intake** — if `next`, invoke the **footage-intake** skill and point
+   its out-dir at `<run>/footage`.
 
-5. **reel-brief (optional).** If the brief deserves shaping (mood/hook/ending/
-   style-lean beyond the bare aspect), invoke the **reel-brief** skill — it asks the
-   idea one question at a time and writes `SPEC.md` + `SPEC.json` into `<run>/reels/<reel>`.
-   `montage status` never points `next` here (it is optional); offer it proactively.
-   **SPEC.md is CP1's richer artifact** — when it exists, it is what the user
-   approves at Checkpoint 1 (the `edit-plan` agent then reads it as guidance). On a
-   bare autonomous run, skip it and say so; `project.json` still anchors CP1.
+   Before running it, read `"$ROOT/references/using-montage/footage-intake.md"`.
 
-6. **edit-plan** — if `next`. Invoke the **edit-plan** skill (it authors
-   `selection.json`, runs `edit_plan build` -> `EDL.json` + `EDL.md`). Pass
-   `--spec <run>/reels/<reel>/SPEC.json` when reel-brief (step 5) ran — it carries two things:
-   the mood that picks the shot-mix preset the variety gate holds the cut to, and
-   `SPEC.platform`, which becomes `EDL.platform` and decides which safe-zone table
-   `check_reel` judges the subject against and where a bottom title sits. Without
-   it the build still runs, against the `balanced` preset and the generic zone.
-   Pass it again on the pacing re-apply (step 8) — that pass re-stamps the EDL from
-   scratch and would otherwise drop both. A `variety-gap` stop routes back to
-   **edit-plan** like any other `stop_and_report` — add the named shot size or
-   state a `variety_waiver` in `selection.json`, never a loosened gate. edit-plan
-   runs **before** music and pacing (steps 7-8): this first `edit_plan build`
-   carries **no `--pacing`**, so each cut keeps the length its footage gives it.
-   **Checkpoint 2 — EDL approval + curation:** show the user `EDL.md`. To swap
-   or re-order an episode, edit `selection.json` and re-run the build — never
-   hand-edit `EDL.json`.
-   **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
-   assemble-draft step below), it is what the user approves at Checkpoint 2; on a
-   run without it, `EDL.md` still anchors CP2. **Ask explicitly at this checkpoint
-   (#6):** *"titles? effects (slow-mo / speed ramp, transitions, SFX)?"* — CP2 is
-   the right place because the EDL now exists, so the reel length is known and a
-   title can actually be timed. Name what you are skipping on "no" (e.g. "no
-   titles — the reel will carry no on-screen text") rather than silently passing
-   over the optional stages below.
+4. **contact-sheet** — if `next`, render the sheets and read every one of them.
 
-   When the user states an editorial rule that must hold across re-cuts ("one hero
-   opens, the other closes", "no repeated episodes", "don't use that take"), append it
-   to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
-   SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
-   being told. A rule outside the four kinds cannot be stored: tell the user it will
-   not be enforced instead of leaving them to assume it is. `EDL.json` already exists
-   at this checkpoint, so writing the rule down does not by itself re-judge the cut
-   already on disk — re-run `edit_plan build` (and on a paced run, `pacing` followed
-   by `edit_plan build --pacing`) so the rule binds the cut that already exists, not
-   only the next one.
+   ```bash
+   "$VG" scripts.contact_sheet build \
+     --footage <run>/footage/FOOTAGE.json --footage-root <footage_root> \
+     --out-dir <run>/footage
+   ```
 
-   The scenario comes first and the music is fitted to it (design 2026-07-24). Run
-   `edit_plan build` with NO `--pacing` to get the cuts at their material lengths, then
-   `pacing`, then `edit_plan build --pacing` to apply the fit. Never re-time a shot to make
-   a slot: a shot that IS the content — a ride, a trick — is not a slot's length.
+   Before running it, read `"$ROOT/references/using-montage/contact-sheet.md"`.
 
-7. **music-and-mood (optional).** The cuts already exist (step 6), so the reel's
-   length is the sum of `EDL.json`'s episode durations — analyse the track against
-   **that** length, not a SPEC target. Point music-source's fetch at the shared
-   bucket — `--cache-dir <run>/music/cache` — whenever it runs below: the
-   downloaded audio is a function of the *track*, not the cut, so it survives a
-   second `--reel` variant instead of re-fetching (`music-match` only ranks a
-   local folder already on disk, so it never downloads and never touches this
-   bucket). If the brief names a **track**:
-   - a **local file path** -> analyse it directly, preferring the tool's own
-     in-point pick: `"$VG" scripts.beats <track> --auto-start
-     --duration <reel_len> --out <run>/reels/<reel>/MUSIC.json` — it starts the reel on the
-     strongest fragment, in a vocal pause. The pauses come from demucs (installed
-     by `bash setup.sh`, and required — step 0 already blocked if it is missing);
-     there is no proxy fallback. Pass an explicit `--start-offset S` instead only
-     to override.
-   - an explicit **track name** (not a path) -> skip discovery; invoke
-     **music-source** with `--track "<name>"` to resolve and fetch it, then the
-     same `beats --auto-start` locks it.
-   If instead the brief has a **mood but no chosen track**:
-   - the user has a **folder** of candidates (`music_mode == local`) -> invoke
-     **music-match** first — it ranks the folder by mood into
-     `MUSIC_SHORTLIST.md`, the user picks, and it runs the same
-     `beats --auto-start`.
-   - no local folder (`music_mode` is `free` or `any`) -> invoke
-     **music-source** instead — it discovers and ranks candidates from the
-     internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — confirm
-     with the user first) into the same shortlist shape, the user picks, and it
-     downloads then runs `beats --auto-start`.
-   Either way, `MUSIC.json` feeds **pacing** next (step 8), and the EDL references it
-   (`selection.json`'s `music` field) for the audio mux. On "no music" / "без
-   музыки", leave it unset — the reel is silent, pacing is skipped (a valid path).
+5. **reel-brief** — optional; invoke the **reel-brief** skill to write `SPEC.md`
+   + `SPEC.json` into `<run>/reels/<reel>`.
 
-8. **pacing (§5.6, optional).** When `MUSIC.json` exists, invoke the **pacing**
-   skill — it **fits** the cuts `EDL.json` already holds onto the music's beat grid
-   (`"$VG" scripts.pacing --edl <run>/reels/<reel>/EDL.json --footage <run>/footage/FOOTAGE.json
-   --music <run>/reels/<reel>/MUSIC.json --out-dir <run>/reels/<reel>`) and writes `PACING.json` + `PACING.md`
-   into `<run>/reels/<reel>`. Then **apply the fit** by re-running edit-plan with the report:
-   `edit_plan build ... --pacing <run>/reels/<reel>/PACING.json [--spec <run>/reels/<reel>/SPEC.json]
-   --music <run>/reels/<reel>/MUSIC.json` — carry `--spec` through when reel-brief (step 5) ran,
-   same as step 6's first build. This second pass re-stamps `EDL.json` from scratch,
-   so a dropped `--spec` silently re-resolves the variety preset to `balanced` and
-   re-stamps that instead of the brief's mood. It also clears `EDL.brief_len`, which
-   turns the advisory `brief_length` check not-checked instead of comparing the
-   reel against the brief. `--music` here does a SECOND job
-   beyond feeding the beat grid: it fits the reel's *end* to a bar line
-   (`lib/outro.fit_outro`, applied after this pass binds every slot) so the music
-   resolves on a downbeat instead of stopping mid-phrase — read `EDL.md`'s **Music
-   outro** section for which rung won (`gap`/`no-gap`/`unchanged`, detailed in the
-   **edit-plan** skill's step 3). No `MUSIC.json` (a silent reel) -> skip this whole
-   step (named); the EDL stays pacing-less (`beat_slot` unset) and its length is
-   whatever the footage gives it. `montage status` never points `next` here (it is
-   optional).
+   Before running it, read `"$ROOT/references/using-montage/reel-brief.md"`.
 
-9. **episodes-geometry (required, design 2026-08-30 §2 — the geometry seam).**
-   `edl_to_reel --stop-after-geometry` runs everything process-episode does
-   short of the actual encode — extract, stabilize, track, gate — for every
-   episode, then stops:
+6. **edit-plan** — if `next`, invoke the **edit-plan** skill; its first
+   `edit_plan build` carries NO `--pacing`, and carries
+   `--spec <run>/reels/<reel>/SPEC.json` when reel-brief ran.
+   Stops: `variety-gap`.
+
+   Before running it, read `"$ROOT/references/using-montage/edit-plan.md"`.
+
+7. **music-and-mood** — optional; choose the track (a path, a name, or the
+   **music-match** / **music-source** lanes), then lock its in-point:
+
+   ```bash
+   "$VG" scripts.beats <track> --auto-start \
+     --duration <reel_len> --out <run>/reels/<reel>/MUSIC.json
+   ```
+
+   Fetches cache into `<run>/music/cache`. Before running it, read
+   `"$ROOT/references/using-montage/music-and-mood.md"`.
+
+8. **pacing** — optional; fit the existing cuts onto the beat grid, then
+   re-run edit-plan to apply the fit.
+
+   ```bash
+   "$VG" scripts.pacing --edl <run>/reels/<reel>/EDL.json \
+     --footage <run>/footage/FOOTAGE.json --music <run>/reels/<reel>/MUSIC.json \
+     --out-dir <run>/reels/<reel>
+   "$VG" scripts.edit_plan build <step 6's own flags> \
+     --pacing <run>/reels/<reel>/PACING.json \
+     [--spec <run>/reels/<reel>/SPEC.json] --music <run>/reels/<reel>/MUSIC.json
+   ```
+
+   Before running it, read `"$ROOT/references/using-montage/pacing.md"`.
+
+9. **episodes-geometry** — required; extract, stabilize, track and gate every
+   episode, then stop before the encode.
 
    ```bash
    "$VG" scripts.edl_to_reel <run>/reels/<reel>/EDL.json --project <run>/project.json \
@@ -288,96 +289,37 @@ guessing a path.
      --out-dir <run>/reels/<reel>/episodes --stop-after-geometry
    ```
 
-   Writes `<run>/reels/<reel>/episodes/GEOMETRY.json` — every episode's frozen
-   route and the crop it will actually ship, colour block stripped. No
-   `ep{i}.mp4` exists yet; no `--music`/`--titles` here either (both are
-   refused — they belong to the render and the delivery, not this seam). This
-   is the seam **match-grade** (next) measures the shipped crop in, instead of
-   the whole source frame it read before 2026-08-30. A `stop_and_report` here
-   (a tracker contradiction, a hero pin matching nobody) is the same
-   mechanical gate that used to surface only after a full render — now caught
-   one phase earlier, before a single pixel is encoded.
+   Before running it, read `"$ROOT/references/using-montage/episodes-geometry.md"`.
 
-10. **match-grade (required, §10 — colour conductor).** Measures every
-    episode's OWN tracked crop — not the whole source frame — and authors
-    `tone_src`/`tone_dst` into whichever episodes deviate from the reel's one
-    common target (the per-anchor median):
+10. **match-grade** — required; measure every episode's tracked crop and author
+    the tone pairs that bring the reel to one common target.
 
     ```bash
     "$VG" scripts.match_grade build --geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
       [--spec <run>/reels/<reel>/SPEC.json] [--eps 4.0] [--force]
     ```
 
-    rewriting the EDL `GEOMETRY.json` itself names IN PLACE plus a sibling
-    `MATCH.json` — the decisions themselves, since 2026-09-09 the artifact
-    `montage status` keys this stage's `done` on, like every other stage —
-    and its rendered `MATCH.md`. **Run it AFTER episodes-geometry (step 9)**
-    — there is no crop to measure before a route is frozen. Unlike before
-    2026-08-30 this is unconditional: even a single-camera reel costs a few
-    seconds (eight crops in about five seconds on a real reel) and writes a
-    `MATCH.md` saying every episode already lands `within-eps` — cheaper than
-    silently walking past the only stage that would have caught it NOT
-    agreeing (the retro's R4.2). `montage status` now points `next` here like
-    any other required stage.
+    Before running it, read `"$ROOT/references/using-montage/match-grade.md"`.
 
-    > **Before the render, look.** `probe grade --geometry
-    > <run>/reels/<reel>/episodes/GEOMETRY.json --index <N>` renders three
-    > crop-accurate frames of episode `<N>` with the grade `EDL.json`
-    > currently declares — no encode, no re-track, because nothing has been
-    > rendered yet. Edit `selection.json`, re-run `edit_plan build` (a pure
-    > projection that re-stamps `EDL.json` at the same path `GEOMETRY.json`
-    > names), **re-run `match_grade build --geometry ...` — always, not only
-    > when the edit should feed back into the common target** — then probe
-    > again. The re-run is not optional: `edit_plan build` projects the EDL
-    > from `selection.json` alone, so a rebuild drops **both** the per-episode
-    > `tone_src`/`tone_dst` match-grade authored **and `EDL.tone_target`**, and
-    > losing the target now makes the loss INVISIBLE rather than merely
-    > unblocked: `check_reel`'s blocking `grade_faithful` predicts each episode
-    > against its OWN declared chain, and with no pair declared it predicts an
-    > ungraded profile that the (now genuinely ungraded) render matches — a
-    > clean **pass**, not a visible `not-checked`. The advisory `target_dev`
-    > goes silently empty in the same stroke (it needs `EDL.tone_target` to
-    > compare against). So the reel ships ungraded with a green mechanical
-    > gate and no signal in `report.json` — but not silently past `montage
-    > status`: since 2026-09-09 it compares `MATCH.json`'s authored pairs
-    > against the EDL as it is NOW and reports match-grade **`stale`**, not
-    > `done`, naming the episode that lost its pair. That is a `status`/`next`
-    > signal only, not a render-time gate — check it before delivering.
-    > **Nothing is encoded until you stop.** See the **edit-plan** skill's
-    > colour-grade section for the full loop and its footguns, and
-    > `--from-geometry` (step 13) refuses a `GEOMETRY.json` whose cut no
-    > longer matches the current EDL, naming `--stop-after-geometry` as the
-    > remedy when the edit changed the CUT rather than only the colour.
+11. **assemble-draft** — optional; a rough cut offered before the expensive
+    render, approved at Checkpoint 2.
 
-11. **assemble-draft (optional, §5.9 — CP2 preview).** Before the expensive
-    process-episode render, offer a rough draft: "Want to see a rough cut first?"
-    If yes, `"$VG" scripts.draft build --edl <run>/reels/<reel>/EDL.json
-    --project <run>/project.json --footage-root <footage_root> --work-dir <run>/reels/<reel>/build
-    --out <run>/reels/<reel>/draft.mp4 [--music <run>/reels/<reel>/MUSIC.json]`. `draft.mp4` concats the raw
-    segments, scale-fit into the canvas, with `processing_notes` labels and a rough
-    music bed — the user eyeballs layout / order / length / beat-landing and
-    approves (or goes back to edit-plan) at Checkpoint 2. This stage is optional:
-    `montage status` never points `next` at it, and the autonomous path skips it.
-    **The draft never shows the reel's look** (the vignette/bookend fade, §5.14
-    below) — it is a QA preview of the cut, not the finish, so do not judge
-    vignette strength or fade timing from it; there is nothing to see here yet.
+    ```bash
+    "$VG" scripts.draft build --edl <run>/reels/<reel>/EDL.json \
+      --project <run>/project.json --footage-root <footage_root> \
+      --work-dir <run>/reels/<reel>/build --out <run>/reels/<reel>/draft.mp4 \
+      [--music <run>/reels/<reel>/MUSIC.json]
+    ```
 
-12. **titles (optional, §5.16 — CP3 review).** If reel-brief ran (`SPEC.json`
-    exists) and the reel wants on-screen text, invoke the **titles** skill — it
-    reads `SPEC.json`'s `hook`/`text`/`ending`, proposes timing/position/style/
-    font, and writes `TITLES.json` + `TITLES.md` into `<run>/reels/<reel>`. It needs the reel
-    length (`--total`); compute it here — sum `EDL.json`'s episode durations, or
-    probe `draft.mp4` if it exists; never guess it. `montage status` never points
-    `next` here; the autonomous path (no `SPEC.json`, or no on-screen text wanted)
-    skips it and says so. **`TITLES.md` is reviewed together with the near-final
-    reel at Checkpoint 3** — not standalone. When it exists, pass it to
-    `edl_to_reel`'s **deliver** invocation at step 15 (`--from-episodes ... --titles
-    <run>/reels/<reel>/TITLES.json`) so the reel actually renders the text — never to step 13's
-    `--from-geometry` invocation, which takes no titles parameter either and
-    refuses the combination outright (titles are burned into the ONE encode at
-    delivery, not the per-episode render).
+    Before running it, read `"$ROOT/references/using-montage/assemble-draft.md"`.
 
-13. **episodes (edl_to_reel, phase 1b — the render).**
+12. **titles** — optional; invoke the **titles** skill to write `TITLES.json` +
+    `TITLES.md` into `<run>/reels/<reel>`. It needs the reel length (`--total`);
+    compute it, never guess it.
+
+    Before running it, read `"$ROOT/references/using-montage/titles.md"`.
+
+13. **episodes** — required; render every episode over the frozen routes.
 
     ```bash
     "$VG" scripts.edl_to_reel --from-geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
@@ -385,215 +327,32 @@ guessing a path.
       --out-dir <run>/reels/<reel>/episodes [--music <run>/reels/<reel>/MUSIC.json]
     ```
 
-    Renders every episode over the route **episodes-geometry** (step 9)
-    already froze, with `EDL.json`'s CURRENT colour block — the one
-    **match-grade** (step 10) and any convergence loop you ran last wrote. No
-    positional EDL and no `--footage-root`: the EDL is the one `GEOMETRY.json`
-    itself names, and nothing is extracted again (phase 1a already cut the
-    segments those routes were measured against — cutting them again would be
-    waste on top of a lie about which pixels were tracked). `--out-dir` must
-    be the SAME episodes dir `--stop-after-geometry` wrote into. Writes
-    `<run>/reels/<reel>/episodes/EPISODES.json` (a serialized `ReelManifest`)
-    beside the `ep{i}.mp4` clips it names — the same artifact
-    `--stop-after-episodes` used to write directly, before the geometry split;
-    do not fall back to that flag here, since a plain
-    `edl_to_reel`/`--stop-after-episodes` run on the same reel dirs wipes
-    `build/` and takes the frozen routes with it. It
-    **refuses** a cut that changed since the geometry was frozen (a moved
-    window, source or ramp) and a build dir that was wiped since — both name
-    the remedy (`--stop-after-geometry` again, or restore the EDL). A
-    `stop_and_report` here (an episode failed its own mechanical gate) is
-    surfaced verbatim — never fixed forward; route it to the culprit stage's
-    skill. **One reason names a genuine colour defect and must be recognised
-    by name: `grade-damage`** (`check_episode`'s `grade_damage`, blocking at
-    an entropy-ratio floor of 0.90 with no waiver anywhere) names edit-plan's
-    colour block as its culprit. Since 2026-09-02 this diagnosis is
-    trustworthy rather than a trap: `grade_damage` renders the episode's own
-    declared grade against an identity render of the SAME clip and fails only
-    when the declared map actually destroys information (an extreme
-    `black_point`/`highlight`, for instance) — never on a legitimate
-    **match-grade**-authored tone pair, which reads as movement, not damage.
-    So a `grade-damage` finding is not `match-grade`'s pair being
-    misdiagnosed; it means the named colour knob really is too aggressive —
-    soften it in the episode's colour block via **edit-plan**, the way any
-    other mechanical finding is fixed.
+    Stops: `grade-damage`. Before running it, read
+    `"$ROOT/references/using-montage/episodes.md"`.
 
-14. **episode-qc (required, not a checkpoint).** Invoke the **episode-qc**
-    skill — it packs one evidence directory per episode from
-    `<run>/reels/<reel>/episodes/EPISODES.json`, dispatches one fresh judge subagent per
-    episode (at most 3 concurrently) against composition/colour/impression/
-    path/hero, then validates their findings into `<run>/reels/<reel>/episodes/EPISODE_QC.json`
-    + `.md`, stamping each verdict's clip digest itself. This stage is
-    **required** — a reel is never assembled over an episode nobody judged —
-    but it is **not** one of the three §4.1 checkpoints: a clean verdict
-    passes straight through with no approval asked, and only a blocking
-    finding stops the run, here, with the routed finding surfaced (the same
-    `stop_and_report` shape every other stage stop already has). There is no
-    waiver — a blocking finding is fixed by re-running the finding's routed
-    stage (`reprocess` / `edit-plan` / `match-grade`), then episode-qc runs
-    again from its own step 1 (a re-render makes the old verdict stale).
+14. **episode-qc** — required, not a checkpoint; invoke the **episode-qc** skill
+    over `<run>/reels/<reel>/episodes/EPISODES.json`, which writes
+    `<run>/reels/<reel>/episodes/EPISODE_QC.json` + `.md`. A blocking finding
+    stops the run and there is no waiver.
 
-    When a blocking finding is on the **colour** axis, run the probe
-    convergence loop (**edit-plan** skill, colour-grade section) against
-    `EDL.json` before spending a re-render on it — look at the pixels, edit,
-    probe again, and only re-render the episode once it converges. `probe
-    grade`'s baseline is faithful to what was actually rendered **by
-    construction** (design 2026-08-29, colour-convergence-retire §3): there is
-    no reel-level colour correction left anywhere — not on `deliver`, not
-    inside `build_reel`'s retry loop — that could make a baseline stale, so the
-    same baseline is just as trustworthy on a SECOND pass through this step
-    (after step 15 already delivered once and named episodes in a
-    `reprocessed` list) as on the first. Separately: `deliver` (step 15)
-    hard-refuses a reel whose declared vignette/fade did
-    not reach the delivered pixels (design 2026-08-15 §7 — a declared titles
-    track has no pixel check yet, only a `not-checked` finding) — that failure
-    is a broken look chain (a filter silently dropped from the encode), never
-    something to retry as-is; fix `EDL.look` or the titles file and deliver
-    again.
+    Before running it, read `"$ROOT/references/using-montage/episode-qc.md"`.
 
-15. **deliver (edl_to_reel, phase 2).**
+15. **deliver** — required; encode the judged episodes into one versioned
+    delivery.
 
     ```bash
     "$VG" scripts.edl_to_reel --from-episodes <run>/reels/<reel>/episodes/EPISODES.json \
       --work-dir <run>/reels/<reel>/build [--titles <run>/reels/<reel>/TITLES.json]
     ```
 
-    No `--out-dir` here — phase 2 takes none and refuses one if given: it
-    derives the delivery dir from `EPISODES.json`'s OWN path — the episodes
-    directory's SIBLING `deliveries/` (`<run>/reels/<reel>/deliveries/`), never
-    the episodes directory itself, so clearing the render scratch can never take
-    a delivered reel with it (design 2026-08-25 §0) — so do not re-add the flag
-    by analogy with phase 1.
-    Gates on `<run>/reels/<reel>/episodes/EPISODE_QC.json` beside `EPISODES.json` (missing /
-    incomplete / stale / blocking all refuse before a single ffmpeg call —
-    episode-qc having just run should make this a formality, not a surprise),
-    then runs assemble -> check_reel -> deliver. When `TITLES.json` is
-    passed, `deliver` burns its drawtext chain into the ONE encode it already
-    runs — no second pass; `deliver` also writes a `REEL_v{n}.attest.json`
-    sidecar beside the encode (design 2026-08-04). The reel's **look** (a
-    plateau vignette and/or a bookend fade — `EDL.look`, authored in
-    `selection.json` at step 6 or defaulted from the mood preset) rides this
-    SAME one encode, exactly like titles. Because `check_reel` runs on the
-    assembled master *before* `deliver` applies either, the look is invisible
-    in `draft.mp4` and in every check that ran before this point — Checkpoint
-    3, right here, is the first place anyone actually sees it (design
-    2026-08-13 §11.1).
+    Stops: `episode-qc-reprocessed`, `grade_faithful`. Before running it, read
+    `"$ROOT/references/using-montage/deliver.md"`.
 
-    **`episode-qc-reprocessed` is a stop, not a warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop
-    re-rendered an episode AFTER episode-qc judged it (design 2026-08-18 §2):
-    the reprocess overwrites the very `ep{i}.mp4` the verdict was stamped
-    against, so that verdict is about bytes that are gone. The picture passed
-    every check — the report comes back with the stop — and no version number
-    was spent. The remedy, in order:
+16. **reel-review** — required at Checkpoint 3; invoke the **reel-review** skill
+    to write `REVIEW.json` + `REVIEW.md` into `<run>/reels/<reel>`. The run is
+    finished only when `montage status` reports `next: null`.
 
-    1. `"$VG" scripts.episode_qc pack --episodes <run>/reels/<reel>/episodes/EPISODES.json
-       --out-dir <run>/reels/<reel>/episodes/qc` — safe to re-run: it rewrites `strip.jpg` and
-       `evidence.json` and never touches a judge's `findings.json`.
-    2. Dispatch **one fresh judge for the named indices only**. The other
-       episodes' verdicts are about bytes that did not change; re-judging them
-       spends context for nothing.
-    3. `"$VG" scripts.episode_qc build …` — unchanged; it re-digests every clip
-       from disk, so the untouched verdicts stay valid and the re-judged one
-       binds the new bytes.
-    4. Re-run this step. The corrected clips are already on disk where
-       `EPISODES.json` points, so `check_reel` finds the picture fixed, nothing
-       reprocesses, and the reel delivers with an empty `reprocessed` list.
-
-    **Do NOT re-run phase 1 to clear this stop.** The reason this was first
-    written for — `build_reel`'s compounded per-channel colour factor living
-    only in the clip bytes on disk (design 2026-08-18 §4.1) — is gone along
-    with the colour retry loop itself (design 2026-08-29,
-    colour-convergence-retire): there is no unpersisted correction left for a
-    fresh phase 1 to discard. The instruction still holds, on a plainer
-    ground: a fresh phase 1 (`--from-geometry`, or `--stop-after-episodes` on a
-    hand-driven run) re-renders **every** episode, not only the one this stop
-    names, so it pays the full
-    N-episode render cost again and invalidates every OTHER episode's
-    still-good QC verdict along with the stale one — exactly the waste the
-    remedy above (steps 1-4, re-judge the named indices only) exists to avoid.
-    Use that remedy; reach for phase 1 only when you are already re-cutting
-    the EDL for other reasons.
-
-    A delivered reel's `reprocessed` list is therefore always empty on this
-    path; if one ever comes back non-empty, something bypassed the refusal —
-    name it at Checkpoint 3 rather than passing over it.
-
-    **`grade_faithful` is also a stop here, and its remedy is a re-render, not
-    an EDL edit.** In the same phase, `check_reel`'s blocking `grade_faithful`
-    check (design 2026-08-31 §2) can name one episode whose delivered pixels
-    disagree with what its OWN declared colour chain predicts by more than
-    `grade_residual_max` luma units. Its finding's `escalate_to` reads
-    `process-episode`, not `match-grade` or `edit-plan`: the declaration is
-    fine, the render did not get it, so the fix is re-rendering that episode —
-    never touching its colour block, which would just be faithfully re-applied
-    and fail the same way again. `edl_to_reel` has no flag that re-renders a
-    single episode: `--from-geometry` (step 13) is the only render entry
-    point, and it always renders every episode over the current
-    `GEOMETRY.json`, which invalidates every episode's `EPISODE_QC.json`
-    verdict, not only the named one's. Pay that cost — there is no cheaper
-    mechanical path today (backlog) — rather than hand-editing `EPISODES.json`
-    to splice in one clip, which is a generated artifact like any other:
-    re-run `edl_to_reel --from-geometry` (step 13, the whole reel), then
-    **episode-qc** (step 14, every episode — every digest just changed), then
-    this step again.
-
-    **Checkpoint 3 — final
-    review:** present `<run>/reels/<reel>/deliveries/REEL_v1.mp4`, the `check_reel`
-    report, and (when titles were authored) `TITLES.md` alongside them. Before
-    presenting the reel as final, run
-    `"$VG" scripts.montage verify --run-dir <run> --reel <reel>` and
-    show its result — a delivery whose state is not `attested` (most notably
-    `unattested`: no `REEL_v{n}.attest.json`) must be named plainly as such,
-    never presented as a finished reel. **Do not say "the file did not come
-    out of `deliver`" — since 2026-09-09 that is the LEAST likely of three
-    causes**: most often the look gate withheld the attestation on purpose (a
-    declared vignette/fade did not reach the pixels — the file is complete,
-    look at it, `deliver` renamed it into place before the gate ever ran);
-    next most often the process was killed AFTER the rename but before the
-    attestation was written (a window of seconds now, not the old window of
-    an entire encode); rarest of all, the file genuinely predates `deliver`.
-    `montage status`'s own `interrupted` list is the separate, cheaper signal
-    for the failure that used to hide behind this one: a non-empty list
-    names a leftover `.REEL_v{n}.part.<container>` from an encode killed
-    mid-write — that delivery consumed no version and is invisible as one,
-    so there is nothing to clean up and nothing to explain away; just
-    re-run `deliver` (or `edl_to_reel --from-episodes`) and it overwrites
-    the partial. Its
-    `episode_qc` field needs the same treatment when it
-    is not `judged` (`absent`: shipped via the single-command `edl_to_reel`
-    or `build_reel`'s own CLI, neither of which this router uses; `stale`:
-    judged, then an episode was re-rendered after its verdict — which on this
-    path means something bypassed phase 2's own refusal above; `unknown`: an
-    old sidecar predating the field) — a reel this router delivered itself
-    should always read `judged`, so anything else means an unjudged reel is
-    about to be called final and must be named plainly, not passed over. A `stop_and_report` (a failed gate) is surfaced verbatim —
-    never fixed forward; route it to the culprit stage's skill.
-    `verify`'s `review` block is not yet meaningful at this call — `REVIEW.json`
-    does not exist until reel-review below writes it, so reading `absent` here
-    is expected, not a fault; reel-review's own procedure re-runs `montage
-    verify` once it has, and that later reading is the one to report.
-
-    Then invoke the **reel-review** skill — it dispatches a fresh reviewer subagent
-    that judges the reel against `SPEC` (idea/mood/hook/ending/spine/colour) and writes
-    `REVIEW.json` + `REVIEW.md`; present `REVIEW.md` alongside the reel and the
-    `check_reel` report. For each finding the user chooses to act on, re-run the
-    routed stage (`edit-plan`/`pacing`/`music`/`titles`/`match-grade`) — never fix the reel
-    forward — then re-review the new cut. reel-review is **required**, not optional
-    (§5.13 editorial half, design 2026-08-04 §8) — the run is not finished when
-    `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run> --reel <reel>`
-    reports `next: null`; on a bare autonomous run reel-review still runs, judging
-    against the `EDL`.
-
-    When the user states an editorial rule that must hold across re-cuts ("one hero
-    opens, the other closes", "no repeated episodes", "don't use that take"), append it
-    to `CONSTRAINTS.json` beside `project.json` before continuing — see the edit-plan
-    SKILL for the four kinds. `edit_plan build` enforces it on every later cut without
-    being told. A rule outside the four kinds cannot be stored: tell the user it will
-    not be enforced instead of leaving them to assume it is. `EDL.json` already exists
-    at this checkpoint, so writing the rule down does not by itself re-judge the cut
-    already on disk — re-run `edit_plan build` (and on a paced run, `pacing` followed
-    by `edit_plan build --pacing`) so the rule binds the cut that already exists, not
-    only the next one.
+    Before running it, read `"$ROOT/references/using-montage/reel-review.md"`.
 
 ## Reading the brief (intent -> param)
 
