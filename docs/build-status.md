@@ -49,7 +49,7 @@ _Last updated: 2026-09-14._
 
   **The fix.** One resolution preamble, verbatim, in all fourteen skills
   (`ROOT` read once from the recorded clone root, then `"$VG" scripts.X` and
-  `"$ROOT/references/…"`); `BANNED_SPELLINGS` widened to the three spellings and
+  `"$ROOT/references/…"`); `BANNED_SPELLINGS` widened to the seven spellings and
   run over bodies **and pages**; `toolindex.render_stages()` generating the
   router's fifteen-row stage table from `V1_STAGES`, pinned byte-for-byte,
   where a deleted marker raises `ValueError` rather than comparing an empty

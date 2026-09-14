@@ -483,8 +483,8 @@ inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless
 (grade-sensor-references Task 7) ·
 the twelve remaining skill bodies have no page structure — seven are under
-10 KB and do not need one, but `episode-qc` (16.3 KB), `match-grade` (13.8) and
-`titles` (13.8) are the three that reach the 26 KB budget first, and the
+10 KB and do not need one, but `episode-qc` (16.3 KB), `titles` (13.8) and
+`match-grade` (13.8) are the three that reach the 26 KB budget first, and the
 addition that takes one of them there is what should force the question, not a
 sweep now (reachable-instructions §6 row 2) ·
 whether `edit-plan`'s remaining body is ONE coherent procedure or two has not

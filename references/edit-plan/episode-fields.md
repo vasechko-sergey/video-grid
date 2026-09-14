@@ -50,7 +50,8 @@ target length, and order them **hook first**. For each episode assign:
 - `hero` (optional) — a first-frame seed bbox `[x,y,w,h]` (centre-format,
   source px), a rule (`largest`/`leftmost`), an integer track id, or a cast
   name resolved through `cast.json` (§6.1a). A cast name needs the registry:
-  pass `--cast` (step 3) and the name must exist in `cast.json` — an
+  pass `--cast` (the edit-plan skill's step 3) and the name must exist in
+  `cast.json` — an
   unresolvable name is a preflight `edl-invalid` (fix `selection.json` and
   re-run), and a pin that matches nobody in the episode's segment is a
   `hero-unmatched` stop-and-report at process-episode time — never a silent

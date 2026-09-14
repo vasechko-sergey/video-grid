@@ -144,7 +144,8 @@ episode from `rm.episodes[idx].manifest` — the entry INSIDE `EPISODES.json`,
 never the scratch `<run>/reels/<reel>/build/ep<N>/manifest.json` above. Skip the second
 `json.dump` and that retry silently re-renders this episode from the STALE
 pre-convergence grade — no error, no trace. The alternative is re-running phase 1
-(`edl_to_reel --from-geometry`, the driver that step 3 runs) from the re-stamped
+(`edl_to_reel --from-geometry`, the driver that the edit-plan skill's step 3
+runs) from the re-stamped
 `EDL.json`, which writes a fully consistent `EPISODES.json` too — but at the cost
 of re-tracking and re-rendering EVERY episode, the whole expense this loop exists
 to avoid; reach for it only when converging several episodes at once makes that

@@ -35,7 +35,7 @@ cli_help = _load_cli_help()
 def test_the_committed_index_matches_what_the_renderer_produces():
     assert INDEX.read_text() == toolindex.render_index(), (
         "references/tools.md is stale — regenerate it:\n"
-        "    python -m scripts.montage tools > references/tools.md")
+        '    "$VG" scripts.montage tools > references/tools.md')
 
 
 def test_every_help_surface_has_a_row():
@@ -68,7 +68,7 @@ def test_the_index_has_no_argument_column():
     assert header == ["| surface | stage | writes | purpose |"], (
         f"the index's columns changed: {header}. It names which tool, never "
         f"which flag — regenerate with "
-        f"`python -m scripts.montage tools > references/tools.md`")
+        f'`"$VG" scripts.montage tools > references/tools.md`')
 
 
 def test_the_script_to_stage_map_names_only_real_stages():

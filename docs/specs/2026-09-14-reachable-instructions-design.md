@@ -369,6 +369,31 @@ joined or dropped — it excludes the whole class rather than failing to detect
 part of it. It is available whenever a split is a pure move, which is what
 §2.2's rule makes it.
 
+### 3.7 The anchor itself is machine-checked, not only claimed
+
+Two more checks landed with the final fix wave, after §3.1–§3.6 above had
+already shipped as if the anchor rule they lean on was self-evident from the
+contract rather than enforced. Until now both lived only in §5 (the honest
+half) and in [development-workflow.md](../development-workflow.md).
+
+**Every `references/…` pointer in a skill body carries the `$ROOT/` anchor**
+(`test_every_reference_in_a_skill_body_is_anchored`), with two named weaker
+cases rather than a silent exemption: a `description:` is a YAML scalar read
+with no shell to expand a variable in, so `Tool index: references/tools.md.`
+can only ever be bare; and the generated table's fifteen `page` cells are held
+to "the same path appears `$ROOT`-anchored elsewhere in the same file" rather
+than anchored in place — anchoring the cells themselves would make the
+stub-pointer test (`test_every_router_stub_points_at_its_own_page`) green by
+construction, a hole an earlier commit in this same branch fixed.
+
+**`PREAMBLE`'s own root path is compared against what `setup.sh` writes**
+(`test_the_preamble_names_the_path_setup_writes`), rebuilt from `setup.sh`'s
+own two lines — the `VG_CONFIG=` assignment and the `> "$VG_CONFIG/root"`
+redirect — rather than eyeballed. This is the join that stops all fourteen
+skills pointing at nothing with the suite green: before it existed, changing
+either spelling drifted the two files apart while every other check here kept
+passing.
+
 ---
 
 ## 4. What does not change

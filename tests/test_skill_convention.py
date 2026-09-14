@@ -145,11 +145,12 @@ def test_the_preamble_names_the_path_setup_writes():
     spelling and the pair by count, which is what stops the two drifting
     apart."""
     setup = (REPO / "setup.sh").read_text()
-    m = re.search(r'^VG_CONFIG="([^"]+)"$', setup, re.M)
+    m = re.search(r'^VG_CONFIG=(?:"([^"]*)"|(\S+))$', setup, re.M)
     assert m, "setup.sh no longer assigns VG_CONFIG — the recorded root moved"
+    config_dir = m.group(1) if m.group(1) is not None else m.group(2)
     assert '> "$VG_CONFIG/root"' in setup, (
         "setup.sh no longer writes the root to $VG_CONFIG/root")
-    path = f"{m.group(1)}/root"
+    path = f"{config_dir}/root"
     assert f'ROOT="$(cat "{path}")"' in PREAMBLE, (
         f"setup.sh records the root at {path}; the command the preamble gives "
         f"all fourteen skills reads a different path")
