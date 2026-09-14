@@ -4,13 +4,94 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-12._
+_Last updated: 2026-09-14._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Reachable instructions — a skill's instructions are reachable from where it
+  runs (2026-09-14, 0.9.3)** — design
+  [2026-09-14-reachable-instructions-design.md](specs/2026-09-14-reachable-instructions-design.md),
+  plan [2026-09-14-reachable-instructions.md](plans/2026-09-14-reachable-instructions.md),
+  Tasks 1–6 (branch `docs/reachable-instructions`, commits `f2198e3`..`HEAD`).
+
+  The backlog row asked for progressive disclosure on two oversized bodies —
+  `using-montage` and `edit-plan`, 84 237 B between them, **46.6 % of every
+  skill byte in the repo** and 18× the entire always-resident `description:`
+  budget the previous slice had just cut to 4685 characters. Measuring it found
+  **two further defects of the same kind**, and they are the half worth keeping:
+  the row named size, and size turned out to be the least of it.
+
+  **§0.3 — eighteen `references/…` pointers, and no rule anywhere for resolving
+  them.** A skill runs from the user's footage project, never from the clone, so
+  every one of those pointers named a path its reader could not open. The
+  previous slice made the pointer durable; nothing made the destination
+  reachable.
+
+  **§0.4 — the launcher guard tested one literal string.** It had asserted only
+  `.venv/bin/python`, so **eleven `python -m scripts.X` examples walked past
+  it** — seven in `edit-plan`, one each in `footage-intake`, `reel-brief`,
+  `reel-review` and `titles`. The worst is `footage-intake`, whose CLI is the
+  entire reason `bin/vg` must `cd` into the clone at all (ultralytics writes
+  YOLO weights into the working directory). Widening the guard to a spelling
+  set then found **two more in a second spelling, `python -c`**, which `bin/vg`
+  **could not run** — it hardcoded `-m`. The launcher gained a `-c` passthrough.
+
+  **§0.5 — the router's body had drifted from the registry**, exactly as its
+  chain had before the previous slice generated it: fifteen live `V1_STAGES`
+  keys, fourteen numbered blocks, and `reel-review` — **required** — buried
+  inside the `deliver` block with no number, that block alone 144 lines / 22 %
+  of the file.
+
+  **The fix.** One resolution preamble, verbatim, in all fourteen skills
+  (`ROOT` read once from the recorded clone root, then `"$VG" scripts.X` and
+  `"$ROOT/references/…"`); `BANNED_SPELLINGS` widened to the three spellings and
+  run over bodies **and pages**; `toolindex.render_stages()` generating the
+  router's fifteen-row stage table from `V1_STAGES`, pinned byte-for-byte,
+  where a deleted marker raises `ValueError` rather than comparing an empty
+  string (which would report as staleness and hide the real fault); the router
+  body → stub + fifteen pages at `references/using-montage/<stage-key>.md`, set-
+  equal with the registry in both directions with no exemption list; `edit-plan`
+  → two pages (`episode-fields.md`, `grade-convergence.md`).
+
+  **Measured, not projected.** `using-montage` 45 547 → **22 268 B (−51 %)**,
+  `edit-plan` 41 521 → **18 324 B (−56 %)**. `BODY_MAX = 26_000` is set from
+  that landing with room above the larger of the two, because a cap that binds
+  on the day it ships is a cap the next author fights instead of obeys. **Every
+  projection this design made of the split's own size was wrong in the same
+  direction** — −80 % in a first draft, then −69 %/−74 % from a corrected
+  script, against the measured −51 %/−56 % — both times by mis-modelling what a
+  stub keeps. **Total corpus bytes rose about 6 %**, and that is the trade,
+  stated rather than hidden: resident bytes are paid on every invocation and
+  spent by the first compaction; page bytes are paid only when read.
+
+  **The checks** (`tests/test_skill_convention.py`, all page-aware — otherwise
+  moving a paragraph to a page moves it out from under its own check): the
+  preamble verbatim in all fourteen; no banned command spelling anywhere; the
+  page set equal to the live registry both ways; the stubs equal to the
+  generated table's stages **in order** (a swapped pair is exactly what a
+  membership check cannot see); every stub pointing at its own page via the
+  `"$ROOT/…"` form the stubs use, never the bare path the pinned table already
+  carries in all fifteen of its cells; every named `references/…` resolving to
+  a real file; no reference file orphaned; no body over 26 KB.
+
+  **Task 6's 16-row mutation battery: all sixteen RED.** Rows 8 and 14 are the
+  two that matter most — a banned command planted in a *page*, and `<run>/out`
+  planted in a *page* — because they prove the bans read pages and not only
+  bodies; without Task 1's helpers both are green. Row 15 (`trend-scan`
+  `deferred` → `optional`) took **twelve tests across four modules**, not the
+  two the plan named. Full suite: **3827 passed, 1 skipped**.
+
+  **The honest half (§5).** Nothing proves a page was *read* — the checks prove
+  it exists and is reachable, the same limit the contact-sheet stage ships with.
+  The split multiplies `Read` calls by an amount no artifact on disk can answer
+  before a real run. And §0.7 bounds every claim here: the installed plugin
+  cache held **0.2.1** against a repo at 0.9.2, so nothing this slice ships
+  reaches a montage run until the user reinstalls — true of every skill change
+  ever made here, and the first design to write it down. It is now a P2 row.
 
 - **Re-derivable purpose — a tool's purpose survives a compaction (2026-09-12,
   0.9.2)** — design

@@ -10,6 +10,34 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.9.3 — 2026-09-14
+
+**PATCH: a skill's instructions are reachable from where it runs.** No contract,
+no CLI behaviour, no pixel moves. What changes is whether an agent that loads a
+skill can actually reach what the skill points at.
+
+- Every one of the 14 skills carries the same resolution preamble: resolve the
+  recorded clone root once, then run every step as `"$VG" scripts.X` and read
+  every reference as `"$ROOT/references/…"`. Eighteen bare `references/…`
+  pointers had no rule anywhere for resolving them.
+- The launcher ban widened from one literal to a spelling set. It had tested
+  `.venv/bin/python` only, so eleven `python -m scripts.X` examples walked past
+  it — worst in `footage-intake`, whose CLI is the reason `bin/vg` must `cd`
+  into the clone at all. Two more turned up in a second spelling (`python -c`),
+  which `bin/vg` could not run: the launcher gained a `-c` passthrough.
+- The router's 15-stage table is generated from `V1_STAGES` and pinned
+  byte-for-byte. Its hand-written body had drifted the same way its chain had:
+  15 live stages, 14 numbered blocks, and `reel-review` — required — buried
+  inside the `deliver` block with no number of its own.
+- The two biggest bodies become stubs plus pages: `using-montage`
+  45 547 → 22 268 B (**−51%**), `edit-plan` 41 521 → 18 324 B (**−56%**).
+  A stage is now one page at `references/using-montage/<stage-key>.md`, set-equal
+  with the registry in both directions. Total corpus bytes rose ~6% — the trade
+  is that resident bytes are paid every invocation and page bytes only when read.
+- A body budget of 26 KB, checked. It is set from what the split measured itself
+  landing, not from a projection: every projection this design made was wrong in
+  the same direction (−80%, then −69%/−74%, against −51%/−56%).
+
 ## 0.9.2 — 2026-09-12
 
 **PATCH: a tool's purpose is re-derivable.** No behaviour changes, no argv

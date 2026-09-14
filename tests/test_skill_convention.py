@@ -358,3 +358,42 @@ def test_every_router_stub_points_at_its_own_page():
     missing = [s.key for _, s in toolindex.stage_steps()
                if f'"$ROOT/{toolindex.ROUTER_PAGES}/{s.key}.md"' not in text]
     assert missing == [], f"stubs with no pointer to their page: {missing}"
+
+
+_REF = re.compile(r"references/[\w/-]+\.md")
+
+#: A body budget, NOT a measurement of anything. It is set from what this slice
+#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 324 — with
+#: room above the larger of them, because a cap that binds on the day it ships is
+#: a cap the next author fights instead of obeys. The design's own projection said
+#: 13.5 KB and was wrong by 65%; the number here is the measurement, not the
+#: projection. Design §3.5.
+BODY_MAX = 26_000
+
+
+def test_every_reference_a_skill_names_exists():
+    """Eighteen bare `references/…` pointers existed with no rule anywhere for
+    resolving them (design §0.3). The preamble supplies the rule; this supplies
+    the other half — that the thing at the end of the path is there."""
+    missing = sorted({f"{p.relative_to(REPO)} -> {ref}"
+                      for p in all_skill_docs()
+                      for ref in _REF.findall(p.read_text())
+                      if not (REPO / ref).is_file()})
+    assert missing == [], f"{len(missing)} reference(s) naming no file: {missing}"
+
+
+def test_no_reference_file_is_orphaned():
+    """The §0.3 failure in its other direction: a page nothing names is a page
+    nothing reaches, and it rots without ever failing anything."""
+    named = {ref for p in all_skill_docs() for ref in _REF.findall(p.read_text())}
+    orphans = sorted(str(p.relative_to(REPO)) for p in (REPO / "references").rglob("*.md")
+                     if str(p.relative_to(REPO)) not in named)
+    assert orphans == [], f"reference file(s) no skill names: {orphans}"
+
+
+def test_no_skill_body_exceeds_the_budget():
+    over = {p.parent.name: len(p.read_bytes()) for p in SKILLS.glob("*/SKILL.md")
+            if len(p.read_bytes()) > BODY_MAX}
+    assert over == {}, (
+        f"body over the {BODY_MAX} B budget: {over}. New material goes on a "
+        f"reference page, not in the body — that is what the budget is for")

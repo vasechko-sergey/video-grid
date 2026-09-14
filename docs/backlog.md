@@ -90,7 +90,7 @@ is still P3.
 | ○ | **Measure the length band against real footage and genre — R1.2's second half.** `carve.DEFAULT_BAND = (1.2, 4.0)` is the same first-cut pair the old `WIN_MIN`/`WIN_MAX` module constants held; mood-contract (0.8.0) made the band selectable and impossible to change silently, not *right* — no number in it was measured against taste. The right floor/ceiling are unknown and genre-dependent and must be measured, not typed. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §7, R1.2 |
 | ○ | **Explain the operator's "pull toward two seconds" against the run's own drafts.** mood-contract (0.8.0) ruled out both mechanisms the retro's R1.2 named, without explaining the impression itself: the delivered reel's median shot was 4.10s — *above* `nostalgic`'s own declared 2.0–4.0s `asl` ceiling — and the carve floor was already 1.2s before this slice touched anything, so neither the preset band nor `WIN_MAX` produced it. Whatever did is still unexplained. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §0.4/§8 |
 | ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
-| ○ | **The two biggest skill bodies load whole and are lost to compaction.** `using-montage` (646 lines) and `edit-plan` (629) have no reference subfiles, so every invocation pays the full body — 43 KB and 41 KB — and a compaction spends all of it. Progressive disclosure (a short `SKILL.md` plus `references/*.md` loaded on demand) is the shape; declined as this slice's own scope. | M | [rederivable-purpose design](specs/2026-09-12-rederivable-purpose-design.md) §6 |
+| ○ | **Nothing detects that the installed plugin is behind the repo.** The plugin cache held exactly one version, **0.2.1**, against a repo at 0.9.2 — seven minor versions, and nothing is corrupt: the install path is version-keyed and the user simply has not reinstalled. It bounds every claim any skill slice makes, because what ships reaches a run only after a reinstall. `verify_runtime` already asserts a runtime contract and is the natural home for comparing the recorded root's version against the cache's. | S | [reachable-instructions design](specs/2026-09-14-reachable-instructions-design.md) §0.7, §6 row 1 |
 
 ## P3 — someday
 
@@ -482,6 +482,20 @@ the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless
 (grade-sensor-references Task 7) ·
+the twelve remaining skill bodies have no page structure — eight are under
+10 KB and do not need one, but `episode-qc` (16.3 KB), `match-grade` (13.8) and
+`titles` (13.8) are the three that reach the 26 KB budget first, and the
+addition that takes one of them there is what should force the question, not a
+sweep now (reachable-instructions §6 row 2) ·
+whether `edit-plan`'s remaining body is ONE coherent procedure or two has not
+been measured — §2.5 split it along the subject boundary measurement made
+obvious (the field reference, the convergence loop), and the residue was never
+asked the same question (reachable-instructions §6 row 3) ·
+a reference page's prose is not checked against the code it describes: the
+stage index is generated and byte-pinned and every page is proven to EXIST and
+be reachable, but a page can still describe a flag that no longer exists —
+`tests/test_cli_help.py` knows every flag from the parser objects themselves
+and nothing joins the two (reachable-instructions §6 row 4) ·
 the stabilize test in `tests/integration/test_grade_shipped_pixels.py`
 (`test_predict_reads_the_stabilized_source_not_the_raw_segment`)
 discriminates SOLELY via its `source_for` call-spy: raw and stabilized

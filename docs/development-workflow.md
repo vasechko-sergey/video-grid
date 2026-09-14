@@ -172,6 +172,31 @@ manifest, so forgetting either one reddens the suite.
 - `CLAUDE.md` is a **registry** (a Quick Reference table), not a narrative — new
   detail goes in a focused doc and gets one row in the table.
 
+## Skill Standards
+
+A skill's body is resident context, and it runs from the user's footage project,
+never from the clone. Three rules follow, each machine-checked in
+`tests/test_skill_convention.py` over the body **and** its reference pages —
+moving a paragraph to a page must not move it out from under its own check.
+
+- **Every `SKILL.md` carries the resolution preamble verbatim**, and names no
+  command or path that is not anchored on `$VG` / `$ROOT`. The preamble resolves
+  the recorded clone root once; every step then runs as `"$VG" scripts.X` and
+  every reference reads as `"$ROOT/references/…"`. A bare `python -m scripts.X`
+  or `python -c` is banned outright — both need the clone as working directory,
+  which nothing guarantees, and `footage-intake` is why the launcher `cd`s there
+  at all (ultralytics writes YOLO weights into `cwd`).
+- **A router stage is a page** at `references/using-montage/<stage-key>.md`, one
+  per live `V1_STAGES` key, set-equal in both directions with no exemption list.
+  The stub in the body carries the command and the pointer to its page; the page
+  carries the rest. The stage table above the stubs is generated — regenerate it
+  with `"$VG" scripts.montage stages`, never by hand.
+- **A body stays under 26 KB** — new material goes on a reference page. The
+  number is a budget set from what the 2026-09-14 split measured itself landing
+  (`using-montage` 22 268 B, `edit-plan` 18 324 B), not a threshold of anything
+  (design 2026-09-14 §3.5). Every design projection of that split was wrong in
+  the same direction, so the cap is the measurement, never the projection.
+
 ## Working Rules
 
 - Do exactly what is asked — nothing more, nothing less.
