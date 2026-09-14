@@ -49,7 +49,7 @@ def test_every_help_surface_has_a_row():
     expected = [label for name in cli_help.CLI
                 for label, _ in cli_help.surfaces(
                     importlib.import_module(f"scripts.{name}").build_parser(), name)]
-    assert len(expected) == 47, f"expected 47 help surfaces, the walk found {len(expected)}"
+    assert len(expected) == 48, f"expected 48 help surfaces, the walk found {len(expected)}"
     for label in expected:
         assert f"`{label}`" in text, f"{label} is a help surface with no index row"
 
@@ -117,3 +117,43 @@ def test_every_mapped_script_is_named_by_its_own_stage_runner():
         f"{wrong} are mapped script->stage but the stage's own Stage.runner does "
         f"not name that script — one of the two is wrong, and references/tools.md "
         f"is rendered from the map")
+
+
+SKILL = ROOT / "skills/using-montage/SKILL.md"
+
+
+def _generated_block(text: str) -> str:
+    """The bytes between the markers, exclusive, with the marker lines' own
+    newlines excluded. Raises rather than returning '' when a marker is
+    missing: an empty string would compare unequal to the renderer and report
+    as staleness, hiding the real fault (the markers were deleted)."""
+    begin, end = text.index(toolindex.STAGES_BEGIN), text.index(toolindex.STAGES_END)
+    return text[begin + len(toolindex.STAGES_BEGIN):end].strip("\n") + "\n"
+
+
+def test_the_router_table_matches_what_the_renderer_produces():
+    assert _generated_block(SKILL.read_text()) == toolindex.render_stages(), (
+        "the stage table in skills/using-montage/SKILL.md is stale — regenerate:\n"
+        "    python -m scripts.montage stages\n"
+        "and replace the block between the two markers")
+
+
+def test_the_router_table_covers_every_live_stage_once():
+    """Enumerated from V1_STAGES directly, never from stage_steps().
+
+    Asking the renderer which stages exist and then checking it rendered those
+    is circular — the identical mistake test_every_help_surface_has_a_row
+    exists to avoid."""
+    from scripts import montage
+    live = [s.key for s in montage.V1_STAGES if s.kind != "deferred"]
+    table = _generated_block(SKILL.read_text())
+    rows = [l for l in table.splitlines() if l.startswith("| ") and "---" not in l][1:]
+    assert len(rows) == len(live) == 15
+    for key, row in zip(live, rows):
+        assert f"`{key}`" in row, f"row for {key} missing or out of order: {row}"
+
+
+def test_a_deferred_stage_gets_no_row():
+    """trend-scan is `deferred` and must not appear: the table is what the
+    router runs, and a row for an unbuilt stage is an instruction to run it."""
+    assert "trend-scan" not in toolindex.render_stages()

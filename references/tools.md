@@ -36,6 +36,7 @@ One row per `--help` surface. It answers *which tool*; `--help` answers
 | `montage status` | — | — | report which conveyor stage is next in a run directory, and how far the artifacts on disk already reach |
 | `montage verify` | — | — | re-hash every delivered reel against its attestation and report any that no longer match |
 | `montage tools` | — | — | print the generated tool index — one row per --help surface, naming which tool does what and which conveyor stage it belongs to |
+| `montage stages` | — | — | print the generated stage table the using-montage SKILL carries between its two generated: stages markers — one row per live conveyor stage, naming its step number, whether it is required, which of the three user checkpoints it sits at, the artifact whose presence marks it done, and the reference page carrying its detail |
 | `mood` | — | — | rank a folder of tracks by mood-fit → MUSIC_SHORTLIST.{json,md} |
 | `music_fetch` | — | — | download a sourced track → cache + sidecar |
 | `music_find` | — | — | source candidate tracks by mood → MUSIC_SHORTLIST.{json,md} |

@@ -65,6 +65,32 @@ at `<run>` itself: `project_init --project-dir <run>`, `intake <footage_root>
 <run>/reels/<reel>`, `edit_plan build --out-dir <run>/reels/<reel>`,
 `edl_to_reel --work-dir <run>/reels/<reel>/build --out-dir <run>/reels/<reel>/episodes`.
 
+## The stages
+
+Generated from `montage.V1_STAGES` — the registry the inspector resolves against.
+Read a stage's page before running it; the stub below each row carries the
+command and nothing else.
+
+<!-- generated: stages — "$VG" scripts.montage stages -->
+| step | stage | kind | gate | writes | page |
+|---|---|---|---|---|---|
+| 2 | `project-init` | required | CP1 | `project.json` | `references/using-montage/project-init.md` |
+| 3 | `footage-intake` | required | — | `FOOTAGE.json` | `references/using-montage/footage-intake.md` |
+| 4 | `contact-sheet` | required | — | `SHEETS.md` | `references/using-montage/contact-sheet.md` |
+| 5 | `reel-brief` | optional | CP1 | `SPEC.json` | `references/using-montage/reel-brief.md` |
+| 6 | `edit-plan` | required | CP2 | `EDL.json` | `references/using-montage/edit-plan.md` |
+| 7 | `music-and-mood` | optional | — | `MUSIC.json` | `references/using-montage/music-and-mood.md` |
+| 8 | `pacing` | optional | — | `PACING.md` | `references/using-montage/pacing.md` |
+| 9 | `episodes-geometry` | required | — | `GEOMETRY.json` | `references/using-montage/episodes-geometry.md` |
+| 10 | `match-grade` | required | — | `MATCH.json` | `references/using-montage/match-grade.md` |
+| 11 | `assemble-draft` | optional | CP2 | `draft.mp4` | `references/using-montage/assemble-draft.md` |
+| 12 | `titles` | optional | CP3 | `TITLES.json` | `references/using-montage/titles.md` |
+| 13 | `episodes` | required | — | `EPISODES.json` | `references/using-montage/episodes.md` |
+| 14 | `episode-qc` | required | — | `EPISODE_QC.json` | `references/using-montage/episode-qc.md` |
+| 15 | `deliver` | required | CP3 | `REEL_v*.*` | `references/using-montage/deliver.md` |
+| 16 | `reel-review` | required | CP3 | `REVIEW.json` | `references/using-montage/reel-review.md` |
+<!-- /generated -->
+
 0. **Verify the runtime (gate).** After resolving `$VG` (below), run
    `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
    proceed. Non-zero → surface each `BLOCKED` check with its remedy (almost always

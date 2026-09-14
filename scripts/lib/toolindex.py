@@ -132,3 +132,40 @@ def chain() -> str:
     parts = [s.key if s.kind == "required" else f"[{s.key}]"
              for s in montage.V1_STAGES if s.kind != "deferred"]
     return "Conveyor: " + " -> ".join(parts) + "."
+
+
+#: Steps 0 and 1 of the router are the runtime gate and locating the run —
+#: neither is a stage, so the first stage is step 2. The table owns these
+#: numbers and tests/test_skill_convention.py binds the hand-written stubs to
+#: them, which is what stops the drift design 2026-09-14 §0.5 measured: fifteen
+#: live stages, fourteen numbered blocks, and `reel-review` — required — with
+#: no number at all.
+FIRST_STAGE_STEP = 2
+
+#: Stage.checkpoint is the registry's own name for the three §4.1 user gates.
+CHECKPOINT_LABEL: dict[str | None, str] = {
+    None: "—", "spec": "CP1", "edl": "CP2", "final": "CP3"}
+
+STAGES_BEGIN = "<!-- generated: stages — \"$VG\" scripts.montage stages -->\n"
+STAGES_END = "<!-- /generated -->"
+
+ROUTER_PAGES = "references/using-montage"
+
+
+def stage_steps() -> list[tuple[int, object]]:
+    """(step number, Stage) for every live stage, in conveyor order."""
+    from scripts import montage
+    live = [s for s in montage.V1_STAGES if s.kind != "deferred"]
+    return list(enumerate(live, start=FIRST_STAGE_STEP))
+
+
+def render_stages() -> str:
+    """The router's stage table. One generated block: it owns the set, the
+    order and the step numbers; the stubs beneath it own the commands, which
+    carry run-directory paths no registry knows."""
+    lines = ["| step | stage | kind | gate | writes | page |",
+             "|---|---|---|---|---|---|"]
+    for n, s in stage_steps():
+        lines.append(f"| {n} | `{s.key}` | {s.kind} | {CHECKPOINT_LABEL[s.checkpoint]} "
+                     f"| `{s.artifact}` | `{ROUTER_PAGES}/{s.key}.md` |")
+    return "\n".join(lines) + "\n"

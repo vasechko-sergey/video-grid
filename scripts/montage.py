@@ -403,6 +403,14 @@ def build_parser() -> argparse.ArgumentParser:
                                     "surface, naming which tool does what and which "
                                     "conveyor stage it belongs to. references/tools.md is "
                                     "this output, committed.")
+    sub.add_parser("stages", help="print the generated router stage table",
+                   description="print the generated stage table the using-montage "
+                               "SKILL carries between its two generated: stages "
+                               "markers — one row per live conveyor stage, naming "
+                               "its step number, whether it is required, which of "
+                               "the three user checkpoints it sits at, the artifact "
+                               "whose presence marks it done, and the reference "
+                               "page carrying its detail.")
     return ap
 
 
@@ -410,6 +418,9 @@ def main() -> None:
     a = build_parser().parse_args()
     if a.cmd == "tools":
         print(toolindex.render_index(), end="")
+        return
+    if a.cmd == "stages":
+        print(toolindex.render_stages(), end="")
         return
     result = next_action(a.run_dir, a.reel) if a.cmd == "status" else verify(a.run_dir, a.reel)
     print(json.dumps(result, indent=2))
