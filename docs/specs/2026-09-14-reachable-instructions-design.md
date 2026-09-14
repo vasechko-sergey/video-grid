@@ -80,6 +80,15 @@ string, `.venv/bin/python`. **Eleven command examples spell a bare
 `python -m scripts.X` and pass it**: seven in `edit-plan`, one each in
 `footage-intake`, `reel-brief`, `reel-review`, `titles`.
 
+**Corrected during execution, 2026-09-14:** eleven is the count for that one
+spelling, and the grep that produced it was itself a guard tested for a literal
+— the same mistake one level up. Two further sites spell it `python -c "…"`
+and import `scripts` directly (`edit-plan`, `reel-review`), so the real count
+is **thirteen across two spellings**. They also cost more to fix: `bin/vg` ends
+in `exec … python -m "$@"`, so `-m` is hardcoded and the launcher had to learn
+a `-c` passthrough before any skill could name one. The lesson is §3.4's own:
+a guard that tests for a spelling finds that spelling.
+
 The predicate separating them is exact, not approximate:
 
 - **All fourteen** skills name a `scripts.` command.
@@ -192,8 +201,9 @@ the install copies skills into a runtime-less cache, so a base-dir-relative
 path finds a broken venv. The same argument covers reads for a different
 reason — the cache is a **snapshot**, and the recorded root is the live clone.
 
-All eleven bare-`python` sites become `"$VG" scripts.X`. The five skills of
-§0.4 gain the preamble the other nine carry.
+All eleven `python -m scripts.X` sites become `"$VG" scripts.X`, and the two
+`python -c` sites become `"$VG" -c` once the launcher accepts it. The five
+skills of §0.4 gain the preamble the other nine carry.
 
 ### 2.2 The stub keeps the command
 
@@ -296,9 +306,10 @@ other direction.
 
 ### 3.4 The launcher guard gets a real predicate
 
-The guard stops testing for the literal `.venv/bin/python` and starts testing
-what §0.4 measured: **no skill spells a command starting with a bare
-`python`**, and **any skill naming a `scripts.` command reads the recorded
+The guard stops testing for one literal and starts testing a set of
+spellings — `.venv/bin/python`, `python -m scripts`, `python -c` — which is
+what §0.4 measured once it was measured twice: **no skill spells a command
+starting with a bare `python`**, and **any skill naming a `scripts.` command reads the recorded
 root**. `RUNNERS` stops being a typed list and becomes derived — the list was
 already narrower than the tree.
 
