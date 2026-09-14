@@ -122,7 +122,22 @@ guessing a path.
 4. **Write cast.** For each named candidate, take its **persisted descriptor**
    from `cast_candidates.json` (already computed — do not recompute) and call
    `scripts.intake.write_cast(named, out_dir)` with
-   `named = [(name, notes, descriptor, [candidate_crop_path]), …]`. This writes
+   `named = [(name, notes, descriptor, [candidate_crop_path]), …]`. Run it
+   through the launcher like every other step — it imports `scripts`, so it
+   needs the clone as working directory exactly as much as the scan does:
+
+       "$VG" -c "
+       import json
+       from scripts import intake
+       out_dir = '<out_dir>'
+       cand = {c['id']: c for c in json.load(open(out_dir + '/cast_candidates.json'))}
+       named = [(name, notes, cand[i]['descriptor'], [cand[i]['crop']])
+                for i, name, notes in [(<id>, '<name>', '<notes>'), ]]
+       print('cast.json:', [m.name for m in intake.write_cast(named, out_dir).members])
+       "
+
+   Fill one `(<id>, '<name>', '<notes>')` triple per candidate the human
+   named, and leave out every candidate they did not. This writes
    `<out_dir>/cast.json` — the hero registry `SPEC.cast` and future hero-pins
    read.
 

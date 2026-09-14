@@ -81,18 +81,28 @@ runs from the user's footage project, not from the clone. If that file is
 missing, the user has not run `bash setup.sh` — stop and say so rather than
 guessing a path."""
 
-# Command spellings a skill must never contain. The first is the bypass the
-# packaging design closed; the second is what the first failed to catch — the
-# guard tested one literal and eleven `python -m scripts.X` examples walked
-# past it, seven of them in edit-plan and one each in footage-intake,
-# reel-brief, reel-review and titles, whose CLI is the reason the cd into the
-# clone is mandatory at all (ultralytics writes YOLO weights into the working
-# directory). The third is what the second still missed, found in review: a
-# bare `python -c` snippet importing `scripts` directly needs the clone cwd
-# exactly as much as a `-m scripts.X` run does, and the brief's own table —
-# built from a grep for one spelling — walked past the two sites that use it
-# (edit-plan, reel-review). Design 2026-09-14 §0.4.
-BANNED_SPELLINGS = (".venv/bin/python", "python -m scripts", "python -c")
+# Command spellings a skill must never contain. This is a SET OF SPELLINGS, not
+# a predicate for "a command anchored to a working directory nobody guarantees"
+# — and the distinction is design 2026-09-14 §0.4's own lesson one level up.
+# The first entry is the bypass the packaging design closed; testing for that
+# one literal is exactly how eleven `python -m scripts.X` examples walked past
+# it — seven in edit-plan and one each in footage-intake, reel-brief,
+# reel-review and titles. Of those four, footage-intake is the one whose CLI
+# makes the cd into the clone mandatory rather than convenient (ultralytics
+# writes YOLO weights into the working directory). Widening to that second
+# spelling then found two more in a third, `python -c`, which the brief's own
+# one-spelling grep had missed (edit-plan, reel-review) and which `bin/vg`
+# could not even run until it learned a `-c` passthrough.
+#
+# The `python3` and `python scripts/foo.py` rows occur nowhere in the tree
+# today. They are here because each is one keystroke from a spelling that did
+# occur, and because listing them is the honest shape of this guard: the set
+# narrows the gap, it never closes it. A spelling nobody has typed yet still
+# walks past.
+BANNED_SPELLINGS = (".venv/bin/python",
+                    "python -m scripts", "python3 -m scripts",
+                    "python -c", "python3 -c",
+                    "python scripts/", "python3 scripts/")
 
 
 def test_no_skill_spells_a_command_it_cannot_resolve():
@@ -114,6 +124,38 @@ def test_every_skill_carries_the_resolution_preamble():
     missing = sorted(n for n in skill_names()
                      if PREAMBLE not in (SKILLS / n / "SKILL.md").read_text())
     assert missing == [], f"skills without the resolution preamble: {missing}"
+
+
+def test_the_preamble_names_the_path_setup_writes():
+    """The preamble's only source of truth is this module. If `setup.sh` ever
+    records the root somewhere else, all fourteen skills point at nothing and
+    every other check here stays green — the one failure the slice's thesis
+    cannot survive.
+
+    Joined, not substring-matched: the path is REBUILT from setup.sh's own two
+    lines — the `VG_CONFIG=` directory assignment and the `> "$VG_CONFIG/root"`
+    redirect that names the file inside it — and the result must be what the
+    preamble tells fourteen skills to read. Either half moving is red.
+
+    It is the COMMAND that is pinned, not merely the path's presence: the
+    preamble names the path twice, once in the prose sentence and once inside
+    `ROOT="$(cat …)"`, and only the second is executed. A first version of this
+    test asserted presence alone and went green against a mutation that changed
+    the prose — the wrong half — so both are asserted, the command by its exact
+    spelling and the pair by count, which is what stops the two drifting
+    apart."""
+    setup = (REPO / "setup.sh").read_text()
+    m = re.search(r'^VG_CONFIG="([^"]+)"$', setup, re.M)
+    assert m, "setup.sh no longer assigns VG_CONFIG — the recorded root moved"
+    assert '> "$VG_CONFIG/root"' in setup, (
+        "setup.sh no longer writes the root to $VG_CONFIG/root")
+    path = f"{m.group(1)}/root"
+    assert f'ROOT="$(cat "{path}")"' in PREAMBLE, (
+        f"setup.sh records the root at {path}; the command the preamble gives "
+        f"all fourteen skills reads a different path")
+    assert PREAMBLE.count(path) == 2, (
+        f"the preamble must name {path} exactly twice — the prose sentence and "
+        f"the command — or its two halves have drifted apart")
 
 
 def test_the_pacing_skill_documents_the_two_pass_flow():
@@ -204,10 +246,13 @@ def test_using_montage_defines_every_bucket():
     undetected. EDL.json is the citation to hold: it is the artifact the whole
     conveyor is driven from.
 
-    Reads the skill AND its pages (design 2026-09-14 §2.2): the `reel` row's
-    citation `<run>/reels/<reel>/EDL.json` first appears at line 228 today,
-    inside a stage block that becomes a page — on `SKILL.md` alone this test
-    would start failing the moment the split lands, for no real reason."""
+    Reads the skill AND its pages (design 2026-09-14 §2.2) — not because the
+    split moved this particular citation. Measured after it landed, all six
+    spellings are still resident in the body, `<run>/reels/<reel>/EDL.json`
+    three times over, so `SKILL.md` alone would pass today. The reason is that
+    a bucket spelling CAN now legitimately live only on a page: reading the
+    body alone would make this check depend on where the text happened to land
+    rather than on whether the layout is documented at all."""
     from scripts.lib import runlayout
     spelling = {"footage": "<run>/footage/", "music": "<run>/music/",
                 "reel": "<run>/reels/<reel>/EDL.json",
@@ -363,7 +408,7 @@ def test_every_router_stub_points_at_its_own_page():
 _REF = re.compile(r"references/[\w/-]+\.md")
 
 #: A body budget, NOT a measurement of anything. It is set from what this slice
-#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 324 — with
+#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 340 — with
 #: room above the larger of them, because a cap that binds on the day it ships is
 #: a cap the next author fights instead of obeys. The design's own projection said
 #: 13.5 KB and was wrong by 65%; the number here is the measurement, not the
@@ -371,10 +416,64 @@ _REF = re.compile(r"references/[\w/-]+\.md")
 BODY_MAX = 26_000
 
 
+_GENERATED = re.compile(r"<!-- generated:.*?-->(.*?)<!-- /generated -->", re.S)
+
+
+def _split_generated(text: str) -> tuple[str, str]:
+    """(everything outside the generated blocks, everything inside them)."""
+    parts = _GENERATED.split(text)
+    return "".join(parts[0::2]), "".join(parts[1::2])
+
+
+def test_every_reference_in_a_skill_body_is_anchored():
+    """A bare `references/x.md` is relative to a working directory a skill never
+    has (design 2026-09-14 §0.3). The preamble defines `$ROOT`; a pointer that
+    does not use it is a path the reader cannot resolve.
+
+    Frontmatter is the one carve-out, and it is structural rather than an
+    exemption: a `description:` is a YAML scalar read with no shell to expand a
+    variable in, so `Tool index: references/tools.md.` can only ever be a bare
+    path. It is what the preamble below it exists to make resolvable.
+
+    The generated stage table is held to a weaker rule rather than exempted.
+    Its `page` column is an index of NAMES — its `writes` column names
+    `EDL.json` in exactly the same way, and neither is a path anyone is told to
+    open; the instruction actually followed is the stub's `Before running it,
+    read "$ROOT/…"` line beneath it. So every path the table names must appear
+    anchored somewhere else in the same document. That is the guarantee the
+    bare cells would otherwise drop, and it is why the block can stay
+    byte-pinned to `toolindex.render_stages()` without a hole opening under it.
+
+    The four shared repo-level references are out of scope here for the reason
+    `skill_pages` gives: they are not skill documents. `references/tools.md`
+    carries a bare pointer of its own (design §5)."""
+    bare, unbacked = [], []
+    for p in all_skill_docs():
+        text = p.read_text()
+        if p.name == "SKILL.md":
+            text = text.split("---", 2)[2]
+        outside, generated = _split_generated(text)
+        anchored = set()
+        for m in _REF.finditer(outside):
+            if outside[max(0, m.start() - 6):m.start()] == "$ROOT/":
+                anchored.add(m.group(0))
+            else:
+                bare.append(f"{p.relative_to(REPO)}: {m.group(0)}")
+        unbacked += [f"{p.relative_to(REPO)}: {ref}"
+                     for ref in _REF.findall(generated) if ref not in anchored]
+    assert bare == [], (
+        f"{len(bare)} unanchored reference pointer(s): {bare}. Write them as "
+        f'`"$ROOT/references/….md"` — see PREAMBLE')
+    assert unbacked == [], (
+        f"{len(unbacked)} path(s) named only inside a generated block, with no "
+        f"anchored pointer anywhere else in the same file: {unbacked}")
+
+
 def test_every_reference_a_skill_names_exists():
-    """Eighteen bare `references/…` pointers existed with no rule anywhere for
-    resolving them (design §0.3). The preamble supplies the rule; this supplies
-    the other half — that the thing at the end of the path is there."""
+    """Nineteen bare `references/…` pointers existed with no rule anywhere for
+    resolving them (design §0.3) — fourteen frontmatter, five prose. The
+    preamble supplies the rule; this supplies the other half — that the thing
+    at the end of the path is there."""
     missing = sorted({f"{p.relative_to(REPO)} -> {ref}"
                       for p in all_skill_docs()
                       for ref in _REF.findall(p.read_text())

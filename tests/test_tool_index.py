@@ -134,7 +134,7 @@ def _generated_block(text: str) -> str:
 def test_the_router_table_matches_what_the_renderer_produces():
     assert _generated_block(SKILL.read_text()) == toolindex.render_stages(), (
         "the stage table in skills/using-montage/SKILL.md is stale — regenerate:\n"
-        "    python -m scripts.montage stages\n"
+        '    "$VG" scripts.montage stages\n'
         "and replace the block between the two markers")
 
 

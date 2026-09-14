@@ -153,6 +153,6 @@ Before returning DONE, confirm with fresh evidence (Iron Law, §14.5): the clip 
 ## References
 
 - **REQUIRED SUB-SKILL:** the mechanical gate is `scripts/check_episode.py`; the loop is `scripts/process_episode.py` — read their signatures, do not re-implement.
-- Composition/grid math and the follow algorithm: `references/editing-canon.md` (video-grid:editing-canon).
-- ffmpeg command shapes: `references/ffmpeg-recipes.md`. The banned-filter list is design §12 (`references/landmines.md` points at it); four entries are machine-checked by `scripts/lib/lint.py` and refused by `proc.run`, so a violating command raises instead of rendering.
+- Composition/grid math and the follow algorithm: `"$ROOT/references/editing-canon.md"` (video-grid:editing-canon).
+- ffmpeg command shapes: `"$ROOT/references/ffmpeg-recipes.md"`. The banned-filter list is design §12 (`"$ROOT/references/landmines.md"` points at it); four entries are machine-checked by `scripts/lib/lint.py` and refused by `proc.run`, so a violating command raises instead of rendering.
 - Escalation ladder and the three user-facing checkpoints: design §4.1.

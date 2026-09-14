@@ -36,7 +36,7 @@ directory resolves all three at once.
   story. The frames can.
 - **`project.json`** (required, from project-init) — the canvas/delivery the
   episodes inherit; used by the preflight.
-- **`references/editing-canon.md`** (required read) — thirds, headroom, lead room,
+- **`"$ROOT/references/editing-canon.md"`** (required read) — thirds, headroom, lead room,
   the 180° rule, cut-on-action, contrast. Your editorial base.
 - **`SPEC.md` / `SPEC.json`** (optional, from reel-brief) — its `mood` picks the
   shot-mix preset the variety gate (step 2) holds the cut to. Without one, the
@@ -77,7 +77,7 @@ guessing a path.
 
 ## Procedure
 
-1. **Recon.** Read `FOOTAGE.md`, `project.json`, `references/editing-canon.md`, and
+1. **Recon.** Read `FOOTAGE.md`, `project.json`, `"$ROOT/references/editing-canon.md"`, and
    any soft inputs present. Note the reel's target length (from `SPEC.md` or
    `project.json`, else propose one from the strongest windows).
 

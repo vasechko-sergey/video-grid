@@ -15,12 +15,14 @@ rewriting the EDL `GEOMETRY.json` itself names IN PLACE plus a sibling
 `montage status` keys this stage's `done` on, like every other stage —
 and its rendered `MATCH.md`. **Run it AFTER episodes-geometry (step 9)**
 — there is no crop to measure before a route is frozen. Unlike before
-2026-08-30 this is unconditional: even a single-camera reel costs a few
-seconds (eight crops in about five seconds on a real reel) and writes a
-`MATCH.md` saying every episode already lands `within-eps` — cheaper than
-silently walking past the only stage that would have caught it NOT
-agreeing (the retro's R4.2). `montage status` now points `next` here like
-any other required stage.
+2026-08-30 this is unconditional, and the router has no "skip it" branch
+to name: even a single-camera reel costs a few seconds (eight crops in
+about five seconds on a real reel) and writes a `MATCH.md` saying every
+episode already lands `within-eps` — cheaper than silently walking past
+the only stage that would have caught it NOT agreeing, because a stage
+nobody is told to run at the moment of need is a stage that gets rebuilt
+by hand instead (design §6, the retro's R4.2). `montage status` now points
+`next` here like any other required stage.
 
 > **Before the render, look.** `probe grade --geometry
 > <run>/reels/<reel>/episodes/GEOMETRY.json --index <N>` renders three
@@ -50,10 +52,3 @@ any other required stage.
 > `--from-geometry` (step 13) refuses a `GEOMETRY.json` whose cut no
 > longer matches the current EDL, naming `--stop-after-geometry` as the
 > remedy when the edit changed the CUT rather than only the colour.
-
-**Required since 2026-08-30, with no "skip it" branch:** the router runs
-match-grade on every reel, even a single-camera one, because it costs seconds
-and a stage nobody is told to run at the moment of need is a stage that gets
-rebuilt by hand instead (design §6, the retro's R4.2). A single-camera reel
-still pays for it; every episode simply comes back `within-eps` and `MATCH.md`
-says so — there is no "skip it" branch to name.

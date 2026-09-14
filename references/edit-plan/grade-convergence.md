@@ -5,7 +5,7 @@ design 2026-08-30).** `edl_to_reel --stop-after-geometry` freezes every
 episode's route into `<run>/reels/<reel>/episodes/GEOMETRY.json` — no
 `ep{i}.mp4` exists yet, and **match-grade** (its own skill) already read
 this same file to author a first tone pass. Edit the episode's colour
-fields in **`selection.json`**, re-run this build (step 3 below — the SAME
+fields in **`selection.json`**, re-run this build (the edit-plan skill's step 3 — the SAME
 command with the SAME flags the earlier build used), then probe the
 freshly-written `EDL.json` straight through the frozen geometry:
 
@@ -63,7 +63,7 @@ post-render colour finding back here. Edit the episode's colour fields in
 `EDL.json` is stamped (design 2026-08-04): `probe grade --edl` opens it through
 the same `EDL.from_json` that refuses a file whose contents no longer match its
 own stamp, so a hand-edited `EDL.json` is refused on the probe's very first
-command, naming this exact remedy. Re-run the build (step 3 below, the SAME
+command, naming this exact remedy. Re-run the build (the edit-plan skill's step 3, the SAME
 command with the SAME flags the earlier build used — omitting `--pacing`/
 `--music` here silently discards the pacing binding and the outro fit):
 
@@ -95,7 +95,7 @@ frames would not be the frames the next render ships.
 the variety gate and the `CONSTRAINTS.json` gate over the WHOLE cut, not only
 the episode you touched — an unrelated pre-existing gap can surface
 mid-convergence; it is not caused by the colour edit, so read the
-`stop_and_report` and fix or waive it the normal way (step 2 above). And if
+`stop_and_report` and fix or waive it the normal way (the edit-plan skill's step 2). And if
 **match-grade** authored this episode's `tone_src`/`tone_dst` (it rewrites
 `EDL.json` in place, bypassing `selection.json`), a rebuild from
 `selection.json` does **not** carry that pair forward — the projection reads
@@ -144,7 +144,7 @@ episode from `rm.episodes[idx].manifest` — the entry INSIDE `EPISODES.json`,
 never the scratch `<run>/reels/<reel>/build/ep<N>/manifest.json` above. Skip the second
 `json.dump` and that retry silently re-renders this episode from the STALE
 pre-convergence grade — no error, no trace. The alternative is re-running phase 1
-(`edl_to_reel --from-geometry`, step 3's driver) from the re-stamped
+(`edl_to_reel --from-geometry`, the driver that step 3 runs) from the re-stamped
 `EDL.json`, which writes a fully consistent `EPISODES.json` too — but at the cost
 of re-tracking and re-rendering EVERY episode, the whole expense this loop exists
 to avoid; reach for it only when converging several episodes at once makes that
