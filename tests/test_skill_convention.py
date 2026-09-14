@@ -29,8 +29,41 @@ ROLE_LEADS = ("Start here —", "Router —", "Conveyor stage", "Preflight —",
               "Per-episode worker —", "Music lane —")
 
 
+def skill_names() -> list[str]:
+    return sorted(p.parent.name for p in SKILLS.glob("*/SKILL.md"))
+
+
+def skill_pages(name: str) -> list[Path]:
+    """The reference pages a skill OWNS — `references/<skill name>/**/*.md`.
+
+    Ownership is the directory name, not a list: a page belongs to a skill iff
+    it lives in a directory named after it. The four repo-level references
+    (`editing-canon`, `ffmpeg-recipes`, `landmines`, the generated `tools`) are
+    shared documents of a different kind and are deliberately NOT skill pages —
+    `tools.md` carries a maintainer regeneration command that the bans below
+    would (correctly, for a skill) refuse."""
+    root = REPO / "references" / name
+    return sorted(root.rglob("*.md")) if root.is_dir() else []
+
+
+def skill_docs(name: str) -> list[Path]:
+    """Everything an agent reads when it works this skill: the body, then its
+    pages. Every glob-based ban and presence check below runs over THIS, never
+    over `SKILL.md` alone — otherwise moving a paragraph to a page moves it out
+    from under its own check (design 2026-09-14 §2.2)."""
+    return [SKILLS / name / "SKILL.md"] + skill_pages(name)
+
+
+def all_skill_docs() -> list[Path]:
+    return [p for name in skill_names() for p in skill_docs(name)]
+
+
+def skill_text(name: str) -> str:
+    return "\n".join(p.read_text() for p in skill_docs(name))
+
+
 def test_no_skill_invokes_a_bare_venv_python():
-    offenders = sorted(str(p.relative_to(REPO)) for p in SKILLS.glob("*/SKILL.md")
+    offenders = sorted(str(p.relative_to(REPO)) for p in all_skill_docs()
                        if ".venv/bin/python" in p.read_text())
     assert offenders == [], f"skills bypassing bin/vg: {offenders}"
 
@@ -93,11 +126,12 @@ def test_edit_plan_skill_names_every_authorable_episode_field():
     explanation beside it is correct or current (design 2026-08-17 §2.2) — it
     stops the silent half of the drift, not the whole of it."""
     missing = sorted(f.name for f in dataclasses.fields(EDLEpisode)
-                     if f.name not in (SKILLS / "edit-plan" / "SKILL.md").read_text())
+                     if f.name not in skill_text("edit-plan"))
     assert missing == [], (
         f"{len(missing)} EDLEpisode field(s) the authoring skill never names: "
-        f"{missing}. Document them in skills/edit-plan/SKILL.md — an authorable "
-        f"knob nobody can find is the same as one that does not exist")
+        f"{missing}. Document them in skills/edit-plan/SKILL.md or one of its "
+        f"references/edit-plan/ pages — an authorable knob nobody can find is "
+        f"the same as one that does not exist")
 
 
 def test_no_skill_spells_a_stage_artifact_outside_its_bucket():
@@ -106,7 +140,7 @@ def test_no_skill_spells_a_stage_artifact_outside_its_bucket():
     not look, so the stage would re-run forever."""
     from scripts import montage
     offenders = []
-    for path in sorted(SKILLS.glob("*/SKILL.md")):
+    for path in sorted(all_skill_docs()):
         text = path.read_text()
         for st in montage.V1_STAGES:
             if st.bucket == "run":
@@ -118,7 +152,7 @@ def test_no_skill_spells_a_stage_artifact_outside_its_bucket():
 
 def test_no_skill_still_names_the_retired_out_dir():
     """`<run>/out` was the deliveries dir the workflow rm -rf'd 47 times."""
-    offenders = sorted(str(p.relative_to(REPO)) for p in SKILLS.glob("*/SKILL.md")
+    offenders = sorted(str(p.relative_to(REPO)) for p in all_skill_docs()
                        if "<run>/out" in p.read_text())
     assert offenders == []
 
@@ -136,7 +170,12 @@ def test_using_montage_defines_every_bucket():
     every reel-level citation (EDL.json, SPEC.json, MUSIC.json, PACING.json,
     draft.mp4, TITLES.json) while leaving the child buckets intact would pass
     undetected. EDL.json is the citation to hold: it is the artifact the whole
-    conveyor is driven from."""
+    conveyor is driven from.
+
+    Reads the skill AND its pages (design 2026-09-14 §2.2): the `reel` row's
+    citation `<run>/reels/<reel>/EDL.json` first appears at line 228 today,
+    inside a stage block that becomes a page — on `SKILL.md` alone this test
+    would start failing the moment the split lands, for no real reason."""
     from scripts.lib import runlayout
     spelling = {"footage": "<run>/footage/", "music": "<run>/music/",
                 "reel": "<run>/reels/<reel>/EDL.json",
@@ -144,7 +183,7 @@ def test_using_montage_defines_every_bucket():
                 "deliveries": "<run>/reels/<reel>/deliveries/",
                 "build": "<run>/reels/<reel>/build/"}
     assert set(spelling) == set(runlayout.BUCKETS) - {"run"}
-    text = (SKILLS / "using-montage" / "SKILL.md").read_text()
+    text = skill_text("using-montage")
     missing = sorted(b for b, sp in spelling.items() if sp not in text)
     assert missing == []
 
@@ -194,7 +233,7 @@ def test_no_skill_example_passes_a_bare_path_into_the_run():
     string for a reader or a grep to catch on, and one whole skill (reel-brief)
     was never in the migration's file list for the same reason."""
     offenders = []
-    for path in sorted(SKILLS.glob("*/SKILL.md")):
+    for path in sorted(all_skill_docs()):
         for i, line in enumerate(path.read_text().splitlines(), 1):
             for m in _BARE_ARG.finditer(line):
                 offenders.append(f"{path.relative_to(REPO)}:{i}: {m.group(1)} {m.group(2)}")
@@ -210,3 +249,19 @@ def test_footage_intake_binds_its_out_dir_to_the_footage_bucket():
     (design 2026-08-26 §3), so a wrong binding here silently relocates all of it."""
     text = (SKILLS / "footage-intake" / "SKILL.md").read_text()
     assert "<footage_root>/montage/footage" in text
+
+
+def test_skill_docs_reaches_pages_and_skips_the_shared_references():
+    """The helper's whole value is that it reaches further than SKILL.md. If
+    `references/<name>/` never matches anything, every ban above silently
+    narrows back to the body and this suite keeps passing while covering less.
+
+    Both halves are asserted because both can fail silently: a glob that
+    matches nothing looks identical to a skill with no pages, and a glob that
+    matches `references/*.md` would pull the four shared documents under bans
+    they have never been subject to."""
+    shared = {"editing-canon.md", "ffmpeg-recipes.md", "landmines.md", "tools.md"}
+    reached = {p.name for p in all_skill_docs()}
+    assert reached & shared == set(), (
+        f"skill_docs() reached a shared repo-level reference: {reached & shared}")
+    assert all((SKILLS / n / "SKILL.md") in skill_docs(n) for n in skill_names())
