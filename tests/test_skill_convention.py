@@ -33,7 +33,7 @@ def skill_names() -> list[str]:
     return sorted(p.parent.name for p in SKILLS.glob("*/SKILL.md"))
 
 
-def skill_pages(name: str) -> list[Path]:
+def skill_pages(name: str, root: Path = REPO) -> list[Path]:
     """The reference pages a skill OWNS — `references/<skill name>/**/*.md`.
 
     Ownership is the directory name, not a list: a page belongs to a skill iff
@@ -42,8 +42,8 @@ def skill_pages(name: str) -> list[Path]:
     shared documents of a different kind and are deliberately NOT skill pages —
     `tools.md` carries a maintainer regeneration command that the bans below
     would (correctly, for a skill) refuse."""
-    root = REPO / "references" / name
-    return sorted(root.rglob("*.md")) if root.is_dir() else []
+    base = root / "references" / name
+    return sorted(base.rglob("*.md")) if base.is_dir() else []
 
 
 def skill_docs(name: str) -> list[Path]:
@@ -55,7 +55,7 @@ def skill_docs(name: str) -> list[Path]:
 
 
 def all_skill_docs() -> list[Path]:
-    return [p for name in skill_names() for p in skill_docs(name)]
+    return sorted(p for name in skill_names() for p in skill_docs(name))
 
 
 def skill_text(name: str) -> str:
@@ -251,17 +251,33 @@ def test_footage_intake_binds_its_out_dir_to_the_footage_bucket():
     assert "<footage_root>/montage/footage" in text
 
 
-def test_skill_docs_reaches_pages_and_skips_the_shared_references():
-    """The helper's whole value is that it reaches further than SKILL.md. If
-    `references/<name>/` never matches anything, every ban above silently
-    narrows back to the body and this suite keeps passing while covering less.
+def test_skill_pages_finds_a_page_and_ignores_the_shared_references(tmp_path):
+    """Discriminating TODAY, which the sibling test below is not.
 
-    Both halves are asserted because both can fail silently: a glob that
-    matches nothing looks identical to a skill with no pages, and a glob that
-    matches `references/*.md` would pull the four shared documents under bans
-    they have never been subject to."""
+    `references/<name>/` is empty until the split lands, so a `skill_pages()`
+    hardcoded to `return []` would satisfy every other assertion in this module
+    — including the one about reaching pages. Planting a tree is the only way
+    to prove the reaching half before there is anything real to reach."""
+    (tmp_path / "references" / "edit-plan").mkdir(parents=True)
+    (tmp_path / "references" / "edit-plan" / "episode-fields.md").write_text("x")
+    (tmp_path / "references" / "editing-canon.md").write_text("x")
+    assert [p.name for p in skill_pages("edit-plan", root=tmp_path)] == ["episode-fields.md"]
+    assert skill_pages("titles", root=tmp_path) == []
+
+
+def test_skill_docs_never_reaches_a_shared_reference():
+    """`references/<name>/` is skill-owned; the four repo-level references
+    (`editing-canon`, `ffmpeg-recipes`, `landmines`, the generated `tools`) are
+    a different kind of document and must never be pulled under a skill's own
+    bans by accident — a glob one character wider (`references/*.md` instead of
+    `references/<name>/**/*.md`) would do exactly that.
+
+    This proves only that the shared four stay OUT of `all_skill_docs()`; it
+    does not prove real pages get IN — `skill_pages` hardcoded to always
+    return `[]` would pass this assertion just as well. That half is proven
+    separately, against a planted tree, by
+    test_skill_pages_finds_a_page_and_ignores_the_shared_references above."""
     shared = {"editing-canon.md", "ffmpeg-recipes.md", "landmines.md", "tools.md"}
     reached = {p.name for p in all_skill_docs()}
     assert reached & shared == set(), (
         f"skill_docs() reached a shared repo-level reference: {reached & shared}")
-    assert all((SKILLS / n / "SKILL.md") in skill_docs(n) for n in skill_names())
