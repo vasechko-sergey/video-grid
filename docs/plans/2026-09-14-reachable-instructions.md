@@ -85,8 +85,10 @@ the text arrives.
 - Modify: `tests/test_skill_convention.py`
 
 **Interfaces:**
-- Produces: `skill_pages(name: str) -> list[Path]` — the `.md` files under
-  `references/<name>/`, recursively, empty when the directory does not exist.
+- Produces: `skill_pages(name: str, root: Path = REPO) -> list[Path]` — the
+  `.md` files under `<root>/references/<name>/`, recursively, empty when the
+  directory does not exist. `root` exists so the reaching half is testable
+  before any page exists; every production call takes the default.
 - Produces: `skill_docs(name: str) -> list[Path]` — `skills/<name>/SKILL.md`
   followed by `skill_pages(name)`.
 - Produces: `all_skill_docs() -> list[Path]` — `skill_docs()` for every skill
@@ -181,24 +183,36 @@ and append to its docstring:
 
 - [ ] **Step 4: Prove the helper is not vacuous**
 
+`references/<name>/` is empty until Task 4 lands, so a `skill_pages()`
+hardcoded to `return []` would satisfy every other assertion in this module.
+Planting a tree is the only way to prove the reaching half before there is
+anything real to reach — which is why `skill_pages` takes an injectable root.
 Add:
 
 ```python
-def test_skill_docs_reaches_pages_and_skips_the_shared_references():
-    """The helper's whole value is that it reaches further than SKILL.md. If
-    `references/<name>/` never matches anything, every ban above silently
-    narrows back to the body and this suite keeps passing while covering less.
+def test_skill_pages_finds_a_page_and_ignores_the_shared_references(tmp_path):
+    """Discriminating TODAY, which the sibling test below is not."""
+    (tmp_path / "references" / "edit-plan").mkdir(parents=True)
+    (tmp_path / "references" / "edit-plan" / "episode-fields.md").write_text("x")
+    (tmp_path / "references" / "editing-canon.md").write_text("x")
+    assert [p.name for p in skill_pages("edit-plan", root=tmp_path)] == ["episode-fields.md"]
+    assert skill_pages("titles", root=tmp_path) == []
 
-    Both halves are asserted because both can fail silently: a glob that
-    matches nothing looks identical to a skill with no pages, and a glob that
-    matches `references/*.md` would pull the four shared documents under bans
-    they have never been subject to."""
+
+def test_skill_docs_never_reaches_a_shared_reference():
+    """Proves the exclusion half only. A glob matching `references/*.md` would
+    pull the four shared documents under bans they have never been subject to;
+    the reaching half is the test above, because an empty `skill_pages()` is
+    indistinguishable from a skill with no pages from in here."""
     shared = {"editing-canon.md", "ffmpeg-recipes.md", "landmines.md", "tools.md"}
     reached = {p.name for p in all_skill_docs()}
     assert reached & shared == set(), (
         f"skill_docs() reached a shared repo-level reference: {reached & shared}")
-    assert all((SKILLS / n / "SKILL.md") in skill_docs(n) for n in skill_names())
 ```
+
+An assertion that `skills/<n>/SKILL.md` is in `skill_docs(n)` is **not** worth
+adding: `skill_docs()` puts that path first unconditionally, so it is true by
+construction and cannot fail.
 
 - [ ] **Step 5: Run the suite**
 
