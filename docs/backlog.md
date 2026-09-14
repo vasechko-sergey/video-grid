@@ -482,7 +482,7 @@ the `noqa: BLE001` on `build_reel._predict`'s broad `except Exception` is
 inert — nothing there currently raises a non-`Exception` the lint would
 otherwise flag — kept because the guard is right regardless
 (grade-sensor-references Task 7) ·
-the twelve remaining skill bodies have no page structure — eight are under
+the twelve remaining skill bodies have no page structure — seven are under
 10 KB and do not need one, but `episode-qc` (16.3 KB), `match-grade` (13.8) and
 `titles` (13.8) are the three that reach the 26 KB budget first, and the
 addition that takes one of them there is what should force the question, not a
@@ -496,6 +496,20 @@ stage index is generated and byte-pinned and every page is proven to EXIST and
 be reachable, but a page can still describe a flag that no longer exists —
 `tests/test_cli_help.py` knows every flag from the parser objects themselves
 and nothing joins the two (reachable-instructions §6 row 4) ·
+the router split gave the step numbers a fifteenfold typed home — 15 page H1s
+(`# match-grade — router stage 10`) plus 26 in-page cross-references ("step 9",
+"step 13"), 41 numbers in all, none bound to `V1_STAGES`. §3.1 argued the stage
+list must not get a third copy and the pages took one anyway, in a different
+column: the generated table and the stubs are both checked, the pages are not,
+so inserting one stage silently invalidates all 41 (reachable-instructions §6
+row 5, S) ·
+two runtime remedies spell a command the skills are forbidden to spell —
+`scripts/lib/footage.py`'s stale-descriptor `ValueError` and
+`scripts/project_init.py`'s module docstring both name
+`.venv/bin/python -m scripts.…`, the §0.4 bypass, at exactly the moment an
+agent is looking for a command to run; `BANNED_SPELLINGS` covers skills only,
+and whether it should reach `scripts/` error strings is the open question
+(found proving reachable-instructions F4, S) ·
 the stabilize test in `tests/integration/test_grade_shipped_pixels.py`
 (`test_predict_reads_the_stabilized_source_not_the_raw_segment`)
 discriminates SOLELY via its `source_for` call-spy: raw and stabilized

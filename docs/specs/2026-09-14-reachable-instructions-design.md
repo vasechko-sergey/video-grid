@@ -50,17 +50,22 @@ here only because `edit-plan` owns the `selection.json` rebuild it turns on.
 A block is needed when the agent is at that block. Four fifths of both files
 is paid on every invocation to be useful at one moment of it.
 
-### 0.3 Eighteen pointers into `references/`, and no rule anywhere for reaching it
+### 0.3 Nineteen pointers into `references/`, and no rule anywhere for reaching it
 
 `references/` is not a new convention: four files, 18 469 B —
 `editing-canon.md`, `ffmpeg-recipes.md`, `landmines.md`, and the generated
 `tools.md` the last slice added.
 
-Eighteen pointers name it. Fourteen are the frontmatter
-`Tool index: references/tools.md.` that slice put on every description; four
+Nineteen pointers name it. Fourteen are the frontmatter
+`Tool index: references/tools.md.` that slice put on every description; five
 are prose, including `edit-plan`'s **required read** of
-`references/editing-canon.md`. **All eighteen are bare relative paths, and no
+`references/editing-canon.md`. **All nineteen are bare relative paths, and no
 skill states what they are relative to.**
+
+**Corrected during the final review:** this said eighteen, which counts LINES —
+`process-episode` names `ffmpeg-recipes.md` and `landmines.md` on one of them.
+The pointer count is nineteen, and it is the count the check built here
+measures, because a regex over the text finds pointers rather than lines.
 
 Nothing resolves them. An agent's working directory during a run is the user's
 footage project, not the clone. Inside the installed plugin the layout is
@@ -188,7 +193,8 @@ Every skill that names a command or a required read resolves the root once:
 
 and names nothing else relative: `"$VG" scripts.X` for every command,
 `"$ROOT/references/…"` for every reference. `$VG` keeps the spelling nine
-skills and `test_the_runner_skills_route_through_bin_vg` already use; `$ROOT`
+skills already use and `test_the_runner_skills_route_through_bin_vg` tested
+before this slice deleted it (§3.4); `$ROOT`
 is the generalization the reads need, and the launcher is now derived from it
 rather than resolved beside it. A missing root file means `setup.sh` was never
 run — stop and say so, never guess a path (the rule nine skills already
@@ -307,11 +313,20 @@ other direction.
 ### 3.4 The launcher guard gets a real predicate
 
 The guard stops testing for one literal and starts testing a set of
-spellings — `.venv/bin/python`, `python -m scripts`, `python -c` — which is
-what §0.4 measured once it was measured twice: **no skill spells a command
-starting with a bare `python`**, and **any skill naming a `scripts.` command reads the recorded
-root**. `RUNNERS` stops being a typed list and becomes derived — the list was
-already narrower than the tree.
+spellings — `.venv/bin/python`, `python -m scripts`, `python -c`, and the
+`python3` / `python scripts/x.py` variants of each — so that **any skill naming
+a `scripts.` command reads the recorded root**. `RUNNERS` is deleted rather
+than derived: with the preamble required in all fourteen there is no subset
+left to name, and the list was already narrower than the tree.
+
+**The set is a set of spellings, not a predicate**, and saying otherwise is
+§0.4's own mistake one level up. An earlier draft of this section claimed the
+guard establishes that "no skill spells a command starting with a bare
+`python`" — it does not, and could not: `python3 -m scripts.x` and
+`python scripts/intake.py` both walked past the three-spelling set that shipped
+here, which is why the set is wider now. Widening narrows the gap; it never
+closes it, because the next spelling nobody has typed is invisible to a guard
+that tests for spellings. The check's comment says exactly this.
 
 ### 3.5 The body budget
 
@@ -325,7 +340,7 @@ obeys, so it is set above what the slice measured itself landing, not at it.
 instead.** A mechanical projection of §2.2's rule gave 13.5 KB for the router
 and 10.5 KB for `edit-plan`; an earlier draft of this design gave 8 KB for each
 (§5 records why that one was wrong). What actually landed is **22 268 B for
-the router (−51 %)** and **18 324 B for `edit-plan` (−56 %)**. The projection's
+the router (−51 %)** and **18 340 B for `edit-plan` (−56 %)**. The projection's
 error is structural, not arithmetic: it modelled a stub as the command alone,
 where a real stub also carries a sentence of purpose, the names of its stops
 and a page pointer; and it could not know that the checkpoints (§2.4) and a
@@ -333,8 +348,9 @@ trimmed `Boundaries` would come back into the body.
 
 So the cap's one honest anchor is the landing: 26 KB sits 3.7 KB above the
 larger body, 7.7 above the smaller, and 9.7 above `episode-qc` (16 264 B), the
-largest body against which no backlog row has ever been filed. It is under
-60 % of what either body was before this slice.
+largest body against which no backlog row has ever been filed. Against the
+pre-split bodies it is **57 %** of the router's and **63 %** of
+`edit-plan`'s.
 
 ### 3.6 How a move is proved
 
@@ -359,9 +375,12 @@ part of it. It is available whenever a split is a pure move, which is what
 
 - **No CLI, no contract, no pixel.** This slice edits Markdown, one renderer
   and the tests around them. No stage's behaviour moves.
-- **The other twelve skills keep their bodies.** Eight are under 10 KB; cutting
+- **The other twelve skills keep their bodies.** Seven are under 10 KB; cutting
   them would buy a pointer where reading the whole file is already cheaper.
-  They do gain the §2.1 anchor where §0.4 says they need it.
+  They do gain the §2.1 anchor where §0.4 says they need it — and the preamble
+  is the reason this bullet said *eight* until the final review: adding it
+  pushed `reel-review` from 9 600 to 10 372 B, so the slice falsified its own
+  "what does not change" line by about 770 bytes.
 - **`references/`'s four existing files stay where they are and keep their
   content.** They are shared across skills; the new pages are per-skill and sit
   in per-skill subdirectories beside them.
@@ -376,10 +395,34 @@ part of it. It is available whenever a split is a pure move, which is what
   ships with: the check proves presence, never that anyone looked. If an agent
   runs a stage from the stub alone and never opens the page, every check here
   still passes.
-- **The 20 KB cap is a convention.** §3.5 says so in the code comment as well
+- **The 26 KB cap is a convention.** §3.5 says so in the code comment as well
   as here. One of its three anchors is a body nobody complained about, which is
   evidence about the backlog, not about context; the other two are arithmetic
   on today's sizes.
+- **Nothing machine-checks anchoring end to end.** After the final review a
+  check proves every `references/…` pointer in a body or page is written as
+  `"$ROOT/…"` — but the command bans beside it are still a list of seven
+  substrings, not a predicate (§3.4), and the load-bearing half is one level
+  down: `PREAMBLE`'s
+  own root path is compared against what `setup.sh` writes by a single test
+  that rebuilds the path from `setup.sh`'s two lines. That test is now the only
+  thing joining them. Before it, changing either spelling pointed all fourteen
+  skills at nothing with the suite green.
+- **§3.6's byte-exact round trip covered `edit-plan` only.** The router's
+  split — fifteen pages, 25 192 B, the larger of the two — was verified by the
+  whitespace-squashing no-loss check plus a human diff read, which is the
+  method §3.6 itself documents as blind to re-wrapping. §3.6 reads as though
+  the whole slice carries the stronger proof; only half of it does.
+- **The four shared references are outside every skill check.** `skill_pages`
+  owns a skill's pages by directory name, so `editing-canon.md`,
+  `ffmpeg-recipes.md`, `landmines.md` and the generated `tools.md` are reached
+  by no ban and no anchoring check. That is deliberate and it has two live
+  instances: `references/tools.md` carries `python -m scripts.montage tools`, a
+  banned spelling, because it is a maintainer's regeneration command in the
+  one file all fourteen `description:` lines point at; and
+  `references/ffmpeg-recipes.md` names a bare `references/landmines.md`. Both
+  would fail if those files were skill pages. The carve-out was documented
+  only in a test docstring until now.
 - **Splitting multiplies `Read` calls, and that cost is not measured.** A run
   that touches ten stages will issue up to ten reads it does not issue today.
   Each is smaller than the body it replaces, but the total is unknown and no
@@ -391,8 +434,10 @@ part of it. It is available whenever a split is a pure move, which is what
   is **−51 % and −56 %**. Twice the error was in modelling what a stub keeps,
   and both times the fix was to measure rather than to project again. §3.5
   carries the consequence: the cap is set from the landing.
-- **Total bytes went UP, by about 6 %.** The router's body fell 45 547 → 22 268
-  while its fifteen pages came to 25 343. That is the trade the slice is making
+- **Total bytes went UP, by 5.6 %** — 199 106 → 210 248 across the fourteen
+  bodies and every file under `references/`. The router's body fell
+  45 547 → 22 268 while its fifteen pages came to 25 192. That is the trade
+  the slice is making
   and it is the right one — resident bytes are paid on every invocation and
   spent by the first compaction, page bytes are paid only when read — but this
   design does not claim to have made the corpus smaller, only the part that is
@@ -416,11 +461,11 @@ Rows for `docs/backlog.md`:
    against 0.9.2 (§0.7). `verify_runtime` already checks a runtime contract and
    is the natural home for comparing the recorded root's version against the
    plugin cache's. (P2, S)
-2. **The twelve remaining skill bodies have no page structure.** Eight are
-   under 10 KB and do not need one; `episode-qc` (16 KB), `match-grade` (13.5)
-   and `titles` (13) are the three that would reach the 20 KB cap first, and
-   the addition that takes one of them there is what should force the question.
-   (P3, M)
+2. **The twelve remaining skill bodies have no page structure.** Seven are
+   under 10 KB and do not need one; `episode-qc` (16.3 KB), `titles` (13.8)
+   and `match-grade` (13.8) are the three that would reach the 26 KB cap first,
+   and the addition that takes one of them there is what should force the
+   question. (P3, M)
 3. **The variety gate, the knob table and the field reference are three
    documents in one skill.** §2.5 splits `edit-plan` along the subject
    boundary that measurement made obvious; whether the remaining body is one
@@ -429,3 +474,10 @@ Rows for `docs/backlog.md`:
    index is generated and pinned (§3.1), but a page's prose can still describe
    a flag that no longer exists. `tests/test_cli_help.py` knows every flag;
    nothing joins the two. (P3, M)
+5. **The split gave the step numbers a fifteenfold typed home.** §3.1 argues
+   the stage list must not get a third copy, and the pages then took one
+   anyway, in a different column: fifteen page H1s (`# match-grade — router
+   stage 10`) plus twenty-six in-page cross-references ("step 9", "step 13"),
+   none of them bound to `V1_STAGES`. §3.1's own check covers the table and the
+   stubs; nothing covers the pages. Insert one stage and forty-one typed
+   numbers go silently wrong. (P3, S)

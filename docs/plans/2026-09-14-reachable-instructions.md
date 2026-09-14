@@ -47,7 +47,7 @@ renderers over `scripts.montage.V1_STAGES`), pytest.
 - **The skill text is the product.** Every byte moved between files must be
   moved, not retyped: use `sed -n 'A,Bp'` to extract ranges. A paraphrase of a
   moved paragraph is a silent content change no test can catch.
-- **20 KB is the body budget** (`BODY_MAX = 20_000` bytes), and it is a budget,
+- **26 KB is the body budget** (`BODY_MAX = 26_000` bytes), and it is a budget,
   not a measurement — design §3.5. Say so in the test's docstring.
 - **The two non-stage router blocks stay resident**: `0. **Verify the runtime
   (gate).**` and `1. **Locate the run.**`. Stage stubs are numbered from **2**.
@@ -859,7 +859,7 @@ Add to `tests/test_skill_convention.py`:
 _REF = re.compile(r"references/[\w/-]+\.md")
 
 #: A body budget, NOT a measurement of anything. It is set from what this slice
-#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 324 — with
+#: MEASURED itself landing — using-montage 22 268 bytes, edit-plan 18 340 — with
 #: room above the larger of them, because a cap that binds on the day it ships is
 #: a cap the next author fights instead of obeys. The design's own projection said
 #: 13.5 KB and was wrong by 65%; the number here is the measurement, not the
@@ -868,7 +868,7 @@ BODY_MAX = 26_000
 
 
 def test_every_reference_a_skill_names_exists():
-    """Eighteen bare `references/…` pointers existed with no rule anywhere for
+    """Nineteen bare `references/…` pointers existed with no rule anywhere for
     resolving them (design §0.3). The preamble supplies the rule; this supplies
     the other half — that the thing at the end of the path is there."""
     missing = sorted({f"{p.relative_to(REPO)} -> {ref}"
@@ -898,7 +898,7 @@ def test_no_skill_body_exceeds_the_budget():
 - [ ] **Step 2: Run to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_skill_convention.py -q`
-Expected: PASS. The two split bodies measure 22 268 and 18 324 bytes and the
+Expected: PASS. The two split bodies measure 22 268 and 18 340 bytes and the
 next largest is `episode-qc` at 16 264, so nothing is near the cap. If the test
 fails, something regrew — move it to a page rather than raising the cap.
 
@@ -985,7 +985,7 @@ Add the four §6 deferred rows to `docs/backlog.md`:
 1. Nothing detects that the installed plugin is behind the repo — 0.2.1
    against 0.9.2. `verify_runtime` is the natural home. (P2, S)
 2. The twelve remaining skill bodies have no page structure; `episode-qc`,
-   `match-grade` and `titles` reach the 20 KB cap first. (P3, M)
+   `match-grade` and `titles` reach the 26 KB cap first. (P3, M)
 3. Whether `edit-plan`'s remaining body is one coherent procedure or two has
    not been measured. (P3, S)
 4. A page's prose is not checked against the code it describes;

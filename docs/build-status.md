@@ -16,7 +16,8 @@ _Last updated: 2026-09-14._
   runs (2026-09-14, 0.9.3)** — design
   [2026-09-14-reachable-instructions-design.md](specs/2026-09-14-reachable-instructions-design.md),
   plan [2026-09-14-reachable-instructions.md](plans/2026-09-14-reachable-instructions.md),
-  Tasks 1–6 (branch `docs/reachable-instructions`, commits `f2198e3`..`HEAD`).
+  Tasks 1–6 plus a final fix wave (branch `docs/reachable-instructions`, from
+  `478f4a0` — the design — through `HEAD`).
 
   The backlog row asked for progressive disclosure on two oversized bodies —
   `using-montage` and `edit-plan`, 84 237 B between them, **46.6 % of every
@@ -25,7 +26,7 @@ _Last updated: 2026-09-14._
   **two further defects of the same kind**, and they are the half worth keeping:
   the row named size, and size turned out to be the least of it.
 
-  **§0.3 — eighteen `references/…` pointers, and no rule anywhere for resolving
+  **§0.3 — nineteen `references/…` pointers, and no rule anywhere for resolving
   them.** A skill runs from the user's footage project, never from the clone, so
   every one of those pointers named a path its reader could not open. The
   previous slice made the pointer durable; nothing made the destination
@@ -58,14 +59,14 @@ _Last updated: 2026-09-14._
   → two pages (`episode-fields.md`, `grade-convergence.md`).
 
   **Measured, not projected.** `using-montage` 45 547 → **22 268 B (−51 %)**,
-  `edit-plan` 41 521 → **18 324 B (−56 %)**. `BODY_MAX = 26_000` is set from
+  `edit-plan` 41 521 → **18 340 B (−56 %)**. `BODY_MAX = 26_000` is set from
   that landing with room above the larger of the two, because a cap that binds
   on the day it ships is a cap the next author fights instead of obeys. **Every
   projection this design made of the split's own size was wrong in the same
   direction** — −80 % in a first draft, then −69 %/−74 % from a corrected
   script, against the measured −51 %/−56 % — both times by mis-modelling what a
-  stub keeps. **Total corpus bytes rose about 6 %**, and that is the trade,
-  stated rather than hidden: resident bytes are paid on every invocation and
+  stub keeps. **Total corpus bytes rose 5.6 %** (199 106 → 210 248), and that
+  is the trade, stated rather than hidden: resident bytes are paid on every invocation and
   spent by the first compaction; page bytes are paid only when read.
 
   **The checks** (`tests/test_skill_convention.py`, all page-aware — otherwise
@@ -76,14 +77,28 @@ _Last updated: 2026-09-14._
   membership check cannot see); every stub pointing at its own page via the
   `"$ROOT/…"` form the stubs use, never the bare path the pinned table already
   carries in all fifteen of its cells; every named `references/…` resolving to
-  a real file; no reference file orphaned; no body over 26 KB.
+  a real file; no reference file orphaned; no body over 26 KB. The final fix
+  wave added the two the branch had been *claiming* rather than running —
+  every `references/…` pointer in a body or page written as `"$ROOT/…"`
+  (five prose pointers were still bare, including `edit-plan`'s **required
+  read** of `editing-canon.md`), and `PREAMBLE`'s root path rebuilt from
+  `setup.sh`'s own two lines and compared against the command all fourteen
+  skills run. Without the second, changing either spelling points every skill
+  at nothing with the suite green.
 
   **Task 6's 16-row mutation battery: all sixteen RED.** Rows 8 and 14 are the
   two that matter most — a banned command planted in a *page*, and `<run>/out`
   planted in a *page* — because they prove the bans read pages and not only
   bodies; without Task 1's helpers both are green. Row 15 (`trend-scan`
   `deferred` → `optional`) took **twelve tests across four modules**, not the
-  two the plan named. Full suite: **3827 passed, 1 skipped**.
+  two the plan named. Full suite after the final fix wave: **3829 passed, 1
+  skipped**, the two added checks accounting for the rise from 3827. Each
+  came with its own battery — seven rows for the anchoring check (one per
+  reverted anchor, plus a bare pointer planted in each kind of page) and six
+  for the `setup.sh` join — all thirteen RED, one of them only after the
+  join was strengthened: its first form asserted the path was *present* in
+  `PREAMBLE` and went green against a mutation that changed the prose copy
+  rather than the `cat` command, so it now pins the command.
 
   **The honest half (§5).** Nothing proves a page was *read* — the checks prove
   it exists and is reachable, the same limit the contact-sheet stage ships with.
@@ -92,6 +107,13 @@ _Last updated: 2026-09-14._
   cache held **0.2.1** against a repo at 0.9.2, so nothing this slice ships
   reaches a montage run until the user reinstalls — true of every skill change
   ever made here, and the first design to write it down. It is now a P2 row.
+  The fix wave added two more §5 entries: **nothing machine-checks anchoring
+  end to end** (the command bans are seven substrings, not a predicate, and
+  the `setup.sh` join is a single test), and **§3.6's
+  byte-exact round trip covered `edit-plan` only** — the router's fifteen
+  pages, the larger half at 25 192 B, were proved by the whitespace-squashing
+  check plus a human diff read, the method §3.6 itself calls blind to
+  re-wrapping.
 
 - **Re-derivable purpose — a tool's purpose survives a compaction (2026-09-12,
   0.9.2)** — design

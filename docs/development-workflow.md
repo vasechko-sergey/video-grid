@@ -181,11 +181,17 @@ moving a paragraph to a page must not move it out from under its own check.
 
 - **Every `SKILL.md` carries the resolution preamble verbatim**, and names no
   command or path that is not anchored on `$VG` / `$ROOT`. The preamble resolves
-  the recorded clone root once; every step then runs as `"$VG" scripts.X` and
-  every reference reads as `"$ROOT/references/…"`. A bare `python -m scripts.X`
-  or `python -c` is banned outright — both need the clone as working directory,
-  which nothing guarantees, and `footage-intake` is why the launcher `cd`s there
-  at all (ultralytics writes YOLO weights into `cwd`).
+  the recorded clone root once — and the path it reads is joined to the one
+  `setup.sh` actually writes, because nothing else binds the two; every step
+  then runs as `"$VG" scripts.X` and every reference reads as
+  `"$ROOT/references/…"`. A bare `python -m scripts.X` or `python -c` is banned
+  outright, with the `python3` and `python scripts/x.py` variants: all of them
+  need the clone as working directory, which nothing guarantees, and
+  `footage-intake` is why the launcher `cd`s there at all (ultralytics writes
+  YOLO weights into `cwd`). Two things are names rather than paths anyone
+  opens, and are held to a weaker rule: the frontmatter `description:` (a YAML
+  scalar with no shell to expand `$ROOT` in) and the generated stage table,
+  every path of which must still appear anchored elsewhere in the same body.
 - **A router stage is a page** at `references/using-montage/<stage-key>.md`, one
   per live `V1_STAGES` key, set-equal in both directions with no exemption list.
   The stub in the body carries the command and the pointer to its page; the page
@@ -193,7 +199,7 @@ moving a paragraph to a page must not move it out from under its own check.
   with `"$VG" scripts.montage stages`, never by hand.
 - **A body stays under 26 KB** — new material goes on a reference page. The
   number is a budget set from what the 2026-09-14 split measured itself landing
-  (`using-montage` 22 268 B, `edit-plan` 18 324 B), not a threshold of anything
+  (`using-montage` 22 268 B, `edit-plan` 18 340 B), not a threshold of anything
   (design 2026-09-14 §3.5). Every design projection of that split was wrong in
   the same direction, so the cap is the measurement, never the projection.
 

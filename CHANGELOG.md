@@ -18,7 +18,7 @@ skill can actually reach what the skill points at.
 
 - Every one of the 14 skills carries the same resolution preamble: resolve the
   recorded clone root once, then run every step as `"$VG" scripts.X` and read
-  every reference as `"$ROOT/references/…"`. Eighteen bare `references/…`
+  every reference as `"$ROOT/references/…"`. Nineteen bare `references/…`
   pointers had no rule anywhere for resolving them.
 - The launcher ban widened from one literal to a spelling set. It had tested
   `.venv/bin/python` only, so eleven `python -m scripts.X` examples walked past
@@ -30,13 +30,22 @@ skill can actually reach what the skill points at.
   15 live stages, 14 numbered blocks, and `reel-review` — required — buried
   inside the `deliver` block with no number of its own.
 - The two biggest bodies become stubs plus pages: `using-montage`
-  45 547 → 22 268 B (**−51%**), `edit-plan` 41 521 → 18 324 B (**−56%**).
+  45 547 → 22 268 B (**−51%**), `edit-plan` 41 521 → 18 340 B (**−56%**).
   A stage is now one page at `references/using-montage/<stage-key>.md`, set-equal
-  with the registry in both directions. Total corpus bytes rose ~6% — the trade
+  with the registry in both directions. Total corpus bytes rose 5.6% — the trade
   is that resident bytes are paid every invocation and page bytes only when read.
 - A body budget of 26 KB, checked. It is set from what the split measured itself
   landing, not from a projection: every projection this design made was wrong in
   the same direction (−80%, then −69%/−74%, against −51%/−56%).
+- The final review found the anchoring rule shipped as a claim rather than a
+  check. Five prose pointers were still bare — including `edit-plan`'s
+  **required read** of `editing-canon.md` — and `footage-intake`'s cast-writing
+  step still named a bare `scripts.intake.write_cast(…)` with no way to run it;
+  both are fixed, and two checks now hold them: every `references/…` pointer in
+  a body or page must be written `"$ROOT/…"`, and the preamble's root path is
+  rebuilt from `setup.sh`'s own lines and compared against the command all
+  fourteen skills run. The command ban also widened to the `python3` and
+  `python scripts/x.py` spellings that walked past it.
 
 ## 0.9.2 — 2026-09-12
 
