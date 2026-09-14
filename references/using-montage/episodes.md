@@ -34,3 +34,14 @@ So a `grade-damage` finding is not `match-grade`'s pair being
 misdiagnosed; it means the named colour knob really is too aggressive —
 soften it in the episode's colour block via **edit-plan**, the way any
 other mechanical finding is fixed.
+
+**Built, not obvious:** the cap-3 **parallel** episode fan-out landed
+2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
+(`jobs`, default 3, the measured knee) inside its own loop; you never drive
+that fan-out yourself. Since the geometry seam (design 2026-08-30) split
+tracking out of rendering, you invoke `edl_to_reel` **three** times per run,
+not two — `--stop-after-geometry` (step 9) to stabilize, track and gate
+every episode with no encode, `--from-geometry` (step 13) to render over
+those frozen routes with the EDL's current colour block, then
+`--from-episodes` (step 15) to assemble and deliver — with **match-grade**
+(step 10) and the **episode-qc** skill (step 14) both required in between.

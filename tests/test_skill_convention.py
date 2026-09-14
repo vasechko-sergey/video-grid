@@ -345,9 +345,16 @@ def test_the_router_stubs_are_the_table_s_stages_in_order():
 
 
 def test_every_router_stub_points_at_its_own_page():
-    """A stub without its pointer is a page nobody reaches."""
+    """A stub without its pointer is a page nobody reaches.
+
+    Anchored to the `"$ROOT/…"` form the stubs use, NOT to the bare path: the
+    byte-pinned table above the stubs already carries
+    `references/using-montage/<key>.md` in all fifteen of its `page` cells, so a
+    whole-file substring check for the bare path is green by construction —
+    deleting every `Before running it, read …` line still leaves it empty
+    (measured in review). The table's cells carry no `$ROOT`."""
     from scripts.lib import toolindex
     text = (SKILLS / "using-montage" / "SKILL.md").read_text()
     missing = [s.key for _, s in toolindex.stage_steps()
-               if f"{toolindex.ROUTER_PAGES}/{s.key}.md" not in text]
+               if f'"$ROOT/{toolindex.ROUTER_PAGES}/{s.key}.md"' not in text]
     assert missing == [], f"stubs with no pointer to their page: {missing}"

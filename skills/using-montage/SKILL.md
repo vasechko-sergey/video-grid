@@ -266,8 +266,8 @@ guessing a path.
    Fetches cache into `<run>/music/cache`. Before running it, read
    `"$ROOT/references/using-montage/music-and-mood.md"`.
 
-8. **pacing** — optional; fit the existing cuts onto the beat grid, then
-   re-run edit-plan to apply the fit.
+8. **pacing** — optional; invoke the **pacing** skill to fit the existing
+   cuts onto the beat grid, then re-run edit-plan to apply the fit.
 
    ```bash
    "$VG" scripts.pacing --edl <run>/reels/<reel>/EDL.json \
@@ -376,37 +376,15 @@ aspect (project-init's own "ask, don't guess").
   gates (§4.1); everything else is a machine gate inside the sub-stages. CP3's
   review has two mechanisms: check_reel (mechanical) and the reel-review skill
   (editorial, §5.13 Slice B).
-- **episode-qc (step 14) is required but is not a checkpoint.** It sits
-  between the per-episode render and delivery, judges every episode's OWN
-  clip (never the assembled reel, never against another episode), and only
-  interrupts the run on a blocking finding — a clean verdict passes through
-  with no approval asked. There is no waiver (design §7): a blocking finding
-  is fixed by re-running the finding's routed stage, never by lowering the
-  gate or re-judging in place until it passes. The stage proves the
+- **episode-qc (step 14) is required but is not a checkpoint.** The stage proves the
   artifact's presence and its digest binding to the exact rendered bytes —
   never that a judge truly looked (design §12); say so when you report a
   clean verdict.
 - **Deferred stages are named, not skipped silently:** trend-scan (5.4) is not
-  built; say so when you pass over it. reel-brief (`SPEC.md`, 5.3) is optional —
-  offer it; on a bare run, name it as skipped. assemble-draft (`draft.mp4`, 5.9)
-  is optional too — offer it before edl_to_reel; the autonomous path skips it
-  without asking (no approval needed to skip a preview). titles (`TITLES.json`,
-  5.16) is optional too — offer it once `SPEC.json` exists; the autonomous path
-  skips it without asking (no on-screen text is a valid, complete reel). pacing
-  (`PACING.md`, 5.6) is optional too — it runs automatically whenever
-  `MUSIC.json` exists; a music-less reel skips it and edit-plan runs pacing-less
-  (`beat_slot` stays unset). **episodes-geometry (`GEOMETRY.json`) and
-  match-grade (`MATCH.json`, §10) are both required, since 2026-08-30** — not
-  named here as skippable, unlike everything else in this bullet: the router
-  runs match-grade on every reel, even a single-camera one, because it costs
-  seconds and a stage nobody is told to run at the moment of need is a stage
-  that gets rebuilt by hand instead (design §6, the retro's R4.2). A
-  single-camera reel still pays for it; every episode simply comes back
-  `within-eps` and `MATCH.md` says so — there is no "skip it" branch to name.
-  reel-review (§5.13 editorial half)
-  runs at CP3 after deliver; it is **required** — `montage status` points `next`
-  at it until it runs, so the run is not finished on `delivered: true` alone — and
-  still human-gated: the reviewer proposes, you dispose.
+  built; say so when you pass over it. For the live stages the table's `kind`
+  column above is the authority on which are optional — read it there rather
+  than from a sentence here, name every stage you pass over out loud, and see
+  that stage's page for what skipping it costs.
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it
@@ -426,13 +404,3 @@ aspect (project-init's own "ask, don't guess").
   manifest, `provenance.spec_overrides` still records it, never silently, and
   shows it at CP3. `episode-qc` carries no override at all (§7) — not even a
   measured one.
-- **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
-  2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
-  (`jobs`, default 3, the measured knee) inside its own loop; you never drive
-  that fan-out yourself. Since the geometry seam (design 2026-08-30) split
-  tracking out of rendering, you invoke `edl_to_reel` **three** times per run,
-  not two — `--stop-after-geometry` (step 9) to stabilize, track and gate
-  every episode with no encode, `--from-geometry` (step 13) to render over
-  those frozen routes with the EDL's current colour block, then
-  `--from-episodes` (step 15) to assemble and deliver — with **match-grade**
-  (step 10) and the **episode-qc** skill (step 14) both required in between.

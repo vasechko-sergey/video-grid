@@ -10,3 +10,8 @@ forward — then re-review the new cut. reel-review is **required**, not optiona
 `delivered` is `true`, only when `"$VG" scripts.montage status --run-dir <run> --reel <reel>`
 reports `next: null`; on a bare autonomous run reel-review still runs, judging
 against the `EDL`.
+
+reel-review (§5.13 editorial half) runs at CP3 after deliver; it is
+**required** — `montage status` points `next` at it until it runs, so the run
+is not finished on `delivered: true` alone — and still human-gated: the
+reviewer proposes, you dispose.

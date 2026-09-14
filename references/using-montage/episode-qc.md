@@ -5,7 +5,9 @@ skill — it packs one evidence directory per episode from
 `<run>/reels/<reel>/episodes/EPISODES.json`, dispatches one fresh judge subagent per
 episode (at most 3 concurrently) against composition/colour/impression/
 path/hero, then validates their findings into `<run>/reels/<reel>/episodes/EPISODE_QC.json`
-+ `.md`, stamping each verdict's clip digest itself. This stage is
++ `.md`, stamping each verdict's clip digest itself. episode-qc
+judges every episode's OWN clip (never the assembled reel, never
+against another episode). This stage is
 **required** — a reel is never assembled over an episode nobody judged —
 but it is **not** one of the three §4.1 checkpoints: a clean verdict
 passes straight through with no approval asked, and only a blocking
