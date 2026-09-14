@@ -38,6 +38,12 @@ renderers over `scripts.montage.V1_STAGES`), pytest.
   which reads exactly like a non-discriminating mutation row. Pass selections
   literally.
 - **Commit after every task.** Never amend; a follow-up fix is its own commit.
+- **The preamble is duplicated verbatim in fourteen files on purpose.** A
+  `SKILL.md` is loaded alone, by name, with no include mechanism — a shared
+  block extracted to one place would be exactly the unresolvable pointer this
+  slice exists to remove. The duplication is the medium's, not a DRY failure,
+  and `test_every_skill_carries_the_resolution_preamble` is what keeps the
+  fourteen copies identical.
 - **The skill text is the product.** Every byte moved between files must be
   moved, not retyped: use `sed -n 'A,Bp'` to extract ranges. A paraphrase of a
   moved paragraph is a silent content change no test can catch.
