@@ -2,13 +2,10 @@
 (design 2026-07-26 §5). Pure percentile math lives in color.percentiles; this driver
 only produces the histogram from a decoded still."""
 import argparse
-import json
-from pathlib import Path
 
 import numpy as np
 from scripts import process_episode, reframe
 from scripts.lib import assembly, color, ffbin, geometry, proc, regions
-from scripts.lib.models import RoutePoint
 
 
 def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, float]:
@@ -200,7 +197,13 @@ def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
     stack = crop_region_frames(plan, src, times)
     extents = None
     if route is not None:
-        pts = [RoutePoint(**p) for p in json.loads(Path(route).read_text())]
+        # The shared reader, not a bare json.loads + RoutePoint(**p): every other
+        # consumer of route.json (reframe, process_episode, check_episode,
+        # check_reel) goes through route_from_json/RoutePoint.from_dict, which
+        # exists BECAUSE a bare **p raises an unhelpful TypeError on an extra key
+        # and skips the float() coercion route_to_json's own writer relies on
+        # callers to redo (models.py's RoutePoint.from_dict docstring).
+        pts = reframe.route_from_json(route)
         extents = geometry.extent_at_times(pts, path, meta, times)
     readings = regions.measure(stack, extents)
     return regions.assemble(decl if decl is not None else regions.Regions(), readings)

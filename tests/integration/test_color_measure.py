@@ -243,6 +243,42 @@ def test_percentiles_from_gray_refuses_a_short_buffer_the_old_check_missed():
         color_measure._percentiles_from_gray(raw, 3, 60, 60, "test")
 
 
+def test_crop_region_frames_refuses_a_short_buffer_the_old_check_missed(tmp_path, monkeypatch):
+    """crop_region_frames' own sibling to the _percentiles_from_gray test above: the
+    exact-byte guard is the only thing that catches the select-before-fps= landmine
+    in the form where nothing crashes, and it had no regression test of its own.
+
+    A real plan (from _banded_episode), its rl overridden via dataclasses.replace
+    to a 60x60 out size — the same 3600-divisible-by-3 trap the sibling test's
+    fixture uses, so a RELAXED guard that only checked the byte count was a whole
+    number of FRAMES (len(raw) % 3, the OLD form _percentiles_from_gray's own
+    docstring names) would also silently accept two frames' worth here: any whole
+    multiple of a 3-divisible frame size is itself divisible by 3, so the frame
+    COUNT check cannot tell 2 apart from 3. proc.run is monkeypatched to return
+    exactly that short buffer for the three frames requested.
+
+    Proven to discriminate (recorded in the task report, not re-asserted here on
+    every run): relaxing crop_region_frames' guard to `len(raw) % (w * h) != 0`
+    makes this test fail, then scripts/color_measure.py was restored via
+    `git show HEAD:scripts/color_measure.py > scripts/color_measure.py`."""
+    from scripts import process_episode
+    import dataclasses
+    src, md, route = _banded_episode(tmp_path)
+    plan, _, _ = process_episode.plan_and_meta_ungraded(md, src, route)
+    small_plan = dataclasses.replace(
+        plan, rl=dataclasses.replace(plan.rl, out_w=60, out_h=60))
+    times = color.sample_times(small_plan.dur)
+    assert len(times) == 3
+    short = bytes(2 * 60 * 60)          # two frames' worth, not the three asked for
+
+    class _Result:
+        stdout = short
+
+    monkeypatch.setattr(color_measure.proc, "run", lambda *a, **k: _Result())
+    with pytest.raises(RuntimeError, match="asked for 3"):
+        color_measure.crop_region_frames(small_plan, src, times)
+
+
 def test_sample_times_never_touches_the_ends():
     # sample_times itself now lives in scripts.lib.color (moved 2026-08-31, design
     # grade-sensor-references §6 — check_episode needs it and cannot import
@@ -254,20 +290,33 @@ def test_sample_times_never_touches_the_ends():
 
 def _subject_episode(tmp_path):
     """(src, manifest_dict, route_json): a crop with real tonal spread AND a dark
-    subject inside it, so the toe can move while the mid and shoulder cannot.
+    subject inside it, so the toe can move while p50 stays inside its own band and
+    p95 is untouched entirely.
 
     640x1280. The top 640 rows are excluded by the crop exactly as in
     _banded_episode (canvas [1,1] over a 640x1280 source crops 640x640, and
     geometry.crop_y places it against the route's mean y of 960). The cropped half
     is three sub-bands — 80 / 140 / 200 — so the crop's own profile is
     (80, 140, 200): ordered, gaps far above color.TONE_MIN_GAP. A 120x120 box at
-    luma 20 sits inside the darkest sub-band at the route's bbox.
+    luma 20 sits inside the MIDDLE sub-band (140, absolute rows 854-1067) at the
+    route's bbox — NOT the darkest one (80, absolute rows 640-853): the box's own
+    absolute y-range (900-1019) falls entirely inside 854-1067.
 
     The box is 14400 px of the crop's 409600 — 3.52%, above MIN_REGION_FRAC and
     below 5%, which is what makes the two readings differ: the crop's p5 is 80
     (only 3.52% of it is darker) while the subject region is entirely the box, so
-    its p5 is 20. The mid and shoulder are untouched by construction, which is the
-    control the toe test needs."""
+    its p5 is 20.
+
+    p50 is NOT untouched "by construction": the box removes its 3.52% from the
+    140 band, moving that band's cumulative range from [33.44%, 66.72%) to
+    [36.95%, 66.72%) (the box only ever removes from the LOW end of a band's
+    range, never the high end, so the upper edge is invariant). The 50% mark
+    still lands inside the shrunk range — 13.05 points clear of its new lower
+    edge — so p50 stays 140 on HEADROOM, not by construction: a box more than
+    roughly 3.7x this one's area (13.05/3.52) would have pushed that edge past
+    50% and flipped p50 into the 80 band. p95 genuinely IS untouched, for a
+    different reason: the box sits entirely inside the 140 band, well below the
+    200 band it can never reach."""
     src = tmp_path / "subject.mp4"
     proc.run([ffbin.ffmpeg(), "-y",
               "-f", "lavfi", "-i", "color=c=0x303030:s=640x640:d=2:r=30",
@@ -308,6 +357,11 @@ def test_measure_crop_with_no_declaration_returns_the_old_profile(tmp_path):
     profile, rows = color_measure.measure_crop(md, src, route)
     assert profile == color_measure.crop_percentiles(
         plan, src, color.sample_times(plan.dur))
+    # Pinned exactly (not just agreement between the two rulers, which the
+    # assertion above already covers): the toe test's whole ±30 margin rests on
+    # this 80, and nothing here holds it to a concrete value otherwise — mirrors
+    # test_crop_percentiles_reads_the_crop_not_the_frame's own (100, 100, 100) pin.
+    assert profile == pytest.approx((80.0, 140.0, 200.0))
     assert [r.used for r in rows] == ["crop", "crop", "crop"]
     assert all(r.fallback is None for r in rows)
 
@@ -319,14 +373,31 @@ def test_a_subject_declaration_moves_the_toe_and_nothing_else(tmp_path):
     decl = regions.Regions.from_dict({"anchors": [
         {"anchor": "toe", "name": "wetsuit", "of": "subject"}]})
     toned, rows = color_measure.measure_crop(md, src, route, decl=decl)
-    assert toned[1:] == plain[1:]                  # the control: mid and shoulder
+    # A pin, not a control: toe is the only declared anchor here, so mid/shoulder
+    # resolve to the implicit crop row exactly as `plain`'s do — nothing this
+    # assembly could get wrong would move them under THIS declaration alone.
+    assert toned[1:] == plain[1:]
     assert toned[0] < plain[0] - 30, (toned, plain)
     assert rows[0].of == "subject" and rows[0].used == "subject"
     assert rows[0].fallback is None
     assert 0.02 < rows[0].fraction < 0.06
 
+    # The real control: declare a DIFFERENT anchor (shoulder) over a DIFFERENT
+    # region (background) and check the UNDECLARED toe does not move. This one
+    # CAN fail — if assemble ever let one anchor's declaration leak into
+    # another's value, or read the wrong region for the wrong anchor, toe would
+    # shift here even though nothing declared it.
+    shoulder_decl = regions.Regions.from_dict({"anchors": [
+        {"anchor": "shoulder", "name": "water", "of": "background"}]})
+    background_toned, background_rows = color_measure.measure_crop(
+        md, src, route, decl=shoulder_decl)
+    assert background_toned[0] == plain[0]
+    assert background_rows[0].of == "crop" and background_rows[0].used == "crop"
+    assert background_rows[2].of == "background" and background_rows[2].used == "background"
+
 
 def test_a_pan_episode_has_no_route_and_falls_back_named(tmp_path):
+    from scripts import process_episode
     from scripts.lib import regions
     src, md = _pan_episode(tmp_path)
     decl = regions.Regions.from_dict({"anchors": [
@@ -334,3 +405,12 @@ def test_a_pan_episode_has_no_route_and_falls_back_named(tmp_path):
     profile, rows = color_measure.measure_crop(md, src, None, decl=decl)
     assert rows[0].fallback == "no-route"
     assert profile == color_measure.measure_crop(md, src, None)[0]
+
+    # The pan crop is NOT square (unlike _subject_episode's and _banded_episode's
+    # 640x640), so a reshape(n, w, h) — the transposed axis order — would produce
+    # a DIFFERENT shape than reshape(n, h, w) here. A square crop cannot
+    # discriminate the two; this one can.
+    plan, _, _ = process_episode.plan_and_meta_ungraded(md, src, None)
+    times = color.sample_times(plan.dur)
+    stack = color_measure.crop_region_frames(plan, src, times)
+    assert stack.shape == (len(times), plan.rl.out_h, plan.rl.out_w)
