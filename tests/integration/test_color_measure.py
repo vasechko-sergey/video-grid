@@ -146,7 +146,7 @@ def test_crop_percentiles_reads_the_crop_not_the_frame(tmp_path):
     would show the same ~140-unit difference and pass a diff-only assertion."""
     src, md, route = _banded_episode(tmp_path)                # helper below
     whole = color_measure.measure_profile(str(src), at=0.5)
-    crop = color_measure.measure_crop(md, str(src), str(route))
+    crop, _ = color_measure.measure_crop(md, str(src), str(route))
     assert crop == pytest.approx((100.0, 100.0, 100.0))
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
 
@@ -159,7 +159,7 @@ def test_crop_percentiles_discriminates_at_a_realistic_gap(tmp_path):
     resampling or codec noise could manufacture by accident."""
     src, md, route = _banded_episode(tmp_path, top=120, bottom=100)
     whole = color_measure.measure_profile(str(src), at=0.5)
-    crop = color_measure.measure_crop(md, str(src), str(route))
+    crop, _ = color_measure.measure_crop(md, str(src), str(route))
     assert crop == pytest.approx((100.0, 100.0, 100.0))
     assert max(abs(a - b) for a, b in zip(whole, crop)) > matchgrade.MATCH_EPS
 
@@ -179,17 +179,21 @@ def test_measure_crop_reads_the_footage_not_a_grade_already_authored(tmp_path, m
     whole suite stayed green with the strip deleted. That makes this a guard on
     `measure_crop`'s own contract rather than on today's only call site: the tone
     pair below lifts the crop's midpoint from 100 to 160, so a graded reading is
-    off by 60 luma units — 15x MATCH_EPS, not a margin any resampling can produce."""
+    off by 60 luma units — 15x MATCH_EPS, not a margin any resampling can produce.
+
+    `measure_crop` now returns (profile, rows) (design 2026-09-15); this test's
+    business is the profile only, so the region rows are discarded with `_`."""
     src, md, route = _banded_episode(tmp_path)
-    plain = color_measure.measure_crop(md, src, route)
+    plain, _ = color_measure.measure_crop(md, src, route)
     graded = dict(md, tone_src=[40, 100, 200], tone_dst=[40, 160, 200])
-    assert color_measure.measure_crop(graded, src, route) == pytest.approx(plain)
+    graded_profile, _ = color_measure.measure_crop(graded, src, route)
+    assert graded_profile == pytest.approx(plain)
     assert plain == pytest.approx((100.0, 100.0, 100.0))
     # The control that MUST move: the same manifest through the same render with the
     # strip disabled. Without it the first assertion is satisfied by a tone pair too
     # weak to change any pixel, and this test would pass with strip_colour deleted.
     monkeypatch.setattr(manifest_lib, "strip_colour", dict)
-    with_grade = color_measure.measure_crop(graded, src, route)
+    with_grade, _ = color_measure.measure_crop(graded, src, route)
     assert abs(with_grade[1] - plain[1]) > 10 * matchgrade.MATCH_EPS, (with_grade, plain)
 
 
@@ -223,7 +227,7 @@ def test_measure_crop_works_on_a_pan_episode(tmp_path):
     generated pan path and actually sampled moving content, not a frozen crop
     that happened not to crash."""
     src, md = _pan_episode(tmp_path)
-    p5, p50, p95 = color_measure.measure_crop(md, src, None)
+    (p5, p50, p95), _ = color_measure.measure_crop(md, src, None)
     assert p5 < 100 and p95 > 160, f"expected the pan to cross both bands, got {(p5, p50, p95)}"
 
 
@@ -246,3 +250,87 @@ def test_sample_times_never_touches_the_ends():
     # still reach the same function through the new path.
     assert color.sample_times(3.0, 3) == [0.5, 1.5, 2.5]
     assert color.sample_times(1.0, 1) == [0.5]
+
+
+def _subject_episode(tmp_path):
+    """(src, manifest_dict, route_json): a crop with real tonal spread AND a dark
+    subject inside it, so the toe can move while the mid and shoulder cannot.
+
+    640x1280. The top 640 rows are excluded by the crop exactly as in
+    _banded_episode (canvas [1,1] over a 640x1280 source crops 640x640, and
+    geometry.crop_y places it against the route's mean y of 960). The cropped half
+    is three sub-bands — 80 / 140 / 200 — so the crop's own profile is
+    (80, 140, 200): ordered, gaps far above color.TONE_MIN_GAP. A 120x120 box at
+    luma 20 sits inside the darkest sub-band at the route's bbox.
+
+    The box is 14400 px of the crop's 409600 — 3.52%, above MIN_REGION_FRAC and
+    below 5%, which is what makes the two readings differ: the crop's p5 is 80
+    (only 3.52% of it is darker) while the subject region is entirely the box, so
+    its p5 is 20. The mid and shoulder are untouched by construction, which is the
+    control the toe test needs."""
+    src = tmp_path / "subject.mp4"
+    proc.run([ffbin.ffmpeg(), "-y",
+              "-f", "lavfi", "-i", "color=c=0x303030:s=640x640:d=2:r=30",
+              "-f", "lavfi", "-i", "color=c=0x505050:s=640x214:d=2:r=30",
+              "-f", "lavfi", "-i", "color=c=0x8c8c8c:s=640x213:d=2:r=30",
+              "-f", "lavfi", "-i", "color=c=0xc8c8c8:s=640x213:d=2:r=30",
+              "-filter_complex",
+              "[0][1][2][3]vstack=inputs=4,"
+              "drawbox=x=260:y=900:w=120:h=120:color=0x141414@1:t=fill",
+              "-frames:v", "60", "-pix_fmt", "yuv420p", "-color_range", "tv", str(src)])
+    md = {"segment": str(src), "out_path": "ep.mp4", "composition": "center",
+          "grid": "thirds", "canvas": [1, 1], "target_dur": 2.0}
+    route_path = tmp_path / "subject_route.json"
+    route_path.write_text(json.dumps(
+        [dict(t=0.0, x=320.0, y=960.0, w=120.0, h=120.0),
+         dict(t=2.0, x=320.0, y=960.0, w=120.0, h=120.0)]))
+    return str(src), md, str(route_path)
+
+
+def test_the_crop_region_reading_equals_crop_percentiles_exactly(tmp_path):
+    """The byte-identical default path, pinned. If the region ruler and the
+    pooled-histogram ruler ever disagree there are two rulers, which is the one
+    thing this module's docstring forbids."""
+    from scripts import process_episode
+    from scripts.lib import regions
+    src, md, route = _subject_episode(tmp_path)
+    plan, _, _ = process_episode.plan_and_meta_ungraded(md, src, route)
+    times = color.sample_times(plan.dur)
+    pooled = color_measure.crop_percentiles(plan, src, times)
+    stack = color_measure.crop_region_frames(plan, src, times)
+    assert regions.measure(stack, None)["crop"].profile == pooled
+
+
+def test_measure_crop_with_no_declaration_returns_the_old_profile(tmp_path):
+    from scripts import process_episode
+    src, md, route = _subject_episode(tmp_path)
+    plan, _, _ = process_episode.plan_and_meta_ungraded(md, src, route)
+    profile, rows = color_measure.measure_crop(md, src, route)
+    assert profile == color_measure.crop_percentiles(
+        plan, src, color.sample_times(plan.dur))
+    assert [r.used for r in rows] == ["crop", "crop", "crop"]
+    assert all(r.fallback is None for r in rows)
+
+
+def test_a_subject_declaration_moves_the_toe_and_nothing_else(tmp_path):
+    from scripts.lib import regions
+    src, md, route = _subject_episode(tmp_path)
+    plain, _ = color_measure.measure_crop(md, src, route)
+    decl = regions.Regions.from_dict({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]})
+    toned, rows = color_measure.measure_crop(md, src, route, decl=decl)
+    assert toned[1:] == plain[1:]                  # the control: mid and shoulder
+    assert toned[0] < plain[0] - 30, (toned, plain)
+    assert rows[0].of == "subject" and rows[0].used == "subject"
+    assert rows[0].fallback is None
+    assert 0.02 < rows[0].fraction < 0.06
+
+
+def test_a_pan_episode_has_no_route_and_falls_back_named(tmp_path):
+    from scripts.lib import regions
+    src, md = _pan_episode(tmp_path)
+    decl = regions.Regions.from_dict({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]})
+    profile, rows = color_measure.measure_crop(md, src, None, decl=decl)
+    assert rows[0].fallback == "no-route"
+    assert profile == color_measure.measure_crop(md, src, None)[0]

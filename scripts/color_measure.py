@@ -2,9 +2,13 @@
 (design 2026-07-26 §5). Pure percentile math lives in color.percentiles; this driver
 only produces the histogram from a decoded still."""
 import argparse
+import json
+from pathlib import Path
+
 import numpy as np
 from scripts import process_episode, reframe
-from scripts.lib import assembly, color, ffbin, proc
+from scripts.lib import assembly, color, ffbin, geometry, proc, regions
+from scripts.lib.models import RoutePoint
 
 
 def measure_profile(clip: str, at: float | None = None) -> tuple[float, float, float]:
@@ -150,17 +154,56 @@ def crop_percentiles(plan: "reframe.RenderPlan", src: str,
                                   f"crop_percentiles({src})")
 
 
-def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
-                 frames: int = color.FRAMES) -> tuple[float, float, float]:
-    """(p5, p50, p95) of the episode's own tracked crop, ungraded — the reading
-    `color.tone_arg`'s docstring has always asked its callers for.
+def crop_region_frames(plan: "reframe.RenderPlan", src: str, times: list[float]) -> np.ndarray:
+    """The (n, out_h, out_w) uint8 luma stack crop_percentiles pools into one
+    histogram — the SAME decode, kept per-frame so a mask can be applied.
 
-    Measured (design 2026-08-30 §0.1) against the whole source frame at the window
-    midpoint, which is what match_grade read before this: seven of eight real
-    episodes differ by more than matchgrade.MATCH_EPS, median 14 and max 36 luma
-    units. Costs 0.65s per episode."""
-    plan = process_episode.plan_ungraded(manifest_dict, src, route)
-    return crop_percentiles(plan, src, color.sample_times(plan.dur, frames))
+    One ffmpeg call, exactly as crop_percentiles makes: a region reading must not
+    cost a second decode, and must not read different pixels than the pooled
+    reading it has to agree with. The select is appended at the END through
+    with_tail: before the chain's own `fps=` it would emit one frame N times
+    (§12)."""
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
+                    *plan.with_tail(f"{color.select_frames(times, plan.fps)},format=gray"),
+                    "-t", f"{plan.dur:.6f}", "-vsync", "0",
+                    "-frames:v", str(len(times)),
+                    "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
+    w, h = plan.rl.out_w, plan.rl.out_h
+    want = len(times) * w * h
+    if len(raw) != want:
+        got = len(raw) / (w * h) if w and h else float("nan")
+        raise RuntimeError(
+            f"crop_region_frames({src}): asked for {len(times)} frames of {w}x{h} "
+            f"gray ({want} bytes), got {len(raw)} bytes ({got:g} frames) — a frame "
+            f"is missing or duplicated; check the select expression's position")
+    return np.frombuffer(raw, dtype=np.uint8).reshape(len(times), h, w)
+
+
+def measure_crop(manifest_dict: dict, src: str, route: str | None, *,
+                 decl: "regions.Regions | None" = None,
+                 frames: int = color.FRAMES
+                 ) -> tuple[tuple[float, float, float], tuple["regions.AnchorReading", ...]]:
+    """The episode's (p5, p50, p95), ungraded, each anchor from its declared
+    region — plus one AnchorReading per anchor saying where it came from.
+
+    The REGION is design 2026-08-30's: the episode's own tracked crop, the pixels
+    that actually ship. Which part of that crop supplies which anchor is design
+    2026-09-15's, and `decl=None` means all three come from the whole crop, which
+    is what every anchor was before that slice.
+
+    Costs one decode whether or not a declaration is present. The subject's
+    location comes from the RenderPlan rather than path.meta.json because this
+    runs at the geometry seam, where process_episode has returned before reframe
+    and the sidecar does not exist yet (plan_and_meta_ungraded)."""
+    plan, path, meta = process_episode.plan_and_meta_ungraded(manifest_dict, src, route)
+    times = color.sample_times(plan.dur, frames)
+    stack = crop_region_frames(plan, src, times)
+    extents = None
+    if route is not None:
+        pts = [RoutePoint(**p) for p in json.loads(Path(route).read_text())]
+        extents = geometry.extent_at_times(pts, path, meta, times)
+    readings = regions.measure(stack, extents)
+    return regions.assemble(decl if decl is not None else regions.Regions(), readings)
 
 
 def build_parser() -> argparse.ArgumentParser:
