@@ -95,6 +95,12 @@ def test_measure_reports_the_three_regions_and_their_area_fractions():
     assert out["background"].fraction == pytest.approx(0.99)
     assert out["crop"].fraction == 1.0
     assert out["subject"].profile == (40.0, 40.0, 40.0)
+    # This background assertion is NOT load-bearing and Task 7's battery (row 9)
+    # proved it: the subject is exactly 1% of the frame, i.e. below p5, so pooling
+    # it back into the background — `bg = frames` instead of `frames[~mask]` —
+    # leaves all three percentiles at 200 and this test green.
+    # test_measure_axis_mapping_on_non_square_frame_and_asymmetric_extent is what
+    # actually catches that mutation: its subject is 6%, above the p5 cut.
     assert out["background"].profile == (200.0, 200.0, 200.0)
 
 
@@ -232,3 +238,30 @@ def test_measure_axis_mapping_on_non_square_frame_and_asymmetric_extent():
     assert out["subject"].profile == (50.0, 50.0, 50.0)
     assert out["background"].fraction == pytest.approx(1.0 - expected_frac)
     assert out["background"].profile == (200.0, 200.0, 200.0)
+
+
+def test_the_region_ruler_is_color_percentiles_where_another_estimator_would_disagree():
+    """One ruler (plan Global Constraints: percentiles come from
+    `color.percentiles` and from nowhere else) — pinned where the claim is
+    actually observable.
+
+    Found by Task 7's mutation battery, row 10: swapping `_profile`'s body for
+    `np.percentile(pixels, [5, 50, 95])` — the obvious substitute — left ALL 23
+    tests in this file green, plus tests/integration/test_color_measure.py,
+    test_matchgrade.py, tests/lib/test_match_grade.py and the real-footage
+    proofs in tests/integration/test_named_regions.py. Every one of those uses a
+    frame whose bands are far enough apart, or a subject small enough, that the
+    two rules land on the SAME code, so none of them was measuring the ruler.
+
+    A 50/50 two-value frame is where the two rules provably part.
+    `color.percentiles` walks a 256-bin histogram and returns the FIRST code
+    whose cumulative count reaches the target, so at an exact 50% tie p50 is the
+    DARK value; `np.percentile` interpolates between the two middle samples and
+    returns their midpoint. The second assertion is what makes the first one a
+    RULER test rather than a value pin: it states, on this same frame, the
+    number the rejected estimator would have produced."""
+    f = np.full((1, 100, 100), 200, dtype=np.uint8)
+    f[:, :50, :] = 0
+    out = regions.measure(f, None)
+    assert out["crop"].profile == (0.0, 0.0, 200.0)
+    assert float(np.percentile(f.ravel(), 50)) == 100.0     # the estimator NOT used

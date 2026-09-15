@@ -24,6 +24,18 @@ nobody is told to run at the moment of need is a stage that gets rebuilt
 by hand instead (design §6, the retro's R4.2). `montage status` now points
 `next` here like any other required stage.
 
+**Which pixels each anchor is taken from is the author's to declare.**
+A `REGIONS.json` beside `<run>/project.json` — found by convention, no
+flag — says which region supplies which anchor (`toe`/`mid`/`shoulder`
+over `subject`/`background`/`crop`, plus the author's own noun for it).
+Absent, every anchor is the whole crop, byte-identical to before the file
+existed, and `MATCH.md` says so. It is worth offering when the reel's
+subject matters more than its background: measured on a real reel, taking
+the toe from the subject moved the common target's p5 by 23 luma codes on
+the delivered clips while the mid moved 1.5 and the shoulder 0.0. The
+**match-grade** skill carries the contract, the three named fallbacks, and
+the band kind that was measured and rejected.
+
 > **Before the render, look.** `probe grade --geometry
 > <run>/reels/<reel>/episodes/GEOMETRY.json --index <N>` renders three
 > crop-accurate frames of episode `<N>` with the grade `EDL.json`

@@ -1328,7 +1328,7 @@ git commit -m "feat(match-grade): anchors from declared regions, provenance in b
   `docs/pipeline-map.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json`,
   `skills/match-grade/SKILL.md`
 
-- [ ] **Step 1: Write the real-ffmpeg end-to-end proof, each claim with a control**
+- [x] **Step 1: Write the real-ffmpeg end-to-end proof, each claim with a control**
 
 ```python
 # tests/integration/test_named_regions.py
@@ -1403,13 +1403,13 @@ fixture is wanted — the raw `tests/fixtures/golden_ride.mp4` is `pc` and
 Run: `.venv/bin/python -m pytest tests/integration/test_named_regions.py -q`
 Expected: 3 passed
 
-- [ ] **Step 2: Run the whole suite**
+- [x] **Step 2: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: no failures. Record the pass/skip counts in the task report — the
 previous landing was 3401 passed / 1 skipped plus everything added since.
 
-- [ ] **Step 3: Run the mutation battery**
+- [x] **Step 3: Run the mutation battery**
 
 Every row runs `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest <selection> -q`
 after the edit and must go RED. Restore with `git checkout` is **forbidden**;
@@ -1446,7 +1446,7 @@ like a non-discriminating row.
 A row that comes back GREEN is a coverage hole, not a passing row: close it with
 a new test in the same task and record which row found it.
 
-- [ ] **Step 4: Sync the docs**
+- [x] **Step 4: Sync the docs**
 
 - `CLAUDE.md` Quick Reference: two rows (design + plan) in the colour block,
   after the grade-sensor-references rows, each with the one-line summary this
@@ -1464,11 +1464,11 @@ a new test in the same task and record which row found it.
 - `skills/match-grade/SKILL.md`: what `REGIONS.json` is, where it goes, the two
   closed sets, and that `name` is the author's noun which nothing verifies.
 
-- [ ] **Step 5: Run the whole suite once more**
+- [x] **Step 5: Run the whole suite once more**
 
 Run: `.venv/bin/python -m pytest -q`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/integration/test_named_regions.py CLAUDE.md docs/ CHANGELOG.md .claude-plugin/plugin.json skills/

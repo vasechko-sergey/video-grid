@@ -10,6 +10,47 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.10.0 — 2026-09-15
+
+**MINOR: an anchor is a measurement, and a measurement has a subject.** A new
+author-facing contract file, and a changed `color_measure.measure_crop`
+signature — it now returns `(profile, rows)`.
+
+- **`REGIONS.json`, beside `project.json`.** Declare which region supplies which
+  tone anchor: `{"anchor": "toe", "name": "wetsuit", "of": "subject"}`. `anchor`
+  is `toe`/`mid`/`shoulder` (p5/p50/p95, not configurable — a declaration
+  chooses the pixel set, never the percentile); `of` is
+  `subject`/`background`/`crop`; `name` is your noun, carried into the report
+  and never interpreted. Found by convention, with no flag — `GEOMETRY.json`
+  now records the project file it was given, because a flag can be forgotten
+  and a forgotten flag here silently reverts the grade to whole-crop anchors.
+  Anything outside the two closed sets is refused at load, by name.
+- **Absent the file, nothing changes.** Every anchor is the whole crop, the
+  same EDL and the same target, byte for byte — pinned by a test that drives
+  the real conductor over real footage, with a declared run as the control.
+- **What it is worth, measured on the only real reel.** Taking the toe from the
+  subject moves the common target's p5 by **−23.2** luma on the delivered clips
+  and **−33.7** on the readable sources, against an `--eps` of 4.0; the mid
+  moves +1.5 and the shoulder 0.0. The direction is deeper blacks — the
+  "washed out, shadows gone" complaint arriving a second time, by a mechanism
+  independent of the `nostalgic` preset's `tone_bias`.
+- **Why it is not a bias you are adding.** The subject is 0.23% to 37% of the
+  frame — a 161× spread inside one reel — so seven of the eight crops already
+  read within about a code of their own *background*. The stage was measuring
+  whichever region is largest, which on this footage is the water.
+- **The first noun lost.** `skin` — a bright band inside the subject — is the
+  worst cross-episode reference of everything measured (sd 34.3, against the
+  crop's own p95 at 36.8), and the wetsuit band (14.9) loses to the plain p5 it
+  would replace (10.0). There is no tonal `band` kind, on purpose.
+- **Three named fallbacks in `MATCH.md` and `MATCH.json`,** one row per anchor
+  with the region's own measured frame fraction: `no-route` (a pan generates its
+  path, so there is no subject), `too-small` (under 1% of the frame), and a
+  whole-episode `unorderable` that never repairs a measured profile. The report
+  also tells "no declaration" apart from "could not look for one" — a
+  `GEOMETRY.json` written before this release records no project, and a
+  recorded project whose directory does not resolve from here is the same
+  blindness.
+
 ## 0.9.3 — 2026-09-14
 
 **PATCH: a skill's instructions are reachable from where it runs.** No contract,

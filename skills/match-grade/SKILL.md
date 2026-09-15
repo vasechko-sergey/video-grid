@@ -26,6 +26,14 @@ ffmpeg, no numpy).
   OWN tracked **crop** through that frozen route — never the whole source
   frame — and rewrites the EDL IN PLACE with the tone pairs it authors.
 
+- **`REGIONS.json`** (optional, beside `<run>/project.json`) — the author's
+  declaration of WHICH region supplies WHICH tone anchor. Found by convention,
+  never by a flag: `GEOMETRY.json` records the project file phase 1a was given,
+  and match-grade looks next to it. A flag can be forgotten, and a forgotten
+  flag here silently reverts the grade to whole-crop anchors. Absent, every
+  anchor is the whole crop — byte-identical to before this file existed. Full
+  contract below.
+
 Not `SPEC.json`/`MUSIC.json` for timing: match-grade is a pure colour pass over
 a cut that already exists — it invents no timing and reads no editorial brief.
 
@@ -137,6 +145,83 @@ guessing a path.
    The next stage (`assemble-draft`/`edl_to_reel`) reads the enriched EDL
    directly.
 
+## Naming the regions — `REGIONS.json` (design 2026-09-15)
+
+An anchor is a measurement, and a measurement needs a subject. Without a
+declaration all three anchors share one subject — every pixel of the crop — and
+on real footage that resolves to **whichever region is largest**, not to some
+neutral whole. Measured on the only real 8-episode reel: the tracked subject is
+**0.23% to 37% of the frame, a 161x spread inside one reel**, and seven of the
+eight crops read within about a code of their own *background*. Naming regions
+does not introduce a bias into a neutral measurement; it replaces an unnamed one.
+
+Write the file beside the project:
+
+```json
+{"anchors": [
+  {"anchor": "toe",      "name": "wetsuit", "of": "subject"},
+  {"anchor": "mid",      "name": "water",   "of": "background"},
+  {"anchor": "shoulder", "name": "frame",   "of": "crop"}]}
+```
+
+**Two closed sets and one free string.**
+
+- **`anchor`** — `toe` (p5) | `mid` (p50) | `shoulder` (p95). The anchor names
+  the STATISTIC; a declaration chooses the pixel set and never the percentile.
+  Each anchor may be declared at most once; an undeclared anchor is the crop, so
+  a partial declaration is a real answer and not a half-configured state.
+- **`of`** — `subject` (the frozen route's own bbox, projected into the
+  delivered crop by the same function the safe-zone check uses) | `background`
+  (everything the subject box is not) | `crop` (every pixel — the default).
+- **`name`** — **your noun, and nothing verifies it.** The code never
+  interprets it; it carries it into the report so a reader sees `toe from
+  wetsuit (subject, 2.2% of frame)` instead of `toe from subject`. If the rider
+  is in white that day the declaration is wrong and every report will faithfully
+  print `wetsuit`.
+
+Anything outside those two sets is refused **at load, by name** — an unknown
+anchor, an unknown kind, an extra field, an empty `name`, one anchor declared
+twice, a malformed file. Nothing lives in this file that the machine does not
+check; that is the same rule `CONSTRAINTS.json` carries.
+
+**What it buys, measured.** On the only real reel, taking the toe from the
+subject moved the common target's p5 by **23 luma codes on the delivered clips
+and 34 on the source**, against an `--eps` of 4 — while the mid moved +1.5 and
+the shoulder 0.0. One anchor of three is earned; the per-anchor form is general
+because the assignment is a three-entry loop either way, not because two thirds
+of it were measured to help.
+
+**What was measured and rejected.** A tonal *band inside* a region — "skin" as
+the brightest 30% of the subject box — is the **worst** reference of everything
+measured (cross-episode sd 34.3, worse than the crop's own p95 at 36.8), and the
+dark band standing in for the wetsuit (14.9) **loses to the plain p5 it would
+replace** (10.0). There is deliberately no `band` kind. Do not hand-roll one.
+
+**Three named fallbacks**, each printed in `MATCH.md` beside the anchor it fired
+on, none silent and none repaired:
+
+- **`no-route`** — a pan episode's path is generated, so it has no route, no
+  subject and no background. That anchor takes the crop.
+- **`too-small`** — the region averages under 1% of the frame
+  (`regions.MIN_REGION_FRAC`). A 54x69 tracked box over breaking water is more
+  likely a mis-track than a subject: on the real reel that episode's subject p50
+  read **243.5** against its background's 133.2.
+- **`unorderable`** — the assembled (p5, p50, p95) does not increase by
+  `color.TONE_MIN_GAP`. The **whole episode** drops back to its crop profile,
+  never the offending anchor alone: a mixed profile whose toe came from a region
+  and whose mid came from the crop is a third thing nobody can name. A measured
+  source profile is never widened to fit — that would author a curve from a
+  number no frame contains.
+
+**`MATCH.md` also states which of three things happened to the declaration
+itself**, because two of them look identical in the pixels: it was found (and
+where); the project was reachable and held none ("every anchor is the whole crop
+because you asked for nothing"); or it could not be looked for at all
+("...because I could not look") — a `GEOMETRY.json` written before this feature
+records no project, and a recorded project whose directory does not resolve from
+here is the same blindness wearing a different hat. Re-run
+`edl_to_reel --stop-after-geometry` to record a reachable project.
+
 ## Guarantees
 
 - **Touches only the tone pair.** No other grade knob (`white_balance`,
@@ -174,6 +259,15 @@ five episodes' authored pairs by roughly 10 units each while their p5/p95
 anchors (pinned by sky and specular water) never moved at all. It now measures
 each episode's own tracked crop through `GEOMETRY.json`'s frozen route — the
 pixels that actually ship.
+
+**Still true of a named region (2026-09-15).** `subject` is the route's
+**box, not a mask** — a box over a rider contains water, which is precisely why
+the subject is the best toe reference and the worst mid one. The intake seg
+model's masks have been discarded since 2026-08-04; a masked subject is a real
+improvement this does not make. And an episode follows **one** route, so
+`subject` means "whoever this episode follows": naming a second person in the
+same frame is unreachable without a second route. The stage proves a region was
+used; it never proves it was the right region, and it cannot check your noun.
 
 What is still true: **luma only**. The target and every measured profile are
 (p5, p50, p95) of luma — two cameras can still disagree on white balance after

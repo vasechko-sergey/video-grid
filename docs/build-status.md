@@ -4,13 +4,126 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-14._
+_Last updated: 2026-09-15._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Named regions — an anchor is a measurement, and a measurement has a subject
+  (2026-09-15, 0.10.0)** — design
+  [2026-09-15-named-regions-design.md](specs/2026-09-15-named-regions-design.md),
+  plan [2026-09-15-named-regions.md](plans/2026-09-15-named-regions.md),
+  Tasks 1–7 (branch `docs/named-regions`).
+
+  P1's R2.1 asked for the operator's own three anchors — skin, the black
+  wetsuit, the water. The 2026-08-30 slice had closed its frame-vs-crop half;
+  this one is the half the row's own title names. What ships is the
+  DECLARATION: `REGIONS.json` beside `project.json`, found by convention with no
+  flag (`ReelGeometry.project`, stored verbatim, is what makes that reachable),
+  saying which region supplies which anchor — `toe`/`mid`/`shoulder` (p5/p50/p95,
+  not configurable) over `subject`/`background`/`crop`, plus the author's own
+  noun for it. Anything outside those two closed sets is refused at load, by
+  name; `name` is the one free string and nothing verifies it.
+
+  **§0.2 is the reframing, and it is what makes the feature defensible.** The
+  conductor was never measuring "the frame" as a neutral whole. Because the
+  tracked subject is **0.23% to 37% of the frame — a 161× spread inside one
+  reel** — the crop's profile IS the background's on seven of eight real
+  episodes (ep0 crop p5 72.6 against background 72.8; the one exception is ep6,
+  where the subject fills 37% and supplies the dark end). It measured whichever
+  region dominates by area, which on this footage is the water. Naming regions
+  replaces an unnamed bias; it does not introduce one.
+
+  **The measured move is 23 to 34 luma codes, all of it in the toe** (§0.5).
+  Common target today versus with the toe from the subject and the mid from the
+  background: **(−23.2, +1.5, 0.0)** on the eight delivered clips, **(−33.7,
+  +1.5, 0.0)** on the four readable sources — five to eight times `MATCH_EPS`
+  on one anchor and nothing at all on the other two. The direction is deeper
+  blacks, which is the retro's "washed out, shadows gone" arriving a second
+  time by a mechanism wholly independent of the `nostalgic` preset's
+  `tone_bias`: **even at zero bias, a target whose toe is set by water sits 23
+  to 34 codes above where the wetsuit is.**
+
+  **The row's own first noun did not survive measurement (§0.4).** Taking the
+  brightest 30% of the subject box as a proxy for skin and the darkest 40% for
+  the wetsuit, cross-episode sd: subject p5 **10.0**, dark40 median 14.9,
+  subject p50 21.0, bright30 median **34.3** — so `skin` is the worst reference
+  of everything measured here, worse than the crop's own p95 (36.8), and the
+  wetsuit BAND loses to the plain percentile it would replace. Two consequences,
+  both load-bearing: there is no tonal `band` kind in this design, and the row's
+  three named subjects resolve on this footage to exactly **one earned anchor**.
+
+  **Two named fallbacks for a region that cannot speak, one for an assembly that
+  will not order.** `no-route` (a pan generates its path, so it has no subject
+  and no background either) and `too-small` (`MIN_REGION_FRAC = 0.01` — a
+  **convention, not a measurement**: on this pool one episode sits at 0.23% and
+  the next at 2.19%, so every value in that interval picks the same seven) both
+  fall that anchor back to the crop and record what was asked for beside what
+  was used. `unorderable` drops the **whole episode**, never the offending
+  anchor alone and never repaired — and deliberately does not fire when the
+  assembly already IS the crop, or a flat source no declaration caused would be
+  reported as three fallbacks that changed nothing.
+
+  **The seam it had to reach through.** At conductor time neither `path.json`
+  nor `path.meta.json` exists — `process_episode` returns at its
+  `stop_after == "geometry"` arm before `reframe()` writes them, and the
+  conductor runs in exactly that gap. So `reframe.path_meta` was extracted as
+  the ONE sidecar builder and `process_episode.plan_and_meta_ungraded` hands a
+  caller the plan plus its `CropPath`/`PathMeta` before any render exists.
+  Rebuilding that map in the conductor would have been a second implementation
+  of the render's own geometry — the risk `plan_render`'s docstring already
+  names. `color_measure.crop_region_frames` keeps the SAME single decode
+  `crop_percentiles` already makes, so a region reading costs no second decode
+  and cannot read different pixels than the pooled reading it must agree with:
+  the `crop` region's profile is `==` to `crop_percentiles`, not `approx`.
+
+  **The real-footage proof.** `tests/integration/test_named_regions.py` runs the
+  claim on camera pixels rather than on a synthetic fixture: `golden_ride_segment`
+  plus the tracker's own `golden_route.json`, a rider averaging **1.54% of the
+  delivered crop**, moves the profile **(38, 84, 215) → (24, 84, 215)** — the
+  design's own direction, on the repo's only real footage — and the third test
+  drives the real `write_match` end to end, pinning the no-declaration EDL
+  byte-for-byte with a declared run as the control that must differ. The task
+  brief had pointed these at a synthetic subject on the premise that the ride
+  fixture "carries no tracked person"; measured, that is wrong, and the
+  synthetic case was already proven one layer down.
+
+  **Task 7's 21-row mutation battery: 20 RED, one coverage hole, two pointer
+  corrections.** The hole is the ruler itself: nothing anywhere pinned that
+  `regions._profile` goes through `color.percentiles`. Swapping it for
+  `np.percentile` — the obvious substitute — left **all 23 unit tests, both
+  integration colour modules, `tests/lib/test_match_grade.py` and the new
+  real-footage proofs green**, because every fixture's bands are far enough apart
+  that the two rules land on the same code. Closed with a 50/50 two-value frame,
+  where `color.percentiles`' first-code-to-reach-the-target rule returns the dark
+  value at p50 and `np.percentile` returns their midpoint; the new test states
+  both numbers, so it is a ruler test and not a value pin. The two corrections:
+  row 9's named test **cannot see its own mutation** — its subject is exactly 1%
+  of the frame, below the p5 cut, so pooling it back into the background leaves
+  all three percentiles at 200 (the 6% axis-mapping test is what catches it, and
+  that assertion now says so); and row 12, the §12 `select`-before-`fps=`
+  landmine deliberately planted, is refused by `proc.run`'s always-on argv guard
+  **before the ruler comparison ever runs** — machine-unreachable through the
+  sanctioned path, the same shape as grade-sensor-references' own row 4.
+
+  **The honest half (§6).** One anchor of three is earned — the per-anchor form
+  is general because the loop is three entries either way. `subject` is a
+  **box, not a mask**: a box over a rider contains water, which is exactly why
+  it is the best toe reference and the worst mid one, and the intake seg model's
+  masks have been discarded since 2026-08-04. One route means one subject, so
+  naming a second person in the same frame is unreachable. §0.3's consistency
+  table is measured on **graded** pixels, because `plan_ungraded` refuses four
+  of the eight real source segments as `pc` (§0.6) — the toe's direction and
+  magnitude reproduce on the four readable ones, the spreads have no source-side
+  reading at all. And nothing verifies a name: `{"name": "wetsuit"}` asserts
+  something about the footage that every report will faithfully print whether or
+  not it is true. The gate proves a region was used, never that it was the right
+  region.
+
+  Full suite: **3880 passed, 1 skipped**.
 
 - **Reachable instructions — a skill's instructions are reachable from where it
   runs (2026-09-14, 0.9.3)** — design
