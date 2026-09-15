@@ -13,7 +13,7 @@ here."""
 import argparse
 import json
 from collections import Counter
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from scripts.color_measure import measure_crop
@@ -22,6 +22,52 @@ from scripts.lib import regions as regions_lib
 from scripts.lib.edl import EDL, write_edl
 from scripts.lib.models import ReelGeometry
 from scripts.lib.spec import Spec
+
+
+@dataclass(frozen=True)
+class Declared:
+    """What `_find_regions` could learn about the author's REGIONS.json.
+
+    The STATE and its DETAIL are separate fields, deliberately: they used to
+    share one channel, a string that was either a real path, "" or something
+    beginning "unreachable: ", disambiguated by `.startswith`. One channel
+    carrying two types is exactly the conflation this slice exists to prevent —
+    a project under a directory named `unreachable-takes/` would have made a
+    found-and-used declaration report that it could not be looked for (whole-branch
+    review, finding 6).
+
+    `regions` is the parsed declaration and is present exactly when `state ==
+    "found"`. `detail` is the declaration's path (found), the REGIONS.json that
+    was looked for and is not there (none), or why it could not be looked for at
+    all (unreachable).
+    """
+    state: str
+    detail: str = ""
+    regions: "regions_lib.Regions | None" = None
+
+    def __post_init__(self) -> None:
+        if self.state not in matchgrade.REGIONS_STATES:
+            raise ValueError(f"Declared.state {self.state!r} unknown — expected one of "
+                             f"{matchgrade.REGIONS_STATES}")
+        if (self.regions is not None) != (self.state == "found"):
+            raise ValueError(
+                f"Declared: state {self.state!r} and a parsed declaration must agree — a "
+                f"'found' state carries the Regions it found, and every other state "
+                f"carries none. Two ways of saying whether a declaration exists is one "
+                f"way too many")
+        if self.state != "none" and not self.detail:
+            raise ValueError(
+                f"Declared: state {self.state!r} needs a detail — the path a declaration "
+                f"was read from, or the reason it could not be looked for. 'found' with "
+                f"no path and 'unreachable' with no reason are both a named state that "
+                f"says nothing. Only 'none' may omit it: there, the detail (where it "
+                f"looked) is a courtesy, not the answer")
+
+
+#: `_report_md`'s default: the plain "no declaration" reading, so a caller that
+#: renders a report about something else (a bias, a mood) need not invent one.
+#: Frozen, so one shared instance is safe as a default argument.
+_NO_DECLARATION = Declared("none")
 
 
 def _resolve_bias(spec: Spec | None,
@@ -117,7 +163,7 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
                bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
                bias_source: str = "", mood: str | None = None, k: float = 1.0,
-               regions_at: str = "") -> str:
+               declared: Declared = _NO_DECLARATION) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
@@ -137,16 +183,15 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     exact "silently" class this slice exists to close, restoring the arm the pre-slice
     report carried under `elif preset is not None`.
 
-    `regions_at` is _find_regions' own second half (design 2026-09-15 §4, amended by
-    review finding 3) and carries THREE states, not two: a path (a declaration was
-    found and used), "" (the project is known, reachable, and holds no REGIONS.json —
-    every anchor is the whole crop, on purpose), or a string starting with
-    "unreachable" — checked with .startswith, never == — naming why the declaration
-    could not even be looked for (no project recorded at all, or one was but its
-    directory does not resolve from here). The third must never read like the second:
-    "graded against the whole crop because you asked for nothing" and "graded against
-    the whole crop because I could not look" are different claims about the same
-    pixels."""
+    `declared` is _find_regions' own answer (design 2026-09-15 §4/§2.1) and carries
+    THREE states, not two: `found` (a declaration was read, and `detail` is where
+    from), `none` (the project resolves, is reachable, and holds no REGIONS.json —
+    every anchor is the whole crop, on purpose), or `unreachable` (`detail` names
+    why it could not even be looked for). The third must never read like the
+    second: "graded against the whole crop because you asked for nothing" and
+    "graded against the whole crop because I could not look" are different claims
+    about the same pixels. The state is a FIELD, never a prefix on the detail
+    string — see Declared."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -154,13 +199,12 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             f"Measured on each episode's own tracked crop, "
             f"{color.FRAMES} frames per episode "
             f"(design 2026-08-30 §1) — not the whole source frame.")
-    if regions_at.startswith("unreachable"):
-        why = regions_at.split(": ", 1)[1] if ": " in regions_at else regions_at
-        head += (f"\n\nREGIONS.json could not be looked for — {why}. Every anchor "
-                 f"is the whole crop. Re-run `edl_to_reel --stop-after-geometry` to "
-                 f"record a reachable project.")
-    elif regions_at:
-        head += f"\n\nAnchors declared in {regions_at}."
+    if declared.state == "unreachable":
+        head += (f"\n\nREGIONS.json could not be looked for — {declared.detail}. Every "
+                 f"anchor is the whole crop. Re-run `edl_to_reel --stop-after-geometry` "
+                 f"to record a reachable project.")
+    elif declared.state == "found":
+        head += f"\n\nAnchors declared in {declared.detail}."
     else:
         head += "\n\nNo REGIONS.json — every anchor is the whole crop."
     if bias_source:
@@ -194,43 +238,54 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
         for d in decisions:
             for r in d.regions:
                 fb = r["fallback"] or "—"
+                # TWO decimals, not one: MIN_REGION_FRAC is 1% of the frame, and
+                # ".1f" rounds a 0.0099 region — which the gate REFUSED — to "1.0%",
+                # printed beside a `too-small` fallback the docs describe as "under
+                # 1% of the frame". A printed number must not round across the gate
+                # it is being shown next to (whole-branch review, finding 9). The
+                # stored value already carries four places (_row_dict).
                 lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
-                             f"| {r['fraction'] * 100:.1f}% | {r['value']:.0f} | {fb} |")
+                             f"| {r['fraction'] * 100:.2f}% | {r['value']:.0f} | {fb} |")
     return "\n".join(lines) + "\n"
 
 
-def _find_regions(geo: ReelGeometry) -> tuple["regions_lib.Regions | None", str]:
+def _find_regions(geo: ReelGeometry) -> Declared:
     """The declaration beside project.json, and what to say about it.
 
-    Three states, and they are three (design §4, amended by review finding 3
-    against the brief's own verbatim body — the design owner ruled the review
-    correct, so this is not the brief's original text): a declaration was
-    found; the project is known, its directory is reachable, and it holds
-    none; or the declaration could not even be LOOKED FOR, which is now two
-    sub-cases collapsed under one "unreachable" state rather than silently
-    landing on the middle one — no project was recorded at all (a GEOMETRY.json
-    from before design 2026-09-15), or one was, but `Path(geo.project).parent`
-    does not exist from here (a relative `--project` resolved against a
-    different CWD than the one that wrote it, or a project moved since).
+    Three states, and they are three (design §4/§2.1): a declaration was `found`;
+    the project resolves, is reachable, and holds `none`; or the declaration could
+    not even be LOOKED FOR (`unreachable`) — no project was recorded at all (a
+    GEOMETRY.json from before design 2026-09-15), or one was and it does not
+    resolve from here (a relative `--project` read from a different working
+    directory than the one that recorded it, or a project moved since).
 
-    The bug this closes: `p.exists()` on a REGIONS.json inside an unreachable
-    directory returns the same False a genuinely-absent file would, so a bare
-    existence check on `p` alone cannot tell "nothing was declared" from "I
-    could not even check" — the exact §2.1 confusion the third state exists
-    to prevent. Every "unreachable" string starts with the literal word
-    "unreachable" (checked with .startswith, never ==) and carries the reason
-    after "unreachable: ", so a caller — `write_match`'s status dict and
-    `_report_md` both — can tell the state apart from a real path or the
-    empty string without parsing two different shapes out of one word."""
+    The reachability test is the project FILE, not its parent directory, and that
+    is the whole of whole-branch review finding 2: `Path("project.json").parent`
+    is `Path(".")`, whose `.is_dir()` is True from ANY working directory, so a
+    bare relative project made the conductor look for `./REGIONS.json` in its own
+    CWD, find nothing, and report `none` — "you asked for nothing" — while the
+    author's declaration sat unread beside the real project.json. Testing the file
+    also matches this stage's sibling contract: `geo.edl` is used verbatim and
+    fails loud on the file, never on its directory.
+
+    The two unreachable sub-cases share one sentence on purpose: a missing
+    directory implies a missing file, and the remedy is identical either way
+    (re-run `edl_to_reel --stop-after-geometry` from where the project actually
+    is, or with an absolute `--project`). What separates them for a reader is data,
+    not a second state — the reason names both the path as RECORDED and the
+    absolute path it resolved to, which is what tells "wrong working directory"
+    from "the project moved"."""
     if not geo.project:
-        return None, "unreachable: GEOMETRY.json records no project"
-    parent = Path(geo.project).parent
-    if not parent.is_dir():
-        return None, f"unreachable: {geo.project}'s directory ({parent}) does not exist"
-    p = parent / "REGIONS.json"
+        return Declared("unreachable", "GEOMETRY.json records no project")
+    project = Path(geo.project)
+    if not project.is_file():
+        return Declared("unreachable",
+                        f"{geo.project} does not resolve from here — no file at "
+                        f"{project.resolve()}")
+    p = project.parent / "REGIONS.json"
     if not p.exists():
-        return None, ""
-    return regions_lib.Regions.from_json(p), str(p)
+        return Declared("none", str(p))
+    return Declared("found", str(p), regions_lib.Regions.from_json(p))
 
 
 def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
@@ -255,8 +310,9 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     spec_obj = Spec.from_json(spec) if spec else None
     preset = moodpreset.resolve(spec_obj.mood) if spec_obj is not None else None
     bias, bias_source = _resolve_bias(spec_obj, preset)
-    decl, where = _find_regions(geo)
-    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, bias=bias, decl=decl)
+    declared = _find_regions(geo)
+    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, bias=bias,
+                                        decl=declared.regions)
     # the reel's ONE common target (design §3) — deriving it from the episodes' own
     # tone_dst would fail on the reel where every episode was skipped (all None)
     out = replace(out, tone_target=target)
@@ -266,7 +322,7 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
                                   bias=bias, bias_source=bias_source,
                                   mood=preset.name if preset is not None else None, k=k,
-                                  regions_at=where))
+                                  declared=declared))
     # The machine-readable twin (design 2026-09-09 §2). MATCH.md's claim — "8/8
     # episodes authored a tone pair" — was prose, and the EDL written an hour later
     # carried five with nothing able to notice. The decisions are what the report
@@ -277,14 +333,20 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     matchgrade.MatchReport(
         target=target, eps=eps, decisions=tuple(decisions), edl=geo.edl,
         bias=bias, bias_source=bias_source, bias_scale=k,
-        mood=preset.name if preset is not None else None).write(json_path)
+        mood=preset.name if preset is not None else None,
+        # The declaration state reaches MATCH.json too, not only MATCH.md's prose
+        # (whole-branch review, finding 5). A later `montage status` reading this
+        # file must be able to tell "no declaration" from "could not look" — the
+        # §2.1 distinction — and a claim that lives only in prose cannot be checked,
+        # which is the reason this twin exists at all.
+        regions=declared.state, regions_at=declared.detail).write(json_path)
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
             "json": str(json_path),
             "target": list(target), "eps": eps,
             "mood": preset.name if preset is not None else None,
             "bias_source": bias_source, "bias_scale": k,
-            "regions": where,
+            "regions": declared.state, "regions_at": declared.detail,
             "authored": sum(1 for d in decisions if d.action == "author"),
             "skipped": dict(skipped)}
 

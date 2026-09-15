@@ -144,7 +144,7 @@ def test_a_run_with_no_declaration_writes_the_same_edl_and_target(tmp_path, gold
     b = match_grade.write_match(geo, force=True)
     assert Path(edl).read_bytes() == before
     assert a["target"] == b["target"] == [38.0, 84.0, 215.0]
-    assert a["regions"] == ""                       # reachable project, no declaration
+    assert a["regions"] == "none"                   # reachable project, no declaration
     assert "No REGIONS.json — every anchor is the whole crop." in \
         Path(a["md"]).read_text()
 
@@ -152,10 +152,11 @@ def test_a_run_with_no_declaration_writes_the_same_edl_and_target(tmp_path, gold
     c = match_grade.write_match(geo, force=True)
     assert c["target"] != a["target"]                                     # control
     assert c["target"] == [24.0, 84.0, 215.0]
-    assert c["regions"] == str(Path(geo).parent / "REGIONS.json")
+    assert c["regions"] == "found"
+    assert c["regions_at"] == str(Path(geo).parent / "REGIONS.json")
 
     md = Path(c["md"]).read_text()
-    assert f"Anchors declared in {c['regions']}." in md
+    assert f"Anchors declared in {c['regions_at']}." in md
     assert "| 0 | toe | wetsuit | subject |" in md
     rows = json.loads(Path(c["json"]).read_text())["decisions"][0]["regions"]
     assert [(r["anchor"], r["of"], r["used"], r["fallback"]) for r in rows] == [

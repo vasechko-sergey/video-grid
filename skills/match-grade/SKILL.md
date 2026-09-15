@@ -31,8 +31,10 @@ ffmpeg, no numpy).
   never by a flag: `GEOMETRY.json` records the project file phase 1a was given,
   and match-grade looks next to it. A flag can be forgotten, and a forgotten
   flag here silently reverts the grade to whole-crop anchors. Absent, every
-  anchor is the whole crop — byte-identical to before this file existed. Full
-  contract below.
+  anchor is the whole crop — the same EDL and the same target, byte for byte.
+  (`MATCH.md`/`MATCH.json` are not byte-identical: they gain the declaration
+  line and the per-anchor table on every run, declared or not.) Full contract
+  below.
 
 Not `SPEC.json`/`MUSIC.json` for timing: match-grade is a pure colour pass over
 a cut that already exists — it invents no timing and reads no editorial brief.
@@ -201,11 +203,15 @@ replace** (10.0). There is deliberately no `band` kind. Do not hand-roll one.
 on, none silent and none repaired:
 
 - **`no-route`** — a pan episode's path is generated, so it has no route, no
-  subject and no background. That anchor takes the crop.
+  subject and no background. That anchor takes the crop. This fires on a MISSING
+  ROUTE and on nothing else.
 - **`too-small`** — the region averages under 1% of the frame
   (`regions.MIN_REGION_FRAC`). A 54x69 tracked box over breaking water is more
   likely a mis-track than a subject: on the real reel that episode's subject p50
-  read **243.5** against its background's 133.2.
+  read **243.5** against its background's 133.2. This is also where a routed
+  episode lands when its subject leaves the delivered frame entirely — the
+  region was located and measured at 0.00% of it, which is a real reading, not
+  a missing route.
 - **`unorderable`** — the assembled (p5, p50, p95) does not increase by
   `color.TONE_MIN_GAP`. The **whole episode** drops back to its crop profile,
   never the offending anchor alone: a mixed profile whose toe came from a region
@@ -213,13 +219,18 @@ on, none silent and none repaired:
   source profile is never widened to fit — that would author a curve from a
   number no frame contains.
 
-**`MATCH.md` also states which of three things happened to the declaration
-itself**, because two of them look identical in the pixels: it was found (and
-where); the project was reachable and held none ("every anchor is the whole crop
-because you asked for nothing"); or it could not be looked for at all
+**`MATCH.md` and `MATCH.json` both state which of three things happened to the
+declaration itself**, because two of them look identical in the pixels: it was
+`found` (and where); the project resolved and held `none` ("every anchor is the
+whole crop because you asked for nothing"); or it was `unreachable`
 ("...because I could not look") — a `GEOMETRY.json` written before this feature
-records no project, and a recorded project whose directory does not resolve from
-here is the same blindness wearing a different hat. Re-run
+records no project, and a recorded project that does not resolve from where
+match-grade is running is the same blindness wearing a different hat. The
+reachability test is the project FILE, so a bare relative `project.json`
+recorded in one directory and read from another is `unreachable`, never
+"nothing was declared". In `MATCH.json` the state is the `regions` field and its
+path-or-reason is `regions_at`; an empty `regions` there means the report
+predates the field, not that no declaration was found. Re-run
 `edl_to_reel --stop-after-geometry` to record a reachable project.
 
 ## Guarantees

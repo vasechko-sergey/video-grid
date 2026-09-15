@@ -81,12 +81,14 @@ def _geometry(tmp_path, sources):
     on disk. `EDLEpisode.source` carries no such check (it is an editorial label, not a
     path reframe opens here), so it stays the bare name.
 
-    `project=str(tmp_path / "project.json")` (the file itself need not exist —
-    _find_regions only reads its directory) so write_match lands on the ordinary
-    "no REGIONS.json" state rather than the project-less "unreachable" one — the
-    same reasoning applied to tests/lib/test_match_grade.py's own _write_geometry
-    (review finding 5): neither test here is about the regions feature, and a
-    stray "unreachable" reading would misrepresent what each one models.
+    `project=str(tmp_path / "project.json")` — and the file is WRITTEN, because
+    since whole-branch review finding 2 `_find_regions` tests the project FILE and
+    not its parent directory (`Path("project.json").parent` is `Path(".")`, whose
+    `.is_dir()` is True from anywhere, so the old directory test could not see an
+    unreachable project at all). Writing it lands write_match on the ordinary "no
+    REGIONS.json" state rather than the "unreachable" one — neither test here is
+    about the regions feature, and a stray "unreachable" reading would
+    misrepresent what each one models.
     """
     lay = runlayout.RunLayout(tmp_path)
     lay.reel_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +107,8 @@ def _geometry(tmp_path, sources):
         geo_episodes.append(EpisodeGeometry(manifest={}, route=str(tmp_path / f"r{i}.json"),
                                             source=str(src_path),
                                             project_dir=str(tmp_path / f"p{i}")))
+    (tmp_path / "project.json").write_text(json.dumps({"canvas": [9, 16],
+                                                       "delivery": "native"}))
     geo = ReelGeometry(episodes=tuple(geo_episodes), edl=str(edl_path),
                        project=str(tmp_path / "project.json"))
     gp = lay.episodes / "GEOMETRY.json"

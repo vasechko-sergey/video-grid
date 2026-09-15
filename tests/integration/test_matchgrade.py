@@ -298,18 +298,23 @@ def test_both_halves_are_needed_to_close_the_residual(tmp_path):
 # parameter. All four are addressed below, together.
 
 def _write_match_with_fake_measurements(tmp_path, monkeypatch, *, project="project.json",
-                                         subject_fraction=0.2):
+                                         subject_fraction=0.2, project_verbatim=False):
     """A one-episode GEOMETRY.json + EDL.json under `tmp_path`, `write_match`'d with
     `measure_crop` monkeypatched so no ffmpeg runs.
 
     `project`, when not None, becomes `ReelGeometry.project` (a plain relative path
-    joined onto `tmp_path` — the file itself need not exist, only its directory,
-    which is all `_find_regions` ever looks at) — the ordinary case, a project.json
-    known but no REGIONS.json beside it. `project=None` simulates a GEOMETRY.json
-    written before Task 5, with no project field at all. A path whose OWN directory
-    does not exist (e.g. "gone/project.json") simulates the other unreachable
-    sub-case review finding 3 added: a recorded project this conductor cannot
-    reach from here.
+    joined onto `tmp_path`) and the FILE IS WRITTEN whenever its directory exists —
+    since whole-branch review finding 2 `_find_regions` tests the project file, not
+    its parent directory, so an unwritten project no longer reads as "reachable".
+    That is the ordinary case: a project.json known, with no REGIONS.json beside
+    it. `project=None` simulates a GEOMETRY.json written before Task 5, with no
+    project field at all. A path whose OWN directory does not exist (e.g.
+    "gone/project.json") is never written and simulates the other unreachable
+    sub-case: a recorded project this conductor cannot reach from here.
+    `project_verbatim=True` stores `project` EXACTLY as given, with no tmp_path
+    join and nothing written — the only way to model a GEOMETRY.json that recorded
+    a bare RELATIVE project, which is the shape whole-branch review finding 2 is
+    about (`Path("project.json").parent` is `Path(".")`, reachable from anywhere).
 
     Whether a REGIONS.json exists is entirely the CALLING TEST's own business —
     write it (or don't) before calling this helper, exactly as a real author
@@ -341,8 +346,13 @@ def _write_match_with_fake_measurements(tmp_path, monkeypatch, *, project="proje
     edl_path.write_text(json.dumps(EDL(episodes=(ep,)).to_dict(), indent=2))
 
     geo_kwargs = {}
-    if project is not None:
-        geo_kwargs["project"] = str(tmp_path / project)
+    if project_verbatim:
+        geo_kwargs["project"] = project
+    elif project is not None:
+        project_path = tmp_path / project
+        if project_path.parent.is_dir():     # "gone/project.json" stays unreachable
+            project_path.write_text(json.dumps({"canvas": [9, 16], "delivery": "native"}))
+        geo_kwargs["project"] = str(project_path)
     geo = ReelGeometry(
         episodes=(EpisodeGeometry(manifest={}, route=str(route), source=str(source),
                                   project_dir=str(tmp_path / "p0")),),
@@ -399,7 +409,8 @@ def test_a_regions_file_beside_project_json_is_found_with_no_flag(tmp_path, monk
     (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
         {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
     result = _write_match_with_fake_measurements(tmp_path, monkeypatch)
-    assert result["regions"] == str(tmp_path / "REGIONS.json")
+    assert result["regions"] == "found"
+    assert result["regions_at"] == str(tmp_path / "REGIONS.json")
     rows = _match_json(tmp_path)["decisions"][0]["regions"]
     assert rows[0] == {"anchor": "toe", "name": "wetsuit", "of": "subject",
                        "used": "subject", "fraction": 0.2, "value": 10.0,
@@ -409,24 +420,53 @@ def test_a_regions_file_beside_project_json_is_found_with_no_flag(tmp_path, monk
 def test_a_geometry_with_no_project_says_so_rather_than_reporting_no_declaration(
         tmp_path, monkeypatch):
     result = _write_match_with_fake_measurements(tmp_path, monkeypatch, project=None)
-    assert result["regions"] == "unreachable: GEOMETRY.json records no project"
+    # The state is its own field; the reason is its own field (review finding 6 —
+    # the two used to share one string disambiguated by .startswith).
+    assert result["regions"] == "unreachable"
+    assert result["regions_at"] == "GEOMETRY.json records no project"
     assert "GEOMETRY.json records no project" in (tmp_path / "MATCH.md").read_text()
 
 
 def test_a_moved_project_is_unreachable_not_silently_no_declaration(tmp_path, monkeypatch):
-    """Review finding 3, ruled correct by the design owner and NOT the brief's
-    original body: `_find_regions` used to check only `p.exists()` for
-    REGIONS.json itself, so a project.json whose own DIRECTORY cannot be
-    reached from here (moved since, or a relative --project resolved against a
-    different CWD than the one that recorded it) made that check False for the
-    same reason a genuinely-absent REGIONS.json would — silently landing on
-    "no declaration" when the true state is "could not even look". The
-    unreachable state must carry the offending path, not just the bare word."""
+    """Review finding 3, then widened by whole-branch finding 2: `_find_regions`
+    used to check only `p.exists()` for REGIONS.json itself, so a project.json
+    that cannot be reached from here (moved since, or a relative --project
+    resolved against a different CWD than the one that recorded it) made that
+    check False for the same reason a genuinely-absent REGIONS.json would —
+    silently landing on "no declaration" when the true state is "could not even
+    look". The unreachable state must carry the offending path, not just the
+    bare word."""
     result = _write_match_with_fake_measurements(
         tmp_path, monkeypatch, project="gone/project.json")
-    assert result["regions"].startswith("unreachable:")
-    assert "gone" in result["regions"] and "does not exist" in result["regions"]
-    assert "does not exist" in (tmp_path / "MATCH.md").read_text()
+    assert result["regions"] == "unreachable"
+    assert "gone" in result["regions_at"]
+    assert "does not resolve from here" in result["regions_at"]
+    assert "does not resolve from here" in (tmp_path / "MATCH.md").read_text()
+
+
+def test_a_bare_relative_project_that_does_not_resolve_is_unreachable(tmp_path, monkeypatch):
+    """Whole-branch review, finding 2 — the case the parent-directory test could
+    not see at all. `Path("project.json").parent` is `Path(".")`, whose
+    `.is_dir()` is True from ANY working directory, so a GEOMETRY.json recording a
+    bare relative project made the conductor look for `./REGIONS.json` in its own
+    CWD, find nothing, and print "No REGIONS.json — every anchor is the whole
+    crop" while the author's declaration sat unread beside the real project.json.
+
+    The control is the REGIONS.json written into `tmp_path`: it exists, it is the
+    one the author wrote, and the run must NOT claim the author declared nothing.
+    """
+    (tmp_path / "project.json").write_text(json.dumps({"canvas": [9, 16],
+                                                       "delivery": "native"}))
+    (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
+    monkeypatch.chdir(tmp_path.parent)          # not where the project actually is
+    result = _write_match_with_fake_measurements(
+        tmp_path, monkeypatch, project="project.json", project_verbatim=True)
+    assert result["regions"] == "unreachable"
+    assert "does not resolve from here" in result["regions_at"]
+    md = (tmp_path / "MATCH.md").read_text()
+    assert "could not be looked for" in md
+    assert "No REGIONS.json — every anchor is the whole crop." not in md
 
 
 def test_the_report_prints_the_fallback_and_its_reason(tmp_path, monkeypatch):
@@ -434,4 +474,7 @@ def test_the_report_prints_the_fallback_and_its_reason(tmp_path, monkeypatch):
         {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
     _write_match_with_fake_measurements(tmp_path, monkeypatch, subject_fraction=0.002)
     md = (tmp_path / "MATCH.md").read_text()
-    assert "too-small" in md and "wetsuit" in md and "0.2%" in md
+    # TWO decimals (whole-branch review, finding 9): MIN_REGION_FRAC is 1%, and one
+    # decimal rounds a refused 0.0099 region to "1.0%" beside a `too-small` the docs
+    # describe as "under 1% of the frame".
+    assert "too-small" in md and "wetsuit" in md and "0.20%" in md

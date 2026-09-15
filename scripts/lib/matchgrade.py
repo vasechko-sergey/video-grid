@@ -274,6 +274,18 @@ def _num_or_default(d: dict, key: str, what: str, default: float) -> float:
     return float(v)
 
 
+#: What the conductor could learn about the author's REGIONS.json (design
+#: 2026-09-15 §2.1). THREE states, not two, and the third is the point:
+#: "graded against the whole crop because you asked for nothing" (`none`) and
+#: "graded against the whole crop because I could not look" (`unreachable`) are
+#: different claims about the same pixels, and the pixels cannot tell them apart.
+#:
+#: Closed and enforced by MatchReport.__post_init__. It lives here rather than in
+#: lib/regions.py because this is the module that has to VALIDATE it — regions.py
+#: imports numpy, and this one's contract is that it does not.
+REGIONS_STATES = ("found", "none", "unreachable")
+
+
 @dataclass(frozen=True)
 class MatchReport:
     """MATCH.json — the conductor's decisions in machine-readable form (design §2).
@@ -286,6 +298,14 @@ class MatchReport:
 
     `edl` is the path this conductor wrote back into, stored exactly as write_match
     received it — the same verbatim-not-resolved rule ReelGeometry.edl follows.
+
+    `regions` is which of REGIONS_STATES applied to the author's declaration, and
+    `regions_at` its detail — the declaration's path (`found`), the REGIONS.json
+    that was looked for and is not there (`none`), or why it could not be looked
+    for at all (`unreachable`). Both default to `""`, and an EMPTY `regions` means
+    this report PREDATES the field — never "no declaration was found", which is
+    the `none` state and says so by name. A claim that survives only as prose in
+    MATCH.md cannot be checked, which is the whole reason MATCH.json exists.
     """
     target: Profile
     eps: float
@@ -295,6 +315,8 @@ class MatchReport:
     bias_source: str = ""
     bias_scale: float = 1.0
     mood: str | None = None
+    regions: str = ""
+    regions_at: str = ""
 
     def __post_init__(self) -> None:
         if not (isinstance(self.edl, str) and self.edl):
@@ -304,11 +326,18 @@ class MatchReport:
         if not all(isinstance(d, ToneDecision) for d in self.decisions):
             raise ValueError("MatchReport.decisions must be ToneDecision objects — build "
                              "them with matchgrade.plan()")
+        if self.regions and self.regions not in REGIONS_STATES:
+            raise ValueError(
+                f"MatchReport.regions {self.regions!r} unknown — expected one of "
+                f"{REGIONS_STATES}, or '' for a report written before this field existed. "
+                f"A state outside the set would be read as a fourth kind of answer nobody "
+                f"can act on")
 
     def to_dict(self) -> dict:
         return {"target": list(self.target), "eps": self.eps, "edl": self.edl,
                 "bias": list(self.bias), "bias_source": self.bias_source,
                 "bias_scale": self.bias_scale, "mood": self.mood,
+                "regions": self.regions, "regions_at": self.regions_at,
                 "decisions": [d.to_dict() for d in self.decisions]}
 
     @classmethod
@@ -326,7 +355,12 @@ class MatchReport:
                    bias=_triple(d.get("bias") or [0.0, 0.0, 0.0], "MatchReport.bias"),
                    bias_source=d.get("bias_source") or "",
                    bias_scale=_num_or_default(d, "bias_scale", "MatchReport.bias_scale", 1.0),
-                   mood=d.get("mood"))
+                   mood=d.get("mood"),
+                   # `or ""` so a null or a missing key both land on "predates the
+                   # field" — the one reading that is true of every report written
+                   # before design 2026-09-15's review round.
+                   regions=d.get("regions") or "",
+                   regions_at=d.get("regions_at") or "")
 
     @classmethod
     def from_json(cls, path: str | Path) -> "MatchReport":

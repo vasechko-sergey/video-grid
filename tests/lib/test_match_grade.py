@@ -138,15 +138,20 @@ def _write_geometry(tmp_path, *eps):
     """Write EDL.json + a GEOMETRY.json naming it, with one trivial (source, route) pair
     per episode in EDL order. Returns (geometry_path, edl_path), both str.
 
-    `project="project.json"` (the file itself need not exist — _find_regions only
-    looks at its directory) so every write_match call through this helper lands on
-    the ORDINARY named-regions state — a known project with no REGIONS.json beside
-    it — rather than the "unreachable" legacy state a bare, project-less
-    ReelGeometry would report. Only the dedicated named-regions tests in
-    tests/integration/test_matchgrade.py exercise "unreachable" on purpose. This
-    RELATIVE "project.json" resolves against `tmp_path` only because of this
-    module's own autouse `_in_a_run_dir` fixture (`monkeypatch.chdir(tmp_path)`,
-    above) — the same reason `e.source`/`f"r{i}.json"` were already relative."""
+    `project="project.json"`, WRITTEN to disk: since whole-branch review finding 2,
+    `_find_regions` tests the project FILE and not its parent directory (the old
+    `Path("project.json").parent.is_dir()` is `Path(".").is_dir()`, True from any
+    working directory at all, which is precisely why a bare relative project could
+    not be seen as unreachable). Writing it lands every write_match call through
+    this helper on the ORDINARY named-regions state — a known project with no
+    REGIONS.json beside it — rather than the "unreachable" one. Only the dedicated
+    named-regions tests in tests/integration/test_matchgrade.py exercise
+    "unreachable" on purpose. This RELATIVE "project.json" resolves against
+    `tmp_path` only because of this module's own autouse `_in_a_run_dir` fixture
+    (`monkeypatch.chdir(tmp_path)`, above) — the same reason `e.source`/`f"r{i}.json"`
+    were already relative."""
+    (tmp_path / "project.json").write_text(json.dumps({"canvas": [9, 16],
+                                                       "delivery": "native"}))
     edl_path = tmp_path / "EDL.json"
     edl_path.write_text(json.dumps(_edl(*eps).to_dict(), indent=2))
     for i, e in enumerate(eps):
@@ -181,7 +186,13 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
                       "json": str(tmp_path / "MATCH.json"),
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
                       "mood": None, "bias_source": "", "bias_scale": 1.0,  # no --spec: the plain median
-                      "regions": "",           # project.json known, no REGIONS.json beside it
+                      # project.json resolves; no REGIONS.json beside it. The STATE is
+                      # its own field, never a prefix on the detail string (review
+                      # finding 6), and the detail names where it looked.
+                      "regions": "none",
+                      # verbatim as derived from the RECORDED project path (relative
+                      # here, like geo.edl), never resolve()d
+                      "regions_at": "REGIONS.json",
                       "authored": 2, "skipped": {}}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
     assert back.tone_target == target
@@ -209,9 +220,9 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
         "\n"
         "| # | anchor | region | kind | % of frame | value | fallback |\n"
         "|---|--------|--------|------|-----------:|------:|----------|\n"
-        "| 0 | toe | crop | crop | 100.0% | 10 | — |\n"
-        "| 0 | mid | crop | crop | 100.0% | 90 | — |\n"
-        "| 0 | shoulder | crop | crop | 100.0% | 150 | — |\n"
+        "| 0 | toe | crop | crop | 100.00% | 10 | — |\n"
+        "| 0 | mid | crop | crop | 100.00% | 90 | — |\n"
+        "| 0 | shoulder | crop | crop | 100.00% | 150 | — |\n"
     )
 
 
@@ -569,7 +580,51 @@ def test_write_match_writes_a_json_twin_carrying_every_decision(tmp_path, monkey
                                     tone_src=(10.0, 90.0, 150.0), tone_dst=target),
             matchgrade.ToneDecision(1, "author", "authored", measured=(40.0, 130.0, 240.0),
                                     tone_src=(40.0, 130.0, 240.0), tone_dst=target)),
-        bias=(0.0, 0.0, 0.0), bias_source="", bias_scale=1.0, mood=None)
+        bias=(0.0, 0.0, 0.0), bias_source="", bias_scale=1.0, mood=None,
+        # The declaration state reaches the machine-readable twin too (review
+        # finding 5) — a later reader must be able to tell "no declaration" from
+        # "could not look", and an empty string here means only that a report
+        # predates the field.
+        regions="none", regions_at="REGIONS.json")
+
+
+def test_the_json_twin_records_which_declaration_state_applied(tmp_path, monkeypatch):
+    """Review finding 5. `found` / `none` / `unreachable` used to survive only as
+    MATCH.md prose and an ephemeral key in write_match's return dict — so nothing
+    reading MATCH.json later could tell a reel graded against the whole crop ON
+    PURPOSE from one graded that way because the project could not be reached.
+
+    The control is the `none` run above: the two must not read the same."""
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()))
+    (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"))
+    match_grade.write_match(geometry_path)
+    found = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    assert (found.regions, found.regions_at) == ("found", "REGIONS.json")
+
+    # Same tree, project.json removed: the declaration is still on disk and still
+    # unread, and the report must say WHY rather than "no declaration".
+    (tmp_path / "project.json").unlink()
+    match_grade.write_match(geometry_path)
+    blind = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    assert blind.regions == "unreachable"
+    assert "does not resolve from here" in blind.regions_at
+
+
+def test_a_report_written_before_the_regions_field_reads_as_predating_it(tmp_path):
+    """`""` is not a fourth state — it is "this report has nothing to say about
+    the declaration", which is exactly true of every MATCH.json written before
+    the field existed."""
+    d = matchgrade.MatchReport(target=(10.0, 100.0, 200.0), eps=4.0, decisions=(),
+                               edl="EDL.json").to_dict()
+    d.pop("regions"), d.pop("regions_at")
+    back = matchgrade.MatchReport.from_dict(d)
+    assert (back.regions, back.regions_at) == ("", "")
+    with pytest.raises(ValueError, match="nowhere"):
+        matchgrade.MatchReport(target=(10.0, 100.0, 200.0), eps=4.0, decisions=(),
+                               edl="EDL.json", regions="nowhere")
 
 
 def test_the_json_twin_names_the_edl_verbatim_as_geometry_gave_it(tmp_path, monkeypatch):
