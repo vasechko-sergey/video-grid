@@ -53,7 +53,7 @@ now taken from three places.
 | `tests/lib/test_regions.py` | **new.** Unit tests for both halves. |
 | `scripts/reframe.py` | `path_meta(plan, spec, *, stabilized)` extracted from `reframe()` so a caller with no rendered sidecar can build the same `PathMeta`. |
 | `scripts/process_episode.py` | `plan_and_meta_ungraded()` — the plan plus its `CropPath`/`PathMeta`, for a caller that runs before any render. |
-| `scripts/color_measure.py` | `crop_region_percentiles()` — per-region histograms from the one decode `crop_percentiles` already makes; `measure_crop()` returns profile + provenance. |
+| `scripts/color_measure.py` | `crop_region_frames()` — the per-frame luma stack from the one decode `crop_percentiles` already makes; `measure_crop()` returns profile + provenance. |
 | `scripts/lib/models.py` | `ReelGeometry.project` — the path `REGIONS.json` is found beside. |
 | `scripts/edl_to_reel.py` | writes that field. |
 | `scripts/lib/matchgrade.py` | `ToneDecision.regions` carries the per-anchor provenance into `MATCH.json`. |
