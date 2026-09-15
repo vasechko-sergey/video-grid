@@ -336,24 +336,55 @@ def _subject_episode(tmp_path):
     return str(src), md, str(route_path)
 
 
+def _drifting_episode(tmp_path):
+    """(src, manifest, route) built so a DRIFTED copy of the manifest -> plan map
+    is observable — reusing `_subject_episode`'s clip so this costs no second encode.
+
+    Three things had to be true, and none of them is true of `_subject_episode`'s
+    own manifest, which is why the first version of the test below was vacuous
+    (mutation check 3 came back green against it):
+
+    - `crop_scale` 0.5 cuts a 320x320 crop out of a 640-wide source, so there is
+      320px of horizontal freedom. At the fixture's own `canvas: [1, 1]` the crop
+      IS the frame, freedom is 0 and `plan.path` is all zeros no matter what any
+      smoothing knob says.
+    - the route MOVES and is sampled per frame, so the savgol window has something
+      to smooth. A two-sample constant route cannot show a window change either.
+    - the manifest carries a colour block, so `strip_colour` has something to strip.
+
+    Measured on this fixture: dropping the `smooth_window_s` override moves
+    `plan.path` from [208, 219, ...] to [160, 185, ...], and dropping
+    `strip_colour` replaces the identity `colorchannelmixer` with a `lutyuv` tone
+    curve. Both are asserted below, so the fixture cannot quietly go vacuous."""
+    src, md, _ = _subject_episode(tmp_path)
+    md = dict(md, crop_scale=0.5, smooth_window_s=0.7,
+              saturation=0.9, tone_src=[40, 100, 200], tone_dst=[40, 160, 200])
+    route = tmp_path / "drifting_route.json"
+    # a triangle wave between 120 and 520 — deterministic, and it really turns
+    route.write_text(json.dumps(
+        [dict(t=i / 30.0, x=120.0 + abs(20 - i % 40) * 20.0, y=960.0, w=120.0, h=120.0)
+         for i in range(60)]))
+    return src, md, str(route)
+
+
 def test_plan_and_meta_ungraded_returns_the_same_plan_as_plan_ungraded(tmp_path):
     """Whole-branch review, finding 3. `plan_and_meta_ungraded` carried a
     byte-for-byte copy of `plan_for`'s manifest -> plan map — the very drift
     `plan_for`'s docstring says it exists to remove — and nothing pinned the two
     agreeing. Both now go through one `_plan_parts`, so the conductor measures the
-    geometry the render will use and not a second reading of the same map.
-
-    `_subject_episode`'s manifest is the discriminating one: it declares a crop
-    (not the whole frame), so a copy that drifted on layout, delivery, params or
-    the smooth_window_s override would produce a different plan here, not an
-    identical trivial one."""
+    geometry the render will use and not a second reading of the same map."""
     from scripts import process_episode
-    src, md, route = _subject_episode(tmp_path)
+    src, md, route = _drifting_episode(tmp_path)
     plan, path, meta = process_episode.plan_and_meta_ungraded(md, src, route)
     assert plan == process_episode.plan_ungraded(md, src, route)
     # and the two extra returns are that same plan's own geometry, not a rebuild
     assert path.xs == plan.path
     assert tuple(meta.src_dims) == (plan.src_w, plan.src_h)
+    # The fixture is not vacuous — the two steps a drifting copy loses really do
+    # move this plan, so the equality above has something to hold:
+    assert plan.path != process_episode.plan_ungraded(
+        dict(md, smooth_window_s=None), src, route).path        # the params override
+    assert plan.grade != process_episode.plan_for(md, src, route).grade   # strip_colour
 
 
 def test_the_crop_region_reading_equals_crop_percentiles_exactly(tmp_path):
