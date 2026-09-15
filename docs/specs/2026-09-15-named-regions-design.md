@@ -25,7 +25,7 @@ therefore be re-derived by the implementation; every finding below is a
 comparison between regions measured the same way, which the choice of ruler does
 not move.
 
-### 0.1 The subject is between 0.14% and 37% of the crop
+### 0.1 The subject is between 0.23% and 37% of the crop
 
 Projected through `geometry.extent_at_times` — the same projection the
 safe-zone check and the dE00 sensor already use — and averaged over the three

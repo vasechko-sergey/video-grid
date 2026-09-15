@@ -75,7 +75,7 @@ now taken from three places.
   `to_dict`, and `declared(anchor: str) -> AnchorRegion` returning the declared
   row or the implicit `crop` row.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_regions.py
@@ -157,12 +157,12 @@ def test_the_two_closed_sets_and_their_order():
     assert regions.KINDS == ("subject", "background", "crop")
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_regions.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'scripts.lib.regions'`
 
-- [ ] **Step 3: Write the module's declaration half**
+- [x] **Step 3: Write the module's declaration half**
 
 ```python
 # scripts/lib/regions.py
@@ -305,12 +305,12 @@ class Regions:
         return cls.from_dict(d)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_regions.py -q`
 Expected: 11 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/regions.py tests/lib/test_regions.py
@@ -338,7 +338,7 @@ git commit -m "feat(regions): the declaration — two closed sets and one author
   - `assemble(decl, readings) -> tuple[tuple[float, float, float], tuple[AnchorReading, ...]]`
   - `FALLBACKS = ("no-route", "too-small", "unorderable")`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # append to tests/lib/test_regions.py
@@ -481,12 +481,12 @@ def test_the_area_gate_is_one_percent():
     assert regions.MIN_REGION_FRAC == 0.01
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_regions.py -q`
 Expected: 10 failures, `AttributeError: module 'scripts.lib.regions' has no attribute 'measure'`
 
-- [ ] **Step 3: Write the assembly half**
+- [x] **Step 3: Write the assembly half**
 
 Append to `scripts/lib/regions.py` (and add `import numpy as np` and
 `from scripts.lib import color` to the imports at the top):
@@ -646,12 +646,12 @@ def assemble(decl: "Regions", readings: dict[str, RegionReading]
     return profile, tuple(rows)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_regions.py -q`
 Expected: 22 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/regions.py tests/lib/test_regions.py
@@ -682,7 +682,7 @@ must therefore come from the `RenderPlan`, which already carries every field
   - `reframe.path_meta(plan: RenderPlan, spec: ReframeSpec, *, stabilized: bool) -> PathMeta`
   - `process_episode.plan_and_meta_ungraded(manifest_dict: dict, src: str, route: str | None) -> tuple[reframe.RenderPlan, CropPath, PathMeta]`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/integration/test_reframe.py — append
@@ -728,12 +728,12 @@ def test_plan_and_meta_ungraded_needs_no_rendered_sidecar(tmp_path, golden_ride_
 `_md(seg)` is this file's existing one-line manifest factory. Add `json` and
 `from pathlib import Path` to its imports if absent.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py tests/lib/test_process_episode_plans.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.reframe' has no attribute 'path_meta'`
 
-- [ ] **Step 3: Extract the builder in `scripts/reframe.py`**
+- [x] **Step 3: Extract the builder in `scripts/reframe.py`**
 
 Add above `reframe()`:
 
@@ -766,7 +766,7 @@ Then replace the inline `PathMeta(...)` block at the end of `reframe()` with:
         Path(path_out).with_suffix(".meta.json"))
 ```
 
-- [ ] **Step 4: Add the plan+meta helper in `scripts/process_episode.py`**
+- [x] **Step 4: Add the plan+meta helper in `scripts/process_episode.py`**
 
 Beside `plan_ungraded`:
 
@@ -791,13 +791,13 @@ def plan_and_meta_ungraded(manifest_dict: dict, src: str,
 Add `CropPath` and `PathMeta` to this module's imports from `scripts.lib.models`
 if they are not already there.
 
-- [ ] **Step 5: Run the whole reframe + matchgrade suite**
+- [x] **Step 5: Run the whole reframe + matchgrade suite**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_reframe.py tests/lib/test_process_episode_plans.py tests/lib/test_reframe.py -q`
 Expected: all pass, including the pre-existing sidecar tests — the extraction must
 move no byte of the written file.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/reframe.py scripts/process_episode.py tests/integration/test_reframe.py tests/lib/test_process_episode_plans.py
@@ -822,7 +822,7 @@ git commit -m "refactor(reframe): one PathMeta builder, reachable before the ren
   - `color_measure.measure_crop(manifest_dict, src, route, *, decl=None, frames=color.FRAMES) -> tuple[Profile, tuple[regions.AnchorReading, ...]]`
     — **the return shape changes**: it was a bare `Profile`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/integration/test_color_measure.py — append
@@ -917,14 +917,14 @@ updated for the two-value return in this task, not in a follow-up:
 `test_measure_crop_reads_the_footage_not_a_grade_already_authored` and
 `test_measure_crop_works_on_a_pan_episode`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_color_measure.py -q`
 Expected: FAIL — `AttributeError: module 'scripts.color_measure' has no attribute
 'crop_region_frames'`, and a `TypeError` unpacking `measure_crop`'s single triple
 into two names.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Replace `measure_crop` in `scripts/color_measure.py` and add its sibling:
 
@@ -985,13 +985,13 @@ Add to this module's imports: `json`, `from pathlib import Path`,
 `from scripts.lib import geometry, regions`, and
 `from scripts.lib.models import RoutePoint`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/integration/test_color_measure.py -q`
 Expected: all pass — the four new tests plus the file's pre-existing ones, two of
 which were updated for the new return shape in Step 3.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/color_measure.py tests/integration/test_color_measure.py
@@ -1021,7 +1021,7 @@ takes `--project`, records it.
   the same rule `ReelGeometry.edl` follows. Empty means a GEOMETRY.json written
   before this slice.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/lib/test_models.py — append
@@ -1056,12 +1056,12 @@ def test_stop_after_geometry_records_the_project_it_was_given(tmp_path, golden_r
     assert Path(geo.project).name == "project.json"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py -k reel_geometry tests/integration/test_grade_shipped_pixels.py -q`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'project'`
 
-- [ ] **Step 3: Add the field**
+- [x] **Step 3: Add the field**
 
 In `ReelGeometry`, after `edl`:
 
@@ -1090,7 +1090,7 @@ In `to_dict`, after the `edl` key:
 
 In `from_dict`, add `project=d.get("project") or ""` to the constructor call.
 
-- [ ] **Step 4: Write the field in `scripts/edl_to_reel.py`**
+- [x] **Step 4: Write the field in `scripts/edl_to_reel.py`**
 
 Find where `build_geometry` constructs `ReelGeometry(...)` and add
 `project=str(project) if project else ""` using the `project` argument that
@@ -1101,12 +1101,12 @@ function already receives (`edl_to_reel.py:722` passes `a.project` into it).
 call for phase 1a — reuse it; if it is inline, lift it to a module-level helper
 first.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/integration/test_grade_shipped_pixels.py -q`
 Expected: all pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/models.py scripts/edl_to_reel.py tests/lib/test_models.py tests/integration/test_grade_shipped_pixels.py
@@ -1129,7 +1129,7 @@ git commit -m "feat(geometry): record the project path so REGIONS.json needs no 
 - Produces: `ToneDecision.regions: tuple[dict, ...] = ()` — one serialized
   `AnchorReading` per anchor, carried into `MATCH.json`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/integration/test_matchgrade.py — append
@@ -1193,12 +1193,12 @@ def test_a_decision_written_before_this_slice_has_no_region_rows():
     assert matchgrade.ToneDecision.from_dict(d).regions == ()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py tests/integration/test_matchgrade.py -q`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'regions'`
 
-- [ ] **Step 3: Carry the provenance on `ToneDecision`**
+- [x] **Step 3: Carry the provenance on `ToneDecision`**
 
 In `scripts/lib/matchgrade.py`, add to the dataclass:
 
@@ -1231,7 +1231,7 @@ with `rows = (regions[i] if regions is not None else ())` attached to every
 `ToneDecision` it builds, and the existing length check extended to `regions`
 when it is not None.
 
-- [ ] **Step 4: Thread it through `scripts/match_grade.py`**
+- [x] **Step 4: Thread it through `scripts/match_grade.py`**
 
 `conduct` gains `decl: regions_lib.Regions | None = None` and unpacks the pair:
 
@@ -1305,13 +1305,13 @@ and, per episode, a region table after the existing decision table:
                              f"| {r['fraction'] * 100:.1f}% | {r['value']:.0f} | {fb} |")
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/lib/test_matchgrade.py tests/integration/test_matchgrade.py tests/integration/test_bound_reports.py tests/integration/test_mood_contract.py -q`
 Expected: all pass. The last two monkeypatch `measure_crop` and must be updated
 for its two-value return — that update is part of this task, not a follow-up.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/lib/matchgrade.py scripts/match_grade.py tests/lib/test_matchgrade.py tests/integration/
