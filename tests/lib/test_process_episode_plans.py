@@ -88,7 +88,7 @@ def test_plan_ungraded_is_plan_for_of_a_stripped_manifest(golden_ride_segment):
 
 
 def test_plan_and_meta_ungraded_needs_no_rendered_sidecar(tmp_path, golden_ride_segment):
-    """Measured: stop_after='geometry' returns at process_episode.py:437, before
+    """Measured: process_episode's `stop_after == "geometry"` arm returns before
     reframe runs — and reframe is what writes path.json. At conductor time the
     sidecar does not exist. This is the guard on that."""
     md = _md(golden_ride_segment)
@@ -98,7 +98,19 @@ def test_plan_and_meta_ungraded_needs_no_rendered_sidecar(tmp_path, golden_ride_
          dict(t=1.0, x=960.0, y=540.0, w=120.0, h=120.0)]))
     plan, path, meta = process_episode.plan_and_meta_ungraded(
         md, golden_ride_segment, route)
-    assert len(path) == len(plan.path)
-    assert meta.out_dims == (plan.rl.out_w, plan.rl.out_h)
+    # Hardcoded, not read off `plan`: golden_ride_segment is documented (tests/
+    # conftest.py) as 1280x720, and _md's manifest carries no pan/zoom/stabilize —
+    # `meta.out_dims == (plan.rl.out_w, plan.rl.out_h)` would hold even if
+    # path_meta's own field mapping were wrong, since both sides read the same
+    # plan's same field; these numbers come from the fixture and the manifest.
+    assert meta.src_dims == (1280, 720)
+    assert meta.pan is False
+    assert meta.stabilized is False
+    assert meta.crop_ws is None and meta.crop_hs is None and meta.crop_ys is None
+    # canvas (9,16) fills 1280x720 to a 405-wide crop; a centred subject at
+    # x=960 puts the crop at round(960 - 405/2) = 758, inside the [0, 875] freedom
+    # short_edge:480 on that 405x720 crop scales the short (405) side to 480
+    assert path.xs == [758, 758]
+    assert meta.out_dims == (480, 852)
     assert not (tmp_path / "path.json").exists()     # writes nothing
     assert not (tmp_path / "path.meta.json").exists()

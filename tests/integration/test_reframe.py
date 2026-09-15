@@ -4,7 +4,8 @@ import pytest
 from scripts import reframe
 from scripts.lib import color, ffbin, models, proc
 from scripts.lib import layout as layout_lib
-from scripts.lib.models import BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec, PathMeta
+from scripts.lib.models import (BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec,
+                                PathMeta, ZoomSpec)
 
 def _dims(path):
     out = subprocess.run(
@@ -1057,7 +1058,8 @@ def test_reframe_passes_the_fps_resolved_window_to_compute_path(tmp_path, monkey
     assert captured["smooth_window"] == reframe.pathsmooth.window_frames(0.25, 60.0) == 15
 
 
-def _spec_src_route(tmp_path, src) -> tuple[models.ReframeSpec, str, str]:
+def _spec_src_route(tmp_path, src, *,
+                    zoom: ZoomSpec | None = None) -> tuple[models.ReframeSpec, str, str]:
     """A fill-layout ReframeSpec + a route.json written under `tmp_path`, over `src`.
 
     Self-contained rather than lifted onto an existing render test's geometry
@@ -1071,24 +1073,89 @@ def _spec_src_route(tmp_path, src) -> tuple[models.ReframeSpec, str, str]:
     already proves or grow the helper into a parameter bag that would not, in
     fact, stop this test and some future one from describing different
     geometries — the one thing a shared helper is for.
+
+    `zoom` defaults to None (a plain tracked crop). A caller that needs
+    crop_ws/crop_hs/crop_ys populated — the sidecar fields that stay None for
+    every OTHER case this file renders — passes a real ZoomSpec; the route above
+    already satisfies zoom_lib.rects' >= 2 samples.
     """
     route = [dict(t=i / 30, x=500.0 + i * 3, y=360.0, w=100.0, h=200.0)
              for i in range(40)]
     route_p = tmp_path / "route.json"
     route_p.write_text(json.dumps(route))
     spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
-                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery())
+                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery(),
+                              zoom=zoom)
     return spec, str(src), str(route_p)
+
+
+def _built_and_written(spec, src, route_path, tmp_path, name: str,
+                       *, stabilized: bool = False) -> tuple[PathMeta, PathMeta]:
+    """Render once, then rebuild path_meta from a second, render-free plan_render
+    call — the (built, written) pair every case below compares. Its own function
+    only to keep the three cases from re-typing the same five lines with three
+    chances to type them slightly differently."""
+    out, path_out = tmp_path / f"{name}.mp4", tmp_path / f"{name}-path.json"
+    reframe.reframe(spec, src, route_path, str(out), str(path_out), stabilized=stabilized)
+    written = PathMeta.from_json(path_out.with_suffix(".meta.json"))
+    built = reframe.path_meta(reframe.plan_render(spec, src, route_path), spec,
+                              stabilized=stabilized)
+    return built, written
 
 
 @pytest.mark.integration
 def test_path_meta_builds_the_same_sidecar_reframe_writes(tmp_path, golden_ride_segment):
     """The extraction's whole point: one builder, two callers. If reframe kept its
-    own copy the conductor would measure a geometry the render does not use."""
+    own copy the conductor would measure a geometry the render does not use.
+
+    Scope: this and its zoom/pan siblings below prove the two CALLERS agree with
+    each other, across enough geometries that pan/crop_ws/crop_hs/crop_ys all get
+    exercised from both branches (see the siblings) — not that path_meta's field
+    mapping is correct in any absolute sense. Both sides call the same function,
+    so a bug inside path_meta's OWN mapping (say, crop_w and crop_h swapped)
+    would compute the same wrong value twice and still compare equal here. That
+    absolute correctness is what test_reframe_writes_a_truthful_sidecar,
+    test_reframe_writes_the_rect_arrays_into_the_sidecar (tests/lib/test_reframe.py),
+    test_reframe_without_a_zoom_writes_no_arrays (tests/lib/test_reframe.py) and
+    test_reframe_writes_the_pan_bit_into_the_sidecar already establish, each by
+    asserting a concrete expected value instead of a second call to path_meta.
+
+    This spec leaves `zoom`/`pan` at their None default, so on both sides `pan`
+    reads False and crop_ws/crop_hs/crop_ys read None — seeing the siblings below
+    matters BECAUSE those four fields get no incremental exercise here.
+    """
     spec, src, route = _spec_src_route(tmp_path, golden_ride_segment)
-    reframe.reframe(spec, src, route, str(tmp_path / "ep.mp4"),
-                    str(tmp_path / "path.json"), stabilized=False)
-    written = PathMeta.from_json(str(tmp_path / "path.meta.json"))
-    built = reframe.path_meta(reframe.plan_render(spec, src, route), spec,
-                              stabilized=False)
+    built, written = _built_and_written(spec, src, route, tmp_path, "plain")
     assert built == written
+
+
+@pytest.mark.integration
+def test_path_meta_builds_the_same_sidecar_reframe_writes_under_a_zoom(tmp_path, golden_ride_segment):
+    """The zoom half of the gap the baseline test above names: with a real
+    ZoomSpec, crop_ws/crop_hs/crop_ys carry actual per-sample arrays (not None)
+    on both the written and the freshly-built side. 1.0->0.7 over crop_w=405 and
+    this fixture's ~1.585s duration is comfortably inside zoom_lib.validate's
+    ZOOM_MAX_RATE/ZOOM_MAX_UPSCALE ceilings — the same push-in
+    test_reframe_writes_the_rect_arrays_into_the_sidecar uses."""
+    spec, src, route = _spec_src_route(tmp_path, golden_ride_segment, zoom=ZoomSpec(1.0, 0.7))
+    built, written = _built_and_written(spec, src, route, tmp_path, "zoom")
+    assert built == written
+    # a vacuity guard: without it, a fixture/geometry change that silently
+    # degraded crop_ws back to None would still pass the equality above.
+    assert written.crop_ws is not None and written.crop_hs is not None and written.crop_ys is not None
+
+
+@pytest.mark.integration
+def test_path_meta_builds_the_same_sidecar_reframe_writes_under_a_pan(sample_clip, tmp_path):
+    """The pan half of the gap: a pan sets `pan=True` and reads NO route (pan and
+    zoom cannot coexist on one episode, so this cannot ride the zoom case above),
+    exercising path_meta's `pan` field from its other branch on both sides.
+    Mirrors the geometry test_reframe_writes_the_pan_bit_into_the_sidecar already
+    uses (sample_clip, crop_scale=0.5, the same 0.2->0.7 extent)."""
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105.0, 122.0, 137.0), delivery=Delivery("native"),
+                              layout=LayoutSpec(mode="fill", crop_scale=0.5),
+                              pan=PanSpec(start=0.2, end=0.7))
+    built, written = _built_and_written(spec, str(sample_clip), None, tmp_path, "pan")
+    assert built == written
+    assert written.pan is True     # the vacuity guard for this branch
