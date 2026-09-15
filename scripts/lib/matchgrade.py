@@ -128,7 +128,15 @@ class ToneDecision:
     kind declared, the kind actually used, that region's frame fraction, the
     value taken, and the fallback if one fired (design 2026-09-15 §4). Empty on
     a report written before that slice, and empty is not "no fallback fired" —
-    it is "this report predates the record"."""
+    it is "this report predates the record".
+
+    Frozen buys equality and a stable repr, not hash: `regions` holds plain
+    dicts (JSON's own shape, and what MATCH.json/_report_md's `r["field"]`
+    access both want), so `hash()` on a decision that carries rows raises
+    TypeError. Nothing hashes a ToneDecision today (review finding 7) — kept
+    this way rather than flattened into a hashable nested-tuple shape, which
+    would need its own dict<->tuple conversion at both `to_dict` and every
+    `_report_md`/MATCH.json reader and buy nothing no caller needs."""
     index: int
     action: str                    # "author" | "skip"
     reason: str                    # "authored" | "within-eps" | "flat-source" | "hand-authored"
@@ -155,7 +163,7 @@ class ToneDecision:
                    measured=_triple(d.get("measured"), "ToneDecision.measured"),
                    tone_src=_opt_triple(d.get("tone_src"), "ToneDecision.tone_src"),
                    tone_dst=_opt_triple(d.get("tone_dst"), "ToneDecision.tone_dst"),
-                   regions=tuple(d.get("regions") or ()))
+                   regions=_regions_field(d.get("regions"), "ToneDecision.regions"))
 
 
 def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
@@ -201,6 +209,32 @@ def _triple(v, what: str) -> Profile:
 
 def _opt_triple(v, what: str) -> Profile | None:
     return None if v is None else _triple(v, what)
+
+
+def _regions_field(v, what: str) -> tuple[dict, ...]:
+    """ToneDecision.regions from JSON: absent/null means "predates this record"
+    (empty tuple, matching `to_dict`'s own empty-list-on-no-rows shape) — anything
+    else must be a list of row objects, refused by name with a remedy exactly like
+    every other field on this class (review finding 4: this was the one field that
+    skipped that contract, so `"regions": 5` raised a bare TypeError montage's own
+    `except (ValueError, OSError)` does not catch, and `"regions": "wetsuit"` would
+    have silently become a 7-tuple of one-character strings via a bare `tuple(v)`).
+
+    Each row is copied (`dict(r)`), never aliased: `to_dict` already copies on the
+    way out ([dict(r) for r in self.regions]), and handing a frozen ToneDecision a
+    reference to the CALLER's own dict is the same aliasing bug from the other
+    side — a caller that later mutates the dict it passed in would otherwise mutate
+    a value this "immutable" object already returned."""
+    if v is None:
+        return ()
+    if not isinstance(v, list):
+        raise ValueError(f"{what} must be a list of objects, got {type(v).__name__} "
+                         f"({v!r}) — re-run match-grade to regenerate it")
+    for i, r in enumerate(v):
+        if not isinstance(r, dict):
+            raise ValueError(f"{what}[{i}] must be an object, got {type(r).__name__} "
+                             f"({r!r}) — re-run match-grade to regenerate it")
+    return tuple(dict(r) for r in v)
 
 
 def _required_int(v, what: str) -> int:

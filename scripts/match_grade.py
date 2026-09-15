@@ -137,13 +137,16 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     exact "silently" class this slice exists to close, restoring the arm the pre-slice
     report carried under `elif preset is not None`.
 
-    `regions_at` is _find_regions' own second half (design 2026-09-15 §4) and carries
-    THREE states, not two: a path (a declaration was found and used), "" (the project
-    is known and holds no REGIONS.json — every anchor is the whole crop, on purpose),
-    or "unreachable" (GEOMETRY.json predates ReelGeometry.project, so REGIONS.json could
-    not even be looked for). The third must never read like the second: "graded against
-    the whole crop because you asked for nothing" and "graded against the whole crop
-    because I could not look" are different claims about the same pixels."""
+    `regions_at` is _find_regions' own second half (design 2026-09-15 §4, amended by
+    review finding 3) and carries THREE states, not two: a path (a declaration was
+    found and used), "" (the project is known, reachable, and holds no REGIONS.json —
+    every anchor is the whole crop, on purpose), or a string starting with
+    "unreachable" — checked with .startswith, never == — naming why the declaration
+    could not even be looked for (no project recorded at all, or one was but its
+    directory does not resolve from here). The third must never read like the second:
+    "graded against the whole crop because you asked for nothing" and "graded against
+    the whole crop because I could not look" are different claims about the same
+    pixels."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -151,10 +154,11 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             f"Measured on each episode's own tracked crop, "
             f"{color.FRAMES} frames per episode "
             f"(design 2026-08-30 §1) — not the whole source frame.")
-    if regions_at == "unreachable":
-        head += ("\n\nGEOMETRY.json records no project, so REGIONS.json could not be "
-                 "looked for — every anchor is the whole crop. Re-run "
-                 "`edl_to_reel --stop-after-geometry` to record it.")
+    if regions_at.startswith("unreachable"):
+        why = regions_at.split(": ", 1)[1] if ": " in regions_at else regions_at
+        head += (f"\n\nREGIONS.json could not be looked for — {why}. Every anchor "
+                 f"is the whole crop. Re-run `edl_to_reel --stop-after-geometry` to "
+                 f"record a reachable project.")
     elif regions_at:
         head += f"\n\nAnchors declared in {regions_at}."
     else:
@@ -177,6 +181,13 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     for src, d in zip(sources, decisions):
         delta = max(abs(a - b) for a, b in zip(d.measured, target))
         lines.append(f"| {d.index} | {src} | {_triple(d.measured)} | {delta:.0f} | {d.action} · {d.reason} |")
+    # Reachable only via a measure_crop STUB that returns empty rows (most of this
+    # suite's own test doubles, which do not model the regions feature at all) —
+    # the real measure_crop's regions.assemble always fills at least the crop
+    # fallback for all three anchors, so every REAL conduct() run reaches this
+    # branch and the table below always prints (review finding 1). Kept as a
+    # guard rather than printing unconditionally so a stubbed test's MATCH.md
+    # stays exactly as short as it was before this slice.
     if any(d.regions for d in decisions):
         lines += ["", "| # | anchor | region | kind | % of frame | value | fallback |",
                   "|---|--------|--------|------|-----------:|------:|----------|"]
@@ -191,15 +202,32 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
 def _find_regions(geo: ReelGeometry) -> tuple["regions_lib.Regions | None", str]:
     """The declaration beside project.json, and what to say about it.
 
-    Three states, and they are three (design §4): a declaration was found; the
-    project is known and holds none; or GEOMETRY.json predates the recorded
-    project and the file cannot be reached at all. The third must not read as
-    the second — "graded against the whole crop because you asked for nothing"
-    and "graded against the whole crop because I could not look" are different
-    claims about the same pixels."""
+    Three states, and they are three (design §4, amended by review finding 3
+    against the brief's own verbatim body — the design owner ruled the review
+    correct, so this is not the brief's original text): a declaration was
+    found; the project is known, its directory is reachable, and it holds
+    none; or the declaration could not even be LOOKED FOR, which is now two
+    sub-cases collapsed under one "unreachable" state rather than silently
+    landing on the middle one — no project was recorded at all (a GEOMETRY.json
+    from before design 2026-09-15), or one was, but `Path(geo.project).parent`
+    does not exist from here (a relative `--project` resolved against a
+    different CWD than the one that wrote it, or a project moved since).
+
+    The bug this closes: `p.exists()` on a REGIONS.json inside an unreachable
+    directory returns the same False a genuinely-absent file would, so a bare
+    existence check on `p` alone cannot tell "nothing was declared" from "I
+    could not even check" — the exact §2.1 confusion the third state exists
+    to prevent. Every "unreachable" string starts with the literal word
+    "unreachable" (checked with .startswith, never ==) and carries the reason
+    after "unreachable: ", so a caller — `write_match`'s status dict and
+    `_report_md` both — can tell the state apart from a real path or the
+    empty string without parsing two different shapes out of one word."""
     if not geo.project:
-        return None, "unreachable"
-    p = Path(geo.project).parent / "REGIONS.json"
+        return None, "unreachable: GEOMETRY.json records no project"
+    parent = Path(geo.project).parent
+    if not parent.is_dir():
+        return None, f"unreachable: {geo.project}'s directory ({parent}) does not exist"
+    p = parent / "REGIONS.json"
     if not p.exists():
         return None, ""
     return regions_lib.Regions.from_json(p), str(p)

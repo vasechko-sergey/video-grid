@@ -294,3 +294,65 @@ def test_a_decision_written_before_this_slice_has_no_region_rows():
     d = matchgrade.ToneDecision(0, "skip", "within-eps", (10.0, 20.0, 30.0)).to_dict()
     d.pop("regions")
     assert matchgrade.ToneDecision.from_dict(d).regions == ()
+
+
+# --- ToneDecision.regions validation (review finding 4, fix round 1) --------------
+# regions was the only field on this class that skipped the refuse-by-name contract
+# every other field gets: `"regions": 5` raised a bare TypeError montage's own
+# `except (ValueError, OSError)` does not catch, and `"regions": "wetsuit"` would have
+# silently become a 7-tuple of one-character strings via a bare `tuple(v)`.
+
+def test_tone_decision_from_dict_refuses_a_non_list_regions():
+    with pytest.raises(ValueError, match="ToneDecision.regions"):
+        matchgrade.ToneDecision.from_dict(
+            {"index": 0, "action": "skip", "reason": "within-eps",
+             "measured": [1, 2, 3], "regions": 5})
+
+
+def test_tone_decision_from_dict_refuses_a_string_regions_rather_than_iterating_its_characters():
+    # the specific silent-corruption shape review finding 4 named: tuple("wetsuit")
+    # is a 7-tuple of one-character strings, not a refusal.
+    with pytest.raises(ValueError, match="ToneDecision.regions"):
+        matchgrade.ToneDecision.from_dict(
+            {"index": 0, "action": "skip", "reason": "within-eps",
+             "measured": [1, 2, 3], "regions": "wetsuit"})
+
+
+def test_tone_decision_from_dict_refuses_a_regions_row_that_is_not_an_object():
+    with pytest.raises(ValueError, match=r"ToneDecision\.regions\[0\]"):
+        matchgrade.ToneDecision.from_dict(
+            {"index": 0, "action": "skip", "reason": "within-eps",
+             "measured": [1, 2, 3], "regions": ["not-a-row"]})
+
+
+def test_tone_decision_from_dict_copies_region_rows_not_aliases_them():
+    """to_dict already copies on the way out ([dict(r) for r in self.regions]) —
+    from_dict must copy on the way in too, or a frozen ToneDecision quietly shares
+    its regions with whatever dict the caller keeps a reference to and later
+    mutates (review finding 4, the bug's other half)."""
+    row = {"anchor": "toe", "name": "wetsuit", "of": "subject", "used": "subject",
+           "fraction": 0.2, "value": 10.0, "fallback": None}
+    d = matchgrade.ToneDecision.from_dict(
+        {"index": 0, "action": "skip", "reason": "within-eps",
+         "measured": [1, 2, 3], "regions": [row]})
+    row["fraction"] = 0.9
+    assert d.regions[0]["fraction"] == 0.2
+
+
+def test_montage_status_survives_a_match_json_with_corrupt_regions(tmp_path):
+    """The consequence review finding 4 named: montage._match_grade_state's own
+    `except (ValueError, OSError)` only helps if the corrupt field actually raises
+    a ValueError instead of a bare TypeError — this is the end-to-end proof that
+    a MATCH.json corrupted in exactly this field reports `stale` with the cause
+    named, rather than taking the whole inspector down with a traceback (which
+    that function's own docstring says a corrupt MATCH.json must never do)."""
+    import json as _json
+    from scripts import montage
+    (tmp_path / "MATCH.json").write_text(_json.dumps({
+        "target": [10.0, 100.0, 200.0], "eps": 4.0, "edl": "EDL.json",
+        "decisions": [{"index": 0, "action": "skip", "reason": "within-eps",
+                       "measured": [10.0, 100.0, 200.0], "tone_src": None,
+                       "tone_dst": None, "regions": 5}]}))
+    state, why = montage._match_grade_state(tmp_path)
+    assert state == "stale"
+    assert "MATCH.json" in why

@@ -291,34 +291,46 @@ def test_both_halves_are_needed_to_close_the_residual(tmp_path):
 
 
 # --- named regions: the conductor reads the declaration (design 2026-09-15 §4) ----
+# Fix round 1 (review): finding 1 found the fake diverging from measure_crop's own
+# contract, finding 2 found the byte-identity pin comparing post-slice code to
+# itself, finding 3 added a second unreachable sub-case, finding 6 the unused
+# monkeypatch fixture + a dead binding, and finding 8 the misleading decl_file
+# parameter. All four are addressed below, together.
 
-def _write_match_with_fake_measurements(tmp_path, *, decl_file=None, project="project.json",
-                                        subject_fraction=0.2):
+def _write_match_with_fake_measurements(tmp_path, monkeypatch, *, project="project.json",
+                                         subject_fraction=0.2):
     """A one-episode GEOMETRY.json + EDL.json under `tmp_path`, `write_match`'d with
     `measure_crop` monkeypatched so no ffmpeg runs.
 
-    `project`, when not None, becomes `ReelGeometry.project` (a plain filename joined
-    onto `tmp_path` — the file itself need not exist, only its directory, which is all
-    `_find_regions` ever looks at) — the ordinary case, a project.json known but no
-    REGIONS.json beside it. `project=None` simulates a GEOMETRY.json written before
-    Task 5, with no project field at all. `decl_file`, when given, names the
-    REGIONS.json to look for beside `project`; if nothing is on disk there yet this
-    writes ONE default declaration (toe -> wetsuit/subject) so a test that wants a
-    declared-but-not-pre-written file (test_the_report_prints_the_fallback_and_its_
-    reason) gets one, while a test that pre-writes its own content
-    (test_a_regions_file_beside_project_json_is_found_with_no_flag) is left alone.
+    `project`, when not None, becomes `ReelGeometry.project` (a plain relative path
+    joined onto `tmp_path` — the file itself need not exist, only its directory,
+    which is all `_find_regions` ever looks at) — the ordinary case, a project.json
+    known but no REGIONS.json beside it. `project=None` simulates a GEOMETRY.json
+    written before Task 5, with no project field at all. A path whose OWN directory
+    does not exist (e.g. "gone/project.json") simulates the other unreachable
+    sub-case review finding 3 added: a recorded project this conductor cannot
+    reach from here.
 
-    The fake `measure_crop` mirrors the real one's shape (manifest/src/route positional,
-    decl/frames keyword) but only for the ONE thing this module's tests are about: given
-    a `decl`, it runs the REAL `regions.assemble` over a synthetic subject/background/crop
-    reading (subject fraction/profile controllable via `subject_fraction`, so a caller can
-    push it under MIN_REGION_FRAC and exercise the too-small fallback) — real fallback
-    logic, no decode. Given no `decl` (the no-REGIONS.json path), it returns a fixed
-    profile with EMPTY rows: `regions.assemble` itself would still emit three boilerplate
-    "crop" rows even for an empty declaration (color_measure's own
-    test_measure_crop_with_no_declaration_returns_the_old_profile pins exactly that), but
-    what this suite is pinning is the WIRING's own default — nothing was declared, so
-    MATCH.json's decisions carry nothing, matching the pre-slice shape byte-for-byte."""
+    Whether a REGIONS.json exists is entirely the CALLING TEST's own business —
+    write it (or don't) before calling this helper, exactly as a real author
+    would. This helper used to accept a `decl_file` naming a REGIONS.json and
+    write a default declaration itself whenever nothing was on disk there yet,
+    which implied the declaration's FILENAME was configurable (`_find_regions`
+    hard-codes "REGIONS.json"; it never was) and made what a test measured
+    depend on what happened to be on disk first (review finding 8) — every test
+    below now writes its own REGIONS.json, explicitly, when it wants one.
+
+    The fake `measure_crop` mirrors the real one's body EXACTLY (design
+    2026-09-15, color_measure.measure_crop): `regions.assemble(decl if decl is
+    not None else regions.Regions(), readings)` over a synthetic
+    subject/background/crop reading (subject fraction/profile controllable via
+    `subject_fraction`, so a caller can push it under MIN_REGION_FRAC and
+    exercise the too-small fallback). It used to special-case `decl is None`
+    into a hand-picked profile — (10.0, 100.0, 200.0) — that matched none of
+    the three readings below; the real conductor never produces that number
+    for "no declaration" (it falls back to the crop reading, (20.0, 100.0,
+    200.0) here), so the old "byte-identical" test built on this fake was
+    pinning a target production would never emit (review finding 1)."""
     source = tmp_path / "clip.mp4"
     route = tmp_path / "route.json"
     source.touch()
@@ -338,29 +350,17 @@ def _write_match_with_fake_measurements(tmp_path, *, decl_file=None, project="pr
     geometry_path = tmp_path / "GEOMETRY.json"
     geo.write(geometry_path)
 
-    if decl_file is not None:
-        decl_path = tmp_path / decl_file
-        if not decl_path.exists():
-            decl_path.write_text(json.dumps({"anchors": [
-                {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
-
     def fake_measure_crop(manifest_dict, src, route_arg, *, decl=None, frames=None):
-        if decl is None:
-            return (10.0, 100.0, 200.0), ()
         readings = {
             "subject": regions.RegionReading("subject", subject_fraction, (10.0, 150.0, 220.0)),
             "background": regions.RegionReading("background", 1.0 - subject_fraction,
                                                 (30.0, 100.0, 180.0)),
             "crop": regions.RegionReading("crop", 1.0, (20.0, 100.0, 200.0)),
         }
-        return regions.assemble(decl, readings)
+        return regions.assemble(decl if decl is not None else regions.Regions(), readings)
 
-    orig = match_grade.measure_crop
-    match_grade.measure_crop = fake_measure_crop
-    try:
-        return match_grade.write_match(str(geometry_path))
-    finally:
-        match_grade.measure_crop = orig
+    monkeypatch.setattr(match_grade, "measure_crop", fake_measure_crop)
+    return match_grade.write_match(str(geometry_path))
 
 
 def _match_json(tmp_path) -> dict:
@@ -368,19 +368,37 @@ def _match_json(tmp_path) -> dict:
 
 
 def test_no_regions_file_leaves_the_target_byte_identical(tmp_path, monkeypatch):
-    """The pinned default path (Global Constraints). A run with no declaration
-    must produce the same target, the same EDL and the same MATCH.json as before
-    this slice."""
-    before = _write_match_with_fake_measurements(tmp_path, decl_file=None)
-    after = _write_match_with_fake_measurements(tmp_path, decl_file=None)
-    assert before["target"] == after["target"]
-    assert all(d["regions"] == [] for d in _match_json(tmp_path)["decisions"])
+    """The pinned default path (Global Constraints), pinned against LITERALS this
+    fixture's own crop reading determines — not against a second call of the same
+    post-slice code (review finding 2: `before["target"] == after["target"]`
+    compares two calls of `write_match` in the same tree, both already carrying
+    whatever this slice changed, so it cannot fail on any regression this slice
+    could introduce).
+
+    With no REGIONS.json every anchor falls back to the crop exactly as it did
+    before design 2026-09-15 (color_measure's own
+    test_measure_crop_with_no_declaration_returns_the_old_profile pins the same
+    fact one layer down): the target is this fixture's crop profile
+    (20.0, 100.0, 200.0), the reel's only episode IS that profile so it is left
+    untouched (within-eps, no pair — a real pin: an authored pair here would be
+    a real regression), and every decision's regions carry the three boilerplate
+    crop rows real `regions.assemble` always produces, never an empty list."""
+    result = _write_match_with_fake_measurements(tmp_path, monkeypatch)
+    assert result["target"] == [20.0, 100.0, 200.0]
+    back = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert (back.episodes[0].tone_src, back.episodes[0].tone_dst) == (None, None)
+    for d in _match_json(tmp_path)["decisions"]:
+        assert [(r["anchor"], r["of"], r["used"], r["fallback"]) for r in d["regions"]] == [
+            ("toe", "crop", "crop", None), ("mid", "crop", "crop", None),
+            ("shoulder", "crop", "crop", None)]
+    assert (tmp_path / "MATCH.md").read_text().startswith(
+        "# Match-grade — target 20/100/200 (p5/p50/p95), eps 4")
 
 
 def test_a_regions_file_beside_project_json_is_found_with_no_flag(tmp_path, monkeypatch):
     (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
         {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
-    result = _write_match_with_fake_measurements(tmp_path, decl_file="REGIONS.json")
+    result = _write_match_with_fake_measurements(tmp_path, monkeypatch)
     assert result["regions"] == str(tmp_path / "REGIONS.json")
     rows = _match_json(tmp_path)["decisions"][0]["regions"]
     assert rows[0] == {"anchor": "toe", "name": "wetsuit", "of": "subject",
@@ -388,14 +406,32 @@ def test_a_regions_file_beside_project_json_is_found_with_no_flag(tmp_path, monk
                        "fallback": None}
 
 
-def test_a_geometry_with_no_project_says_so_rather_than_reporting_no_declaration(tmp_path):
-    result = _write_match_with_fake_measurements(tmp_path, project=None)
-    assert result["regions"] == "unreachable"
+def test_a_geometry_with_no_project_says_so_rather_than_reporting_no_declaration(
+        tmp_path, monkeypatch):
+    result = _write_match_with_fake_measurements(tmp_path, monkeypatch, project=None)
+    assert result["regions"] == "unreachable: GEOMETRY.json records no project"
     assert "GEOMETRY.json records no project" in (tmp_path / "MATCH.md").read_text()
 
 
-def test_the_report_prints_the_fallback_and_its_reason(tmp_path):
-    result = _write_match_with_fake_measurements(tmp_path, decl_file="REGIONS.json",
-                                                 subject_fraction=0.002)
+def test_a_moved_project_is_unreachable_not_silently_no_declaration(tmp_path, monkeypatch):
+    """Review finding 3, ruled correct by the design owner and NOT the brief's
+    original body: `_find_regions` used to check only `p.exists()` for
+    REGIONS.json itself, so a project.json whose own DIRECTORY cannot be
+    reached from here (moved since, or a relative --project resolved against a
+    different CWD than the one that recorded it) made that check False for the
+    same reason a genuinely-absent REGIONS.json would — silently landing on
+    "no declaration" when the true state is "could not even look". The
+    unreachable state must carry the offending path, not just the bare word."""
+    result = _write_match_with_fake_measurements(
+        tmp_path, monkeypatch, project="gone/project.json")
+    assert result["regions"].startswith("unreachable:")
+    assert "gone" in result["regions"] and "does not exist" in result["regions"]
+    assert "does not exist" in (tmp_path / "MATCH.md").read_text()
+
+
+def test_the_report_prints_the_fallback_and_its_reason(tmp_path, monkeypatch):
+    (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
+    _write_match_with_fake_measurements(tmp_path, monkeypatch, subject_fraction=0.002)
     md = (tmp_path / "MATCH.md").read_text()
     assert "too-small" in md and "wetsuit" in md and "0.2%" in md

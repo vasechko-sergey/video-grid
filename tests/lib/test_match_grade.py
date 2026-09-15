@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts import match_grade
-from scripts.lib import matchgrade, moodpreset, provenance
+from scripts.lib import matchgrade, moodpreset, provenance, regions
 from scripts.lib.edl import EDLEpisode, EDL
 from scripts.lib.models import EpisodeGeometry, ReelCheckSpec, ReelGeometry
 from scripts.lib.spec import Spec
@@ -143,7 +143,10 @@ def _write_geometry(tmp_path, *eps):
     the ORDINARY named-regions state — a known project with no REGIONS.json beside
     it — rather than the "unreachable" legacy state a bare, project-less
     ReelGeometry would report. Only the dedicated named-regions tests in
-    tests/integration/test_matchgrade.py exercise "unreachable" on purpose."""
+    tests/integration/test_matchgrade.py exercise "unreachable" on purpose. This
+    RELATIVE "project.json" resolves against `tmp_path` only because of this
+    module's own autouse `_in_a_run_dir` fixture (`monkeypatch.chdir(tmp_path)`,
+    above) — the same reason `e.source`/`f"r{i}.json"` were already relative."""
     edl_path = tmp_path / "EDL.json"
     edl_path.write_text(json.dumps(_edl(*eps).to_dict(), indent=2))
     for i, e in enumerate(eps):
@@ -158,8 +161,17 @@ def _write_geometry(tmp_path, *eps):
 
 
 def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
+    # d.mp4's stub carries three crop AnchorReadings — the shape the REAL
+    # measure_crop always returns even absent a REGIONS.json (regions.assemble
+    # falls every undeclared anchor back to the crop) — so this file's one
+    # byte-exact MATCH.md pin covers a report the real conductor can actually
+    # emit, not the empty-rows shape every OTHER stub in this file still uses
+    # for its own, unrelated reasons (review finding 1's consequence).
+    d_rows = (regions.AnchorReading("toe", "crop", "crop", "crop", 1.0, 10.0, None),
+              regions.AnchorReading("mid", "crop", "crop", "crop", 1.0, 90.0, None),
+              regions.AnchorReading("shoulder", "crop", "crop", "crop", 1.0, 150.0, None))
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()) if "d.mp4" in src
+                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), d_rows) if "d.mp4" in src
                         else ((40.0, 130.0, 240.0), ()))
     ep0, ep1 = _ep("d.mp4"), _ep("b.mp4")
     geometry_path, edl_path = _write_geometry(tmp_path, ep0, ep1)
@@ -194,6 +206,12 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
         "|---|--------|-----------------------|:-----:|-----------------|\n"
         "| 0 | d.mp4 | 10/90/150 | 45 | author · authored |\n"
         "| 1 | b.mp4 | 40/130/240 | 45 | author · authored |\n"
+        "\n"
+        "| # | anchor | region | kind | % of frame | value | fallback |\n"
+        "|---|--------|--------|------|-----------:|------:|----------|\n"
+        "| 0 | toe | crop | crop | 100.0% | 10 | — |\n"
+        "| 0 | mid | crop | crop | 100.0% | 90 | — |\n"
+        "| 0 | shoulder | crop | crop | 100.0% | 150 | — |\n"
     )
 
 

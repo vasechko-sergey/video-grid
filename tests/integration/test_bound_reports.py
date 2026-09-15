@@ -80,6 +80,13 @@ def _geometry(tmp_path, sources):
     source needs a real (empty; measure_crop is mocked below and never decodes it) file
     on disk. `EDLEpisode.source` carries no such check (it is an editorial label, not a
     path reframe opens here), so it stays the bare name.
+
+    `project=str(tmp_path / "project.json")` (the file itself need not exist —
+    _find_regions only reads its directory) so write_match lands on the ordinary
+    "no REGIONS.json" state rather than the project-less "unreachable" one — the
+    same reasoning applied to tests/lib/test_match_grade.py's own _write_geometry
+    (review finding 5): neither test here is about the regions feature, and a
+    stray "unreachable" reading would misrepresent what each one models.
     """
     lay = runlayout.RunLayout(tmp_path)
     lay.reel_dir.mkdir(parents=True, exist_ok=True)
@@ -98,7 +105,8 @@ def _geometry(tmp_path, sources):
         geo_episodes.append(EpisodeGeometry(manifest={}, route=str(tmp_path / f"r{i}.json"),
                                             source=str(src_path),
                                             project_dir=str(tmp_path / f"p{i}")))
-    geo = ReelGeometry(episodes=tuple(geo_episodes), edl=str(edl_path))
+    geo = ReelGeometry(episodes=tuple(geo_episodes), edl=str(edl_path),
+                       project=str(tmp_path / "project.json"))
     gp = lay.episodes / "GEOMETRY.json"
     lay.episodes.mkdir(parents=True, exist_ok=True)
     geo.write(gp)

@@ -148,6 +148,13 @@ def _write_geometry(run_dir: Path) -> str:
     calls Path.exists(). measure_crop is monkeypatched by every caller below, so
     the touched source/route files exist only to satisfy that existence guard and
     are never decoded (mirrors test_match_grade.py's own _touch/_write_geometry).
+
+    `project=str(run_dir / "project.json")` (need not exist — _find_regions only
+    reads its directory) so write_match lands on the ordinary "no REGIONS.json"
+    state, not the project-less "unreachable" one — this module's proof is about
+    tone_bias resolution, not the regions feature (review finding 5, the same
+    reasoning tests/lib/test_match_grade.py's own _write_geometry already got).
+
     Returns the GEOMETRY.json path, as a str."""
     run_dir.mkdir(parents=True)
     episodes, geoms = [], []
@@ -161,7 +168,8 @@ def _write_geometry(run_dir: Path) -> str:
     edl_path = run_dir / "EDL.json"
     edl_path.write_text(json.dumps(EDL(episodes=tuple(episodes)).to_dict(), indent=2))
     geometry_path = run_dir / "GEOMETRY.json"
-    ReelGeometry(episodes=tuple(geoms), edl=str(edl_path)).write(geometry_path)
+    ReelGeometry(episodes=tuple(geoms), edl=str(edl_path),
+                project=str(run_dir / "project.json")).write(geometry_path)
     return str(geometry_path)
 
 
