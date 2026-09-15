@@ -336,6 +336,26 @@ def _subject_episode(tmp_path):
     return str(src), md, str(route_path)
 
 
+def test_plan_and_meta_ungraded_returns_the_same_plan_as_plan_ungraded(tmp_path):
+    """Whole-branch review, finding 3. `plan_and_meta_ungraded` carried a
+    byte-for-byte copy of `plan_for`'s manifest -> plan map — the very drift
+    `plan_for`'s docstring says it exists to remove — and nothing pinned the two
+    agreeing. Both now go through one `_plan_parts`, so the conductor measures the
+    geometry the render will use and not a second reading of the same map.
+
+    `_subject_episode`'s manifest is the discriminating one: it declares a crop
+    (not the whole frame), so a copy that drifted on layout, delivery, params or
+    the smooth_window_s override would produce a different plan here, not an
+    identical trivial one."""
+    from scripts import process_episode
+    src, md, route = _subject_episode(tmp_path)
+    plan, path, meta = process_episode.plan_and_meta_ungraded(md, src, route)
+    assert plan == process_episode.plan_ungraded(md, src, route)
+    # and the two extra returns are that same plan's own geometry, not a rebuild
+    assert path.xs == plan.path
+    assert tuple(meta.src_dims) == (plan.src_w, plan.src_h)
+
+
 def test_the_crop_region_reading_equals_crop_percentiles_exactly(tmp_path):
     """The byte-identical default path, pinned. If the region ruler and the
     pooled-histogram ruler ever disagree there are two rulers, which is the one
@@ -348,6 +368,37 @@ def test_the_crop_region_reading_equals_crop_percentiles_exactly(tmp_path):
     pooled = color_measure.crop_percentiles(plan, src, times)
     stack = color_measure.crop_region_frames(plan, src, times)
     assert regions.measure(stack, None)["crop"].profile == pooled
+
+
+def test_the_two_crop_readings_issue_one_identical_decode(tmp_path, monkeypatch):
+    """Whole-branch review, finding 4. The profile-equality test above can survive
+    a divergence that happens not to move THIS fixture's percentiles — the two
+    functions used to carry two verbatim copies of the same ffmpeg argv and the
+    same byte-count guard, and copy-paste was the whole guarantee.
+
+    This reads the argv itself: both shapes now go through one
+    `_crop_gray_bytes`, so they cannot issue different commands. A re-duplicated
+    argv that drifted by one filter or one flag fails here even on footage flat
+    enough for the percentiles to survive it.
+
+    The recorder is installed AFTER the plan is built on purpose: `color_measure.proc`
+    IS `scripts.lib.proc`, so patching it also patches reframe's own ffprobe."""
+    from scripts import process_episode
+    src, md, route = _subject_episode(tmp_path)
+    plan, _, _ = process_episode.plan_and_meta_ungraded(md, src, route)
+    times = color.sample_times(plan.dur)
+    seen: list[list[str]] = []
+    real_run = color_measure.proc.run
+
+    def _recording(cmd, **kwargs):
+        seen.append(list(cmd))
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(color_measure.proc, "run", _recording)
+    color_measure.crop_percentiles(plan, src, times)
+    color_measure.crop_region_frames(plan, src, times)
+    assert len(seen) == 2, seen          # one decode each, never a probe on top
+    assert seen[0] == seen[1], seen
 
 
 def test_measure_crop_with_no_declaration_returns_the_old_profile(tmp_path):

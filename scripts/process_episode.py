@@ -57,6 +57,26 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
                        zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None)
 
 
+def _plan_parts(manifest_dict: dict, src: str,
+                route: str | None) -> tuple[manifest_lib.Manifest, ReframeSpec,
+                                            reframe.RenderPlan]:
+    """The manifest -> (Manifest, ReframeSpec, RenderPlan) map, in ONE place.
+
+    Private because every caller wants one of the two public shapes below; it
+    exists because they want DIFFERENT parts of the same map — plan_for the plan,
+    plan_and_meta_ungraded the plan AND the spec (path_meta needs it) AND the
+    Manifest (its `stabilize` flag). Copying four lines to hand back a third
+    field is exactly the field-by-field drift plan_for's own docstring is about:
+    the copy read `orch.DEFAULT_PARAMS` and the smooth_window_s override
+    independently, so a change to either reached one geometry and not the other."""
+    m = manifest_lib.Manifest.from_dict(manifest_dict)
+    params = dict(orch.DEFAULT_PARAMS)
+    if m.smooth_window_s is not None:
+        params["smooth_window_s"] = m.smooth_window_s
+    spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
+    return m, spec, reframe.plan_render(spec, src, route)
+
+
 def plan_for(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
     """The RenderPlan this manifest would render — the ONE manifest -> plan map.
 
@@ -69,12 +89,7 @@ def plan_for(manifest_dict: dict, src: str, route: str | None) -> reframe.Render
     which is what a probe, a measurement and a check all want. The retry loop below
     does NOT come through here — it carries the attempt's own adjusted params, and
     reading defaults there would silently probe a different render than it ships."""
-    m = manifest_lib.Manifest.from_dict(manifest_dict)
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
-    spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
-    return reframe.plan_render(spec, src, route)
+    return _plan_parts(manifest_dict, src, route)[2]
 
 
 def plan_ungraded(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
@@ -90,13 +105,13 @@ def plan_and_meta_ungraded(manifest_dict: dict, src: str,
     For a caller that must place the tracked subject inside the crop BEFORE the
     crop has been rendered — the conductor, which runs at the geometry seam where
     process_episode returns before reframe and so before path.json exists. Writes
-    nothing."""
-    m = manifest_lib.Manifest.from_dict(manifest_lib.strip_colour(manifest_dict))
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
-    spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
-    plan = reframe.plan_render(spec, src, route)
+    nothing.
+
+    Goes through the SAME _plan_parts as plan_for/plan_ungraded, so its first
+    return value is `plan_ungraded(...)` exactly, not a second reading of the same
+    map (pinned by
+    test_plan_and_meta_ungraded_returns_the_same_plan_as_plan_ungraded)."""
+    m, spec, plan = _plan_parts(manifest_lib.strip_colour(manifest_dict), src, route)
     return plan, CropPath(plan.path), reframe.path_meta(plan, spec, stabilized=m.stabilize)
 
 

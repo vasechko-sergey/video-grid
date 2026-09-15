@@ -157,6 +157,13 @@ MIN_REGION_FRAC = 0.01
 
 #: Why an anchor is not being read from the region it was declared over. Each is
 #: printed in MATCH.md beside the anchor it fired on; none is ever absorbed.
+#:
+#: CLOSED, and enforced — AnchorReading.__post_init__ refuses anything outside
+#: it, exactly as AnchorRegion refuses an anchor outside ANCHORS or a kind
+#: outside KINDS. A tuple no constructor consults would read as a third closed
+#: vocabulary while being unobservable (rename a literal inside assemble and
+#: nothing would notice), which is the gradedamage.ENTROPY_BINS mistake this
+#: module's own ANCHORS comment already names.
 FALLBACKS = ("no-route", "too-small", "unorderable")
 
 
@@ -164,13 +171,20 @@ FALLBACKS = ("no-route", "too-small", "unorderable")
 class RegionReading:
     """One region's share of the frame and its pooled profile.
 
-    `profile` is None when the region could not be located at all — a pan
-    episode has no route, so it has no subject and no background either. That is
-    distinct from a region that was located and found tiny, which carries a real
-    fraction and a real (but untrustworthy) profile."""
+    `located` is False when the region could not be found at all — a pan episode
+    has no route, so it has no subject and no background either, and the anchor
+    declared over one falls back as `no-route`.
+
+    `profile` is None when the region holds no pixels. That happens two ways, and
+    only `located` tells them apart: the region was never located (above), or it
+    WAS located and every projected box clamped to empty — a subject entirely
+    outside the delivered frame at all three sample times. The second has a real
+    route and a real, measured fraction of 0.0, so it reports `too-small`, not
+    `no-route`: an episode that HAS a route must never be told it has none."""
     kind: str
     fraction: float
     profile: tuple[float, float, float] | None
+    located: bool = True
 
 
 @dataclass(frozen=True)
@@ -178,7 +192,9 @@ class AnchorReading:
     """What one anchor was taken from, and what was asked for.
 
     `of` is the declaration; `used` is what actually supplied the number. They
-    differ exactly when `fallback` is set."""
+    differ exactly when `fallback` is set, and `fallback` is one of FALLBACKS —
+    MATCH.md prints this string verbatim beside the anchor, so an unnamed reason
+    would read to a human exactly like a named one."""
     anchor: str
     name: str
     of: str
@@ -186,6 +202,15 @@ class AnchorReading:
     fraction: float
     value: float
     fallback: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.fallback is not None and self.fallback not in FALLBACKS:
+            raise ValueError(
+                f"AnchorReading.fallback {self.fallback!r} unknown — expected None (the "
+                f"declared region supplied this anchor) or one of {FALLBACKS}. Use one of "
+                f"those names, or add the new one to regions.FALLBACKS first: the report "
+                f"prints this string as-is, so a reason outside the set is a named absence "
+                f"nobody named")
 
 
 def _profile(pixels) -> tuple[float, float, float]:
@@ -216,8 +241,8 @@ def measure(frames, extents) -> dict[str, RegionReading]:
     n, h, w = frames.shape
     crop = RegionReading("crop", 1.0, _profile(frames))
     if extents is None:
-        return {"subject": RegionReading("subject", 0.0, None),
-                "background": RegionReading("background", 0.0, None),
+        return {"subject": RegionReading("subject", 0.0, None, located=False),
+                "background": RegionReading("background", 0.0, None, located=False),
                 "crop": crop}
     if len(extents) != n:
         raise ValueError(f"regions.measure: {n} frames but {len(extents)} extents — "
@@ -250,6 +275,11 @@ def assemble(decl: "Regions", readings: dict[str, RegionReading]
     A region that could not be located (`no-route`) or that covers less than
     MIN_REGION_FRAC of the frame (`too-small`) does not supply its anchor; the
     crop does, and the row records what was asked for beside what was used.
+    `no-route` is decided on RegionReading.located and NEVER on a missing
+    profile: a located region that holds no pixels — a subject entirely outside
+    the delivered frame — has a route, and reporting `no-route` for it would say
+    something false about the episode. It reports `too-small` at its real,
+    measured fraction of 0.0.
 
     A profile assembled from several regions is not obliged to increase. If it
     does not increase by color.TONE_MIN_GAP the WHOLE episode falls back to its
@@ -271,10 +301,12 @@ def assemble(decl: "Regions", readings: dict[str, RegionReading]
         want = decl.declared(anchor)
         r = readings[want.of]
         idx = ANCHORS.index(anchor)     # 0/1/2 — the anchor's own slot in a profile
-        if r.profile is None:
+        if not r.located:
             rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
                                       crop.profile[idx], "no-route"))
-        elif want.of != "crop" and r.fraction < MIN_REGION_FRAC:
+        elif r.profile is None or (want.of != "crop" and r.fraction < MIN_REGION_FRAC):
+            # Located and empty is the `r.profile is None` half: a real fraction
+            # (0.0) under any gate, so it lands here rather than on `no-route`.
             rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
                                       crop.profile[idx], "too-small"))
         else:

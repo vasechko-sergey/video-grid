@@ -70,11 +70,31 @@ def test_from_json_names_the_file_on_a_syntax_error(tmp_path):
         regions.Regions.from_json(p)
 
 
-def test_the_two_closed_sets_and_their_order():
+def test_the_three_closed_sets_and_their_order():
     """ANCHORS' ORDER is load-bearing, not cosmetic: it is the order of a profile
-    tuple, so assemble indexes (p5, p50, p95) by it."""
+    tuple, so assemble indexes (p5, p50, p95) by it.
+
+    FALLBACKS is pinned here for the same reason the other two are: it is a
+    closed vocabulary the report prints verbatim, so its members are a contract
+    with the reader (design §3 names exactly these three)."""
     assert regions.ANCHORS == ("toe", "mid", "shoulder")
     assert regions.KINDS == ("subject", "background", "crop")
+    assert regions.FALLBACKS == ("no-route", "too-small", "unorderable")
+
+
+def test_a_fallback_outside_the_set_is_refused_by_name():
+    """The enforcement that makes FALLBACKS observable. Without it, renaming a
+    literal inside `assemble` ("too-small" -> "tooSmall") would print a reason no
+    vocabulary contains and nothing anywhere would notice."""
+    with pytest.raises(ValueError, match="tooSmall"):
+        regions.AnchorReading("toe", "wetsuit", "subject", "crop", 0.0, 50.0, "tooSmall")
+
+
+def test_every_named_fallback_is_constructible():
+    """The other half of the pin: the refusal must not be so strict that the three
+    names `assemble` actually emits are themselves rejected."""
+    for fb in (None, *regions.FALLBACKS):
+        assert regions.AnchorReading("toe", "w", "subject", "crop", 0.0, 50.0, fb).fallback == fb
 
 
 def _frames(rows):
@@ -116,6 +136,10 @@ def test_no_route_leaves_subject_and_background_unmeasured():
     assert out["subject"].profile is None and out["subject"].fraction == 0.0
     assert out["background"].profile is None
     assert out["crop"].profile is not None
+    # `located` is the discriminator assemble reads for `no-route`; without it
+    # here, a located-but-empty subject would be reported as a pan's missing route.
+    assert out["subject"].located is False and out["background"].located is False
+    assert out["crop"].located is True
 
 
 def test_assemble_takes_each_anchor_from_its_declared_region():
@@ -148,15 +172,36 @@ def test_a_region_under_the_area_gate_falls_back_to_crop_and_is_named():
 
 
 def test_an_unmeasured_region_falls_back_as_no_route():
+    """`located=False` is what `measure` sets when there are no extents at all —
+    a pan episode, whose path is generated and whose route therefore does not
+    exist. It is the ONLY thing that produces `no-route`."""
     readings = {
-        "subject": regions.RegionReading("subject", 0.0, None),
-        "background": regions.RegionReading("background", 0.0, None),
+        "subject": regions.RegionReading("subject", 0.0, None, located=False),
+        "background": regions.RegionReading("background", 0.0, None, located=False),
         "crop": regions.RegionReading("crop", 1.0, (50.0, 110.0, 200.0))}
     decl = regions.Regions.from_dict({"anchors": [
         {"anchor": "toe", "name": "wetsuit", "of": "subject"}]})
     profile, rows = regions.assemble(decl, readings)
     assert profile == (50.0, 110.0, 200.0)
     assert rows[0].fallback == "no-route"
+
+
+def test_a_located_but_empty_region_is_too_small_not_no_route():
+    """Review finding 8. An episode WITH a route whose subject clamps to empty at
+    every sample time — the rider walks fully out of the delivered frame — has a
+    profile of None exactly as a pan's does, and the old `r.profile is None` test
+    called it `no-route`, which is a false claim about an episode that has one.
+    It is a region located and measured at 0.0 of the frame: `too-small`."""
+    readings = {
+        "subject": regions.RegionReading("subject", 0.0, None),          # located
+        "background": regions.RegionReading("background", 1.0, (60.0, 120.0, 180.0)),
+        "crop": regions.RegionReading("crop", 1.0, (50.0, 110.0, 200.0))}
+    decl = regions.Regions.from_dict({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]})
+    profile, rows = regions.assemble(decl, readings)
+    assert profile == (50.0, 110.0, 200.0)
+    assert rows[0].fallback == "too-small" and rows[0].fraction == 0.0
+    assert rows[0].used == "crop" and rows[0].of == "subject"
 
 
 def test_an_unorderable_profile_drops_the_WHOLE_episode_to_the_crop():

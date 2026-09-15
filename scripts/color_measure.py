@@ -136,30 +136,26 @@ def clip_percentiles_batch(clip: str, spans: list[list[float]]) -> list[tuple[fl
     return results
 
 
-def crop_percentiles(plan: "reframe.RenderPlan", src: str,
-                     times: list[float]) -> tuple[float, float, float]:
-    """The ruler over the pixels a RenderPlan would encode — the crop, scaled to
-    the delivery, with whatever colour the plan carries. The select is appended at
-    the END through with_tail: before the chain's own `fps=` it would emit one
-    frame N times (§12)."""
-    out = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
-                    *plan.with_tail(f"{color.select_frames(times, plan.fps)},format=gray"),
-                    "-t", f"{plan.dur:.6f}", "-vsync", "0",
-                    "-frames:v", str(len(times)),
-                    "-f", "rawvideo", "-pix_fmt", "gray", "-"]).stdout
-    return _percentiles_from_gray(out, len(times), plan.rl.out_w, plan.rl.out_h,
-                                  f"crop_percentiles({src})")
+def _crop_gray_bytes(plan: "reframe.RenderPlan", src: str, times: list[float],
+                     where: str) -> bytes:
+    """The gray rawvideo of the pixels a RenderPlan would encode — ONE decode, ONE
+    argv, ONE byte-count guard, for both shapes the crop is read in.
 
+    crop_percentiles pools this into a histogram; crop_region_frames reshapes it
+    into a stack a mask can be applied to. The invariant that matters is that the
+    `crop` region's reading EQUALS the pooled reading, and two copies of this argv
+    guaranteed it only by staying identical — a divergence that happened not to
+    move a fixture's percentiles would pass every profile-equality test in the
+    suite (whole-branch review, finding 4).
 
-def crop_region_frames(plan: "reframe.RenderPlan", src: str, times: list[float]) -> np.ndarray:
-    """The (n, out_h, out_w) uint8 luma stack crop_percentiles pools into one
-    histogram — the SAME decode, kept per-frame so a mask can be applied.
+    The select is appended at the END through with_tail: before the chain's own
+    `fps=` it would emit one frame N times (§12). This is the only place in this
+    module that appends it, and it must stay visible at the call site that does.
 
-    One ffmpeg call, exactly as crop_percentiles makes: a region reading must not
-    cost a second decode, and must not read different pixels than the pooled
-    reading it has to agree with. The select is appended at the END through
-    with_tail: before the chain's own `fps=` it would emit one frame N times
-    (§12)."""
+    The byte count is checked EXACTLY, not by divisibility: at 1920x1080 a frame
+    is divisible by 3, so a select that returned 1, 2 or 4 frames instead of 3
+    would pass a modulo check (_percentiles_from_gray's own docstring measures
+    it)."""
     raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", src,
                     *plan.with_tail(f"{color.select_frames(times, plan.fps)},format=gray"),
                     "-t", f"{plan.dur:.6f}", "-vsync", "0",
@@ -170,9 +166,30 @@ def crop_region_frames(plan: "reframe.RenderPlan", src: str, times: list[float])
     if len(raw) != want:
         got = len(raw) / (w * h) if w and h else float("nan")
         raise RuntimeError(
-            f"crop_region_frames({src}): asked for {len(times)} frames of {w}x{h} "
+            f"{where}: asked for {len(times)} frames of {w}x{h} "
             f"gray ({want} bytes), got {len(raw)} bytes ({got:g} frames) — a frame "
             f"is missing or duplicated; check the select expression's position")
+    return raw
+
+
+def crop_percentiles(plan: "reframe.RenderPlan", src: str,
+                     times: list[float]) -> tuple[float, float, float]:
+    """The ruler over the pixels a RenderPlan would encode — the crop, scaled to
+    the delivery, with whatever colour the plan carries. Pools the one decode
+    _crop_gray_bytes makes through _percentiles_from_gray, the ONE ruler."""
+    where = f"crop_percentiles({src})"
+    raw = _crop_gray_bytes(plan, src, times, where)
+    return _percentiles_from_gray(raw, len(times), plan.rl.out_w, plan.rl.out_h, where)
+
+
+def crop_region_frames(plan: "reframe.RenderPlan", src: str, times: list[float]) -> np.ndarray:
+    """The (n, out_h, out_w) uint8 luma stack crop_percentiles pools into one
+    histogram — the SAME decode through the SAME _crop_gray_bytes, kept per-frame
+    so a mask can be applied. A region reading must not cost a second decode, and
+    structurally cannot read different pixels than the pooled reading it has to
+    agree with."""
+    w, h = plan.rl.out_w, plan.rl.out_h
+    raw = _crop_gray_bytes(plan, src, times, f"crop_region_frames({src})")
     return np.frombuffer(raw, dtype=np.uint8).reshape(len(times), h, w)
 
 
