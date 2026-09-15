@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from scripts import match_grade
 from scripts.color_measure import measure_profile
-from scripts.lib import color, ffbin, matchgrade, moodpreset, proc
+from scripts.lib import color, ffbin, matchgrade, moodpreset, proc, regions
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.models import EpisodeGeometry, ReelGeometry
 
@@ -288,3 +288,114 @@ def test_both_halves_are_needed_to_close_the_residual(tmp_path):
         f"one half alone matched the pair — pair {both}, ruler {ruler_only}, "
         f"transfer {transfer_only}. Each is a PARTIAL fix (design §0); if that has "
         f"stopped being true, the design's table is what needs re-measuring")
+
+
+# --- named regions: the conductor reads the declaration (design 2026-09-15 §4) ----
+
+def _write_match_with_fake_measurements(tmp_path, *, decl_file=None, project="project.json",
+                                        subject_fraction=0.2):
+    """A one-episode GEOMETRY.json + EDL.json under `tmp_path`, `write_match`'d with
+    `measure_crop` monkeypatched so no ffmpeg runs.
+
+    `project`, when not None, becomes `ReelGeometry.project` (a plain filename joined
+    onto `tmp_path` — the file itself need not exist, only its directory, which is all
+    `_find_regions` ever looks at) — the ordinary case, a project.json known but no
+    REGIONS.json beside it. `project=None` simulates a GEOMETRY.json written before
+    Task 5, with no project field at all. `decl_file`, when given, names the
+    REGIONS.json to look for beside `project`; if nothing is on disk there yet this
+    writes ONE default declaration (toe -> wetsuit/subject) so a test that wants a
+    declared-but-not-pre-written file (test_the_report_prints_the_fallback_and_its_
+    reason) gets one, while a test that pre-writes its own content
+    (test_a_regions_file_beside_project_json_is_found_with_no_flag) is left alone.
+
+    The fake `measure_crop` mirrors the real one's shape (manifest/src/route positional,
+    decl/frames keyword) but only for the ONE thing this module's tests are about: given
+    a `decl`, it runs the REAL `regions.assemble` over a synthetic subject/background/crop
+    reading (subject fraction/profile controllable via `subject_fraction`, so a caller can
+    push it under MIN_REGION_FRAC and exercise the too-small fallback) — real fallback
+    logic, no decode. Given no `decl` (the no-REGIONS.json path), it returns a fixed
+    profile with EMPTY rows: `regions.assemble` itself would still emit three boilerplate
+    "crop" rows even for an empty declaration (color_measure's own
+    test_measure_crop_with_no_declaration_returns_the_old_profile pins exactly that), but
+    what this suite is pinning is the WIRING's own default — nothing was declared, so
+    MATCH.json's decisions carry nothing, matching the pre-slice shape byte-for-byte."""
+    source = tmp_path / "clip.mp4"
+    route = tmp_path / "route.json"
+    source.touch()
+    route.touch()
+    ep = EDLEpisode(source=str(source), start=0.0, dur=2.0, shot_type="wide",
+                    composition="center", grid="thirds")
+    edl_path = tmp_path / "EDL.json"
+    edl_path.write_text(json.dumps(EDL(episodes=(ep,)).to_dict(), indent=2))
+
+    geo_kwargs = {}
+    if project is not None:
+        geo_kwargs["project"] = str(tmp_path / project)
+    geo = ReelGeometry(
+        episodes=(EpisodeGeometry(manifest={}, route=str(route), source=str(source),
+                                  project_dir=str(tmp_path / "p0")),),
+        edl=str(edl_path), **geo_kwargs)
+    geometry_path = tmp_path / "GEOMETRY.json"
+    geo.write(geometry_path)
+
+    if decl_file is not None:
+        decl_path = tmp_path / decl_file
+        if not decl_path.exists():
+            decl_path.write_text(json.dumps({"anchors": [
+                {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
+
+    def fake_measure_crop(manifest_dict, src, route_arg, *, decl=None, frames=None):
+        if decl is None:
+            return (10.0, 100.0, 200.0), ()
+        readings = {
+            "subject": regions.RegionReading("subject", subject_fraction, (10.0, 150.0, 220.0)),
+            "background": regions.RegionReading("background", 1.0 - subject_fraction,
+                                                (30.0, 100.0, 180.0)),
+            "crop": regions.RegionReading("crop", 1.0, (20.0, 100.0, 200.0)),
+        }
+        return regions.assemble(decl, readings)
+
+    orig = match_grade.measure_crop
+    match_grade.measure_crop = fake_measure_crop
+    try:
+        return match_grade.write_match(str(geometry_path))
+    finally:
+        match_grade.measure_crop = orig
+
+
+def _match_json(tmp_path) -> dict:
+    return json.loads((tmp_path / "MATCH.json").read_text())
+
+
+def test_no_regions_file_leaves_the_target_byte_identical(tmp_path, monkeypatch):
+    """The pinned default path (Global Constraints). A run with no declaration
+    must produce the same target, the same EDL and the same MATCH.json as before
+    this slice."""
+    before = _write_match_with_fake_measurements(tmp_path, decl_file=None)
+    after = _write_match_with_fake_measurements(tmp_path, decl_file=None)
+    assert before["target"] == after["target"]
+    assert all(d["regions"] == [] for d in _match_json(tmp_path)["decisions"])
+
+
+def test_a_regions_file_beside_project_json_is_found_with_no_flag(tmp_path, monkeypatch):
+    (tmp_path / "REGIONS.json").write_text(json.dumps({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"}]}))
+    result = _write_match_with_fake_measurements(tmp_path, decl_file="REGIONS.json")
+    assert result["regions"] == str(tmp_path / "REGIONS.json")
+    rows = _match_json(tmp_path)["decisions"][0]["regions"]
+    assert rows[0] == {"anchor": "toe", "name": "wetsuit", "of": "subject",
+                       "used": "subject", "fraction": 0.2, "value": 10.0,
+                       "fallback": None}
+
+
+def test_a_geometry_with_no_project_says_so_rather_than_reporting_no_declaration(tmp_path):
+    result = _write_match_with_fake_measurements(tmp_path, project=None)
+    assert result["regions"] == "unreachable"
+    assert "GEOMETRY.json records no project" in (tmp_path / "MATCH.md").read_text()
+
+
+def test_the_report_prints_the_fallback_and_its_reason(tmp_path):
+    result = _write_match_with_fake_measurements(tmp_path, decl_file="REGIONS.json",
+                                                 subject_fraction=0.002)
+    md = (tmp_path / "MATCH.md").read_text()
+    assert "too-small" in md and "wetsuit" in md and "0.2%" in md

@@ -277,3 +277,20 @@ def test_tone_decision_from_dict_refuses_a_missing_index_with_a_value_error():
     with pytest.raises(ValueError, match="ToneDecision.index"):
         matchgrade.ToneDecision.from_dict(
             {"measured": [1, 2, 3], "action": "skip", "reason": "within-eps"})
+
+
+def test_tone_decision_round_trips_its_region_rows():
+    from scripts.lib import matchgrade
+    d = matchgrade.ToneDecision(0, "author", "authored", (10.0, 20.0, 30.0),
+                                regions=({"anchor": "toe", "name": "wetsuit",
+                                          "of": "subject", "used": "subject",
+                                          "fraction": 0.2, "value": 10.0,
+                                          "fallback": None},))
+    assert matchgrade.ToneDecision.from_dict(d.to_dict()) == d
+
+
+def test_a_decision_written_before_this_slice_has_no_region_rows():
+    from scripts.lib import matchgrade
+    d = matchgrade.ToneDecision(0, "skip", "within-eps", (10.0, 20.0, 30.0)).to_dict()
+    d.pop("regions")
+    assert matchgrade.ToneDecision.from_dict(d).regions == ()

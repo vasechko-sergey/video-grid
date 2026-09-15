@@ -122,19 +122,27 @@ class ToneDecision:
     author, and (when not) why. author -> tone_src/tone_dst carry the pair; within-eps/flat
     -> None (the driver CLEARS a stale pair on a --force re-conduct); hand-authored -> the
     driver leaves the episode as-is. `measured` is carried so the report and the driver need
-    no second measure pass."""
+    no second measure pass.
+
+    `regions` is one row per tone anchor: the author's name for the region, the
+    kind declared, the kind actually used, that region's frame fraction, the
+    value taken, and the fallback if one fired (design 2026-09-15 §4). Empty on
+    a report written before that slice, and empty is not "no fallback fired" —
+    it is "this report predates the record"."""
     index: int
     action: str                    # "author" | "skip"
     reason: str                    # "authored" | "within-eps" | "flat-source" | "hand-authored"
     measured: Profile
     tone_src: Profile | None = None
     tone_dst: Profile | None = None
+    regions: tuple[dict, ...] = ()
 
     def to_dict(self) -> dict:
         return {"index": self.index, "action": self.action, "reason": self.reason,
                 "measured": list(self.measured),
                 "tone_src": None if self.tone_src is None else list(self.tone_src),
-                "tone_dst": None if self.tone_dst is None else list(self.tone_dst)}
+                "tone_dst": None if self.tone_dst is None else list(self.tone_dst),
+                "regions": [dict(r) for r in self.regions]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "ToneDecision":
@@ -146,28 +154,40 @@ class ToneDecision:
                    reason=_required_str(d.get("reason"), "ToneDecision.reason"),
                    measured=_triple(d.get("measured"), "ToneDecision.measured"),
                    tone_src=_opt_triple(d.get("tone_src"), "ToneDecision.tone_src"),
-                   tone_dst=_opt_triple(d.get("tone_dst"), "ToneDecision.tone_dst"))
+                   tone_dst=_opt_triple(d.get("tone_dst"), "ToneDecision.tone_dst"),
+                   regions=tuple(d.get("regions") or ()))
 
 
 def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
-         *, eps: float = MATCH_EPS, force: bool = False) -> list[ToneDecision]:
+         *, eps: float = MATCH_EPS, force: bool = False,
+         regions: list[tuple[dict, ...]] | None = None) -> list[ToneDecision]:
     """Decide each episode's tone pair against `target`. Guard ORDER is the contract:
     a hand-authored pair is respected first (unless `force`), then a flat source is skipped
     (cannot be a valid src), then a within-eps episode is left untouched, else author (its
-    own profile -> the common target). Every decision carries its measured profile."""
+    own profile -> the common target). Every decision carries its measured profile.
+
+    `regions` is the driver's per-episode region-row tuple (design 2026-09-15 §4) —
+    optional and keyword-only so every caller and test double that predates this
+    slice keeps landing on the same empty-tuple default every decision already
+    carried, and parallel to `profiles` exactly as `has_tone` already is."""
     if len(profiles) != len(has_tone):
         raise ValueError(f"plan: {len(profiles)} profiles but {len(has_tone)} has_tone flags "
                          "— they must be per-episode parallel lists")
+    if regions is not None and len(regions) != len(profiles):
+        raise ValueError(f"plan: {len(profiles)} profiles but {len(regions)} region rows "
+                         "— they must be per-episode parallel lists")
     out = []
     for i, (p, ht) in enumerate(zip(profiles, has_tone)):
+        rows = regions[i] if regions is not None else ()
         if ht and not force:
-            out.append(ToneDecision(i, "skip", "hand-authored", measured=p))
+            out.append(ToneDecision(i, "skip", "hand-authored", measured=p, regions=rows))
         elif not valid_src(p):
-            out.append(ToneDecision(i, "skip", "flat-source", measured=p))
+            out.append(ToneDecision(i, "skip", "flat-source", measured=p, regions=rows))
         elif not needs_tone(p, target, eps):
-            out.append(ToneDecision(i, "skip", "within-eps", measured=p))
+            out.append(ToneDecision(i, "skip", "within-eps", measured=p, regions=rows))
         else:
-            out.append(ToneDecision(i, "author", "authored", measured=p, tone_src=p, tone_dst=target))
+            out.append(ToneDecision(i, "author", "authored", measured=p, tone_src=p,
+                                    tone_dst=target, regions=rows))
     return out
 
 

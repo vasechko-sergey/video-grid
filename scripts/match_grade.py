@@ -18,6 +18,7 @@ from pathlib import Path
 
 from scripts.color_measure import measure_crop
 from scripts.lib import color, matchgrade, moodpreset
+from scripts.lib import regions as regions_lib
 from scripts.lib.edl import EDL, write_edl
 from scripts.lib.models import ReelGeometry
 from scripts.lib.spec import Spec
@@ -45,8 +46,18 @@ def _resolve_bias(spec: Spec | None,
     return (0.0, 0.0, 0.0), ""
 
 
+def _row_dict(r: "regions_lib.AnchorReading") -> dict:
+    """One AnchorReading as MATCH.json carries it. Rounded where it is printed:
+    a fraction to four places is 0.01% resolution, which is finer than the gate
+    it is compared against."""
+    return {"anchor": r.anchor, "name": r.name, "of": r.of, "used": r.used,
+            "fraction": round(r.fraction, 4), "value": round(r.value, 1),
+            "fallback": r.fallback}
+
+
 def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
-            force: bool = False, bias: tuple[float, float, float] = (0.0, 0.0, 0.0)
+            force: bool = False, bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
+            decl: "regions_lib.Regions | None" = None
             ) -> tuple[EDL, matchgrade.Profile, list[matchgrade.ToneDecision], float]:
     """Measure each episode's own tracked CROP (design 2026-08-30 §1) — the pixels
     that ship, read through the same RenderPlan the render will use, with the
@@ -58,6 +69,12 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     — so the pairs authored from the frame moved five episodes' midpoints by ~10
     units each while their p5 and p95 anchors, pinned by sky and specular water,
     were identical on both sides of every pair.
+
+    `decl` is the author's REGIONS.json declaration (write_match finds it via
+    _find_regions and hands it down here) — None measures every anchor from the
+    whole crop, exactly as every episode was measured before design 2026-09-15.
+    Every measure_crop call carries the SAME decl: one declaration governs the
+    whole reel, not a per-episode choice.
 
     The scale is 1.0 unless the supplied bias had to be shrunk to fit (see biased_target); it
     is returned rather than swallowed because a weakened displacement is invisible in the
@@ -73,21 +90,22 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     # from inside reframe._probe (whole-branch review, minor 5).
     for i, eg in enumerate(geo.episodes):
         eg.require_inputs(i)
-    # measure_crop now returns (profile, rows) (design 2026-09-15): rows carry one
-    # AnchorReading per anchor, naming which region actually supplied it. Dropped
-    # here on purpose, not an oversight — the named-regions wiring task threads them
-    # into MATCH.json; this fix only keeps `conduct` reading the profile it always did.
-    profiles = []
-    for eg in geo.episodes:
-        profile, _ = measure_crop(eg.manifest, eg.source, eg.route)
-        profiles.append(profile)
+    # measure_crop returns (profile, rows) (design 2026-09-15): rows carry one
+    # AnchorReading per anchor, naming which region actually supplied it. Both
+    # halves are kept — profiles feed the target exactly as before, and the rows
+    # ride into matchgrade.plan so MATCH.json/MATCH.md can carry the provenance.
+    measured = [measure_crop(eg.manifest, eg.source, eg.route, decl=decl)
+                for eg in geo.episodes]
+    profiles = [p for p, _ in measured]
+    region_rows = [tuple(_row_dict(r) for r in rows) for _, rows in measured]
     target = matchgrade.common_target(profiles)
     # The displacement arrives already resolved (_resolve_bias): conduct does not know
     # what a preset is, so an authored bias and a preset's taste reach the target the
     # same way and there is one place that decides between them.
     target, scale = matchgrade.biased_target(target, bias)
     has_tone = [e.tone_src is not None for e in edl.episodes]
-    decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force)
+    decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force,
+                                regions=region_rows)
     new_episodes = tuple(
         e if d.reason == "hand-authored"                       # respect the human's pair
         else replace(e, tone_src=d.tone_src, tone_dst=d.tone_dst)  # set, or clear (None) a stale one
@@ -98,7 +116,8 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
 def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
                bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
-               bias_source: str = "", mood: str | None = None, k: float = 1.0) -> str:
+               bias_source: str = "", mood: str | None = None, k: float = 1.0,
+               regions_at: str = "") -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
@@ -116,7 +135,15 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     either. Losing that distinction (fix round 1, final-findings.md I-3) made a mood word
     that quietly failed to resolve read identically to a run with no brief at all — the
     exact "silently" class this slice exists to close, restoring the arm the pre-slice
-    report carried under `elif preset is not None`."""
+    report carried under `elif preset is not None`.
+
+    `regions_at` is _find_regions' own second half (design 2026-09-15 §4) and carries
+    THREE states, not two: a path (a declaration was found and used), "" (the project
+    is known and holds no REGIONS.json — every anchor is the whole crop, on purpose),
+    or "unreachable" (GEOMETRY.json predates ReelGeometry.project, so REGIONS.json could
+    not even be looked for). The third must never read like the second: "graded against
+    the whole crop because you asked for nothing" and "graded against the whole crop
+    because I could not look" are different claims about the same pixels."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -124,6 +151,14 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             f"Measured on each episode's own tracked crop, "
             f"{color.FRAMES} frames per episode "
             f"(design 2026-08-30 §1) — not the whole source frame.")
+    if regions_at == "unreachable":
+        head += ("\n\nGEOMETRY.json records no project, so REGIONS.json could not be "
+                 "looked for — every anchor is the whole crop. Re-run "
+                 "`edl_to_reel --stop-after-geometry` to record it.")
+    elif regions_at:
+        head += f"\n\nAnchors declared in {regions_at}."
+    else:
+        head += "\n\nNo REGIONS.json — every anchor is the whole crop."
     if bias_source:
         head += f"\n\nTone displaced by {tuple(bias)} — from {bias_source}"
         if k < 1.0:
@@ -142,7 +177,32 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     for src, d in zip(sources, decisions):
         delta = max(abs(a - b) for a, b in zip(d.measured, target))
         lines.append(f"| {d.index} | {src} | {_triple(d.measured)} | {delta:.0f} | {d.action} · {d.reason} |")
+    if any(d.regions for d in decisions):
+        lines += ["", "| # | anchor | region | kind | % of frame | value | fallback |",
+                  "|---|--------|--------|------|-----------:|------:|----------|"]
+        for d in decisions:
+            for r in d.regions:
+                fb = r["fallback"] or "—"
+                lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
+                             f"| {r['fraction'] * 100:.1f}% | {r['value']:.0f} | {fb} |")
     return "\n".join(lines) + "\n"
+
+
+def _find_regions(geo: ReelGeometry) -> tuple["regions_lib.Regions | None", str]:
+    """The declaration beside project.json, and what to say about it.
+
+    Three states, and they are three (design §4): a declaration was found; the
+    project is known and holds none; or GEOMETRY.json predates the recorded
+    project and the file cannot be reached at all. The third must not read as
+    the second — "graded against the whole crop because you asked for nothing"
+    and "graded against the whole crop because I could not look" are different
+    claims about the same pixels."""
+    if not geo.project:
+        return None, "unreachable"
+    p = Path(geo.project).parent / "REGIONS.json"
+    if not p.exists():
+        return None, ""
+    return regions_lib.Regions.from_json(p), str(p)
 
 
 def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
@@ -157,13 +217,18 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     `geo.edl` is used VERBATIM, never resolve()d against geometry_path's directory: it is
     stored exactly as edl_to_reel wrote it (design 2026-08-30 §2.2), and a relative path
     that does not resolve from the CURRENT directory fails loud in EDL.from_json rather
-    than silently reading a different file."""
+    than silently reading a different file.
+
+    The REGIONS.json declaration (design 2026-09-15 §4), when the project is known and
+    the file exists beside it, is found by _find_regions and threaded through conduct
+    into every measure_crop call — one declaration governs the whole reel."""
     geo = ReelGeometry.from_json(geometry_path)
     edl = EDL.from_json(geo.edl)
     spec_obj = Spec.from_json(spec) if spec else None
     preset = moodpreset.resolve(spec_obj.mood) if spec_obj is not None else None
     bias, bias_source = _resolve_bias(spec_obj, preset)
-    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, bias=bias)
+    decl, where = _find_regions(geo)
+    out, target, decisions, k = conduct(geo, edl, eps=eps, force=force, bias=bias, decl=decl)
     # the reel's ONE common target (design §3) — deriving it from the episodes' own
     # tone_dst would fail on the reel where every episode was skipped (all None)
     out = replace(out, tone_target=target)
@@ -172,7 +237,8 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     md_path = Path(geo.edl).parent / "MATCH.md"
     md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
                                   bias=bias, bias_source=bias_source,
-                                  mood=preset.name if preset is not None else None, k=k))
+                                  mood=preset.name if preset is not None else None, k=k,
+                                  regions_at=where))
     # The machine-readable twin (design 2026-09-09 §2). MATCH.md's claim — "8/8
     # episodes authored a tone pair" — was prose, and the EDL written an hour later
     # carried five with nothing able to notice. The decisions are what the report
@@ -190,6 +256,7 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
             "target": list(target), "eps": eps,
             "mood": preset.name if preset is not None else None,
             "bias_source": bias_source, "bias_scale": k,
+            "regions": where,
             "authored": sum(1 for d in decisions if d.action == "author"),
             "skipped": dict(skipped)}
 

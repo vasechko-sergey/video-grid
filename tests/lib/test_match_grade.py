@@ -136,7 +136,14 @@ def test_conduct_no_longer_reads_the_footage_root():
 
 def _write_geometry(tmp_path, *eps):
     """Write EDL.json + a GEOMETRY.json naming it, with one trivial (source, route) pair
-    per episode in EDL order. Returns (geometry_path, edl_path), both str."""
+    per episode in EDL order. Returns (geometry_path, edl_path), both str.
+
+    `project="project.json"` (the file itself need not exist — _find_regions only
+    looks at its directory) so every write_match call through this helper lands on
+    the ORDINARY named-regions state — a known project with no REGIONS.json beside
+    it — rather than the "unreachable" legacy state a bare, project-less
+    ReelGeometry would report. Only the dedicated named-regions tests in
+    tests/integration/test_matchgrade.py exercise "unreachable" on purpose."""
     edl_path = tmp_path / "EDL.json"
     edl_path.write_text(json.dumps(_edl(*eps).to_dict(), indent=2))
     for i, e in enumerate(eps):
@@ -144,7 +151,7 @@ def _write_geometry(tmp_path, *eps):
     geo = ReelGeometry(episodes=tuple(
         EpisodeGeometry(manifest={}, route=f"r{i}.json", source=e.source, project_dir=f"p{i}")
         for i, e in enumerate(eps)),
-        edl=str(edl_path))
+        edl=str(edl_path), project="project.json")
     geometry_path = tmp_path / "GEOMETRY.json"
     geo.write(geometry_path)
     return str(geometry_path), str(edl_path)
@@ -162,6 +169,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
                       "json": str(tmp_path / "MATCH.json"),
                       "target": list(target), "eps": matchgrade.MATCH_EPS,
                       "mood": None, "bias_source": "", "bias_scale": 1.0,  # no --spec: the plain median
+                      "regions": "",           # project.json known, no REGIONS.json beside it
                       "authored": 2, "skipped": {}}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
     assert back.tone_target == target
@@ -180,6 +188,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
         "# Match-grade — target 25/110/195 (p5/p50/p95), eps 4\n\n"
         "Measured on each episode's own tracked crop, 3 frames per episode "
         "(design 2026-08-30 §1) — not the whole source frame.\n\n"
+        "No REGIONS.json — every anchor is the whole crop.\n\n"
         "2/2 episodes authored a tone pair.\n\n"
         "| # | source | measured (p5/p50/p95) | max Δ | action · reason |\n"
         "|---|--------|-----------------------|:-----:|-----------------|\n"
