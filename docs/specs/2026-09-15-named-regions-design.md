@@ -176,6 +176,15 @@ from "no declaration" — "graded against the whole crop because you asked for
 nothing" and "graded against the whole crop because I could not look" are
 different claims about the same pixels.
 
+The third state covers two ways of not being able to look, and the report names
+which: the geometry recorded no project at all, or it recorded one whose
+directory does not resolve from where the conductor is running. The second is
+reachable because the path is stored verbatim — a relative `--project` read from
+another working directory, or a project since moved. Collapsing it into "no
+declaration" would say the author asked for nothing while their declaration sat
+unread beside the real `project.json`, which is the silent absorption this whole
+section exists to prevent.
+
 ### 2.2 Two closed sets and one free string
 
 `anchor` is one of `toe` | `mid` | `shoulder`. `of` is one of `subject` |
