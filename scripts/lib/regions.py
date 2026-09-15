@@ -19,6 +19,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
+from scripts.lib import color
+
 #: The three tone anchors, in profile order: toe is p5, mid is p50, shoulder is
 #: p95. The anchor names the STATISTIC and a declaration only chooses the pixel
 #: set (design §2.3) — which is why color.tone_arg, _segments, TONE_MIN_GAP and
@@ -135,3 +139,157 @@ class Regions:
             raise ValueError(f"{path} is not valid JSON ({e}) — fix the declaration's "
                              f"syntax") from e
         return cls.from_dict(d)
+
+
+#: The fraction of the frame a region must cover to supply an anchor.
+#:
+#: A CONVENTION, not a measurement (design §3.1): on the only real pool the
+#: subject is 0.23% on one episode and 2.19% on the next, so every value in that
+#: interval selects the same seven episodes. What justifies a gate at all is not
+#: sample size — 0.23% of a 1080x1922 frame is still 4680 pixels — but that a
+#: 54x69 tracked box over breaking water is more likely a mis-track than a
+#: subject, and what that looks like when it votes is a subject p50 of 243.5
+#: against the background's 133.2. gradedamage's own docstring records the same
+#: lesson from the other end: the run's subject boxes span 2420 to 890406 px, and
+#: a 256-bin estimator over the small end is biased enough to erase a class
+#: boundary.
+MIN_REGION_FRAC = 0.01
+
+#: Why an anchor is not being read from the region it was declared over. Each is
+#: printed in MATCH.md beside the anchor it fired on; none is ever absorbed.
+FALLBACKS = ("no-route", "too-small", "unorderable")
+
+
+@dataclass(frozen=True)
+class RegionReading:
+    """One region's share of the frame and its pooled profile.
+
+    `profile` is None when the region could not be located at all — a pan
+    episode has no route, so it has no subject and no background either. That is
+    distinct from a region that was located and found tiny, which carries a real
+    fraction and a real (but untrustworthy) profile."""
+    kind: str
+    fraction: float
+    profile: tuple[float, float, float] | None
+
+
+@dataclass(frozen=True)
+class AnchorReading:
+    """What one anchor was taken from, and what was asked for.
+
+    `of` is the declaration; `used` is what actually supplied the number. They
+    differ exactly when `fallback` is set."""
+    anchor: str
+    name: str
+    of: str
+    used: str
+    fraction: float
+    value: float
+    fallback: str | None = None
+
+
+def _profile(pixels) -> tuple[float, float, float]:
+    """(p5, p50, p95) through color.percentiles — the ONE ruler (design §2.3).
+
+    A 256-bin histogram of 8-bit luma and the same percentile function
+    color_measure._percentiles_from_gray calls, so the `crop` region's reading is
+    equal to crop_percentiles' own reading and not merely close to it."""
+    hist = np.bincount(pixels.ravel(), minlength=256)[:256]
+    return color.percentiles([int(c) for c in hist])
+
+
+def measure(frames, extents) -> dict[str, RegionReading]:
+    """Every region's reading from one already-decoded stack of luma frames.
+
+    `frames` is (n, h, w) uint8 — the rendered crop, at the delivery's own size.
+    `extents` is one (fx0, fy0, fx1, fy1) tuple of OUTPUT-frame fractions per
+    frame (geometry.extent_at_times' own return shape), or None when the episode
+    has no route to locate a subject with.
+
+    The subject mask is the route's bbox, not a segmentation: a box over water
+    contains water, which is exactly why design §0.3 measures the subject as the
+    WORST mid reference and the best toe one."""
+    frames = np.asarray(frames)
+    if frames.ndim != 3:
+        raise ValueError(f"regions.measure: frames must be (n, h, w), got shape "
+                         f"{frames.shape}")
+    n, h, w = frames.shape
+    crop = RegionReading("crop", 1.0, _profile(frames))
+    if extents is None:
+        return {"subject": RegionReading("subject", 0.0, None),
+                "background": RegionReading("background", 0.0, None),
+                "crop": crop}
+    if len(extents) != n:
+        raise ValueError(f"regions.measure: {n} frames but {len(extents)} extents — "
+                         "they must be parallel, one extent per sampled frame")
+    mask = np.zeros((n, h, w), dtype=bool)
+    for i, (fx0, fy0, fx1, fy1) in enumerate(extents):
+        # Clamped, not refused: extent_at_times projects the tracked bbox, and a
+        # subject that walks partly out of the delivered frame is ordinary. What
+        # is left inside is what ships, so it is what gets measured.
+        x0, y0 = max(0, int(fx0 * w)), max(0, int(fy0 * h))
+        x1, y1 = min(w, int(fx1 * w)), min(h, int(fy1 * h))
+        if x1 > x0 and y1 > y0:
+            mask[i, y0:y1, x0:x1] = True
+    frac = float(mask.mean())
+    sub = frames[mask]
+    bg = frames[~mask]
+    return {"subject": RegionReading("subject", frac,
+                                     _profile(sub) if sub.size else None),
+            "background": RegionReading("background", 1.0 - frac,
+                                        _profile(bg) if bg.size else None),
+            "crop": crop}
+
+
+def assemble(decl: "Regions", readings: dict[str, RegionReading]
+             ) -> tuple[tuple[float, float, float], tuple[AnchorReading, ...]]:
+    """The episode's (p5, p50, p95) and where each anchor came from.
+
+    Two fallbacks, both named, neither silent (design §3):
+
+    A region that could not be located (`no-route`) or that covers less than
+    MIN_REGION_FRAC of the frame (`too-small`) does not supply its anchor; the
+    crop does, and the row records what was asked for beside what was used.
+
+    A profile assembled from several regions is not obliged to increase. If it
+    does not increase by color.TONE_MIN_GAP the WHOLE episode falls back to its
+    crop profile — not the offending anchor alone. Repairing is what
+    matchgrade._repair_gaps does to the SYNTHETIC common target, and its
+    docstring already says why that is legitimate there and nowhere else: no
+    episode has to match the target, so widening it invents nothing, while
+    widening a measured source would author a curve from a number no frame
+    contains. Falling back per-anchor is rejected for a smaller reason: a mixed
+    profile whose toe came from a region and whose mid came from the crop is a
+    third thing, neither the declaration nor the default, and a fallback should
+    land somewhere a reader can name."""
+    crop = readings["crop"]
+    if crop.profile is None:
+        raise ValueError("regions.assemble: the crop region has no profile — every "
+                         "fallback lands there, so there is nothing to fall back to")
+    rows = []
+    for anchor in ANCHORS:
+        want = decl.declared(anchor)
+        r = readings[want.of]
+        idx = ANCHORS.index(anchor)     # 0/1/2 — the anchor's own slot in a profile
+        if r.profile is None:
+            rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
+                                      crop.profile[idx], "no-route"))
+        elif want.of != "crop" and r.fraction < MIN_REGION_FRAC:
+            rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
+                                      crop.profile[idx], "too-small"))
+        else:
+            rows.append(AnchorReading(anchor, want.name, want.of, want.of, r.fraction,
+                                      r.profile[idx], None))
+    profile = tuple(r.value for r in rows)
+    # The check guards the ASSEMBLY: it does not run when the assembly already IS
+    # the crop. Without that condition a flat crop — every pixel one value, which
+    # no declaration caused and no fallback can fix — reports three `unorderable`
+    # rows that changed nothing. A flat source is matchgrade.valid_src's business
+    # and is skipped downstream as `flat-source` (design §3.2).
+    if profile != crop.profile and not all(
+            b - a >= color.TONE_MIN_GAP for a, b in zip(profile, profile[1:])):
+        rows = [AnchorReading(a.anchor, a.name, a.of, "crop", a.fraction,
+                              crop.profile[i], "unorderable")
+                for i, a in enumerate(rows)]
+        profile = crop.profile
+    return profile, tuple(rows)
