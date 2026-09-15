@@ -173,14 +173,14 @@ def test_a_profile_inside_the_gap_but_ordered_is_still_unorderable():
     gap = color.TONE_MIN_GAP
     readings = {
         "subject": regions.RegionReading("subject", 0.3, (110.0 - gap / 2, 0.0, 0.0)),
-        "background": regions.RegionReading("background", 0.7, (0.0, 110.0, 0.0)),
+        "background": regions.RegionReading("background", 0.7, (0.0, 112.0, 0.0)),
         "crop": regions.RegionReading("crop", 1.0, (50.0, 110.0, 200.0))}
     decl = regions.Regions.from_dict({"anchors": [
         {"anchor": "toe", "name": "wetsuit", "of": "subject"},
         {"anchor": "mid", "name": "water", "of": "background"}]})
     profile, rows = regions.assemble(decl, readings)
     assert profile == (50.0, 110.0, 200.0)
-    assert rows[0].fallback == "unorderable"
+    assert [r.fallback for r in rows] == ["unorderable"] * 3
 
 
 def test_no_declaration_is_three_crop_anchors_and_no_fallback():
@@ -209,3 +209,26 @@ def test_a_flat_crop_is_not_reported_as_three_unorderable_fallbacks():
 
 def test_the_area_gate_is_one_percent():
     assert regions.MIN_REGION_FRAC == 0.01
+
+
+def test_measure_axis_mapping_on_non_square_frame_and_asymmetric_extent():
+    """The subject mask must not confuse x and y coordinates. A square frame
+    and symmetric extent (like the other tests use) cannot detect this — swapping
+    fx/fy or slicing [x0:x1, y0:y1] instead of [y0:y1, x0:x1] would select the
+    same pixels and pass all existing assertions. This test uses a non-square
+    frame (100 tall x 200 wide) and an off-origin asymmetric box."""
+    # Frame: 100 tall x 200 wide, subject at [40:60, 40:100] = 20 rows x 60 cols
+    f = np.full((100, 200), 200, dtype=np.uint8)
+    f[40:60, 40:100] = 50  # subject region: distinct value
+    frames = f[None, ...]  # shape (1, 100, 200)
+    # Extent (fx0, fy0, fx1, fy1) in output-frame fractions maps to:
+    # x0=40, x1=100 (0.2*200=40, 0.5*200=100)
+    # y0=40, y1=60 (0.4*100=40, 0.6*100=60)
+    out = regions.measure(frames, [(0.2, 0.4, 0.5, 0.6)])
+    # Subject: 20 rows * 60 cols = 1200 pixels of value 50
+    # Total: 100 * 200 = 20000 pixels
+    expected_frac = 1200 / 20000  # 0.06
+    assert out["subject"].fraction == pytest.approx(expected_frac)
+    assert out["subject"].profile == (50.0, 50.0, 50.0)
+    assert out["background"].fraction == pytest.approx(1.0 - expected_frac)
+    assert out["background"].profile == (200.0, 200.0, 200.0)
