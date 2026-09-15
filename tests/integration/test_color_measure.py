@@ -312,11 +312,11 @@ def _subject_episode(tmp_path):
     [36.95%, 66.72%) (the box only ever removes from the LOW end of a band's
     range, never the high end, so the upper edge is invariant). The 50% mark
     still lands inside the shrunk range — 13.05 points clear of its new lower
-    edge — so p50 stays 140 on HEADROOM, not by construction: a box more than
-    roughly 3.7x this one's area (13.05/3.52) would have pushed that edge past
-    50% and flipped p50 into the 80 band. p95 genuinely IS untouched, for a
-    different reason: the box sits entirely inside the 140 band, well below the
-    200 band it can never reach."""
+    edge — so p50 stays 140 on HEADROOM, not by construction: only once the
+    box's OWN share of the crop reached 16.5625% (50% - 33.4375%, this box is
+    3.52%) would that lower edge reach 50% and flip p50 into the 80 band. p95
+    genuinely IS untouched, for a different reason: the box sits entirely
+    inside the 140 band, well below the 200 band it can never reach."""
     src = tmp_path / "subject.mp4"
     proc.run([ffbin.ffmpeg(), "-y",
               "-f", "lavfi", "-i", "color=c=0x303030:s=640x640:d=2:r=30",
@@ -367,6 +367,12 @@ def test_measure_crop_with_no_declaration_returns_the_old_profile(tmp_path):
 
 
 def test_a_subject_declaration_moves_the_toe_and_nothing_else(tmp_path):
+    """A toe-only declaration pulls only the toe; declaring BOTH toe and shoulder
+    over the same collapsed region forces the whole-episode `unorderable` fallback.
+    That second half is also the only place anywhere that regions.assemble's
+    whole-episode fallback is proven through a REAL decode rather than on a
+    synthetic array — tests/lib/test_regions.py exercises it only on hand-built
+    RegionReading/array inputs."""
     from scripts.lib import regions
     src, md, route = _subject_episode(tmp_path)
     plain, _ = color_measure.measure_crop(md, src, route)
@@ -382,18 +388,30 @@ def test_a_subject_declaration_moves_the_toe_and_nothing_else(tmp_path):
     assert rows[0].fallback is None
     assert 0.02 < rows[0].fraction < 0.06
 
-    # The real control: declare a DIFFERENT anchor (shoulder) over a DIFFERENT
-    # region (background) and check the UNDECLARED toe does not move. This one
-    # CAN fail — if assemble ever let one anchor's declaration leak into
-    # another's value, or read the wrong region for the wrong anchor, toe would
-    # shift here even though nothing declared it.
-    shoulder_decl = regions.Regions.from_dict({"anchors": [
-        {"anchor": "shoulder", "name": "water", "of": "background"}]})
-    background_toned, background_rows = color_measure.measure_crop(
-        md, src, route, decl=shoulder_decl)
-    assert background_toned[0] == plain[0]
-    assert background_rows[0].of == "crop" and background_rows[0].used == "crop"
-    assert background_rows[2].of == "background" and background_rows[2].used == "background"
+    # The real control: declare toe AND shoulder over the SAME region (subject).
+    # subject is the box alone, flat at 20, so the assembled profile collapses to
+    # (20, 140, 20) — non-increasing — and the WHOLE episode falls back to the
+    # crop's own (80, 140, 200), not just the anchor that broke it. This one CAN
+    # fail: a per-anchor (rather than whole-episode) fallback, or no fallback at
+    # all, produces a different profile and different rows here.
+    #
+    # A background-vs-crop control was tried first and rejected: this fixture's
+    # background (the crop minus only the 20 box) shares the crop's own p5 AND
+    # p95 exactly (its 200-bucket is still 34.49% of it), so a declaration-leak
+    # bug — toe silently reading whatever region some OTHER anchor names — would
+    # have passed it too. Forcing the fallback is the version that actually moves.
+    both_decl = regions.Regions.from_dict({"anchors": [
+        {"anchor": "toe", "name": "wetsuit", "of": "subject"},
+        {"anchor": "shoulder", "name": "wetsuit", "of": "subject"}]})
+    collapsed, collapsed_rows = color_measure.measure_crop(md, src, route, decl=both_decl)
+    assert collapsed == plain
+    assert all(r.fallback == "unorderable" for r in collapsed_rows)
+    assert all(r.used == "crop" for r in collapsed_rows)
+    # The declaration survives in the record even though it did not supply the
+    # value: toe and shoulder still say "subject", mid (never declared) says "crop".
+    assert collapsed_rows[0].of == "subject"
+    assert collapsed_rows[1].of == "crop"
+    assert collapsed_rows[2].of == "subject"
 
 
 def test_a_pan_episode_has_no_route_and_falls_back_named(tmp_path):
