@@ -591,6 +591,27 @@ def plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
             for i in range(len(times))]
 
 
+def path_meta(plan: RenderPlan, spec: ReframeSpec, *, stabilized: bool) -> PathMeta:
+    """The sidecar this plan's render would write.
+
+    Extracted from reframe() so a caller that has not rendered — the match-grade
+    conductor, which runs between --stop-after-geometry and --from-geometry, when
+    path.meta.json does not yet exist — can project the tracked subject through
+    the SAME geometry the render will use. A caller rebuilding this map would be
+    a second implementation of the render's own geometry, which is the risk
+    plan_render's docstring already names.
+    """
+    return PathMeta(mode=plan.rl.mode, crop_w=plan.rl.crop_w, crop_h=plan.rl.crop_h,
+                    crop_y=plan.cy, src_dims=(plan.src_w, plan.src_h),
+                    canvas=spec.canvas, out_dims=(plan.rl.out_w, plan.rl.out_h),
+                    rect_px=plan.rl.rect_px, freedom=plan.rl.freedom,
+                    background=plan.rl.background,
+                    pan=spec.pan is not None, stabilized=stabilized,
+                    crop_ws=plan.crop_ws if spec.zoom is not None else None,
+                    crop_hs=plan.crop_hs if spec.zoom is not None else None,
+                    crop_ys=plan.crop_ys if spec.zoom is not None else None)
+
+
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
             path_out: str, *, stabilized: bool = False) -> str:
     """Compose one episode from a tracked route OR a generated pan (spec §6):
@@ -644,16 +665,8 @@ def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-an", out]
     proc.run(cmd)
 
-    PathMeta(mode=plan.rl.mode, crop_w=plan.rl.crop_w, crop_h=plan.rl.crop_h,
-             crop_y=plan.cy, src_dims=(plan.src_w, plan.src_h),
-             canvas=spec.canvas, out_dims=(plan.rl.out_w, plan.rl.out_h),
-             rect_px=plan.rl.rect_px, freedom=plan.rl.freedom,
-             background=plan.rl.background,
-             pan=spec.pan is not None, stabilized=stabilized,
-             crop_ws=plan.crop_ws if spec.zoom is not None else None,
-             crop_hs=plan.crop_hs if spec.zoom is not None else None,
-             crop_ys=plan.crop_ys if spec.zoom is not None else None,
-             ).write(Path(path_out).with_suffix(".meta.json"))
+    path_meta(plan, spec, stabilized=stabilized).write(
+        Path(path_out).with_suffix(".meta.json"))
     return out
 
 

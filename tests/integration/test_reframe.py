@@ -1055,3 +1055,40 @@ def test_reframe_passes_the_fps_resolved_window_to_compute_path(tmp_path, monkey
                               smooth_window_s=0.25)
     reframe.reframe(spec, str(src), str(rp), str(tmp_path / "o.mp4"), str(tmp_path / "p.json"))
     assert captured["smooth_window"] == reframe.pathsmooth.window_frames(0.25, 60.0) == 15
+
+
+def _spec_src_route(tmp_path, src) -> tuple[models.ReframeSpec, str, str]:
+    """A fill-layout ReframeSpec + a route.json written under `tmp_path`, over `src`.
+
+    Self-contained rather than lifted onto an existing render test's geometry
+    (Task 3's report records the judgement call): every OTHER real-render test in
+    this file deliberately varies composition/layout/canvas/delivery/route shape
+    to isolate its own assertion (the pan bit, an empty-route refusal, canvas
+    evenness, highlight_red forwarding, native-delivery scaling...), and none of
+    them already renders `golden_ride_segment` — the range-normalized fixture this
+    test needs (plan_render refuses the raw, full-range golden_ride.mp4 by
+    design). Forcing those onto one shared helper would either blunt what each
+    already proves or grow the helper into a parameter bag that would not, in
+    fact, stop this test and some future one from describing different
+    geometries — the one thing a shared helper is for.
+    """
+    route = [dict(t=i / 30, x=500.0 + i * 3, y=360.0, w=100.0, h=200.0)
+             for i in range(40)]
+    route_p = tmp_path / "route.json"
+    route_p.write_text(json.dumps(route))
+    spec = models.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                              color_means=(105.0, 122.0, 137.0), delivery=models.Delivery())
+    return spec, str(src), str(route_p)
+
+
+@pytest.mark.integration
+def test_path_meta_builds_the_same_sidecar_reframe_writes(tmp_path, golden_ride_segment):
+    """The extraction's whole point: one builder, two callers. If reframe kept its
+    own copy the conductor would measure a geometry the render does not use."""
+    spec, src, route = _spec_src_route(tmp_path, golden_ride_segment)
+    reframe.reframe(spec, src, route, str(tmp_path / "ep.mp4"),
+                    str(tmp_path / "path.json"), stabilized=False)
+    written = PathMeta.from_json(str(tmp_path / "path.meta.json"))
+    built = reframe.path_meta(reframe.plan_render(spec, src, route), spec,
+                              stabilized=False)
+    assert built == written

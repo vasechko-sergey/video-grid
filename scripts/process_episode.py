@@ -83,6 +83,23 @@ def plan_ungraded(manifest_dict: dict, src: str, route: str | None) -> reframe.R
     return plan_for(manifest_lib.strip_colour(manifest_dict), src, route)
 
 
+def plan_and_meta_ungraded(manifest_dict: dict, src: str,
+                           route: str | None) -> tuple[reframe.RenderPlan, CropPath, PathMeta]:
+    """`plan_ungraded` plus the CropPath and PathMeta its render would write.
+
+    For a caller that must place the tracked subject inside the crop BEFORE the
+    crop has been rendered — the conductor, which runs at the geometry seam where
+    process_episode returns before reframe and so before path.json exists. Writes
+    nothing."""
+    m = manifest_lib.Manifest.from_dict(manifest_lib.strip_colour(manifest_dict))
+    params = dict(orch.DEFAULT_PARAMS)
+    if m.smooth_window_s is not None:
+        params["smooth_window_s"] = m.smooth_window_s
+    spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
+    plan = reframe.plan_render(spec, src, route)
+    return plan, CropPath(plan.path), reframe.path_meta(plan, spec, stabilized=m.stabilize)
+
+
 def _load_route(route_path: str | Path) -> tuple[list[dict], dict]:
     route = json.loads(Path(route_path).read_text())
     meta_path = Path(route_path).with_suffix(".meta.json")

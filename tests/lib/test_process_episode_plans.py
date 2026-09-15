@@ -1,5 +1,7 @@
 """process_episode.plan_for / plan_ungraded — the ONE manifest -> RenderPlan map."""
 import dataclasses
+import json
+from pathlib import Path
 
 import pytest
 
@@ -83,3 +85,20 @@ def test_plan_ungraded_is_plan_for_of_a_stripped_manifest(golden_ride_segment):
     a = process_episode.plan_ungraded(_md(src), src, route)
     b = process_episode.plan_for(manifest_lib.strip_colour(_md(src)), src, route)
     assert a.grade == b.grade and a.filter_args == b.filter_args
+
+
+def test_plan_and_meta_ungraded_needs_no_rendered_sidecar(tmp_path, golden_ride_segment):
+    """Measured: stop_after='geometry' returns at process_episode.py:437, before
+    reframe runs — and reframe is what writes path.json. At conductor time the
+    sidecar does not exist. This is the guard on that."""
+    md = _md(golden_ride_segment)
+    route = str(tmp_path / "route.json")
+    Path(route).write_text(json.dumps(
+        [dict(t=0.0, x=960.0, y=540.0, w=120.0, h=120.0),
+         dict(t=1.0, x=960.0, y=540.0, w=120.0, h=120.0)]))
+    plan, path, meta = process_episode.plan_and_meta_ungraded(
+        md, golden_ride_segment, route)
+    assert len(path) == len(plan.path)
+    assert meta.out_dims == (plan.rl.out_w, plan.rl.out_h)
+    assert not (tmp_path / "path.json").exists()     # writes nothing
+    assert not (tmp_path / "path.meta.json").exists()
