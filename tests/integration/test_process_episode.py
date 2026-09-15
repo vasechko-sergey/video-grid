@@ -532,7 +532,7 @@ def test_grade_damage_passes_a_healthy_grade_end_to_end(tmp_path, golden_ride_se
     base = dict(segment=src, out_path=str(tmp_path / "ep.mp4"), target_dur=1.5,
                composition="center", grid="thirds", layout="fill", canvas=[9, 16],
                delivery="short_edge:480")
-    prof = color_measure.measure_crop(base, src, route)
+    prof, _ = color_measure.measure_crop(base, src, route)
     target = [round(prof[0] + 12, 1), round(prof[1] - 10, 1), round(prof[2] - 18, 1)]
     manifest = dict(base, tone_src=list(prof), tone_dst=target)
     result = pe.process_episode(manifest, project_dir=str(tmp_path), route_path=route)

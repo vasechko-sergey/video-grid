@@ -76,7 +76,7 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     """
     src = str(golden_ride_segment)
     base = _md(src, str(tmp_path / "unused.mp4"))
-    prof = color_measure.measure_crop(base, src, ROUTE)
+    prof, _ = color_measure.measure_crop(base, src, ROUTE)
     target = [round(v + 30, 1) for v in prof]
 
     graded = dict(base, out_path=str(tmp_path / "graded.mp4"),
@@ -212,7 +212,7 @@ def test_grade_faithful_survives_a_post_tone_knob_and_fails_a_dropped_block(
     failure is the stale reference, not a broken master.
     """
     src = str(golden_ride_segment)
-    prof = color_measure.measure_crop(_md(src, str(tmp_path / "unused.mp4")), src, ROUTE)
+    prof, _ = color_measure.measure_crop(_md(src, str(tmp_path / "unused.mp4")), src, ROUTE)
     target = [round(v + 20, 1) for v in prof]
     rm = _faithfulness_pair(tmp_path / "base", src, prof, target)
 
@@ -276,7 +276,7 @@ def test_target_dev_is_large_yet_a_faithful_render_still_passes(
     False.
     """
     src = str(golden_ride_segment)
-    prof = color_measure.measure_crop(_md(src, str(tmp_path / "unused.mp4")), src, ROUTE)
+    prof, _ = color_measure.measure_crop(_md(src, str(tmp_path / "unused.mp4")), src, ROUTE)
     target = [round(v + 20, 1) for v in prof]
     rm = _faithfulness_pair(tmp_path / "base", src, prof, target)
 
@@ -367,7 +367,7 @@ def test_the_x264_entropy_bias_is_measured_not_assumed(golden_ride_segment, tmp_
     """
     src = str(golden_ride_segment)
     base = _md(src, str(tmp_path / "unused.mp4"))
-    prof = color_measure.measure_crop(base, src, ROUTE)
+    prof, _ = color_measure.measure_crop(base, src, ROUTE)
     target = [round(prof[0] + 12, 1), round(prof[1] - 10, 1), round(prof[2] - 18, 1)]
 
     def measure(label: str, extra_colour: dict) -> tuple[dict, dict]:

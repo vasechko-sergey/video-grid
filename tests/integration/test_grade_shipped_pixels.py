@@ -244,8 +244,8 @@ def test_a_single_episode_reel_is_its_own_median_and_nothing_moves(tmp_path, mon
     # the target IS this episode's own measured profile, gap-repaired — which is why
     # `plan` had nothing to author
     eg = ReelGeometry.from_json(ctx["geometry"]).episodes[0]
-    assert edl.tone_target == matchgrade.common_target(
-        [color_measure.measure_crop(eg.manifest, eg.source, eg.route)])
+    profile, _ = color_measure.measure_crop(eg.manifest, eg.source, eg.route)
+    assert edl.tone_target == matchgrade.common_target([profile])
 
     after = _render(ctx)
     assert Path(after.episodes[0].clip).read_bytes() == ungraded.read_bytes()
@@ -676,7 +676,7 @@ def test_probe_grade_geometry_predicts_the_encode(tmp_path, monkeypatch):
     predicted = tuple(r["tone_profile"])
 
     eg = geo.episodes[0]
-    ungraded = color_measure.measure_crop(eg.manifest, eg.source, eg.route)
+    ungraded, _ = color_measure.measure_crop(eg.manifest, eg.source, eg.route)
     assert _resid(predicted, ungraded) > matchgrade.MATCH_EPS, (predicted, ungraded)
 
     rm = _render(ctx)

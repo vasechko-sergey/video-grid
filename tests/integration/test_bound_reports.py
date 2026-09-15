@@ -113,8 +113,8 @@ def test_match_grade_goes_stale_on_a_wipe_and_stays_fresh_on_an_unrelated_rewrit
     design rejected it for exactly that (§1)."""
     lay = runlayout.RunLayout(tmp_path)
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (10.0, 90.0, 150.0) if "a.mp4" in src
-                        else (60.0, 140.0, 240.0))
+                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()) if "a.mp4" in src
+                        else ((60.0, 140.0, 240.0), ()))
     gp, edl_path = _geometry(tmp_path, ["a.mp4", "b.mp4"])
     match_grade.write_match(gp)
     assert montage._match_grade_state(lay.reel_dir) == ("fresh", "")

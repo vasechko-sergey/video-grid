@@ -172,7 +172,7 @@ def test_an_authored_zero_bias_conducts_like_no_spec_at_all(tmp_path, monkeypatc
     GEOMETRY/EDL — write_match rewrites the EDL in place, so reusing one across
     calls would let the second call see the first's authored tone pair)."""
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: _PROFILES[Path(src).name])
+                        lambda md, src, route, **k: (_PROFILES[Path(src).name], ()))
     preset = moodpreset.resolve("nostalgic warm")
     assert preset.tone_bias != (0.0, 0.0, 0.0)           # the preset really would bias
 

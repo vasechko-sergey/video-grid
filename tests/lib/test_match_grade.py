@@ -64,7 +64,7 @@ def test_conduct_measures_every_episode_crop(monkeypatch):
     """One measure_crop call per episode, with that episode's own route."""
     seen = []
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: seen.append((src, route)) or (20.0, 100.0, 200.0))
+                        lambda md, src, route, **k: seen.append((src, route)) or ((20.0, 100.0, 200.0), ()))
     geo = _geo(("s0.mp4", "r0.json"), ("s1.mp4", "r1.json"))
     edl = _edl(_ep("d.mp4"), _ep("b.mp4"))
     match_grade.conduct(geo, edl)
@@ -75,7 +75,7 @@ def test_conduct_authors_deviating_and_leaves_near_median(monkeypatch):
     # ep0 dark, ep1 bright → median between; ep2 sits on the median (within eps)
     profs = {"d.mp4": (10.0, 90.0, 150.0), "b.mp4": (40.0, 130.0, 240.0),
              "m.mp4": (25.0, 110.0, 195.0)}
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: profs[src])
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (profs[src], ()))
     geo = _geo(("d.mp4", "r0.json"), ("b.mp4", "r1.json"), ("m.mp4", "r2.json"))
     edl = _edl(_ep("d.mp4"), _ep("b.mp4"), _ep("m.mp4"))
     out, target, decisions, _ = match_grade.conduct(geo, edl)
@@ -87,7 +87,7 @@ def test_conduct_authors_deviating_and_leaves_near_median(monkeypatch):
 
 
 def test_conduct_leaves_a_hand_authored_pair(monkeypatch):
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()))
     geo = _geo(("d.mp4", "r0.json"))
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)))
     out, _, _, _ = match_grade.conduct(geo, edl)
@@ -98,7 +98,7 @@ def test_conduct_leaves_a_hand_authored_pair(monkeypatch):
 def test_conduct_force_clears_a_now_within_eps_pair(monkeypatch):
     # a previously-authored episode now sits on the median → force removes the stale pair
     profs = {"d.mp4": (25.0, 110.0, 195.0), "b.mp4": (25.0, 110.0, 195.0)}
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: profs[src])
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (profs[src], ()))
     geo = _geo(("d.mp4", "r0.json"), ("b.mp4", "r1.json"))
     edl = _edl(_ep("d.mp4", tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0)), _ep("b.mp4"))
     out, _, _, _ = match_grade.conduct(geo, edl, force=True)
@@ -152,8 +152,8 @@ def _write_geometry(tmp_path, *eps):
 
 def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (10.0, 90.0, 150.0) if "d.mp4" in src
-                        else (40.0, 130.0, 240.0))
+                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()) if "d.mp4" in src
+                        else ((40.0, 130.0, 240.0), ()))
     ep0, ep1 = _ep("d.mp4"), _ep("b.mp4")
     geometry_path, edl_path = _write_geometry(tmp_path, ep0, ep1)
     status = match_grade.write_match(geometry_path)
@@ -191,7 +191,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch):
 def test_write_match_stamps_the_tone_target_on_the_edl(tmp_path, monkeypatch):
     """The gate of design §6 needs ONE number for the reel; deriving it from the
     episodes' own tone_dst would fail on the reel where every episode was skipped."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (20.0, 100.0, 200.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((20.0, 100.0, 200.0), ()))
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     match_grade.write_match(geometry_path)
     assert EDL.from_json(str(edl_path)).tone_target == (20.0, 100.0, 200.0)
@@ -217,7 +217,7 @@ def test_write_match_stamps_the_mood_biased_target_not_the_median(tmp_path, monk
     test_conduct_with_a_bias_displaces_the_target already uses one level down; picked so
     the median and the biased target differ by MORE than ReelCheckSpec.grade_residual_max —
     discriminating the advisory reading's premise, not float noise."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (_MOOD_PROFS[src], ()))
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     spec_path = tmp_path / "SPEC.json"
     spec_path.write_text(json.dumps(
@@ -260,7 +260,7 @@ def test_write_match_prefers_an_authored_tone_bias_over_the_mood_preset(tmp_path
     all three pairwise more than ReelCheckSpec.grade_residual_max (4.0) apart — an
     authored bias that happened to land on the preset's own target (or the median)
     would pass this test against a broken _resolve_bias call and prove nothing."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (_MOOD_PROFS[src], ()))
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     authored_bias = (10.0, 5.0, -20.0)
     spec_path = tmp_path / "SPEC.json"
@@ -303,7 +303,7 @@ def test_write_match_does_not_resolve_the_geometrys_edl_path(tmp_path, monkeypat
     directory (`outer`), GEOMETRY.json lives in a sibling (`inner`), and geo.edl
     names the EDL only as \"EDL.json\" — a relative path that resolves correctly
     ONLY if nothing joins it against inner first."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (20.0, 100.0, 200.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((20.0, 100.0, 200.0), ()))
     outer, inner = tmp_path / "outer", tmp_path / "inner"
     outer.mkdir()
     inner.mkdir()
@@ -323,8 +323,8 @@ def test_write_match_does_not_resolve_the_geometrys_edl_path(tmp_path, monkeypat
 
 def test_write_match_reports_skips(tmp_path, monkeypatch):
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (126.0, 128.0, 130.0)
-                        if "flat.mp4" in src else (10.0, 90.0, 150.0))
+                        lambda md, src, route, **k: ((126.0, 128.0, 130.0), ())
+                        if "flat.mp4" in src else ((10.0, 90.0, 150.0), ()))
     geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"), _ep("flat.mp4"))
     status = match_grade.write_match(geometry_path)
     assert status["skipped"].get("flat-source") == 1
@@ -364,7 +364,7 @@ _MOOD_PROFS = {"d.mp4": (10.0, 90.0, 150.0), "b.mp4": (40.0, 130.0, 240.0)}
 
 
 def _mood_geo_edl(monkeypatch):
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: _MOOD_PROFS[src])
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (_MOOD_PROFS[src], ()))
     geo = _geo(("d.mp4", "r0.json"), ("b.mp4", "r1.json"))
     return geo, _edl(_ep("d.mp4"), _ep("b.mp4"))
 
@@ -512,7 +512,7 @@ def test_write_match_reports_no_mood_matched_end_to_end(tmp_path, monkeypatch):
     # uses for exactly this reason) drives write_match through resolve() -> BALANCED
     # -> _resolve_bias -> "" -> _report_md, and MATCH.md must say so rather than
     # reading like a run with no brief at all.
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (20.0, 100.0, 200.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((20.0, 100.0, 200.0), ()))
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     spec_path = tmp_path / "SPEC.json"
     spec_path.write_text(json.dumps(
@@ -527,8 +527,8 @@ def test_write_match_reports_no_mood_matched_end_to_end(tmp_path, monkeypatch):
 
 def test_write_match_writes_a_json_twin_carrying_every_decision(tmp_path, monkeypatch):
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (10.0, 90.0, 150.0) if "d.mp4" in src
-                        else (40.0, 130.0, 240.0))
+                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()) if "d.mp4" in src
+                        else ((40.0, 130.0, 240.0), ()))
     ep0, ep1 = _ep("d.mp4"), _ep("b.mp4")
     geometry_path, edl_path = _write_geometry(tmp_path, ep0, ep1)
     status = match_grade.write_match(geometry_path)
@@ -548,7 +548,7 @@ def test_write_match_writes_a_json_twin_carrying_every_decision(tmp_path, monkey
 def test_the_json_twin_names_the_edl_verbatim_as_geometry_gave_it(tmp_path, monkeypatch):
     """geo.edl is used verbatim, never resolve()d (write_match's own rule) — the twin
     must record the same string, or the freshness reader looks at a different file."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()))
     geometry_path, edl_path = _write_geometry(tmp_path, _ep("d.mp4"))
     match_grade.write_match(geometry_path)
     assert matchgrade.MatchReport.from_json(tmp_path / "MATCH.json").edl == edl_path
@@ -561,7 +561,7 @@ def test_the_json_twin_names_a_relative_edl_verbatim_not_resolved(tmp_path, monk
     battery — battery row 7 came back GREEN and confirmed it). A RELATIVE edl path does
     discriminate: resolve() turns "EDL.json" into an absolute path, which is not the
     string write_match's own docstring says it stores."""
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()))
     ep0 = _ep("d.mp4")
     Path("EDL.json").write_text(json.dumps(_edl(ep0).to_dict(), indent=2))
     geo = _geo((ep0.source, "r0.json"), edl_path="EDL.json")
@@ -574,8 +574,8 @@ def test_the_json_twin_records_a_skip_with_its_reason(tmp_path, monkeypatch):
     # a flat source cannot be a tone_src, so the conductor skips it — and a reader must
     # be able to tell that skip from a pair that was wiped after the fact
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (10.0, 11.0, 12.0) if "d.mp4" in src
-                        else (40.0, 130.0, 240.0))
+                        lambda md, src, route, **k: ((10.0, 11.0, 12.0), ()) if "d.mp4" in src
+                        else ((40.0, 130.0, 240.0), ()))
     geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"), _ep("b.mp4"))
     match_grade.write_match(geometry_path)
     report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
@@ -584,7 +584,7 @@ def test_the_json_twin_records_a_skip_with_its_reason(tmp_path, monkeypatch):
 
 
 def test_the_json_twin_carries_the_mood_displacement(tmp_path, monkeypatch):
-    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: (10.0, 90.0, 150.0))
+    monkeypatch.setattr(match_grade, "measure_crop", lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()))
     geometry_path, _ = _write_geometry(tmp_path, _ep("d.mp4"))
     spec = tmp_path / "SPEC.json"
     # canvas/hook added (task-2-report.md): Spec.__post_init__ gates both as

@@ -43,7 +43,7 @@ def test_the_entropy_floor_sits_between_a_legitimate_grade_and_a_damaging_one(
     profile and pull it toward a plausible common target. A damaging one is
     black_point at its documented maximum."""
     src = str(golden_ride_segment)
-    prof = color_measure.measure_crop(_md(src, str(tmp_path / "a.mp4")), src, ROUTE)
+    prof, _ = color_measure.measure_crop(_md(src, str(tmp_path / "a.mp4")), src, ROUTE)
     target = [round(prof[0] + 12, 1), round(prof[1] - 10, 1), round(prof[2] - 18, 1)]
     legit = _ratio(_md(src, str(tmp_path / "b.mp4"),
                        tone_src=list(prof), tone_dst=target), src)

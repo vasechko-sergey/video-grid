@@ -73,8 +73,14 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     # from inside reframe._probe (whole-branch review, minor 5).
     for i, eg in enumerate(geo.episodes):
         eg.require_inputs(i)
-    profiles = [measure_crop(eg.manifest, eg.source, eg.route)
-                for eg in geo.episodes]
+    # measure_crop now returns (profile, rows) (design 2026-09-15): rows carry one
+    # AnchorReading per anchor, naming which region actually supplied it. Dropped
+    # here on purpose, not an oversight — the named-regions wiring task threads them
+    # into MATCH.json; this fix only keeps `conduct` reading the profile it always did.
+    profiles = []
+    for eg in geo.episodes:
+        profile, _ = measure_crop(eg.manifest, eg.source, eg.route)
+        profiles.append(profile)
     target = matchgrade.common_target(profiles)
     # The displacement arrives already resolved (_resolve_bias): conduct does not know
     # what a preset is, so an authored bias and a preset's taste reach the target the
