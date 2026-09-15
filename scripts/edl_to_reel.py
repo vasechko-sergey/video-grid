@@ -416,6 +416,7 @@ def build_geometry(edl_path: str, project_path: str, footage_root: str,
                                        project_dir=str(Path(work_dir) / f"ep{i}"))
                        for i, (md, res) in enumerate(zip(mds, results, strict=True))),
         edl=str(edl_path),
+        project=str(project_path) if project_path else "",
         # the two things phase 1b re-checks: #11's engine stamp (the split gives the
         # conductor, and a human, time for the engine to move) and the cut identity
         # the stored manifests cannot carry.

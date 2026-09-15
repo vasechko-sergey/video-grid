@@ -804,3 +804,15 @@ def test_a_drifted_manifest_becomes_not_checked_not_a_bogus_residual(tmp_path):
     # gate still examined real pixels and still passed on them
     assert "1" in gf["residuals"], gf
     assert gf["pass"] is True, gf
+
+
+# --- named-regions design Task 5: GEOMETRY.json records the project it was given,
+# so REGIONS.json is reachable from the conductor without a --regions flag --------
+
+def test_stop_after_geometry_records_the_project_it_was_given(tmp_path, monkeypatch):
+    """Without it REGIONS.json is unreachable from match_grade, which takes only
+    --geometry."""
+    ctx = _run(tmp_path, monkeypatch, [(DARK, {})])
+    _geometry(ctx)
+    geo = ReelGeometry.from_json(ctx["geometry"])
+    assert Path(geo.project).name == "project.json"

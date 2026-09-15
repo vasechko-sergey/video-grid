@@ -1473,9 +1473,18 @@ class ReelGeometry:
     `extract`'s inputs — which is the half of the frozen-cut guard
     EpisodeGeometry.manifest is blind to. See that docstring for why a stripped
     manifest alone cannot see a moved window.
+
+    `project` is the project.json phase 1a was given, stored VERBATIM exactly as
+    `edl` is (design 2026-08-30 §2.2). It exists so match_grade can find
+    REGIONS.json beside it without a flag — `edit_plan` finds CONSTRAINTS.json
+    the same way and for the same reason: a flag can be forgotten, and a
+    forgotten flag here silently reverts the grade to whole-crop anchors. Empty
+    on a GEOMETRY.json written before design 2026-09-15; the conductor reports
+    that as a named absence rather than as "no declaration".
     """
     episodes: tuple[EpisodeGeometry, ...]
     edl: str
+    project: str = ""
     provenance: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1491,6 +1500,8 @@ class ReelGeometry:
 
     def to_dict(self) -> dict:
         d = {"episodes": [e.to_dict() for e in self.episodes], "edl": self.edl}
+        if self.project:
+            d["project"] = self.project
         if self.provenance:
             d["provenance"] = dict(self.provenance)
         return d
@@ -1505,7 +1516,8 @@ class ReelGeometry:
         if not isinstance(eps, list):
             raise ValueError("ReelGeometry.from_dict: 'episodes' must be a list")
         return cls(episodes=tuple(EpisodeGeometry.from_dict(e) for e in eps),
-                   edl=d.get("edl", ""), provenance=d.get("provenance") or {})
+                   edl=d.get("edl", ""), project=d.get("project") or "",
+                   provenance=d.get("provenance") or {})
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ReelGeometry":

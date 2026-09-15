@@ -676,11 +676,23 @@ def test_reframe_spec_no_longer_accepts_color_correct():
 # split point between phase 1a (frozen geometry) and match_grade (design
 # docs/specs/2026-08-30-grade-shipped-pixels-design.md §2.2) ---
 
+def _reel_geometry(**over):
+    """A valid ReelGeometry over one minimal EpisodeGeometry — every field the
+    contract has grown since (project, provenance) is a keyword override here
+    instead of a fifth hand-written EpisodeGeometry, so a sixth field does not
+    mean a fifth drifted inline construction (named-regions design, Task 5)."""
+    base = dict(episodes=(m.EpisodeGeometry(manifest={}, route=None,
+                                            source="s.mp4", project_dir="d"),),
+                edl="EDL.json")
+    base.update(over)
+    return m.ReelGeometry(**base)
+
+
 def test_reel_geometry_round_trips():
-    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={"segment": "a.mp4"},
-                                               route="r.json", source="s.mp4",
-                                               project_dir="build/ep0"),),
-                     edl="EDL.json", provenance={"engine": {"rev": "abc"}})
+    g = _reel_geometry(episodes=(m.EpisodeGeometry(manifest={"segment": "a.mp4"},
+                                                    route="r.json", source="s.mp4",
+                                                    project_dir="build/ep0"),),
+                       edl="EDL.json", provenance={"engine": {"rev": "abc"}})
     assert m.ReelGeometry.from_dict(g.to_dict()) == g
 
 
@@ -716,9 +728,7 @@ def test_reel_geometry_refuses_an_empty_episode_tuple():
 
 def test_reel_geometry_refuses_an_empty_edl():
     with pytest.raises(ValueError, match="edl"):
-        m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
-                                                    source="s.mp4", project_dir="d"),),
-                       edl="")
+        _reel_geometry(edl="")
 
 
 def test_reel_geometry_from_dict_refuses_a_non_list_episodes():
@@ -727,9 +737,7 @@ def test_reel_geometry_from_dict_refuses_a_non_list_episodes():
 
 
 def test_reel_geometry_provenance_defaults_empty_and_is_omitted_from_to_dict():
-    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
-                                                    source="s.mp4", project_dir="d"),),
-                       edl="EDL.json")
+    g = _reel_geometry()
     assert g.provenance == {}
     assert "provenance" not in g.to_dict()
 
@@ -739,10 +747,20 @@ def test_reel_geometry_round_trips_a_default_empty_provenance():
     # non-empty provenance. to_dict() omits the key entirely when provenance is
     # falsy and from_dict() restores {} on a missing key — this proves the omission
     # is actually lossless rather than merely asserting the omission happens.
-    g = m.ReelGeometry(episodes=(m.EpisodeGeometry(manifest={}, route=None,
-                                                    source="s.mp4", project_dir="d"),),
-                       edl="EDL.json")
+    g = _reel_geometry()
     assert m.ReelGeometry.from_dict(g.to_dict()) == g
+
+
+def test_reel_geometry_carries_the_project_path_verbatim():
+    g = _reel_geometry(edl="out/EDL.json", project="../montage/project.json")
+    assert g.to_dict()["project"] == "../montage/project.json"
+    assert m.ReelGeometry.from_dict(g.to_dict()).project == "../montage/project.json"
+
+
+def test_a_geometry_written_before_this_slice_has_no_project_and_is_still_valid():
+    d = _reel_geometry(edl="out/EDL.json").to_dict()
+    d.pop("project", None)
+    assert m.ReelGeometry.from_dict(d).project == ""
 
 
 def _reel_dict(**over):
