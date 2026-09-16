@@ -181,6 +181,38 @@ def test_the_advisory_refuses_two_stacks_of_different_shapes():
                                               route, path, meta)
 
 
+def test_a_subject_off_frame_for_one_sample_contributes_no_pair_for_that_frame():
+    """`_region_pairs`'s own contract (its docstring): a frame whose mask slice
+    holds no pixels contributes NO pair, never a fabricated one that would
+    mean() an empty slice to NaN in silence.
+
+    Task 7's mutation battery (row 12: dropping the `if not m.any(): continue`
+    guard) found this untested — every other _subject_delta_advisory test in
+    this file and in tests/integration/test_color_fidelity.py uses a STATIC
+    route, so the mask is either empty in EVERY sampled frame (which routes
+    through the fallback's all-True `read` and never reaches this branch at
+    all) or non-empty in every one. Nothing exercised a mask that is empty in
+    SOME frames and not others.
+
+    A route that visits the painted subject box at t=0 and t=1.0 but swings far
+    off-frame at t=0.5 does: the OVERALL fraction (pooled across all three
+    frames) still clears regions.MIN_REGION_FRAC, so the subject reading is not
+    the fallback and `_region_pairs` sees the real, mixed mask — one True frame,
+    one all-False frame, one True frame."""
+    plain, graded = _stacks()
+    route = [RoutePoint(t=0.0, x=30.0, y=20.0, w=20.0, h=20.0),
+             RoutePoint(t=0.5, x=-1000.0, y=20.0, w=20.0, h=20.0),
+             RoutePoint(t=1.0, x=30.0, y=20.0, w=20.0, h=20.0)]
+    path = CropPath(xs=[0.0, 0.0, 0.0])
+    meta = PathMeta(mode="fill", crop_w=60, crop_h=40, crop_y=0, src_dims=(60, 40),
+                    canvas=(W, H), out_dims=(W, H), rect_px=(0, 0, W, H), freedom=0)
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert d["region"] == "subject"          # the premise: NOT routed to the fallback
+    assert d["region_fallback"] is None
+    assert d["samples"] == 2                 # the off-frame sample contributed nothing
+
+
 def test_every_fallback_the_advisory_can_report_is_a_regions_name():
     """Three routes, three DIFFERENT answers — collected and compared as a set.
 

@@ -336,6 +336,24 @@ def test_subject_mask_of_a_box_wholly_outside_the_frame_is_empty_not_clamped():
     assert frac == 0.0
 
 
+def test_subject_mask_of_a_box_wholly_outside_on_the_negative_side_is_empty():
+    """The proof above only overflows past the bottom-right edge, where x1/y1 are
+    clamped by `min(w, ...)`/`min(h, ...)` to a value >= 0 and a Python slice
+    START beyond the array length silently clips to empty either way — so it
+    cannot tell the `if x1 > x0 and y1 > y0` guard apart from no guard at all
+    (Task 7's mutation battery, row 3: deleting the guard left every test in this
+    file, and the whole suite, green).
+
+    A box wholly outside past the TOP-LEFT edge is different: x0/y0 are floored
+    at 0 by `max(0, ...)`, but x1/y1 are only capped from above, so a box far
+    enough to the left projects a NEGATIVE x1 — and a negative Python slice bound
+    is not 'out of range', it counts backward from the end. Without the guard,
+    `mask[i, 0:-2, 0:-2]` marks most of the frame instead of none of it."""
+    mask, frac = regions.subject_mask([(-0.5, -0.5, -0.2, -0.2)], 1, 10, 10)
+    assert not mask.any()
+    assert frac == 0.0
+
+
 def test_subject_mask_refuses_extents_that_are_not_parallel_to_the_frames():
     with pytest.raises(ValueError, match="2 frames but 1 extents"):
         regions.subject_mask([(0.0, 0.0, 1.0, 1.0)], 2, 4, 4)
@@ -348,6 +366,18 @@ def test_refuse_names_no_route_for_a_region_that_was_never_located():
 def test_refuse_names_too_small_for_a_located_region_under_the_floor():
     assert regions.refuse("subject", located=True, fraction=0.009, empty=False) == "too-small"
     assert regions.refuse("subject", located=True, fraction=0.011, empty=False) is None
+
+
+def test_refuse_is_not_too_small_at_exactly_the_floor():
+    """The gate is `fraction < MIN_REGION_FRAC`, a strict inequality — a region
+    sitting EXACTLY on the floor clears it. The neighbouring test above pins
+    0.009 (under) and 0.011 (over) but never the boundary itself, so Task 7's
+    mutation battery (row 5: `<` -> `<=`) found every test in the suite green.
+    MIN_REGION_FRAC is pinned to 0.01 elsewhere (test_the_area_gate_is_one_percent);
+    this test uses the constant itself so it keeps meaning "the floor" even if
+    that value is ever retuned."""
+    assert regions.refuse("subject", located=True,
+                          fraction=regions.MIN_REGION_FRAC, empty=False) is None
 
 
 def test_refuse_names_too_small_for_a_located_region_that_holds_no_pixels():
