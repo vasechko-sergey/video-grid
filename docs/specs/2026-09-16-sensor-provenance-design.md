@@ -218,17 +218,43 @@ def subject_mask(extents, n: int, h: int, w: int) -> tuple[np.ndarray, float]:
     volume. `extents` is one (fx0, fy0, fx1, fy1) tuple of OUTPUT-frame
     fractions per frame — geometry.extent_at_times' own return shape."""
 
-def refuse(kind: str, *, located: bool, fraction: float, empty: bool) -> str | None:
+def refuse(kind: str, *, located: bool, fraction: float) -> str | None:
     """Why `kind` cannot supply a reading — one of FALLBACKS, or None when it
     can."""
 ```
 
 `refuse` is the decision `assemble` makes today, lifted verbatim: not located →
-`no-route`; empty or (not the crop and under `MIN_REGION_FRAC`) → `too-small`;
-otherwise None. `assemble` calls it, so the tone stage and the damage
-description cannot drift apart — and the third fallback, `unorderable`, stays
-where it is, inside `assemble`, because it is a property of a three-anchor
-profile and there is no profile here.
+`no-route`; not the crop and under `MIN_REGION_FRAC` → `too-small`; otherwise
+None. `assemble` calls it, so the tone stage and the damage description cannot
+drift apart — and the third fallback, `unorderable`, stays where it is, inside
+`assemble`, because it is a property of a three-anchor profile and there is no
+profile here.
+
+**Corrected (final review, 2026-09-16): `refuse` takes two inputs, not three.**
+As first written here, and as first built, the signature carried a third
+parameter — `empty`, "located and holds no pixels" — OR-ed in front of the size
+test. It is deleted, because **no production caller can produce it independently
+of `fraction`**, so it decided nothing at any live call site: in `measure` a
+`None` profile means an empty pixel array, which means a fraction of exactly
+0.0; in `check_episode` the emptiness and the fraction are reduced from the SAME
+mask; and the crop — the one kind the size gate skips — can never arrive here
+empty at all, because `assemble` raises on a profile-less crop before its loop
+starts. Measured over the whole suite before the deletion, by wrapping `refuse`
+and recording only the calls made from the two production callers: **288
+production calls, 16 of them with `empty=True`, every one of the 16 at
+`fraction == 0.0`, and the two predicates — with the parameter and without it —
+agreed on all 288.** The case itself has not gone anywhere: a located region
+holding no pixels still reports `too-small` and still never `no-route`, on the
+size test alone.
+
+The test written to cover the parameter was worse than the parameter: it passed
+`fraction=0.5` with `empty=True`, a pair no caller reaches, and justified that
+with a per-frame emptiness `check_episode` does not compute — it reduces over
+the whole stack, and the per-frame case is handled somewhere else entirely, by
+`_region_pairs` skipping a frame whose mask slice is empty. §1 rule 4 — a field
+that cannot be decided is deleted, not qualified — applies to a function's
+parameters as much as to a report's fields, and this slice shipped a violation
+of its own rule inside the slice that states it.
 
 `measure` calls `subject_mask`. The tone stage's behaviour does not change; the
 proof of that is that every named-regions test stays green untouched.

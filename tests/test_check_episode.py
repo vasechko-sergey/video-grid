@@ -145,16 +145,17 @@ def test_a_subject_covering_the_whole_frame_leaves_no_background_and_names_it():
 
 
 def test_a_subject_entirely_outside_the_frame_is_located_but_empty():
-    """The `empty=True` branch of the located arm: a route EXISTS, and its box
-    projects wholly outside the delivered frame, so the mask holds no pixels at a
-    real, measured fraction of 0.0.
+    """The located-and-holds-no-pixels case: a route EXISTS, and its box projects
+    wholly outside the delivered frame, so the mask holds no pixels at a real,
+    measured fraction of 0.0.
 
     `too-small` and not `no-route`: an episode that HAS a route must never be told
-    it has none (regions.refuse's own docstring). Note the honest limit — at this
-    call site `empty` is implied by `fraction`, since an empty mask means a
-    fraction of exactly 0.0 and 0.0 is under MIN_REGION_FRAC anyway. What this
-    test covers is the branch and its premise; what isolates the `empty` ARGUMENT
-    from the area gate is tests/lib/test_regions.py's own refuse test."""
+    it has none (regions.refuse's own docstring). The emptiness needs no separate
+    input to be seen — the mask that holds no pixels IS the mask whose mean is
+    0.0, and 0.0 is under MIN_REGION_FRAC. refuse() took a third `empty` argument
+    for this until the slice's final review deleted it as undecidable at every
+    production call site; this test is unchanged by that, because it drives the
+    real array and never the argument."""
     plain, graded = _stacks()
     route, path, meta = _sidecar(box=(-100.0, 20.0, 20.0, 20.0))
     extents = geometry.extent_at_times(route, path, meta, [0.0, 0.5, 1.0])

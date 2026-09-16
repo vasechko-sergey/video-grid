@@ -133,10 +133,14 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     if route_pts:
         extents = geometry.extent_at_times(route_pts, path_obj, meta, times)
         mask, frac = regions.subject_mask(extents, n, h, w)
-        located, empty = True, not mask.any()
+        located = True
     else:
-        mask, frac, located, empty = None, 0.0, False, True
-    fallback = regions.refuse("subject", located=located, fraction=frac, empty=empty)
+        mask, frac, located = None, 0.0, False
+    # A mask holding no pixels has a fraction of exactly 0.0 — it is the SAME
+    # array answering both questions — so the size gate names it `too-small` on
+    # its own. regions.refuse carried a separate `empty` argument for that case
+    # until this slice's final review; see its docstring for why it went.
+    fallback = regions.refuse("subject", located=located, fraction=frac)
     read = np.ones((n, h, w), dtype=bool) if fallback else mask
     out = {"advisory_delta_e": True,
            "region": "crop" if fallback else "subject",
@@ -149,7 +153,7 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     if fallback is None:
         bg = ~mask
         out["background_fallback"] = regions.refuse(
-            "background", located=located, fraction=1.0 - frac, empty=not bg.any())
+            "background", located=located, fraction=1.0 - frac)
         if out["background_fallback"] is None:
             # A bare subscript, never .get: a background that refused nothing holds
             # pixels in at least one frame, so _region_pairs cannot come back empty

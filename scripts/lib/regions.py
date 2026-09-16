@@ -252,7 +252,7 @@ def subject_mask(extents, n: int, h: int, w: int) -> tuple[np.ndarray, float]:
     return mask, float(mask.mean())
 
 
-def refuse(kind: str, *, located: bool, fraction: float, empty: bool) -> str | None:
+def refuse(kind: str, *, located: bool, fraction: float) -> str | None:
     """Why `kind` cannot supply a reading — one of FALLBACKS, or None when it can.
 
     The decision assemble() used to make inline, lifted so check_episode's grade
@@ -260,9 +260,27 @@ def refuse(kind: str, *, located: bool, fraction: float, empty: bool) -> str | N
     deliberately not here: it is a property of a three-anchor profile, and a
     single reading has none.
 
-    `empty` is "located, and holds no pixels" — a subject entirely outside the
-    delivered frame. It has a route and a real, measured fraction of 0.0, so it
-    reports `too-small`; `no-route` would say something false about the episode.
+    A located region that holds NO pixels — a subject entirely outside the
+    delivered frame — reports `too-small` and never `no-route`: it HAS a route,
+    and an empty mask has a real, measured fraction of exactly 0.0, which the
+    size gate below already refuses. Saying `no-route` for it would state
+    something false about the episode.
+
+    That case arrived with an `empty` parameter of its own and lost it at the
+    slice's final review (correction 2026-09-16, design §2.1). It was deleted
+    rather than documented, because no caller could produce it independently of
+    `fraction` and so it decided nothing: in measure() a None profile means an
+    empty pixel array, which means a fraction of exactly 0.0; in check_episode
+    both the emptiness and the fraction are reduced from the SAME mask; and the
+    crop — the one kind the size gate skips — can never arrive here empty at all,
+    because assemble() raises on a profile-less crop before the loop starts.
+    Measured over the whole suite before the deletion: 288 production calls, 16
+    of them empty, every one at fraction 0.0, and the two predicates agreed on
+    all 288. A third input that decides nothing reads as a rule while being
+    unobservable — the settlement this repo already reached for
+    gradedamage.ENTROPY_BINS and for _report_md's regions gate — and it invites a
+    future third reader to plumb it from a per-frame source and get an answer
+    assemble() would not give for the same region.
 
     The crop is never gated on size: every fallback lands there, so a refused
     crop would have nowhere to fall back to.
@@ -271,7 +289,7 @@ def refuse(kind: str, *, located: bool, fraction: float, empty: bool) -> str | N
         raise ValueError(f"regions.refuse: unknown kind {kind!r} — one of {KINDS}")
     if not located:
         return "no-route"
-    if empty or (kind != "crop" and fraction < MIN_REGION_FRAC):
+    if kind != "crop" and fraction < MIN_REGION_FRAC:
         return "too-small"
     return None
 
@@ -343,10 +361,11 @@ def assemble(decl: "Regions", readings: dict[str, RegionReading]
         r = readings[want.of]
         idx = ANCHORS.index(anchor)     # 0/1/2 — the anchor's own slot in a profile
         # ONE rule, shared with check_episode's grade description (design §2.1).
-        # `empty` is the located-and-holds-no-pixels case, which refuse() names
-        # `too-small` at its real measured fraction of 0.0 — see its docstring.
-        fb = refuse(want.of, located=r.located, fraction=r.fraction,
-                    empty=r.profile is None)
+        # A located region that holds no pixels reaches this with a real, measured
+        # fraction of exactly 0.0 — profile-None and fraction-0.0 are the same
+        # fact here — so the size gate alone names it `too-small`. See refuse() on
+        # why that case stopped carrying a parameter of its own.
+        fb = refuse(want.of, located=r.located, fraction=r.fraction)
         rows.append(AnchorReading(anchor, want.name, want.of,
                                   "crop" if fb else want.of, r.fraction,
                                   crop.profile[idx] if fb else r.profile[idx], fb))

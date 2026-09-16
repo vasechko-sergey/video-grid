@@ -360,12 +360,12 @@ def test_subject_mask_refuses_extents_that_are_not_parallel_to_the_frames():
 
 
 def test_refuse_names_no_route_for_a_region_that_was_never_located():
-    assert regions.refuse("subject", located=False, fraction=0.0, empty=True) == "no-route"
+    assert regions.refuse("subject", located=False, fraction=0.0) == "no-route"
 
 
 def test_refuse_names_too_small_for_a_located_region_under_the_floor():
-    assert regions.refuse("subject", located=True, fraction=0.009, empty=False) == "too-small"
-    assert regions.refuse("subject", located=True, fraction=0.011, empty=False) is None
+    assert regions.refuse("subject", located=True, fraction=0.009) == "too-small"
+    assert regions.refuse("subject", located=True, fraction=0.011) is None
 
 
 def test_refuse_is_not_too_small_at_exactly_the_floor():
@@ -377,40 +377,53 @@ def test_refuse_is_not_too_small_at_exactly_the_floor():
     this test uses the constant itself so it keeps meaning "the floor" even if
     that value is ever retuned."""
     assert regions.refuse("subject", located=True,
-                          fraction=regions.MIN_REGION_FRAC, empty=False) is None
+                          fraction=regions.MIN_REGION_FRAC) is None
 
 
 def test_refuse_names_too_small_for_a_located_region_that_holds_no_pixels():
-    """Located and empty has a route and a real measured fraction of 0.0, so it
-    is too-small and never no-route — an episode that HAS a route must not be
-    told it has none."""
-    assert regions.refuse("subject", located=True, fraction=0.0, empty=True) == "too-small"
+    """Located and holding no pixels has a route and a real measured fraction of
+    0.0, so it is too-small and never no-route — an episode that HAS a route must
+    not be told it has none. The fraction IS the emptiness here: an empty mask
+    means exactly 0.0, which is why this case needed no parameter of its own
+    (final review correction, 2026-09-16)."""
+    assert regions.refuse("subject", located=True, fraction=0.0) == "too-small"
 
 
-def test_refuse_names_too_small_for_an_empty_region_whatever_fraction_is_claimed():
-    """`fraction` and `empty` are NOT correlated in general — only inside
-    measure() are they, because RegionReading.profile is None implies
-    fraction == 0.0. A second reader (check_episode, over RGB frames) supplies
-    its own pair, and for it a subject can cover 20% of the frame across a
-    stack while one frame's mask slice is empty. A region that holds no pixels
-    is refused whatever fraction is claimed for it — this pins `empty` as its
-    own, independent branch, not a restatement of the area gate reachable only
-    through fraction == 0.0."""
-    assert regions.refuse("subject", located=True, fraction=0.5, empty=True) == "too-small"
+def test_refuse_gates_the_background_on_size_exactly_like_the_subject():
+    """The area gate's exemption is the CROP and nothing else — `background` is a
+    kind in KINDS with a fraction of its own and is refused by the same rule.
+
+    This replaces a test the slice's final review deleted. That one passed
+    `fraction=0.5` with `empty=True` to pin `empty` as an independent branch, and
+    its stated justification was false of the code it described: check_episode
+    reduces emptiness over the WHOLE stack, not per frame, so it cannot produce
+    that pair either, and the per-frame case it cited is handled elsewhere
+    entirely, by _region_pairs skipping a frame whose mask slice is empty. The
+    parameter is gone; what is pinned here instead is an input a production
+    caller really does reach.
+
+    check_episode asks about `background` whenever the subject supplied the
+    reading, and a subject whose projected bbox covers the whole output frame —
+    ordinary on a tight reframe, via subject_mask's clamping — leaves a
+    background at 1.0 - 1.0 = 0.0."""
+    assert regions.refuse("background", located=True, fraction=0.0) == "too-small"
+    assert regions.refuse("background", located=True, fraction=0.5) is None
 
 
 def test_refuse_never_gates_the_crop_on_size():
     """Every fallback lands on the crop, so a crop under the floor would have
     nowhere to fall back to."""
-    assert regions.refuse("crop", located=True, fraction=0.001, empty=False) is None
+    assert regions.refuse("crop", located=True, fraction=0.001) is None
 
 
 def test_refuse_rejects_a_kind_outside_the_vocabulary():
     with pytest.raises(ValueError, match="unknown kind"):
-        regions.refuse("skin", located=True, fraction=0.5, empty=False)
+        regions.refuse("skin", located=True, fraction=0.5)
 
 
 def test_refuse_returns_only_names_from_the_closed_set():
-    for located, empty in ((False, True), (True, True), (True, False)):
-        got = regions.refuse("subject", located=located, fraction=0.0, empty=empty)
-        assert got is None or got in regions.FALLBACKS
+    for kind in regions.KINDS:
+        for located in (False, True):
+            for fraction in (0.0, 0.005, regions.MIN_REGION_FRAC, 0.5, 1.0):
+                got = regions.refuse(kind, located=located, fraction=fraction)
+                assert got is None or got in regions.FALLBACKS
