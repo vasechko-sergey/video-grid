@@ -111,7 +111,8 @@ judge reads it.
   `background_delta_e`. A `null` here means the background WAS read, not that
   it is missing;
   (3) the subject supplied the reading but the background could not be read
-  (a bbox covering the whole output frame leaves none) — `background_fallback`
+  (a subject covering over 99% of the frame leaves less than 1% of it for the
+  background) — `background_fallback`
   names the reason and `background_delta_e` is the key that is absent.
   None of the three is a malformed report.
   `{"status": "not-checked", "passed": null}` on the WHOLE `grade_damage`

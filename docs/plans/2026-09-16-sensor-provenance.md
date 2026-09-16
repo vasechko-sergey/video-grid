@@ -29,6 +29,23 @@
 
 ### Task 1: `regions.subject_mask` and `regions.refuse` — the shared resolver
 
+**Corrected (final review, 2026-09-16): `regions.refuse` shipped with two
+keyword parameters, not three.** Every `empty: bool` below — this task's own
+`Produces` signature, its test calls, the function body, and Task 3's
+`Consumes` line — is the plan **as it was written and executed**, not the
+shape that shipped; task bodies are a record of what was asked for and are
+left as they read. The final fix wave deleted `empty`: no production caller
+could decide it independently of `fraction` (a `None` profile in `measure`
+already means a fraction of exactly 0.0; `check_episode` reduces emptiness and
+the fraction from the SAME mask; the crop — the one kind the size gate skips —
+can never reach `refuse` empty at all, since `assemble` raises on a
+profile-less crop before its loop starts). Measured over the whole suite
+before the deletion: 288 production calls, 16 of them with `empty=True`, every
+one at `fraction == 0.0`, and the two predicates — with the parameter and
+without it — agreed on all 288. See the design's own §2.1 for the full
+accounting. The shipped signature is `regions.refuse(kind: str, *, located:
+bool, fraction: float) -> str | None`.
+
 **Files:**
 - Modify: `scripts/lib/regions.py`
 - Test: `tests/lib/test_regions.py`

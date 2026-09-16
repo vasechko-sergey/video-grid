@@ -258,7 +258,8 @@ guessing a path.
   case is `background_fallback: null` BESIDE a real `background_delta_e` —
   a `null` there means the background was read, not that it is absent.
   (3) When the subject DID supply the reading but the background could not be
-  read (a bbox covering the whole output frame leaves none),
+  read (a subject covering over 99% of the frame leaves less than 1% of it
+  for the background),
   `background_fallback` names why and `background_delta_e` is the one that is
   missing. All three are correct reports, none is malformed.
   A large `delta_e` is still not itself a

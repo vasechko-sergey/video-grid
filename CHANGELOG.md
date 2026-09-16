@@ -31,7 +31,8 @@ no pixel moves.
   differently. `background_fallback` rides beside it and is **present-or-null**,
   the way `region_fallback` is: `null` means the background WAS read and the
   number beside it is real. Only when the background cannot be read at all — a
-  bbox covering the whole output frame, ordinary on a tight reframe — does it
+  subject covering over 99% of the frame, ordinary on a tight reframe, leaving
+  under 1% for the background — does it
   name the absence, and then `background_delta_e` is the key that is missing.
   After a SUBJECT fallback both keys are absent: the reading already is the
   whole frame, so there is nothing to contrast it with.
