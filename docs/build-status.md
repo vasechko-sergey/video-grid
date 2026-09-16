@@ -16,10 +16,26 @@ _Last updated: 2026-09-16._
   (2026-09-16, 0.11.0)** — design
   [2026-09-16-sensor-provenance-design.md](specs/2026-09-16-sensor-provenance-design.md),
   plan [2026-09-16-sensor-provenance.md](plans/2026-09-16-sensor-provenance.md),
-  **Tasks 1–6** (branch `docs/sensor-provenance`). **Task 7 — the 14-row
-  mutation battery — has NOT run**, so nothing below is battery-backed; every
-  other `Tasks 1–N` entry in this file reports its battery, and this one will
-  say the same once Task 7 lands and widens this line.
+  **Tasks 1–7** (branch `docs/sensor-provenance`). **Task 7's mutation
+  battery: seventeen rows run** (the brief's fourteen, with rows 10 and 13
+  each split into the two sites — a guard and a call-site swap — the task's
+  own corrections named, plus a new row 15 for a field a review fix round
+  added after the brief was written), **fourteen RED outright, three
+  confirmed coverage holes** (checked against the WHOLE suite, not only a
+  scoped subset, before being called holes) **closed with new tests**:
+  `regions.subject_mask`'s `if x1 > x0 and y1 > y0` guard had no live test on
+  its TOP-LEFT overflow branch — the existing "wholly outside" proof only
+  overflows past the bottom-right edge, where a Python slice start beyond the
+  array length clips to empty with or without the guard, so only a box
+  overflowing past the top-left (an unclamped, NEGATIVE x1/y1) exercises it;
+  `regions.refuse`'s `fraction < MIN_REGION_FRAC` boundary itself
+  (`fraction == 0.01` exactly) was never pinned, only its two neighbours; and
+  `check_episode._region_pairs`'s `if not m.any(): continue` guard had no test
+  whose mask was empty in SOME sampled frames and not others, because every
+  existing route is static. One row (13's call-site swap) is RED via a wiring
+  identity check, not the sign proof the brief named, which is worth knowing
+  rather than assuming. Full suite 3908 → 3911 passed, 1 skipped; the two
+  battery-added test files are the only diff.
 
   Four reports stated a reading without saying which pixels, over how many
   frames, or against what baseline — and one stated a winner among three
