@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from scripts import check_episode, process_episode, reframe
-from scripts.lib import color, regions
+from scripts.lib import color, geometry, regions
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import CheckSpec, CropPath, Delivery, PathMeta, RoutePoint
@@ -95,7 +95,10 @@ def test_a_subject_under_the_floor_falls_back_to_the_crop_and_says_so():
     # the fraction reported is the SUBJECT's, the evidence for the fallback —
     # never the crop's 1.0 it fell back to
     assert d["region_fraction"] < 0.01
+    # BOTH keys, not just the number: after a fallback the reading IS the crop, so
+    # there is no subject reading for a background to be contrasted with.
     assert "background_delta_e" not in d
+    assert "background_fallback" not in d
 
 
 def test_a_routeless_episode_reads_the_crop_and_names_no_route():
@@ -110,6 +113,62 @@ def test_a_routeless_episode_reads_the_crop_and_names_no_route():
     assert d["region_fraction"] == 0.0
     assert d["delta_e"] is not None
     assert "background_delta_e" not in d
+    assert "background_fallback" not in d
+
+
+def test_a_subject_covering_the_whole_frame_leaves_no_background_and_names_it():
+    """The `~mask`-empty case. subject_mask clamps a projected bbox into the output
+    frame, so a tight reframe ordinarily produces a subject that IS the frame —
+    and then there is no background left to compare against.
+
+    Until this was routed through regions.refuse the background arm called
+    `.get("delta_e")` on evaluate's no-samples shape and emitted a bare `null`,
+    which reads either as "the background did not move" or as an error. The
+    absence is now named from regions.FALLBACKS, and no number is emitted at all."""
+    plain, graded = _stacks()
+    # centred, and exactly as large as the frame: fx0/fy0 project to 0.0 and
+    # fx1/fy1 to 1.0, so the mask is every pixel of every frame
+    route, path, meta = _sidecar(box=(30.0, 20.0, 60.0, 40.0))
+    extents = geometry.extent_at_times(route, path, meta, [0.0, 0.5, 1.0])
+    mask, frac = regions.subject_mask(extents, N, H, W)
+    assert frac == 1.0 and not (~mask).any()      # the premise, stated not assumed
+
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert d["region"] == "subject"               # the subject itself is readable
+    assert d["region_fallback"] is None
+    assert d["region_fraction"] == 1.0
+    assert d["delta_e"] > 10                      # ...and it carries a real number
+    assert d["background_fallback"] == "too-small"
+    assert d["background_fallback"] in regions.FALLBACKS
+    assert "background_delta_e" not in d          # never a bare null
+
+
+def test_a_subject_entirely_outside_the_frame_is_located_but_empty():
+    """The `empty=True` branch of the located arm: a route EXISTS, and its box
+    projects wholly outside the delivered frame, so the mask holds no pixels at a
+    real, measured fraction of 0.0.
+
+    `too-small` and not `no-route`: an episode that HAS a route must never be told
+    it has none (regions.refuse's own docstring). Note the honest limit — at this
+    call site `empty` is implied by `fraction`, since an empty mask means a
+    fraction of exactly 0.0 and 0.0 is under MIN_REGION_FRAC anyway. What this
+    test covers is the branch and its premise; what isolates the `empty` ARGUMENT
+    from the area gate is tests/lib/test_regions.py's own refuse test."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar(box=(-100.0, 20.0, 20.0, 20.0))
+    extents = geometry.extent_at_times(route, path, meta, [0.0, 0.5, 1.0])
+    mask, frac = regions.subject_mask(extents, N, H, W)
+    assert not mask.any() and frac == 0.0         # located, and holds no pixels
+
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert d["region"] == "crop"
+    assert d["region_fallback"] == "too-small"    # NOT "no-route" — the route exists
+    assert d["region_fraction"] == 0.0
+    assert d["delta_e"] > 0                       # the crop still supplies a reading
+    assert "background_delta_e" not in d
+    assert "background_fallback" not in d
 
 
 def test_the_advisory_refuses_two_stacks_of_different_shapes():
@@ -123,12 +182,18 @@ def test_the_advisory_refuses_two_stacks_of_different_shapes():
 
 
 def test_every_fallback_the_advisory_can_report_is_a_regions_name():
+    """Three routes, three DIFFERENT answers — collected and compared as a set.
+
+    Asserting `is None or in FALLBACKS` per iteration is satisfied by None on all
+    three, so it would hold for an implementation that never refused anything and
+    would not prove its own name."""
     plain, graded = _stacks()
     _, path, meta = _sidecar()
-    for route in (None, _sidecar(box=(30.0, 20.0, 4.0, 4.0))[0], _sidecar()[0]):
-        d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
-                                                  route, path, meta)
-        assert d["region_fallback"] is None or d["region_fallback"] in regions.FALLBACKS
+    seen = {check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                  route, path, meta)["region_fallback"]
+            for route in (None, _sidecar(box=(30.0, 20.0, 4.0, 4.0))[0], _sidecar()[0])}
+    assert seen == {None, "no-route", "too-small"}
+    assert seen - {None} <= set(regions.FALLBACKS)
 
 
 # --- grade_damage (design 2026-08-31 §3): the entropy-ratio verdict, plans-gated ---
@@ -242,4 +307,5 @@ def test_the_subject_dE00_survives_as_an_advisory_number(tmp_path, monkeypatch,
     assert d["region"] == "subject"
     assert d["region_fallback"] is None
     assert d["region_fraction"] > regions.MIN_REGION_FRAC
+    assert d["background_fallback"] is None
     assert "background_delta_e" in d

@@ -82,6 +82,20 @@ def plain_clip(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def plain_twin_clip(tmp_path_factory):
+    """A SECOND render of `plain_clip`'s identical recipe, to its own file.
+
+    The faithful pair below needs two independently encoded and independently
+    decoded stacks. Handing one decode's list object in as both halves would make
+    every pair reaching evaluate an (x, x) — a tautology that reads 0.0 for any
+    implementation that subtracts at all, whatever the fixture, the mask or the
+    baseline do."""
+    p = tmp_path_factory.mktemp("cf") / "plain_twin.mp4"
+    _render(p, crop=True, hue=None)
+    return p
+
+
+@pytest.fixture(scope="module")
 def gentle_clip(tmp_path_factory):
     """The same crop plus a 4° hue rotation — a real but small colour move.
 
@@ -137,9 +151,11 @@ def _sidecar(tmp_path, box=(SUBJECT_X, SUBJECT_Y, SUBJECT_W, SUBJECT_H)):
 
 # --- 1/2: what the reading says over a real subject, and what separates the two -
 
-def test_a_faithful_pair_reads_zero_over_the_subject(tmp_path, plain_clip):
-    """No colour change at all: the two stacks are the same real pixels, so the
-    reading is not merely small, it is EXACTLY zero — pinned, because that is the
+def test_a_faithful_pair_reads_zero_over_the_subject(tmp_path, plain_clip,
+                                                    plain_twin_clip):
+    """TWO clips, rendered and encoded separately through one recipe and decoded
+    separately — a real pair carrying no colour change, not one stack handed in
+    twice. The reading is then not merely small, it is EXACTLY zero, which is the
     design's own consequence of putting both sides on one baseline (§0.3). Before
     2026-09-16 this same claim read ~0.8 on this fixture: the old sensor compared
     a pre-grade source against a CRF-18 clip, so the encode's own residual was
@@ -148,8 +164,9 @@ def test_a_faithful_pair_reads_zero_over_the_subject(tmp_path, plain_clip):
     The provenance is the other half of the claim: the number is attributed to
     the SUBJECT, at the fraction it actually covers, with no fallback."""
     route_pts, path_obj, meta = _sidecar(tmp_path)
-    frames = _frames(plain_clip)
-    d = check_episode._subject_delta_advisory(frames, frames, TIMES,
+    plain, twin = _frames(plain_clip), _frames(plain_twin_clip)
+    assert plain is not twin                  # two decodes, not one list reused
+    d = check_episode._subject_delta_advisory(plain, twin, TIMES,
                                               route_pts, path_obj, meta)
     assert d["advisory_delta_e"] is True
     assert d["region"] == "subject"
@@ -159,6 +176,7 @@ def test_a_faithful_pair_reads_zero_over_the_subject(tmp_path, plain_clip):
     # 160x120 of 480x360 — the mask is strictly inside the painted box, so it
     # reads pure SUBJECT_COLOR and nothing of the grey field.
     assert d["region_fraction"] == pytest.approx(0.1111, abs=5e-4)
+    assert d["background_fallback"] is None
     assert d["background_delta_e"] == 0.0
 
 
@@ -186,6 +204,7 @@ def test_a_hue_broken_pair_reads_large_over_the_subject(tmp_path, plain_clip,
     assert broken["delta_e"] > 3.0 * gentle["delta_e"]
     # The background moved too — a hue rotation is global — but the two are
     # reported as two numbers, which is what makes a TARGETED grade visible.
+    assert broken["background_fallback"] is None
     assert broken["background_delta_e"] > 0.0
 
 
@@ -211,6 +230,7 @@ def test_a_subject_under_the_floor_falls_back_to_the_crop_and_says_so(tmp_path,
     assert d["region_fraction"] == pytest.approx(0.00083, abs=5e-5)
     assert d["delta_e"] > 0.0
     assert "background_delta_e" not in d
+    assert "background_fallback" not in d
 
 
 # --- 4/6: the wired path — what run() reports, and which frames it reads -------
@@ -263,9 +283,12 @@ def test_run_carries_the_region_and_the_description_does_not_vote(tmp_path,
     report = _run_episode(tmp_path, src, md)
     gd = report.checks["grade_damage"]
     print(f"\nMEASURED run() grade_damage: {gd.detail}")
-    assert gd.detail["region"] in ("subject", "crop")
-    assert gd.detail["region_fraction"] >= 0.0
-    assert "region_fallback" in gd.detail
+    # The deterministic answer for golden_route.json, not the set of legal values:
+    # an implementation that lost the route on the WIRED path and reported crop /
+    # 0.0 / "no-route" for every routed episode would satisfy a presence check.
+    assert gd.detail["region"] == "subject", gd.detail
+    assert gd.detail["region_fallback"] is None, gd.detail
+    assert gd.detail["region_fraction"] > regions.MIN_REGION_FRAC, gd.detail
     # The description is large — the old gate would have blocked here...
     assert gd.detail["delta_e"] > 5.0, gd.detail
     # ...and the verdict comes from the entropy ratio, which is healthy.

@@ -1,5 +1,11 @@
 """Subject grade-delta (design docs/specs/2026-08-28-grade-delta-sensors-design.md §2.3):
-how far the grade moved the tracked subject's colour, source vs delivered.
+how far the grade moved a named region's colour, plain render vs graded render.
+
+"source vs delivered" until 2026-09-16: the caller compared the pre-grade source
+clip against the shipped CRF-18 one. It now hands over the two halves of
+check_episode._grade_damage's own (graded, plain) RenderPlan pair, so the encode
+is on neither side and the two readings share one baseline (design 2026-09-16
+§0.3/§0.4).
 
 Pure — the sampling lives in check_episode, the arithmetic in colordiff. What
 this module owns is the DESCRIPTION: which statistic over the samples, and what
@@ -22,7 +28,12 @@ from scripts.lib import colordiff
 
 
 def sample_deltas(pairs: list[tuple]) -> list[tuple[float, float, float, float]]:
-    """One (dE00, dL*, dC*, dH*) row per (source_rgb, graded_rgb) pair."""
+    """One (dE00, dL*, dC*, dH*) row per (plain_rgb, graded_rgb) pair.
+
+    The order is the sign convention and it is load-bearing: colordiff.ciede2000's
+    three components are signed lab1 -> lab2, so a caller that passes the graded
+    side first inverts all three while leaving dE00 itself identical. Measured,
+    40.34/+39.29 becomes 40.34/-39.29."""
     return [colordiff.ciede2000(colordiff.rgb_to_lab(src), colordiff.rgb_to_lab(graded))
             for src, graded in pairs]
 

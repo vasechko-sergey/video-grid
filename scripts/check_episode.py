@@ -109,7 +109,19 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     `background_delta_e` rides along only when the subject supplied the reading:
     after a fallback the reading IS the crop, and a crop and its background agree
     to 0.03 on seven of the eight real episodes (design §0.1) — two names for one
-    number.
+    number. So a subject fallback drops BOTH background keys: the contrast has
+    nothing to contrast with.
+
+    When the subject does supply the reading, the background goes through the SAME
+    regions.refuse — it is a kind in regions.KINDS with a fraction of its own, and
+    a bbox that covers the whole output frame leaves no background at all, which
+    subject_mask's clamping makes ordinary on a tight reframe. `background_fallback`
+    is then the named absence (one of regions.FALLBACKS) and `background_delta_e` is
+    simply not emitted: a bare null beside a real delta_e reads either as "the
+    background did not move" or as an error, with nothing telling them apart, which
+    is the unnamed absence this slice exists to remove (design §1, rule 1). The
+    background's own fraction is not reported — it is 1 - region_fraction exactly,
+    and a second representation of one number is a contradiction surface.
     """
     g, p = np.asarray(graded_frames), np.asarray(plain_frames)
     if g.shape != p.shape:
@@ -135,8 +147,16 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
            "region_fallback": fallback,
            **color_fidelity.evaluate(_region_pairs(p, g, read))}
     if fallback is None:
-        out["background_delta_e"] = color_fidelity.evaluate(
-            _region_pairs(p, g, ~mask)).get("delta_e")
+        bg = ~mask
+        out["background_fallback"] = regions.refuse(
+            "background", located=located, fraction=1.0 - frac, empty=not bg.any())
+        if out["background_fallback"] is None:
+            # A bare subscript, never .get: a background that refused nothing holds
+            # pixels in at least one frame, so _region_pairs cannot come back empty
+            # and evaluate cannot return its no-samples shape. If that ever stops
+            # holding, a KeyError is the right answer — a None here is the defect.
+            out["background_delta_e"] = color_fidelity.evaluate(
+                _region_pairs(p, g, bg))["delta_e"]
     return out
 
 

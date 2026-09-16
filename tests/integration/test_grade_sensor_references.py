@@ -65,12 +65,11 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     2026-09-16, when the advisory moved onto grade_damage's own render pair: the old
     number carried the shipped clip's CRF-18 encode inside it, and the reading is now
     over the tracked subject's named region on both sides of one baseline.) A pull
-    magnitude was
-    searched for empirically (task report): a small pull (Task 3/5's own
+    magnitude was searched for empirically (task report): a small pull (Task 3/5's own
     +12/-10/-18) passes both gates and proves nothing about the deadlock; several
     larger MIXED-sign pulls fail entropy outright. A uniform translation turned
     out to be the shape that clears the new floor with room (0.977) while still
-    moving the tracked subject's own colour past the old bar (9.63) — entropy is
+    moving the tracked subject's own colour past the old bar (10.18) — entropy is
     a whole-frame, largely bijective-invariant statistic, so a pure shift costs it
     little, while a shift this size still reads as a big subject-relative dE00.
 
