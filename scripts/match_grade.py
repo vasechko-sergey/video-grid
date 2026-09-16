@@ -225,27 +225,24 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     for src, d in zip(sources, decisions):
         delta = max(abs(a - b) for a, b in zip(d.measured, target))
         lines.append(f"| {d.index} | {src} | {_triple(d.measured)} | {delta:.0f} | {d.action} · {d.reason} |")
-    # Reachable only via a measure_crop STUB that returns empty rows (most of this
-    # suite's own test doubles, which do not model the regions feature at all) —
-    # the real measure_crop's regions.assemble always fills at least the crop
-    # fallback for all three anchors, so every REAL conduct() run reaches this
-    # branch and the table below always prints (review finding 1). Kept as a
-    # guard rather than printing unconditionally so a stubbed test's MATCH.md
-    # stays exactly as short as it was before this slice.
-    if any(d.regions for d in decisions):
-        lines += ["", "| # | anchor | region | kind | % of frame | value | fallback |",
-                  "|---|--------|--------|------|-----------:|------:|----------|"]
-        for d in decisions:
-            for r in d.regions:
-                fb = r["fallback"] or "—"
-                # TWO decimals, not one: MIN_REGION_FRAC is 1% of the frame, and
-                # ".1f" rounds a 0.0099 region — which the gate REFUSED — to "1.0%",
-                # printed beside a `too-small` fallback the docs describe as "under
-                # 1% of the frame". A printed number must not round across the gate
-                # it is being shown next to (whole-branch review, finding 9). The
-                # stored value already carries four places (_row_dict).
-                lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
-                             f"| {r['fraction'] * 100:.2f}% | {r['value']:.0f} | {fb} |")
+    # regions.assemble fills all three anchors for every real episode — an
+    # undeclared one falls back to the crop and still reports — so this table is
+    # unconditional. It was guarded until 2026-09-16 by a condition only a test
+    # double could make false; the doubles now model the real shape
+    # (design 2026-09-16 §2.6).
+    lines += ["", "| # | anchor | region | kind | % of frame | value | fallback |",
+              "|---|--------|--------|------|-----------:|------:|----------|"]
+    for d in decisions:
+        for r in d.regions:
+            fb = r["fallback"] or "—"
+            # TWO decimals, not one: MIN_REGION_FRAC is 1% of the frame, and
+            # ".1f" rounds a 0.0099 region — which the gate REFUSED — to "1.0%",
+            # printed beside a `too-small` fallback the docs describe as "under
+            # 1% of the frame". A printed number must not round across the gate
+            # it is being shown next to (whole-branch review, finding 9). The
+            # stored value already carries four places (_row_dict).
+            lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
+                         f"| {r['fraction'] * 100:.2f}% | {r['value']:.0f} | {fb} |")
     return "\n".join(lines) + "\n"
 
 

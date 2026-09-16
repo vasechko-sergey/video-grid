@@ -119,14 +119,16 @@ def _geometry(tmp_path, sources):
 
 @pytest.mark.integration
 def test_match_grade_goes_stale_on_a_wipe_and_stays_fresh_on_an_unrelated_rewrite(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, crop_anchor_rows):
     """THE control of this branch. A tone wipe must be caught; an EDL rewrite that
     leaves tone alone must NOT be — a whole-file digest would fail this test, and the
     design rejected it for exactly that (§1)."""
     lay = runlayout.RunLayout(tmp_path)
+    a_prof, b_prof = (10.0, 90.0, 150.0), (60.0, 140.0, 240.0)
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: ((10.0, 90.0, 150.0), ()) if "a.mp4" in src
-                        else ((60.0, 140.0, 240.0), ()))
+                        lambda md, src, route, **k:
+                        (a_prof, crop_anchor_rows(a_prof)) if "a.mp4" in src
+                        else (b_prof, crop_anchor_rows(b_prof)))
     gp, edl_path = _geometry(tmp_path, ["a.mp4", "b.mp4"])
     match_grade.write_match(gp)
     assert montage._match_grade_state(lay.reel_dir) == ("fresh", "")

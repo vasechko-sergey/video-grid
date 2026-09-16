@@ -175,14 +175,15 @@ def _write_geometry(run_dir: Path) -> str:
     return str(geometry_path)
 
 
-def test_an_authored_zero_bias_conducts_like_no_spec_at_all(tmp_path, monkeypatch):
+def test_an_authored_zero_bias_conducts_like_no_spec_at_all(tmp_path, monkeypatch, crop_anchor_rows):
     """Design §6 proof 2: "[0, 0, 0] conducts to the unbiased median, byte-identical
     to a run with no --spec at all. The control that must not move: None still
     takes the preset's taste." Three independent write_match runs (each its own
     GEOMETRY/EDL — write_match rewrites the EDL in place, so reusing one across
     calls would let the second call see the first's authored tone pair)."""
     monkeypatch.setattr(match_grade, "measure_crop",
-                        lambda md, src, route, **k: (_PROFILES[Path(src).name], ()))
+                        lambda md, src, route, **k:
+                        (_PROFILES[Path(src).name], crop_anchor_rows(_PROFILES[Path(src).name])))
     preset = moodpreset.resolve("nostalgic warm")
     assert preset.tone_bias != (0.0, 0.0, 0.0)           # the preset really would bias
 

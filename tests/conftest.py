@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.lib import ffbin, proc
+from scripts.lib import ffbin, proc, regions
 
 
 @pytest.fixture(scope="session")
@@ -221,6 +221,28 @@ def need_filter():
         if not present:
             pytest.skip(f"ffmpeg lacks the {name} filter (run: bash setup.sh)")
     return _need
+
+
+@pytest.fixture
+def crop_anchor_rows():
+    """The three crop AnchorReadings the REAL measure_crop always returns.
+
+    regions.assemble falls every undeclared anchor back to the crop, so a run
+    with no REGIONS.json still reports three rows — never an empty tuple. A stub
+    returning () models a shape production cannot produce, and it was what kept
+    an unreachable `if any(d.regions ...)` gate in match_grade._report_md looking
+    reachable (design 2026-09-16 §2.6).
+
+    A fixture, not a plain module-level function: there is no `tests/__init__.py`
+    and ultralytics ships its own `tests` package in site-packages that shadows
+    this one (tests/test_tool_index.py's own import-shadow note), so
+    `import tests.conftest` cannot resolve — pytest only injects FIXTURES from
+    conftest, never plain names. Same shape as `fake_render`, above: a factory
+    fixture that hands back the callable."""
+    def _rows(profile) -> tuple:
+        return tuple(regions.AnchorReading(a, "crop", "crop", "crop", 1.0, v, None)
+                     for a, v in zip(regions.ANCHORS, profile))
+    return _rows
 
 
 @dataclass(frozen=True)
