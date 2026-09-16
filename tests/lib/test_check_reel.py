@@ -888,3 +888,39 @@ def test_a_passing_variety_report_survives_json(tmp_path, monkeypatch):
     # CheckResult.to_dict() flattens the detail dict into the result alongside "pass";
     # a whole-object assertion catches regressions in the "pass" key and stray extra keys.
     assert d["checks"]["variety"] == {"min_distance": 20, "pair": [1, 2], "min": 8, "pass": True}
+
+
+# --- sensor-provenance Task 4: grade_faithful records the sample count it read
+# over (design 2026-09-16 §2.5) ------------------------------------------------
+
+def test_grade_faithful_records_the_sample_count_it_read(monkeypatch):
+    """Not color.FRAMES echoed back — the count that actually ran. Changing the
+    call must move the field, which is the whole point of recording it: seven
+    here, against a color.FRAMES of three."""
+    seen = {}
+
+    def fake_batch(master, spans):
+        seen["n"] = len(spans[0])
+        return [(10.0, 100.0, 200.0) for _ in spans]
+
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch", fake_batch)
+    monkeypatch.setattr(check_reel.color, "sample_times",
+                        lambda dur, frames=7: [dur * (k + 0.5) / 7 for k in range(7)])
+    cr, fail = check_reel._grade_faithful_check(
+        "master.mp4", [4.0], [], ReelCheckSpec(target_dur=4.0),
+        [(10.0, 100.0, 200.0)], None, None)
+    assert seen["n"] == 7
+    assert cr.detail["frames"] == 7
+    assert fail is None
+
+
+def test_grade_faithful_records_zero_frames_when_nothing_could_be_predicted(monkeypatch):
+    """`0` is a true statement that nothing was read — the check examined no
+    pixels, and the report says so beside its own not-checked status."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda master, spans: (_ for _ in ()).throw(
+                            AssertionError("nothing to read")))
+    cr, fail = check_reel._grade_faithful_check(
+        "master.mp4", [4.0], [], ReelCheckSpec(target_dur=4.0), [None], None, None)
+    assert cr.passed is None
+    assert cr.detail["frames"] == 0

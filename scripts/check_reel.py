@@ -300,6 +300,14 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
         target_dev_reason = None if target_dev else "no-episode-bound"
     detail = {"residuals": residuals, "not_checked": not_checked,
               "max": spec.grade_residual_max,
+              # The count actually read from the master per episode, not
+              # color.FRAMES — a constant echoing itself would record nothing and
+              # would not move if the call above changed. grade_damage's report
+              # carries `frames` for exactly this reason; this one had no
+              # analogue, so a silently changed N was invisible downstream
+              # (design 2026-09-16 §2.5). 0 when nothing was predicted, which is
+              # a true statement that nothing was read.
+              "frames": len(spans[0]) if spans else 0,
               "target_dev": target_dev, "target_dev_advisory": True,
               "target_dev_reason": target_dev_reason}
     if not residuals:
