@@ -297,6 +297,38 @@ def test_run_carries_the_region_and_the_description_does_not_vote(tmp_path,
     assert report.overall is True, report.fail_reasons
 
 
+def test_the_wired_advisory_reports_a_lift_as_positive(tmp_path, golden_ride_segment):
+    """`delta_l`'s sign is asserted directly against `_subject_delta_advisory`/
+    `color_fidelity.evaluate` (tests/test_check_episode.py,
+    tests/lib/test_color_fidelity.py) but, until this test, never through the
+    WIRED path — `_grade_damage`'s own `graded_plan, plain_plan = plans`
+    unpacking (`scripts/check_episode.py:204`).
+
+    Task 7's mutation battery found the gap by naming it (fix round 1): swapping
+    that unpacking to `plain_plan, graded_plan = plans` (row 13c) turned out to
+    be RED already, via tests/integration/test_grade_sensor_references.py's
+    test_black_point_at_its_legal_max_fails_and_a_benign_value_passes — but only
+    because that mutation ALSO inverts which render `gradedamage.evaluate` calls
+    `graded` vs `plain`, flipping the entropy-ratio verdict on a damaging grade.
+    That is a real, independent catch, but it says nothing about `delta_l`'s
+    sign specifically: a narrower bug that swapped only the two frame stacks
+    `_subject_delta_advisory` receives, without touching `gradedamage.evaluate`'s
+    inputs, would still slip through every wired-path proof that existed before
+    this one, none of which reads `delta_l`'s sign.
+
+    Same fixture and the same +30 uniform luma lift as
+    test_run_carries_the_region_and_the_description_does_not_vote — a KNOWN
+    direction (brighter, never darker) — through the same real render."""
+    src = str(golden_ride_segment)
+    base = _episode_md(src, str(tmp_path / "unused.mp4"))
+    prof, _ = color_measure.measure_crop(base, src, _GOLDEN_ROUTE)
+    md = dict(base, tone_src=list(prof), tone_dst=[round(v + 30, 1) for v in prof])
+    report = _run_episode(tmp_path, src, md)
+    gd = report.checks["grade_damage"]
+    assert gd.detail["region"] == "subject", gd.detail    # the premise: a real reading, not a fallback
+    assert gd.detail["delta_l"] > 0, gd.detail             # a LIFT must read as a lift, not a drop
+
+
 def test_the_advisory_reads_the_frames_grade_damage_already_decoded(
         tmp_path, monkeypatch, golden_ride_segment):
     """design §4 proof 3, by identity and not by equality: the two stacks the

@@ -17,25 +17,35 @@ _Last updated: 2026-09-16._
   [2026-09-16-sensor-provenance-design.md](specs/2026-09-16-sensor-provenance-design.md),
   plan [2026-09-16-sensor-provenance.md](plans/2026-09-16-sensor-provenance.md),
   **Tasks 1–7** (branch `docs/sensor-provenance`). **Task 7's mutation
-  battery: seventeen rows run** (the brief's fourteen, with rows 10 and 13
+  battery: eighteen rows run** (the brief's fourteen, with rows 10 and 13
   each split into the two sites — a guard and a call-site swap — the task's
-  own corrections named, plus a new row 15 for a field a review fix round
-  added after the brief was written), **fourteen RED outright, three
-  confirmed coverage holes** (checked against the WHOLE suite, not only a
-  scoped subset, before being called holes) **closed with new tests**:
-  `regions.subject_mask`'s `if x1 > x0 and y1 > y0` guard had no live test on
-  its TOP-LEFT overflow branch — the existing "wholly outside" proof only
-  overflows past the bottom-right edge, where a Python slice start beyond the
-  array length clips to empty with or without the guard, so only a box
-  overflowing past the top-left (an unclamped, NEGATIVE x1/y1) exercises it;
-  `regions.refuse`'s `fraction < MIN_REGION_FRAC` boundary itself
-  (`fraction == 0.01` exactly) was never pinned, only its two neighbours; and
-  `check_episode._region_pairs`'s `if not m.any(): continue` guard had no test
-  whose mask was empty in SOME sampled frames and not others, because every
-  existing route is static. One row (13's call-site swap) is RED via a wiring
-  identity check, not the sign proof the brief named, which is worth knowing
-  rather than assuming. Full suite 3908 → 3911 passed, 1 skipped; the two
-  battery-added test files are the only diff.
+  own corrections named, plus row 15 for a field a review fix round added
+  after the brief was written, plus row 13c from fix round 1 below),
+  **fifteen RED outright, three confirmed coverage holes** (checked against
+  the WHOLE suite, not only a scoped subset, before being called holes)
+  **closed with new tests**: `regions.subject_mask`'s `if x1 > x0 and y1 >
+  y0` guard had no live test on its TOP-LEFT overflow branch — the existing
+  "wholly outside" proof only overflows past the bottom-right edge, where a
+  Python slice start beyond the array length clips to empty with or without
+  the guard, so only a box overflowing past the top-left (an unclamped,
+  NEGATIVE x1/y1) exercises it; `regions.refuse`'s `fraction <
+  MIN_REGION_FRAC` boundary itself (`fraction == 0.01` exactly) was never
+  pinned, only its two neighbours; and `check_episode._region_pairs`'s `if
+  not m.any(): continue` guard had no test whose mask was empty in SOME
+  sampled frames and not others, because every existing route is static. Two
+  rows are RED by a mechanism other than the one first assumed for them, each
+  recorded rather than smoothed over: row 13b (the `_subject_delta_advisory`
+  call-site swap) is caught by a wiring identity check, not a `delta_l` sign
+  proof; row 13c (fix round 1 — swapping `_grade_damage`'s own `graded_plan,
+  plain_plan = plans` unpacking, the line above 13b) was predicted a hole by
+  review but measured RED via an EXISTING entropy-verdict test
+  (`test_black_point_at_its_legal_max_fails_and_a_benign_value_passes`,
+  because the same swap also inverts which render `gradedamage.evaluate`
+  calls graded vs plain) — not a hole, so nothing here was "closed" for it,
+  but the review's narrower, still-true concern (no test asserted `delta_l`'s
+  sign through the WIRED path specifically) got its own new test anyway,
+  verified to fail the same mutation independently. Full suite 3908 → 3912
+  passed, 1 skipped; the battery-added test files are the only diff.
 
   Four reports stated a reading without saying which pixels, over how many
   frames, or against what baseline — and one stated a winner among three
