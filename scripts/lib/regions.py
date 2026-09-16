@@ -223,6 +223,59 @@ def _profile(pixels) -> tuple[float, float, float]:
     return color.percentiles([int(c) for c in hist])
 
 
+def subject_mask(extents, n: int, h: int, w: int) -> tuple[np.ndarray, float]:
+    """The tracked subject's (n, h, w) boolean mask, and its fraction of that volume.
+
+    `extents` is one (fx0, fy0, fx1, fy1) tuple of OUTPUT-frame fractions per
+    frame — geometry.extent_at_times' own return shape.
+
+    Shared by this region's two readers (design 2026-09-16 §2.1): the tone stage,
+    through measure() below, and check_episode's grade description, which means
+    over the same mask in RGB instead of luma. ONE rule, so the fraction a
+    fallback is decided on is the same number on both sides.
+    """
+    if len(extents) != n:
+        raise ValueError(f"regions.subject_mask: {n} frames but {len(extents)} extents "
+                         "— they must be parallel, one extent per sampled frame")
+    mask = np.zeros((n, h, w), dtype=bool)
+    for i, (fx0, fy0, fx1, fy1) in enumerate(extents):
+        # Clamped, not refused: extent_at_times projects the tracked bbox, and a
+        # subject that walks partly out of the delivered frame is ordinary. What
+        # is left inside is what ships, so it is what gets measured. A box with no
+        # overlap at all contributes NO pixels — never a fabricated edge sample,
+        # which is what the check_episode box reader it replaces used to do
+        # (design §0.6).
+        x0, y0 = max(0, int(fx0 * w)), max(0, int(fy0 * h))
+        x1, y1 = min(w, int(fx1 * w)), min(h, int(fy1 * h))
+        if x1 > x0 and y1 > y0:
+            mask[i, y0:y1, x0:x1] = True
+    return mask, float(mask.mean())
+
+
+def refuse(kind: str, *, located: bool, fraction: float, empty: bool) -> str | None:
+    """Why `kind` cannot supply a reading — one of FALLBACKS, or None when it can.
+
+    The decision assemble() used to make inline, lifted so check_episode's grade
+    description makes the SAME one (design 2026-09-16 §2.1). `unorderable` is
+    deliberately not here: it is a property of a three-anchor profile, and a
+    single reading has none.
+
+    `empty` is "located, and holds no pixels" — a subject entirely outside the
+    delivered frame. It has a route and a real, measured fraction of 0.0, so it
+    reports `too-small`; `no-route` would say something false about the episode.
+
+    The crop is never gated on size: every fallback lands there, so a refused
+    crop would have nowhere to fall back to.
+    """
+    if kind not in KINDS:
+        raise ValueError(f"regions.refuse: unknown kind {kind!r} — one of {KINDS}")
+    if not located:
+        return "no-route"
+    if empty or (kind != "crop" and fraction < MIN_REGION_FRAC):
+        return "too-small"
+    return None
+
+
 def measure(frames, extents) -> dict[str, RegionReading]:
     """Every region's reading from one already-decoded stack of luma frames.
 
@@ -244,19 +297,7 @@ def measure(frames, extents) -> dict[str, RegionReading]:
         return {"subject": RegionReading("subject", 0.0, None, located=False),
                 "background": RegionReading("background", 0.0, None, located=False),
                 "crop": crop}
-    if len(extents) != n:
-        raise ValueError(f"regions.measure: {n} frames but {len(extents)} extents — "
-                         "they must be parallel, one extent per sampled frame")
-    mask = np.zeros((n, h, w), dtype=bool)
-    for i, (fx0, fy0, fx1, fy1) in enumerate(extents):
-        # Clamped, not refused: extent_at_times projects the tracked bbox, and a
-        # subject that walks partly out of the delivered frame is ordinary. What
-        # is left inside is what ships, so it is what gets measured.
-        x0, y0 = max(0, int(fx0 * w)), max(0, int(fy0 * h))
-        x1, y1 = min(w, int(fx1 * w)), min(h, int(fy1 * h))
-        if x1 > x0 and y1 > y0:
-            mask[i, y0:y1, x0:x1] = True
-    frac = float(mask.mean())
+    mask, frac = subject_mask(extents, n, h, w)
     sub = frames[mask]
     bg = frames[~mask]
     return {"subject": RegionReading("subject", frac,
@@ -301,17 +342,14 @@ def assemble(decl: "Regions", readings: dict[str, RegionReading]
         want = decl.declared(anchor)
         r = readings[want.of]
         idx = ANCHORS.index(anchor)     # 0/1/2 — the anchor's own slot in a profile
-        if not r.located:
-            rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
-                                      crop.profile[idx], "no-route"))
-        elif r.profile is None or (want.of != "crop" and r.fraction < MIN_REGION_FRAC):
-            # Located and empty is the `r.profile is None` half: a real fraction
-            # (0.0) under any gate, so it lands here rather than on `no-route`.
-            rows.append(AnchorReading(anchor, want.name, want.of, "crop", r.fraction,
-                                      crop.profile[idx], "too-small"))
-        else:
-            rows.append(AnchorReading(anchor, want.name, want.of, want.of, r.fraction,
-                                      r.profile[idx], None))
+        # ONE rule, shared with check_episode's grade description (design §2.1).
+        # `empty` is the located-and-holds-no-pixels case, which refuse() names
+        # `too-small` at its real measured fraction of 0.0 — see its docstring.
+        fb = refuse(want.of, located=r.located, fraction=r.fraction,
+                    empty=r.profile is None)
+        rows.append(AnchorReading(anchor, want.name, want.of,
+                                  "crop" if fb else want.of, r.fraction,
+                                  crop.profile[idx] if fb else r.profile[idx], fb))
     profile = tuple(r.value for r in rows)
     # The check guards the ASSEMBLY: it does not run when the assembly already IS
     # the crop. Without that condition a flat crop — every pixel one value, which

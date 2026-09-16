@@ -310,3 +310,65 @@ def test_the_region_ruler_is_color_percentiles_where_another_estimator_would_dis
     out = regions.measure(f, None)
     assert out["crop"].profile == (0.0, 0.0, 200.0)
     assert float(np.percentile(f.ravel(), 50)) == 100.0     # the estimator NOT used
+
+
+def test_subject_mask_marks_the_projected_box_and_reports_its_fraction():
+    # One 10x10 frame, a box covering the middle 5x4 = 20 of 100 cells.
+    mask, frac = regions.subject_mask([(0.2, 0.3, 0.7, 0.7)], 1, 10, 10)
+    assert mask.shape == (1, 10, 10)
+    assert mask[0, 3:7, 2:7].all()
+    assert mask.sum() == 20
+    assert frac == 0.2
+
+
+def test_subject_mask_keeps_the_part_of_a_straddling_box_that_is_still_in_frame():
+    """A subject walking off the left edge is ordinary; what ships is what is
+    left inside. The mask must not fabricate pixels at the edge to replace it."""
+    mask, frac = regions.subject_mask([(-0.5, 0.0, 0.2, 1.0)], 1, 10, 10)
+    assert mask[0, :, :2].all()
+    assert not mask[0, :, 2:].any()
+    assert frac == 0.2
+
+
+def test_subject_mask_of_a_box_wholly_outside_the_frame_is_empty_not_clamped():
+    mask, frac = regions.subject_mask([(1.4, 1.4, 1.9, 1.9)], 1, 10, 10)
+    assert not mask.any()
+    assert frac == 0.0
+
+
+def test_subject_mask_refuses_extents_that_are_not_parallel_to_the_frames():
+    with pytest.raises(ValueError, match="2 frames but 1 extents"):
+        regions.subject_mask([(0.0, 0.0, 1.0, 1.0)], 2, 4, 4)
+
+
+def test_refuse_names_no_route_for_a_region_that_was_never_located():
+    assert regions.refuse("subject", located=False, fraction=0.0, empty=True) == "no-route"
+
+
+def test_refuse_names_too_small_for_a_located_region_under_the_floor():
+    assert regions.refuse("subject", located=True, fraction=0.009, empty=False) == "too-small"
+    assert regions.refuse("subject", located=True, fraction=0.011, empty=False) is None
+
+
+def test_refuse_names_too_small_for_a_located_region_that_holds_no_pixels():
+    """Located and empty has a route and a real measured fraction of 0.0, so it
+    is too-small and never no-route — an episode that HAS a route must not be
+    told it has none."""
+    assert regions.refuse("subject", located=True, fraction=0.0, empty=True) == "too-small"
+
+
+def test_refuse_never_gates_the_crop_on_size():
+    """Every fallback lands on the crop, so a crop under the floor would have
+    nowhere to fall back to."""
+    assert regions.refuse("crop", located=True, fraction=0.001, empty=False) is None
+
+
+def test_refuse_rejects_a_kind_outside_the_vocabulary():
+    with pytest.raises(ValueError, match="unknown kind"):
+        regions.refuse("skin", located=True, fraction=0.5, empty=False)
+
+
+def test_refuse_returns_only_names_from_the_closed_set():
+    for located, empty in ((False, True), (True, True), (True, False)):
+        got = regions.refuse("subject", located=located, fraction=0.0, empty=empty)
+        assert got is None or got in regions.FALLBACKS
