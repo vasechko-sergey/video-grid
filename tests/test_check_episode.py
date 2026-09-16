@@ -164,6 +164,6 @@ def test_the_subject_dE00_survives_as_an_advisory_number(tmp_path, monkeypatch,
     rep = _run_check_episode(tmp_path, monkeypatch, golden_ride_segment,
                              plans=_fake_plans(golden_ride_segment))
     d = rep.checks["grade_damage"].detail
-    assert "delta_e" in d and "dominant" in d
+    assert "delta_e" in d and "delta_l" in d and "delta_c" in d and "delta_h" in d
     assert d["advisory_delta_e"] is True
     assert d["samples"] == 5

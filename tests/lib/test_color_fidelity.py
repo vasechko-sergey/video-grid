@@ -11,23 +11,23 @@ def test_an_identical_pair_is_zero():
     assert d["delta_e"] == 0.0 and d["samples"] == 1
 
 
-def test_a_hue_rotation_names_hue_as_dominant():
+def test_a_hue_rotation_shows_a_large_delta_h():
     d = cf.evaluate([((150.0, 90.0, 60.0), (60.0, 150.0, 90.0))])
-    assert d["dominant"] == "hue"
+    assert d["delta_h"] > 30.0
 
 
-def test_a_luma_lift_names_luma():
+def test_a_luma_lift_shows_up_as_delta_l():
     d = cf.evaluate([((100.0, 100.0, 100.0), (128.0, 128.0, 128.0))])
-    assert d["dominant"] == "luma" and d["delta_l"] > 10.0
+    assert d["delta_l"] > 10.0
 
 
-def test_a_desaturation_names_chroma():
-    """The component that must NOT be the largest here is luma: pulling a colour
-    toward its own mean keeps L* nearly fixed."""
+def test_a_desaturation_shows_up_as_delta_c():
+    """Pulling a colour toward its own mean keeps L* nearly fixed: this checks
+    delta_c specifically, not a comparison against the other two components."""
     src = (200.0, 80.0, 40.0)
     m = sum(src) / 3
     d = cf.evaluate([(src, tuple(m + (c - m) * 0.4 for c in src))])
-    assert d["dominant"] == "chroma" and d["delta_c"] < 0
+    assert d["delta_c"] < 0
 
 
 def test_a_near_grey_subject_still_gets_a_number():
@@ -76,3 +76,12 @@ def test_evaluate_no_longer_votes():
     assert "threshold" not in d and "exceeded" not in d
     with pytest.raises(TypeError):
         cf.evaluate([((100.0, 100.0, 100.0), (128.0, 128.0, 128.0))], delta_max=5.0)
+
+
+def test_evaluate_reports_the_three_components_and_no_ranking_of_them():
+    """`dominant` was a ranking of three numbers that cannot be ranked: it flips
+    on three of four real episodes with a sample-count change, and one real
+    episode is an exact tie broken by tuple order (design 2026-09-16 §0.5).
+    The components are the explanation; the reader ranks them or does not."""
+    out = cf.evaluate([((10, 20, 30), (40, 50, 60))])
+    assert set(out) == {"delta_e", "delta_l", "delta_c", "delta_h", "samples"}

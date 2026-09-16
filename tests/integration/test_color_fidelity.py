@@ -205,7 +205,7 @@ def test_hue_broken_grade_reads_a_large_advisory_delta_but_no_longer_blocks(
     d = check_episode._subject_delta_advisory(str(broken_clip), str(source_clip),
                                               route_pts, path_obj, meta)
     assert d["delta_e"] > 20.0           # hue=h=120 on a saturated orange
-    assert d["dominant"] == "hue"
+    assert d["delta_h"] > 50.0           # the rotation shows up as a large hue component
 
     spec = CheckSpec(composition="center", grid="thirds", target_dur=DUR)
     report = check_episode.run(str(broken_clip), rp, pp, spec,

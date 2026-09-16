@@ -20,9 +20,6 @@ import statistics
 
 from scripts.lib import colordiff
 
-# Report names for the three signed components, in ciede2000's own order.
-_COMPONENTS = ("luma", "chroma", "hue")
-
 
 def sample_deltas(pairs: list[tuple]) -> list[tuple[float, float, float, float]]:
     """One (dE00, dL*, dC*, dH*) row per (source_rgb, graded_rgb) pair."""
@@ -39,18 +36,20 @@ def evaluate(pairs: list[tuple]) -> dict:
     damage from 5.04) while the worst sample does not — a single near-grey sample
     swings far under any grade (design §0.4).
 
-    The three components are reported but do not vote. They are the explanation:
-    `dominant` names whichever moved most, so a report reads as "the grade lifted
-    exposure" rather than "the colour changed by 6"."""
+    The three signed components are reported but do not vote. They are the
+    explanation — "the grade lifted exposure" rather than "the colour changed by
+    6" — and they are reported as three numbers, not as a winner among them: the
+    `dominant` field this returned until 2026-09-16 flipped on three of the four
+    real episodes when the sample count moved from 5 to 3, with the top two
+    components within 0.5 in every flip and one exact tie at 1.22 broken by the
+    order of a tuple (design 2026-09-16 §0.5)."""
     if not pairs:
         return {"status": "not-checked", "reason": "no samples to compare"}
     rows = sample_deltas(pairs)
     comps = tuple(statistics.median(r[i] for r in rows) for i in (1, 2, 3))
-    dominant = _COMPONENTS[max(range(3), key=lambda i: abs(comps[i]))]
     de = round(statistics.median(r[0] for r in rows), 2)
     return {"delta_e": de,
             "delta_l": round(comps[0], 2),
             "delta_c": round(comps[1], 2),
             "delta_h": round(comps[2], 2),
-            "samples": len(rows),
-            "dominant": dominant}
+            "samples": len(rows)}
