@@ -1,11 +1,18 @@
 """Colour-naturalness measurement (design docs/specs/2026-08-08-episode-qc-design.md §5).
 
-check_episode's grade_damage carries an advisory subject dE00 that answers "how far
-did the grade move the SUBJECT's colour" and says nothing about the frame around it.
-This measures the frame: two
-absolute flags for information the grade destroyed (blown highlights, crushed
-blacks) and three source-relative ones for what it changed (cast, saturation,
-contrast), so the QC judge argues from numbers instead of impressions.
+check_episode's grade_damage carries an advisory dE00 of how far the grade MOVED a
+colour. Both halves of the sentence that used to stand here — that it answers for
+the SUBJECT, and that it says nothing about the frame around it — were falsified on
+2026-09-16: it reads a NAMED region and falls back to the whole crop when the
+tracked box is too small to trust, and it reports a `background_delta_e` beside its
+own number (design 2026-09-16 §2.3). The frame around the subject is no longer this
+module's to claim.
+
+What is still only here is the other question. Not how far the grade moved, but
+whether what it landed on looks natural: two absolute flags for information it
+destroyed (blown highlights, crushed blacks) and three source-relative ones for what
+it changed (cast, saturation, contrast), over the whole delivered frame with no
+region resolution at all, so the QC judge argues from numbers instead of impressions.
 
 Pure: numpy arrays in, one dict out. No ffmpeg, no file paths — the caller decodes
 (assembly.frames_rgb) and the caller decides. Nothing here fails an episode: the flags

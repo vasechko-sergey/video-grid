@@ -78,9 +78,12 @@ target length, and order them **hook first**. For each episode assign:
   empty of people** — intake's own measured `present` fraction, not your
   read of the frame. `edit_plan build` refuses a `pan` over a window
   holding people (`FootageWindow.present` above `PAN_PRESENCE_MAX`, 10% of
-  samples): a route-less move turns off framing/continuity/`grade_damage`,
-  which is only legitimate for a shot with no subject to check in the
-  first place — not an editorial choice `pan` gets to make on your word.
+  samples): a route-less move turns off framing and continuity, which is
+  only legitimate for a shot with no subject to check in the first place —
+  not an editorial choice `pan` gets to make on your word. (`grade_damage`
+  left that list on 2026-09-16: a pan now GAINS a full colour reading over
+  the whole delivered frame, named `region: "crop"` with
+  `region_fallback: "no-route"`, where it used to report nothing at all.)
   The gate enforces two further constraints: `composition` must be
   `center` (a pan positions the crop by its own law, so `lead`/`break`'s
   subject-relative framing has nothing to consult — a preflight
