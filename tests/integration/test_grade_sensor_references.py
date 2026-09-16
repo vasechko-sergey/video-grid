@@ -60,8 +60,12 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     not a hand-built plan pair, so the proof is of the wired gate, not the sensor
     in isolation.
 
-    MEASURED on this fixture: ratio 0.977 (floor 0.90), delta_e 9.63 — comfortably
-    on both sides of the two ceilings this proof straddles. A pull magnitude was
+    MEASURED on this fixture: ratio 0.977 (floor 0.90), delta_e 10.18 — comfortably
+    on both sides of the two ceilings this proof straddles. (delta_e read 9.63 until
+    2026-09-16, when the advisory moved onto grade_damage's own render pair: the old
+    number carried the shipped clip's CRF-18 encode inside it, and the reading is now
+    over the tracked subject's named region on both sides of one baseline.) A pull
+    magnitude was
     searched for empirically (task report): a small pull (Task 3/5's own
     +12/-10/-18) passes both gates and proves nothing about the deadlock; several
     larger MIXED-sign pulls fail entropy outright. A uniform translation turned
@@ -70,9 +74,13 @@ def test_a_conductor_pair_crosses_the_old_bar_but_not_the_new_one(
     a whole-frame, largely bijective-invariant statistic, so a pure shift costs it
     little, while a shift this size still reads as a big subject-relative dE00.
 
-    Control: the same episode ungraded passes both gates, and its delta_e (a
-    residual of re-encode/crop resampling only) stays under 5.0 — without this,
-    a bug that always reported delta_e > 5 would make the main assertion vacuous.
+    Control: the same episode ungraded passes both gates, and its delta_e stays
+    under 5.0 — without this, a bug that always reported delta_e > 5 would make the
+    main assertion vacuous. Since 2026-09-16 that reading is exactly 0.0, not the
+    ~0.8 encode residual it used to be: with no colour block, the graded and plain
+    halves of the pair are the same plan, so the control's two stacks are the same
+    pixels. It still catches the always-large bug; it no longer says anything about
+    encode noise, because the sensor no longer sees any.
     """
     src = str(golden_ride_segment)
     base = _md(src, str(tmp_path / "unused.mp4"))
