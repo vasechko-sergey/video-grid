@@ -16,7 +16,10 @@ _Last updated: 2026-09-16._
   (2026-09-16, 0.11.0)** — design
   [2026-09-16-sensor-provenance-design.md](specs/2026-09-16-sensor-provenance-design.md),
   plan [2026-09-16-sensor-provenance.md](plans/2026-09-16-sensor-provenance.md),
-  Tasks 1–7 (branch `docs/sensor-provenance`).
+  **Tasks 1–6** (branch `docs/sensor-provenance`). **Task 7 — the 14-row
+  mutation battery — has NOT run**, so nothing below is battery-backed; every
+  other `Tasks 1–N` entry in this file reports its battery, and this one will
+  say the same once Task 7 lands and widens this line.
 
   Four reports stated a reading without saying which pixels, over how many
   frames, or against what baseline — and one stated a winner among three
@@ -83,9 +86,10 @@ _Last updated: 2026-09-16._
   a mask-based read needs no such fabrication, because a box with no overlap
   contributes no pixels and the fraction says so. `_subject_delta_advisory`'s
   own `if source is None` could not fire either (the caller had returned on it
-  already), and its reason string was therefore a disjunction whose first half
-  was never the cause — the same shape as `OutroFit.cause` before the
-  named-absence slice. ep7 is under 1% at **all 70** of its route points, so
+  already), and its reason string — the deleted `delta_reason`, `"no source clip
+  or no tracked subject"` — was therefore a disjunction whose first half was
+  never the cause, the same shape as `OutroFit.cause` before the named-absence
+  slice. `region_fallback` replaces it with one named absence per cause. ep7 is under 1% at **all 70** of its route points, so
   its `too-small` verdict is structural, not a sampling accident.
 
   **What ships.** `regions.subject_mask` / `regions.refuse` extracted from code

@@ -95,8 +95,13 @@ judge reads it.
   `background_delta_e` appears only when the subject supplied the reading,
   and it is the contamination check: close to `delta_e` says the grade moved
   everything, far from it says the grade moved the subject and its
-  surroundings differently — look at the pixels and say which. When it is
-  absent, `background_fallback` names why the background could not be read.
+  surroundings differently — look at the pixels and say which. On a
+  `region: "crop"` reading **both** background keys are simply absent and
+  nothing names them: the reading already is the whole frame, so there is
+  nothing to contrast it with. Do not read that as a malformed report. Only
+  when the subject DID supply the reading and the background still could not
+  be read (a bbox covering the whole output frame leaves none) is
+  `background_fallback` present, naming why.
   `{"status": "not-checked", "passed": null}` on the WHOLE `grade_damage`
   block is different and rarer — the render plans themselves were
   unavailable, so nothing colour-mechanical ran at all. The naturalness flags

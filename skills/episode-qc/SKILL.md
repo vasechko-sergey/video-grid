@@ -247,8 +247,14 @@ guessing a path.
   the contamination check and rides along only when the subject supplied the
   reading: close to `delta_e` means the grade moved everything, far from it
   means the grade moved the subject and its surroundings differently — worth
-  a look at the pixels. When it is absent, `background_fallback` names why
-  the background could not be read. A large `delta_e` is still not itself a
+  a look at the pixels. **Two different absences, told apart by whether
+  `background_fallback` is there at all.** On a `region: "crop"` reading
+  BOTH background keys are missing and neither is named: the reading already
+  IS the whole frame, so there is nothing left to contrast it with — that is
+  correct, not a malformed report. When the subject DID supply the reading but
+  the background could not be read (a bbox covering the whole output frame
+  leaves none), `background_fallback` is present and names why, and only
+  `background_delta_e` is missing. A large `delta_e` is still not itself a
   finding: the entropy ratio carries the verdict and a real regrade is
   SUPPOSED to move colour. The whole-frame entropy check ran and gated the
   episode in every one of these cases; you are only the sole colour check for

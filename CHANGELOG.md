@@ -32,8 +32,12 @@ no pixel moves.
   whole output frame, ordinary on a tight reframe — `background_fallback`
   names the absence instead of a bare `null`.
 - **A scenery pan gains a reading it never had.** It used to report
-  `delta_e: null`; it now reports a real dE00 over the whole delivered frame
-  with `region_fallback: "no-route"`. Strictly more information, and named.
+  `delta_e: null` beside `delta_reason: "no source clip or no tracked
+  subject"`; it now reports a real dE00 over the whole delivered frame with
+  `region_fallback: "no-route"`. **`delta_reason` is deleted** — it was one
+  string for several absences, and its first half could never be the cause,
+  since the check had already returned when there was no source. Strictly more
+  information, and named.
 - **`dominant` is deleted.** It named which of luma/chroma/hue moved most, and
   it flipped on **three of the four** real episodes when the sample count moved
   from 5 to 3 — every flip with its top two components within 0.5, one an exact

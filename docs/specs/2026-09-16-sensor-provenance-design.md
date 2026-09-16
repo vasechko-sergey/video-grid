@@ -422,9 +422,17 @@ Each proof carries a control that must not move.
   up to 0.84 dE00 of move). Nothing else measures the encode's colour cost, and
   nothing did before either — the old reading conflated it with the grade
   rather than isolating it.
-- **Three samples, not five.** §0.5's own table is the evidence that the count
-  matters at the 0.05–0.33 level for `delta_e` and decisively for a ranking of
-  components. The count is now recorded (`samples`) rather than argued.
+- **Three samples, not five.** The count matters at the 0.05–0.33 level for
+  `delta_e` and decisively for a ranking of components — §0.5's table is the
+  evidence for the second half only. **Where the first number is not** (noted
+  2026-09-16, Task 6 review): §0.5's table carries the three signed components
+  and no `delta_e` column, so the 0.05–0.33 figure comes from the same
+  measurement run over the same four episodes and is not shown in any table
+  here. Do not reach for §0.4's table instead: its +0.84 / +0.14 / −0.68 /
+  −0.47 move the BASELINE (source-vs-clip at n=5 against the render pair at
+  n=3) and so conflate the two changes, where 0.05–0.33 is the count alone on
+  one baseline. The count is now recorded (`samples`) rather than argued, which
+  is what makes a future re-measurement a comparison instead of an argument.
 - **`MIN_REGION_FRAC` is still a convention**, now load-bearing for two sensors
   instead of one. On this pool every value between 0.23 % and 2.19 % selects the
   same episode; no run exists that discriminates it.
@@ -438,7 +446,19 @@ Each proof carries a control that must not move.
 Each gets a `docs/backlog.md` row before this slice is finished.
 
 1. **A masked `subject`** — unchanged from named-regions §7 row 2, and this
-   slice's §5 sharpens why it is the remaining half of the folded row.
+   slice's §5 sharpens why a SECOND sensor now waits on it.
+
+   **Corrected 2026-09-16 (Task 6 review).** This row first read "the remaining
+   half of the folded row", which is wrong in the one place it matters: the
+   backlog is this repo's single source of priority, and R2.1's folded rows are
+   exactly TWO — the dE00 sampling box (closed by this slice) and chroma
+   agreement (§6 row 2, still open). The mask is named-regions §7 row 2's own
+   P2 row and was never folded into R2.1. The word "half" here meant a second
+   thing — what the sampling-box row's CLOSURE leaves behind — and reading it as
+   the first sense made two backlog rows cite this section for opposite
+   conclusions. What is true: closing the sampling-box row makes the box's SIZE
+   and its fallback visible (§0.2); making the box a real subject is the
+   separate mask row, and it does not gate R2.1.
 2. **Chroma agreement across episodes** — R2.1's other folded half. The
    instrument is now fully in hand (region masks plus an RGB reader over them);
    the TARGET still needs designing, and R2.1 stays `◐` until it exists.

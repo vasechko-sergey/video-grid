@@ -192,13 +192,18 @@ where the region is least trustworthy**, which inverts what the row asked for: w
 shipped is a **gate and a name** (`region` / `region_fraction` / `region_fallback`
 from the same `lib/regions` resolver the tone stage authors a grade with, plus a
 `background_delta_e` / `background_fallback` contamination pair) rather than a
-re-aimed box. The remaining half is the seg MASK, which is its own open P2 row —
-a box over water still contains water ·
+re-aimed box. What this closure leaves behind is NOT an open half of R2.1 — R2.1's
+two folded rows are this one and chroma agreement — but the separate, already-open
+P2 mask row (named-regions §7 row 2): a box over water still contains water, and
+making the box a real subject was never what this row asked for. named-regions §7
+row 3 filed this bullet here rather than opening a second row ·
 ⊘ `check_episode._last_sampleable_t` clamps to `probe_duration - 1/fps`, and
 `assembly._LAST_FRAME_MARGIN_S` records a measured case where a probed container
 duration overstated the true last frame by a **full frame** — the exact margin this
-clamp leaves. A suspicion, not a confirmed defect (grade-delta-sensors §10, final
-review M-6). — **⊘ MOOT 2026-09-16, not measured and not done**: sensor provenance
+clamp leaves. A suspicion, not a confirmed defect: reachable only when the route
+span exceeds the clip, and it fails loud. **Measure before moving the constant**
+(grade-delta-sensors §10, final review M-6). — **⊘ MOOT 2026-09-16, not measured
+and not done**: sensor provenance
 **deleted the function**. `_subject_delta_advisory` stopped decoding files at all —
 it now reads the `(graded, plain)` frame stacks `_grade_damage` has already decoded
 at `color.sample_times(graded_plan.dur)` — so `_last_sampleable_t`, `_box_mean_rgb`
