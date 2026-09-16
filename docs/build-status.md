@@ -160,6 +160,56 @@ _Last updated: 2026-09-16._
   settlement, again), and the byte-exact default `MATCH.md` pin — which held
   three anchor rows for episode 0 and none for episode 1 — now covers both.
 
+  **The final whole-branch review deleted a parameter of this slice's own.**
+  `regions.refuse` shipped with a third input — `empty`, "located and holds no
+  pixels" — OR-ed in front of the size test, and **no production caller could
+  produce it independently of `fraction`**, so it decided nothing at either
+  reader: in `measure` a `None` profile means an empty pixel array, which means
+  a fraction of exactly 0.0; in `check_episode` the emptiness and the fraction
+  are reduced from the SAME mask; and the crop — the one kind the size gate
+  skips — can never arrive here empty at all, because `assemble` raises on a
+  profile-less crop before its loop starts. Measured before the deletion by
+  wrapping `refuse` and recording only the calls made from its two production
+  callers: **288 production calls over the whole suite, 16 of them with
+  `empty=True`, every one of the 16 at `fraction == 0.0`, and the two
+  predicates — with the parameter and without it — agreed on all 288.** That is
+  the `gradedamage.ENTROPY_BINS` settlement a third time, shipped inside the
+  slice whose own §1 rule 4 says a field that cannot be decided is deleted, not
+  qualified. The test written to cover the parameter was worse than the
+  parameter: `fraction=0.5` with `empty=True`, a pair no caller reaches,
+  justified by a per-frame emptiness `check_episode` does not compute (it
+  reduces over the whole stack; the per-frame case is `_region_pairs` skipping
+  an empty mask slice). It is replaced by one whose inputs production really
+  does reach — the BACKGROUND's own refusal at `1.0 - 1.0 = 0.0`, pinned
+  nowhere at unit level until now. Three mutation rows on the surviving
+  two-input gate, **all RED**: `<` → `<=` (caught by the boundary test Task 7
+  added), the `kind != "crop"` guard dropped, and `kind != "crop"` →
+  `kind == "subject"`, which the replacement test catches by name. Full suite
+  unchanged at **3912 passed, 1 skipped**.
+
+  **Three claims the slice falsified and left standing, and one it told the
+  judge backwards.** Both episode-qc skill files said `background_fallback` is
+  present ONLY when the subject supplied the reading and the background still
+  could not be read — but `check_episode` sets it unconditionally once the
+  subject supplies the reading, so the everyday report carries
+  `background_fallback: null` beside a real `background_delta_e`, exactly as
+  design §2.3's example JSON shows and three tests pin. The code is right and
+  the prose was wrong: both files now name the three real shapes (both keys
+  absent · a `null` beside a number · a named reason with no number), and say
+  that `region_fraction` is always the fraction of the region ASKED for, so its
+  `0.0` on a `no-route` reading is a subject never located and not a crop
+  covering none of the frame. Beside that: `naturalness.py`'s docstring still
+  contrasted itself with an advisory that "says nothing about the frame around
+  it", which `background_delta_e` now is;
+  `references/edit-plan/episode-fields.md` still said a route-less pan turns
+  `grade_damage` off, where a pan now GAINS a full reading; and CLAUDE.md's
+  plan row still said "14-row mutation battery" against the eighteen this file
+  records. Four further findings were **filed rather than fixed** —
+  `_region_pairs`'s six per-frame mask gathers, `grade_faithful.frames`
+  reporting one episode's count under a "per episode" comment, an advisory that
+  could silence the blocking verdict through the shared flat dict, and the
+  unexplained `frames`/`samples` pair — and are in [backlog.md](backlog.md).
+
   **The honest half (§5).** The box is still a **box**: nothing here masks the
   subject, and a bbox over water still contains water — the seg-mask row stays
   open, and this slice makes the box's size and the fallback visible instead,
