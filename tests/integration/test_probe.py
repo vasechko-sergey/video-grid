@@ -313,11 +313,13 @@ def _check_episode_grade_damage(tmp_path: Path, golden_ride_segment, **colour) -
     change to _grade_damage's own wiring (e.g. which floor it reads, which plan is
     'graded') would be caught here too.
 
-    route_pts=None short-circuits _subject_delta_advisory before it ever touches
-    path_obj/meta (`if source is None or not route_pts: return ...`), which is what
-    makes passing None for both safe without a real tracked route or sidecars; `clip`
-    is never dereferenced on that branch either, so a path that names no real file
-    is fine there."""
+    route_pts=None takes _subject_delta_advisory's no-route arm, which never
+    touches path_obj/meta (`if route_pts:` guards the only read of either) — that
+    is what makes passing None for both safe without a real tracked route or
+    sidecars. Since 2026-09-16 that arm still produces a reading, over the whole
+    crop and named `no-route`, from the render pair's own frames; the file this
+    episode rendered to is not read at all, because `clip` left _grade_damage's
+    signature with the two decodes it was passed in for."""
     d = tmp_path / "check_one"
     d.mkdir()
     src = str(golden_ride_segment)
@@ -325,7 +327,7 @@ def _check_episode_grade_damage(tmp_path: Path, golden_ride_segment, **colour) -
     md = _grade_md(src, out, **colour)
     plans = (process_episode.plan_for(md, src, ROUTE), process_episode.plan_ungraded(md, src, ROUTE))
     spec = CheckSpec(composition="center", grid="thirds", target_dur=md["target_dur"])
-    return check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+    return check_episode._grade_damage(src, plans, None, None, None, spec).detail
 
 
 def test_probe_json_predicts_BOTH_gates(tmp_path, golden_ride_segment):
@@ -426,7 +428,7 @@ def test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count(tmp
 
     plans = (process_episode.plan_for(md, src, None), process_episode.plan_ungraded(md, src, None))
     spec = CheckSpec(composition="center", grid="thirds", target_dur=dur)
-    from_check = check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+    from_check = check_episode._grade_damage(src, plans, None, None, None, spec).detail
 
     assert from_check["ratio"] < 0.05, from_check    # ground truth: the default N=3 reading
     assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.05)
@@ -466,7 +468,7 @@ def test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count_geo
     md = probe.regrade(dict(eg.manifest), geo.edl, 0)
     plans = (process_episode.plan_for(md, src, None), process_episode.plan_ungraded(md, src, None))
     spec = CheckSpec(composition="center", grid="thirds", target_dur=dur)
-    from_check = check_episode._grade_damage(out, src, plans, None, None, None, spec).detail
+    from_check = check_episode._grade_damage(src, plans, None, None, None, spec).detail
 
     assert from_check["ratio"] < 0.05, from_check    # ground truth: the default N=3 reading
     assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.05)

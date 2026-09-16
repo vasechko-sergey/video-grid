@@ -18,10 +18,10 @@ from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.models import ReelManifest
 
 FRAMES = 9           # strip cells per episode — enough to read a path across a 2-4s cut
-# (k+0.5)/5 happens to produce check_episode.SAMPLE_FRACS' five fractions, but of a
-# different quantity — clip duration here, route span there — and NOTHING ties the two.
-# Either can move without the other noticing; no code depends on the agreement
-# (design 2026-08-28 §9.9).
+# Independent of every other sample count in the tree. The coincidence design
+# 2026-08-28 §9.9 recorded — these five fractions equalling check_episode's
+# SAMPLE_FRACS — retired with that constant on 2026-09-16, when the grade
+# description moved onto the render pair's own color.sample_times.
 SENSOR_FRAMES = 5    # frames the naturalness sensor averages over
 
 

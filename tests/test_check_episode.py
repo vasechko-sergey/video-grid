@@ -1,16 +1,14 @@
-"""Unit tests for check_episode's pure pixel-sampling helper — a synthetic
-numpy frame is all `_box_mean_rgb` needs, so this needs no ffmpeg and does not
-belong in tests/integration/test_color_fidelity.py.
+"""Unit proofs for check_episode's grade description. Two numpy frame stacks are
+all the advisory needs, so this needs no ffmpeg and does not carry the
+integration marker. The real-bytes proof is tests/integration/test_color_fidelity.py.
 
-_box_mean_rgb's clamp is asymmetric by construction and was NOT symmetric
-before fix round 2 (2026-08-28 grade-delta-sensors Task 2 review): x0/y0 were
-only lower-bounded (`max(0, x0)`), so a box beginning past the frame's right or
-bottom edge left x0 (or y0) sitting beyond the frame. The subsequent x1/y1
-clamp could then only shrink DOWN to that same out-of-range x0/y0, producing an
-empty slice — and `.mean()` of an empty array returns (nan, nan, nan) with only
-a RuntimeWarning, never a raise. The fix clamps x0/y0 into [0, w-1]/[0, h-1]
-FIRST, so they can never sit past the frame themselves, before x1/y1 are
-clamped relative to them.
+Until 2026-09-16 the top of this file tested `_box_mean_rgb`, the pixel-box
+reader the advisory used to sample a source clip and a delivered clip with. Both
+that function and the two file decodes are gone: the description now means over
+`regions.subject_mask`'s mask, on the (graded, plain) render pair `_grade_damage`
+has already decoded. The straddling/out-of-frame box behaviour those tests pinned
+is pinned by `tests/lib/test_regions.py` instead, and a box with no overlap now
+contributes NO pixels rather than a fabricated edge sample.
 
 The `grade_damage` section below (design 2026-08-31 §3) is a different shape —
 it needs a real (graded, plain) RenderPlan pair, which needs a real manifest and
@@ -18,55 +16,119 @@ a real render, so it goes through `golden_ride_segment` + the committed
 `tests/fixtures/golden_route.json` rather than a synthetic numpy frame.
 """
 import numpy as np
+import pytest
 
 from scripts import check_episode, process_episode, reframe
+from scripts.lib import color, regions
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
-from scripts.lib.models import CheckSpec, Delivery
+from scripts.lib.models import CheckSpec, CropPath, Delivery, PathMeta, RoutePoint
+
+N, H, W = 3, 40, 60
 
 
-def test_box_entirely_past_the_right_edge_reproduces_the_reported_case():
-    """The reviewer's own repro: box (700, 100, 750, 150) against a 640x360
-    frame — x0 and x1 both past the right edge (640). The fixed clamp
-    collapses this to the frame's single rightmost column; fill that column
-    with a known colour so the result is a real, predictable RGB rather than
-    (nan, nan, nan)."""
-    frame = np.zeros((360, 640, 3), dtype=np.uint8)
-    frame[:, 639] = (200, 100, 50)          # the rightmost column, known colour
-    r, g, b = check_episode._box_mean_rgb(frame, (700, 100, 750, 150))
-    assert not any(np.isnan(v) for v in (r, g, b)), (r, g, b)
-    assert (r, g, b) == (200.0, 100.0, 50.0)
+def _stacks(sub_plain=(10, 10, 10), sub_graded=(200, 10, 10),
+            bg_plain=(60, 60, 60), bg_graded=(60, 60, 60)):
+    """A plain/graded pair whose SUBJECT box moves and whose background does not."""
+    plain = np.zeros((N, H, W, 3), np.uint8)
+    graded = np.zeros((N, H, W, 3), np.uint8)
+    plain[:] = bg_plain
+    graded[:] = bg_graded
+    plain[:, 10:30, 20:40] = sub_plain      # 20x20 of 40x60 = 16.7% of the frame
+    graded[:, 10:30, 20:40] = sub_graded
+    return list(plain), list(graded)
 
 
-def test_box_entirely_past_the_bottom_edge():
-    """y0 and y1 both past the frame's height (20): collapses to the bottom row."""
-    frame = np.zeros((20, 10, 3), dtype=np.uint8)
-    frame[19, :] = (5, 15, 25)              # the bottom row, known colour
-    r, g, b = check_episode._box_mean_rgb(frame, (2, 25, 8, 30))
-    assert not any(np.isnan(v) for v in (r, g, b)), (r, g, b)
-    assert (r, g, b) == (5.0, 15.0, 25.0)
+def _sidecar(box=(30.0, 20.0, 20.0, 20.0), src_w=60, src_h=40):
+    """A route/path/meta trio that projects `box` onto the SAME rect the stacks
+    paint, so the mask and the painted pixels agree by construction."""
+    x, y, w, h = box
+    route = [RoutePoint(t=t, x=x, y=y, w=w, h=h) for t in (0.0, 0.5, 1.0)]
+    path = CropPath(xs=[0.0, 0.0, 0.0])
+    meta = PathMeta(mode="fill", crop_w=src_w, crop_h=src_h, crop_y=0,
+                    src_dims=(src_w, src_h), canvas=(W, H), out_dims=(W, H),
+                    rect_px=(0, 0, W, H), freedom=0)
+    return route, path, meta
 
 
-def test_box_entirely_left_and_above_with_negative_coordinates():
-    """All four coordinates negative: collapses to the single top-left pixel
-    (0, 0) — not the top-left corner of some wider clamped region. (This side
-    of the clamp was already lower-bounded correctly before the fix; kept here
-    as a regression pin so a future rewrite of the clamp can't break it while
-    fixing the other side.)"""
-    frame = np.zeros((10, 10, 3), dtype=np.uint8)
-    frame[0, 0] = (9, 99, 199)               # the one pixel this must land on
-    r, g, b = check_episode._box_mean_rgb(frame, (-30, -20, -10, -5))
-    assert (r, g, b) == (9.0, 99.0, 199.0)
+def test_the_advisory_reads_the_subject_and_names_the_region_it_read():
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert d["region"] == "subject"
+    assert d["region_fallback"] is None
+    assert d["region_fraction"] == pytest.approx(0.1667, abs=5e-4)
+    assert d["delta_e"] > 10          # (10,10,10) -> (200,10,10) is a large move
+    assert d["samples"] == 3
+    assert d["advisory_delta_e"] is True
+    # plain -> graded, and NOT the other way round. The two stacks are positional,
+    # and CIEDE2000's total is symmetric in magnitude — measured, a swapped call
+    # returns the identical delta_e (40.34) with every signed component inverted
+    # (delta_l 39.29 -> -39.29). The sign is the only assertion in this file that
+    # can see that swap, which is the same inversion gradedamage.evaluate's
+    # keyword-only signature exists to prevent.
+    assert d["delta_l"] > 0
 
 
-def test_normal_in_bounds_box_reads_the_predicted_mean():
-    """No clamping at all: a box straddling two known colour halves must read
-    their exact analytic mean, so the fix didn't disturb the ordinary path."""
-    frame = np.zeros((10, 10, 3), dtype=np.uint8)
-    frame[:, 5:] = (100, 100, 100)           # right half of the frame
-    # box=(3,2,7,6): cols 3,4 (left half, 0) + 5,6 (right half, 100), rows 2-5.
-    r, g, b = check_episode._box_mean_rgb(frame, (3, 2, 7, 6))
-    assert (r, g, b) == (50.0, 50.0, 50.0)
+def test_the_advisory_reports_the_background_beside_the_subject():
+    """The contamination check the folded backlog row is about: on a global grade
+    the two agree, on a targeted one they do not (design §2.3)."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    # the background is painted identically on both sides — it did not move
+    assert d["background_delta_e"] == 0.0
+    assert d["delta_e"] > d["background_delta_e"]
+
+
+def test_a_subject_under_the_floor_falls_back_to_the_crop_and_says_so():
+    plain, graded = _stacks()
+    # 4x4 of 40x60 = 0.17% of the frame, under regions.MIN_REGION_FRAC
+    route, path, meta = _sidecar(box=(30.0, 20.0, 4.0, 4.0))
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert d["region"] == "crop"
+    assert d["region_fallback"] == "too-small"
+    assert d["region_fraction"] == pytest.approx(0.0067, abs=5e-4)
+    # the fraction reported is the SUBJECT's, the evidence for the fallback —
+    # never the crop's 1.0 it fell back to
+    assert d["region_fraction"] < 0.01
+    assert "background_delta_e" not in d
+
+
+def test_a_routeless_episode_reads_the_crop_and_names_no_route():
+    """A pan has no subject. Today this reports delta_e: null; after this slice
+    it reports a real crop reading with the absence named."""
+    plain, graded = _stacks()
+    _, path, meta = _sidecar()
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              None, path, meta)
+    assert d["region"] == "crop"
+    assert d["region_fallback"] == "no-route"
+    assert d["region_fraction"] == 0.0
+    assert d["delta_e"] is not None
+    assert "background_delta_e" not in d
+
+
+def test_the_advisory_refuses_two_stacks_of_different_shapes():
+    """The two stacks are two renders of ONE plan pair — a disagreement is a
+    caller error, not an input to broadcast over."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    with pytest.raises(ValueError, match="same shape"):
+        check_episode._subject_delta_advisory(plain[:2], graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+
+
+def test_every_fallback_the_advisory_can_report_is_a_regions_name():
+    plain, graded = _stacks()
+    _, path, meta = _sidecar()
+    for route in (None, _sidecar(box=(30.0, 20.0, 4.0, 4.0))[0], _sidecar()[0]):
+        d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                  route, path, meta)
+        assert d["region_fallback"] is None or d["region_fallback"] in regions.FALLBACKS
 
 
 # --- grade_damage (design 2026-08-31 §3): the entropy-ratio verdict, plans-gated ---
@@ -160,10 +222,24 @@ def test_the_subject_dE00_survives_as_an_advisory_number(tmp_path, monkeypatch,
                                                           golden_ride_segment):
     """It is a good DESCRIPTION of what a grade did and the QC judge reads it. It
     is not a gate: a conductor pair puts 5 of 8 real episodes over the old 5.0
-    ceiling and none of them is damage (design §0.1)."""
+    ceiling and none of them is damage (design §0.1).
+
+    Since 2026-09-16 it also names the pixels it read. `samples` is `color.FRAMES`
+    and not the 5 this asserted before: the description rides `_grade_damage`'s
+    own (graded, plain) pair, which is decoded at `color.sample_times(dur)` — the
+    five route-span fractions of the deleted `SAMPLE_FRACS` are gone with the two
+    decodes they indexed. Read off the constant rather than retyped, so a re-tune
+    of the pair's own count does not leave a stale literal here."""
     rep = _run_check_episode(tmp_path, monkeypatch, golden_ride_segment,
                              plans=_fake_plans(golden_ride_segment))
     d = rep.checks["grade_damage"].detail
     assert "delta_e" in d and "delta_l" in d and "delta_c" in d and "delta_h" in d
     assert d["advisory_delta_e"] is True
-    assert d["samples"] == 5
+    assert d["samples"] == color.FRAMES == 3
+    # The provenance the number is attributed to. golden_route.json's box averages
+    # ~1.5% of the delivered crop — above regions.MIN_REGION_FRAC, so the subject
+    # itself supplies the reading and the background rides along beside it.
+    assert d["region"] == "subject"
+    assert d["region_fallback"] is None
+    assert d["region_fraction"] > regions.MIN_REGION_FRAC
+    assert "background_delta_e" in d

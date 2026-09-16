@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageStat
 from scripts import reframe
-from scripts.lib import (assembly, checks as checks_mod, color, color_fidelity, ffbin,
-                         geometry, gradedamage, proc)
+from scripts.lib import (checks as checks_mod, color, color_fidelity, ffbin,
+                         geometry, gradedamage, proc, regions)
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify, travel_direction
 
@@ -66,83 +66,81 @@ def _black_frames_check(clip: str, black_floor: float = 6.0, black_rel: float = 
             "body_median": round(ref, 1)}
 
 
-# Where in the route's own span the subject is sampled. Five, not three: the
-# batched decode below makes the marginal cost of a sample one PNG, and every
-# threshold in the design was measured through exactly these fractions (§2.2).
-SAMPLE_FRACS = (0.1, 0.3, 0.5, 0.7, 0.9)
+def _region_pairs(plain, graded, mask) -> list[tuple]:
+    """One (plain_rgb, graded_rgb) mean pair per frame, over that frame's own mask.
 
-
-def _box_mean_rgb(frame: np.ndarray, box: tuple[int, int, int, int]) -> tuple[float, float, float]:
-    """Mean (R, G, B) of a pixel box in one HxWx3 uint8 RGB frame. box = (x0,y0,x1,y1),
-    clamped into the frame and never empty — a route point can sit partly or wholly
-    outside the frame it was measured on (a subject that has left the delivered
-    crop), and an empty slice would mean() to NaN in silence.
-
-    x0/y0 are clamped into [0, w-1]/[0, h-1] FIRST — never just lower-bounded — so a
-    box that starts past the right or bottom edge cannot leave x0/y0 sitting beyond
-    the frame; x1/y1 are then clamped into (x0, w]/(y0, h] as before. A box with no
-    overlap with the frame at all therefore collapses to a single pixel at the
-    nearest edge: a poor measurement of a subject no longer in frame, but a defined
-    one, never a NaN."""
-    x0, y0, x1, y1 = box
-    h, w = frame.shape[:2]
-    x0, y0 = max(0, min(x0, w - 1)), max(0, min(y0, h - 1))
-    x1, y1 = min(w, max(x1, x0 + 1)), min(h, max(y1, y0 + 1))
-    px = frame[y0:y1, x0:x1].reshape(-1, 3)
-    return tuple(float(px[:, c].mean()) for c in range(3))
-
-
-def _last_sampleable_t(*clips: str) -> tuple[list[float], float]:
-    """Per-clip fps, and the latest time every one of `clips` can still decode.
-    frames_rgb selects frame round(t*fps) and raises when that frame is past the
-    stream end, so the times are clamped ONCE against the shortest clip, before the
-    geometry is projected — clamping afterwards would sample the pixels at one time
-    and the crop rect at another."""
-    fpses, lasts = [], []
-    for c in clips:
-        fps = assembly.probe_stream(c).fps
-        fpses.append(fps)
-        lasts.append(max(0.0, assembly.probe_duration(c) - 1.0 / fps))
-    return fpses, min(lasts)
-
-
-def _subject_delta_advisory(clip: str, source: str | None, route_pts: list[RoutePoint] | None,
-                            path_obj: CropPath, meta: PathMeta) -> dict:
-    """The tracked subject's source-vs-graded dE00, as a DESCRIPTION (design
-    2026-08-31 §3). Same sampling as the old blocking color_fidelity gate; the
-    only change is that nothing votes on it any more.
-
-    Sample the tracked subject's mean RGB in the SOURCE (pre-grade segment, at the
-    route bbox in source px) and in the graded `clip` (at the subject's projected
-    location, via geometry.extent_at_times) at SAMPLE_FRACS of the route's span, and
-    delegate to the pure color_fidelity.evaluate for the median-dE00 description.
-
-    One decode per file, not one per sample: assembly.frames_rgb batches the whole
-    set through a single select pass, so five samples cost two decodes where three
-    used to cost six.
-    """
-    if source is None or not route_pts:
-        return {"advisory_delta_e": True, "delta_e": None,
-                "delta_reason": "no source clip or no tracked subject"}
-    ts = [p.t for p in route_pts]
-    (s_fps, g_fps), last = _last_sampleable_t(source, clip)
-    times = [min(ts[0] + (ts[-1] - ts[0]) * f, last) for f in SAMPLE_FRACS]
-    extents = geometry.extent_at_times(route_pts, path_obj, meta, times)   # output fractions
-    out_w, out_h = meta.out_dims
-    s_frames = assembly.frames_rgb(source, times, s_fps)
-    g_frames = assembly.frames_rgb(clip, times, g_fps)
+    A frame whose mask slice holds no pixels contributes NO pair rather than a
+    fabricated one: an empty slice would mean() to NaN in silence. The count that
+    survives is what color_fidelity.evaluate reports as `samples`."""
     pairs = []
-    for t, (fx0, fy0, fx1, fy1), sf, gf in zip(times, extents, s_frames, g_frames):
-        p = min(route_pts, key=lambda q: abs(q.t - t))          # nearest source bbox
-        sbox = (round(p.x - p.w / 2), round(p.y - p.h / 2),
-                round(p.x + p.w / 2), round(p.y + p.h / 2))
-        gbox = (round(fx0 * out_w), round(fy0 * out_h), round(fx1 * out_w), round(fy1 * out_h))
-        pairs.append((_box_mean_rgb(sf, sbox), _box_mean_rgb(gf, gbox)))
-    d = color_fidelity.evaluate(pairs)
-    return {"advisory_delta_e": True, **d}
+    for i in range(len(graded)):
+        m = mask[i]
+        if not m.any():
+            continue
+        pairs.append((tuple(float(plain[i][m][:, c].mean()) for c in range(3)),
+                      tuple(float(graded[i][m][:, c].mean()) for c in range(3))))
+    return pairs
 
 
-def _grade_damage(clip: str, source: str | None,
+def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
+                            route_pts: list[RoutePoint] | None,
+                            path_obj: CropPath, meta: PathMeta) -> dict:
+    """The grade's dE00 over a NAMED region, as a DESCRIPTION (design 2026-09-16).
+
+    Both stacks come from the (graded, plain) render pair _grade_damage has
+    already decoded: same geometry, same times, same baseline as the entropy
+    ratio that carries the verdict. Until 2026-09-16 this decoded the raw source
+    and the shipped clip instead — two more decodes and four more ffprobes, in a
+    different geometry at a different time set, two lines after the pair it could
+    have used. Zero coverage was lost by the swap: the advisory is only ever
+    reached after _grade_damage has returned on a missing pair (design §0.3).
+
+    The order of the two stacks is load-bearing and NOT symmetric: the three
+    signed components read plain -> graded, so swapping them inverts every one of
+    them while leaving dE00 itself identical. `delta_l`'s sign is asserted in the
+    proofs for exactly that reason.
+
+    The region is resolved by regions.subject_mask/refuse — the SAME rule the
+    tone stage authors a grade with — so a subject under regions.MIN_REGION_FRAC
+    reads the crop and SAYS which, instead of reporting the grade's effect on
+    whatever a 0.23%-of-frame box happened to contain (design §0.2: that box is
+    exactly where the region choice is worth the most and trustworthy the least).
+
+    `background_delta_e` rides along only when the subject supplied the reading:
+    after a fallback the reading IS the crop, and a crop and its background agree
+    to 0.03 on seven of the eight real episodes (design §0.1) — two names for one
+    number.
+    """
+    g, p = np.asarray(graded_frames), np.asarray(plain_frames)
+    if g.shape != p.shape:
+        raise ValueError(f"check_episode: the graded and plain frames must have the "
+                         f"same shape — got {g.shape} and {p.shape}. They are two "
+                         f"renders of ONE plan pair; a disagreement is a caller "
+                         f"error, not an input to broadcast over")
+    n, h, w = g.shape[:3]
+    if route_pts:
+        extents = geometry.extent_at_times(route_pts, path_obj, meta, times)
+        mask, frac = regions.subject_mask(extents, n, h, w)
+        located, empty = True, not mask.any()
+    else:
+        mask, frac, located, empty = None, 0.0, False, True
+    fallback = regions.refuse("subject", located=located, fraction=frac, empty=empty)
+    read = np.ones((n, h, w), dtype=bool) if fallback else mask
+    out = {"advisory_delta_e": True,
+           "region": "crop" if fallback else "subject",
+           # the fraction of the region ASKED for — on a too-small row it is the
+           # small number that is the evidence, never the crop's 1.0 it fell back
+           # to. regions.AnchorReading.fraction's own convention (design §2.3).
+           "region_fraction": round(frac, 4),
+           "region_fallback": fallback,
+           **color_fidelity.evaluate(_region_pairs(p, g, read))}
+    if fallback is None:
+        out["background_delta_e"] = color_fidelity.evaluate(
+            _region_pairs(p, g, ~mask)).get("delta_e")
+    return out
+
+
+def _grade_damage(source: str | None,
                   plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None",
                   route_pts: list[RoutePoint] | None, path_obj: CropPath, meta: PathMeta,
                   spec: CheckSpec) -> CheckResult:
@@ -170,6 +168,14 @@ def _grade_damage(clip: str, source: str | None,
     the verdict until 2026-08-31, and it could not tell a grade from damage: on the
     reference run a real conductor pair puts five of eight episodes over the old
     5.0 ceiling, two at over twice it, and none of them is damage (design §0.1).
+
+    Since 2026-09-16 that description rides THIS pair — the same two stacks, the
+    same times, the same pre-encode baseline as the entropy ratio that carries the
+    verdict (design 2026-09-16 §0.3). It used to decode the raw source and the
+    shipped clip instead, two lines below the pair it could have used: four extra
+    decodes and four extra ffprobes per episode, in a different geometry at a
+    different time set, for two numbers about one grade. `clip` left this
+    signature with them — it was passed in for the advisory and for nothing else.
     """
     if plans is None or source is None:
         return CheckResult("grade_damage", None,
@@ -180,7 +186,7 @@ def _grade_damage(clip: str, source: str | None,
     g_frames = reframe.plan_frames_rgb(graded_plan, source, times)
     p_frames = reframe.plan_frames_rgb(plain_plan, source, times)
     d = gradedamage.evaluate(plain=p_frames, graded=g_frames, floor=spec.entropy_floor)
-    d.update(_subject_delta_advisory(clip, source, route_pts, path_obj, meta))
+    d.update(_subject_delta_advisory(p_frames, g_frames, times, route_pts, path_obj, meta))
     if "status" in d:
         return CheckResult("grade_damage", None, d)
     return CheckResult("grade_damage", not d["below"], d)
@@ -324,7 +330,7 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     checks["length"] = CheckResult("length", dl["pass"], {k: v for k, v in dl.items() if k != "pass"})
     bf = _black_frames_check(clip, black_floor=spec.black_floor, black_rel=spec.black_rel)
     checks["black_frames"] = CheckResult("black_frames", bf["pass"], {k: v for k, v in bf.items() if k != "pass"})
-    checks["grade_damage"] = _grade_damage(clip, source, plans, route_pts, path_obj, meta, spec)
+    checks["grade_damage"] = _grade_damage(source, plans, route_pts, path_obj, meta, spec)
     # spec'd but not yet implementable (§9): report honestly, never silent-pass
     checks["horizon"] = CheckResult("horizon", None, {"status": "not-implemented"})
     checks["head_power_point"] = CheckResult("head_power_point", None, {"status": "not-implemented"})
