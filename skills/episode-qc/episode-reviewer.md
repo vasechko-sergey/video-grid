@@ -89,19 +89,31 @@ judge reads it.
   whole delivered frame, and `region_fallback` says why: `"too-small"` (the
   tracked box covered under 1% of the frame — `region_fraction` is that small
   number, which is the evidence) or `"no-route"` (a scenery pan follows
-  nobody, so there is no subject to measure). In both cases the whole-frame
-  entropy check still ran and still gated the episode, and you are the only
-  judge of whether the colour looks natural on a subject nothing measured.
+  nobody, so there is no subject to measure). `region_fraction` is ALWAYS the
+  fraction of the region that was asked for, never of the one that answered —
+  so on a `"no-route"` reading it is `0.0`, which does **not** mean the crop
+  covered nothing: a subject that was never located has no fraction, and the
+  number beside it was read over the whole frame. In both cases the
+  whole-frame entropy check still ran and still gated the episode, and you are
+  the only judge of whether the colour looks natural on a subject nothing
+  measured.
   `background_delta_e` appears only when the subject supplied the reading,
   and it is the contamination check: close to `delta_e` says the grade moved
   everything, far from it says the grade moved the subject and its
-  surroundings differently — look at the pixels and say which. On a
-  `region: "crop"` reading **both** background keys are simply absent and
-  nothing names them: the reading already is the whole frame, so there is
-  nothing to contrast it with. Do not read that as a malformed report. Only
-  when the subject DID supply the reading and the background still could not
-  be read (a bbox covering the whole output frame leaves none) is
-  `background_fallback` present, naming why.
+  surroundings differently — look at the pixels and say which. There are
+  **three** shapes here and `background_fallback` is present in two of them,
+  so its presence alone tells them apart from nothing — read it together with
+  `background_delta_e`:
+  (1) on a `region: "crop"` reading **both** keys are absent and nothing
+  names them — the reading already IS the whole frame, so there is nothing
+  left to contrast it with;
+  (2) the everyday case — `background_fallback` is `null` **beside** a real
+  `background_delta_e`. A `null` here means the background WAS read, not that
+  it is missing;
+  (3) the subject supplied the reading but the background could not be read
+  (a bbox covering the whole output frame leaves none) — `background_fallback`
+  names the reason and `background_delta_e` is the key that is absent.
+  None of the three is a malformed report.
   `{"status": "not-checked", "passed": null}` on the WHOLE `grade_damage`
   block is different and rarer — the render plans themselves were
   unavailable, so nothing colour-mechanical ran at all. The naturalness flags

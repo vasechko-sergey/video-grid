@@ -243,18 +243,25 @@ guessing a path.
   why — `"too-small"` means the tracked box covered under 1% of the frame
   (`region_fraction` is that small number, the evidence, never the crop's
   1.0), `"no-route"` means a scenery pan has no tracked subject at all, and
-  it reads over the whole delivered frame instead. `background_delta_e` is
+  it reads over the whole delivered frame instead. `region_fraction` is
+  always the fraction of the region ASKED for, so on `"no-route"` it is
+  `0.0` — that is a subject that was never located, not a crop covering none
+  of the frame. `background_delta_e` is
   the contamination check and rides along only when the subject supplied the
   reading: close to `delta_e` means the grade moved everything, far from it
   means the grade moved the subject and its surroundings differently — worth
-  a look at the pixels. **Two different absences, told apart by whether
-  `background_fallback` is there at all.** On a `region: "crop"` reading
-  BOTH background keys are missing and neither is named: the reading already
-  IS the whole frame, so there is nothing left to contrast it with — that is
-  correct, not a malformed report. When the subject DID supply the reading but
-  the background could not be read (a bbox covering the whole output frame
-  leaves none), `background_fallback` is present and names why, and only
-  `background_delta_e` is missing. A large `delta_e` is still not itself a
+  a look at the pixels. **Three shapes, and `background_fallback` is present
+  in two of them** — its presence alone separates nothing, so read it with
+  `background_delta_e`. (1) On a `region: "crop"` reading BOTH background
+  keys are missing and neither is named: the reading already IS the whole
+  frame, so there is nothing left to contrast it with. (2) The everyday
+  case is `background_fallback: null` BESIDE a real `background_delta_e` —
+  a `null` there means the background was read, not that it is absent.
+  (3) When the subject DID supply the reading but the background could not be
+  read (a bbox covering the whole output frame leaves none),
+  `background_fallback` names why and `background_delta_e` is the one that is
+  missing. All three are correct reports, none is malformed.
+  A large `delta_e` is still not itself a
   finding: the entropy ratio carries the verdict and a real regrade is
   SUPPOSED to move colour. The whole-frame entropy check ran and gated the
   episode in every one of these cases; you are only the sole colour check for
