@@ -10,6 +10,54 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.11.0 — 2026-09-16
+
+**MINOR: a reading names the pixels, the count and the baseline it came from.**
+Report shapes change — `check_episode`'s `grade_damage` block and
+`check_reel`'s `grade_faithful` detail. No threshold moves, no verdict changes,
+no pixel moves.
+
+- **The grade description says which pixels it read.** `report.json`'s
+  `grade_damage` advisory gains `region` (`"subject"` or `"crop"` — what
+  actually supplied the number), `region_fraction` (the fraction of the region
+  **asked for**, so a fallback row carries the small number that is the
+  evidence, never the crop's 1.0) and `region_fallback` (`null`,
+  `"too-small"` under 1% of the frame, or `"no-route"`). The rule that
+  resolves them is the SAME `lib/regions` rule the match-grade conductor
+  authors a grade with, so the two cannot drift apart.
+- **`background_delta_e` is the new contamination check,** present only when
+  the subject supplied the reading: close to `delta_e` means the grade moved
+  everything, far from it means it moved the subject and its surroundings
+  differently. When the background cannot be read at all — a bbox covering the
+  whole output frame, ordinary on a tight reframe — `background_fallback`
+  names the absence instead of a bare `null`.
+- **A scenery pan gains a reading it never had.** It used to report
+  `delta_e: null`; it now reports a real dE00 over the whole delivered frame
+  with `region_fallback: "no-route"`. Strictly more information, and named.
+- **`dominant` is deleted.** It named which of luma/chroma/hue moved most, and
+  it flipped on **three of the four** real episodes when the sample count moved
+  from 5 to 3 — every flip with its top two components within 0.5, one an exact
+  tie resolved by the order of a tuple. This release is what moves the count,
+  so the field went rather than shipping the flips. The three signed components
+  (`delta_l` / `delta_c` / `delta_h`) are the explanation and stay; there is no
+  ranking of them. **If you read `dominant`, read the three.**
+- **The reading now rides the render pair the verdict already uses.** Both
+  sides come from `grade_damage`'s own (graded, plain) renders, at the same
+  times, in the same geometry — instead of re-decoding the raw source and the
+  shipped clip two lines below the pair it could have used. That removes **4
+  decodes and 4 `ffprobe` calls per episode** for zero coverage loss, and it
+  removes the CRF-18 encode from the number: the dE00 now describes the
+  DECLARED grade, not the delivered file. Measured, the swap moves the reading
+  by up to **0.84 dE00**, so a number compared against a pre-0.11.0 one is
+  being compared across rulers.
+- **`grade_faithful` states what it read over.** `check_reel`'s detail gains
+  `frames`, the count actually read from the master per episode — `0` when no
+  episode could be predicted. Not `color.FRAMES`: a constant echoing itself
+  records nothing and would not move if the call changed.
+- **The QC judge's instructions were rewritten for all of it** — read `region`
+  before `delta_e`, because a reading whose region is `crop` is not a statement
+  about the subject.
+
 ## 0.10.0 — 2026-09-15
 
 **MINOR: an anchor is a measurement, and a measurement has a subject.** A new

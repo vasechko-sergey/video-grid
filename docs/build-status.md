@@ -4,13 +4,146 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-15._
+_Last updated: 2026-09-16._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Sensor provenance — a reading names the pixels, the count and the baseline
+  (2026-09-16, 0.11.0)** — design
+  [2026-09-16-sensor-provenance-design.md](specs/2026-09-16-sensor-provenance-design.md),
+  plan [2026-09-16-sensor-provenance.md](plans/2026-09-16-sensor-provenance.md),
+  Tasks 1–7 (branch `docs/sensor-provenance`).
+
+  Four reports stated a reading without saying which pixels, over how many
+  frames, or against what baseline — and one stated a winner among three
+  numbers that tie. The rule this slice applies: **a reading names the pixels,
+  the count and the baseline it came from**, and the pixel set is resolved by
+  ONE rule shared with the stage that authors the grade.
+
+  **§0.1 confirms the folded R2.1 row's premise on a second statistic.**
+  Measured through the old instrument over all eight real episodes, the crop's
+  dE00 equals the **background's** to within **0.03 on seven of the eight** —
+  the same finding named-regions §0.2 made about tone, reproduced on a
+  completely different statistic, because the subject is a percent or two of
+  the frame. The one exception is ep6, the 37.5% subject, where the crop (1.14)
+  sits between subject (0.89) and background (1.31) exactly as an area-weighted
+  mean must. "The whole frame" was never a neutral reference for this sensor
+  either; it was the water.
+
+  **§0.2 overturns the row's own remedy, and that is what shipped.** On the
+  render pair, the region choice is worth **0.06–0.46 dE00** on the three
+  episodes whose box covers 2–8% of the frame, and **0.99** on ep7 — a 2.7×
+  difference (1.58 against the crop's 0.59) — whose box is **0.23%** of the
+  frame, *below* `regions.MIN_REGION_FRAC` and therefore the one box the region
+  resolver refuses to read. **The region choice matters most exactly where the
+  region is least trustworthy.** So what ships is a **gate and a name**, not a
+  re-aimed box: the reading says which region supplied it, at what fraction,
+  and which named fallback fired.
+
+  **§0.3 is the structural half.** `_subject_delta_advisory` is reached only
+  *after* `_grade_damage` has already returned on a missing render pair, so it
+  ALREADY ran only when that pair existed — and two lines below the pair's own
+  decode it decoded the raw source and the shipped clip again, in a different
+  geometry at a different time set: **4 decodes and 4 `ffprobe` calls per
+  episode for two colour numbers about one grade.** Riding the pair costs
+  **zero coverage** (no episode gets a dE00 today and would lose one) and
+  deletes `_box_mean_rgb`, `_last_sampleable_t`, `SAMPLE_FRACS`,
+  `_grade_damage`'s `clip` parameter, and grade-delta-sensors §9.9's recorded
+  five-fraction coincidence with it.
+
+  **§0.4 records the move rather than claiming equivalence.** The baseline swap
+  moves the number by **+0.84 / +0.14 / −0.68 / −0.47** on the four episodes
+  whose plans build — against the old blocking bar's entire healthy-to-damage
+  separation of **0.75 dE00**. The sensor has voted on nothing since
+  2026-08-31, so this is a change of description and not of verdict, but it is
+  not a rounding difference. The real-ffmpeg proof shows the same thing from
+  the other side: a faithful pair now reads **exactly 0.0** where the old
+  source-vs-clip comparison read ~0.8 on the same fixture, because the encode's
+  own residual used to sit inside every number the sensor reported.
+
+  **§0.5 kills a field this slice would otherwise have broken itself.**
+  `dominant` — the component of (luma, chroma, hue) that moved most, named
+  directly in the QC judge's template — flips on **three of the four** real
+  episodes when the sample count moves from 5 to 3; every flip has its top two
+  components within 0.5; ep7 at n=3 is an exact tie (|ΔC\*| = |ΔH\*| = 1.22)
+  resolved by the order of `_COMPONENTS`, not by the data; ep4 at n=5 crowns
+  `luma` at −0.77 over a `hue` of 0.77. **This slice is what moves the count
+  from 5 to 3**, so leaving the field in place meant shipping the flips. The
+  three signed components are already the explanation; the ranking of them
+  cannot be made, so `dominant` and `_COMPONENTS` are deleted.
+
+  **§0.6: the box never leaves the frame, and two branches cannot fire.**
+  Projecting **all 2036** route points across the eight episodes, no box is
+  ever *fully* outside the delivered frame, so `_box_mean_rgb`'s documented
+  worst case — collapsing to one edge pixel — was unreachable on real footage;
+  a mask-based read needs no such fabrication, because a box with no overlap
+  contributes no pixels and the fraction says so. `_subject_delta_advisory`'s
+  own `if source is None` could not fire either (the caller had returned on it
+  already), and its reason string was therefore a disjunction whose first half
+  was never the cause — the same shape as `OutroFit.cause` before the
+  named-absence slice. ep7 is under 1% at **all 70** of its route points, so
+  its `too-small` verdict is structural, not a sampling accident.
+
+  **What ships.** `regions.subject_mask` / `regions.refuse` extracted from code
+  `measure` / `assemble` already ran inline — ONE resolver, so the tone stage
+  and the grade description cannot drift apart (the refactor's proof is that
+  every named-regions test passes untouched). `_subject_delta_advisory` takes
+  two frame stacks instead of two paths and refuses a shape mismatch rather
+  than broadcasting it — they are two renders of one plan pair, so a
+  disagreement is a caller error. The report gains `region`
+  (`"subject"`/`"crop"` — what actually supplied the number),
+  `region_fraction` (the fraction of the region **asked for**, so a
+  `too-small` row carries the small number that is the evidence, never the
+  crop's 1.0), `region_fallback` (`null` / `"too-small"` / `"no-route"`), and
+  `background_delta_e` — the contamination check, one extra mask over frames
+  already decoded — present only when the subject supplied the reading.
+  **A pan gains a reading it did not have**: `region: "crop"`,
+  `region_fallback: "no-route"` and a real dE00 over the delivered frame,
+  where the field used to be `null`. `check_reel`'s `grade_faithful` gains
+  `frames`, the count **actually read** from the master per episode — not
+  `color.FRAMES`, which would be a constant echoing itself — and `0` when
+  nothing could be predicted.
+
+  **The fix round found the background was a region too.** As first landed the
+  advisory emitted `background_delta_e` whenever the subject supplied the
+  reading, without asking whether the background *could* be read: a bbox that
+  covers the whole output frame leaves no background at all, which
+  `subject_mask`'s clamping makes ordinary on a tight reframe. It now goes
+  through the SAME `regions.refuse` — `background` is a kind in `regions.KINDS`
+  with a fraction of its own — so the absence is named (`background_fallback`,
+  one of `regions.FALLBACKS`) rather than emitted as a bare `null` that reads
+  either as "the background did not move" or as an error, which is the unnamed
+  absence this slice exists to remove. The background's own fraction is not
+  reported: it is `1 - region_fraction` exactly, and a second representation of
+  one number is a contradiction surface.
+
+  **Two report surfaces from the previous slice's review closed with it.**
+  `match_grade._report_md`'s `if any(d.regions for d in decisions)` gate was
+  unreachable for every real input — `regions.assemble` always returns three
+  rows — and looked reachable only because 23 `measure_crop` stubs modelled a
+  shape production cannot produce. One `crop_anchor_rows` conftest fixture puts
+  them all on the real shape, the gate is deleted (the `gradedamage.ENTROPY_BINS`
+  settlement, again), and the byte-exact default `MATCH.md` pin — which held
+  three anchor rows for episode 0 and none for episode 1 — now covers both.
+
+  **The honest half (§5).** The box is still a **box**: nothing here masks the
+  subject, and a bbox over water still contains water — the seg-mask row stays
+  open, and this slice makes the box's size and the fallback visible instead,
+  which is what §0.2 says is worth doing on this footage.
+  `background_delta_e` has **no consumer that must act on it**; it is read by a
+  judge who is told to judge the pixels. **The described quantity changes**:
+  the dE00 now describes the DECLARED grade, not the delivered file, so the
+  encode's own colour cost (up to 0.84 dE00) has left the number and nothing
+  measures it — the old reading conflated it with the grade rather than
+  isolating it, and that is now a P4 row. Three samples, not five — the count
+  is **recorded** (`samples`) rather than argued. `MIN_REGION_FRAC` is still a
+  convention, now load-bearing for two sensors instead of one, and no run
+  discriminates it. And nothing proves the judge reads `region`: the same
+  presence-and-naming limit the episode-QC gate has always carried.
 
 - **Named regions — an anchor is a measurement, and a measurement has a subject
   (2026-09-15, 0.10.0)** — design
@@ -1058,7 +1191,11 @@ _Last updated: 2026-09-15._
   one, so the design's own real-run conductor pairs — which used to cross the
   OLD 5.0 dE00 ceiling on five of eight episodes — now pass clean (design §7
   Proof 1, real ffmpeg). The old dE00 statistic survives as an advisory
-  `delta_e`/`dominant` pair, read by the QC judge, never a gate.
+  `delta_e`/`dominant` pair, read by the QC judge, never a gate —
+  **`dominant` superseded 2026-09-16: deleted** (it flipped on three of the
+  four real episodes when the sample count moved from 5 to 3, with one exact
+  tie broken by the order of a tuple), and the advisory now names the pixels
+  it read; see the sensor-provenance entry.
   `check_reel.tone_match` → **`grade_faithful`**: judged against the profile
   each episode's OWN full declared chain predicts — rendered fresh through the
   same `RenderPlan` the real render uses — instead of a common target solved
@@ -5923,6 +6060,15 @@ _Last updated: 2026-09-15._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **Four P2/P3 rows are closed 2026-09-16 by "Sensor provenance"** and a
+> fifth is closed `⊘` as moot (see the Done entry above): `grade_faithful`'s
+> missing sample count, `_report_md`'s inert `if any(d.regions …)` gate, the
+> half-covered default `MATCH.md` byte-exact pin, the P3 `color_fidelity`
+> sampling-box line folded into **R2.1** — and, moot, the P3 question about
+> `check_episode._last_sampleable_t`'s one-frame clamp, whose function this
+> slice deleted. **R2.1 stays `◐`** and now waits on exactly one thing: a
+> chroma target. `docs/backlog.md` is the current list.
 
 > **R5.2 and R5.3, both P1 rows, and R10.9, a P2 row, are closed 2026-09-09 by
 > "Bound reports"** (see the Done entry above); `docs/backlog.md`'s P1/P2

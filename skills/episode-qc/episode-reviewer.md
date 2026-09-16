@@ -78,17 +78,28 @@ judge reads it.
   check (in "The mechanical checks" above) already stopped this episode if
   the DECLARED grade destroyed information (an entropy-ratio floor, the
   delivered grade's luma-histogram entropy against the same episode ungraded)
-  — so if you are looking at this episode, that already passed. Its advisory
-  `delta_e`/`dominant` describe how far the grade moved the tracked subject's
-  colour — a DESCRIPTION of what the grade did, not a threshold it cleared,
-  since a real regrade is supposed to move colour; a large `delta_e` is not
-  itself a finding, judge the pixels instead. **Unless `delta_e` itself reads
-  `null` with `delta_reason: "no source clip or no tracked subject"`** — a
-  scenery pan has no tracked subject, so only the whole-frame entropy check
-  ran (it still did, and still gates); you are the only judge of whether
-  its colour looks natural. `{"status": "not-checked", "passed": null}` on
-  the WHOLE `grade_damage` block is different and rarer — the render plans
-  themselves were unavailable, not merely the subject. The naturalness flags
+  — so if you are looking at this episode, that already passed. Beside it
+  rides an advisory DESCRIPTION of what the grade did: `delta_e` plus three
+  signed components (`delta_l` / `delta_c` / `delta_h`), and no ranking of
+  them — a ranking of three numbers that tie cannot be made. A large
+  `delta_e` is not itself a finding, since a real regrade is supposed to move
+  colour; judge the pixels instead. **Read `region` before you read
+  `delta_e`.** `region: "subject"` means the number describes the tracked
+  subject. `region: "crop"` means it does NOT — it is a reading over the
+  whole delivered frame, and `region_fallback` says why: `"too-small"` (the
+  tracked box covered under 1% of the frame — `region_fraction` is that small
+  number, which is the evidence) or `"no-route"` (a scenery pan follows
+  nobody, so there is no subject to measure). In both cases the whole-frame
+  entropy check still ran and still gated the episode, and you are the only
+  judge of whether the colour looks natural on a subject nothing measured.
+  `background_delta_e` appears only when the subject supplied the reading,
+  and it is the contamination check: close to `delta_e` says the grade moved
+  everything, far from it says the grade moved the subject and its
+  surroundings differently — look at the pixels and say which. When it is
+  absent, `background_fallback` names why the background could not be read.
+  `{"status": "not-checked", "passed": null}` on the WHOLE `grade_damage`
+  block is different and rarer — the render plans themselves were
+  unavailable, so nothing colour-mechanical ran at all. The naturalness flags
   above are
   advisory context, not a verdict — a `crushed_blacks` flag on a deliberately
   dark/night shot, or a `saturation_shift` on a scene that was meant to pop,

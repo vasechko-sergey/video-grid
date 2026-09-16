@@ -233,15 +233,28 @@ guessing a path.
   gate ever sees it — so an episode that reached you already passed the
   mechanical colour check, **unless `grade_damage` itself reports
   `{"status": "not-checked"}` with `passed: null`** (its render plans were
-  unavailable — rare). The check's advisory `delta_e`/`dominant` describe how
-  far the grade moved the tracked subject's colour, a DESCRIPTION of the
-  grade's intent, not a threshold — a large `delta_e` is not itself a
-  finding. A scenery pan has no tracked subject, so `delta_e` reads `null`
-  with `delta_reason: "no source clip or no tracked subject"`, but the
-  whole-frame entropy check itself still ran and still gated the episode; you
-  are only the sole colour check for what that check structurally cannot see
-  (chroma, and whether the natural-looking pixels are also the RIGHT ones).
-  Judge the pixels regardless; a passing number is not a verdict on taste.
+  unavailable — rare). Beside the verdict the check carries an advisory
+  DESCRIPTION of what the grade did: `delta_e` plus three signed components
+  (`delta_l` / `delta_c` / `delta_h`), and no ranking of them: a ranking of
+  three numbers that tie cannot be made, so none is reported and you read the
+  three (design 2026-09-16 §0.5). **Read `region` before `delta_e`** (design
+  2026-09-16 §2.3): a reading whose `region` is
+  `"crop"` is NOT a statement about the subject, and `region_fallback` says
+  why — `"too-small"` means the tracked box covered under 1% of the frame
+  (`region_fraction` is that small number, the evidence, never the crop's
+  1.0), `"no-route"` means a scenery pan has no tracked subject at all, and
+  it reads over the whole delivered frame instead. `background_delta_e` is
+  the contamination check and rides along only when the subject supplied the
+  reading: close to `delta_e` means the grade moved everything, far from it
+  means the grade moved the subject and its surroundings differently — worth
+  a look at the pixels. When it is absent, `background_fallback` names why
+  the background could not be read. A large `delta_e` is still not itself a
+  finding: the entropy ratio carries the verdict and a real regrade is
+  SUPPOSED to move colour. The whole-frame entropy check ran and gated the
+  episode in every one of these cases; you are only the sole colour check for
+  what that check structurally cannot see (chroma, and whether the
+  natural-looking pixels are also the RIGHT ones). Judge the pixels
+  regardless; a passing number is not a verdict on taste.
 - **QC is per-episode and blind to neighbours.** Never comment on how one
   episode sits next to another, on pacing, or on repetition — that is
   reel-review's question, asked after delivery, over the assembled reel.

@@ -274,6 +274,7 @@ real reading over the crop beside it.
 "region_fraction": 0.0219,
 "region_fallback": null,
 "delta_e": 5.13, "delta_l": 0.61, "delta_c": 3.9, "delta_h": 4.71,
+"background_fallback": null,
 "background_delta_e": 5.32,
 "samples": 3,
 "advisory_delta_e": true
@@ -298,6 +299,22 @@ by 2.7×, which is the signal that something in that box is not what surrounds
 it. It is reported only when the subject supplied the reading: after a fallback
 the reading IS the crop, and a "background" beside it would be two names for
 one number (§0.1: they agree to 0.03 on seven of eight episodes).
+
+**As built (review fix round 1), `background_fallback` joins it.** This section
+as first written had the background supply a number whenever the subject did,
+without asking whether the background could be read at all — and it cannot when
+the projected bbox covers the whole output frame, which `subject_mask`'s
+clamping makes ordinary on a tight reframe. `color_fidelity.evaluate([])`
+returns its no-samples shape, so the field came back a bare `null` beside a real
+`delta_e`, reading either as "the background did not move" or as an error, with
+nothing telling them apart — the exact unnamed absence §1 rule 1 exists to
+remove. `background` is a kind in `regions.KINDS` with a fraction of its own, so
+it now goes through the SAME `regions.refuse`: `background_fallback` names the
+absence from `regions.FALLBACKS` and no number is emitted at all. The
+background's own fraction is deliberately NOT reported — it is
+`1 - region_fraction` exactly, and a second representation of one number is a
+contradiction surface. A subject fallback still drops BOTH keys: the contrast
+has nothing to contrast with.
 
 A pan gains a reading it does not have today: `region: "crop"`,
 `region_fallback: "no-route"`, and a real dE00 over the whole delivered frame
