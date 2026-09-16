@@ -357,6 +357,18 @@ def test_refuse_names_too_small_for_a_located_region_that_holds_no_pixels():
     assert regions.refuse("subject", located=True, fraction=0.0, empty=True) == "too-small"
 
 
+def test_refuse_names_too_small_for_an_empty_region_whatever_fraction_is_claimed():
+    """`fraction` and `empty` are NOT correlated in general — only inside
+    measure() are they, because RegionReading.profile is None implies
+    fraction == 0.0. A second reader (check_episode, over RGB frames) supplies
+    its own pair, and for it a subject can cover 20% of the frame across a
+    stack while one frame's mask slice is empty. A region that holds no pixels
+    is refused whatever fraction is claimed for it — this pins `empty` as its
+    own, independent branch, not a restatement of the area gate reachable only
+    through fraction == 0.0."""
+    assert regions.refuse("subject", located=True, fraction=0.5, empty=True) == "too-small"
+
+
 def test_refuse_never_gates_the_crop_on_size():
     """Every fallback lands on the crop, so a crop under the floor would have
     nowhere to fall back to."""
