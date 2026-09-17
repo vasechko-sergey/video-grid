@@ -4,13 +4,118 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-16._
+_Last updated: 2026-09-17._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Chroma spread — the last open half of R2.1 closes by measurement, not by
+  a target (2026-09-17, 0.12.0)** — design
+  [2026-09-17-chroma-spread-design.md](specs/2026-09-17-chroma-spread-design.md),
+  plan [2026-09-17-chroma-spread.md](plans/2026-09-17-chroma-spread.md),
+  **Tasks 1–7** (branch `docs/chroma-spread`). **Task 7's mutation battery:
+  eighteen rows run, seventeen RED outright, one (row 14, the bar's inclusive
+  boundary) came back GREEN** and was closed with a new test,
+  `test_the_bar_is_inclusive_at_the_boundary`. The brief's own battery table
+  carried two wrong pointers, found by running it rather than by inspection —
+  row 3 named an integration sign proof that never calls `check_episode` at
+  all (discriminated instead by
+  `test_the_crops_displacement_is_the_whole_frame_not_the_background`), and
+  row 13 reused row 8's one-odd-episode test, which cannot tell `max` from
+  `min` (discriminated instead by
+  `test_one_episode_graded_the_other_way_fails_the_bar`) — both corrected in
+  the plan. Full suite 3912 → 3958 passed, 1 skipped.
+
+  R2.1 asked for a chroma TARGET; §0 shows one cannot be built on this
+  footage, and the row closes a different way.
+
+  **§0.1/§0.2 confirm the row's own premise a third time.** The pipeline's
+  one automatic colour stage, `color.tone_arg`, writes the Y plane only — it
+  cannot move chroma at all — so every chroma knob
+  (`saturation`/`mid_blue`/`shadow_red`/`white_balance`) is hand-authored,
+  and the operator's own EDL already separates the two cameras by hand,
+  exactly: `mid_blue` is 1.0 on every Canon episode and above 1.0 on every
+  drone one.
+
+  **§0.3 inverts the parent row's own title.** For chroma the STABLE named
+  region is the background, not the subject: the subject's own
+  frame-to-frame noise (up to 6.82 in b\*) sits at only a 1.7–2.5×
+  signal-to-noise against its 11.14 (a\*) / 17.00 (b\*) cross-episode spread,
+  because the subject is the route's bbox and a box over water is water
+  (named-regions §7 row 2, still open).
+
+  **§0.4 is the refutation.** An absolute cross-episode chroma target cannot
+  be separated from content on this footage: four ungraded drone episodes
+  already differ from each other by 4.87 b\* with no grade applied at all,
+  the same order as the 12.31/11.17 within-camera spread the delivered clips
+  carry — the exact shape of `color_across_cuts`, deleted 2026-08-29 after
+  its ceiling was raised 12→44→56 to silence complaints that were each
+  correct. §0.5: the one referent every episode shares, the person, cannot
+  substitute — it is the noisy region from §0.3, and stays blocked behind
+  the open seg-mask row.
+
+  **§0.6 is what shipped.** The grade's own signed CIEDE2000 displacement
+  between each episode's ungraded and graded render of the SAME crop cancels
+  content by construction: signal-to-noise 21–36×, against the absolute
+  statistic's ~4× on top of a content floor it cannot see past. `worst` on
+  the real reel is 3.52 across three consistently graded episodes and 9.07
+  once the differently-graded opening shot (ep0) is added — the bar (`5.0`)
+  sits between them, 1.48 below and 4.07 above.
+
+  **What ships.** `check_episode._subject_delta_advisory` gains
+  `crop_delta_c`/`crop_delta_h`, emitted only on the subject arm (a
+  crop-fallback reading already IS the crop's, so a second key holding the
+  same number would repeat itself under a different name — 2026-09-16
+  §2.3's contradiction rule, reapplied). `color_fidelity.shift_from_report`
+  is the one function that turns a `grade_damage` report into
+  `{"delta_c", "delta_h", "region"}` or a named absence, read identically by
+  `edl_to_reel`'s phase-1 fill and `build_reel`'s reprocess-arm refresh — so
+  a reprocessed episode's stale value never outlives the clip beside it.
+  `ReelEpisode.chroma` carries the reading (or the absence) across the
+  `EPISODES.json` boundary, refused at construction if it is neither shape.
+  `check_reel` gains the advisory `chroma_spread`
+  (`ReelCheckSpec.chroma_spread_max = 5.0`), reporting `per_episode`,
+  `not_checked` (naming EVERY absence — a bare `None` entry reads "the reel
+  manifest is older than this field," never a silent 0.0), `spread_c`,
+  `spread_h` and `worst = max(spread_c, spread_h)`. Nothing blocks; no
+  chroma knob is authored anywhere.
+
+  **Three corrections applied to the design and plan on the way in.** §2.5's
+  claim that the `golden_ride_segment` fixture proof exists "so a test can
+  defend it" is corrected: the fixture is a constructed scenario (four
+  regrades of ONE 1.58s clip, separated by `delta_c`), not a calibration
+  against independent episodes (the real reel's own separation was
+  `delta_h`) — it establishes the order of magnitude and the end-to-end
+  wiring, and §5.3 now says the same. §0.6's table is a 2-decimal display of
+  a full-precision measurement: recomputing `max(hs) − min(hs)` from its own
+  rounded literals (7.84, −1.22) gives 9.06, not §2.5's full-precision 9.07 —
+  verified to 20 decimal places, not a rounding-boundary float artifact. Both
+  are correct, about different things, and
+  `test_one_episode_graded_the_other_way_fails_the_bar` already pins 9.06
+  deliberately — the design now says so too, so nobody "fixes" either number
+  to match the other.
+
+  **§5 honest limits.** Uniformity is not agreement — two episodes with the
+  same displacement can still look nothing alike, and §0.4 is why that
+  quantity has no number, not an omission. The remedy exists for half the
+  findings: `saturation_arg` is a clean hue-preserving chroma scaler for a
+  dC\* divergence, but ep0's own finding is a dH\* divergence, and neither
+  `mid_blue` nor `shadow_red` is a hue rotation. Four episodes, one camera,
+  one shoot: `chroma_spread_max` is a first cut with no pool to discriminate
+  it, and the Canon half of the only real reel is `pc`-sourced with no
+  render pair at all (§0.7) — `chroma_spread` is itself not-checked on half
+  of it today.
+
+  **Two further findings, filed as new P3 backlog rows rather than fixed
+  here**: `manifest.DEFAULT_COLOR == color.TARGET`, so the grey-world white
+  balance has never measured the footage and applies one fixed correction to
+  every episode regardless of content (§0.8); and no automatic stage writes
+  any chroma knob at all, so a future chroma TARGET would need its own
+  actuator or repeat the `tone_match` deadlock. `docs/backlog.md`'s P1 table
+  is now EMPTY — R2.1 was its only row.
 
 - **Sensor provenance — a reading names the pixels, the count and the baseline
   (2026-09-16, 0.11.0)** — design
@@ -6140,6 +6245,12 @@ _Last updated: 2026-09-16._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **R2.1, the only P1 row, is closed 2026-09-17 by "Chroma spread"** (see the
+> Done entry above) — `docs/backlog.md`'s P1 table is now EMPTY. The
+> blockquote below still says "R2.1 stays `◐`"; that was true through
+> 2026-09-16 and is not any more — read `docs/backlog.md`, not this
+> narrative, for what is actually next.
 
 > **Four P2/P3 rows are closed 2026-09-16 by "Sensor provenance"** and a
 > fifth is closed `⊘` as moot (see the Done entry above): `grade_faithful`'s

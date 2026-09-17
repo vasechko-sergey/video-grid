@@ -907,7 +907,7 @@ close it with a NEW test and say so in the report.
 |---|---|---|---|
 | 1 | `check_episode.py` | emit `crop_delta_*` on BOTH arms (drop the `if fallback is None` guard) | the no-repeat test |
 | 2 | `check_episode.py` | `crop = ...evaluate(_region_pairs(p, g, mask))` (subject mask, not `whole`) | the crop-≠-subject test |
-| 3 | `check_episode.py` | swap: `out["crop_delta_c"], out["crop_delta_h"] = crop["delta_h"], crop["delta_c"]` | an integration sign proof |
+| 3 | `check_episode.py` | swap: `out["crop_delta_c"], out["crop_delta_h"] = crop["delta_h"], crop["delta_c"]` | `test_the_crops_displacement_is_the_whole_frame_not_the_background` (corrected — see the note below the table) |
 | 4 | `color_fidelity.py` | `shift_from_report` hands over `d["delta_c"]` on the subject arm | Task 2's first test |
 | 5 | `color_fidelity.py` | key on `"status" in d` instead of on `region` | add a report whose advisory half carries a `status` key |
 | 6 | `models.py` | drop `ReelEpisode.__post_init__` entirely | the three refusal tests |
@@ -917,12 +917,25 @@ close it with a NEW test and say so in the report.
 | 10 | `edl_to_reel.py` | pass `chroma=None` | phase-1 recording test |
 | 11 | `build_reel.py` | drop the reprocess-arm refresh | the reprocess freshness test |
 | 12 | `build_reel.py` | build `chroma` inside the round loop from `rm.episodes` (so the refresh is overwritten every round) | the reprocess freshness test |
-| 13 | `check_reel.py` | `worst = min(spread_c, spread_h)` | the one-odd-episode test |
+| 13 | `check_reel.py` | `worst = min(spread_c, spread_h)` | `test_one_episode_graded_the_other_way_fails_the_bar` (corrected — see the note below the table) |
 | 14 | `check_reel.py` | `worst < bar` instead of `worst <= bar` | needs a test pinned exactly at the bar — write one |
 | 15 | `check_reel.py` | `len(per) < 1` instead of `< 2` | the one-reading test |
 | 16 | `check_reel.py` | treat a `None` entry as `{"delta_c": 0.0, "delta_h": 0.0}` | the names-every-absence test |
 | 17 | `check_reel.py` | append a `ReelFailure` for a failing spread | the advisory test |
 | 18 | `check_reel.py` | `spread_c = max(cs)` (drop `- min(cs)`) | the widest-gap test |
+
+**Corrections found by running the battery, not by inspection.** Row 3's
+original pointer, "an integration sign proof," named a test that never calls
+`check_episode` at all — the mutation is actually caught by
+`test_the_crops_displacement_is_the_whole_frame_not_the_background` (Task 1's
+own crop-≠-subject test). Row 13's original pointer reused row 8's
+"one-odd-episode test," which asserts `worst == pytest.approx(9.07)` and
+cannot tell a `min` from a `max` on that fixture — the mutation is actually
+caught by `test_one_episode_graded_the_other_way_fails_the_bar`. Both cells
+above are corrected to the test that actually discriminates. **Row 14 came
+back GREEN** on the first pass — no existing test was pinned exactly at
+`worst == bar` — a genuine coverage hole, closed with a new test,
+`test_the_bar_is_inclusive_at_the_boundary`.
 
 - [ ] **Step 2: Full suite**
 

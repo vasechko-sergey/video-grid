@@ -246,7 +246,16 @@ guessing a path.
   it reads over the whole delivered frame instead. `region_fraction` is
   always the fraction of the region ASKED for, so on `"no-route"` it is
   `0.0` — that is a subject that was never located, not a crop covering none
-  of the frame. `background_delta_e` is
+  of the frame.
+  **On a `region: "subject"` reading the block also carries
+  `crop_delta_c`/`crop_delta_h`** (design 2026-09-17 §2.2): the same signed
+  dC\*/dH\* measured over the whole crop instead of the subject, kept only so
+  the reel-level advisory `chroma_spread` check has one pixel set every episode
+  always has. It is the crop's own reading of the SAME grade, not a second
+  colour finding about this episode — when `region` is already `"crop"`,
+  `delta_c`/`delta_h` already ARE that reading and these two keys are absent,
+  never repeated under a second name.
+  `background_delta_e` is
   the contamination check and rides along only when the subject supplied the
   reading: close to `delta_e` means the grade moved everything, far from it
   means the grade moved the subject and its surroundings differently — worth

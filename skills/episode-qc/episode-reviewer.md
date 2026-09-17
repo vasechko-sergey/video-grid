@@ -97,6 +97,12 @@ judge reads it.
   whole-frame entropy check still ran and still gated the episode, and you are
   the only judge of whether the colour looks natural on a subject nothing
   measured.
+  On a `region: "subject"` reading you will also see
+  `crop_delta_c`/`crop_delta_h` in the block — the same signed dC\*/dH\*
+  measured over the whole crop rather than the subject, carried only so the
+  reel can compare episodes on one pixel set every episode always has. It is
+  not a second colour finding to judge: when `region` is already `"crop"`,
+  `delta_c`/`delta_h` already ARE that reading and these two keys are absent.
   `background_delta_e` appears only when the subject supplied the reading,
   and it is the contamination check: close to `delta_e` says the grade moved
   everything, far from it says the grade moved the subject and its

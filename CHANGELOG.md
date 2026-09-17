@@ -10,6 +10,47 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.12.0 — 2026-09-17
+
+**MINOR: a new contract field and a new advisory check.** `ReelEpisode` gains
+`chroma`, and `check_reel` gains `chroma_spread`. No existing check's verdict
+changes and nothing new blocks a reel.
+
+- **Each episode now carries what the grade did to its COLOUR, not only its
+  tone.** `check_episode`'s `grade_damage` advisory gains `crop_delta_c` /
+  `crop_delta_h` — the same signed CIEDE2000 chroma/hue displacement already
+  measured for the tracked subject, read instead over the whole crop (the
+  one region every episode always has), and emitted only when the subject
+  supplied the primary reading — a crop-fallback reading already IS the
+  crop's, so a second key holding the same number would repeat itself under
+  a different name.
+- **`ReelEpisode.chroma`** carries that displacement (or a named absence)
+  across the `EPISODES.json` boundary from phase 1 to phase 2, refused at
+  construction if it is neither shape. `edl_to_reel` fills it from each
+  episode's own report; `build_reel`'s retry loop replaces it when a
+  reprocess re-renders an episode, so the value is never older than the clip
+  beside it.
+- **`check_reel` gains the advisory `chroma_spread`** — how far apart the
+  reel's episodes are in what the grade did to their colour, reported as
+  `per_episode`, `not_checked` (naming every absence, never a silent 0.0),
+  `spread_c`, `spread_h` and `worst = max(spread_c, spread_h)` against
+  `ReelCheckSpec.chroma_spread_max = 5.0`. **This is not a chroma target**:
+  an absolute cross-episode chroma statistic cannot be separated from
+  content on this footage (the same failure mode that got
+  `color_across_cuts` deleted in 0.5.0), so this measures only whether the
+  grade treated the episodes alike, never whether they end up looking the
+  same. Advisory end to end — nothing blocks, and no chroma knob is
+  authored anywhere.
+- **Closes the last open half of backlog R2.1** — not by delivering the
+  chroma target the row asked for, but by measuring that one cannot be
+  built on this footage today: the pipeline's one automatic colour stage
+  cannot move chroma at all, and the one referent every episode shares, the
+  person, is too noisy a region to carry a target until it is a mask, not a
+  bbox.
+
+See [the design](docs/specs/2026-09-17-chroma-spread-design.md) for the
+measurements behind the threshold.
+
 ## 0.11.0 — 2026-09-16
 
 **MINOR: a reading names the pixels, the count and the baseline it came from.**

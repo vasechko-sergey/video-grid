@@ -248,8 +248,32 @@ span **3.52** dC\* / 0.71 dH\*; adding ep0 takes it to **6.90 / 9.07**. `worst` 
 therefore 3.52 without ep0 and 9.07 with it, so the bar sits between them with
 **1.48** below and **4.07** above, over a statistic whose own noise is
 0.06–0.19 on the quiet episodes. Four episodes, one camera, one shoot — §5 says so
-plainly, and the value is re-derived against the suite's own
-`golden_ride_segment` fixture during implementation so a test can defend it.
+plainly.
+
+Task 6 re-runs the measurement against the suite's own `golden_ride_segment`
+fixture during implementation, but that run is a **constructed scenario, not a
+calibration**: it is four regrades of ONE 1.58s clip, not four independently
+shot episodes, and the separation there is driven by `delta_c`, where the real
+reel's was `delta_h`. What the fixture proof establishes is the order of
+magnitude and the end-to-end wiring — real pixels, through this constant, to a
+passing or failing `CheckResult` — so a test can defend the WIRING. It does not
+establish a second, independent calibration of 5.0 against footage the design
+has not seen; §5.3 says the same about the bar itself.
+
+One more caution for the next reader: §0.6's table is a 2-decimal **display**
+of a full-precision measurement. Recomputing `max(hs) − min(hs)` from the
+table's own rounded literals (7.84 and −1.22) gives **9.06**, not this
+section's **9.07** — verified directly (`7.84 - (-1.22)` is 9.06 to 20
+decimal places, not a floating-point artifact near a rounding boundary).
+ep0's own per-frame noise (§0.6: 1.81/1.91, far above its siblings'
+0.06–0.19) is consistent with a full-precision median that does not survive
+2-decimal display rounding without shifting this subtraction by a cent. Both
+numbers are correct, about different things — the full-precision figure this
+section quotes, and what the table's own rounded display recomputes to — and
+`tests/lib/test_check_reel.py::test_one_episode_graded_the_other_way_fails_the_bar`
+pins **9.06** deliberately, because that is what its exact literals compute.
+Do not "loosen" that test to 9.07, and do not "fix" this section's 9.07 to
+match the table.
 
 ---
 
@@ -304,7 +328,11 @@ plainly, and the value is re-derived against the suite's own
    what moved without naming what to turn.
 3. **Four episodes, one camera, one shoot.** §0.7: the Canon half is unreadable on
    this run. `chroma_spread_max` is a first cut with a 1.48/1.90 margin around it,
-   and no pool discriminates it.
+   and no pool discriminates it. The suite's own `golden_ride_segment` proof (Task
+   6, §2.5) does not change this: it confirms the order of magnitude and the
+   wiring end to end, not a second calibration — its four measurements are
+   regrades of one clip, not four shot episodes, and the effect that separates
+   them is `delta_c`, not the real reel's `delta_h`.
 4. **The bbox is still a bbox.** §0.3/§0.5 stand: the subject region cannot carry a
    chroma claim until it is a mask. This slice does not need it — the crop does
    the work — but it does not advance it either.
