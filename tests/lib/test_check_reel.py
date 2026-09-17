@@ -564,18 +564,23 @@ def test_no_brief_reads_as_not_checked_never_as_on_target(tmp_path, monkeypatch)
 # per test, at the master-relative sample times it was asked for.
 
 
-def _run_reel(tmp_path, predicted=None, tone_target=None, tone_dsts=None):
+def _run_reel(tmp_path, predicted=None, tone_target=None, tone_dsts=None, chroma=None):
     """Two-episode grade_faithful harness. `_Stub(...).install(...)` needs a
     monkeypatch of its own — a bare `pytest.MonkeyPatch.context()` rather than the
     fixture — so a caller's OWN `monkeypatch.setattr(check_reel.color_measure, ...)`
     (applied directly to the module before this runs) stays in effect for the
     `check_reel.run` call below, while this helper's stub of the unrelated
-    ffmpeg-touching functions cleans itself up the moment the call returns."""
+    ffmpeg-touching functions cleans itself up the moment the call returns.
+
+    chroma= (fix round 1, FINDING 1): threaded through the same way as
+    predicted/tone_target/tone_dsts above, so a chroma-spread test can drive
+    the real run() wiring instead of calling _chroma_spread_check directly."""
     with pytest.MonkeyPatch.context() as mp:
         _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(mp)
         return check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"],
                               ReelCheckSpec(target_dur=6.0), str(tmp_path / "r.json"),
-                              predicted=predicted, tone_target=tone_target, tone_dsts=tone_dsts)
+                              predicted=predicted, tone_target=tone_target, tone_dsts=tone_dsts,
+                              chroma=chroma)
 
 
 def test_grade_faithful_passes_when_the_master_matches_every_prediction(monkeypatch, tmp_path):
@@ -980,6 +985,20 @@ def test_one_reading_is_not_a_spread():
     assert cr.detail["status"] == "not-checked"
 
 
+def test_exactly_two_readings_is_a_real_spread():
+    """Fix round 1, RIDER: the multi-reading tests above use three and four
+    readings, and the one-reading boundary test immediately above this one
+    only pins the "fewer than two" side. A mutation tightening
+    `len(per) < 2` to `len(per) <= 2` would treat two real readings as
+    not-checked too, and nothing before this test would notice — this pins the
+    boundary from the other side, at exactly two."""
+    cr = _chroma_spread_check([_reading(-4.18, -1.22), _reading(-2.72, -0.51)], 5.0)
+    assert cr.detail["spread_c"] == pytest.approx(1.46)
+    assert cr.detail["spread_h"] == pytest.approx(0.71)
+    assert cr.detail["worst"] == pytest.approx(1.46)
+    assert isinstance(cr.passed, bool)
+
+
 def test_no_chroma_at_all_is_named_not_zero():
     cr = _chroma_spread_check(None, 5.0)
     assert cr.passed is None
@@ -999,3 +1018,28 @@ def test_a_failing_chroma_spread_does_not_fail_the_reel():
         "black": CheckResult("black", True, {}),
         "chroma_spread": CheckResult("chroma_spread", False, {"worst": 9.07})})
     assert rep.overall is True
+
+
+def test_chroma_spread_fails_through_the_real_run_but_never_fails_the_reel(monkeypatch, tmp_path):
+    """Fix round 1, FINDING 1: every chroma assertion above either calls the
+    private `_chroma_spread_check` directly or hand-builds a `ReelReport` (like
+    the test immediately above) — nothing drives check_reel.run()'s own
+    chroma_spread wiring. Concrete regression this closes: someone changes
+    `_chroma_spread_check` to return a `(CheckResult, fail)` tuple like its
+    neighbour `_grade_faithful_check`, and adds a matching
+    `if fail is not None: fails.append(fail)` beside the wiring line in run() —
+    a reel whose only problem is chroma_spread would silently stop shipping,
+    and nothing above this test would notice. Mirrors
+    test_grade_faithful_fails_and_routes_to_process_episode's `_run_reel`
+    idiom, but for a check that must NEVER escalate: three separate
+    assertions, each catching a different way that could go wrong (the check
+    not firing at all; `chroma_spread` falling out of `_ADVISORY_CHECKS` so a
+    real failure blocks `overall`; and a `ReelFailure` reaching `fail_reasons`,
+    which `overall` itself would NOT catch, since it reads only `checks`)."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
+    chroma = [_reading(2.72, 7.84), _reading(-4.18, -1.22)]   # worst 9.06, well past bar=5.0
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2, chroma=chroma)
+    assert rep.checks["chroma_spread"].passed is False
+    assert rep.overall is True
+    assert not any(f.check == "chroma_spread" for f in rep.fail_reasons)

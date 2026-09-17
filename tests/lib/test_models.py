@@ -2218,3 +2218,17 @@ def test_chroma_spread_is_advisory():
 def test_the_chroma_bar_has_its_measured_default():
     from scripts.lib.models import ReelCheckSpec
     assert ReelCheckSpec(target_dur=10.0).chroma_spread_max == 5.0
+
+
+@pytest.mark.parametrize("bad", [0, -0.1, True, "4.0", None])
+def test_reel_check_spec_refuses_a_bad_chroma_spread_max(bad):
+    """Fix round 1, FINDING 2: mirrors test_reel_check_spec_refuses_a_bad_grade_
+    residual_max exactly — the validator convention on this dataclass is always
+    paired with a rejection test, and chroma_spread_max's own validator landed
+    without one. `bad=True` is the one that matters: without the `isinstance(...,
+    bool)` exclusion, `ReelCheckSpec(chroma_spread_max=True)` would be silently
+    accepted as 1.0 — True is a positive int as far as a bare
+    `isinstance(x, (int, float))` check can tell. The other values pin the
+    ordinary positive-number guard."""
+    with pytest.raises(ValueError, match="chroma_spread_max"):
+        ReelCheckSpec(target_dur=10.0, chroma_spread_max=bad)
