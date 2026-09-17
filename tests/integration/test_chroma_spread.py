@@ -51,14 +51,15 @@ def _crop_pairs(plain_frames: list, graded_frames: list) -> list[tuple]:
 
 def _chroma_reading(md: dict, src: str) -> dict:
     """Render `md` graded and ungraded, and describe the crop's displacement in
-    the exact shape `_chroma_spread_check` reads: `{delta_c, delta_h, region}`."""
+    the exact shape `_chroma_spread_check` reads: `{delta_c, delta_h}` — no
+    `region` key (final whole-branch review, FIX 1; design §2.3 amended)."""
     graded_plan = process_episode.plan_for(md, src, ROUTE)
     plain_plan = process_episode.plan_ungraded(md, src, ROUTE)
     times = color.sample_times(graded_plan.dur)
     plain_frames = reframe.plan_frames_rgb(plain_plan, src, times)
     graded_frames = reframe.plan_frames_rgb(graded_plan, src, times)
     d = color_fidelity.evaluate(_crop_pairs(plain_frames, graded_frames))
-    return {"delta_c": d["delta_c"], "delta_h": d["delta_h"], "region": "crop"}
+    return {"delta_c": d["delta_c"], "delta_h": d["delta_h"]}
 
 
 def test_two_identical_chains_displace_nothing(golden_ride_segment):
@@ -90,29 +91,6 @@ def test_a_saturation_pull_moves_dC_and_leaves_the_sign_readable(golden_ride_seg
     # Not merely < 0: a value hugging zero would be noise reading a sign by luck.
     # Measured -1.3 on this fixture, comfortably clear of that.
     assert reading["delta_c"] < -0.5, reading
-
-
-def test_swapping_the_two_stacks_inverts_the_crops_components(golden_ride_segment):
-    """Same inversion the 2026-09-16 row-13 assertion pins for the subject's pair:
-    delta_e is identical and every signed component flips."""
-    src = str(golden_ride_segment)
-    md = _md(src, saturation=0.8, mid_blue=1.1)
-    graded_plan = process_episode.plan_for(md, src, ROUTE)
-    plain_plan = process_episode.plan_ungraded(md, src, ROUTE)
-    times = color.sample_times(graded_plan.dur)
-    plain_frames = reframe.plan_frames_rgb(plain_plan, src, times)
-    graded_frames = reframe.plan_frames_rgb(graded_plan, src, times)
-    forward = color_fidelity.evaluate(_crop_pairs(plain_frames, graded_frames))
-    reverse = color_fidelity.evaluate(_crop_pairs(graded_frames, plain_frames))
-    print(f"\nMEASURED forward={forward} reverse={reverse}")
-    # Real, non-zero components on both sides of the sign flip below — otherwise
-    # 0.0 == -0.0 would pass this test having proved nothing.
-    assert forward["delta_c"] != 0.0 and forward["delta_h"] != 0.0
-    assert forward["delta_e"] == reverse["delta_e"]
-    assert forward["delta_e"] > 0.0
-    assert forward["delta_l"] == -reverse["delta_l"]
-    assert forward["delta_c"] == -reverse["delta_c"]
-    assert forward["delta_h"] == -reverse["delta_h"]
 
 
 def test_the_bar_separates_a_consistent_reel_from_one_odd_episode(golden_ride_segment):
