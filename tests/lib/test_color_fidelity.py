@@ -93,17 +93,23 @@ def _report(grade_damage: dict) -> dict:
 
 
 def test_a_subject_reading_hands_over_the_crops_pair_not_the_subjects():
-    """The reel compares ONE pixel set across episodes, and it is the crop."""
+    """The reel compares ONE pixel set across episodes, and it is the crop.
+
+    The output carries no `region` key (final whole-branch review, FIX 1): both
+    arms hand over the crop's own numbers, so a label distinguishing them would
+    either be constant or, as it shipped first, actively wrong on this very arm —
+    the numbers below are the CROP's even though the source report's `region` is
+    `"subject"`."""
     out = cf.shift_from_report(_report(
         {"region": "subject", "delta_c": 9.0, "delta_h": 9.0,
          "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
-    assert out == {"delta_c": -1.25, "delta_h": 0.5, "region": "subject"}
+    assert out == {"delta_c": -1.25, "delta_h": 0.5}
 
 
 def test_a_crop_reading_hands_over_its_own_pair():
     out = cf.shift_from_report(_report(
         {"region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}))
-    assert out == {"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}
+    assert out == {"delta_c": -4.18, "delta_h": -1.22}
 
 
 def test_a_not_checked_grade_damage_keeps_its_own_reason():
@@ -130,9 +136,12 @@ def test_status_and_region_coexist_when_update_merges_them():
     (which can return status: "not-checked") with _subject_delta_advisory (which
     always sets region). A dict with both status AND region is reachable in
     production. shift_from_report keys on region, not status (design §2.3) —
-    a real reading takes precedence over a status field from the evaluate side."""
+    a real reading takes precedence over a status field from the evaluate side.
+
+    The output itself carries no `region` (final whole-branch review, FIX 1) —
+    only the INPUT report's region decides which pair comes back."""
     out = cf.shift_from_report(_report(
         {"status": "not-checked", "reason": "every ungraded frame is flat",
          "region": "subject", "delta_c": 9.0, "delta_h": 9.0,
          "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
-    assert out == {"delta_c": -1.25, "delta_h": 0.5, "region": "subject"}
+    assert out == {"delta_c": -1.25, "delta_h": 0.5}

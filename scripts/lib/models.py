@@ -1391,10 +1391,14 @@ class ReelEpisode:
     #: What the grade did to this episode's COLOUR, measured once in phase 1 from
     #: the render pair check_episode already decodes (design 2026-09-17 §2.3), and
     #: read at reel level by check_reel's advisory chroma_spread. Two shapes, both
-    #: named: a reading {"delta_c", "delta_h", "region"} or an absence
+    #: named: a reading {"delta_c", "delta_h"} or an absence
     #: {"status": "not-checked", "reason"}. None means a manifest written before
     #: this field existed — check_reel reports that as its own named not-checked
     #: reason, never as a 0.0 that would read as "the grade moved nothing".
+    #: No `region` key (final whole-branch review, FIX 1): the reading is always
+    #: the CROP's regardless of which arm of check_episode supplied it — see
+    #: color_fidelity.shift_from_report's docstring — so a label naming a region
+    #: would either be constant or, on the subject arm, actively wrong.
     chroma: dict | None = None
 
     def __post_init__(self) -> None:
@@ -1404,7 +1408,7 @@ class ReelEpisode:
         if not isinstance(c, dict):
             raise ValueError(
                 f"ReelEpisode.chroma must be a reading "
-                f"{{delta_c, delta_h, region}} or an absence {{status, reason}}, "
+                f"{{delta_c, delta_h}} or an absence {{status, reason}}, "
                 f"got {type(c).__name__} — build it with "
                 f"color_fidelity.shift_from_report(report)")
         if c.get("status") == "not-checked":
@@ -1419,11 +1423,6 @@ class ReelEpisode:
                 f"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
                 f"(signed CIEDE2000 components), got {c!r} — build it with "
                 f"color_fidelity.shift_from_report(report)")
-        if c.get("region") not in ("subject", "crop"):
-            raise ValueError(
-                f"ReelEpisode.chroma 'region' must be 'subject' or 'crop' — the two "
-                f"regions check_episode can read a displacement over — got "
-                f"{c.get('region')!r}")
 
     def to_dict(self) -> dict:
         """The shape from_dict reads back. `manifest` is emitted INLINE even when it

@@ -78,6 +78,18 @@ def shift_from_report(report: dict) -> dict:
     supplied the primary reading and `delta_c`/`delta_h` when it fell back and the
     primary reading already IS the crop's (design §2.2).
 
+    The reading carries no `region` key (final whole-branch review, FIX 1; design
+    §2.3 amended): both arms hand over the SAME pixel set — the crop's — so a label
+    naming which region supplied the numbers would either be constant ("crop",
+    always) or, on the subject arm, would say "subject" while the numbers under it
+    are the crop's, which is a reading naming pixels that are not the ones it
+    describes. A field that cannot be decided is deleted, not qualified (design
+    §1 rule 4) — nothing downstream reads it either: `_chroma_spread_check` keys
+    only on `delta_c`/`delta_h`. Do not add it back; a caller that needs to know
+    which arm supplied `check_episode`'s own reading already has `region` on
+    THAT report, at `report["checks"]["grade_damage"]["region"]` — unaffected by
+    this function, which only renames two of that same dict's keys.
+
     Keys on `region`, never on the presence of a `status` key: the grade_damage block
     is a FLAT merge of a verdict dict and an advisory dict, and a predicate over
     `"status" in d` reads a key either half could contribute.
@@ -89,10 +101,16 @@ def shift_from_report(report: dict) -> dict:
                 "reason": "the report carries no grade_damage block"}
     region = d.get("region")
     if region == "subject":
-        return {"delta_c": d["crop_delta_c"], "delta_h": d["crop_delta_h"],
-                "region": "subject"}
+        return {"delta_c": d["crop_delta_c"], "delta_h": d["crop_delta_h"]}
     if region == "crop":
-        return {"delta_c": d["delta_c"], "delta_h": d["delta_h"], "region": "crop"}
+        return {"delta_c": d["delta_c"], "delta_h": d["delta_h"]}
+    # `d.get("status")` is not a second fallback leg here (final whole-branch review,
+    # FIX 4): reaching this line at all needs a grade_damage block with no readable
+    # region, and the only region-less shape production ever emits is
+    # check_episode._grade_damage's early return, which always carries a `reason`
+    # beside its `status` — so a `status`-only dict is not a shape this function is
+    # ever handed in practice, and using it as a reason would report the literal
+    # string "not-checked": an absence that names that it was not checked but not why.
     return {"status": "not-checked",
-            "reason": d.get("reason") or d.get("status")
+            "reason": d.get("reason")
             or f"grade_damage names no readable region (got {region!r})"}

@@ -1813,7 +1813,7 @@ def test_reel_manifest_round_trips_through_json(tmp_path):
         episodes=[m.ReelEpisode(manifest={"segment": "a.mp4", "target_dur": 2.0},
                                 clip="ep0.mp4", route="r0.json",
                                 path="p0.json", meta="m0.json",
-                                chroma={"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}),
+                                chroma={"delta_c": -4.18, "delta_h": -1.22}),
                   m.ReelEpisode(manifest={"segment": "b.mp4", "target_dur": 3.0},
                                 clip="ep1.mp4", route=None, path="p1.json", meta="m1.json")],
         target_dur=5.0, cap=2, changelog="first cut", music=None,
@@ -1827,7 +1827,8 @@ def test_reel_manifest_round_trips_through_json(tmp_path):
     # assertion (and without episode 0 carrying a real value at all) deleting
     # `chroma=e.get("chroma")` from ReelManifest.from_dict would silently reset every
     # reloaded episode's chroma to None and nothing above would fail.
-    assert back.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}
+    # No `region` key (final whole-branch review, FIX 1) — see ReelEpisode.chroma's docstring.
+    assert back.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22}
     assert back.episodes[1].route is None          # a pan's absent route survives as null
     assert back.provenance == {"edl": {"state": "intact"}}
 
@@ -1849,8 +1850,8 @@ def test_reel_episode_to_dict_is_the_from_dict_shape():
 
 def test_an_episode_carries_its_chroma_displacement_through_a_round_trip():
     e = m.ReelEpisode(manifest={"segment": "s.mp4"}, clip="ep0.mp4",
-                      chroma={"delta_c": -4.18, "delta_h": -1.22, "region": "crop"})
-    assert e.to_dict()["chroma"] == {"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}
+                      chroma={"delta_c": -4.18, "delta_h": -1.22})
+    assert e.to_dict()["chroma"] == {"delta_c": -4.18, "delta_h": -1.22}
 
 
 def test_an_episode_carries_a_named_absence_through_a_round_trip():
@@ -1874,39 +1875,29 @@ def test_an_episode_written_before_this_field_existed_stays_loadable():
 
 
 def test_a_chroma_that_is_neither_shape_is_refused_by_name():
-    # Fix round 1, Finding 1: tightened from match="chroma" — every one of the four
+    # Fix round 1, Finding 1: tightened from match="chroma" — every one of the three
     # ReelEpisode.chroma refusal messages starts "ReelEpisode.chroma...", so a bare "chroma"
-    # cannot tell WHICH check fired. This input has no status, no delta_h and no region; the
+    # cannot tell WHICH check fired. This input has no status and no delta_h; the
     # numeric-completeness check is the one that actually fires (delta_h is missing), so the
     # match now pins that message specifically.
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         m.ReelEpisode(manifest={}, clip="ep0.mp4", chroma={"delta_c": -1.0})
 
 
-def test_a_chroma_reading_with_an_unknown_region_is_refused():
-    # Tightened (fix round 1): the type-check message also lists "region" as one of a
-    # reading's keys ("{delta_c, delta_h, region}"), so a bare match="region" could in
-    # principle match the wrong branch too; pin the region check's own wording instead.
-    with pytest.raises(ValueError, match="'region' must be 'subject' or 'crop'"):
-        m.ReelEpisode(manifest={}, clip="ep0.mp4",
-                      chroma={"delta_c": 1.0, "delta_h": 1.0, "region": "background"})
-
-
 def test_a_chroma_reading_with_a_non_numeric_component_is_refused():
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         m.ReelEpisode(manifest={}, clip="ep0.mp4",
-                      chroma={"delta_c": "-1.0", "delta_h": 1.0, "region": "crop"})
+                      chroma={"delta_c": "-1.0", "delta_h": 1.0})
 
 
 def test_a_chroma_reading_with_a_non_numeric_delta_h_is_refused():
     # Fix round 1, Finding 1 (the coverage gap itself): the sibling test above only ever
     # breaks the delta_c side of the two-key check. Narrowing `for k in ("delta_c",
     # "delta_h")` to `("delta_c",)` in __post_init__ would let this exact input — a VALID
-    # delta_c, a VALID region, and a bad delta_h — sail through the numeric check and then
-    # through the (passing) region check, raising nothing at all.
+    # delta_c and a bad delta_h — sail through the numeric check raising nothing at all.
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         m.ReelEpisode(manifest={}, clip="ep0.mp4",
-                      chroma={"delta_c": 1.0, "delta_h": "1.0", "region": "crop"})
+                      chroma={"delta_c": 1.0, "delta_h": "1.0"})
 
 
 def test_a_not_checked_chroma_with_an_empty_reason_is_refused():
@@ -1941,7 +1932,7 @@ def test_a_boolean_delta_component_is_refused_not_treated_as_numeric():
     # coverage before this test.
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         m.ReelEpisode(manifest={}, clip="ep0.mp4",
-                      chroma={"delta_c": True, "delta_h": 1.0, "region": "crop"})
+                      chroma={"delta_c": True, "delta_h": 1.0})
 
 
 # --- ZoomSpec (design 2026-08-08): subject-anchored push-in/pull-out, not a
