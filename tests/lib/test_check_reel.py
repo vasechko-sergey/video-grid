@@ -937,8 +937,11 @@ def test_grade_faithful_records_zero_frames_when_nothing_could_be_predicted(monk
 from scripts.check_reel import _chroma_spread_check
 
 
-def _reading(c, h, region="crop"):
-    return {"delta_c": c, "delta_h": h, "region": region}
+def _reading(c, h):
+    # No `region` key (final whole-branch review, FIX 1): ReelEpisode.chroma's
+    # reading shape carries only delta_c/delta_h — see its own docstring in
+    # scripts/lib/models.py and color_fidelity.shift_from_report's.
+    return {"delta_c": c, "delta_h": h}
 
 
 def test_the_spread_is_the_widest_gap_across_the_reel():
@@ -975,8 +978,20 @@ def test_the_bar_is_inclusive_at_the_boundary():
     lands EXACTLY on the bar, not only strictly under it — nothing before this
     test pinned that side of the boundary (every other case here is comfortably
     clear of its own bar). A `worst < bar` mutant fails only the '<=' arm; this
-    is what would go red against it."""
-    cr = _chroma_spread_check([_reading(0.0, 0.0), _reading(5.0, 0.0)], 5.0)
+    is what would go red against it.
+
+    Strengthened, final whole-branch review, FIX 3: the original version of this
+    test used _reading(0.0, 0.0) / _reading(5.0, 0.0), whose subtraction is EXACT
+    in floating point — 5.0 - 0.0 == 5.0 to the bit — so it stayed green even
+    while `_chroma_spread_check` compared the UNROUNDED spread against `bar` and
+    only rounded the value afterward for display. -6.97 / -11.97 is the reviewer's
+    own reproduction of the bug that boundary hid: their difference is
+    5.000000000000001, a hair over the bar in raw floating point even though it
+    is exactly 5.0 once rounded to 2 decimals, the precision the report actually
+    shows. Verified RED against the unrounded comparison (`worst = max(spread_c,
+    spread_h)` computed and compared before either was rounded) before this slice
+    rounded first and judged the rounded value; see check_reel._chroma_spread_check."""
+    cr = _chroma_spread_check([_reading(-6.97, 0.0), _reading(-11.97, 0.0)], 5.0)
     assert cr.detail["spread_c"] == pytest.approx(5.0)
     assert cr.detail["worst"] == pytest.approx(5.0)
     assert cr.passed is True

@@ -356,7 +356,13 @@ def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
         if isinstance(c, dict) and "delta_c" in c:
             per[str(i)] = [c["delta_c"], c["delta_h"]]
         elif isinstance(c, dict):
-            missing[str(i)] = c.get("reason") or "not checked"
+            # A bare subscript, never .get: every ReelEpisode.chroma that reaches
+            # here already passed ReelEpisode.__post_init__, which refuses a
+            # not-checked absence with no non-empty 'reason' — so a dict without
+            # 'delta_c' is guaranteed to carry one (final whole-branch review,
+            # FIX 4). The same rule the background arm in check_episode follows:
+            # a fallback that cannot happen does not get a silent default.
+            missing[str(i)] = c["reason"]
         else:
             missing[str(i)] = ("the reel manifest is older than this field — "
                                "re-run phase 1 to record it")
@@ -369,11 +375,19 @@ def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
                                       f"needs at least two"})
     cs = [v[0] for v in per.values()]
     hs = [v[1] for v in per.values()]
-    spread_c, spread_h = max(cs) - min(cs), max(hs) - min(hs)
+    # Rounded ONCE, then judged on the ROUNDED value (final whole-branch review,
+    # FIX 3; the same convention gradedamage.evaluate documents): comparing the
+    # unrounded spread against `bar` while displaying a rounded one let a report
+    # show `worst: 5.0` beside `passed: False` — a boundary case whose raw
+    # subtraction lands a float epsilon over the bar even though it displays
+    # exactly AT it. Rounding first makes the verdict always agree with the
+    # number the report shows.
+    spread_c = round(max(cs) - min(cs), 2)
+    spread_h = round(max(hs) - min(hs), 2)
     worst = max(spread_c, spread_h)
     return CheckResult("chroma_spread", worst <= bar,
-                       {**detail, "spread_c": round(spread_c, 2),
-                        "spread_h": round(spread_h, 2), "worst": round(worst, 2)})
+                       {**detail, "spread_c": spread_c,
+                        "spread_h": spread_h, "worst": worst})
 
 
 def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> CheckResult:
