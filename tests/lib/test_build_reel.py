@@ -809,3 +809,49 @@ def test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma(monkeypatch, tmp_
     assert len(rounds) == 2                                # round 0 (reprocess) + round 1 (deliver)
     assert rounds[0][1] == {"delta_c": -9.0, "delta_h": -2.0, "region": "crop"}   # still phase 1's
     assert rounds[-1][1] == {"delta_c": 2.0, "delta_h": 0.3, "region": "crop"}    # refreshed
+
+
+def test_a_rejected_reprocess_never_relabels_the_episodes_chroma(monkeypatch, tmp_path):
+    """Fix round 1, Important finding: the reprocess arm's early return on a
+    REJECTED re-render (`if res["status"] != "mechanical_pass": return ...`,
+    build_reel.py line 221) sits three lines ABOVE the chroma refresh (line 227).
+    Today's ordering is correct, but nothing pinned it — a future edit that moved
+    `chroma[item.idx] = color_fidelity.shift_from_report(res.get("report") or {})`
+    above that guard would not crash (`res.get("report") or {}` degrades to a
+    not-checked reading rather than raising, and a status like "escalate" carries
+    a real `report` besides) and would silently relabel a rejected render's
+    episode with a reading taken from a clip nobody accepted. The two existing
+    tests that already drive this branch — test_reprocess_failure_propagates and
+    test_multi_culprit_round_second_failure_propagates_without_delivering — assert
+    on the stop_and_report finding and nothing about chroma.
+
+    The rejected result here is `status="escalate"` carrying a REAL report (not
+    the report-less "needs_input" those two tests use) — process_episode.py's own
+    docstring says escalate DOES carry one — so the mutation this test guards
+    against would not merely degrade to "not-checked": it would read a plausible-
+    looking, wrong number off an unaccepted render. That is also why this cannot
+    be observed the way the sibling test above observes a refresh: a rejection
+    returns stop_and_report immediately, before any second check_reel.run call
+    exists to spy on. color_fidelity.shift_from_report is the ONLY statement in
+    the reprocess arm that ever writes chroma[item.idx], so proving it is never
+    called for this rejected attempt IS proving the entry was left exactly as
+    phase 1 left it."""
+    calls = []
+    monkeypatch.setattr(build_reel.color_fidelity, "shift_from_report",
+                        lambda report: calls.append(report) or {"status": "not-checked",
+                                                                 "reason": "spy"})
+    rejected_report = {"checks": {"grade_damage": {"region": "crop",
+                                                    "delta_c": 99.0, "delta_h": 99.0}}}
+    seen = _wire(monkeypatch, [_black_fail(1)],
+                pe_results=[{"status": "escalate", "report": rejected_report}])
+
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json"),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json",
+                       chroma={"delta_c": -9.0, "delta_h": -2.0, "region": "crop"})]
+    rm = ReelManifest(episodes=eps, target_dur=6.0)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+
+    assert res["status"] == "stop_and_report"
+    assert res["finding"]["reason"] == "reprocess-failed" and res["finding"]["episode_idx"] == 1
+    assert seen["deliver"] == []                # a rejected reprocess is never delivered
+    assert calls == []                          # shift_from_report never ran on the rejected report

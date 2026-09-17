@@ -1956,12 +1956,25 @@ def _build_manifest_with(results):
 
 def test_phase_one_records_each_episodes_chroma_displacement():
     """The pair is rendered once, in phase 1. The reel reads the number phase 1
-    already produced rather than paying for a second pair (design §2.3)."""
+    already produced rather than paying for a second pair (design §2.3).
+
+    Two episodes with DIFFERENT readings (fix round 1, Minor rider): a single-
+    episode results list cannot tell `chroma=color_fidelity.shift_from_report(
+    res.get("report") or {})` (loop-bound `res`) apart from a bug that hardcoded
+    `results[0]["report"]` while still correctly using the loop-bound `res` for
+    `clip=` — both would report episode 0's reading at every index. Asserting
+    both episodes land their OWN reading at their OWN index is what a one-episode
+    fixture cannot exercise."""
     rm = _build_manifest_with(results=[
         {"status": "mechanical_pass", "clip": "ep0.mp4",
          "report": {"checks": {"grade_damage": {
-             "region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}}}}])
+             "region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}}}},
+        {"status": "mechanical_pass", "clip": "ep1.mp4",
+         "report": {"checks": {"grade_damage": {
+             "region": "crop", "delta_c": 7.50, "delta_h": 3.00, "pass": True}}}}])
     assert rm.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22,
+                                     "region": "crop"}
+    assert rm.episodes[1].chroma == {"delta_c": 7.50, "delta_h": 3.00,
                                      "region": "crop"}
 
 
