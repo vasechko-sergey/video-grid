@@ -85,3 +85,40 @@ def test_evaluate_reports_the_three_components_and_no_ranking_of_them():
     The components are the explanation; the reader ranks them or does not."""
     out = cf.evaluate([((10, 20, 30), (40, 50, 60))])
     assert set(out) == {"delta_e", "delta_l", "delta_c", "delta_h", "samples"}
+
+
+def _report(grade_damage: dict) -> dict:
+    return {"checks": {"grade_damage": grade_damage}, "overall": True,
+            "attempt": 1, "fail_reasons": []}
+
+
+def test_a_subject_reading_hands_over_the_crops_pair_not_the_subjects():
+    """The reel compares ONE pixel set across episodes, and it is the crop."""
+    out = cf.shift_from_report(_report(
+        {"region": "subject", "delta_c": 9.0, "delta_h": 9.0,
+         "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
+    assert out == {"delta_c": -1.25, "delta_h": 0.5, "region": "subject"}
+
+
+def test_a_crop_reading_hands_over_its_own_pair():
+    out = cf.shift_from_report(_report(
+        {"region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}))
+    assert out == {"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}
+
+
+def test_a_not_checked_grade_damage_keeps_its_own_reason():
+    """Never a 0.0, which would read as 'the grade moved nothing' (design §4.5)."""
+    out = cf.shift_from_report(_report(
+        {"status": "not-checked", "reason": "no render pair: source is pc"}))
+    assert out == {"status": "not-checked", "reason": "no render pair: source is pc"}
+
+
+def test_a_report_with_no_grade_damage_block_is_named_not_guessed():
+    out = cf.shift_from_report({"checks": {}, "overall": True})
+    assert out["status"] == "not-checked"
+    assert "grade_damage" in out["reason"]
+
+
+def test_a_non_report_is_named_rather_than_crashing():
+    out = cf.shift_from_report([])
+    assert out["status"] == "not-checked"

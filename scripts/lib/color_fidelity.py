@@ -64,3 +64,35 @@ def evaluate(pairs: list[tuple]) -> dict:
             "delta_c": round(comps[1], 2),
             "delta_h": round(comps[2], 2),
             "samples": len(rows)}
+
+
+def shift_from_report(report: dict) -> dict:
+    """The episode's chroma displacement, in the shape ReelEpisode.chroma carries.
+
+    One reader for a report's own description of what the grade did to its colour,
+    so the two drivers that fill the carrier (edl_to_reel's phase 1 and build_reel's
+    reprocess arm) cannot drift about which key holds it (design 2026-09-17 §2.3).
+
+    The pair handed over is always the CROP's — the one pixel set defined identically
+    on every episode — which is `crop_delta_c`/`crop_delta_h` when the subject
+    supplied the primary reading and `delta_c`/`delta_h` when it fell back and the
+    primary reading already IS the crop's (design §2.2).
+
+    Keys on `region`, never on the presence of a `status` key: the grade_damage block
+    is a FLAT merge of a verdict dict and an advisory dict, and a predicate over
+    `"status" in d` reads a key either half could contribute.
+    """
+    checks = report.get("checks") if isinstance(report, dict) else None
+    d = checks.get("grade_damage") if isinstance(checks, dict) else None
+    if not isinstance(d, dict):
+        return {"status": "not-checked",
+                "reason": "the report carries no grade_damage block"}
+    region = d.get("region")
+    if region == "subject":
+        return {"delta_c": d["crop_delta_c"], "delta_h": d["crop_delta_h"],
+                "region": "subject"}
+    if region == "crop":
+        return {"delta_c": d["delta_c"], "delta_h": d["delta_h"], "region": "crop"}
+    return {"status": "not-checked",
+            "reason": d.get("reason") or d.get("status")
+            or f"grade_damage names no readable region (got {region!r})"}
