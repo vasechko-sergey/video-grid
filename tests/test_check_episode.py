@@ -229,6 +229,66 @@ def test_every_fallback_the_advisory_can_report_is_a_regions_name():
     assert seen - {None} <= set(regions.FALLBACKS)
 
 
+def test_a_subject_reading_also_carries_the_crops_own_displacement():
+    """The reel-level check needs ONE pixel set every episode has. The subject is
+    not it — it falls back by name — so a subject reading carries the crop's
+    displacement alongside its own (design 2026-09-17 §2.2)."""
+    out = _advisory_over_a_located_subject()          # helper below
+    assert out["region"] == "subject"
+    assert "crop_delta_c" in out and "crop_delta_h" in out
+    assert isinstance(out["crop_delta_c"], float)
+    assert isinstance(out["crop_delta_h"], float)
+
+
+def test_a_crop_reading_does_not_repeat_itself_under_a_second_name():
+    """When the subject fell back, delta_c/delta_h ALREADY are the crop's. A second
+    key holding the same number is the contradiction surface 2026-09-16 §2.3
+    refused for the background's fraction."""
+    out = _advisory_over_a_refused_subject()          # helper below
+    assert out["region"] == "crop"
+    assert "crop_delta_c" not in out
+    assert "crop_delta_h" not in out
+
+
+def test_the_crops_displacement_is_the_whole_frame_not_the_background():
+    """Not an approximation of the background reading: the crop is subject UNION
+    background, and on a frame where the two differ the numbers must differ."""
+    out = _advisory_over_a_located_subject_whose_subject_differs_from_its_background()
+    assert out["region"] == "subject"
+    assert out["crop_delta_c"] != out["delta_c"]
+
+
+def _advisory_over_a_located_subject() -> dict:
+    """A subject box comfortably over regions.MIN_REGION_FRAC — the ordinary,
+    located case the crop's displacement is expected to ride alongside."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    return check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                  route, path, meta)
+
+
+def _advisory_over_a_refused_subject() -> dict:
+    """A subject box under regions.MIN_REGION_FRAC — the subject falls back to
+    the crop, so `delta_c`/`delta_h` already ARE the crop's own."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar(box=(30.0, 20.0, 4.0, 4.0))
+    return check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                  route, path, meta)
+
+
+def _advisory_over_a_located_subject_whose_subject_differs_from_its_background() -> dict:
+    """The default stacks already have this shape: the subject box takes a
+    different colour from the rest of the frame in the GRADED stack only
+    (sub_graded=(200,10,10) against an unchanged bg_graded=(60,60,60)), so the
+    subject's chroma moves and the background's does not — the crop (subject
+    UNION background) must then read a different displacement than the subject
+    alone."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    return check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                  route, path, meta)
+
+
 # --- grade_damage (design 2026-08-31 §3): the entropy-ratio verdict, plans-gated ---
 #
 # `plans` is a real (graded, plain) RenderPlan pair — plan_frames_rgb decodes real

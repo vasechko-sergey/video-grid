@@ -141,7 +141,8 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     # its own. regions.refuse carried a separate `empty` argument for that case
     # until this slice's final review; see its docstring for why it went.
     fallback = regions.refuse("subject", located=located, fraction=frac)
-    read = np.ones((n, h, w), dtype=bool) if fallback else mask
+    whole = np.ones((n, h, w), dtype=bool)
+    read = whole if fallback else mask
     out = {"advisory_delta_e": True,
            "region": "crop" if fallback else "subject",
            # the fraction of the region ASKED for — on a too-small row it is the
@@ -161,6 +162,18 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
             # holding, a KeyError is the right answer — a None here is the defect.
             out["background_delta_e"] = color_fidelity.evaluate(
                 _region_pairs(p, g, bg))["delta_e"]
+        # The CROP's own signed displacement, for the reel-level chroma_spread check
+        # (design 2026-09-17 §2.2). The reel needs one pixel set defined identically
+        # on every episode, and the crop is the only region that is always present:
+        # `subject` falls back by name and `background` is not reported at all after
+        # a subject fallback. Emitted only on this arm — when the subject fell back,
+        # delta_c/delta_h ALREADY are the crop's, and a second key holding the same
+        # number is the contradiction surface 2026-09-16 §2.3 refused for the
+        # background's fraction. The consumer reads `region` to know which pair to
+        # take. Bare subscripts for the same reason as the background's above: a
+        # full-frame mask holds pixels in every frame.
+        crop = color_fidelity.evaluate(_region_pairs(p, g, whole))
+        out["crop_delta_c"], out["crop_delta_h"] = crop["delta_c"], crop["delta_h"]
     return out
 
 
