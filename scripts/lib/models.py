@@ -1086,6 +1086,17 @@ class ReelCheckSpec:
                                        # solved with every other knob at identity —
                                        # was displaced by any post-tone luma knob and
                                        # so failed correctly graded episodes (§0.2).
+    chroma_spread_max: float = 5.0     # advisory: the widest gap, across the reel's
+                                       # episodes, in what the grade did to their
+                                       # COLOUR — the signed CIEDE2000 dC*/dH*
+                                       # between each episode's ungraded and graded
+                                       # render of the same frames. Content cancels
+                                       # by construction, which is what an absolute
+                                       # cross-episode chroma statistic cannot do
+                                       # (design 2026-09-17 §0.4). Measured: the
+                                       # only real reel's three consistently graded
+                                       # episodes span 3.52, and its opening shot
+                                       # takes that to 9.07 (§2.5).
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
@@ -1112,6 +1123,11 @@ class ReelCheckSpec:
                 or self.grade_residual_max <= 0):
             raise ValueError(f"ReelCheckSpec.grade_residual_max must be a positive number of "
                              f"luma units, got {self.grade_residual_max!r}")
+        if (isinstance(self.chroma_spread_max, bool)
+                or not isinstance(self.chroma_spread_max, (int, float))
+                or self.chroma_spread_max <= 0):
+            raise ValueError(f"ReelCheckSpec.chroma_spread_max must be a positive number of "
+                             f"CIEDE2000 chroma units, got {self.chroma_spread_max!r}")
 
 
 @dataclass
@@ -1286,7 +1302,8 @@ class ReelFailure:
 
 
 _ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions",
-                    "outro", "brief_length")   # measured + reported but non-blocking (design §5)
+                    "outro", "brief_length", "chroma_spread")   # measured + reported but
+                                                                # non-blocking (design §5)
 
 
 @dataclass

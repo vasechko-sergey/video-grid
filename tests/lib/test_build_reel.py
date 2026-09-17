@@ -42,7 +42,8 @@ def _wire(monkeypatch, reports, pe_results=None):
     passed to each process_episode reprocess."""
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None,
-            "tone_target": None, "tone_dsts": None, "predicted": None, "brief_len": None}
+            "tone_target": None, "tone_dsts": None, "predicted": None, "brief_len": None,
+            "chroma": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -81,8 +82,21 @@ def _wire(monkeypatch, reports, pe_results=None):
     # rm.brief_len, leaving check_reel.run's advisory brief_length row reading not-checked
     # forever while every test in this file stays green — see
     # test_build_reel_forwards_brief_len_to_check_reel below.
+    #
+    # chroma= is the same shape of risk again (2026-09-17, chroma-spread Task 5, carried
+    # from Task 4's review): fake_run needs its OWN chroma=None parameter just to stay
+    # callable — its signature is fixed with no **kwargs, so the real call's chroma=chroma
+    # would otherwise raise "unexpected keyword argument" (exactly what happened here
+    # before this parameter existed). But the parameter alone proves nothing about
+    # CORRECTNESS: a dropped keyword silently defaults to None, and a wrong-variable
+    # substitution (chroma=tone_dsts, say) binds just as silently under the right name —
+    # neither raises. This file's own comments above record that tone_dsts=/tone_target=
+    # were once silently dropped at the real call site while the whole suite stayed green,
+    # until a dedicated assertion like this one was added — see
+    # test_build_reel_forwards_chroma_to_check_reel below.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
-                predicted=None, tone_target=None, tone_dsts=None, brief_len=None):
+                predicted=None, tone_target=None, tone_dsts=None, brief_len=None,
+                chroma=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
@@ -90,6 +104,7 @@ def _wire(monkeypatch, reports, pe_results=None):
         seen["tone_target"] = tone_target
         seen["tone_dsts"] = tone_dsts
         seen["brief_len"] = brief_len
+        seen["chroma"] = chroma
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
@@ -380,6 +395,27 @@ def test_build_reel_forwards_brief_len_to_check_reel(monkeypatch, tmp_path):
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
     assert res["status"] == "delivered"
     assert seen["brief_len"] == 45.0
+
+
+def test_build_reel_forwards_chroma_to_check_reel(monkeypatch, tmp_path):
+    """chroma-spread Task 5, mandated by Task 4's review: build_reel.py builds
+    `chroma = [e.chroma for e in rm.episodes]` as a local list (design
+    2026-09-17 §2.3) — a plain comprehension over rm.episodes, so a manifest
+    carrying real chroma readings proves nothing about whether build_reel
+    actually hands that list to check_reel.run, mirroring the tone_target/
+    tone_dsts/brief_len precedents above. fake_run's `chroma=None` parameter
+    (added this task) only keeps the fake callable against the real call's
+    `chroma=chroma` — a dropped keyword or a wrong-variable substitution would
+    each bind just as silently under it, with no error either way; this
+    assertion is what would catch either."""
+    seen = _wire(monkeypatch, [_pass()])
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json",
+                       chroma={"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+    assert res["status"] == "delivered"
+    assert seen["chroma"] == [{"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}, None]
 
 
 # --- music integration (Task 6) --------------------------------------------

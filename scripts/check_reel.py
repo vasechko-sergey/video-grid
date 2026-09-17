@@ -327,6 +327,55 @@ def _grade_faithful_check(master: str, durations: list[float], cuts: list[float]
     return CheckResult("grade_faithful", ok, detail), fail
 
 
+def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
+    """How far apart the reel's episodes are in what the grade did to their COLOUR.
+
+    ADVISORY, and the name is the whole claim: this measures whether the grade
+    treated the episodes alike, NOT whether they end up agreeing. Two episodes with
+    the same displacement can still look nothing like each other, and two with
+    different displacements can be exactly right if they started apart. The quantity
+    a reader wants — do the delivered episodes agree in colour — is not measurable
+    from these artifacts: within ONE camera, ungraded, the only real run's episodes
+    differ by 4.87 b* with no grade applied at all, so no threshold on an absolute
+    chroma statistic separates a mismatch from a different amount of ocean (design
+    2026-09-17 §0.4). That is the shape of color_across_cuts, whose ceiling went
+    12 -> 44 -> 56 before it was deleted; naming this check after the goal instead
+    of after the measurement would be the first step back down that road.
+
+    Each entry is one episode's ReelEpisode.chroma: a reading, a named absence, or
+    None for a manifest written before the field existed. A spread over fewer than
+    two readings is not a number and says so."""
+    if chroma is None:
+        return CheckResult("chroma_spread", None,
+                           {"status": "not-checked", "advisory": True,
+                            "reason": "no per-episode chroma supplied — check_reel's "
+                                      "own CLI does not carry it"})
+    per: dict[str, list] = {}
+    missing: dict[str, str] = {}
+    for i, c in enumerate(chroma):
+        if isinstance(c, dict) and "delta_c" in c:
+            per[str(i)] = [c["delta_c"], c["delta_h"]]
+        elif isinstance(c, dict):
+            missing[str(i)] = c.get("reason") or "not checked"
+        else:
+            missing[str(i)] = ("the reel manifest is older than this field — "
+                               "re-run phase 1 to record it")
+    detail = {"per_episode": per, "not_checked": missing,
+              "max": bar, "advisory": True}
+    if len(per) < 2:
+        return CheckResult("chroma_spread", None,
+                           {**detail, "status": "not-checked",
+                            "reason": f"{len(per)} episode(s) measured — a spread "
+                                      f"needs at least two"})
+    cs = [v[0] for v in per.values()]
+    hs = [v[1] for v in per.values()]
+    spread_c, spread_h = max(cs) - min(cs), max(hs) - min(hs)
+    worst = max(spread_c, spread_h)
+    return CheckResult("chroma_spread", worst <= bar,
+                       {**detail, "spread_c": round(spread_c, 2),
+                        "spread_h": round(spread_h, 2), "worst": round(worst, 2)})
+
+
 def _beat_check(cuts: list[float], beats: tuple[float, ...], tol: float) -> CheckResult:
     """BEAT — advisory. Worst deviation of a cut from its nearest beat; reported,
     never a ReelFailure (excluded from overall via _ADVISORY_CHECKS, §5). The
@@ -345,7 +394,8 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         predicted: list | None = None,
         tone_target: tuple[float, float, float] | None = None,
         tone_dsts: list | None = None,
-        brief_len: float | None = None) -> ReelReport:
+        brief_len: float | None = None,
+        chroma: list | None = None) -> ReelReport:
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -401,6 +451,7 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
     checks["grade_faithful"] = cr
     if fail is not None:
         fails.append(fail)
+    checks["chroma_spread"] = _chroma_spread_check(chroma, spec.chroma_spread_max)
 
     if audio is not None:
         cr, fail = _loudness_check(_loudnorm_measure(audio), spec)

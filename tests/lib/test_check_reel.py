@@ -924,3 +924,78 @@ def test_grade_faithful_records_zero_frames_when_nothing_could_be_predicted(monk
         "master.mp4", [4.0], [], ReelCheckSpec(target_dur=4.0), [None], None, None)
     assert cr.passed is None
     assert cr.detail["frames"] == 0
+
+
+# --- chroma-spread Task 5: check_reel.chroma_spread (design
+# docs/specs/2026-09-17-chroma-spread-design.md §2.4/§2.5) ---
+
+from scripts.check_reel import _chroma_spread_check
+
+
+def _reading(c, h, region="crop"):
+    return {"delta_c": c, "delta_h": h, "region": region}
+
+
+def test_the_spread_is_the_widest_gap_across_the_reel():
+    cr = _chroma_spread_check([_reading(-4.18, -1.22), _reading(-2.72, -0.51),
+                               _reading(-0.66, -0.53)], 5.0)
+    assert cr.detail["spread_c"] == pytest.approx(3.52)
+    assert cr.detail["spread_h"] == pytest.approx(0.71)
+    assert cr.detail["worst"] == pytest.approx(3.52)
+    assert cr.passed is True
+
+
+def test_one_episode_graded_the_other_way_fails_the_bar():
+    """ep0 of the only real reel: the sole episode whose grade RAISED chroma, 8.35
+    dH* from its three siblings, on the opening shot (design §0.6).
+
+    design §2.5 quotes this reel's cross-episode spread as "6.90 / 9.07" — the
+    full-precision figure behind §0.6's 2-decimal display table. Recomputing
+    max(hs) - min(hs) from the TABLE's own rounded literals (7.84 and -1.22, as
+    used below) gives 9.06, not 9.07: verified directly (`7.84 - (-1.22)` is
+    9.06 to 20 decimal places, not a float-representation artifact near a
+    rounding boundary). ep0's own per-frame noise is called out in §0.6 as far
+    higher than its three siblings' (1.81/1.91 vs 0.06-0.19), consistent with a
+    full-precision median that doesn't survive 2-decimal display rounding
+    without shifting this subtraction by a cent. 9.06 is what this exact
+    algorithm computes from these exact literals — pinned here, not loosened."""
+    cr = _chroma_spread_check([_reading(2.72, 7.84), _reading(-4.18, -1.22),
+                               _reading(-2.72, -0.51), _reading(-0.66, -0.53)], 5.0)
+    assert cr.detail["worst"] == pytest.approx(9.06)
+    assert cr.passed is False
+
+
+def test_the_detail_names_every_episode_and_every_absence():
+    cr = _chroma_spread_check(
+        [_reading(-1.0, -1.0), {"status": "not-checked", "reason": "no render pair"},
+         None], 5.0)
+    assert cr.detail["per_episode"] == {"0": [-1.0, -1.0]}
+    assert cr.detail["not_checked"]["1"] == "no render pair"
+    assert "older" in cr.detail["not_checked"]["2"]
+
+
+def test_one_reading_is_not_a_spread():
+    cr = _chroma_spread_check([_reading(-1.0, -1.0), None], 5.0)
+    assert cr.passed is None
+    assert cr.detail["status"] == "not-checked"
+
+
+def test_no_chroma_at_all_is_named_not_zero():
+    cr = _chroma_spread_check(None, 5.0)
+    assert cr.passed is None
+    assert cr.detail["reason"]
+
+
+def test_a_failing_chroma_spread_does_not_fail_the_reel():
+    """Advisory end to end: overall is what it would have been (design §3).
+
+    ReelReport's real constructor takes `fail_reasons` (default []) and `wall_s`
+    (default 0.0) — the brief's snippet named these `fails`/`duration_s`, which
+    do not exist on the dataclass; both already default to a value that makes
+    this test's claim true, so they are simply omitted here rather than passed
+    under invented names."""
+    from scripts.lib.models import CheckResult, ReelReport
+    rep = ReelReport(checks={
+        "black": CheckResult("black", True, {}),
+        "chroma_spread": CheckResult("chroma_spread", False, {"worst": 9.07})})
+    assert rep.overall is True

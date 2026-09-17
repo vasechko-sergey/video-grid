@@ -2205,3 +2205,16 @@ def test_track_meta_refuses_a_degraded_rung_outside_the_vocabulary():
         TrackMeta(degraded="optical-flow")
     with pytest.raises(ValueError, match="degraded"):
         TrackMeta.from_dict({"degraded": "manual "})       # a stray space is a typo too
+
+
+# --- chroma-spread Task 5: check_reel.chroma_spread (design
+# docs/specs/2026-09-17-chroma-spread-design.md §2.4/§2.5) ---
+
+def test_chroma_spread_is_advisory():
+    from scripts.lib.models import _ADVISORY_CHECKS
+    assert "chroma_spread" in _ADVISORY_CHECKS
+
+
+def test_the_chroma_bar_has_its_measured_default():
+    from scripts.lib.models import ReelCheckSpec
+    assert ReelCheckSpec(target_dur=10.0).chroma_spread_max == 5.0

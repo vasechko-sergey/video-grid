@@ -129,7 +129,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                 platform=rm.platform, outro=rm.outro,
                                 predicted=predicted,
                                 tone_target=rm.tone_target, tone_dsts=tone_dsts,
-                                brief_len=rm.brief_len)
+                                brief_len=rm.brief_len, chroma=chroma)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
                                                 spec.length_retime_max, outro_fixed)
         if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long
