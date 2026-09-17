@@ -122,6 +122,22 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     is the unnamed absence this slice exists to remove (design §1, rule 1). The
     background's own fraction is not reported — it is 1 - region_fraction exactly,
     and a second representation of one number is a contradiction surface.
+
+    `crop_delta_c`/`crop_delta_h` ride along on the SAME `fallback is None` arm as
+    `background_delta_e` — beside it, not nested under its own `is None` guard —
+    for a different reason and a different reader. The reel-level chroma_spread
+    check (design 2026-09-17 §2.2) needs ONE pixel set defined identically on
+    every episode, and the crop — subject UNION background, the whole rendered
+    frame — is the only region that is always present: `subject` falls back by
+    name and `background` is not reported at all after a subject fallback, so
+    neither can serve. Emitted ONLY when the subject supplied the reading: on a
+    fallback, `delta_c`/`delta_h` in this same dict already ARE the crop's own
+    (`read` is the full frame there too), and a second key holding the same
+    number would be exactly the contradiction surface the paragraph above names
+    for the background's fraction. Sitting beside `background_delta_e` rather
+    than inside its guard is load-bearing: a subject that covers the whole frame
+    leaves no background at all (`background_fallback` is then a name, not None)
+    but still supplies a crop reading of its own.
     """
     g, p = np.asarray(graded_frames), np.asarray(plain_frames)
     if g.shape != p.shape:

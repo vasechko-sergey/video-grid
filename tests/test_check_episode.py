@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from scripts import check_episode, process_episode, reframe
-from scripts.lib import color, geometry, regions
+from scripts.lib import color, color_fidelity, geometry, regions
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
 from scripts.lib.models import CheckSpec, CropPath, Delivery, PathMeta, RoutePoint
@@ -252,10 +252,52 @@ def test_a_crop_reading_does_not_repeat_itself_under_a_second_name():
 
 def test_the_crops_displacement_is_the_whole_frame_not_the_background():
     """Not an approximation of the background reading: the crop is subject UNION
-    background, and on a frame where the two differ the numbers must differ."""
-    out = _advisory_over_a_located_subject_whose_subject_differs_from_its_background()
+    background, and on a frame where the two differ the numbers must differ.
+
+    Comparing only against the SUBJECT's own delta_c does not prove that: a
+    build that read the BACKGROUND under the crop's name (`bg` instead of
+    `whole` — the copy-paste one line above in the implementation) would also
+    pass a bare `!= delta_c` check, because this fixture's background is
+    unchanged between plain and graded (bg_plain == bg_graded), so a
+    background-substituted crop reads exactly 0.0, and 0.0 != delta_c(subject)
+    is still true. Asserting equality against an INDEPENDENTLY computed
+    full-frame reading closes that hole, and also catches a `mask`-substituted
+    build (which would read exactly delta_c(subject) instead)."""
+    out, plain, graded = _advisory_over_a_located_subject_whose_subject_differs_from_its_background()
     assert out["region"] == "subject"
+    p, g = np.asarray(plain), np.asarray(graded)
+    whole = np.ones(g.shape[:3], dtype=bool)
+    expected = color_fidelity.evaluate(check_episode._region_pairs(p, g, whole))
+    assert out["crop_delta_c"] != 0.0
+    assert out["crop_delta_c"] == expected["delta_c"]
+    assert out["crop_delta_h"] == expected["delta_h"]
     assert out["crop_delta_c"] != out["delta_c"]
+
+
+def test_a_subject_covering_the_whole_frame_still_carries_the_crops_displacement():
+    """The crop's own displacement sits inside `if fallback is None:` ALONGSIDE
+    the background arm, not nested inside `if out["background_fallback"] is
+    None:` — an over-nesting mistake would still pass every other test in this
+    file, because both other crop_delta_* fixtures have a subject at 16.7% of
+    the frame and therefore a readable background. Same shape
+    test_a_subject_covering_the_whole_frame_leaves_no_background_and_names_it
+    builds: a subject that IS the whole frame, so region == "subject" but
+    background_fallback is a name, not None (design 2026-09-17 §2.2)."""
+    plain, graded = _stacks()
+    # centred, and exactly as large as the frame: fx0/fy0 project to 0.0 and
+    # fx1/fy1 to 1.0, so the mask is every pixel of every frame — the SAME box
+    # test_a_subject_covering_the_whole_frame_leaves_no_background_and_names_it
+    # uses, above.
+    route, path, meta = _sidecar(box=(30.0, 20.0, 60.0, 40.0))
+    out = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                 route, path, meta)
+    assert out["region"] == "subject"
+    assert out["background_fallback"] is not None
+    assert out["background_fallback"] in regions.FALLBACKS
+    assert "background_delta_e" not in out
+    assert "crop_delta_c" in out and "crop_delta_h" in out
+    assert isinstance(out["crop_delta_c"], float)
+    assert isinstance(out["crop_delta_h"], float)
 
 
 def _advisory_over_a_located_subject() -> dict:
@@ -276,17 +318,23 @@ def _advisory_over_a_refused_subject() -> dict:
                                                   route, path, meta)
 
 
-def _advisory_over_a_located_subject_whose_subject_differs_from_its_background() -> dict:
+def _advisory_over_a_located_subject_whose_subject_differs_from_its_background() -> tuple[dict, list, list]:
     """The default stacks already have this shape: the subject box takes a
     different colour from the rest of the frame in the GRADED stack only
     (sub_graded=(200,10,10) against an unchanged bg_graded=(60,60,60)), so the
     subject's chroma moves and the background's does not — the crop (subject
     UNION background) must then read a different displacement than the subject
-    alone."""
+    alone.
+
+    Returns the raw stacks alongside the advisory's own dict: the caller needs
+    them to compute an INDEPENDENT expectation for the crop's displacement
+    (color_fidelity.evaluate over its own full-frame mask), not just an
+    inequality against the subject's own delta_c."""
     plain, graded = _stacks()
     route, path, meta = _sidecar()
-    return check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
-                                                  route, path, meta)
+    out = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                                 route, path, meta)
+    return out, plain, graded
 
 
 # --- grade_damage (design 2026-08-31 §3): the entropy-ratio verdict, plans-gated ---
