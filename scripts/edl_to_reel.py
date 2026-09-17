@@ -19,8 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import (episode_qc as qc_lib, hero as hero_lib, manifest as manifest_lib,
-                        provenance, reid, runlayout)
+from scripts.lib import (color_fidelity, episode_qc as qc_lib, hero as hero_lib,
+                        manifest as manifest_lib, provenance, reid, runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
@@ -258,7 +258,13 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
     remembered to pass) — this is the contract telling the truth, not the crash fix."""
     episodes = [ReelEpisode(manifest=md, clip=res["clip"], route=routes[i],
                             path=str(Path(epdirs[i]) / "path.json"),
-                            meta=str(Path(epdirs[i]) / "path.meta.json"))
+                            meta=str(Path(epdirs[i]) / "path.meta.json"),
+                            # What the grade did to this episode's colour, from the
+                            # render pair check_episode already decoded. Phase 2 runs
+                            # from EPISODES.json alone and never sees a phase-1
+                            # report, so the number has to ride the contract
+                            # (design 2026-09-17 §2.3).
+                            chroma=color_fidelity.shift_from_report(res.get("report") or {}))
                 for i, (md, res) in enumerate(zip(mds, results, strict=True))]
     # PLAYED lengths: check_reel measures the master's real duration against this
     # number, and a ramped episode contributes more screen time than its source

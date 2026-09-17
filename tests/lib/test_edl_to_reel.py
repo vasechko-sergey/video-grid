@@ -1925,3 +1925,49 @@ def test_cli_refuses_titles_combined_with_from_geometry(monkeypatch, tmp_path):
         edl_to_reel.main()
     assert ei.value.code == 2
     assert called == []
+
+
+# --- chroma-spread Task 4: the carrier, phase 1 (design
+# docs/specs/2026-09-17-chroma-spread-design.md §2.3) ---
+# NOTE: the task brief's literal test calls a `_build_manifest_with(results=...)`
+# helper described as calling "the real _build_manifest" — but _build_manifest
+# (edl_path, project_path, footage_root, work_dir, out_dir, ...) reads the EDL off
+# disk and fans process_episode out across a real ThreadPoolExecutor, so a test
+# with neither tmp_path nor monkeypatch (Step 1's tests, verbatim) cannot be
+# driving it. The function whose signature the brief's own "Context you need"
+# names — `_build_manifest(mds, results, routes, epdirs, ...)`, building the
+# ReelEpisode list straight from results[i] — is `_reel_manifest`, the pure
+# assembly step _build_manifest calls once its pool has already returned.
+# Mirrors the same naming drift already logged above
+# test_the_manifest_carries_the_brief_length_off_the_edl. mds/routes/epdirs are
+# placeholders _reel_manifest only zips against results and never inspects, and
+# edl is one _plain_episode() — target_dur resolves off it but neither test below
+# asserts on target_dur.
+
+def _build_manifest_with(results):
+    n = len(results)
+    mds = [{} for _ in range(n)]
+    routes = [None] * n
+    epdirs = [f"ep{i}" for i in range(n)]
+    edl = EDL(episodes=(_plain_episode(),))
+    return edl_to_reel._reel_manifest(mds, results, routes, epdirs, edl, "EDL.json",
+                                      music=None, changelog="", started={})
+
+
+def test_phase_one_records_each_episodes_chroma_displacement():
+    """The pair is rendered once, in phase 1. The reel reads the number phase 1
+    already produced rather than paying for a second pair (design §2.3)."""
+    rm = _build_manifest_with(results=[
+        {"status": "mechanical_pass", "clip": "ep0.mp4",
+         "report": {"checks": {"grade_damage": {
+             "region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}}}}])
+    assert rm.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22,
+                                     "region": "crop"}
+
+
+def test_phase_one_records_a_named_absence_when_the_pair_was_refused():
+    rm = _build_manifest_with(results=[
+        {"status": "mechanical_pass", "clip": "ep0.mp4",
+         "report": {"checks": {"grade_damage": {
+             "status": "not-checked", "reason": "no render pair"}}}}])
+    assert rm.episodes[0].chroma["reason"] == "no render pair"

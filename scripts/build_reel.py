@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from scripts import check_reel, color_measure, deliver, mix, probe, process_episode
-from scripts.lib import assembly, color, episode_qc as qc_lib, reel_orchestration
+from scripts.lib import assembly, color, color_fidelity, episode_qc as qc_lib, reel_orchestration
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
 
@@ -99,6 +99,13 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     # Constant across rounds: a reprocess re-renders with the SAME manifest, so the pair
     # it grades toward cannot move between rounds either.
     tone_dsts = [e.manifest.get("tone_dst") for e in rm.episodes]
+    # Per-episode chroma displacement, for check_reel's advisory chroma_spread. A
+    # parallel list like `geometry` and `tone_dsts` above, for the same reason —
+    # check_reel.run stays callable from its own CLI, which has none of them. NOT
+    # constant across rounds, unlike those two: a reprocess re-renders the episode
+    # and check_episode measures it again, so the reprocess arm below replaces the
+    # entry rather than letting a stale number outlive the clip it described.
+    chroma = [e.chroma for e in rm.episodes]
     predicted = _predict(rm)
     need_assemble = True
     # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
@@ -217,6 +224,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                     "sub_status": res["status"]},
                         "sub": res, "attempts": dict(attempts)}
             clips[item.idx] = res["clip"]
+            chroma[item.idx] = color_fidelity.shift_from_report(res.get("report") or {})
             attempts[item.idx] = attempts.get(item.idx, 0) + 1
             reprocessed.add(item.idx)
             need_assemble = True

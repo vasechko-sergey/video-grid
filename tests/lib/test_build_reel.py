@@ -1,3 +1,4 @@
+import inspect
 import pytest
 from scripts import build_reel
 from scripts.lib.assembly import StreamInfo
@@ -765,3 +766,46 @@ def test_predictions_are_built_ONCE_not_per_retry_round(monkeypatch, tmp_path):
     _wire(monkeypatch, [_black_fail(1), _pass()])   # round 0 reprocesses ep1; round 1 delivers
     build_reel.build_reel(_rm(), str(tmp_path / "out"), str(tmp_path / "w"))
     assert len(calls) == 1
+
+
+# --- chroma-spread Task 4: the retry loop keeps chroma fresh (design
+# docs/specs/2026-09-17-chroma-spread-design.md §2.3) ---
+
+def test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma(monkeypatch, tmp_path):
+    """A reprocess re-renders the episode, so check_episode ran again and produced a
+    fresh displacement. The stale phase-1 value must not outlive the clip it
+    described (design §2.3).
+
+    check_reel.run does not accept a chroma= keyword yet — Task 5 wires that in —
+    so unlike the tone_dsts/predicted/brief_len precedents above, fake_run's own
+    parameters have nothing to capture. This spies on build_reel's own stack frame
+    at the moment it calls check_reel.run instead, reading the LOCAL `chroma` list
+    each round: the value the Task-5 forward will carry, not a keyword this call
+    does not accept yet. Built on the file's existing reprocess fixture
+    (_wire/_black_fail/_pass), one layer of monkeypatch.setattr on top of it — safe
+    because monkeypatch unwinds setattr calls in reverse order regardless of how
+    many times the same attribute was patched."""
+    fresh_report = {"checks": {"grade_damage": {"region": "crop",
+                                                 "delta_c": 2.0, "delta_h": 0.3}}}
+    seen = _wire(monkeypatch, [_black_fail(1), _pass()],
+                pe_results=[{"status": "mechanical_pass", "clip": "c1.mp4",
+                             "report": fresh_report}])
+    inner_run = build_reel.check_reel.run   # _wire's own fake_run, still queued on the reports
+    rounds = []
+
+    def spying_run(*a, **kw):
+        rounds.append(list(inspect.currentframe().f_back.f_locals["chroma"]))
+        return inner_run(*a, **kw)
+    monkeypatch.setattr(build_reel.check_reel, "run", spying_run)
+
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json"),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json",
+                       chroma={"delta_c": -9.0, "delta_h": -2.0, "region": "crop"})]
+    rm = ReelManifest(episodes=eps, target_dur=6.0)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
+
+    assert res["status"] == "delivered"
+    assert seen["reprocess"] == [{"route": "r1.json"}]     # the reprocess ran on ep1, frozen route
+    assert len(rounds) == 2                                # round 0 (reprocess) + round 1 (deliver)
+    assert rounds[0][1] == {"delta_c": -9.0, "delta_h": -2.0, "region": "crop"}   # still phase 1's
+    assert rounds[-1][1] == {"delta_c": 2.0, "delta_h": 0.3, "region": "crop"}    # refreshed
