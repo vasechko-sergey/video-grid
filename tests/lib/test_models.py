@@ -1829,7 +1829,58 @@ def test_reel_episode_to_dict_is_the_from_dict_shape():
     ep = m.ReelEpisode(manifest={"segment": "a.mp4"}, clip="c.mp4", route=None,
                        path="p.json", meta="m.json")
     assert ep.to_dict() == {"manifest": {"segment": "a.mp4"}, "clip": "c.mp4",
-                            "route": None, "path": "p.json", "meta": "m.json"}
+                            "route": None, "path": "p.json", "meta": "m.json",
+                            "chroma": None}
+
+
+# --- chroma-spread Task 3: ReelEpisode.chroma (design
+# docs/specs/2026-09-17-chroma-spread-design.md §2.3) ---
+# NOTE: the task brief's snippet imported `ReelEpisode`/`ReelManifest` directly from
+# scripts.lib.models; this file's own idiom is `m.ReelEpisode`/`m.ReelManifest` off the
+# `from scripts.lib import models as m` import already at the top (see e.g.
+# test_reel_episode_to_dict_is_the_from_dict_shape above) — matched that established idiom.
+
+def test_an_episode_carries_its_chroma_displacement_through_a_round_trip():
+    e = m.ReelEpisode(manifest={"segment": "s.mp4"}, clip="ep0.mp4",
+                      chroma={"delta_c": -4.18, "delta_h": -1.22, "region": "crop"})
+    assert e.to_dict()["chroma"] == {"delta_c": -4.18, "delta_h": -1.22, "region": "crop"}
+
+
+def test_an_episode_carries_a_named_absence_through_a_round_trip():
+    e = m.ReelEpisode(manifest={}, clip="ep0.mp4",
+                      chroma={"status": "not-checked", "reason": "no render pair"})
+    assert e.to_dict()["chroma"]["reason"] == "no render pair"
+
+
+def test_an_episode_written_before_this_field_existed_stays_loadable():
+    """None is not a zero and not an error: it is a manifest from an older run."""
+    # NOTE: the task brief's snippet omitted "route" entirely on the episode dict, but an
+    # omitted route key is ITSELF refused, on purpose and unrelated to chroma — only an
+    # explicit `route: null` states "no route" (see
+    # test_reel_manifest_from_dict_still_rejects_an_omitted_route_key above). Added an
+    # explicit route, matching this file's own from_dict idiom (see _reel_dict above), so
+    # this test exercises only what it names: an old manifest with no "chroma" key at all.
+    assert m.ReelEpisode(manifest={}, clip="ep0.mp4").chroma is None
+    rm = m.ReelManifest.from_dict({"episodes": [{"manifest": {}, "clip": "ep0.mp4", "route": "r.json"}],
+                                   "target_dur": 10.0, "changelog": "c.md"})
+    assert rm.episodes[0].chroma is None
+
+
+def test_a_chroma_that_is_neither_shape_is_refused_by_name():
+    with pytest.raises(ValueError, match="chroma"):
+        m.ReelEpisode(manifest={}, clip="ep0.mp4", chroma={"delta_c": -1.0})
+
+
+def test_a_chroma_reading_with_an_unknown_region_is_refused():
+    with pytest.raises(ValueError, match="region"):
+        m.ReelEpisode(manifest={}, clip="ep0.mp4",
+                      chroma={"delta_c": 1.0, "delta_h": 1.0, "region": "background"})
+
+
+def test_a_chroma_reading_with_a_non_numeric_component_is_refused():
+    with pytest.raises(ValueError, match="chroma"):
+        m.ReelEpisode(manifest={}, clip="ep0.mp4",
+                      chroma={"delta_c": "-1.0", "delta_h": 1.0, "region": "crop"})
 
 
 # --- ZoomSpec (design 2026-08-08): subject-anchored push-in/pull-out, not a

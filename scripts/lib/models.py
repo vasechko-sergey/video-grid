@@ -1371,6 +1371,42 @@ class ReelEpisode:
     route: str | None = None
     path: str = ""
     meta: str = ""
+    #: What the grade did to this episode's COLOUR, measured once in phase 1 from
+    #: the render pair check_episode already decodes (design 2026-09-17 §2.3), and
+    #: read at reel level by check_reel's advisory chroma_spread. Two shapes, both
+    #: named: a reading {"delta_c", "delta_h", "region"} or an absence
+    #: {"status": "not-checked", "reason"}. None means a manifest written before
+    #: this field existed — check_reel reports that as its own named not-checked
+    #: reason, never as a 0.0 that would read as "the grade moved nothing".
+    chroma: dict | None = None
+
+    def __post_init__(self) -> None:
+        if self.chroma is None:
+            return
+        c = self.chroma
+        if not isinstance(c, dict):
+            raise ValueError(
+                f"ReelEpisode.chroma must be a reading "
+                f"{{delta_c, delta_h, region}} or an absence {{status, reason}}, "
+                f"got {type(c).__name__} — build it with "
+                f"color_fidelity.shift_from_report(report)")
+        if c.get("status") == "not-checked":
+            if not (isinstance(c.get("reason"), str) and c["reason"]):
+                raise ValueError(
+                    f"ReelEpisode.chroma: a not-checked chroma must carry a "
+                    f"non-empty 'reason' naming the absence, got {c!r}")
+            return
+        if not all(isinstance(c.get(k), (int, float)) and not isinstance(c.get(k), bool)
+                   for k in ("delta_c", "delta_h")):
+            raise ValueError(
+                f"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
+                f"(signed CIEDE2000 components), got {c!r} — build it with "
+                f"color_fidelity.shift_from_report(report)")
+        if c.get("region") not in ("subject", "crop"):
+            raise ValueError(
+                f"ReelEpisode.chroma 'region' must be 'subject' or 'crop' — the two "
+                f"regions check_episode can read a displacement over — got "
+                f"{c.get('region')!r}")
 
     def to_dict(self) -> dict:
         """The shape from_dict reads back. `manifest` is emitted INLINE even when it
@@ -1378,7 +1414,8 @@ class ReelEpisode:
         names a file is only as reproducible as that file, and phase 2 may run after
         the scratch dir is gone."""
         return {"manifest": dict(self.manifest), "clip": self.clip,
-                "route": self.route, "path": self.path, "meta": self.meta}
+                "route": self.route, "path": self.path, "meta": self.meta,
+                "chroma": self.chroma}
 
 
 @dataclass(frozen=True)
@@ -1658,7 +1695,8 @@ class ReelManifest:
                     "{manifest, clip, route} object, got a non-object")
         eps = [ReelEpisode(manifest=_load_manifest(e.get("manifest")),
                            clip=e.get("clip", ""), route=e.get("route", ""),
-                           path=e.get("path", ""), meta=e.get("meta", ""))
+                           path=e.get("path", ""), meta=e.get("meta", ""),
+                           chroma=e.get("chroma"))
                for e in eps_in]
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
