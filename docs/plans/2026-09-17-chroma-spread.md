@@ -210,6 +210,12 @@ git commit -m "feat(check_episode): the crop's own signed displacement, beside t
   `{"status": "not-checked", "reason": str}`. This is exactly the shape
   `ReelEpisode.chroma` carries (Task 3).
 
+  **Superseded, final whole-branch review, FIX 1:** the shipped reading drops
+  the `region` key — `{"delta_c": float, "delta_h": float}` only. This bullet
+  is the plan's ORIGINAL interface, not the shipped contract; see design
+  §2.3's amendment for why the label went (it named a pixel set the numbers
+  did not describe).
+
 **Context you need:** a `report.json` is `Report.to_dict()`:
 `{"checks": {name: <flat detail dict>}, "overall": bool, "attempt": int,
 "fail_reasons": [...]}`. The `grade_damage` entry is the merged dict
@@ -440,6 +446,25 @@ Add the field and its validation to `ReelEpisode`, and extend `to_dict`:
                 f"{c.get('region')!r}")
 ```
 
+**Superseded, final whole-branch review, FIX 1 — this note covers every
+three-key-shape transcript in Task 2 and this task, not only the snippet
+directly above it:** the `__post_init__` region-validation branch shown as
+the last `if` above (refusing anything outside `("subject", "crop")`) was
+deleted outright, not narrowed — the shipped field carries no `region` key at
+all. This supersedes, in this task: the Step 1 tests at :352-353
+(`test_an_episode_carries_its_chroma_displacement_through_a_round_trip`'s
+round-trip literal) and :384
+(`test_a_chroma_reading_with_a_non_numeric_component_is_refused`'s
+`chroma={..., "region": "crop"}` — the case still refuses, now on `delta_c`
+alone), and the Step 1 test at :375-378 in full
+(`test_a_chroma_reading_with_an_unknown_region_is_refused`, whose own
+behaviour the shipped suite no longer has — it was deleted, not reworded).
+It also supersedes, in Task 2 above: the Step 1 tests at :236 and :242, and
+the Step 3 `shift_from_report` implementation at :298-305, whose two `return`
+branches both carried a `"region"` key. See design §2.3's amendment for the
+reasoning (a reading naming a pixel set the numbers do not describe, per §1
+rule 1) and the FIX-1 commit for what actually shipped in each file.
+
 ```python
     def to_dict(self) -> dict:
         """The shape from_dict reads back. `manifest` is emitted INLINE even when it
@@ -514,8 +539,16 @@ def test_phase_one_records_each_episodes_chroma_displacement():
              "region": "crop", "delta_c": -4.18, "delta_h": -1.22, "pass": True}}}}])
     assert rm.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22,
                                      "region": "crop"}
+```
 
+**Superseded, final whole-branch review, FIX 1:** the assertion above still
+expects `region` in `rm.episodes[0].chroma` — the shipped test asserts
+`{"delta_c": -4.18, "delta_h": -1.22}` (no `region`). The `"report"` dict's
+own `"region": "crop"`, in the snippet above, is check_episode's report
+shape, untouched, and stays accurate; only the carried-reading assertion is
+stale. See design §2.3's amendment.
 
+```python
 def test_phase_one_records_a_named_absence_when_the_pair_was_refused():
     rm = _build_manifest_with(results=[
         {"status": "mechanical_pass", "clip": "ep0.mp4",
@@ -654,8 +687,15 @@ from scripts.check_reel import _chroma_spread_check
 
 def _reading(c, h, region="crop"):
     return {"delta_c": c, "delta_h": h, "region": region}
+```
 
+**Superseded, final whole-branch review, FIX 1:** the shipped `_reading()`
+takes no `region` parameter — `def _reading(c, h): return {"delta_c": c,
+"delta_h": h}`. `_chroma_spread_check` never read the key either way, so
+this is a pure shape-consistency cleanup, not a behaviour change. See design
+§2.3's amendment.
 
+```python
 def test_the_spread_is_the_widest_gap_across_the_reel():
     cr = _chroma_spread_check([_reading(-4.18, -1.22), _reading(-2.72, -0.51),
                                _reading(-0.66, -0.53)], 5.0)
@@ -859,8 +899,18 @@ def test_a_saturation_pull_moves_dC_and_leaves_the_sign_readable(golden_ride_seg
 def test_swapping_the_two_stacks_inverts_the_crops_components(golden_ride_segment):
     """Same inversion the 2026-09-16 row-13 assertion pins for the subject's pair:
     delta_e is identical and every signed component flips."""
+```
 
+**Superseded, final whole-branch review, FIX 5:** the test prescribed
+directly above, `test_swapping_the_two_stacks_inverts_the_crops_components`,
+was written and then deleted. Every one of its assertions is CIEDE2000's
+antisymmetry, true for any nonzero pair regardless of render, grade or slice
+code, and it never called `check_episode`, `shift_from_report` or
+`_chroma_spread_check`, so no mutation of this slice's own code could turn it
+red — it is not part of the shipped suite. The crop's sign+magnitude is
+instead covered by a Task 1 test; see design §4 proof 2's amendment.
 
+```python
 def test_the_bar_separates_a_consistent_reel_from_one_odd_episode(golden_ride_segment):
     """The bar re-derived on the suite's own fixture rather than only on the run it
     came from: three episodes graded alike against one graded the other way."""
@@ -951,6 +1001,15 @@ which reconcile the two numbers deliberately — 9.07 is the real reel's
 full-precision measurement, 9.06 is what the test's 2-decimal literals compute
 — rather than treating either as a typo to fix toward the other.
 
+**Also stale, final whole-branch review, FIX 1:** row 7 in the table above
+(`models.py` | accept `region="background"` | the unknown-region test) names
+a mutation and a test that no longer exist. `ReelEpisode.__post_init__`'s
+region-validation branch was deleted outright rather than narrowed, and
+`test_a_chroma_reading_with_an_unknown_region_is_refused` — the test the row
+points at — was deleted with it. The row is historical: it discriminated the
+code Task 7 actually ran the battery against, before this review's FIX 1
+removed the behaviour it exercised.
+
 - [ ] **Step 2: Full suite**
 
 ```bash
@@ -995,6 +1054,15 @@ git commit -m "docs: close R2.1 — the chroma half closes by measurement, not b
 battery rows 9 and 17. §4's seven proofs → Task 1's three tests (proof 1), Task 6
 (proofs 2, 3, 4), Task 5's tests (proofs 5, 6, 7). §5 → Task 7's docs. §6 → Task 7's
 backlog rows.
+
+**Superseded, final whole-branch review, FIX 5:** "Task 1's three tests
+(proof 1), Task 6 (proofs 2, 3, 4)" above no longer matches the shipped
+suite. Proof 2 (sign) is now a **Task 1** test, per design §4's amendment:
+`tests/test_check_episode.py::test_the_crops_displacement_is_the_whole_frame_not_the_background`.
+Task 6 covers only proofs 3 and 4, since its own proof-2 test
+(`test_swapping_the_two_stacks_inverts_the_crops_components`) was deleted.
+Read this line as: Task 1 (proofs 1, 2), Task 6 (proofs 3, 4), Task 5's tests
+(proofs 5, 6, 7).
 
 **Known weak point.** Task 6 is the one task whose numbers are not yet known: the
 fixture's own displacements have not been measured, so the claim that they straddle
