@@ -9,9 +9,12 @@ description: "Conveyor stage — the reel's final editorial review at CP3: a fre
 
 The **final editorial gate**. `check_reel` already judged the reel *mechanically*
 (black/loudness/variety/length + the advisory safe_zones/key_action/
-pad_bars/transitions/beat). Colour agreement across episodes has no mechanical
-check of its own — that is what this stage's own `colour` axis exists to judge
-(design 2026-08-29, colour-convergence-retire §4-§5). reel-review judges the
+pad_bars/transitions/beat/chroma_spread). `chroma_spread` (design 2026-09-17
+§2.4) measures whether the grade treated the episodes ALIKE, never whether they
+end up agreeing (§5.1) — colour AGREEMENT across episodes still has no
+mechanical check of its own, which is what this stage's own `colour` axis
+exists to judge (design 2026-08-29, colour-convergence-retire §4-§5; design
+2026-09-17 §5.1). reel-review judges the
 reel *editorially*: does it deliver the brief? This is the `requesting-code-review` pattern one level up — you
 dispatch a **fresh reviewer subagent** with a crafted packet, it returns typed
 findings, and the **human** decides what to act on at Checkpoint 3.
@@ -61,9 +64,12 @@ guessing a path.
 - **`<run>/reels/<reel>/deliveries/REEL_v{n}.mp4`** (required) — the delivered reel.
 - **`report.json`** (required) — `check_reel`'s report: the mechanical gates + the
   **advisory signals** (`key_action`/`pad_bars`/`transitions`/`safe_zones`/`beat`/
-  `brief_length`/`outro`) the reviewer cites as evidence. `brief_length` is
-  advisory by design and expected to be frequently red (design 2026-09-07 §7) —
-  a red row there is a real gap to weigh, not a mechanical failure.
+  `brief_length`/`outro`/`chroma_spread`) the reviewer cites as evidence.
+  `brief_length` is advisory by design and expected to be frequently red (design
+  2026-09-07 §7) — a red row there is a real gap to weigh, not a mechanical
+  failure. `chroma_spread` (design 2026-09-17 §2.4) measures whether the grade
+  treated the episodes ALIKE, not whether they end up agreeing — cite it for the
+  `colour` axis alongside the stills, never as proof of agreement on its own.
 - **`SPEC.json`** (optional) — the brief's intent. Absent (a bare autonomous run) →
   review against the `EDL` + the run's stated intent; say so.
 - **`EDL.md`** (required) — the realized plan (per-episode source/window/shot/
