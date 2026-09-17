@@ -1972,10 +1972,11 @@ def test_phase_one_records_each_episodes_chroma_displacement():
         {"status": "mechanical_pass", "clip": "ep1.mp4",
          "report": {"checks": {"grade_damage": {
              "region": "crop", "delta_c": 7.50, "delta_h": 3.00, "pass": True}}}}])
-    assert rm.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22,
-                                     "region": "crop"}
-    assert rm.episodes[1].chroma == {"delta_c": 7.50, "delta_h": 3.00,
-                                     "region": "crop"}
+    # No `region` key on the carried reading (final whole-branch review, FIX 1) —
+    # the INPUT report above still carries it (that's check_episode's own report
+    # shape, unaffected), but shift_from_report's output does not.
+    assert rm.episodes[0].chroma == {"delta_c": -4.18, "delta_h": -1.22}
+    assert rm.episodes[1].chroma == {"delta_c": 7.50, "delta_h": 3.00}
 
 
 def test_phase_one_records_a_named_absence_when_the_pair_was_refused():
