@@ -115,10 +115,24 @@ def test_a_not_checked_grade_damage_keeps_its_own_reason():
 
 def test_a_report_with_no_grade_damage_block_is_named_not_guessed():
     out = cf.shift_from_report({"checks": {}, "overall": True})
-    assert out["status"] == "not-checked"
-    assert "grade_damage" in out["reason"]
+    assert out == {"status": "not-checked",
+                   "reason": "the report carries no grade_damage block"}
 
 
 def test_a_non_report_is_named_rather_than_crashing():
     out = cf.shift_from_report([])
-    assert out["status"] == "not-checked"
+    assert out == {"status": "not-checked",
+                   "reason": "the report carries no grade_damage block"}
+
+
+def test_status_and_region_coexist_when_update_merges_them():
+    """check_episode._grade_damage unconditionally merges gradedamage.evaluate
+    (which can return status: "not-checked") with _subject_delta_advisory (which
+    always sets region). A dict with both status AND region is reachable in
+    production. shift_from_report keys on region, not status (design §2.3) —
+    a real reading takes precedence over a status field from the evaluate side."""
+    out = cf.shift_from_report(_report(
+        {"status": "not-checked", "reason": "every ungraded frame is flat",
+         "region": "subject", "delta_c": 9.0, "delta_h": 9.0,
+         "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
+    assert out == {"delta_c": -1.25, "delta_h": 0.5, "region": "subject"}
