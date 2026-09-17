@@ -970,6 +970,18 @@ def test_one_episode_graded_the_other_way_fails_the_bar():
     assert cr.passed is False
 
 
+def test_the_bar_is_inclusive_at_the_boundary():
+    """Task 7's mutation battery, row 14: `worst <= bar` must PASS a worst that
+    lands EXACTLY on the bar, not only strictly under it — nothing before this
+    test pinned that side of the boundary (every other case here is comfortably
+    clear of its own bar). A `worst < bar` mutant fails only the '<=' arm; this
+    is what would go red against it."""
+    cr = _chroma_spread_check([_reading(0.0, 0.0), _reading(5.0, 0.0)], 5.0)
+    assert cr.detail["spread_c"] == pytest.approx(5.0)
+    assert cr.detail["worst"] == pytest.approx(5.0)
+    assert cr.passed is True
+
+
 def test_the_detail_names_every_episode_and_every_absence():
     cr = _chroma_spread_check(
         [_reading(-1.0, -1.0), {"status": "not-checked", "reason": "no render pair"},
