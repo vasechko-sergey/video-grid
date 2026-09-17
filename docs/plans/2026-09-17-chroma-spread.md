@@ -667,10 +667,17 @@ def test_the_spread_is_the_widest_gap_across_the_reel():
 
 def test_one_episode_graded_the_other_way_fails_the_bar():
     """ep0 of the only real reel: the sole episode whose grade RAISED chroma, 8.35
-    dH* from its three siblings, on the opening shot (design §0.6)."""
+    dH* from its three siblings, on the opening shot (design §0.6).
+
+    Corrected, final whole-branch review, FIX 7: this snippet originally asserted
+    pytest.approx(9.07), design §2.5's full-precision figure. The SHIPPED test
+    pins 9.06 — what these exact literals compute — deliberately: see design
+    §2.5's own closing note and docs/build-status.md's Done entry, which
+    reconcile the two numbers rather than "fixing" either to match the other.
+    Do not move this back to 9.07."""
     cr = _chroma_spread_check([_reading(2.72, 7.84), _reading(-4.18, -1.22),
                                _reading(-2.72, -0.51), _reading(-0.66, -0.53)], 5.0)
-    assert cr.detail["worst"] == pytest.approx(9.07)
+    assert cr.detail["worst"] == pytest.approx(9.06)
     assert cr.passed is False
 
 
@@ -929,13 +936,20 @@ original pointer, "an integration sign proof," named a test that never calls
 `check_episode` at all — the mutation is actually caught by
 `test_the_crops_displacement_is_the_whole_frame_not_the_background` (Task 1's
 own crop-≠-subject test). Row 13's original pointer reused row 8's
-"one-odd-episode test," which asserts `worst == pytest.approx(9.07)` and
+"one-odd-episode test," which asserts `worst == pytest.approx(9.06)` and
 cannot tell a `min` from a `max` on that fixture — the mutation is actually
 caught by `test_one_episode_graded_the_other_way_fails_the_bar`. Both cells
 above are corrected to the test that actually discriminates. **Row 14 came
 back GREEN** on the first pass — no existing test was pinned exactly at
 `worst == bar` — a genuine coverage hole, closed with a new test,
 `test_the_bar_is_inclusive_at_the_boundary`.
+
+**Corrected, final whole-branch review, FIX 7:** this note said 9.07 here,
+design §2.5's full-precision figure, where the SHIPPED test's own literal is
+9.06. See design §2.5's closing note and docs/build-status.md's Done entry,
+which reconcile the two numbers deliberately — 9.07 is the real reel's
+full-precision measurement, 9.06 is what the test's 2-decimal literals compute
+— rather than treating either as a typo to fix toward the other.
 
 - [ ] **Step 2: Full suite**
 

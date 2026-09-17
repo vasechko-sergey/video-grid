@@ -71,7 +71,8 @@ _Last updated: 2026-09-17._
   same number would repeat itself under a different name — 2026-09-16
   §2.3's contradiction rule, reapplied). `color_fidelity.shift_from_report`
   is the one function that turns a `grade_damage` report into
-  `{"delta_c", "delta_h", "region"}` or a named absence, read identically by
+  `{"delta_c", "delta_h"}` (no `region` key — final whole-branch review, FIX 1)
+  or a named absence, read identically by
   `edl_to_reel`'s phase-1 fill and `build_reel`'s reprocess-arm refresh — so
   a reprocessed episode's stale value never outlives the clip beside it.
   `ReelEpisode.chroma` carries the reading (or the absence) across the

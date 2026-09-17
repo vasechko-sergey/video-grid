@@ -200,9 +200,24 @@ exists for exactly this.
 named absence — the same two shapes every check result in this repo already uses:
 
 ```
-{"delta_c": float, "delta_h": float, "region": "subject" | "crop"}
+{"delta_c": float, "delta_h": float}
 {"status": "not-checked", "reason": str}
 ```
+
+No `region` key (amended in the final whole-branch review that closed this slice,
+FIX 1 — this replaces an earlier draft of this section that carried one). The
+reading is always the CROP's pair regardless of which arm of
+`check_episode._subject_delta_advisory` supplied it: `crop_delta_c`/
+`crop_delta_h` on the subject arm, `delta_c`/`delta_h` on the crop arm (§2.2). A
+`region` label here would therefore either be constant ("crop", always) or, on
+the subject arm, would say "subject" while the numbers beneath it are the crop's
+— a reading naming pixels that are not the ones it describes, which is exactly
+what §1 rule 1 forbids. Nothing downstream reads it either: `check_reel`'s
+`chroma_spread` keys only on `delta_c`/`delta_h`. §1 rule 4 governs — a field
+that cannot be decided is deleted, not qualified — so do not add it back. A
+reader who needs to know which arm supplied `check_episode`'s OWN reading
+already has `region` on THAT report (`report["checks"]["grade_damage"]
+["region"]`), untouched by this carrier.
 
 `None` (the default) means a manifest written before this field existed, and
 `check_reel` reports that as its own named not-checked reason rather than as a
@@ -298,7 +313,17 @@ match the table.
    same pairs (this is why the key is not emitted there at all).
 2. **Sign.** Swapping the graded and plain stacks inverts `delta_c`/`delta_h`
    while leaving `delta_e` identical; the existing 2026-09-16 row-13 assertion
-   covers the pair, and one new assertion covers `crop_delta_c`'s sign.
+   covers the subject's pair. The crop's own pair is covered differently, and
+   more strongly (final whole-branch review, FIX 5 — this replaces an earlier
+   draft naming a dedicated integration sign proof):
+   `tests/test_check_episode.py::test_the_crops_displacement_is_the_whole_frame_not_the_background`
+   pins `crop_delta_c` against an INDEPENDENTLY computed full-frame reading, an
+   equality rather than merely a sign. The integration suite's own swap test was
+   deleted: every one of its assertions is CIEDE2000's antisymmetry, true for
+   any nonzero pair regardless of render, grade or slice code — it never called
+   `check_episode`, `shift_from_report` or `_chroma_spread_check`, so no
+   mutation of this slice's own code could turn it red, and it spent two real
+   ffmpeg renders restating what `tests/lib/test_colordiff.py` already proves.
 3. **Real footage, real spread.** ep0 vs its three siblings reproduces from the
    run's own artifacts: worst 9.07 against a three-episode baseline of 3.52.
 4. **Content cancellation.** Two renders of one frame through *identical* chains
@@ -327,7 +352,7 @@ match the table.
    `shadow_red` are per-channel curves, not hue rotations. The report can name
    what moved without naming what to turn.
 3. **Four episodes, one camera, one shoot.** §0.7: the Canon half is unreadable on
-   this run. `chroma_spread_max` is a first cut with a 1.48/1.90 margin around it,
+   this run. `chroma_spread_max` is a first cut with a 1.48/4.07 margin around it,
    and no pool discriminates it. The suite's own `golden_ride_segment` proof (Task
    6, §2.5) does not change this: it confirms the order of magnitude and the
    wiring end to end, not a second calibration — its four measurements are
