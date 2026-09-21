@@ -450,3 +450,64 @@ def test_the_subject_dE00_survives_as_an_advisory_number(tmp_path, monkeypatch,
     assert d["region_fraction"] > regions.MIN_REGION_FRAC
     assert d["background_fallback"] is None
     assert "background_delta_e" in d
+
+
+def test_a_region_that_refused_nothing_but_holds_no_pixels_is_a_contract_break(monkeypatch):
+    """The advisory's ONLY absence shape is {status, reason}, and _grade_damage
+    merges it flat into the verdict where `status` is the discriminator (design
+    §0.1). It cannot happen: a crop read is the whole frame, and a subject read
+    only runs when regions.refuse declined to refuse, which is the statement that
+    the mask holds pixels. So a lying producer — a mask with no pixels reported at
+    a fraction above MIN_REGION_FRAC — must RAISE here rather than describe itself
+    as not-checked."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    empty = np.zeros((N, H, W), dtype=bool)
+    monkeypatch.setattr(regions, "subject_mask", lambda extents, n, h, w: (empty, 0.5))
+    with pytest.raises(ValueError) as e:
+        check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    msg = str(e.value)
+    assert "subject" in msg                    # names the region it was reading
+    assert "regions.subject_mask" in msg       # names where the break is
+    assert "not-checked" in msg                # names the shape it refuses to emit
+
+
+def test_an_ordinary_subject_read_still_carries_its_five_fidelity_keys():
+    """The control for the refusal above: the guard must not fire on a real read."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    d = check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+    assert {"delta_e", "delta_l", "delta_c", "delta_h", "samples"} <= set(d)
+    assert "status" not in d and "reason" not in d
+
+
+def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
+    """A flat merge puts the advisory second, so an advisory `status` overwrites
+    into the dict the branch reads. Step 5 of Task 1 makes that shape impossible
+    to produce; this pins that the BRANCH no longer depends on it, so a future
+    advisory key cannot silently reopen the coupling (design §2.1).
+
+    The stub is a lying advisory, not a reachable state — which is exactly why
+    the assertion is about `passed`, and why this test would be meaningless if it
+    also asserted the merged dict's keys."""
+    monkeypatch.setattr(check_episode, "_subject_delta_advisory",
+                        lambda *a, **k: {"status": "stubbed", "reason": "stubbed"})
+    monkeypatch.setattr(check_episode.gradedamage, "evaluate",
+                        lambda **k: {"ratio": 0.5, "plain_bits": 7.0, "graded_bits": 3.5,
+                                     "floor": 0.9, "frames": 3, "below": True})
+    monkeypatch.setattr(check_episode.reframe, "plan_frames_rgb",
+                        lambda plan, src, times: list(np.zeros((3, 4, 4, 3), np.uint8)))
+    plan = object()
+    route, path, meta = _sidecar()
+    monkeypatch.setattr(check_episode.color, "sample_times", lambda dur, *a, **k: [0.0, 0.5, 1.0])
+
+    class _Plan:
+        dur = 1.0
+
+    res = check_episode._grade_damage("src.mp4", (_Plan(), _Plan()), route, path, meta,
+                                      CheckSpec(composition="center", grid="thirds",
+                                                target_dur=1.5))
+    assert res.passed is False          # the entropy verdict, not the advisory's status
+    assert res.detail["below"] is True
