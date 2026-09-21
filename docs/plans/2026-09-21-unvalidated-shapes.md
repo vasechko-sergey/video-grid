@@ -485,6 +485,10 @@ git commit -m "fix(color): refuse a stream with no pix_fmt instead of grading it
 
 **Files:**
 - Modify: `scripts/check_reel.py:355-369` (the `for i, c in enumerate(chroma)` loop)
+- Modify: `scripts/lib/color_fidelity.py` — `shift_from_report`'s docstring says
+  `_chroma_spread_check` "keys only on `delta_c`/`delta_h`", which this task makes
+  false. Correct that clause and nothing else; leave the surrounding argument for
+  why the reading carries no `region` key intact.
 - Test: `tests/lib/test_check_reel.py`
 
 **Interfaces:**
@@ -529,19 +533,36 @@ def test_a_clean_reading_still_reaches_per_episode():
     assert cr.detail["per_episode"] == {"0": [-4.18, -1.22], "1": [-2.72, -0.51]}
 
 
-def test_the_reprocess_inlet_reaches_the_reader_without_passing_the_validator(tmp_path):
+def test_a_reprocessed_episodes_reading_reaches_the_reel_check_without_a_reelepisode(monkeypatch, tmp_path):
     """build_reel builds `chroma` as a plain list and overwrites one entry with
     shift_from_report's output before handing it to check_reel.run — so one of the
     reader's two inlets never touches ReelEpisode.__post_init__ (design §0.3). The
-    reader's comment claims that validator as its guarantee; this pins that the
-    path it does not cover still arrives in a shape the reader accepts."""
-    from scripts.lib import color_fidelity
+    reader's comment claims that validator as its guarantee; this drives the real
+    run() wiring with exactly the value that path produces, so the inlet the
+    validator does not cover is covered by a test instead.
+
+    Not a build_reel integration test: it pins the shape contract at the seam
+    build_reel writes to, not build_reel's own indexing. The driver's wiring is
+    tests/lib/test_build_reel.py's business.
+
+    CORRECTION (task review, fix round 1): this test first shipped in the plan as
+    `test_the_reprocess_inlet_reaches_the_reader_without_passing_the_validator`,
+    calling the PRIVATE `_chroma_spread_check` directly — a name that claimed the
+    inlet while the body proved only shift_from_report's output shape. Design §4
+    proof 6 asked for `check_reel.run(chroma=...)`, and in a slice about claims
+    needing constructions behind them, a test name outrunning its body is the same
+    defect in test form. `_run_reel` is the harness that was already there for it.
+    """
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
     report = {"checks": {"grade_damage": {"region": "crop",
                                           "delta_c": -3.0, "delta_h": 0.5}}}
-    fresh = color_fidelity.shift_from_report(report)
-    cr = _chroma_spread_check([fresh, _reading(-4.18, -1.22)], 5.0)
-    assert cr.detail["per_episode"]["0"] == [-3.0, 0.5]
-    assert cr.detail["not_checked"] == {}
+    fresh = color_fidelity.shift_from_report(report)     # what the reprocess arm writes
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                    chroma=[fresh, _reading(-4.18, -1.22)])
+    c = rep.checks["chroma_spread"]
+    assert c.detail["per_episode"]["0"] == [-3.0, 0.5]
+    assert c.detail["not_checked"] == {}
 ```
 
 - [ ] **Step 2: Run to verify the first fails**
@@ -603,7 +624,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/check_reel.py tests/lib/test_check_reel.py
+git add scripts/check_reel.py scripts/lib/color_fidelity.py tests/lib/test_check_reel.py
 git commit -m "fix(check_reel): key the chroma reader on status, the discriminator its validator uses"
 ```
 
