@@ -590,14 +590,16 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
     with one. That is what makes any subset of knobs compose into a filtergraph
     with no empty slot. It rests entirely on mixer_arg being unconditional — an
     identity branch there would fuse a wb/tone trailing comma against a
-    shadow_red leading one. Pinned by
-    tests/lib/test_color.py::test_the_grade_chain_is_well_formed_for_every_combination_of_knobs,
-    which enumerates all 1024 on/off combinations (design 2026-09-21 §2.4).
+    shadow_red leading one. Pinned by two tests in tests/lib/test_color.py:
+    test_the_grade_chain_is_well_formed_for_every_combination_of_knobs, which
+    enumerates all 1024 on/off combinations, and
+    test_each_builder_sits_on_its_own_side_of_the_mixer_pivot, which checks each
+    builder's own boundary comma (design 2026-09-21 §2.4).
 
-    Returns the
-    fragment WITHOUT the trailing fps/format, which reframe owns. Every builder is ""
-    at its identity value, so at defaults this returns exactly mixer_arg(*gains) and
-    the fill fast path stays byte-identical to before colour-as-a-stage."""
+    Returns the fragment WITHOUT the trailing fps/format, which reframe owns.
+    Every builder is "" at its identity value, so at defaults this returns
+    exactly mixer_arg(*gains) and the fill fast path stays byte-identical to
+    before colour-as-a-stage."""
     return (wb + tone + black_point_arg(black_point) + mixer_arg(*gains)
             + shadow_red_arg(shadow_red) + mid_blue_arg(mid_blue)
             + saturation_arg(saturation) + highlight_arg(highlight)

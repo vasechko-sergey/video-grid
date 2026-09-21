@@ -468,16 +468,28 @@ def test_select_frames_rounds_each_time_independently():
 
 def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
     """The comma discipline, as a property over the composition rather than a
-    restatement of the docstring: every fragment before mixer_arg is empty or ends
-    with a comma, mixer_arg is never empty and carries none at either end, and every
-    fragment after it is empty or begins with one. The whole expression therefore
-    never has an empty filter slot.
+    restatement of the docstring: independently rebuild what the discipline says
+    the output must be — take the fragments in order, drop the empty ones, strip
+    each survivor's OWN boundary comma, and join with exactly one comma — then
+    compare that reconstruction against what grade_chain actually produced.
+    Rebuilding is a different rule from the concatenation grade_chain performs, so
+    the comparison is a real check and not a restatement, and unlike a comma scan
+    it catches a MISSING boundary comma as well as a doubled one.
+
+    A comma-count or ",," scan cannot do this job: tone_arg's own lutyuv expression
+    carries 12 commas inside its single-quoted value, and dip_arg emits two fade
+    filters separated by a comma of its own, so nothing about the total comma count
+    or a ",," substring search can tell a correctly-placed separator apart from one
+    sitting inside a fragment's own value. An earlier version of this test scanned
+    only for ",," and dangling commas, and a missing (not doubled) boundary comma —
+    dropping the leading comma from mid_blue_arg's active return — slipped through
+    it undetected on all 512 combinations with mid_blue on (fix round 1).
 
     Enumerated over all 1024 combinations of the ten knobs at identity versus one
-    legal non-identity value. Pure string construction — no ffmpeg. The discipline
-    rests entirely on mixer_arg being unconditional, which is one plausible "the
-    gains are 1.0, emit nothing" edit away from breaking; this is the test that
-    would catch it (design §0.4/§2.4)."""
+    legal non-identity value. Pure string construction — no ffmpeg. The empty-slot/
+    dangling-comma/non-empty checks stay alongside the rebuild: they are what still
+    catches mixer_arg going empty at unit gains, which the rebuild's own join would
+    silently agree with (design §0.4/§2.4)."""
     import itertools
     wb_on = color.white_balance_arg((100.0, 110.0, 120.0), 1.0)
     tone_on = color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))
@@ -487,9 +499,9 @@ def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
         ("gains", (1.0, 1.0, 1.0), (1.05, 1.0, 0.95)),
         ("black_point", 0.0, color.BLACK_POINT_MAX),
         ("shadow_red", 0.0, color.SHADOW_RED_MAX),
-        ("mid_blue", 1.0, 1.2),
-        ("saturation", 1.0, 0.5),
-        ("highlight", 1.0, 0.6),
+        ("mid_blue", 1.0, color.MID_BLUE_MAX),
+        ("saturation", 1.0, color.SATURATION_MIN),
+        ("highlight", 1.0, color.HIGHLIGHT_MIN),
         ("highlight_red", 0.0, color.HIGHLIGHT_RED_MAX),
         ("dip", 0.0, 0.5),
     ]
@@ -498,9 +510,27 @@ def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
         kw = {name: value for (name, _, _), value in zip(axes, combo)}
         gains = kw.pop("gains")
         out = color.grade_chain(gains, dur=4.0, **kw)
+        # Rebuild what the discipline says the output must be — strip each
+        # non-empty fragment's own boundary comma, join with exactly one — and
+        # compare. A different rule from the concatenation grade_chain performs,
+        # so this is a check and not a restatement, and unlike a comma scan it
+        # catches a MISSING boundary comma as well as a doubled one: tone_arg
+        # carries 12 commas inside its own quoted lutyuv expression and dip_arg
+        # emits two fades separated by one, so nothing may split on commas here.
+        frags = [wb_on if kw["wb"] else "",
+                 tone_on if kw["tone"] else "",
+                 color.black_point_arg(kw["black_point"]),
+                 color.mixer_arg(*gains),
+                 color.shadow_red_arg(kw["shadow_red"]),
+                 color.mid_blue_arg(kw["mid_blue"]),
+                 color.saturation_arg(kw["saturation"]),
+                 color.highlight_arg(kw["highlight"]),
+                 color.highlight_red_arg(kw["highlight_red"]),
+                 color.dip_arg(kw["dip"], 4.0)]
+        expected = ",".join(f.strip(",") for f in frags if f)
+        assert out == expected, f"boundary defect with {kw}"
         assert ",," not in out, f"empty filter slot with {kw}"
-        assert not out.startswith(","), f"leading comma with {kw}"
-        assert not out.endswith(","), f"trailing comma with {kw}"
+        assert not out.startswith(",") and not out.endswith(","), f"dangling comma with {kw}"
         assert out, f"empty chain with {kw}"
         seen += 1
     assert seen == 1024        # the enumeration ran; a silent product() bug would not
