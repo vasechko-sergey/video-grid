@@ -39,12 +39,21 @@ _Last updated: 2026-09-21._
   | 10 | `color.py` | `mixer_arg` returns `""` at unit gains | RED — `AssertionError: empty chain with {...}` on the `assert out` line (not the rebuild line — `out == expected` held, exactly as the plan predicted) |
   | 11 | `color.py` | drop the leading comma from `mid_blue_arg`'s active return | RED (both tests) — a boundary-defect diff on `out == expected`, and `AssertionError: mid_blue_arg runs AFTER mixer_arg: begin with a comma` |
 
-  **Row 2 was the surprise: the plan predicted RED, the measurement said
-  GREEN.** The word "subject" survives in the message's own fixed
-  boilerplate two clauses later — "a subject read only happens when
-  regions.refuse declined to refuse" and "regions.subject_mask" — regardless
-  of what the opening ternary says, so `assert "subject" in msg` cannot see
-  the interpolation it was written to pin. Closed with a new test,
+  **Row 2 was the surprise, and it is the same defect class this whole slice
+  exists to close — found one layer up, inside the battery built to close
+  it.** The plan predicted RED; the measurement said GREEN. `assert "subject"
+  in msg` LOOKS like a construction that pins the opening ternary
+  (`{'crop' if fallback else 'subject'}`) to the word "subject" — but the same
+  word also sits, unconditionally, two clauses later in the message's own
+  fixed boilerplate ("a subject read only happens when regions.refuse
+  declined to refuse", "regions.subject_mask"). Deleting the ternary's
+  contribution and replacing it with a bare "region" therefore changes
+  nothing the assertion can see: the substring it searches for is still
+  supplied for free by a sentence the mutation never touched. A reader
+  trusted that a passing assertion proved the ternary's output was pinned;
+  measured, it proved nothing about it at all — a check that reads as a gate
+  and is not one, exactly §1's rule, just written as a test assertion instead
+  of a comment. Closed with a new test,
   `test_the_refusal_names_which_region_it_was_reading`
   (`tests/test_check_episode.py`), pinning the exact opening phrase ("the
   subject read came back") instead of a substring the rest of the sentence
