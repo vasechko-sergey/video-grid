@@ -159,7 +159,6 @@ def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
                                      "floor": 0.9, "frames": 3, "below": True})
     monkeypatch.setattr(check_episode.reframe, "plan_frames_rgb",
                         lambda plan, src, times: list(np.zeros((3, 4, 4, 3), np.uint8)))
-    plan = object()
     route, path, meta = _sidecar()
     monkeypatch.setattr(check_episode.color, "sample_times", lambda dur, *a, **k: [0.0, 0.5, 1.0])
 
@@ -212,18 +211,20 @@ with:
             f"contract break in regions.subject_mask or _region_pairs, not an "
             f"input to report as a not-checked advisory.")
     out = {"advisory_delta_e": True,
+           "region": "crop" if fallback else "subject",
            # the fraction of the region ASKED for — on a too-small row it is the
            # small number that is the evidence, never the crop's 1.0 it fell back
            # to. regions.AnchorReading.fraction's own convention (design §2.3).
-           "region": "crop" if fallback else "subject",
            "region_fraction": round(frac, 4),
            "region_fallback": fallback,
            **color_fidelity.evaluate(pairs)}
 ```
 
-Note the two comment lines that were between `"advisory_delta_e"` and `"region"`
-move above `"region"` — they describe `region_fraction`, and keeping them attached
-to it is the point.
+The three comment lines describing `region_fraction` stay exactly where they are
+today — between `"region"` and `"region_fraction"`. They describe the fraction, and
+keeping them attached to it is the point. Only the `**color_fidelity.evaluate(...)`
+argument changes, from the inline `_region_pairs(...)` call to the `pairs` local the
+refusal above has already checked.
 
 - [ ] **Step 6: Make the branch read the verdict**
 
@@ -807,9 +808,8 @@ Record the roll-call (row, mutation, test, RED/GREEN) for `docs/build-status.md`
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q
 ```
 
-Expected: PASS, with the count up by the nine new tests (four in Task 1, four in
-Task 2 counting the three integration ones, three in Task 3, two in Task 4 — 13 new
-in total). Record the exact before/after counts; the pre-slice baseline is
+Expected: PASS, with the count up by the new tests: **3** in Task 1, **5** in Task 2
+(two unit, three integration), **3** in Task 3, **2** in Task 4 — **13** in total. Record the exact before/after counts; the pre-slice baseline is
 **3956 passed / 1 skipped**.
 
 - [ ] **Step 3: Bump the version**
