@@ -568,7 +568,7 @@ def test_a_reprocessed_episodes_reading_reaches_the_reel_check_without_a_reelepi
 - [ ] **Step 2: Run to verify the first fails**
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest "tests/lib/test_check_reel.py::test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences" "tests/lib/test_check_reel.py::test_a_clean_reading_still_reaches_per_episode" "tests/lib/test_check_reel.py::test_the_reprocess_inlet_reaches_the_reader_without_passing_the_validator" -v
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest "tests/lib/test_check_reel.py::test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences" "tests/lib/test_check_reel.py::test_a_clean_reading_still_reaches_per_episode" "tests/lib/test_check_reel.py::test_a_reprocessed_episodes_reading_reaches_the_reel_check_without_a_reelepisode" -v
 ```
 
 Expected: the first FAILS with `KeyError: 'delta_h'`; the other two PASS.
