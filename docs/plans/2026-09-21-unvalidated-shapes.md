@@ -802,7 +802,7 @@ battery under `PYTHONDONTWRITEBYTECODE=1`. Quote every pytest selection — zsh 
 not word-split an unquoted variable, and an unquoted selection arrives as one
 argument and prints `no tests ran`, which reads exactly like a non-discriminating row.
 
-- [ ] **Step 1: Run the 10-row mutation battery**
+- [ ] **Step 1: Run the 11-row mutation battery**
 
 | # | File | Mutation | Must go RED |
 |---|---|---|---|
@@ -815,9 +815,10 @@ argument and prints `no tests ran`, which reads exactly like a non-discriminatin
 | 7 | `color.py` | drop `extract` from the new refusal's message | `test_a_stream_with_no_pix_fmt_is_refused_rather_than_assumed_eight_bit` |
 | 8 | `check_reel.py` | revert the two branches to their old order (`"delta_c" in c` first) | `test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences` |
 | 9 | `check_reel.py` | change `c.get("status") == "not-checked"` to `"status" in c` | **expected GREEN** — every shape either inlet produces spells the status exactly that way, so the two predicates are indistinguishable on reachable input. Record the non-discrimination; do NOT add a test that constructs an unreachable third status value purely to make a row red. |
-| 10 | `color.py` | make `mixer_arg` return `""` at unit gains | `test_the_grade_chain_is_well_formed_for_every_combination_of_knobs` |
+| 10 | `color.py` | make `mixer_arg` return `""` at unit gains | `test_the_grade_chain_is_well_formed_for_every_combination_of_knobs` — on its `assert out` line, NOT the rebuild line: the test calls the same mutated `mixer_arg` when building `expected`, so `out == expected` holds and the emptiness check is what catches it |
+| 11 | `color.py` | drop the LEADING comma from `mid_blue_arg`'s active return | `test_the_grade_chain_is_well_formed_for_every_combination_of_knobs` on its `out == expected` line, and `test_each_builder_sits_on_its_own_side_of_the_mixer_pivot`. Added after Task 4's review: the original four comma assertions passed this mutation for all 512 combinations with `mid_blue` on, because a fused pair contains no comma at all |
 
-Rows 1-8 and 10 must go RED. Row 9 is expected GREEN and its silence is the finding.
+Rows 1-8, 10 and 11 must go RED. Row 9 is expected GREEN and its silence is the finding.
 For any other row that comes back GREEN: the row is a real coverage hole. Report it,
 then close it with a NEW test that discriminates — never by weakening the mutation.
 
