@@ -483,6 +483,26 @@ def test_an_ordinary_subject_read_still_carries_its_five_fidelity_keys():
     assert "status" not in d and "reason" not in d
 
 
+def test_the_refusal_names_which_region_it_was_reading(monkeypatch):
+    """Coverage hole found running the 2026-09-21 mutation battery, row 2:
+    replacing the opening clause's `{'crop' if fallback else 'subject'}` with a
+    bare "region" leaves `"subject" in msg` (the assertion two tests up) still
+    true, because the word "subject" ALSO appears twice more in the message's
+    fixed boilerplate — "a subject read only happens..." and
+    "regions.subject_mask" — regardless of what the ternary says. That
+    assertion is therefore blind to the one clause that actually commits to
+    WHICH region broke contract; this test pins that clause by its exact
+    opening phrase instead of by a substring the rest of the sentence already
+    supplies for free."""
+    plain, graded = _stacks()
+    route, path, meta = _sidecar()
+    empty = np.zeros((N, H, W), dtype=bool)
+    monkeypatch.setattr(regions, "subject_mask", lambda extents, n, h, w: (empty, 0.5))
+    with pytest.raises(ValueError, match="the subject read came back"):
+        check_episode._subject_delta_advisory(plain, graded, [0.0, 0.5, 1.0],
+                                              route, path, meta)
+
+
 def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
     """A flat merge puts the advisory second, so an advisory `status` overwrites
     into the dict the branch reads. Step 5 of Task 1 makes that shape impossible
