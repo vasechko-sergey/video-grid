@@ -581,7 +581,20 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
     shadow_red → mid_blue → saturation → highlight (shoulder) → highlight_red (the red
     shoulder) → dip (timeline, last).
     `wb`/`tone` are pre-built fragments (the caller builds AND verifies them — a tone
-    curve is ramp-checked in reframe.verify_tone before it reaches here). Returns the
+    curve is ramp-checked in reframe.verify_tone before it reaches here).
+
+    The comma discipline, stated because nothing else states it: every fragment
+    BEFORE mixer_arg (`wb`, `tone`, black_point_arg) is either "" or ends with a
+    comma; mixer_arg is the pivot, is NEVER "" and carries a comma at neither end;
+    every fragment AFTER it is either "" or begins with a comma and does not end
+    with one. That is what makes any subset of knobs compose into a filtergraph
+    with no empty slot. It rests entirely on mixer_arg being unconditional — an
+    identity branch there would fuse a wb/tone trailing comma against a
+    shadow_red leading one. Pinned by
+    tests/lib/test_color.py::test_the_grade_chain_is_well_formed_for_every_combination_of_knobs,
+    which enumerates all 1024 on/off combinations (design 2026-09-21 §2.4).
+
+    Returns the
     fragment WITHOUT the trailing fps/format, which reframe owns. Every builder is ""
     at its identity value, so at defaults this returns exactly mixer_arg(*gains) and
     the fill fast path stays byte-identical to before colour-as-a-stage."""

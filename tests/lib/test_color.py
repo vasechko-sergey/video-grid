@@ -464,3 +464,66 @@ def test_select_frames_rounds_each_time_independently():
     # int(x+0.5)) would be caught by this test rather than silently shipping.
     frag = color.select_frames([0.05], 30.0)
     assert frag == r"select='eq(n\,2)'"
+
+
+def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
+    """The comma discipline, as a property over the composition rather than a
+    restatement of the docstring: every fragment before mixer_arg is empty or ends
+    with a comma, mixer_arg is never empty and carries none at either end, and every
+    fragment after it is empty or begins with one. The whole expression therefore
+    never has an empty filter slot.
+
+    Enumerated over all 1024 combinations of the ten knobs at identity versus one
+    legal non-identity value. Pure string construction — no ffmpeg. The discipline
+    rests entirely on mixer_arg being unconditional, which is one plausible "the
+    gains are 1.0, emit nothing" edit away from breaking; this is the test that
+    would catch it (design §0.4/§2.4)."""
+    import itertools
+    wb_on = color.white_balance_arg((100.0, 110.0, 120.0), 1.0)
+    tone_on = color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))
+    axes = [
+        ("wb", "", wb_on),
+        ("tone", "", tone_on),
+        ("gains", (1.0, 1.0, 1.0), (1.05, 1.0, 0.95)),
+        ("black_point", 0.0, color.BLACK_POINT_MAX),
+        ("shadow_red", 0.0, color.SHADOW_RED_MAX),
+        ("mid_blue", 1.0, 1.2),
+        ("saturation", 1.0, 0.5),
+        ("highlight", 1.0, 0.6),
+        ("highlight_red", 0.0, color.HIGHLIGHT_RED_MAX),
+        ("dip", 0.0, 0.5),
+    ]
+    seen = 0
+    for combo in itertools.product(*[(off, on) for _, off, on in axes]):
+        kw = {name: value for (name, _, _), value in zip(axes, combo)}
+        gains = kw.pop("gains")
+        out = color.grade_chain(gains, dur=4.0, **kw)
+        assert ",," not in out, f"empty filter slot with {kw}"
+        assert not out.startswith(","), f"leading comma with {kw}"
+        assert not out.endswith(","), f"trailing comma with {kw}"
+        assert out, f"empty chain with {kw}"
+        seen += 1
+    assert seen == 1024        # the enumeration ran; a silent product() bug would not
+
+
+def test_each_builder_sits_on_its_own_side_of_the_mixer_pivot():
+    """The per-builder half of the discipline, so a new builder added on the wrong
+    side fails with a message saying which side it belongs on."""
+    before = [("white_balance_arg", color.white_balance_arg((100.0, 110.0, 120.0), 1.0)),
+              ("tone_arg", color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))),
+              ("black_point_arg", color.black_point_arg(color.BLACK_POINT_MAX))]
+    after = [("shadow_red_arg", color.shadow_red_arg(color.SHADOW_RED_MAX)),
+             ("mid_blue_arg", color.mid_blue_arg(1.2)),
+             ("saturation_arg", color.saturation_arg(0.5)),
+             ("highlight_arg", color.highlight_arg(0.6)),
+             ("highlight_red_arg", color.highlight_red_arg(color.HIGHLIGHT_RED_MAX)),
+             ("dip_arg", color.dip_arg(0.5, 4.0))]
+    for name, frag in before:
+        assert frag.endswith(","), f"{name} runs BEFORE mixer_arg: end with a comma"
+        assert not frag.startswith(","), f"{name} runs BEFORE mixer_arg: no leading comma"
+    for name, frag in after:
+        assert frag.startswith(","), f"{name} runs AFTER mixer_arg: begin with a comma"
+        assert not frag.endswith(","), f"{name} runs AFTER mixer_arg: no trailing comma"
+    pivot = color.mixer_arg(1.0, 1.0, 1.0)
+    assert pivot, "mixer_arg is the pivot and is never empty — the whole discipline rests on it"
+    assert not pivot.startswith(",") and not pivot.endswith(",")
