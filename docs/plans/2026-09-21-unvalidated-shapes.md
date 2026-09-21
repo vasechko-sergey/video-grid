@@ -646,7 +646,7 @@ git commit -m "fix(check_reel): key the chroma reader on status, the discriminat
 **Context and scope.** Backlog row R2.8 said `grade_chain` "composes pre-built
 fragments under a three-way comma convention and validates none of it — it produced
 1.5 KB of ffmpeg garbage during the run". Design §0.4 refutes all three claims: a
-maximal **legal** chain is 1206 bytes across 23 filters (a real-run-shaped one is
+maximal **legal** chain is 1206 bytes across 11 filters (a real-run-shaped one is
 842, and `tone_arg` alone is a 437-byte 32-point LUT expression), every builder does
 validate its own argument and raises with a remedy, and a comma error is a loud
 ffmpeg parse failure rather than silent corruption. The row closes ⊘ in Task 5.
@@ -866,7 +866,7 @@ may no longer rely on an invariant that only a comment asserts.
   validator never sees.
 - `color.grade_chain`'s comma discipline is stated and pinned over all 1024 knob
   combinations. Backlog row R2.8 closes ⊘: a maximal LEGAL chain is 1206 bytes
-  across 23 filters, every builder validates its own argument, and a comma error is
+  across 11 filters, every builder validates its own argument, and a comma error is
   a loud ffmpeg parse failure — so "1.5 KB of ffmpeg garbage" is not evidence of
   anything, and the retro section the row cites mentions none of it.
 ```
@@ -886,7 +886,7 @@ Move all four P2 rows out of `docs/backlog.md` into `docs/backlog-closed.md` und
 - the `ReelEpisode.chroma` discriminator row — closed in the reader, and note the
   measured reason: `build_reel`'s plain-list inlet does not pass the validator, so
   tightening the validator would have closed one of two paths.
-- **R2.8 — closed ⊘**, with §0.4's numbers (1206 / 842 / 437 bytes, 23 filters), the
+- **R2.8 — closed ⊘**, with §0.4's numbers (1206 / 842 / 437 bytes, 11 filters), the
   fact that the cited retro section contains no mention of `grade_chain`, 1.5 KB or
   garbage, that the only "1.5" in the colour record is a luma-code residual in an
   archived row, and that a comma error is loud. Say plainly what was NOT proven:

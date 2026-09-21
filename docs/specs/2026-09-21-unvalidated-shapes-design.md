@@ -140,8 +140,18 @@ comma convention and validates none of it — it produced 1.5 KB of ffmpeg garba
 during the run."* Three claims, three results.
 
 **Length is not evidence.** A maximal **legal** chain — every knob at a legal
-extreme, a white-balance fragment and a real tone pair — is **1206 bytes across 23
-filters**. A chain shaped like the real run's (a tone pair plus the three knobs that
+extreme, a white-balance fragment and a real tone pair — is **1206 bytes across 11
+filters**.
+
+**Corrected 2026-09-21, during Task 4's review:** this design first said "23
+filters", which was a miscount of the same kind it accuses R2.8 of. 23 is the
+number of comma-separated TOKENS. `tone_arg` carries **12 commas inside its own
+single-quoted `lutyuv=y='if(lte(...),...)'` expression** — the §12 landmine's
+comma-bearing-value case — and `dip_arg` emits two `fade` filters separated by a
+comma of its own. The 22 commas are therefore 10 separators plus 12 that are
+inside a quoted value, and the filters are: `colorchannelmixer` (white balance),
+`lutyuv`, `colorlevels`, `colorchannelmixer` (gain), `curves` x4, `eq`, and two
+`fade`s. The byte counts were never wrong; the unit was. A chain shaped like the real run's (a tone pair plus the three knobs that
 shipped: `saturation 0.92`, `shadow_red 0.1`, `mid_blue 1.2`) is **842**. Per
 builder:
 
