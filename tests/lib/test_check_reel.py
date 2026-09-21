@@ -5,7 +5,7 @@ import imagehash
 import pytest
 
 from scripts import check_reel
-from scripts.lib import models, provenance, reel_orchestration
+from scripts.lib import color_fidelity, models, provenance, reel_orchestration
 from scripts.lib import outro as outro_mod
 from scripts.lib.models import CheckResult, ReelCheckSpec, ReelFailure
 
@@ -1050,19 +1050,27 @@ def test_a_clean_reading_still_reaches_per_episode():
     assert cr.detail["per_episode"] == {"0": [-4.18, -1.22], "1": [-2.72, -0.51]}
 
 
-def test_the_reprocess_inlet_reaches_the_reader_without_passing_the_validator(tmp_path):
+def test_a_reprocessed_episodes_reading_reaches_the_reel_check_without_a_reelepisode(monkeypatch, tmp_path):
     """build_reel builds `chroma` as a plain list and overwrites one entry with
     shift_from_report's output before handing it to check_reel.run — so one of the
     reader's two inlets never touches ReelEpisode.__post_init__ (design §0.3). The
-    reader's comment claims that validator as its guarantee; this pins that the
-    path it does not cover still arrives in a shape the reader accepts."""
-    from scripts.lib import color_fidelity
+    reader's comment claims that validator as its guarantee; this drives the real
+    run() wiring with exactly the value that path produces, so the inlet the
+    validator does not cover is covered by a test instead.
+
+    Not a build_reel integration test: it pins the shape contract at the seam
+    build_reel writes to, not build_reel's own indexing. The driver's wiring is
+    tests/lib/test_build_reel.py's business."""
+    monkeypatch.setattr(check_reel.color_measure, "clip_percentiles_batch",
+                        lambda m, spans: [(52.0, 104.0, 192.0)] * len(spans))
     report = {"checks": {"grade_damage": {"region": "crop",
                                           "delta_c": -3.0, "delta_h": 0.5}}}
-    fresh = color_fidelity.shift_from_report(report)
-    cr = _chroma_spread_check([fresh, _reading(-4.18, -1.22)], 5.0)
-    assert cr.detail["per_episode"]["0"] == [-3.0, 0.5]
-    assert cr.detail["not_checked"] == {}
+    fresh = color_fidelity.shift_from_report(report)     # what the reprocess arm writes
+    rep = _run_reel(tmp_path, predicted=[(52.0, 104.0, 192.0)] * 2,
+                    chroma=[fresh, _reading(-4.18, -1.22)])
+    c = rep.checks["chroma_spread"]
+    assert c.detail["per_episode"]["0"] == [-3.0, 0.5]
+    assert c.detail["not_checked"] == {}
 
 
 def test_a_failing_chroma_spread_does_not_fail_the_reel():

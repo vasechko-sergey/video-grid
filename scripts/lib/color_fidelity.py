@@ -84,11 +84,13 @@ def shift_from_report(report: dict) -> dict:
     always) or, on the subject arm, would say "subject" while the numbers under it
     are the crop's, which is a reading naming pixels that are not the ones it
     describes. A field that cannot be decided is deleted, not qualified (design
-    §1 rule 4) — nothing downstream reads it either: `_chroma_spread_check` keys
-    only on `delta_c`/`delta_h`. Do not add it back; a caller that needs to know
-    which arm supplied `check_episode`'s own reading already has `region` on
-    THAT report, at `report["checks"]["grade_damage"]["region"]` — unaffected by
-    this function, which only renames two of that same dict's keys.
+    §1 rule 4) — nothing downstream reads it either: `_chroma_spread_check`
+    discriminates on `status` to find the absence branch, and reads
+    `delta_c`/`delta_h` only on the branch that remains (design 2026-09-21 §0.3).
+    Do not add it back; a caller that needs to know which arm supplied
+    `check_episode`'s own reading already has `region` on THAT report, at
+    `report["checks"]["grade_damage"]["region"]` — unaffected by this function,
+    which only renames two of that same dict's keys.
 
     Keys on `region`, never on the presence of a `status` key: the grade_damage block
     is a FLAT merge of a verdict dict and an advisory dict, and a predicate over
