@@ -1032,6 +1032,39 @@ def test_no_chroma_at_all_is_named_not_zero():
     assert cr.detail["reason"]
 
 
+def test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences():
+    """ReelEpisode.__post_init__ returns at status == "not-checked" once it has a
+    non-empty reason, so it ADMITS {"status", "reason", "delta_c"}. The reader used
+    to test `"delta_c" in c` first, take that as its reading branch, and subscript
+    c["delta_h"]: KeyError (design §0.3, reproduced). Keying on the same
+    discriminator the validator uses puts the dict where the validator filed it."""
+    mixed = {"status": "not-checked", "reason": "no grade_damage block", "delta_c": 1.0}
+    cr = _chroma_spread_check([mixed, _reading(-4.18, -1.22)], 5.0)
+    assert cr.detail["not_checked"]["0"] == "no grade_damage block"
+    assert "0" not in cr.detail["per_episode"]
+
+
+def test_a_clean_reading_still_reaches_per_episode():
+    """The control for the reorder: the reading branch must not have moved."""
+    cr = _chroma_spread_check([_reading(-4.18, -1.22), _reading(-2.72, -0.51)], 5.0)
+    assert cr.detail["per_episode"] == {"0": [-4.18, -1.22], "1": [-2.72, -0.51]}
+
+
+def test_the_reprocess_inlet_reaches_the_reader_without_passing_the_validator(tmp_path):
+    """build_reel builds `chroma` as a plain list and overwrites one entry with
+    shift_from_report's output before handing it to check_reel.run — so one of the
+    reader's two inlets never touches ReelEpisode.__post_init__ (design §0.3). The
+    reader's comment claims that validator as its guarantee; this pins that the
+    path it does not cover still arrives in a shape the reader accepts."""
+    from scripts.lib import color_fidelity
+    report = {"checks": {"grade_damage": {"region": "crop",
+                                          "delta_c": -3.0, "delta_h": 0.5}}}
+    fresh = color_fidelity.shift_from_report(report)
+    cr = _chroma_spread_check([fresh, _reading(-4.18, -1.22)], 5.0)
+    assert cr.detail["per_episode"]["0"] == [-3.0, 0.5]
+    assert cr.detail["not_checked"] == {}
+
+
 def test_a_failing_chroma_spread_does_not_fail_the_reel():
     """Advisory end to end: overall is what it would have been (design §3).
 
