@@ -179,10 +179,10 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
             f"contract break in regions.subject_mask or _region_pairs, not an "
             f"input to report as a not-checked advisory.")
     out = {"advisory_delta_e": True,
+           "region": "crop" if fallback else "subject",
            # the fraction of the region ASKED for — on a too-small row it is the
            # small number that is the evidence, never the crop's 1.0 it fell back
            # to. regions.AnchorReading.fraction's own convention (design §2.3).
-           "region": "crop" if fallback else "subject",
            "region_fraction": round(frac, 4),
            "region_fallback": fallback,
            **color_fidelity.evaluate(pairs)}

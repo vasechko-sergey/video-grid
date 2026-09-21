@@ -499,7 +499,6 @@ def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
                                      "floor": 0.9, "frames": 3, "below": True})
     monkeypatch.setattr(check_episode.reframe, "plan_frames_rgb",
                         lambda plan, src, times: list(np.zeros((3, 4, 4, 3), np.uint8)))
-    plan = object()
     route, path, meta = _sidecar()
     monkeypatch.setattr(check_episode.color, "sample_times", lambda dur, *a, **k: [0.0, 0.5, 1.0])
 
