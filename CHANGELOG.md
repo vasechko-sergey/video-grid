@@ -10,6 +10,33 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.12.1 — 2026-09-21
+
+Three latent defects closed and one backlog row closed by measurement. A reader
+may no longer rely on an invariant that only a comment asserts.
+
+- `check_episode._grade_damage` reads its verdict from the verdict's own dict
+  instead of from the flat merge with the dE00 advisory, and the advisory can no
+  longer return a `{status, reason}` absence at all — it raises, because the region
+  it reads holds pixels by construction. Until now an advisory absence would have
+  overwritten the discriminator and turned a BLOCKING entropy verdict into
+  `passed=None`. Unreachable then; impossible now.
+- `color.refuse_ungradeable_plane` refuses a stream whose `pix_fmt` ffprobe did not
+  report, instead of grading it as 8-bit. Measured: a container whose codec this
+  build cannot open still reports width, height, frame rate, duration and range
+  from its own boxes, so four of the five probed values look healthy while
+  `plane_depth("")` answers 8.
+- `check_reel._chroma_spread_check` keys on `status`, the same discriminator
+  `ReelEpisode.__post_init__` uses. A dict carrying both a `not-checked` status and
+  a stray `delta_c` constructed fine and raised `KeyError` on read. Fixed in the
+  reader, not the validator: `build_reel` hands the reader a plain list the
+  validator never sees.
+- `color.grade_chain`'s comma discipline is stated and pinned over all 1024 knob
+  combinations. Backlog row R2.8 closes ⊘: a maximal LEGAL chain is 1206 bytes
+  across 11 filters, every builder validates its own argument, and a comma error is
+  a loud ffmpeg parse failure — so "1.5 KB of ffmpeg garbage" is not evidence of
+  anything, and the retro section the row cites mentions none of it.
+
 ## 0.12.0 — 2026-09-17
 
 **MINOR: a new contract field and a new advisory check.** `ReelEpisode` gains

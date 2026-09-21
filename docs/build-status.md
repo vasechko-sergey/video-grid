@@ -4,13 +4,83 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-17._
+_Last updated: 2026-09-21._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Unvalidated shapes — a comment is not a gate (2026-09-21, 0.12.1)** —
+  design
+  [2026-09-21-unvalidated-shapes-design.md](specs/2026-09-21-unvalidated-shapes-design.md),
+  plan [2026-09-21-unvalidated-shapes.md](plans/2026-09-21-unvalidated-shapes.md),
+  **Tasks 1–5** (branch `docs/unvalidated-shapes`). Three latent defects
+  closed by construction/refusal, one backlog row (R2.8) closed ⊘ by its own
+  measurement.
+
+  **Task 5's 11-row mutation battery — roll-call.** Run one mutation at a
+  time on an otherwise-clean tree under `PYTHONDONTWRITEBYTECODE=1`, restored
+  via `git show HEAD:<path> > <path>` and re-checked with `git diff --stat`
+  after each.
+
+  | # | File | Mutation | Result |
+  |---|---|---|---|
+  | 1 | `check_episode.py` | delete the `if not pairs: raise` block | RED — `Failed: DID NOT RAISE ValueError` |
+  | 2 | `check_episode.py` | `{'crop' if fallback else 'subject'}` → bare `"region"` | **GREEN — a real coverage hole** (see below) |
+  | 3 | `check_episode.py` | drop `regions.subject_mask` from the message | RED — `AssertionError: assert 'regions.subject_mask' in '...'` |
+  | 4 | `check_episode.py` | revert to `unchecked = "status" in d` computed after the merge | RED — `AssertionError: assert None is False` |
+  | 5 | `color.py` | delete the `if not pix_fmt:` clause | RED (both tests) — `Failed: DID NOT RAISE ValueError` |
+  | 6 | `color.py` | move `if not pix_fmt:` below the `color_range == "pc"` clause | RED — `AssertionError: Regex pattern did not match: 'pix_fmt'` |
+  | 7 | `color.py` | drop `extract` from the refusal message | RED — `assert 'extract' in "...scripts.reencode..."` |
+  | 8 | `check_reel.py` | revert to the old branch order (`"delta_c" in c` first) | RED — `KeyError: 'delta_h'` |
+  | 9 | `check_reel.py` | `c.get("status") == "not-checked"` → `"status" in c` | **GREEN, expected — the finding is the silence.** Confirmed over all 571 tests in `tests/lib/test_check_reel.py` + `tests/integration/test_chroma_spread.py` + `tests/lib/test_models.py`, not merely the row's own test. No new test added, per the plan's own instruction not to construct an unreachable third status value. |
+  | 10 | `color.py` | `mixer_arg` returns `""` at unit gains | RED — `AssertionError: empty chain with {...}` on the `assert out` line (not the rebuild line — `out == expected` held, exactly as the plan predicted) |
+  | 11 | `color.py` | drop the leading comma from `mid_blue_arg`'s active return | RED (both tests) — a boundary-defect diff on `out == expected`, and `AssertionError: mid_blue_arg runs AFTER mixer_arg: begin with a comma` |
+
+  **Row 2 was the surprise: the plan predicted RED, the measurement said
+  GREEN.** The word "subject" survives in the message's own fixed
+  boilerplate two clauses later — "a subject read only happens when
+  regions.refuse declined to refuse" and "regions.subject_mask" — regardless
+  of what the opening ternary says, so `assert "subject" in msg` cannot see
+  the interpolation it was written to pin. Closed with a new test,
+  `test_the_refusal_names_which_region_it_was_reading`
+  (`tests/test_check_episode.py`), pinning the exact opening phrase ("the
+  subject read came back") instead of a substring the rest of the sentence
+  supplies for free — verified RED under the row-2 mutation and GREEN on the
+  correct code before being kept, never by weakening the mutation.
+
+  **Suite: 3969 → 3970 passed, 1 skipped.** Tasks 1–4 had already landed
+  their 13 new tests (3 + 5 + 3 + 2) against the pre-slice baseline of 3956
+  passed / 1 skipped; Task 5 added the one battery-closure test above.
+
+  Docstring/version housekeeping: `.claude-plugin/plugin.json` and
+  `CHANGELOG.md` both read 0.12.1 (PATCH — no contract field, check or
+  threshold changed). One correction to the plan's own literal text: its
+  `## 0.12.1 — unvalidated shapes` CHANGELOG heading fails the repo's own
+  `tests/test_plugin_manifests.py::test_every_changelog_heading_is_a_semver_and_they_descend`,
+  which requires `## X.Y.Z — YYYY-MM-DD`; the heading now carries today's
+  date and the body text ships verbatim. `docs/pipeline-map.md` needed no
+  change — no stage's status moved.
+
+  Four backlog rows closed: the `_grade_damage` flat-merge row and the
+  `_probe` fail-open row (both ✅, by construction/refusal), the
+  `ReelEpisode.chroma` discriminator row (✅, closed in the reader — measured
+  that `build_reel`'s plain-list inlet never passes through the validator, so
+  tightening the validator would have closed only one of two paths), and
+  **R2.8 (⊘)** — closed by measurement, not by code: a maximal legal
+  `grade_chain` is 1206 bytes across **11 filters** (corrected from this
+  design's own first-pass miscount of 23, which counted comma-separated
+  tokens, not filters), 842 for a real-run-shaped chain, 437 of that
+  `tone_arg` alone; every builder validates its own argument; a comma error
+  is a loud ffmpeg parse failure, not the silent corruption this registry's
+  landmines are for; and the cited retro section names none of "grade_chain",
+  "1.5 KB" or "garbage" — the only "1.5" in the colour record is an already-
+  archived luma-code residual. Three new P2 deferrals filed from design §6.
+  Archive re-counted by hand (the file's own header explains why `grep -c` is
+  wrong in two directions): **67** closed items, up from 63 — 61 table rows
+  (23 P1 + 38 P2) plus the unchanged 6 P3 prose bullets.
 
 - **Chroma spread — the last open half of R2.1 closes by measurement, not by
   a target (2026-09-17, 0.12.0)** — design
