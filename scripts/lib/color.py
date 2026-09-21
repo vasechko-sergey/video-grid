@@ -258,6 +258,10 @@ def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
         target it was given, against a MATCH_EPS of 4.0;
       * wrong depth: measured on a real 10-bit clip, tone_arg returns a plane
         with 99.26% of its pixels pinned to a single code.
+      * unknown depth: an absent pix_fmt reads as 8 through plane_depth, which is
+        the right answer for a NAME with no depth marker and the wrong one for no
+        name at all — measured 2026-09-21 against a container this build has no
+        decoder for (design §0.2).
 
     Only these two properties. Codec and resolution are nobody's assumption here,
     and refusing on them would block legitimate hand runs for no reason.
@@ -266,6 +270,17 @@ def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
     and assembly.matches already reads it that way. A full-range file that lost
     its tag is therefore still misread — a known gap, design §7, not an oversight.
     """
+    if not pix_fmt:
+        raise ValueError(
+            f"{src}: ffprobe reported no pix_fmt for this stream, so its bit depth "
+            f"is unknown — and an unknown depth reads as 8 through plane_depth, "
+            f"which answers 8 for a NAME carrying no depth marker (yuv420p, nv12, "
+            f"gray). An absent name is not such a name. A container whose codec "
+            f"this ffmpeg build cannot open still reports width, height, frame rate "
+            f"and duration from its own boxes, so the other four probed values look "
+            f"healthy while this one is missing. Cut this source through "
+            f"scripts.extract first: it re-encodes to 8-bit yuv420p at the source's "
+            f"own resolution.")
     depth = plane_depth(pix_fmt)
     if depth != 8:
         raise ValueError(

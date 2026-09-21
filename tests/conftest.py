@@ -185,6 +185,33 @@ def golden_ride_segment(tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="session")
+def undescribable_plane(golden_ride_segment, tmp_path_factory):
+    """A tv-range segment whose codec this ffmpeg build has no decoder for.
+
+    Built by patching the `stsd` visual sample entry's fourcc from `avc1` to
+    `zzzz` — a pure byte edit, no re-encode, nothing committed. The FIRST `avc1`
+    in the file is the `ftyp` brand list and must be left alone; the second is
+    the sample entry.
+
+    Measured 2026-09-21: ffprobe still reports width, height, avg_frame_rate,
+    duration and color_range for this file, because all five come from container
+    boxes rather than from the codec — and omits pix_fmt. That is the whole
+    negative class for color.refuse_ungradeable_plane's third clause (design
+    §0.2), and it is constructed rather than captured: no real file of this kind
+    is on this machine (design §5.2).
+    """
+    data = bytearray(golden_ride_segment.read_bytes())
+    first = data.find(b"avc1")
+    i = data.find(b"avc1", first + 4)
+    if first < 0 or i < 0:
+        pytest.skip("golden_ride_segment carries no stsd avc1 sample entry to patch")
+    data[i:i + 4] = b"zzzz"
+    out = tmp_path_factory.mktemp("media") / "undescribable_plane.mp4"
+    out.write_bytes(bytes(data))
+    return out
+
+
 @pytest.fixture
 def extract_unnormalized():
     """extract.extract's command as it stood BEFORE the range normalization.

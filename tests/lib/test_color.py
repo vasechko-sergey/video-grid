@@ -374,6 +374,28 @@ def test_depth_is_reported_before_range_when_both_are_wrong():
         color.refuse_ungradeable_plane("yuv420p10le", "pc", "x.mp4")
 
 
+def test_a_stream_with_no_pix_fmt_is_refused_rather_than_assumed_eight_bit():
+    """plane_depth answers 8 for a NAME with no depth marker (yuv420p, nv12,
+    gray) and that is correct. An ABSENT name is not such a name — measured, a
+    container whose codec this ffmpeg build cannot open reports width, height,
+    frame rate and duration from its own boxes and omits pix_fmt, so the other
+    four probed values look healthy while the depth is unknown (design §0.2)."""
+    with pytest.raises(ValueError) as e:
+        color.refuse_ungradeable_plane("", "tv", "/f/unknown_codec.mp4")
+    msg = str(e.value)
+    assert "pix_fmt" in msg and "/f/unknown_codec.mp4" in msg
+    assert "extract" in msg          # the remedy, not just the complaint
+
+
+def test_the_missing_pix_fmt_is_refused_before_the_range():
+    """Order matters twice. The clause must run before plane_depth, or it is
+    reached only after the wrong answer is already in hand — and an undescribable
+    plane on a pc source must name the pix_fmt, not the range, because re-tagging
+    the range would not make the depth knowable."""
+    with pytest.raises(ValueError, match="pix_fmt"):
+        color.refuse_ungradeable_plane("", "pc", "x.mp4")
+
+
 def test_lerp_continues_the_last_segment_above_the_final_knot():
     knots = [(0.0, 0.0), (100.0, 50.0), (200.0, 100.0)]      # last slope 0.5
     assert color._lerp(knots, 200.0) == pytest.approx(100.0)
