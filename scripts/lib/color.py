@@ -252,7 +252,7 @@ def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
     TV_LO/TV_SPAN are constants of BOTH bit depth and range — together they say
     "the stored luma plane runs 16..235 in eight bits" — and every knob in
     grade_chain is written against that plane. Neither half is negotiable, and
-    both fail SILENTLY when violated:
+    each fails SILENTLY when violated:
 
       * wrong range: measured, a full-range source lands 8.5 luma codes from the
         target it was given, against a MATCH_EPS of 4.0;

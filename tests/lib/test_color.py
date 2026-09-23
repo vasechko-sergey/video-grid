@@ -537,8 +537,9 @@ def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
 
 
 def test_each_builder_sits_on_its_own_side_of_the_mixer_pivot():
-    """The per-builder half of the discipline, so a new builder added on the wrong
-    side fails with a message saying which side it belongs on."""
+    """The per-builder half of the discipline, so a new builder added to these
+    lists on the wrong side fails with a message saying which side it belongs
+    on."""
     before = [("white_balance_arg", color.white_balance_arg((100.0, 110.0, 120.0), 1.0)),
               ("tone_arg", color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))),
               ("black_point_arg", color.black_point_arg(color.BLACK_POINT_MAX))]

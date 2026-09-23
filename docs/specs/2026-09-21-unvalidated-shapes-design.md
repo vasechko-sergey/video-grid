@@ -355,8 +355,9 @@ docstring: enumerate every knob at identity versus one legal non-identity value 
 including `wb` and `tone` present versus absent — build `grade_chain` for all
 combinations, and assert that no output contains `,,`, begins with `,`, or ends with
 `,`. Pure string construction, no ffmpeg, 1024 combinations. A per-builder check of
-lead/tail characters rides along, so a new builder added on the wrong side of the
-pivot fails with a message that says which side it belongs on.
+lead/tail characters rides along, checked against two hand-maintained lists, so a
+new builder added to those lists on the wrong side fails with a message that says
+which side it belongs on.
 
 This is the only code R2.8 leaves behind, and the row itself closes ⊘ with §0.4's
 numbers as its closure note.
@@ -389,10 +390,12 @@ numbers as its closure note.
    `_subject_delta_advisory` returning `{"status": "x", "reason": "y"}`, a real
    below-floor `gradedamage` reading still yields `passed=False`, not `None`.
    This is the test that fails on today's build.
-3. **An undescribable plane is refused.** A committed fixture built by patching the
-   `stsd` fourcc of a tv-range segment; assert `plan_render` raises and that the
-   message names `scripts.extract`. Control: the same file unpatched passes.
-   The negative class is real bytes, not a stubbed `_probe`.
+3. **An undescribable plane is refused.** A fixture constructed at test time by
+   patching the `stsd` fourcc of a tv-range segment (itself built at test time
+   from the committed `golden_ride.mp4`, nothing committed directly); assert
+   `plan_render` raises and that the message names `scripts.extract`. Control:
+   the same file unpatched passes. The negative class is real bytes, not a
+   stubbed `_probe`.
 4. **`plane_depth`'s own contract is unchanged.** Its existing parametrized test
    still passes, including `plane_depth("yuv420p") == 8`, and gains no `""` row —
    the empty string is refused a layer up, not redefined here.

@@ -355,8 +355,10 @@ immediately before the existing `depth = plane_depth(pix_fmt)` line:
             f"own resolution.")
 ```
 
-Then extend the docstring's list of the two silent failures with a third bullet,
-directly after the `wrong depth` bullet:
+Then extend the docstring's list of silent failures with a third bullet,
+directly after the `wrong depth` bullet — and reword its lead-in so it no
+longer implies exactly two bullets follow (`and each fails SILENTLY when
+violated:`, not `and both fail SILENTLY when violated:`):
 
 ```
       * unknown depth: an absent pix_fmt reads as 8 through plane_depth, which is

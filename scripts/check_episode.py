@@ -259,7 +259,7 @@ def _grade_damage(source: str | None,
     p_frames = reframe.plan_frames_rgb(plain_plan, source, times)
     verdict = gradedamage.evaluate(plain=p_frames, graded=g_frames, floor=spec.entropy_floor)
     # The discriminator belongs to the dict it judges. `d` below is a FLAT merge of
-    # this verdict and the advisory description, and both halves can spell
+    # this verdict and the advisory description, and both halves could spell
     # {status, reason} — so reading `"status" in d` made a blocking verdict depend
     # on a key the advisory could contribute (design §0.1/§2.1). The advisory can
     # no longer emit that shape at all, which is what closes the defect; branching

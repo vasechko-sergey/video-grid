@@ -361,8 +361,14 @@ def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
         # the reading branch then subscripted c["delta_h"] and raised KeyError
         # (design 2026-09-21 §0.3).
         if isinstance(c, dict) and c.get("status") == "not-checked":
-            # A bare subscript, never .get: __post_init__ refuses a not-checked
-            # chroma whose 'reason' is missing or empty.
+            # A bare subscript, never .get, and this reader has TWO inlets, so
+            # both are named. Through ReelEpisode, __post_init__ refuses a
+            # not-checked chroma whose 'reason' is missing or empty. Through
+            # build_reel's plain list, every absence branch of
+            # color_fidelity.shift_from_report returns a non-empty literal
+            # reason — "the report carries no grade_damage block", or the
+            # merged dict's own `reason` with a literal fallback when that is
+            # itself missing — never a missing or empty one.
             missing[str(i)] = c["reason"]
         elif isinstance(c, dict):
             # Bare subscripts again, and this reader has TWO inlets, so both are
