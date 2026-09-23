@@ -374,6 +374,28 @@ def test_depth_is_reported_before_range_when_both_are_wrong():
         color.refuse_ungradeable_plane("yuv420p10le", "pc", "x.mp4")
 
 
+def test_a_stream_with_no_pix_fmt_is_refused_rather_than_assumed_eight_bit():
+    """plane_depth answers 8 for a NAME with no depth marker (yuv420p, nv12,
+    gray) and that is correct. An ABSENT name is not such a name — measured, a
+    container whose codec this ffmpeg build cannot open reports width, height,
+    frame rate and duration from its own boxes and omits pix_fmt, so the other
+    four probed values look healthy while the depth is unknown (design §0.2)."""
+    with pytest.raises(ValueError) as e:
+        color.refuse_ungradeable_plane("", "tv", "/f/unknown_codec.mp4")
+    msg = str(e.value)
+    assert "pix_fmt" in msg and "/f/unknown_codec.mp4" in msg
+    assert "extract" in msg          # the remedy, not just the complaint
+
+
+def test_the_missing_pix_fmt_is_refused_before_the_range():
+    """Order matters twice. The clause must run before plane_depth, or it is
+    reached only after the wrong answer is already in hand — and an undescribable
+    plane on a pc source must name the pix_fmt, not the range, because re-tagging
+    the range would not make the depth knowable."""
+    with pytest.raises(ValueError, match="pix_fmt"):
+        color.refuse_ungradeable_plane("", "pc", "x.mp4")
+
+
 def test_lerp_continues_the_last_segment_above_the_final_knot():
     knots = [(0.0, 0.0), (100.0, 50.0), (200.0, 100.0)]      # last slope 0.5
     assert color._lerp(knots, 200.0) == pytest.approx(100.0)
@@ -442,3 +464,97 @@ def test_select_frames_rounds_each_time_independently():
     # int(x+0.5)) would be caught by this test rather than silently shipping.
     frag = color.select_frames([0.05], 30.0)
     assert frag == r"select='eq(n\,2)'"
+
+
+def test_the_grade_chain_is_well_formed_for_every_combination_of_knobs():
+    """The comma discipline, as a property over the composition rather than a
+    restatement of the docstring: independently rebuild what the discipline says
+    the output must be — take the fragments in order, drop the empty ones, strip
+    each survivor's OWN boundary comma, and join with exactly one comma — then
+    compare that reconstruction against what grade_chain actually produced.
+    Rebuilding is a different rule from the concatenation grade_chain performs, so
+    the comparison is a real check and not a restatement, and unlike a comma scan
+    it catches a MISSING boundary comma as well as a doubled one.
+
+    A comma-count or ",," scan cannot do this job: tone_arg's own lutyuv expression
+    carries 12 commas inside its single-quoted value, and dip_arg emits two fade
+    filters separated by a comma of its own, so nothing about the total comma count
+    or a ",," substring search can tell a correctly-placed separator apart from one
+    sitting inside a fragment's own value. An earlier version of this test scanned
+    only for ",," and dangling commas, and a missing (not doubled) boundary comma —
+    dropping the leading comma from mid_blue_arg's active return — slipped through
+    it undetected on all 512 combinations with mid_blue on (fix round 1).
+
+    Enumerated over all 1024 combinations of the ten knobs at identity versus one
+    legal non-identity value. Pure string construction — no ffmpeg. The empty-slot/
+    dangling-comma/non-empty checks stay alongside the rebuild: they are what still
+    catches mixer_arg going empty at unit gains, which the rebuild's own join would
+    silently agree with (design §0.4/§2.4)."""
+    import itertools
+    wb_on = color.white_balance_arg((100.0, 110.0, 120.0), 1.0)
+    tone_on = color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))
+    axes = [
+        ("wb", "", wb_on),
+        ("tone", "", tone_on),
+        ("gains", (1.0, 1.0, 1.0), (1.05, 1.0, 0.95)),
+        ("black_point", 0.0, color.BLACK_POINT_MAX),
+        ("shadow_red", 0.0, color.SHADOW_RED_MAX),
+        ("mid_blue", 1.0, color.MID_BLUE_MAX),
+        ("saturation", 1.0, color.SATURATION_MIN),
+        ("highlight", 1.0, color.HIGHLIGHT_MIN),
+        ("highlight_red", 0.0, color.HIGHLIGHT_RED_MAX),
+        ("dip", 0.0, 0.5),
+    ]
+    seen = 0
+    for combo in itertools.product(*[(off, on) for _, off, on in axes]):
+        kw = {name: value for (name, _, _), value in zip(axes, combo)}
+        gains = kw.pop("gains")
+        out = color.grade_chain(gains, dur=4.0, **kw)
+        # Rebuild what the discipline says the output must be — strip each
+        # non-empty fragment's own boundary comma, join with exactly one — and
+        # compare. A different rule from the concatenation grade_chain performs,
+        # so this is a check and not a restatement, and unlike a comma scan it
+        # catches a MISSING boundary comma as well as a doubled one: tone_arg
+        # carries 12 commas inside its own quoted lutyuv expression and dip_arg
+        # emits two fades separated by one, so nothing may split on commas here.
+        frags = [wb_on if kw["wb"] else "",
+                 tone_on if kw["tone"] else "",
+                 color.black_point_arg(kw["black_point"]),
+                 color.mixer_arg(*gains),
+                 color.shadow_red_arg(kw["shadow_red"]),
+                 color.mid_blue_arg(kw["mid_blue"]),
+                 color.saturation_arg(kw["saturation"]),
+                 color.highlight_arg(kw["highlight"]),
+                 color.highlight_red_arg(kw["highlight_red"]),
+                 color.dip_arg(kw["dip"], 4.0)]
+        expected = ",".join(f.strip(",") for f in frags if f)
+        assert out == expected, f"boundary defect with {kw}"
+        assert ",," not in out, f"empty filter slot with {kw}"
+        assert not out.startswith(",") and not out.endswith(","), f"dangling comma with {kw}"
+        assert out, f"empty chain with {kw}"
+        seen += 1
+    assert seen == 1024        # the enumeration ran; a silent product() bug would not
+
+
+def test_each_builder_sits_on_its_own_side_of_the_mixer_pivot():
+    """The per-builder half of the discipline, so a new builder added to these
+    lists on the wrong side fails with a message saying which side it belongs
+    on."""
+    before = [("white_balance_arg", color.white_balance_arg((100.0, 110.0, 120.0), 1.0)),
+              ("tone_arg", color.tone_arg((40.0, 120.0, 200.0), (52.0, 103.5, 191.5))),
+              ("black_point_arg", color.black_point_arg(color.BLACK_POINT_MAX))]
+    after = [("shadow_red_arg", color.shadow_red_arg(color.SHADOW_RED_MAX)),
+             ("mid_blue_arg", color.mid_blue_arg(1.2)),
+             ("saturation_arg", color.saturation_arg(0.5)),
+             ("highlight_arg", color.highlight_arg(0.6)),
+             ("highlight_red_arg", color.highlight_red_arg(color.HIGHLIGHT_RED_MAX)),
+             ("dip_arg", color.dip_arg(0.5, 4.0))]
+    for name, frag in before:
+        assert frag.endswith(","), f"{name} runs BEFORE mixer_arg: end with a comma"
+        assert not frag.startswith(","), f"{name} runs BEFORE mixer_arg: no leading comma"
+    for name, frag in after:
+        assert frag.startswith(","), f"{name} runs AFTER mixer_arg: begin with a comma"
+        assert not frag.endswith(","), f"{name} runs AFTER mixer_arg: no trailing comma"
+    pivot = color.mixer_arg(1.0, 1.0, 1.0)
+    assert pivot, "mixer_arg is the pivot and is never empty — the whole discipline rests on it"
+    assert not pivot.startswith(",") and not pivot.endswith(",")

@@ -159,6 +159,25 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
     fallback = regions.refuse("subject", located=located, fraction=frac)
     whole = np.ones((n, h, w), dtype=bool)
     read = whole if fallback else mask
+    # A bare read, never an absence: `whole` holds pixels in every one of n >= 1
+    # frames (color.sample_times returns FRAMES >= 1 times), and a subject read
+    # only runs when regions.refuse DECLINED to refuse, which is the statement
+    # that the mask holds pixels. So an empty pair list is a broken producer, not
+    # an input to describe. It must raise, because the alternative shape
+    # color_fidelity.evaluate would return here is {status, reason} — and
+    # _grade_damage merges this dict flat into the entropy verdict, where until
+    # 2026-09-21 `status` was the discriminator that decided whether a BLOCKING
+    # verdict counted (design §0.1). The background arm below has followed this
+    # rule since 2026-09-16; this is the read it was asymmetric with.
+    pairs = _region_pairs(p, g, read)
+    if not pairs:
+        raise ValueError(
+            f"check_episode: the {'crop' if fallback else 'subject'} read came back "
+            f"with no sample pairs over {n} frames. A crop read is the whole frame "
+            f"and a subject read only happens when regions.refuse declined to "
+            f"refuse, so both hold pixels by construction — an empty read is a "
+            f"contract break in regions.subject_mask or _region_pairs, not an "
+            f"input to report as a not-checked advisory.")
     out = {"advisory_delta_e": True,
            "region": "crop" if fallback else "subject",
            # the fraction of the region ASKED for — on a too-small row it is the
@@ -166,7 +185,7 @@ def _subject_delta_advisory(plain_frames, graded_frames, times: list[float],
            # to. regions.AnchorReading.fraction's own convention (design §2.3).
            "region_fraction": round(frac, 4),
            "region_fallback": fallback,
-           **color_fidelity.evaluate(_region_pairs(p, g, read))}
+           **color_fidelity.evaluate(pairs)}
     if fallback is None:
         bg = ~mask
         out["background_fallback"] = regions.refuse(
@@ -238,9 +257,17 @@ def _grade_damage(source: str | None,
     times = color.sample_times(graded_plan.dur)
     g_frames = reframe.plan_frames_rgb(graded_plan, source, times)
     p_frames = reframe.plan_frames_rgb(plain_plan, source, times)
-    d = gradedamage.evaluate(plain=p_frames, graded=g_frames, floor=spec.entropy_floor)
+    verdict = gradedamage.evaluate(plain=p_frames, graded=g_frames, floor=spec.entropy_floor)
+    # The discriminator belongs to the dict it judges. `d` below is a FLAT merge of
+    # this verdict and the advisory description, and both halves could spell
+    # {status, reason} — so reading `"status" in d` made a blocking verdict depend
+    # on a key the advisory could contribute (design §0.1/§2.1). The advisory can
+    # no longer emit that shape at all, which is what closes the defect; branching
+    # here keeps it closed against a future advisory key.
+    unchecked = "status" in verdict
+    d = dict(verdict)
     d.update(_subject_delta_advisory(p_frames, g_frames, times, route_pts, path_obj, meta))
-    if "status" in d:
+    if unchecked:
         return CheckResult("grade_damage", None, d)
     return CheckResult("grade_damage", not d["below"], d)
 

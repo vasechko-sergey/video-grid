@@ -353,16 +353,33 @@ def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
     per: dict[str, list] = {}
     missing: dict[str, str] = {}
     for i, c in enumerate(chroma):
-        if isinstance(c, dict) and "delta_c" in c:
-            per[str(i)] = [c["delta_c"], c["delta_h"]]
-        elif isinstance(c, dict):
-            # A bare subscript, never .get: every ReelEpisode.chroma that reaches
-            # here already passed ReelEpisode.__post_init__, which refuses a
-            # not-checked absence with no non-empty 'reason' — so a dict without
-            # 'delta_c' is guaranteed to carry one (final whole-branch review,
-            # FIX 4). The same rule the background arm in check_episode follows:
-            # a fallback that cannot happen does not get a silent default.
+        # Keyed on `status` — the SAME discriminator ReelEpisode.__post_init__
+        # uses. Keying on `"delta_c" in c` instead made the reader disagree with
+        # its own validator: that validator returns early at status ==
+        # "not-checked" once it has a non-empty reason, so it admits a dict
+        # carrying BOTH a not-checked status and a stray numeric component, and
+        # the reading branch then subscripted c["delta_h"] and raised KeyError
+        # (design 2026-09-21 §0.3).
+        if isinstance(c, dict) and c.get("status") == "not-checked":
+            # A bare subscript, never .get, and this reader has TWO inlets, so
+            # both are named. Through ReelEpisode, __post_init__ refuses a
+            # not-checked chroma whose 'reason' is missing or empty. Through
+            # build_reel's plain list, every absence branch of
+            # color_fidelity.shift_from_report returns a non-empty literal
+            # reason — "the report carries no grade_damage block", or the
+            # merged dict's own `reason` with a literal fallback when that is
+            # itself missing — never a missing or empty one.
             missing[str(i)] = c["reason"]
+        elif isinstance(c, dict):
+            # Bare subscripts again, and this reader has TWO inlets, so both are
+            # named. Through ReelEpisode, __post_init__'s numeric clause requires
+            # delta_c and delta_h together. Through build_reel — which builds a
+            # plain list and overwrites one entry per reprocessed episode, never
+            # constructing a ReelEpisode — every branch of
+            # color_fidelity.shift_from_report returns a clean two-key reading or
+            # a clean two-key absence. The second inlet is the one the comment
+            # here used to omit.
+            per[str(i)] = [c["delta_c"], c["delta_h"]]
         else:
             missing[str(i)] = ("the reel manifest is older than this field — "
                                "re-run phase 1 to record it")

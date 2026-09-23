@@ -252,12 +252,16 @@ def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
     TV_LO/TV_SPAN are constants of BOTH bit depth and range — together they say
     "the stored luma plane runs 16..235 in eight bits" — and every knob in
     grade_chain is written against that plane. Neither half is negotiable, and
-    both fail SILENTLY when violated:
+    each fails SILENTLY when violated:
 
       * wrong range: measured, a full-range source lands 8.5 luma codes from the
         target it was given, against a MATCH_EPS of 4.0;
       * wrong depth: measured on a real 10-bit clip, tone_arg returns a plane
         with 99.26% of its pixels pinned to a single code.
+      * unknown depth: an absent pix_fmt reads as 8 through plane_depth, which is
+        the right answer for a NAME with no depth marker and the wrong one for no
+        name at all — measured 2026-09-21 against a container this build has no
+        decoder for (design §0.2).
 
     Only these two properties. Codec and resolution are nobody's assumption here,
     and refusing on them would block legitimate hand runs for no reason.
@@ -266,6 +270,17 @@ def refuse_ungradeable_plane(pix_fmt: str, color_range: str, src: str) -> None:
     and assembly.matches already reads it that way. A full-range file that lost
     its tag is therefore still misread — a known gap, design §7, not an oversight.
     """
+    if not pix_fmt:
+        raise ValueError(
+            f"{src}: ffprobe reported no pix_fmt for this stream, so its bit depth "
+            f"is unknown — and an unknown depth reads as 8 through plane_depth, "
+            f"which answers 8 for a NAME carrying no depth marker (yuv420p, nv12, "
+            f"gray). An absent name is not such a name. A container whose codec "
+            f"this ffmpeg build cannot open still reports width, height, frame rate "
+            f"and duration from its own boxes, so the other four probed values look "
+            f"healthy while this one is missing. Cut this source through "
+            f"scripts.extract first: it re-encodes to 8-bit yuv420p at the source's "
+            f"own resolution.")
     depth = plane_depth(pix_fmt)
     if depth != 8:
         raise ValueError(
@@ -566,10 +581,25 @@ def grade_chain(gains: tuple[float, ...], *, wb: str = "", tone: str = "",
     shadow_red → mid_blue → saturation → highlight (shoulder) → highlight_red (the red
     shoulder) → dip (timeline, last).
     `wb`/`tone` are pre-built fragments (the caller builds AND verifies them — a tone
-    curve is ramp-checked in reframe.verify_tone before it reaches here). Returns the
-    fragment WITHOUT the trailing fps/format, which reframe owns. Every builder is ""
-    at its identity value, so at defaults this returns exactly mixer_arg(*gains) and
-    the fill fast path stays byte-identical to before colour-as-a-stage."""
+    curve is ramp-checked in reframe.verify_tone before it reaches here).
+
+    The comma discipline, stated because nothing else states it: every fragment
+    BEFORE mixer_arg (`wb`, `tone`, black_point_arg) is either "" or ends with a
+    comma; mixer_arg is the pivot, is NEVER "" and carries a comma at neither end;
+    every fragment AFTER it is either "" or begins with a comma and does not end
+    with one. That is what makes any subset of knobs compose into a filtergraph
+    with no empty slot. It rests entirely on mixer_arg being unconditional — an
+    identity branch there would fuse a wb/tone trailing comma against a
+    shadow_red leading one. Pinned by two tests in tests/lib/test_color.py:
+    test_the_grade_chain_is_well_formed_for_every_combination_of_knobs, which
+    enumerates all 1024 on/off combinations, and
+    test_each_builder_sits_on_its_own_side_of_the_mixer_pivot, which checks each
+    builder's own boundary comma (design 2026-09-21 §2.4).
+
+    Returns the fragment WITHOUT the trailing fps/format, which reframe owns.
+    Every builder is "" at its identity value, so at defaults this returns
+    exactly mixer_arg(*gains) and the fill fast path stays byte-identical to
+    before colour-as-a-stage."""
     return (wb + tone + black_point_arg(black_point) + mixer_arg(*gains)
             + shadow_red_arg(shadow_red) + mid_blue_arg(mid_blue)
             + saturation_arg(saturation) + highlight_arg(highlight)

@@ -219,6 +219,16 @@ reader who needs to know which arm supplied `check_episode`'s OWN reading
 already has `region` on THAT report (`report["checks"]["grade_damage"]
 ["region"]`), untouched by this carrier.
 
+**Corrected 2026-09-21 (unvalidated-shapes design §2.3).** The claim earlier in
+this paragraph, that `chroma_spread` "keys only on `delta_c`/`delta_h`", is no
+longer true: the reader's `not-checked` branch now tests `status` first — the
+same discriminator `ReelEpisode.__post_init__` uses — precisely so a dict
+carrying both a `not-checked` status and a stray numeric component lands among
+the absences instead of raising `KeyError` reading `delta_h`. The paragraph's
+actual point is untouched by that change: `region` itself is still not read
+anywhere downstream, and `status` is one of the two shapes this carrier already
+declared, not a new key.
+
 `None` (the default) means a manifest written before this field existed, and
 `check_reel` reports that as its own named not-checked reason rather than as a
 zero. Refused at load if it is neither shape.

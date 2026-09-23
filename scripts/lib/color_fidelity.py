@@ -84,15 +84,24 @@ def shift_from_report(report: dict) -> dict:
     always) or, on the subject arm, would say "subject" while the numbers under it
     are the crop's, which is a reading naming pixels that are not the ones it
     describes. A field that cannot be decided is deleted, not qualified (design
-    §1 rule 4) — nothing downstream reads it either: `_chroma_spread_check` keys
-    only on `delta_c`/`delta_h`. Do not add it back; a caller that needs to know
-    which arm supplied `check_episode`'s own reading already has `region` on
-    THAT report, at `report["checks"]["grade_damage"]["region"]` — unaffected by
-    this function, which only renames two of that same dict's keys.
+    §1 rule 4) — nothing downstream reads it either: `_chroma_spread_check`
+    discriminates on `status` to find the absence branch, and reads
+    `delta_c`/`delta_h` only on the branch that remains (design 2026-09-21 §0.3).
+    Do not add it back; a caller that needs to know which arm supplied
+    `check_episode`'s own reading already has `region` on THAT report, at
+    `report["checks"]["grade_damage"]["region"]` — unaffected by this function,
+    which only renames two of that same dict's keys.
 
-    Keys on `region`, never on the presence of a `status` key: the grade_damage block
-    is a FLAT merge of a verdict dict and an advisory dict, and a predicate over
-    `"status" in d` reads a key either half could contribute.
+    Keys on `region`, never on the presence of a `status` key: the grade_damage
+    block is a FLAT merge of a verdict dict and an advisory dict, and until
+    2026-09-21 both halves could independently spell `{status, reason}`, so a
+    predicate over `"status" in d` read a key either half could contribute.
+    Design §2.1 closed that leg — the advisory can no longer emit that shape, and
+    `check_episode._grade_damage` itself now tests `"status" in verdict` on the
+    verdict alone, before the merge. Keying on `region` here does not rest on
+    that history: `region` is the key that says which arm produced the numbers,
+    independent of whichever half of the merge a `status` key might come from,
+    now or after some future advisory gains one.
     """
     checks = report.get("checks") if isinstance(report, dict) else None
     d = checks.get("grade_damage") if isinstance(checks, dict) else None
