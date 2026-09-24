@@ -267,6 +267,18 @@ All three build the plan with the recorded params where the sidecar has them:
   (`proc.run` raises it for a broken ffmpeg install), and widening it would
   reinstate the swallow it was written to prevent.
 
+  **The sidecar READ needs the same treatment, found by Task 4's review.**
+  `rendered_params` raises `RuntimeError` for a `path.meta.json` that exists and
+  will not parse — deliberately, per §2.2 — and it began life inside that same
+  non-`RuntimeError` clause, while `pack()`'s loop has no `try` at all. So one
+  truncated sidecar propagated out of `pack()` and every episode after it went
+  unpacked, against the very guarantee this arm exists to make. The read moves into
+  its own guarded region; `plan_ungraded` stays outside both, because its
+  `RuntimeError` is `proc.run`'s and has to stay loud. Catching the read's raise
+  here does not contradict §2.2: `rendered_params` still raises, so the fault is
+  signalled, and this one caller declines to produce a reading rather than planning
+  on a guess.
+
 ### §2.4 The reprocess writes beside the record it replaces
 
 `build_reel`'s reprocess arm derives the episode directory the same way
