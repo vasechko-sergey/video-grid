@@ -134,14 +134,18 @@ def test_pathmeta_still_hard_fails_when_a_param_is_present_but_unusable():
         m.PathMeta.from_dict(d)
 ```
 
-**None of these five is expected to pass before the change.** The first three
-and the last construct `PathMeta` with keyword arguments that do not exist yet
-(`TypeError`); the fourth reads attributes that do not exist yet
-(`AttributeError`). The second one — `test_pathmeta_omits_the_params_it_was_not_given`
-— is the one that *could* have been a passes-before-the-change test, since it
-asserts today's dict: it is included deliberately as the byte-identity control,
-and Step 2 must confirm it PASSES before the change and still passes after. That
-is its written reason.
+**Expected-before-the-change audit, per test** (corrected during Task 1's own
+execution — the first draft of this paragraph both said "none of these five is
+expected to pass" and then named the control that does, and it predicted the wrong
+failure mode for the last one):
+
+| test | before | why |
+|---|---|---|
+| `…round_trips_the_render_params` | FAIL | constructs `PathMeta` with keyword arguments that do not exist yet (`TypeError`) |
+| `…omits_the_params_it_was_not_given` | **PASS** | It asserts today's dict. Written reason: it is the byte-identity control — the one thing standing between Step 4's conditional emission and a change that moves every golden sidecar. Confirm it passes at Step 2 and still passes at Step 6. |
+| `…emits_each_param_independently` | FAIL | same `TypeError` |
+| `…reads_an_older_sidecar_as_saying_nothing…` | FAIL | reads attributes that do not exist yet (`AttributeError`) |
+| `…still_hard_fails_when_a_param_is_present_but_unusable` | FAIL, as `Failed: DID NOT RAISE RuntimeError` | **not** a `TypeError`: this one never passes a new kwarg to the constructor. It sets `d["max_speed"] = "fast"` on a dict `from_dict` currently ignores, so nothing raises at all. Red either way, but for this reason. |
 
 - [ ] **Step 2: Run them and record which fail**
 
