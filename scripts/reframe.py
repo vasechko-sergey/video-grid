@@ -1,6 +1,6 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
 import argparse, json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as _dc_fields
 from pathlib import Path
 import numpy as np
 from scripts.lib import geometry as g
@@ -591,6 +591,24 @@ def plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
             for i in range(len(times))]
 
 
+#: ReframeSpec's own declared defaults, read from the dataclass rather than
+#: hand-copied: a default that moves must not silently start — or stop — being
+#: recorded in the sidecar. Same rule the colour identity follows (design
+#: 2026-08-15 Task 4 review).
+_SPEC_DEFAULTS = {f.name: f.default for f in _dc_fields(ReframeSpec)}
+
+
+def _recorded(name: str, value: float) -> float | None:
+    """`value`, or None when it IS the ReframeSpec default for `name`.
+
+    The sidecar records news, not restatement: an episode that was neither
+    authored nor retried must write the file it has always written (design §2.1).
+    The judgement lives here and not in PathMeta.to_dict because this is the only
+    place that holds the spec.
+    """
+    return None if value == _SPEC_DEFAULTS[name] else value
+
+
 def path_meta(plan: RenderPlan, spec: ReframeSpec, *, stabilized: bool) -> PathMeta:
     """The sidecar this plan's render would write.
 
@@ -609,7 +627,9 @@ def path_meta(plan: RenderPlan, spec: ReframeSpec, *, stabilized: bool) -> PathM
                     pan=spec.pan is not None, stabilized=stabilized,
                     crop_ws=plan.crop_ws if spec.zoom is not None else None,
                     crop_hs=plan.crop_hs if spec.zoom is not None else None,
-                    crop_ys=plan.crop_ys if spec.zoom is not None else None)
+                    crop_ys=plan.crop_ys if spec.zoom is not None else None,
+                    max_speed=_recorded("max_speed", spec.max_speed),
+                    smooth_window_s=_recorded("smooth_window_s", spec.smooth_window_s))
 
 
 def reframe(spec: ReframeSpec, src: str, route_path: str | None, out: str,

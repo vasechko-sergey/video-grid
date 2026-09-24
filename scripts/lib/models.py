@@ -146,6 +146,13 @@ def _int_list(v: object) -> list[int] | None:
     return None if v is None else [int(x) for x in v]
 
 
+def _opt_float(v: object) -> float | None:
+    """A sidecar's optional scalar, or None when the key is absent. float() raises
+    on a present-but-unusable value, which from_dict's except clause turns into the
+    integrity message — an exemption covers a MISSING key, never a corrupt one."""
+    return None if v is None else float(v)
+
+
 @dataclass
 class PathMeta:
     """What reframe ACTUALLY cut and where it put it — written beside path.json,
@@ -190,6 +197,20 @@ class PathMeta:
     crop_ws: list[int] | None = None    # per-route-sample effective crop width under a zoom
     crop_hs: list[int] | None = None    # ... height
     crop_ys: list[int] | None = None    # ... top edge (the rect keeps the base rect's centre)
+    #: The two retry-ladder knobs THIS render used. Recorded by the renderer
+    #: because nothing else can: `max_speed` has no manifest field at all, and
+    #: `orch.adjust_reframe_params` rescales both between attempts without
+    #: touching the declaration — so a reader rebuilding the plan from the
+    #: manifest rebuilds a DIFFERENT geometry (design 2026-09-24 §0.2, §0.5:
+    #: one jitter step moved 74 of 95 path samples by up to 5px).
+    #:
+    #: None is an ABSENCE, not a value, and unlike the four exemptions above it
+    #: is not a provable truth: it means either "this sidecar predates the
+    #: field" or "this render used the ReframeSpec defaults", and nothing here
+    #: distinguishes them. Safe only because both reconstruct identically
+    #: through process_episode.plan_for's params=None arm (design §2.1).
+    max_speed: float | None = None
+    smooth_window_s: float | None = None
 
     def __post_init__(self) -> None:
         arrays = {"crop_ws": self.crop_ws, "crop_hs": self.crop_hs, "crop_ys": self.crop_ys}
@@ -228,6 +249,15 @@ class PathMeta:
             # every one written before this slice, which is what protects the goldens
             d.update({"crop_ws": list(self.crop_ws), "crop_hs": list(self.crop_hs),
                       "crop_ys": list(self.crop_ys)})
+        # Same conditional emission as the zoom arrays above, and for the same
+        # reason: an episode that was neither authored nor retried writes the
+        # sidecar it has always written. The judgement of whether a value is
+        # NEWS lives in reframe.path_meta, which knows the spec's defaults;
+        # here the rule is only "emit what you were given".
+        if self.max_speed is not None:
+            d["max_speed"] = self.max_speed
+        if self.smooth_window_s is not None:
+            d["smooth_window_s"] = self.smooth_window_s
         return d
 
     @classmethod
@@ -267,7 +297,15 @@ class PathMeta:
                        # honestly means a constant rect — zoom did not exist as a source yet.
                        crop_ws=_int_list(d.get("crop_ws")),
                        crop_hs=_int_list(d.get("crop_hs")),
-                       crop_ys=_int_list(d.get("crop_ys")))
+                       crop_ys=_int_list(d.get("crop_ys")),
+                       # Fifth exemption, and the only one defaulting to an
+                       # ABSENCE rather than a provable truth — see the fields'
+                       # own comment. A key that is PRESENT and unusable still
+                       # falls to the integrity arm below, exactly as crop_w does:
+                       # _opt_float raises TypeError/ValueError, which the except
+                       # clause already turns into the "unusable field" message.
+                       max_speed=_opt_float(d.get("max_speed")),
+                       smooth_window_s=_opt_float(d.get("smooth_window_s")))
         except KeyError as e:
             raise RuntimeError(
                 f"path.meta.json has no field {e} — re-run reframe; it writes the sidecar "
