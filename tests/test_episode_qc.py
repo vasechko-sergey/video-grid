@@ -347,6 +347,57 @@ def test_source_reading_reports_absence_for_a_corrupt_geometry_sidecar(tmp_path)
     assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
 
 
+# --- final whole-branch review, Important 1: _refuse_on_drift's own two reads
+# escape the guard above uncaught ---
+
+def test_source_reading_reports_absence_for_a_truncated_frozen_path(monkeypatch, tmp_path):
+    """_refuse_on_drift's FIRST read, CropPath.from_json(ep.path), is a bare
+    json.loads(Path(path).read_text()) with no wrapping at all — unlike
+    PathMeta.from_json, nothing there translates a bad file into RuntimeError. A
+    path.json that died mid-write raises json.JSONDecodeError (a ValueError)
+    straight out of _refuse_on_drift, before RuntimeError is ever in play, so the
+    old `except RuntimeError:` alone let it escape _source_reading and abort
+    pack()'s loop over every episode after this one.
+
+    plan_ungraded is stubbed (as every other _source_reading test stubs it) so this
+    exercises the real, unstubbed probe._refuse_on_drift against a real corrupt
+    file — the escape lives in that function, not in a mock of it."""
+    ep = _episode(tmp_path)
+    Path(ep.path).write_text("{not json")
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded",
+                        lambda md, src, route, *, params=None: _fake_plan())
+    assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
+
+
+def test_source_reading_reports_absence_for_an_empty_meta_beside_a_frozen_path(monkeypatch, tmp_path):
+    """The escape that matters most: ReelEpisode.meta defaults to "" and its own
+    docstring calls that legal ("empty = geometry unavailable"). Path("")
+    normalizes to Path(".") — a directory .exists() reports True for — so
+    PathMeta.from_json("") passes its own existence guard and then raises
+    IsADirectoryError from read_text(), not RuntimeError.
+
+    Reaching that second read needs the FIRST comparison in _refuse_on_drift (the
+    frozen crop path vs the plan's own) to PASS, or it raises its own RuntimeError
+    first and never touches PathMeta.from_json at all — so this test freezes a real
+    path.json and gives the fake plan the identical xs."""
+    d = tmp_path / "ep0"
+    d.mkdir()
+    segment = str(d / "segment.mp4")
+    Path(segment).write_bytes(b"x")
+    manifest = {"segment": segment, "out_path": str(d / "out.mp4"), "target_dur": 2.0,
+                "composition": "center", "grid": "thirds", "canvas": [9, 16]}
+    path_json = d / "path.json"
+    path_json.write_text(json.dumps([1, 2, 3]))
+    ep = ReelEpisode(manifest=manifest, clip=str(tmp_path / "ep0.mp4"), route=None,
+                     path=str(path_json), meta="")
+
+    fake_plan = SimpleNamespace(dur=2.0, path=[1, 2, 3])
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded",
+                        lambda md, src, route, *, params=None: fake_plan)
+
+    assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
+
+
 def test_the_packet_reports_an_unreadable_sidecar_instead_of_dying_on_it(tmp_path):
     """The guarantee _source_reading's guard states, at the level it is actually
     made: a corrupt path.meta.json must cost this episode its geometry reading and

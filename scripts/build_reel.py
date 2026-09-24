@@ -94,7 +94,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     reprocessed: set[int] = set()          # design §8: which clips left the gate behind
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
     audio: str | None = None
-    geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
+    geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]
+                # sidecar PATHS — constant across rounds; the FILES those paths
+                # NAME are not (final whole-branch review, Minor 1): a reprocess
+                # overwrites path.json/path.meta.json in place (design §2.4), so
+                # check_reel.run reads whichever version is on disk when THIS
+                # round calls it, not a copy frozen when this list was built.
                 if all(e.path and e.meta for e in rm.episodes) else None)
     # The convergence gate's per-episode half (design 2026-08-30 §5): which episodes are
     # BOUND to rm.tone_target. A parallel list, exactly like `geometry` above and for the

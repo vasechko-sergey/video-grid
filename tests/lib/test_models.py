@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
+from scripts.lib import orchestration as orch
 from scripts.lib.look import LookSpec
 from scripts.lib.models import LayoutSpec, PanSpec, PathMeta, ReelCheckSpec, ZoomSpec
 from scripts.lib.outro import OutroFit
@@ -239,6 +240,29 @@ def test_reframespec_validation():
         m.ReframeSpec(**{**ok, "color_means": (105, 0, 137)})     # #G positivity
     with pytest.raises(ValueError, match="canvas"):
         m.ReframeSpec(**{**ok, "canvas": (9, 0)})
+
+
+def test_reframespec_defaults_match_orchestrations_default_params():
+    """The byte-identity claim every fast-path/pin test in this suite leans on —
+    that a ReframeSpec built at its own defaults renders and records exactly what
+    an unauthored, un-retried episode has always rendered and recorded — holds only
+    because these two constants happen to agree TODAY, not by construction.
+    reframe.path_meta (via reframe._SPEC_DEFAULTS) records max_speed/
+    smooth_window_s ONLY when they differ from ReframeSpec's OWN dataclass
+    defaults; every production render's values start life as
+    orch.DEFAULT_PARAMS (process_episode._plan_parts, when no retry has
+    overridden them). If the two drifted apart, an unauthored, un-retried episode
+    would start recording a knob it never touched — the sidecar stops being
+    byte-identical to the one written before this field existed — and every
+    existing byte-identity test would stay green throughout, because each one
+    builds its ReframeSpec at ITS OWN defaults rather than at
+    orch.DEFAULT_PARAMS: the drift would ship silently until a production render
+    disagreed with a hand-built one."""
+    ok = dict(composition="lead", grid="thirds", canvas=(9, 16),
+              color_means=(105, 122, 137), delivery=m.Delivery("native"))
+    spec = m.ReframeSpec(**ok)
+    assert spec.max_speed == orch.DEFAULT_PARAMS["max_speed"]
+    assert spec.smooth_window_s == orch.DEFAULT_PARAMS["smooth_window_s"]
 
 
 def test_checkspec_defaults():

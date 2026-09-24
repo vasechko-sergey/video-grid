@@ -167,7 +167,7 @@ def _source_reading(ep, graded: dict) -> dict:
         return {"source": None, "delta": None}
     try:
         probe._refuse_on_drift(plan, ep.path, ep.meta)
-    except RuntimeError:
+    except (RuntimeError, OSError, ValueError, TypeError):
         # The oracle the other two consumers of this plan map have always had
         # (build_reel._predict, probe.probe_grade) and this one never did — so a
         # retried episode's source was read through a crop it never shipped and
@@ -181,6 +181,23 @@ def _source_reading(ep, graded: dict) -> dict:
         # raises it for a broken ffmpeg install or a corrupt-but-present file, and
         # reporting either as a clean 'absent' is exactly the swallow it was
         # written to prevent.
+        #
+        # Widened past RuntimeError alone (final whole-branch review, Important 1):
+        # _refuse_on_drift's OWN first read, CropPath.from_json(ep.path), is a bare
+        # json.loads(Path(path).read_text()) with no wrapping at all — a missing
+        # path.json raises FileNotFoundError, a truncated one raises
+        # json.JSONDecodeError (a ValueError), and a path.json holding valid JSON of
+        # the wrong shape (e.g. null, or a bare number) raises TypeError from the
+        # `[int(x) for x in ...]` comprehension. And PathMeta.from_json(ep.meta)
+        # itself escapes IsADirectoryError, not RuntimeError, when ep.meta is ""
+        # (ReelEpisode.meta's own documented absence): Path("") normalizes to
+        # Path("."), a directory .exists() reports True for, so from_json's
+        # existence guard passes and read_text() raises on the directory. None of
+        # those four is a RuntimeError, so the narrower clause was letting exactly
+        # the failure it exists to prevent through — one missing or corrupt sidecar
+        # aborting pack()'s loop for every episode after it. Safe to widen HERE,
+        # unlike the clause above: this try wraps only two sidecar reads and never
+        # reaches proc.run, so it cannot mask a broken ffmpeg install.
         #
         # Absence and not a raise: _evidence already reports every other sidecar
         # this way, and one episode's unreadable geometry must not abort a packet
