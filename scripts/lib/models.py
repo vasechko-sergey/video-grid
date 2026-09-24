@@ -207,8 +207,16 @@ class PathMeta:
     #: None is an ABSENCE, not a value, and unlike the four exemptions above it
     #: is not a provable truth: it means either "this sidecar predates the
     #: field" or "this render used the ReframeSpec defaults", and nothing here
-    #: distinguishes them. Safe only because both reconstruct identically
-    #: through process_episode.plan_for's params=None arm (design §2.1).
+    #: distinguishes them.
+    #:
+    #: That conflation is safe, but NOT because the two reconstruct identically —
+    #: they do not. A reader planning from the manifest alone reproduces a
+    #: defaults render exactly, and reproduces a PRE-SLICE retried render's
+    #: geometry WRONGLY (design 2026-09-24 §2.1's table). What makes both
+    #: outcomes correct is that every consumer of a rebuilt plan must check it
+    #: against the frozen sidecars before using it — probe._refuse_on_drift — so
+    #: the second case is refused by name instead of read as a measurement. A
+    #: consumer that skips that check reads a crop the episode never shipped.
     max_speed: float | None = None
     smooth_window_s: float | None = None
 

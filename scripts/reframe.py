@@ -595,6 +595,12 @@ def plan_frames_rgb(plan: RenderPlan, src: str, times: list[float]) -> list:
 #: hand-copied: a default that moves must not silently start — or stop — being
 #: recorded in the sidecar. Same rule the colour identity follows (design
 #: 2026-08-15 Task 4 review).
+#: Safe only for fields with a plain `= value` default: a field(default_factory=…)
+#: field's own .default is dataclasses.MISSING, so `value == _SPEC_DEFAULTS[name]`
+#: would never be true and that field would be recorded on every render — the
+#: byte-identity hole this exists to close, reopened silently. ReframeSpec already
+#: has one such field (`layout`), so re-check before calling _recorded with a new
+#: name. Same caveat manifest.COLOUR_IDENTITY carries, for the same reason.
 _SPEC_DEFAULTS = {f.name: f.default for f in _dc_fields(ReframeSpec)}
 
 
