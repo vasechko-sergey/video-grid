@@ -1213,8 +1213,11 @@ to
         seen["reprocess"].append({"route": route_path, "project_dir": project_dir})
 ```
 
-Every existing reader of `seen["reprocess"]` indexes `["route"]`, so adding a key
-changes nothing for them — confirm by running the file at Step 3.
+**This claim was WRONG and Task 5's execution found it:** not every reader indexes
+`["route"]`. `test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma` asserted
+the whole list-of-dicts (`seen["reprocess"] == [{"route": "r1.json"}]`) and breaks
+on the added key. It has to be updated in the same step. Run the whole file at
+Step 3 rather than trusting a claim like this one.
 
 - [ ] **Step 2: Write the failing test and its control**
 
@@ -1328,7 +1331,7 @@ Expected: PASS, whole file.
 - [ ] **Step 6: Run the reel-level suites**
 
 ```bash
-.venv/bin/python -m pytest tests/integration/test_reel_retry.py tests/integration/test_reel_backhalf.py tests/integration/test_edl_to_reel.py tests/integration/test_episode_qc.py -q
+.venv/bin/python -m pytest tests/integration/test_reel_retry.py tests/integration/test_reel_backhalf.py tests/lib/test_edl_to_reel.py tests/integration/test_episode_qc.py -q
 ```
 
 Expected: PASS.
