@@ -129,7 +129,10 @@ def _wire(monkeypatch, reports, pe_results=None):
     results = iter(pe_results or [])
 
     def fake_pe(manifest, project_dir, route_path=None):
-        seen["reprocess"].append({"route": route_path})
+        # project_dir recorded since 2026-09-24 (retry-record Task 5): WHERE the
+        # reprocess writes its sidecars is the subject of a test now, and a fake
+        # that drops the argument cannot tell the two candidate directories apart.
+        seen["reprocess"].append({"route": route_path, "project_dir": project_dir})
         return next(results, {"status": "mechanical_pass", "clip": project_dir + "/ep.mp4"})
     monkeypatch.setattr(build_reel.process_episode, "process_episode", fake_pe)
     return seen
@@ -853,7 +856,11 @@ def test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma(monkeypatch, tmp_
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
 
     assert res["status"] == "delivered"
-    assert seen["reprocess"] == [{"route": "r1.json"}]     # the reprocess ran on ep1, frozen route
+    # Narrowed to the "route" key alone since 2026-09-24 (retry-record Task 5):
+    # _wire's fake_pe now also records project_dir (a different test's subject),
+    # and a full-dict equality here would fail on that unrelated addition — this
+    # test's own subject is the chroma refresh below, not the reprocess dict's shape.
+    assert seen["reprocess"][0]["route"] == "r1.json"      # the reprocess ran on ep1, frozen route
     assert len(rounds) == 2                                # round 0 (reprocess) + round 1 (deliver)
     assert rounds[0][1] == {"delta_c": -9.0, "delta_h": -2.0}   # still phase 1's
     assert rounds[-1][1] == {"delta_c": 2.0, "delta_h": 0.3}    # refreshed
@@ -946,3 +953,44 @@ def test_predict_plans_each_episode_with_the_params_its_sidecar_recorded(
     out = build_reel._predict(rm)
     assert seen["params"] == {"max_speed": 450.0, "smooth_window_s": 0.5}
     assert out == [(1.0, 2.0, 3.0)]
+
+
+# --- 2026-09-24 retry-record Task 5: one episode, one scratch directory ---
+
+def test_a_reprocess_writes_beside_the_sidecars_episodes_json_names(monkeypatch, tmp_path):
+    """Phase 1 writes build/ep{i}; this driver is handed build/reel, so a reprocess
+    used to write build/reel/ep{i} while ReelEpisode.path/meta still named the
+    first. A re-pack then read a MIXED packet — fresh pixels, stale report,
+    storyboard, geometry and track record — and the clip_digest binding that exists
+    to catch a stale packet could not see it, because the stale half is not the
+    clip (design 2026-09-24 §0.7).
+
+    Note _rm() builds episodes with NO path, which is why this test builds its own:
+    under the empty-path fallback every other test in this file keeps the old
+    location, which is the control below."""
+    phase1 = tmp_path / "build" / "ep0"
+    phase1.mkdir(parents=True)
+    eps = [ReelEpisode(manifest={"segment": "s0.mp4"}, clip="c0.mp4", route="r0.json",
+                       path=str(phase1 / "path.json"), meta=str(phase1 / "path.meta.json")),
+           ReelEpisode(manifest={"segment": "s1.mp4"}, clip="c1.mp4", route="r1.json")]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, cap=3)
+    seen = _wire(monkeypatch, [_black_fail(0), _pass()])
+
+    build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "build" / "reel"))
+
+    assert seen["reprocess"] == [{"route": "r0.json", "project_dir": str(phase1)}]
+
+
+def test_a_reprocess_of_an_episode_with_no_sidecar_keeps_the_work_dir(monkeypatch, tmp_path):
+    """The control. A hand-authored reel manifest may legally carry no path
+    (ReelEpisode.path defaults to "" and episode_qc._epdir refuses such a manifest
+    by name), so there is nothing to derive and nothing to keep in step — today's
+    location is kept rather than Path("").parent, which is "." and would write into
+    the current working directory in silence."""
+    rm = _rm(n=2)
+    work = tmp_path / "build" / "reel"
+    seen = _wire(monkeypatch, [_black_fail(0), _pass()])
+
+    build_reel.build_reel(rm, str(tmp_path / "out"), str(work))
+
+    assert seen["reprocess"] == [{"route": "r0.json", "project_dir": str(work / "ep0")}]

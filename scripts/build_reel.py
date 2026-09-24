@@ -201,8 +201,28 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                                      # has little to bite on here. Parallelising loop-2
                                                      # is deferred — NOT because one process_episode
                                                      # saturates the box; measured, it takes three.
-            epdir = str(Path(work_dir) / f"ep{item.idx}")
-            manifest = rm.episodes[item.idx].manifest
+            ep = rm.episodes[item.idx]
+            # Beside the record it replaces, not under this driver's own work dir.
+            # ReelEpisode is frozen and nothing rewrites EPISODES.json, so its
+            # path/meta keep naming phase 1's directory — and a second directory is
+            # a second record with nothing keeping the two in step. The clip already
+            # has this property: it is overwritten in place, which is why a re-pack
+            # reads fresh pixels beside a stale report, storyboard, geometry and
+            # track record (design 2026-09-24 §0.7). Same derivation
+            # episode_qc._epdir already uses, so the packet and the render agree on
+            # where one episode's scratch lives.
+            #
+            # This deliberately writes OUTSIDE work_dir: in a two-phase run phase 1
+            # owns build/ep{i} and this driver is handed build/reel, so "beside the
+            # record" is always outside it, and a guard refusing that would refuse
+            # the only case that matters.
+            #
+            # The empty-path arm is not defensive padding: ReelEpisode.path defaults
+            # to "" and a hand-authored reel manifest may carry none, where
+            # Path("").parent is Path(".") — the current working directory, silently.
+            epdir = (str(Path(ep.path).parent) if ep.path
+                     else str(Path(work_dir) / f"ep{item.idx}"))
+            manifest = ep.manifest
             # A stabilized episode's frozen route was measured on loop-1's stabilized
             # pixels and would be safe to reuse — but process_episode refuses
             # stabilize + a supplied route (design 2026-07-20 §1) because nothing yet
@@ -212,7 +232,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # price of not having the provenance bit. ReelEpisode.route stays
             # populated regardless — check_reel reads it, and raises for a tracked
             # (pan=false) episode whose route is None.
-            route = None if manifest.get("stabilize") else rm.episodes[item.idx].route
+            route = None if manifest.get("stabilize") else ep.route
             res = process_episode.process_episode(manifest, epdir, route_path=route)
             # A REJECTED re-render is already on disk. reframe writes m.out_path before
             # check_episode.run reads it (process_episode.py), so this early return
