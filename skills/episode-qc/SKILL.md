@@ -115,9 +115,11 @@ guessing a path.
    back corrupt). Fill `{STRIP_PATH}`/`{STRIP_PX}` and
    `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from those four keys, writing `none
    recorded` for either storyboard key that is null — the same substitution
-   the CHECKS/TRACK/GEOMETRY placeholders already ask for, and what the
+   the CHECKS and TRACK/GEOMETRY placeholders already ask for (two
+   placeholders reading three sidecars: TRACK/GEOMETRY is ONE placeholder
+   covering both `route.meta.json` and `path.meta.json`), and what the
    template's no-storyboard branch keys on — except when `unreadable` names
-   the sidecar behind one of those three placeholders: paste `unreadable`,
+   the sidecar behind one of those two placeholders: paste `unreadable`,
    with its reason, instead of `none recorded` there, because a sidecar that
    ran and lost its record is a different fact from one that never ran, and
    only the first is reason to distrust the rest of that render's evidence.

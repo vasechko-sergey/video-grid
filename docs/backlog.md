@@ -484,7 +484,21 @@ an integration fixture that reprocesses an episode and then re-packs it —
 `tests/integration/test_episode_qc.py` packs real episodes but none of them
 has ever been reprocessed, so design §4.6 ("the packet stops being mixed")
 is covered only structurally, by the unit-level reprocess-then-pack tests,
-never by an end-to-end one (retry-record design §4.6, plan self-review)
+never by an end-to-end one (retry-record design §4.6, plan self-review) ·
+`build_reel._predict` builds every episode's `grade_faithful` prediction ONCE,
+before the retry loop's first reprocess, and nothing rebuilds it afterward — so
+a reprocessed episode's entry in `predicted` can describe a render `build_reel`
+has since replaced. The adjacent `chroma[item.idx]` IS refreshed after a
+reprocess, with a comment explaining why (the episode is re-rendered and
+check_episode measures it again); `predicted` carries no equivalent. This
+branch enlarges the affected set rather than shrinking it: before it, a
+retried episode's rebuilt plan disagreed with the frozen sidecars and
+`_predict` returned `None` for it, named in `not_checked`; now that
+`rendered_params` lets the rebuild agree, `_predict` returns a real profile
+that a LATER reprocess in the SAME round can go on to invalidate.
+`grade_faithful` is blocking at a 4.0 ceiling, so a stale prediction can pass a
+reel that should have stopped, or stop one that would have passed (retry-record,
+whole-branch review Minor 1)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for

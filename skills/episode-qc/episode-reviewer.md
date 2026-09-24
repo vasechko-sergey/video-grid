@@ -38,9 +38,11 @@ read by a human; your deliverable is the file you write.
  cast / saturation / contrast / clip_high / clip_low — a fact about the
  footage on its own, not a defect); flags (blown_highlights / crushed_blacks
  — information the grade destroyed, true regardless of source); source (the
- pre-grade segment's own stats, or null if there is none) and delta
- (cast_shift / saturation_shift / contrast_drop — what the grade CHANGED,
- against source; null alongside it).}
+ pre-grade segment's own stats, or null EITHER because there is no source OR
+ because this episode's geometry could not be confirmed as the one that
+ shipped — both read the same here) and delta (cast_shift / saturation_shift
+ / contrast_drop — what the grade CHANGED, against source; null alongside it,
+ for either reason).}
 
 ## What shipped
 Frame strip: {STRIP_PATH} — {STRIP_PX} px per frame, sampled across the

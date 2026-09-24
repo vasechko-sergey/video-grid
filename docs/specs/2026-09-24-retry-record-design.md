@@ -231,13 +231,25 @@ refused by name. Stating it per case rather than once is what keeps that visible
 ### §2.2 One reader turns a sidecar into params
 
 ```python
-def rendered_params(meta: PathMeta) -> dict | None
+def rendered_params(meta_json: str | Path | None) -> dict | None
 ```
 
-in `process_episode`, beside `plan_for`. Returns `{"max_speed", "smooth_window_s"}`
-filled from the sidecar over `orch.DEFAULT_PARAMS`, or `None` when the sidecar
-records neither — the named absence, so a caller can tell "the render used the
-defaults, as recorded" from "nobody wrote it down".
+in `process_episode`, beside `plan_for`. Takes the sidecar's PATH, not an
+already-parsed `PathMeta` — the read happens inside, because the read itself can
+be the named absence: `ReelEpisode.meta` defaults to `""`, and a hand-authored
+reel manifest may carry none either, which is a legal "geometry unavailable" and
+not a fault. Returns `{"max_speed", "smooth_window_s"}` filled from the sidecar
+over `orch.DEFAULT_PARAMS`, or `None` when the path is empty/absent or the
+sidecar records neither knob — the named absence, so a caller can tell "the
+render used the defaults, as recorded" from "nobody wrote it down". A path
+naming a file that EXISTS and will not parse still raises, through
+`PathMeta.from_json`: machine-written content gone wrong is a fault, and
+answering "the defaults, then" would hand the caller a plan built on a guess.
+The existence check is `is_file`, never `exists`: `Path("")` is truthy like
+every `Path` and normalizes to `Path(".")`, which `exists()` reports `True`
+for, so the falsy check alone would let a directory through to a read that
+raises `IsADirectoryError` — neither of this function's two documented
+answers.
 
 `plan_for` and `plan_ungraded` gain a keyword-only `params: dict | None = None`.
 `None` keeps today's behaviour exactly — `DEFAULT_PARAMS` plus the manifest's
@@ -250,9 +262,10 @@ render now can.
 
 All three build the plan with the recorded params where the sidecar has them:
 
-- **`build_reel._predict`** — reads `PathMeta.from_json(e.meta)`, passes
-  `rendered_params(...)` to `plan_for`. A retried episode keeps its
-  `grade_faithful` reading instead of losing the gate.
+- **`build_reel._predict`** — calls `rendered_params(e.meta)` and passes its
+  result straight to `plan_for`; the sidecar read happens INSIDE
+  `rendered_params`, not as a separate `PathMeta.from_json` step beforehand. A
+  retried episode keeps its `grade_faithful` reading instead of losing the gate.
 - **`probe.probe_grade`** — same, before `_refuse_on_drift`. The probe becomes
   usable on a retried episode, which is the whole point of `probe grade`.
 - **`episode_qc._source_reading`** — same, **and gains the drift guard it never
@@ -304,9 +317,14 @@ All three build the plan with the recorded params where the sidecar has them:
 epdir = str(Path(ep.path).parent) if ep.path else str(Path(work_dir) / f"ep{item.idx}")
 ```
 
-Then `report.json`, `path.json`, `path.meta.json`, `route.meta.json` and
-`storyboard.jpg` are overwritten in place — exactly as the clip already is — and
-there is one directory per episode with nothing to keep in step.
+Then `report.json`, `path.json`, `path.meta.json` and `storyboard.jpg` are
+overwritten in place — exactly as the clip already is. `route.meta.json` joins
+them only for a STABILIZED episode's reprocess, which re-tracks (§5.4); a
+TRACKED episode's reprocess passes its frozen route straight through
+(`process_episode`'s load-the-frozen-route branch reads `route_path` and writes
+no route files at all), so that record was never stale for it in the first
+place. Either way there is one directory per episode with nothing to keep in
+step for whichever files actually get rewritten.
 
 **This writes outside `--work-dir`, and that is the point.** In the normal
 two-phase run, phase 1's directory is `build/ep{i}` and `build_reel`'s work dir is

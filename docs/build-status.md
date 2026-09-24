@@ -27,11 +27,13 @@ _Last updated: 2026-09-24._
   oracle at all — gains one, and two fix-round hardenings ride with it: a
   corrupt sidecar's `RuntimeError` no longer escapes `pack()`'s loop, and the
   evidence packet's three sidecars gain a third state (present-but-
-  unparseable, carried in a new optional `unreadable` map both judge
-  templates now read) beside present and absent. `build_reel`'s reprocess arm
-  now derives its scratch directory the same way `episode_qc._epdir` already
-  does, so a reprocessed episode's fresh sidecars land beside the phase-1
-  ones `EPISODES.json` names instead of one level deeper under the driver's
+  unparseable, carried in a new optional `unreadable` map the episode-qc
+  judge template now reads at both of its sidecar placeholders, filled by
+  `SKILL.md`'s dispatch step) beside present and absent. `build_reel`'s
+  reprocess arm now derives its scratch directory the same way
+  `episode_qc._epdir` already does, so a reprocessed episode's fresh sidecars
+  land beside the phase-1 ones `EPISODES.json` names instead of one level
+  deeper under the driver's
   own work dir.
 
   **Task 7's 20-row mutation battery — roll-call.** The brief's own table
