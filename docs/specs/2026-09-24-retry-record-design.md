@@ -109,6 +109,20 @@ converges a jitter failure. Both are still recorded, because `_refuse_on_drift`
 compares the path **exactly** and one pixel refuses just as loudly as five; but a
 reader should not be told the two knobs matter equally.
 
+Sharper still, and measured after the design's first pass: the **lag** branch's own
+step — `max_speed` 750 → **1125**, the window untouched — moves **0 of 95**. And the
+window really is untouched on a first lag retry: that branch sets
+`smooth_window_s = max(lo, w / 2)` where `lo` is the authored window or the default,
+and `w` starts *at* `lo`, so the halving is inert until some earlier round has
+already widened it. So on this fixture a first `on_line`/`centered` retry produces a
+**byte-identical path**, the oracle passes, and a reader rebuilding at the defaults
+is already right.
+
+That narrows where the defect actually bites: the **jitter** branch, and any ladder
+that reaches a lag retry *after* a jitter one. It does not narrow what must be
+recorded — a record that omitted `max_speed` would be silent about a knob that
+differs, on footage nobody has measured.
+
 ### §0.6 Only three fail reasons move a knob
 
 `adjust_reframe_params` nudges on `_lags_line(fail_reasons)` — which is
@@ -335,9 +349,11 @@ nothing points anywhere.
    ladder that converges on a bad geometry now records the bad geometry
    faithfully.
 2. **`max_speed` is recorded for exactness, not because it is known to matter.**
-   On the one fixture measured it moves a single sample by a single pixel (§0.5).
-   The oracle compares exactly, so that pixel is sufficient to refuse — but no
-   measurement here shows `max_speed` mattering to any picture.
+   On the one fixture measured it moves a single sample by a single pixel at 450,
+   and **nothing at all** at the 1125 a real lag retry produces (§0.5). The oracle
+   compares exactly, so that one pixel is sufficient to refuse — but no measurement
+   here shows `max_speed` mattering to any picture, and on this footage the whole
+   lag-retry class was never broken in the first place.
 3. **The real run can no longer demonstrate either defect** (§0.4). Every proof is
    constructed on committed footage. The run contributes the *frequency* evidence
    (§0.1) and the divergence evidence (§0.8), not a reproduction.
