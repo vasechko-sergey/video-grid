@@ -1076,7 +1076,7 @@ def test_source_reading_still_lets_a_broken_render_raise(monkeypatch, tmp_path):
 | test | before | why |
 |---|---|---|
 | `…plans_with_the_params_the_render_recorded` | FAIL | `rendered_params` is never called, so `seen["params"]` is `None`; and the stub's keyword-only `params` is never passed |
-| `…reports_absence_when_the_geometry_drifted` | FAIL | no guard exists, so `_drifted` never runs and the function returns a real reading with `decoded == [1]` |
+| `…reports_absence_when_the_geometry_drifted` | FAIL | no guard exists, so `_drifted` never runs. Corrected during Task 4's execution: it does not fail by *returning* a reading with `decoded == [1]` — it never reaches a return, because this test passes `{}` as the graded reading and `naturalness.evaluate_delta(src_stats, {})` raises an uncaught `KeyError` first. Red either way, and it still discriminates the guard (with the guard present the function returns before that call), but the mechanism named here was wrong. |
 | `…still_lets_a_broken_render_raise` | **PASS** | Written reason: it is the control on the guard's narrowness, and it passes today because there is no guard at all to be too wide. Its job begins at Step 4 — if the implementer widens the existing `except` clause instead of wrapping the oracle's own call, this is the test that goes red. |
 
 - [ ] **Step 3: Run them**
@@ -1095,12 +1095,27 @@ to the line before `frames = reframe.plan_frames_rgb(...)` with:
 
 ```python
     md = dict(ep.manifest)
+    # The frozen sidecar first, on its own. rendered_params raises RuntimeError for a
+    # path.meta.json that exists and will not parse — deliberately, so no caller
+    # silently plans on the defaults instead (design §2.2) — and in THIS caller that
+    # is one episode's geometry being unreadable, which is a named absence, not a
+    # reason to abandon the packet run over the others. build_reel._predict already
+    # degrades the identical failure to None for one episode via its broad clause;
+    # this is that same decision, made narrowly.
+    #
+    # plan_ungraded deliberately does NOT share this clause: its own RuntimeError
+    # comes from proc.run — a broken ffmpeg install, a corrupt but present video —
+    # and reporting either as a clean 'absent' is exactly the swallow the clause
+    # below was written to prevent.
+    try:
+        params = process_episode.rendered_params(ep.meta)
+    except RuntimeError:
+        return {"source": None, "delta": None}
     try:
         src = probe.source_for(md, Path(ep.path).parent)
         if not Path(src).exists():
             return {"source": None, "delta": None}
-        plan = process_episode.plan_ungraded(
-            md, src, ep.route, params=process_episode.rendered_params(ep.meta))
+        plan = process_episode.plan_ungraded(md, src, ep.route, params=params)
     except (FileNotFoundError, KeyError, ValueError):
         return {"source": None, "delta": None}
     try:
@@ -1554,6 +1569,7 @@ which reads exactly like a non-discriminating row.
 | 15 | `scripts/episode_qc.py` | `_source_reading` drops `params=` | RED | `test_source_reading_plans_with_the_params_the_render_recorded` |
 | 16 | `scripts/episode_qc.py` | delete the `_refuse_on_drift` try/except block | RED | `test_source_reading_reports_absence_when_the_geometry_drifted` |
 | 17 | `scripts/episode_qc.py` | widen the existing clause to `except (FileNotFoundError, KeyError, ValueError, RuntimeError)` and delete the separate guard block | RED | `test_source_reading_still_lets_a_broken_render_raise` |
+| 17b | `scripts/episode_qc.py` | move `rendered_params(ep.meta)` back inside the `plan_ungraded` try, so its RuntimeError escapes | RED | `test_source_reading_reports_absence_for_a_corrupt_geometry_sidecar` — added in Task 4's fix round, and the only thing covering the guarantee the guard's comment states. Confirmed discriminating by reverting: an uncaught `RuntimeError` propagates out of `pack()`. |
 | 18 | `scripts/build_reel.py` | revert `epdir` to `str(Path(work_dir) / f"ep{item.idx}")` | RED | `test_a_reprocess_writes_beside_the_sidecars_episodes_json_names` |
 | 19 | `scripts/build_reel.py` | drop the empty-path arm: `epdir = str(Path(ep.path).parent)` always | RED | `test_a_reprocess_of_an_episode_with_no_sidecar_keeps_the_work_dir` |
 
