@@ -1598,6 +1598,23 @@ GREEN the test that closed it. A row whose named test turns out not to see its
 own mutation is a finding about the test, not about the row — correct the table
 in this plan rather than leaving a wrong pointer for the next reader.
 
+- [ ] **Step 2b: Restore one dropped assertion (Task 5's deferred minor)**
+
+Task 5 narrowed a pre-existing assertion to accommodate the harness's new
+`project_dir` key: `test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma`
+went from `seen["reprocess"] == [{"route": "r1.json"}]` to
+`seen["reprocess"][0]["route"] == "r1.json"`, dropping the "exactly one reprocess
+ran" half. Narrowing was the right call — a full-dict equality re-couples an
+unrelated test to this feature's output shape — but the file's own idiom pairs the
+index check with a length check, and the length check never referenced
+`project_dir`. Add it back, immediately above that line:
+
+```python
+    assert len(seen["reprocess"]) == 1
+```
+
+Run `.venv/bin/python -m pytest tests/lib/test_build_reel.py -v`; expected PASS.
+
 - [ ] **Step 3: Run the whole suite**
 
 ```bash
