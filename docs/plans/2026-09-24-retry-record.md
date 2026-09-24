@@ -714,7 +714,6 @@ def test_predict_plans_each_episode_with_the_params_its_sidecar_recorded(
     Spied on the ARGUMENTS, not on the returned profile: a wrong implementation
     that ignored the recorded params would still return a profile, and on any
     fixture flat enough to fake it would be the same profile."""
-    from scripts.lib.models import PathMeta
     d = tmp_path / "ep0"
     d.mkdir()
     meta = d / "path.meta.json"
@@ -729,9 +728,15 @@ def test_predict_plans_each_episode_with_the_params_its_sidecar_recorded(
     seen = {}
     monkeypatch.setattr(build_reel.probe, "source_for", lambda md, epdir: "src.mp4")
 
+    class _Plan:                 # NOT the bare string "plan": _predict's very next
+        dur = 3.0                # line reads plan.dur, and its `except Exception`
+                                 # arm would swallow the AttributeError into a None,
+                                 # so the test could never go green — before OR after
+                                 # the change. Same idiom as tests/test_check_episode.py.
+
     def _plan_for(md, src, route, *, params=None):
         seen["params"] = params
-        return "plan"
+        return _Plan()
     monkeypatch.setattr(build_reel.process_episode, "plan_for", _plan_for)
     monkeypatch.setattr(build_reel.probe, "_refuse_on_drift", lambda *a: None)
     monkeypatch.setattr(build_reel.color_measure, "crop_percentiles",
@@ -744,16 +749,24 @@ def test_predict_plans_each_episode_with_the_params_its_sidecar_recorded(
     assert out == [(1.0, 2.0, 3.0)]
 ```
 
-`json` and `Path` must be imported at the top of `tests/lib/test_build_reel.py`;
-add whichever is missing. `_predict` calls `color.sample_times(plan.dur)` — the
-stub above ignores `plan` being the string `"plan"`, which is why
-`sample_times` is stubbed too.
+**Imports, checked at planning time and corrected during Task 3's execution:**
+`json` and `PathMeta` go at the module top of `tests/lib/test_build_reel.py`, not
+inside the function — `docs/coding-standards.md` says "All imports at module top.
+No imports inside functions", and its only exemption is a heavy optional
+third-party dependency, which `PathMeta` is not. `Path` is NOT needed: `tmp_path`
+is already one and the bare constructor is never called in that file.
 
-Expected before the change: **FAIL**, with `TypeError: _plan_for() got an
-unexpected keyword argument` never reached — instead the real `_predict` calls
-`plan_for(md, src, e.route)` positionally, so `seen["params"]` is `None` and the
-first assertion fails with `assert None == {...}`. Either way it is red; record
-which.
+`_predict` reads `plan.dur` as an argument expression, *before* `color.sample_times`
+is called — so stubbing `sample_times` does not save a fake plan that has no `dur`.
+That is why the fake returns `_Plan()` and not a string. (The plan's first draft got
+this backwards, and its test could never have reached green either way: the
+`AttributeError` is caught by `_predict`'s own `except Exception` and appended as
+`None`, failing the second assertion while the first one passed.)
+
+Expected before the change: **FAIL** on the first assertion. The real `_predict`
+calls `plan_for(md, src, e.route)` positionally, so `seen["params"]` stays `None`
+and `assert None == {...}` fails. (No `TypeError`: the fake's `params` is
+keyword-only *with a default*, so a positional three-argument call binds fine.)
 
 - [ ] **Step 2: Run it**
 
