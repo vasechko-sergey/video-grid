@@ -175,3 +175,105 @@ def test_prepared_source_without_a_route_is_refused(tmp_path):
                                           prepared_source="s.mp4")
     assert res["status"] == "needs_input"
     assert "prepared_source" in res["problems"][0]
+
+
+# --- 2026-09-24 retry-record Task 2: reconstruct the render, not the declaration ---
+
+def _meta_json(tmp_path, **over):
+    """A real path.meta.json on disk. PathMeta's own to_dict writes it, so the file
+    this reads is the shape reframe writes — not a hand-built dict that could drift
+    from it."""
+    pm = models.PathMeta(mode="fill", crop_w=405, crop_h=720, crop_y=0,
+                         src_dims=(1280, 720), canvas=(9, 16), out_dims=(404, 720),
+                         rect_px=(0, 0, 404, 720), freedom=875, **over)
+    p = tmp_path / "path.meta.json"
+    p.write_text(json.dumps(pm.to_dict()))
+    return p
+
+
+def test_rendered_params_reads_both_knobs_from_the_sidecar(tmp_path):
+    p = _meta_json(tmp_path, max_speed=450.0, smooth_window_s=0.5)
+    assert process_episode.rendered_params(p) == {"max_speed": 450.0,
+                                                  "smooth_window_s": 0.5}
+
+
+def test_rendered_params_fills_an_omitted_knob_from_the_defaults(tmp_path):
+    # A lag retry moves max_speed and can leave the window exactly at the default,
+    # which is then not emitted. The omitted key means "the render used the
+    # default" — NOT "ask the manifest", which is what the authored value would
+    # wrongly supply (design §2.2).
+    p = _meta_json(tmp_path, max_speed=1125.0)
+    assert process_episode.rendered_params(p) == {
+        "max_speed": 1125.0, "smooth_window_s": orch.DEFAULT_PARAMS["smooth_window_s"]}
+
+
+def test_rendered_params_reports_a_sidecar_that_says_nothing_as_absence(tmp_path):
+    assert process_episode.rendered_params(_meta_json(tmp_path)) is None
+
+
+def test_rendered_params_reports_a_missing_or_unnamed_sidecar_as_absence(tmp_path):
+    # ReelEpisode.meta defaults to "" and a reel manifest may legally carry no
+    # sidecar: that is an absence, not a fault.
+    assert process_episode.rendered_params("") is None
+    assert process_episode.rendered_params(None) is None
+    assert process_episode.rendered_params(tmp_path / "gone.json") is None
+
+
+def test_rendered_params_still_raises_on_a_corrupt_sidecar(tmp_path):
+    # A file that EXISTS and will not parse is machine-written content gone wrong.
+    # Laundering it into "the defaults, then" hands the caller a plan built on a
+    # guess — the exact substitution PathMeta.from_json refuses by design.
+    p = tmp_path / "path.meta.json"
+    p.write_text("{not json")
+    with pytest.raises(RuntimeError, match=r"is corrupt"):
+        process_episode.rendered_params(p)
+
+
+def test_plan_for_uses_the_given_params_instead_of_the_manifests_authored_window(
+        tmp_path, monkeypatch):
+    """The replace-not-merge rule. A recorded sidecar is a COMPLETE account of what
+    the render used, so an authored smooth_window_s must not win over it — after a
+    retry the authored value is precisely what the ladder overrode."""
+    seen = {}
+
+    def _fake_plan_render(spec, src, route):
+        seen["spec"] = spec
+        return "plan"
+    monkeypatch.setattr(process_episode.reframe, "plan_render", _fake_plan_render)
+
+    md = _episode_manifest(tmp_path, smooth_window_s=1.2)
+    process_episode.plan_for(md, "src.mp4", None,
+                             params={"max_speed": 450.0, "smooth_window_s": 0.5})
+    assert (seen["spec"].max_speed, seen["spec"].smooth_window_s) == (450.0, 0.5)
+
+
+def test_plan_for_without_params_still_reads_the_manifests_authored_window(
+        tmp_path, monkeypatch):
+    """The control on the arm above: params=None must keep today's behaviour
+    exactly, or every caller that does not pass params silently changes geometry."""
+    seen = {}
+
+    def _fake_plan_render(spec, src, route):
+        seen["spec"] = spec
+        return "plan"
+    monkeypatch.setattr(process_episode.reframe, "plan_render", _fake_plan_render)
+
+    md = _episode_manifest(tmp_path, smooth_window_s=1.2)
+    process_episode.plan_for(md, "src.mp4", None)
+    assert (seen["spec"].max_speed, seen["spec"].smooth_window_s) == (750.0, 1.2)
+
+
+def test_plan_ungraded_threads_params_through_to_the_spec(tmp_path, monkeypatch):
+    """The plain half of the damage pair must share the graded half's geometry. A
+    passthrough that is silently dropped here would compare two crops and call the
+    difference a grade."""
+    seen = {}
+
+    def _fake_plan_render(spec, src, route):
+        seen["spec"] = spec
+        return "plan"
+    monkeypatch.setattr(process_episode.reframe, "plan_render", _fake_plan_render)
+
+    process_episode.plan_ungraded(_episode_manifest(tmp_path), "src.mp4", None,
+                                  params={"max_speed": 450.0, "smooth_window_s": 0.5})
+    assert (seen["spec"].max_speed, seen["spec"].smooth_window_s) == (450.0, 0.5)
