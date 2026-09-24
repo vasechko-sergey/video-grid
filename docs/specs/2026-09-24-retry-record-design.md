@@ -279,6 +279,21 @@ All three build the plan with the recorded params where the sidecar has them:
   signalled, and this one caller declines to produce a reading rather than planning
   on a guess.
 
+  **And the same file has a second reader two lines later**, found when the first
+  fix was re-reviewed: `_evidence`'s three-sidecar loop read every one of
+  `report.json` / `route.meta.json` / `path.meta.json` with
+  `json.loads(p.read_text()) if p.exists() else None`, so a corrupt one raised out
+  of `pack()` regardless of what `_source_reading` had just done. Present-and-
+  unparseable is a **third state** that loop's two arms never anticipated — a render
+  that died mid-write leaves exactly it. The reading becomes `None`, as for an absent
+  sidecar, and the distinction rides in a new optional `unreadable` map (filename →
+  the decoder's own message) emitted only when non-empty, so every packet written
+  before this stays byte-identical. Both judge templates read it: an absent sidecar
+  means that stage never ran, an unreadable one means it ran and its record was
+  lost, and only the second is a reason to distrust the rest of that render's
+  evidence. Wiring the templates is not decoration — a field no consumer reads is
+  the inert surface §1.4 deletes rather than qualifies.
+
 ### §2.4 The reprocess writes beside the record it replaces
 
 `build_reel`'s reprocess arm derives the episode directory the same way
