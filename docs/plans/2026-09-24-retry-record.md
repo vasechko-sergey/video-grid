@@ -542,8 +542,13 @@ def rendered_params(meta_json: str | Path | None) -> dict | None:
 
     None is the named absence and it has two causes nothing here distinguishes: a
     sidecar written before PathMeta carried these fields, and one whose render used
-    the defaults. Safe because both reconstruct identically through plan_for's
-    params=None arm (design 2026-09-24 §2.1).
+    the defaults. Safe, but NOT because the two reconstruct identically — they do
+    not: a defaults render is reproduced exactly at params=None, and a PRE-SLICE
+    retried render's geometry is reproduced WRONGLY (design 2026-09-24 §2.1's
+    table). What makes both outcomes correct is that a caller receiving None must
+    still check the rebuilt plan against the frozen sidecars before trusting it —
+    probe._refuse_on_drift — so the second case is refused by name instead of read
+    as a measurement.
 
     A path that is empty or names no file is also None — ReelEpisode.meta defaults
     to "" and a hand-authored reel manifest may carry no sidecar, which is an
@@ -551,12 +556,17 @@ def rendered_params(meta_json: str | Path | None) -> dict | None:
     through PathMeta.from_json: machine-written content gone wrong is a fault, and
     answering "the defaults, then" would hand the caller a plan built on a guess.
 
+    `is_file`, not `exists`: a Path("") is truthy like every Path and normalizes to
+    Path("."), which exists — so the falsy check alone lets a directory through to
+    a read that raises IsADirectoryError, which is neither of this function's two
+    documented answers. A path naming a directory is not a sidecar.
+
     Keys the sidecar omits are filled from orch.DEFAULT_PARAMS and never from the
     manifest's authored smooth_window_s. A recorded sidecar is a COMPLETE account
     of what the render used, so an omitted key means the render used the default —
     after a retry the authored value is exactly what the ladder overrode.
     """
-    if not meta_json or not Path(meta_json).exists():
+    if not meta_json or not Path(meta_json).is_file():
         return None
     meta = PathMeta.from_json(meta_json)
     if meta.max_speed is None and meta.smooth_window_s is None:
@@ -1522,6 +1532,7 @@ which reads exactly like a non-discriminating row.
 | 7 | `scripts/process_episode.py` | `rendered_params` returns `{}` instead of `None` when nothing recorded | RED | `test_rendered_params_reports_a_sidecar_that_says_nothing_as_absence` |
 | 8 | `scripts/process_episode.py` | `rendered_params` fills omitted keys from `meta` alone (drop the `DEFAULT_PARAMS` base) | RED | `test_rendered_params_fills_an_omitted_knob_from_the_defaults` |
 | 9 | `scripts/process_episode.py` | `rendered_params` returns `None` for a corrupt sidecar instead of raising | RED | `test_rendered_params_still_raises_on_a_corrupt_sidecar` |
+| 9b | `scripts/process_episode.py` | `rendered_params`' absence guard back to `.exists()` from `.is_file()` | RED | `test_rendered_params_reports_a_missing_or_unnamed_sidecar_as_absence` — its fourth assertion, added in Task 2's fix round, is the only thing covering this; under `.exists()` a `Path("")` raises an uncaught `IsADirectoryError` |
 | 10 | `scripts/process_episode.py` | `_plan_parts` merges (`params = {**params, **derived}`) instead of replacing | RED | `test_plan_for_uses_the_given_params_instead_of_the_manifests_authored_window` |
 | 11 | `scripts/process_episode.py` | `plan_for` ignores `params` (drop it from the `_plan_parts` call) | RED | the same, plus `test_the_sidecar_lets_a_retried_render_be_replanned_exactly` |
 | 12 | `scripts/process_episode.py` | `plan_ungraded` drops the `params=params` passthrough | RED | `test_plan_ungraded_threads_params_through_to_the_spec` |
@@ -1544,7 +1555,9 @@ task is done — add one to `tests/integration/test_retry_record.py` that render
 an episode at attempt-2 params and asserts `probe.probe_grade`'s graded and plain
 plans have the same `path`.
 
-Rows 1–19 are 19, not 17; the table is the authority.
+Rows 1–19 plus 9b are 20, not 17; the table is the authority. (Row 9b was added
+during Task 2's fix round, which is why the numbering is not contiguous — renumbering
+after the fact would break the roll-call's pointers back to this table.)
 
 - [ ] **Step 2: Record the roll-call**
 

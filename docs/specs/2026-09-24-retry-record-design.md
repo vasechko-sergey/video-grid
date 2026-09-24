@@ -216,8 +216,10 @@ difference is the honest part and must be written at the site: absence here mean
 either "this sidecar predates the field" or "this render used the defaults", and
 nothing distinguishes them.
 
-The conflation is harmless because both resolve to the same reader behaviour, and
-it is worth stating why for each case rather than asserting it once:
+The conflation is harmless because both end in a CORRECT outcome — but by two
+different mechanisms, and saying "they resolve the same way" collapses the
+difference. One is reproduced exactly; the other is reproduced wrongly and then
+refused by name. Stating it per case rather than once is what keeps that visible:
 
 | sidecar | manifest | render used | reader at `params=None` |
 |---|---|---|---|
