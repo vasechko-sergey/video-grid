@@ -174,8 +174,16 @@ In `scripts/lib/models.py`, immediately after the `crop_ys` field of `PathMeta`:
     #: None is an ABSENCE, not a value, and unlike the four exemptions above it
     #: is not a provable truth: it means either "this sidecar predates the
     #: field" or "this render used the ReframeSpec defaults", and nothing here
-    #: distinguishes them. Safe only because both reconstruct identically
-    #: through process_episode.plan_for's params=None arm (design §2.1).
+    #: distinguishes them.
+    #:
+    #: That conflation is safe, but NOT because the two reconstruct identically —
+    #: they do not. A reader planning from the manifest alone reproduces a
+    #: defaults render exactly, and reproduces a PRE-SLICE retried render's
+    #: geometry WRONGLY (design 2026-09-24 §2.1's table). What makes both
+    #: outcomes correct is that every consumer of a rebuilt plan must check it
+    #: against the frozen sidecars before using it — probe._refuse_on_drift — so
+    #: the second case is refused by name instead of read as a measurement. A
+    #: consumer that skips that check reads a crop the episode never shipped.
     max_speed: float | None = None
     smooth_window_s: float | None = None
 ```
@@ -299,6 +307,13 @@ Add immediately above `def path_meta(`:
 #: hand-copied: a default that moves must not silently start — or stop — being
 #: recorded in the sidecar. Same rule the colour identity follows (design
 #: 2026-08-15 Task 4 review).
+#:
+#: Safe only for fields with a plain `= value` default: a field(default_factory=…)
+#: field's own .default is dataclasses.MISSING, so `value == _SPEC_DEFAULTS[name]`
+#: would never be true and that field would be recorded on every render — the
+#: byte-identity hole this exists to close, reopened silently. ReframeSpec already
+#: has one such field (`layout`), so re-check before calling _recorded with a new
+#: name. Same caveat manifest.COLOUR_IDENTITY carries, for the same reason.
 _SPEC_DEFAULTS = {f.name: f.default for f in _dc_fields(ReframeSpec)}
 
 
