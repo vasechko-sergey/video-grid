@@ -41,8 +41,9 @@ A retry changes what shipped and the record did not follow it.
   raise out of `pack()`'s loop and cost every LATER episode its packet; it now
   reads as `None`, exactly like an absent sidecar, with the reason carried in a
   new optional `unreadable` map (emitted only when non-empty, so every packet
-  written before this stays byte-identical) — and both episode-qc judge templates
-  read it, because an unparseable sidecar is a reason to distrust the rest of that
+  written before this stays byte-identical) — and the judge's template names it
+  at both of its sidecar placeholders, filled by the stage's own dispatch step,
+  because an unparseable sidecar is a reason to distrust the rest of that
   render's evidence and an absent one is not. The same corrupt-sidecar
   `RuntimeError` `rendered_params` raises by design no longer escapes
   `_source_reading` either: one episode's unreadable geometry now costs that

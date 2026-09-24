@@ -288,11 +288,12 @@ All three build the plan with the recorded params where the sidecar has them:
   that died mid-write leaves exactly it. The reading becomes `None`, as for an absent
   sidecar, and the distinction rides in a new optional `unreadable` map (filename →
   the decoder's own message) emitted only when non-empty, so every packet written
-  before this stays byte-identical. Both judge templates read it: an absent sidecar
-  means that stage never ran, an unreadable one means it ran and its record was
-  lost, and only the second is a reason to distrust the rest of that render's
-  evidence. Wiring the templates is not decoration — a field no consumer reads is
-  the inert surface §1.4 deletes rather than qualifies.
+  before this stays byte-identical. The judge's template names it at both of its
+  sidecar placeholders, and `SKILL.md`'s dispatch step fills them: an absent
+  sidecar means that stage never ran, an unreadable one means it ran and its
+  record was lost, and only the second is a reason to distrust the rest of that
+  render's evidence. Wiring the template is not decoration — a field no consumer
+  reads is the inert surface §1.4 deletes rather than qualifies.
 
 ### §2.4 The reprocess writes beside the record it replaces
 
