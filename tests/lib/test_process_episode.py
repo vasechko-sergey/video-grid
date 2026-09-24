@@ -217,6 +217,10 @@ def test_rendered_params_reports_a_missing_or_unnamed_sidecar_as_absence(tmp_pat
     assert process_episode.rendered_params("") is None
     assert process_episode.rendered_params(None) is None
     assert process_episode.rendered_params(tmp_path / "gone.json") is None
+    # Path("") is truthy (unlike the string "" above) and normalizes to Path("."),
+    # which .exists() but is not a file — the case .is_file() exists to catch,
+    # instead of falling through to a read that raises IsADirectoryError.
+    assert process_episode.rendered_params(Path("")) is None
 
 
 def test_rendered_params_still_raises_on_a_corrupt_sidecar(tmp_path):
