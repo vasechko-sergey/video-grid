@@ -109,12 +109,19 @@ guessing a path.
 2. **Dispatch one fresh judge per episode — at most 3 concurrently.** For each
    episode `i`, fill `skills/episode-qc/episode-reviewer.md` with THAT
    episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json` — which now names its
-   own artifacts: `strip`, `strip_px`, `storyboard`, `storyboard_px`. Fill
-   `{STRIP_PATH}`/`{STRIP_PX}` and `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from
-   those four keys, writing `none recorded` for either storyboard key that is
-   null — the same substitution the CHECKS/TRACK/GEOMETRY placeholders already
-   ask for, and what the template's no-storyboard branch keys on. Pass nothing
-   else. A judge reads only its own episode:
+   own artifacts: `strip`, `strip_px`, `storyboard`, `storyboard_px`, and,
+   when non-empty, `unreadable` (sidecar filename → why `json.loads` failed on
+   it, for whichever of `report.json`/`route.meta.json`/`path.meta.json` came
+   back corrupt). Fill `{STRIP_PATH}`/`{STRIP_PX}` and
+   `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from those four keys, writing `none
+   recorded` for either storyboard key that is null — the same substitution
+   the CHECKS/TRACK/GEOMETRY placeholders already ask for, and what the
+   template's no-storyboard branch keys on — except when `unreadable` names
+   the sidecar behind one of those three placeholders: paste `unreadable`,
+   with its reason, instead of `none recorded` there, because a sidecar that
+   ran and lost its record is a different fact from one that never ran, and
+   only the first is reason to distrust the rest of that render's evidence.
+   Pass nothing else. A judge reads only its own episode:
    never another's packet, never the EDL as a whole, never a comparison
    across episodes (adjacency and rhythm are reel-review's question, not
    this one). Dispatch with the Task tool (`general-purpose`), batching up

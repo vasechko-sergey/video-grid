@@ -17,12 +17,21 @@ read by a human; your deliverable is the file you write.
 
 ## The mechanical checks (already passed — context, not yours to re-litigate)
 {CHECKS — paste evidence.json's "checks" object (check_episode's report.json),
- or "none recorded" if it is null.}
+ "none recorded" if it is null, or, if evidence.json's "unreadable" map names
+ "report.json", "unreadable: <the reason given there>" instead. The
+ difference matters: a missing report.json means check_episode never ran; an
+ unreadable one means it ran and its record was lost, which is reason to
+ distrust the rest of this packet's evidence from the same render too.}
 
 ## Tracker + path provenance
 {TRACK / GEOMETRY — paste evidence.json's "track" object (route.meta.json:
  degraded / stitched / ambiguous) and "geometry" object (path.meta.json:
- freedom / pan / stabilized), or "none recorded" if either is null.}
+ freedom / pan / stabilized); "none recorded" for either that is null, or, if
+ evidence.json's "unreadable" map names "route.meta.json" / "path.meta.json",
+ "unreadable: <the reason given there>" for that one instead. The difference
+ matters: a missing sidecar means that stage never ran; an unreadable one
+ means it ran and its record was lost, which is reason to distrust the rest
+ of this packet's evidence from the same render too.}
 
 ## The colour-naturalness sensor (advisory — see Rules)
 {NATURALNESS — paste evidence.json's "naturalness" object: stats (means /
