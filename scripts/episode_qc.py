@@ -120,12 +120,27 @@ def _source_reading(ep, graded: dict) -> dict:
     be shown to be the shipped geometry — a number read through the wrong crop is
     worse than no number, because the judge cannot tell it from a real one."""
     md = dict(ep.manifest)
+    # The frozen sidecar first, on its own. rendered_params raises RuntimeError for a
+    # path.meta.json that exists and will not parse — deliberately, so no caller
+    # silently plans on the defaults instead (design §2.2) — and in THIS caller that
+    # is one episode's geometry being unreadable, which is a named absence, not a
+    # reason to abandon the packet run over the others. build_reel._predict already
+    # degrades the identical failure to None for one episode via its broad clause;
+    # this is that same decision, made narrowly.
+    #
+    # plan_ungraded deliberately does NOT share this clause: its own RuntimeError
+    # comes from proc.run — a broken ffmpeg install, a corrupt but present video —
+    # and reporting either as a clean 'absent' is exactly the swallow the clause
+    # below was written to prevent.
+    try:
+        params = process_episode.rendered_params(ep.meta)
+    except RuntimeError:
+        return {"source": None, "delta": None}
     try:
         src = probe.source_for(md, Path(ep.path).parent)
         if not Path(src).exists():
             return {"source": None, "delta": None}
-        plan = process_episode.plan_ungraded(
-            md, src, ep.route, params=process_episode.rendered_params(ep.meta))
+        plan = process_episode.plan_ungraded(md, src, ep.route, params=params)
     except (FileNotFoundError, KeyError, ValueError):
         return {"source": None, "delta": None}
     try:

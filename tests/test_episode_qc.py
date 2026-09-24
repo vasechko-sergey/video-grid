@@ -333,6 +333,20 @@ def test_source_reading_still_lets_a_broken_render_raise(monkeypatch, tmp_path):
         episode_qc._source_reading(ep, {})
 
 
+def test_source_reading_reports_absence_for_a_corrupt_geometry_sidecar(tmp_path):
+    """One episode's unreadable sidecar must not abort a packet run over the others
+    — the guarantee the guard's own comment states. rendered_params raises
+    RuntimeError for a path.meta.json that exists and will not parse (Task 2, so a
+    caller never silently plans on the defaults); here that is this episode's
+    geometry being unreadable, and the honest answer is absence.
+
+    Not monkeypatched: the real rendered_params reads the real file, so this covers
+    the actual raise rather than a stand-in for it."""
+    ep = _episode(tmp_path)
+    Path(ep.meta).write_text("{not json")
+    assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
+
+
 # --- Task 3: legible-evidence slice ---
 
 def _stub_strip(monkeypatch, cell_px=(313, 556)):
