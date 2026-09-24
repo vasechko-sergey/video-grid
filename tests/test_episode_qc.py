@@ -179,7 +179,8 @@ def test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP(monkeypatch, t
 
     plan_obj = _fake_plan()
 
-    def _plan_ungraded(md, src, route):
+    def _plan_ungraded(md, src, route, *, params=None):
+        seen["params"] = params
         seen["planned"] = (md, src, route)
         return plan_obj
     monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _plan_ungraded)
@@ -188,6 +189,10 @@ def test_source_reading_measures_the_source_IN_THE_EPISODE_S_CROP(monkeypatch, t
         seen["rendered"] = (plan, src, times)
         return [_flat_frame() for _ in times]
     monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb", _plan_frames_rgb)
+    # This test's episode points path/meta at files it never writes — drift is not
+    # its subject, the wiring is. Task 4 added the oracle to _source_reading, so it
+    # is stubbed here exactly as tests/lib/test_build_reel.py stubs it for _predict.
+    monkeypatch.setattr(episode_qc.probe, "_refuse_on_drift", lambda *a: None)
 
     graded = {"cast": 0.0, "saturation": 0.0, "contrast": 100.0}
     d = episode_qc._source_reading(ep, graded)
@@ -244,18 +249,88 @@ def test_source_reading_reads_the_stabilized_file_not_the_raw_segment(monkeypatc
                      path=str(d / "path.json"), meta=str(d / "path.meta.json"))
     seen = {}
 
-    def _plan_ungraded(md, src, route):
+    def _plan_ungraded(md, src, route, *, params=None):
+        seen["params"] = params
         seen["planned"] = (md, src, route)
         return _fake_plan()
     monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _plan_ungraded)
     monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb",
                         lambda plan, src, times: [_flat_frame() for _ in times])
+    # This test's episode points path/meta at files it never writes — drift is not
+    # its subject, the wiring is. Task 4 added the oracle to _source_reading, so it
+    # is stubbed here exactly as tests/lib/test_build_reel.py stubs it for _predict.
+    monkeypatch.setattr(episode_qc.probe, "_refuse_on_drift", lambda *a: None)
 
     d_out = episode_qc._source_reading(ep, {"cast": 0.0, "saturation": 0.0, "contrast": 100.0})
 
     assert seen["planned"][1] == str(stabilized)
     assert seen["planned"][1] != raw
     assert d_out["source"] is not None
+
+
+# --- 2026-09-24 retry-record Task 4: the reading that had no oracle ---
+
+def test_source_reading_plans_with_the_params_the_render_recorded(monkeypatch, tmp_path):
+    """The silent one of the three consumers (design 2026-09-24 §0.3): with no
+    oracle, a retried episode's source was read through a crop the episode never
+    shipped and reported to the judge as its own."""
+    ep = _episode(tmp_path)
+    seen = {}
+    monkeypatch.setattr(episode_qc.process_episode, "rendered_params",
+                        lambda meta: {"max_speed": 450.0, "smooth_window_s": 0.5})
+
+    def _plan_ungraded(md, src, route, *, params=None):
+        seen["params"] = params
+        return _fake_plan()
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _plan_ungraded)
+    monkeypatch.setattr(episode_qc.probe, "_refuse_on_drift", lambda *a: None)
+    monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb",
+                        lambda plan, src, times: [_flat_frame() for _ in times])
+
+    episode_qc._source_reading(ep, {"cast": 0.0, "saturation": 0.0, "contrast": 100.0})
+    assert seen["params"] == {"max_speed": 450.0, "smooth_window_s": 0.5}
+
+
+def test_source_reading_reports_absence_when_the_geometry_drifted(monkeypatch, tmp_path):
+    """A sidecar that records no params — every episode rendered before this slice
+    — still drifts for a retried episode, and absence is the honest answer. Never a
+    reading: a number read through the wrong crop is worse than no number, because
+    the judge cannot tell it apart from a real one.
+
+    The message is NOT asserted: this call site swallows the oracle's RuntimeError
+    on purpose and reports absence instead, so there is no string to pin. What is
+    pinned is that the frames were never decoded — the assertion on `decoded`, not
+    only on the return value, because a return of two Nones could also come from
+    the reading having been computed and then thrown away."""
+    ep = _episode(tmp_path)
+    decoded = []
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded",
+                        lambda md, src, route, *, params=None: _fake_plan())
+
+    def _drifted(plan, path_json, meta_json):
+        raise RuntimeError("the recomputed crop path does not match the frozen path.json")
+    monkeypatch.setattr(episode_qc.probe, "_refuse_on_drift", _drifted)
+    monkeypatch.setattr(episode_qc.reframe, "plan_frames_rgb",
+                        lambda plan, src, times: decoded.append(1) or [_flat_frame()])
+
+    assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
+    assert decoded == []
+
+
+def test_source_reading_still_lets_a_broken_render_raise(monkeypatch, tmp_path):
+    """The control on the guard's narrowness. The existing except clause
+    deliberately excludes RuntimeError, because proc.run raises it for a broken
+    ffmpeg install and reporting that as a clean 'absent' is the swallow that
+    clause was written to prevent. The new guard must catch the oracle's
+    RuntimeError at the oracle's own call and nowhere else — a widened clause would
+    make this test's RuntimeError, raised from the PLAN build, report absence."""
+    ep = _episode(tmp_path)
+
+    def _boom(md, src, route, *, params=None):
+        raise RuntimeError("ffprobe: command not found")
+    monkeypatch.setattr(episode_qc.process_episode, "plan_ungraded", _boom)
+    with pytest.raises(RuntimeError, match=r"command not found"):
+        episode_qc._source_reading(ep, {})
 
 
 # --- Task 3: legible-evidence slice ---

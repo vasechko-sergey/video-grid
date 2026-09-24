@@ -112,14 +112,42 @@ def _source_reading(ep, graded: dict) -> dict:
     FileNotFoundError/KeyError/ValueError — measured directly against proc.run,
     not assumed. Catching RuntimeError here too would also swallow a genuinely
     broken ffmpeg install or a corrupt (but present) file, which is exactly the
-    fail-loud case this function must NOT report as a quiet 'absent'."""
+    fail-loud case this function must NOT report as a quiet 'absent'.
+
+    Since 2026-09-24 the plan carries the params the render RECORDED
+    (process_episode.rendered_params off ep.meta) and is checked against the frozen
+    sidecars before anything is decoded. Absence is reported for a plan that cannot
+    be shown to be the shipped geometry — a number read through the wrong crop is
+    worse than no number, because the judge cannot tell it from a real one."""
     md = dict(ep.manifest)
     try:
         src = probe.source_for(md, Path(ep.path).parent)
         if not Path(src).exists():
             return {"source": None, "delta": None}
-        plan = process_episode.plan_ungraded(md, src, ep.route)
+        plan = process_episode.plan_ungraded(
+            md, src, ep.route, params=process_episode.rendered_params(ep.meta))
     except (FileNotFoundError, KeyError, ValueError):
+        return {"source": None, "delta": None}
+    try:
+        probe._refuse_on_drift(plan, ep.path, ep.meta)
+    except RuntimeError:
+        # The oracle the other two consumers of this plan map have always had
+        # (build_reel._predict, probe.probe_grade) and this one never did — so a
+        # retried episode's source was read through a crop it never shipped and
+        # reported to the judge as its own (design 2026-09-24 §0.3). Recording the
+        # render's params fixes every episode rendered from now on; this catches
+        # the ones whose sidecar predates the field, and any drift a params record
+        # cannot explain — a re-track, a swapped source.
+        #
+        # Caught HERE, at the oracle's own call, and not by widening the clause
+        # above: that clause excludes RuntimeError for a measured reason — proc.run
+        # raises it for a broken ffmpeg install or a corrupt-but-present file, and
+        # reporting either as a clean 'absent' is exactly the swallow it was
+        # written to prevent.
+        #
+        # Absence and not a raise: _evidence already reports every other sidecar
+        # this way, and one episode's unreadable geometry must not abort a packet
+        # run over the other seven.
         return {"source": None, "delta": None}
     frames = reframe.plan_frames_rgb(plan, src, color.sample_times(plan.dur, SENSOR_FRAMES))
     src_stats = naturalness.measure(frames)
