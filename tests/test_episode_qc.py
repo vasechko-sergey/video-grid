@@ -347,6 +347,30 @@ def test_source_reading_reports_absence_for_a_corrupt_geometry_sidecar(tmp_path)
     assert episode_qc._source_reading(ep, {}) == {"source": None, "delta": None}
 
 
+def test_the_packet_reports_an_unreadable_sidecar_instead_of_dying_on_it(tmp_path):
+    """The guarantee _source_reading's guard states, at the level it is actually
+    made: a corrupt path.meta.json must cost this episode its geometry reading and
+    nothing else. Before this, json.loads raised out of _evidence, out of pack()'s
+    loop, and every LATER episode went unpacked.
+
+    Asserts BOTH halves — the None and the named reason — because None alone is
+    what an absent sidecar already produces, and a judge that cannot tell the two
+    apart has been told the render wrote no geometry when it wrote a broken one."""
+    ep = _episode(tmp_path)
+    Path(ep.meta).write_text("{not json")
+    # _episode()'s clip (unlike its scratch dir/segment) is never written to disk —
+    # every _source_reading test reaches it only through mocks. _evidence digests
+    # ep.clip itself (design 2026-09-09 §4), so this test needs real bytes there to
+    # reach the loop under test at all — confirmed by running this test without the
+    # write first: it fails on FileNotFoundError from provenance.digest_file, before
+    # ever reaching the sidecar loop.
+    Path(ep.clip).write_bytes(b"x")
+    out = episode_qc._evidence(ep, 0, {"stats": {}, "flags": []},
+                               {"strip": "s.jpg", "cell_px": (10, 10)}, (100, 200))
+    assert out["geometry"] is None
+    assert "path.meta.json" in out["unreadable"]
+
+
 # --- Task 3: legible-evidence slice ---
 
 def _stub_strip(monkeypatch, cell_px=(313, 556)):

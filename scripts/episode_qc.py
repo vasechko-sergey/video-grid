@@ -77,12 +77,34 @@ def _evidence(ep, i: int, clip_stats: dict, strip: dict,
         "storyboard_px": [clip_px[0], clip_px[1]] if storyboard.exists() else None,
         "naturalness": clip_stats,
     }
+    unreadable: dict[str, str] = {}
     for name, key in (("report.json", "checks"), ("route.meta.json", "track"),
                       ("path.meta.json", "geometry")):
         p = d / name
         # Absent is reported as absent, never as an empty reading: a judge must be able
         # to tell "the tracker said nothing" from "there was no tracker".
-        out[key] = json.loads(p.read_text()) if p.exists() else None
+        if not p.exists():
+            out[key] = None
+            continue
+        try:
+            out[key] = json.loads(p.read_text())
+        except json.JSONDecodeError as e:
+            # A THIRD state the two above never anticipated: present and unparseable,
+            # which a render that died mid-write leaves behind. It used to propagate
+            # out of pack() and cost every LATER episode its packet — the same crash
+            # _source_reading's own guard was added to prevent, reached two lines
+            # further down the same iteration. The reading is None like an absent
+            # sidecar, because there is no reading; the distinction the judge needs
+            # rides in `unreadable` rather than in a sentinel inside `out[key]`, where
+            # it could not be told apart from a sidecar that genuinely carries that
+            # shape. build_qc's own loop already collects per-episode complaints
+            # instead of aborting; this is the same choice one stage earlier.
+            out[key] = None
+            unreadable[name] = str(e)
+    if unreadable:
+        # Emitted only when non-empty, so every packet written before this existed
+        # stays byte-identical.
+        out["unreadable"] = unreadable
     return out
 
 
