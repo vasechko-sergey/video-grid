@@ -7,7 +7,6 @@ eight episodes, including the one retried episode the row was filed from, are
 refused by plan_render's range guard before the drift oracle runs (§0.4).
 """
 import json
-from pathlib import Path
 
 import pytest
 
@@ -74,18 +73,41 @@ def test_a_first_lag_retry_moves_nothing_on_this_footage(golden_ride_segment):
     assert list(after.path) == list(base.path)
 
 
-@pytest.mark.integration
-def test_a_retry_only_happens_for_the_three_reasons_that_move_a_knob(golden_ride_segment):
-    """§0.6. A retry for any other reason re-renders the same geometry, so it
-    creates no unrecorded state and this slice's fix is not needed for it. Asserted
-    on the params rather than on the rendered path: identical params cannot produce
-    a different path, and comparing paths would leave the claim resting on the
-    renderer's determinism instead of on the ladder's own branching."""
+#: Every check name check_episode.run can put in report.fail_reasons — the only
+#: strings adjust_reframe_params is ever called with in production. Pinned as a
+#: literal rather than imported, because the claim below is about THIS set: a check
+#: added to check_episode without a decision about the retry ladder should break
+#: this test, which importing the live list would prevent it from doing.
+_EPISODE_CHECKS = ("framing", "centered", "on_line", "jitter", "continuity",
+                   "length", "black_frames", "grade_damage", "horizon",
+                   "head_power_point")
+
+
+def test_exactly_three_fail_reasons_move_a_retry_knob():
+    """§0.6, and the bound on where this slice's defect can bite. A retry for any
+    other reason re-renders the same geometry, so it records nothing and needs no
+    record.
+
+    Exhaustive over check_episode's own vocabulary, not a hand-picked sample: the
+    first version of this test listed `composition`, `black` and `hero` among the
+    negatives, and none of the three can ever reach adjust_reframe_params —
+    `composition` and `hero` are episode-QC judge axes, `black` is the reel-level
+    spelling of `black_frames`. The function does plain string membership with no
+    validation, so those three passed for free while the three real non-movers
+    (`length`, `continuity`, `black_frames`) went untested.
+
+    Asserted on the params dict, not on a rendered path: this is a claim about the
+    ladder's own branching, and comparing renders would rest it on the renderer's
+    determinism instead.
+    """
     base = dict(orch.DEFAULT_PARAMS)
-    for reason in ("on_line", "centered", "jitter"):
-        assert orch.adjust_reframe_params(base, [reason]) != base, reason
-    for reason in ("composition", "black", "hero", "grade_damage"):
-        assert orch.adjust_reframe_params(base, [reason]) == base, reason
+    movers = {r for r in _EPISODE_CHECKS
+              if orch.adjust_reframe_params(base, [r]) != base}
+    assert movers == {"on_line", "centered", "jitter"}
+    # and every _UNFIXABLE reason is among the non-movers, which is the pairing that
+    # matters: a reason the ladder cannot fix must also not be one it silently
+    # rescales a knob for.
+    assert set(orch._UNFIXABLE) & movers == set()
 
 
 @pytest.mark.integration
