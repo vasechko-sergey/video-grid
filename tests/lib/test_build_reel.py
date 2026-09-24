@@ -1,9 +1,11 @@
+import json
+
 import pytest
 from scripts import build_reel
 from scripts.lib.assembly import StreamInfo
 from scripts.lib.look import LookSpec
 from scripts.lib.models import (ReelEpisode, ReelManifest, ReelReport, ReelFailure,
-                                CheckResult, MusicSpec)
+                                CheckResult, MusicSpec, PathMeta)
 
 
 def _rm(cap=3, n=2, platform="", look=None, outro=None):
@@ -901,3 +903,46 @@ def test_a_rejected_reprocess_never_relabels_the_episodes_chroma(monkeypatch, tm
     assert res["finding"]["reason"] == "reprocess-failed" and res["finding"]["episode_idx"] == 1
     assert seen["deliver"] == []                # a rejected reprocess is never delivered
     assert calls == []                          # shift_from_report never ran on the rejected report
+
+
+# --- 2026-09-24 retry-record Task 3: _predict rebuilds the render that shipped ---
+
+def test_predict_plans_each_episode_with_the_params_its_sidecar_recorded(
+        monkeypatch, tmp_path):
+    """A retried episode used to contribute None here — the drift oracle correctly
+    refused a plan rebuilt at the defaults — so the episode that had trouble was
+    the episode that lost its grade_faithful gate (design 2026-09-24 §0.3).
+
+    Spied on the ARGUMENTS, not on the returned profile: a wrong implementation
+    that ignored the recorded params would still return a profile, and on any
+    fixture flat enough to fake it would be the same profile."""
+    d = tmp_path / "ep0"
+    d.mkdir()
+    meta = d / "path.meta.json"
+    meta.write_text(json.dumps(PathMeta(
+        mode="fill", crop_w=405, crop_h=720, crop_y=0, src_dims=(1280, 720),
+        canvas=(9, 16), out_dims=(404, 720), rect_px=(0, 0, 404, 720), freedom=875,
+        max_speed=450.0, smooth_window_s=0.5).to_dict()))
+    ep = ReelEpisode(manifest={"segment": "s.mp4"}, clip="c0.mp4", route="r0.json",
+                     path=str(d / "path.json"), meta=str(meta))
+    rm = ReelManifest(episodes=[ep], target_dur=6.0)
+
+    seen = {}
+    monkeypatch.setattr(build_reel.probe, "source_for", lambda md, epdir: "src.mp4")
+
+    class _Plan:
+        dur = 3.0
+
+    def _plan_for(md, src, route, *, params=None):
+        seen["params"] = params
+        return _Plan()
+    monkeypatch.setattr(build_reel.process_episode, "plan_for", _plan_for)
+    monkeypatch.setattr(build_reel.probe, "_refuse_on_drift", lambda *a: None)
+    monkeypatch.setattr(build_reel.color_measure, "crop_percentiles",
+                        lambda plan, src, times: (1.0, 2.0, 3.0))
+    monkeypatch.setattr(build_reel.color, "sample_times", lambda dur: [0.0])
+    monkeypatch.setattr(build_reel, "_log", lambda *a, **k: None)
+
+    out = build_reel._predict(rm)
+    assert seen["params"] == {"max_speed": 450.0, "smooth_window_s": 0.5}
+    assert out == [(1.0, 2.0, 3.0)]

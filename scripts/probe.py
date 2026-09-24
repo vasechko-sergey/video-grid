@@ -203,7 +203,15 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     if edl_path is not None:
         md = regrade(md, edl_path, index)
     src = source_for(md, epdir)
-    plan = process_episode.plan_for(md, src, ep.route)
+    # The params this episode's render RECORDED, not the declaration's: an episode
+    # whose accepted attempt was not attempt 1 shipped with rescaled
+    # max_speed/smooth_window_s, and rebuilding at the defaults made _refuse_on_drift
+    # refuse the probe with a remedy — "re-render, then probe" — that could not
+    # restore them (design 2026-09-24 §0.3). Read ONCE and used for both halves of
+    # the pair below: two reads could not disagree today, but two call sites is how
+    # one of them later stops being updated.
+    params = process_episode.rendered_params(ep.meta)
+    plan = process_episode.plan_for(md, src, ep.route, params=params)
     _refuse_on_drift(plan, ep.path, ep.meta)
 
     d = Path(out_dir) if out_dir is not None else epdir / "probe"
@@ -215,7 +223,7 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     # half, this is the plain one — every colour knob at identity, from the SAME
     # md/src/route the graded render came from. A predictor that disagreed with the
     # gate it predicts would be worse than none (design 2026-08-31 §3/§8).
-    plain = process_episode.plan_ungraded(md, src, ep.route)
+    plain = process_episode.plan_ungraded(md, src, ep.route, params=params)
     # grade_damage here and predicted_profile below (in `report`) both predict a
     # gate that ALWAYS samples at the DEFAULT count — check_episode._grade_damage
     # and build_reel._predict, neither takes a `frames` argument. --frames widens
