@@ -61,9 +61,7 @@ is still P3.
 | ○ | **Colour matrix / primaries / transfer are not in the segment contract.** All 99 clips of the only real pool are bt709, so there is no evidence to build against and an unmeasured `scale` matrix conversion would be a new landmine. A bt601 or HLG source is misread silently today. | S | [segment-range-contract](specs/2026-08-27-segment-range-contract-design.md) §8 |
 | ○ | **Nothing gates that the authored tone actually reached its target.** After the range fix the miss is ~1.5 codes, but nothing anywhere compares a delivered episode against the target it was given: `grade_damage` measures how far the grade moved the tracked subject from ITS OWN pre-grade source — including exposure, via `delta_l`, since the 2026-08-28 grade-delta slice — never whether the episode reached the `tone_dst` match-grade assigned it, and the reel-level `color_across_cuts` check — which compared episodes to *each other*, never to a target — is retired outright (colour-convergence-retire, 2026-08-29) rather than ever having closed this gap. Its deletion does not touch this row: a check that never verified the authored pair was reached leaves exactly the same hole once it is gone. Adjacent to R2.2 and R2.6 but neither of them — those judge drift and regression, not whether the authored pair was reached. | M | [segment-range-contract](specs/2026-08-27-segment-range-contract-design.md) §7 |
 | ○ | **`tests/fixtures/golden_ride.mp4` is raw full-range footage and four integration files fed it straight into `reframe`.** Found by the new depth/range guard on its first day — 12 failures and 5 errors, every one the same refusal. Worked around with a `golden_ride_segment` session fixture that normalizes it per run; the committed fixture stays raw, which is right for a *footage* fixture but makes the workaround permanent until something else owns the boundary. | S | segment-range-contract, Task 3 |
-| ○ | **`EPISODES.json` does not record the retry-adjusted reframe params, so a retried episode cannot reproduce its own render.** Found on ep1 of the real run while proving the geometry oracle (design §0.9): `process_episode`'s ladder may raise `max_speed` or lower `smooth_window_s` between attempts, the manifest keeps the authored values, and `probe._refuse_on_drift` then correctly refuses the episode — the recomputed path really does differ from the frozen one. The oracle is right; what is missing is the record. Carry the attempt's effective params onto `ReelEpisode` so a probe can rebuild the plan that actually rendered. | S | [design](specs/2026-08-30-grade-shipped-pixels-design.md) §10.2, §0.9 |
 | ○ | **Migrate a pre-0.3.0 run into the lifetime layout.** Not a `mv`: `out/EPISODES.json` alone carries **57** absolute paths, and moving the tree breaks the QC digest bindings and the delivery attestation that exist to notice exactly that kind of change. A path rewrite. `montage status` already reports `legacy_layout` so the router asks instead of re-scanning 99 clips into an apparently empty run — that is the mitigation, not the fix. | M | [design](specs/2026-08-26-run-layout-lifetimes-design.md) §7 |
-| ○ | **`build_reel`'s automatic retry loop writes a reprocessed episode's scratch one level deeper than `EPISODES.json` records.** Phase 1 writes `build/ep{i}/`; the retry loop is handed `build/reel` as its work dir and so writes `build/reel/ep{i}/`, while `ReelEpisode` is frozen and its `path`/`meta` still point at the phase-1 location. The clip itself is overwritten in place, so the digest gate is unaffected — but a re-`pack` after an automatic retry reads the STALE mechanical report, storyboard and path meta. Predates this slice (the same nesting existed under `<run>/work`); surfaced by the layout review. | M | Task 5 review, 2026-08-27 |
 | ○ | **R10.8 · A judge's "clean pass" means "nothing I was told to look for".** Coverage tracked the prompt, not the episode: an episode passed clean, one sentence was added to the brief, and the next judge found something. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.10 · The `_review/` stills packet is mis-indexed** — the reviewer noticed and it was never fixed. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R8.2 · The pool was never widened after day 1.** The delivered reel uses 8 windows out of 1508, and the required contact-sheet "look at the pixels" stage ran **once**, for 177 seconds, on day 1, and was never re-run against a revised cut. | S | [retro](retro/2026-08-25-first-real-run.md) R8 |
@@ -465,7 +463,28 @@ that never existed (`tone_drift(report, pairs)` / `tone_drift(match, edl)`
 against the shipped `tone_drift(decisions, pairs)`) — corrected in both
 places; the rest of this row stays open. The natural first instalment of the
 existing open row on `grade_damage`/`grade_faithful` naming the same shape
-of absence in different words (bound-reports, whole-branch review)
+of absence in different words (bound-reports, whole-branch review) ·
+this slice's near-miss looked like R2.4 above but is a different mechanism —
+a RENDERED value (`max_speed`) with no manifest field at all, not a THRESHOLD
+widened by hand with no reason recorded — so R2.4 stays open, unmerged and
+untouched by this row (retry-record §6) ·
+recording the accepted attempt *number* on `ReelEpisode`/`EPISODES.json` —
+not needed once this slice's sidecar record landed: the mechanical
+`report.json` already carries `attempt`, and after the fix the report a
+re-pack reads is the reprocess's own (retry-record §6) ·
+a machine check that every `ReelEpisode.path`/`.meta` sidecar actually
+resolves — this slice's `epdir` fix makes it correct BY CONSTRUCTION, not
+checked; nothing asserts it (retry-record §5.5/§6) ·
+record that a reel-level reprocess replaced a stabilized episode's frozen
+route — `build_reel` passes `route_path=None` and re-tracks, so the previous
+round's route is gone with nothing saying it was replaced; `TrackMeta`
+already carries provenance bits (`degraded`, `stitched`) a "re-tracked at
+round N" bit would join, and nothing reads it today (retry-record §5.4/§6) ·
+an integration fixture that reprocesses an episode and then re-packs it —
+`tests/integration/test_episode_qc.py` packs real episodes but none of them
+has ever been reprocessed, so design §4.6 ("the packet stops being mixed")
+is covered only structurally, by the unit-level reprocess-then-pack tests,
+never by an end-to-end one (retry-record design §4.6, plan self-review)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for

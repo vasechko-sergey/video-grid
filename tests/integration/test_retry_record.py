@@ -12,7 +12,7 @@ import pytest
 
 from scripts import process_episode, probe, reframe
 from scripts.lib import orchestration as orch
-from scripts.lib.models import Delivery, ReframeSpec
+from scripts.lib.models import Delivery, ReelEpisode, ReelManifest, ReframeSpec
 
 ROUTE = "tests/fixtures/golden_route.json"
 
@@ -148,3 +148,68 @@ def test_an_unretried_render_writes_the_sidecar_it_always_wrote(golden_ride_segm
     written = json.loads((d / "path.meta.json").read_text())
     assert "max_speed" not in written and "smooth_window_s" not in written
     assert process_episode.rendered_params(d / "path.meta.json") is None
+
+
+@pytest.mark.integration
+def test_probe_grades_damage_pair_shares_one_geometry_on_a_retried_episode(
+        golden_ride_segment, tmp_path, monkeypatch):
+    """Row 14 of the Task 7 mutation battery, closing the coverage hole it found.
+
+    probe_grade's damage pair (design 2026-08-31 §3) is supposed to render the SAME
+    geometry twice, differing only in colour — that is what makes comparing their
+    entropy a measurement of the GRADE rather than of two different crops. Both
+    halves are built through process_episode.plan_for/plan_ungraded with the SAME
+    `params`, read once from the episode's sidecar. Dropping `params=` on the
+    plain half alone is a one-character-scale edit with no test aimed at it: the
+    probe's own pair-geometry claim was proved only by rendering (nothing compares
+    the two plans' paths), and no other test in the suite renders a probe pair on
+    a RETRIED episode — the one case where the plain half's params, left at the
+    module defaults, would disagree with the graded half's recorded ones.
+
+    Unlike test_the_sidecar_lets_a_retried_render_be_replanned_exactly (which
+    checks plan_for's single plan against the frozen sidecar via
+    probe._refuse_on_drift), the plain plan has NO drift oracle of its own — a
+    silently wrong plain plan would still let probe_grade run to completion and
+    report a `grade_damage` number computed from two different crops.
+
+    Spied at reframe.plan_render itself, not at plan_for/plan_ungraded: those two
+    call each other (plan_ungraded IS plan_for over a stripped manifest), so a spy
+    wrapping BOTH by name lets the inner call resolve to the OUTER spy and silently
+    overwrite the very capture this test needs — confirmed while writing this test,
+    which passed even under the row-14 mutation until rewritten this way.
+    plan_render is the one function neither wrapper calls recursively, and both
+    plan_for and plan_ungraded reach it exactly once each, in order (graded, then
+    plain), so the two calls captured here are unambiguous."""
+    src = str(golden_ride_segment)
+    d = tmp_path / "ep0"
+    d.mkdir()
+    out = str(d / "out.mp4")
+    path_out = str(d / "path.json")
+    meta_out = str(d / "path.meta.json")
+    spec = _spec(max_speed=450.0, smooth_window_s=0.5)
+    reframe.reframe(spec, src, ROUTE, out, path_out)
+
+    md = {"segment": src, "out_path": out, "target_dur": 1.5,
+          "composition": "center", "grid": "thirds", "canvas": [9, 16]}
+    ep = ReelEpisode(manifest=md, clip=out, route=ROUTE, path=path_out, meta=meta_out)
+    ep_json = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=1.5).write(ep_json)
+
+    real_plan_render = reframe.plan_render
+    plans = []
+
+    def _spy(rspec, rsrc, rroute):
+        plan = real_plan_render(rspec, rsrc, rroute)
+        plans.append(plan)
+        return plan
+
+    monkeypatch.setattr(process_episode.reframe, "plan_render", _spy)
+
+    probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / "probe_out"))
+
+    assert len(plans) == 2, (
+        f"expected exactly one plan_render call for the graded half (plan_for) and "
+        f"one for the plain half (plan_ungraded), got {len(plans)} — probe_grade's "
+        f"own shape changed")
+    graded, plain = plans
+    assert graded.path == plain.path

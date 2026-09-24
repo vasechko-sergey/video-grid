@@ -856,6 +856,7 @@ def test_a_reprocessed_episode_hands_check_reel_its_NEW_chroma(monkeypatch, tmp_
     res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "w"))
 
     assert res["status"] == "delivered"
+    assert len(seen["reprocess"]) == 1
     # Narrowed to the "route" key alone since 2026-09-24 (retry-record Task 5):
     # _wire's fake_pe now also records project_dir (a different test's subject),
     # and a full-dict equality here would fail on that unrelated addition — this

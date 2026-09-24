@@ -4,13 +4,124 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-21._
+_Last updated: 2026-09-24._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **The retry loop's record — a retry changes what shipped and the record did
+  not follow it (2026-09-24, 0.13.0)** — design
+  [2026-09-24-retry-record-design.md](specs/2026-09-24-retry-record-design.md),
+  plan [2026-09-24-retry-record.md](plans/2026-09-24-retry-record.md),
+  **Tasks 1–7** (branch `feat/retry-record`). `PathMeta` gains `max_speed`/
+  `smooth_window_s`, recorded by the renderer and emitted only when they
+  differ from `ReframeSpec`'s defaults so an unauthored, un-retried episode's
+  sidecar stays byte-identical; `process_episode.rendered_params` reads them
+  back and the three consumers that rebuild a plan from a manifest —
+  `build_reel._predict`, `probe.probe_grade`, `episode_qc._source_reading` —
+  thread them through instead of silently reconstructing at the module
+  defaults. `episode_qc._source_reading` — the one consumer with no drift
+  oracle at all — gains one, and two fix-round hardenings ride with it: a
+  corrupt sidecar's `RuntimeError` no longer escapes `pack()`'s loop, and the
+  evidence packet's three sidecars gain a third state (present-but-
+  unparseable, carried in a new optional `unreadable` map both judge
+  templates now read) beside present and absent. `build_reel`'s reprocess arm
+  now derives its scratch directory the same way `episode_qc._epdir` already
+  does, so a reprocessed episode's fresh sidecars land beside the phase-1
+  ones `EPISODES.json` names instead of one level deeper under the driver's
+  own work dir.
+
+  **Task 7's 20-row mutation battery — roll-call.** The brief's own table
+  runs 1–19 plus 9b and 17b (added during Tasks 2/4's own review rounds), 20
+  rows in total, not 17. One mutation at a time on an otherwise-clean tree
+  under `PYTHONDONTWRITEBYTECODE=1`, restored via
+  `git show HEAD:<path> > <path>` and re-checked with `git diff --stat`
+  after each.
+
+  | # | File | Mutation | Result |
+  |---|---|---|---|
+  | 1 | `reframe.py` | drop `max_speed=_recorded(...)` from `path_meta` | RED — `assert (None, 0.5) == (450.0, 0.5)` |
+  | 2 | `reframe.py` | drop `smooth_window_s=_recorded(...)` from `path_meta` | RED — `assert (450.0, None) == (450.0, 0.5)` |
+  | 3 | `reframe.py` | `_recorded` returns `value` unconditionally | RED (both named tests) — `"max_speed" not in d` fails |
+  | 4 | `models.py` | `to_dict` emits `max_speed` unconditionally | RED — whole-dict compare gains an extra `{'max_speed': None}` |
+  | 5 | `models.py` | `from_dict` uses `d.get("max_speed", 750.0)` | RED — `assert (750.0 is None)` |
+  | 6 | `models.py` | `_opt_float` swallows exceptions, returns `None` | RED — `Failed: DID NOT RAISE RuntimeError` |
+  | 7 | `process_episode.py` | `rendered_params` returns `{}` not `None` when nothing recorded | RED — `assert {} is None` |
+  | 8 | `process_episode.py` | `rendered_params` drops the `DEFAULT_PARAMS` base | RED — missing `smooth_window_s` key |
+  | 9 | `process_episode.py` | `rendered_params` returns `None` for a corrupt sidecar | RED — `Failed: DID NOT RAISE RuntimeError` |
+  | 9b | `process_episode.py` | absence guard back to `.exists()` from `.is_file()` | RED — uncaught `IsADirectoryError: [Errno 21] Is a directory: '.'`, exactly as predicted |
+  | 10 | `process_episode.py` | `_plan_parts` merges params instead of replacing | RED — `assert (750.0, 1.2) == (450.0, 0.5)` |
+  | 11 | `process_episode.py` | `plan_for` drops `params` from the `_plan_parts` call | RED (both named tests) |
+  | 12 | `process_episode.py` | `plan_ungraded` drops the `params=params` passthrough | RED — `assert (750.0, 0.25) == (450.0, 0.5)` |
+  | 13 | `build_reel.py` | `_predict` drops `params=` | RED — `assert None == {'max_speed': 450.0, ...}` |
+  | 14 | `probe.py` | `probe_grade` drops `params=` on the PLAIN plan only | **GREEN, exactly as predicted — a real coverage hole** (see below) |
+  | 15 | `episode_qc.py` | `_source_reading` drops `params=` | RED — `assert None == {'max_speed': 450.0, ...}` |
+  | 16 | `episode_qc.py` | delete the `_refuse_on_drift` try/except block | RED — the stubbed `RuntimeError` propagates uncaught |
+  | 17 | `episode_qc.py` | widen the clause to include `RuntimeError`, merge the two try blocks | RED — `Failed: DID NOT RAISE RuntimeError` |
+  | 17b | `episode_qc.py` | move `rendered_params` inside the `plan_ungraded` try | RED — the corrupt-sidecar `RuntimeError` escapes `_source_reading` uncaught |
+  | 18 | `build_reel.py` | revert `epdir` to `work_dir`-nested unconditionally | RED — `project_dir` lands in `build/reel/ep0`, not phase 1's `build/ep0` |
+  | 19 | `build_reel.py` | drop the empty-path fallback arm | RED — `project_dir == '.'`, exactly the silent-cwd-write the control exists to catch |
+
+  **Row 14 is the one GREEN, and the prediction was part of the row.**
+  `probe.probe_grade`'s damage pair builds a graded plan via `plan_for(...,
+  params=params)` and a plain one via `plan_ungraded(..., params=params)`;
+  dropping `params=` on the plain half alone is a one-character-scale edit
+  that no existing test was aimed at — confirmed by a **full-suite run with
+  the mutation still in place**: 4000 passed, 1 skipped, nothing noticed.
+  Closed with a new test,
+  `test_probe_grades_damage_pair_shares_one_geometry_on_a_retried_episode`
+  (`tests/integration/test_retry_record.py`), which renders a real episode at
+  attempt-2 params and asserts the graded and plain plans it builds share one
+  crop path. **The first draft of that test did not discriminate its own
+  mutation**: spying on `process_episode.plan_for`/`plan_ungraded` by name
+  let the mutated `plan_ungraded`'s own internal call to `plan_for` resolve
+  to the outer spy and silently overwrite the very capture the test needed,
+  so it passed even under the mutation. Rewritten to spy one layer lower, at
+  `reframe.plan_render` itself — the one function neither wrapper calls
+  recursively — it fails correctly under the mutation and passes on the
+  correct code.
+
+  Every other row matched its prediction exactly; no pointer in the plan's
+  table needed correcting.
+
+  Step 2b restored a dropped assertion in `test_a_reprocessed_episode_hands_
+  check_reel_its_NEW_chroma` (`len(seen["reprocess"]) == 1`, narrowed away by
+  Task 5 to accommodate the harness's new `project_dir` key, with the length
+  check never itself touching that key).
+
+  **Suite: 4000 → 4001 passed, 1 skipped.** Tasks 1–6 had already landed
+  their new tests against the tree this slice started from (3971 passed, 1
+  skipped, before Task 1); Task 7 added the one battery-closure test above.
+
+  Docstring/version housekeeping: `.claude-plugin/plugin.json` and
+  `CHANGELOG.md` both read 0.13.0 (MINOR — two optional `PathMeta` fields and
+  one optional evidence-packet field, no CLI change). The episode-QC
+  re-judge design's §1.4 "the retry loop never engaged" is corrected in
+  place — that sentence was read from the last round of the last
+  invocation's `reel_report.json`, not the history; nine `work/reel/ep{i}`
+  reprocess directories across three dates say the loop did engage, three of
+  them recording `attempt: 2` — the paragraph's cost conclusion survives
+  unchanged.
+
+  Two P2 backlog rows closed (the `EPISODES.json` retry-params row and the
+  `build_reel` scratch-depth row), both ✅. The first's closure note records
+  that its own cited evidence — ep1's drift-oracle refusal on the real run —
+  is no longer reproducible: the later segment-range-contract depth/range
+  guard now refuses ep1 (and three siblings) for `yuvj420p`/pc before the
+  drift oracle ever runs, so the closing design's proofs run on committed
+  footage instead. Five P3 deferrals filed: the four from design §6 (one of
+  which — R2.4 — explicitly stays its OWN row, unmerged, because it is a
+  different mechanism, a threshold widened by hand rather than a rendered
+  value with no manifest field) plus a fifth the plan's own self-review
+  found — design §4.6 ("the packet stops being mixed") has no task of its
+  own; `tests/integration/test_episode_qc.py` packs real episodes but none
+  of them has ever been reprocessed, so the coverage is structural, not
+  behavioural. Archive re-counted by hand (the file's own header explains
+  why `grep -c` is wrong in two directions): **69** closed items, up from 67
+  — 63 table rows (23 P1 + 40 P2) plus the unchanged 6 P3 prose bullets.
 
 - **Unvalidated shapes — a comment is not a gate (2026-09-21, 0.12.1)** —
   design
