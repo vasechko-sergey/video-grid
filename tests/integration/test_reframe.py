@@ -5,7 +5,7 @@ from scripts import reframe
 from scripts.lib import color, ffbin, models, proc
 from scripts.lib import layout as layout_lib
 from scripts.lib.models import (BACKGROUNDS, CropPath, Delivery, LayoutSpec, PanSpec,
-                                PathMeta, ZoomSpec)
+                                PathMeta, ReframeSpec, ZoomSpec)
 
 def _dims(path):
     out = subprocess.run(
@@ -1159,3 +1159,31 @@ def test_path_meta_builds_the_same_sidecar_reframe_writes_under_a_pan(sample_cli
     built, written = _built_and_written(spec, str(sample_clip), None, tmp_path, "pan")
     assert built == written
     assert written.pan is True     # the vacuity guard for this branch
+
+
+# --- 2026-09-24 retry-record Task 1: path_meta records what the render used ---
+
+@pytest.mark.integration
+def test_path_meta_records_params_that_differ_from_the_spec_defaults(golden_ride_segment):
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                       color_means=(128.0, 128.0, 128.0),
+                       delivery=Delivery.from_spec("native"),
+                       max_speed=450.0, smooth_window_s=0.5)
+    plan = reframe.plan_render(spec, str(golden_ride_segment),
+                               "tests/fixtures/golden_route.json")
+    meta = reframe.path_meta(plan, spec, stabilized=False)
+    assert (meta.max_speed, meta.smooth_window_s) == (450.0, 0.5)
+
+
+@pytest.mark.integration
+def test_path_meta_records_nothing_when_the_render_used_the_defaults(golden_ride_segment):
+    """The byte-identity half. A spec at ReframeSpec's own defaults must produce a
+    sidecar with neither key — the check is on to_dict, not on the attributes,
+    because it is the FILE that must not move."""
+    spec = ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                       color_means=(128.0, 128.0, 128.0),
+                       delivery=Delivery.from_spec("native"))
+    plan = reframe.plan_render(spec, str(golden_ride_segment),
+                               "tests/fixtures/golden_route.json")
+    d = reframe.path_meta(plan, spec, stabilized=False).to_dict()
+    assert "max_speed" not in d and "smooth_window_s" not in d

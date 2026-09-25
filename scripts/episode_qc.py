@@ -77,12 +77,34 @@ def _evidence(ep, i: int, clip_stats: dict, strip: dict,
         "storyboard_px": [clip_px[0], clip_px[1]] if storyboard.exists() else None,
         "naturalness": clip_stats,
     }
+    unreadable: dict[str, str] = {}
     for name, key in (("report.json", "checks"), ("route.meta.json", "track"),
                       ("path.meta.json", "geometry")):
         p = d / name
         # Absent is reported as absent, never as an empty reading: a judge must be able
         # to tell "the tracker said nothing" from "there was no tracker".
-        out[key] = json.loads(p.read_text()) if p.exists() else None
+        if not p.exists():
+            out[key] = None
+            continue
+        try:
+            out[key] = json.loads(p.read_text())
+        except json.JSONDecodeError as e:
+            # A THIRD state the two above never anticipated: present and unparseable,
+            # which a render that died mid-write leaves behind. It used to propagate
+            # out of pack() and cost every LATER episode its packet — the same crash
+            # _source_reading's own guard was added to prevent, reached two lines
+            # further down the same iteration. The reading is None like an absent
+            # sidecar, because there is no reading; the distinction the judge needs
+            # rides in `unreadable` rather than in a sentinel inside `out[key]`, where
+            # it could not be told apart from a sidecar that genuinely carries that
+            # shape. build_qc's own loop already collects per-episode complaints
+            # instead of aborting; this is the same choice one stage earlier.
+            out[key] = None
+            unreadable[name] = str(e)
+    if unreadable:
+        # Emitted only when non-empty, so every packet written before this existed
+        # stays byte-identical.
+        out["unreadable"] = unreadable
     return out
 
 
@@ -112,14 +134,74 @@ def _source_reading(ep, graded: dict) -> dict:
     FileNotFoundError/KeyError/ValueError — measured directly against proc.run,
     not assumed. Catching RuntimeError here too would also swallow a genuinely
     broken ffmpeg install or a corrupt (but present) file, which is exactly the
-    fail-loud case this function must NOT report as a quiet 'absent'."""
+    fail-loud case this function must NOT report as a quiet 'absent'.
+
+    Since 2026-09-24 the plan carries the params the render RECORDED
+    (process_episode.rendered_params off ep.meta) and is checked against the frozen
+    sidecars before anything is decoded. Absence is reported for a plan that cannot
+    be shown to be the shipped geometry — a number read through the wrong crop is
+    worse than no number, because the judge cannot tell it from a real one."""
     md = dict(ep.manifest)
+    # The frozen sidecar first, on its own. rendered_params raises RuntimeError for a
+    # path.meta.json that exists and will not parse — deliberately, so no caller
+    # silently plans on the defaults instead (design §2.2) — and in THIS caller that
+    # is one episode's geometry being unreadable, which is a named absence, not a
+    # reason to abandon the packet run over the others. build_reel._predict already
+    # degrades the identical failure to None for one episode via its broad clause;
+    # this is that same decision, made narrowly.
+    #
+    # plan_ungraded deliberately does NOT share this clause: its own RuntimeError
+    # comes from proc.run — a broken ffmpeg install, a corrupt but present video —
+    # and reporting either as a clean 'absent' is exactly the swallow the clause
+    # below was written to prevent.
+    try:
+        params = process_episode.rendered_params(ep.meta)
+    except RuntimeError:
+        return {"source": None, "delta": None}
     try:
         src = probe.source_for(md, Path(ep.path).parent)
         if not Path(src).exists():
             return {"source": None, "delta": None}
-        plan = process_episode.plan_ungraded(md, src, ep.route)
+        plan = process_episode.plan_ungraded(md, src, ep.route, params=params)
     except (FileNotFoundError, KeyError, ValueError):
+        return {"source": None, "delta": None}
+    try:
+        probe._refuse_on_drift(plan, ep.path, ep.meta)
+    except (RuntimeError, OSError, ValueError, TypeError):
+        # The oracle the other two consumers of this plan map have always had
+        # (build_reel._predict, probe.probe_grade) and this one never did — so a
+        # retried episode's source was read through a crop it never shipped and
+        # reported to the judge as its own (design 2026-09-24 §0.3). Recording the
+        # render's params fixes every episode rendered from now on; this catches
+        # the ones whose sidecar predates the field, and any drift a params record
+        # cannot explain — a re-track, a swapped source.
+        #
+        # Caught HERE, at the oracle's own call, and not by widening the clause
+        # above: that clause excludes RuntimeError for a measured reason — proc.run
+        # raises it for a broken ffmpeg install or a corrupt-but-present file, and
+        # reporting either as a clean 'absent' is exactly the swallow it was
+        # written to prevent.
+        #
+        # Widened past RuntimeError alone (final whole-branch review, Important 1):
+        # _refuse_on_drift's OWN first read, CropPath.from_json(ep.path), is a bare
+        # json.loads(Path(path).read_text()) with no wrapping at all — a missing
+        # path.json raises FileNotFoundError, a truncated one raises
+        # json.JSONDecodeError (a ValueError), and a path.json holding valid JSON of
+        # the wrong shape (e.g. null, or a bare number) raises TypeError from the
+        # `[int(x) for x in ...]` comprehension. And PathMeta.from_json(ep.meta)
+        # itself escapes IsADirectoryError, not RuntimeError, when ep.meta is ""
+        # (ReelEpisode.meta's own documented absence): Path("") normalizes to
+        # Path("."), a directory .exists() reports True for, so from_json's
+        # existence guard passes and read_text() raises on the directory. None of
+        # those four is a RuntimeError, so the narrower clause was letting exactly
+        # the failure it exists to prevent through — one missing or corrupt sidecar
+        # aborting pack()'s loop for every episode after it. Safe to widen HERE,
+        # unlike the clause above: this try wraps only two sidecar reads and never
+        # reaches proc.run, so it cannot mask a broken ffmpeg install.
+        #
+        # Absence and not a raise: _evidence already reports every other sidecar
+        # this way, and one episode's unreadable geometry must not abort a packet
+        # run over the other seven.
         return {"source": None, "delta": None}
     frames = reframe.plan_frames_rgb(plan, src, color.sample_times(plan.dur, SENSOR_FRAMES))
     src_stats = naturalness.measure(frames)

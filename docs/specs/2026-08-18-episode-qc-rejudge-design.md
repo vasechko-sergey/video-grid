@@ -68,9 +68,13 @@ This is why the slice is M and not L: the expensive half already exists.
 ### 1.4 · The cost, measured: on the one real run it is zero
 
 `work/reel/reel_report.json` from the 2026-08-03 run: `overall: true`,
-`fail_reasons: []`. **The retry loop never engaged.** A stop-before-delivery costs
-nothing on a clean reel and costs one QC round exactly when an episode was
-re-rendered — which is exactly when the verdict is stale.
+`fail_reasons: []`. That is the LAST round of the last invocation, not the
+history: nine `work/reel/ep{i}` reprocess directories across three dates say the
+loop did engage, three of them recording `attempt: 2` (corrected 2026-09-24, see
+[the retry-record design](2026-09-24-retry-record-design.md) §0.1). What the clean
+final report does establish is the cost: a stop-before-delivery costs nothing on a
+reel whose last round needed no reprocess, and costs one QC round exactly when an
+episode was re-rendered — which is exactly when the verdict is stale.
 
 And it is **one** round per phase-2 invocation regardless of how many reprocess
 rounds happened inside the loop: `build_reel` converges internally and only reaches

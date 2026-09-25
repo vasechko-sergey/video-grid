@@ -3,6 +3,7 @@ import json
 import pytest
 from scripts.lib import manifest
 from scripts.lib import models as m
+from scripts.lib import orchestration as orch
 from scripts.lib.look import LookSpec
 from scripts.lib.models import LayoutSpec, PanSpec, PathMeta, ReelCheckSpec, ZoomSpec
 from scripts.lib.outro import OutroFit
@@ -239,6 +240,29 @@ def test_reframespec_validation():
         m.ReframeSpec(**{**ok, "color_means": (105, 0, 137)})     # #G positivity
     with pytest.raises(ValueError, match="canvas"):
         m.ReframeSpec(**{**ok, "canvas": (9, 0)})
+
+
+def test_reframespec_defaults_match_orchestrations_default_params():
+    """The byte-identity claim every fast-path/pin test in this suite leans on —
+    that a ReframeSpec built at its own defaults renders and records exactly what
+    an unauthored, un-retried episode has always rendered and recorded — holds only
+    because these two constants happen to agree TODAY, not by construction.
+    reframe.path_meta (via reframe._SPEC_DEFAULTS) records max_speed/
+    smooth_window_s ONLY when they differ from ReframeSpec's OWN dataclass
+    defaults; every production render's values start life as
+    orch.DEFAULT_PARAMS (process_episode._plan_parts, when no retry has
+    overridden them). If the two drifted apart, an unauthored, un-retried episode
+    would start recording a knob it never touched — the sidecar stops being
+    byte-identical to the one written before this field existed — and every
+    existing byte-identity test would stay green throughout, because each one
+    builds its ReframeSpec at ITS OWN defaults rather than at
+    orch.DEFAULT_PARAMS: the drift would ship silently until a production render
+    disagreed with a hand-built one."""
+    ok = dict(composition="lead", grid="thirds", canvas=(9, 16),
+              color_means=(105, 122, 137), delivery=m.Delivery("native"))
+    spec = m.ReframeSpec(**ok)
+    assert spec.max_speed == orch.DEFAULT_PARAMS["max_speed"]
+    assert spec.smooth_window_s == orch.DEFAULT_PARAMS["smooth_window_s"]
 
 
 def test_checkspec_defaults():
@@ -1655,6 +1679,52 @@ def test_pathmeta_still_hard_fails_on_a_missing_non_exempt_key():
     # be satisfied by a regression that raised for the wrong reason or blamed the
     # wrong key — the same bar its sibling above already holds "freedom" to.
     with pytest.raises(RuntimeError, match=r"no field 'crop_w'"):
+        m.PathMeta.from_dict(d)
+
+
+# --- 2026-09-24 retry-record Task 1: the sidecar records the render's own params ---
+
+def test_pathmeta_round_trips_the_render_params():
+    pm = m.PathMeta(**_META_KW, max_speed=1125.0, smooth_window_s=0.5)
+    assert m.PathMeta.from_dict(pm.to_dict()) == pm
+
+
+def test_pathmeta_omits_the_params_it_was_not_given():
+    # The byte-identity rule (design §2.1): a PathMeta carrying neither value must
+    # serialize to exactly the dict today's code produces, or every golden sidecar
+    # moves. Compared as a whole dict, not by absence of two keys: `not in` would
+    # also pass if to_dict had started emitting some THIRD key.
+    d = m.PathMeta(**_META_KW).to_dict()
+    assert d == {"mode": "fill", "crop_w": 405, "crop_h": 720, "crop_y": 0,
+                 "src_dims": [1280, 720], "canvas": [9, 16], "out_dims": [404, 720],
+                 "rect_px": [0, 0, 404, 720], "freedom": 875,
+                 "background": "blur", "pan": False, "stabilized": False}
+
+
+def test_pathmeta_emits_each_param_independently():
+    # The ladder can move one knob and leave the other at its default — a lag retry
+    # with an authored window at the floor does exactly that (design §2.1's table).
+    assert m.PathMeta(**_META_KW, max_speed=1125.0).to_dict()["max_speed"] == 1125.0
+    assert "smooth_window_s" not in m.PathMeta(**_META_KW, max_speed=1125.0).to_dict()
+
+
+def test_pathmeta_reads_an_older_sidecar_as_saying_nothing_about_the_params():
+    # The fifth exemption, and the only one whose default is an ABSENCE rather than
+    # a provable truth: `background`/`pan`/`stabilized`/the zoom arrays each
+    # substitute the one value the field could have held before it existed. Here
+    # None means either "predates the field" or "used the defaults", and nothing
+    # distinguishes them (design §2.1).
+    d = m.PathMeta(**_META_KW).to_dict()
+    pm = m.PathMeta.from_dict(d)
+    assert pm.max_speed is None and pm.smooth_window_s is None
+
+
+def test_pathmeta_still_hard_fails_when_a_param_is_present_but_unusable():
+    # An exemption covers an ABSENT key, never a corrupt one: a hand-edited
+    # "max_speed": "fast" must keep the integrity arm, exactly as crop_w does.
+    d = m.PathMeta(**_META_KW).to_dict()
+    d["max_speed"] = "fast"
+    with pytest.raises(RuntimeError, match=r"unusable field"):
         m.PathMeta.from_dict(d)
 
 

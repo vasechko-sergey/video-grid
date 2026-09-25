@@ -57,9 +57,52 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
                        zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None)
 
 
-def _plan_parts(manifest_dict: dict, src: str,
-                route: str | None) -> tuple[manifest_lib.Manifest, ReframeSpec,
-                                            reframe.RenderPlan]:
+def rendered_params(meta_json: str | Path | None) -> dict | None:
+    """The reframe params the render that wrote this sidecar actually used, or None
+    when the sidecar does not say.
+
+    None is the named absence and it has two causes nothing here distinguishes: a
+    sidecar written before PathMeta carried these fields, and one whose render used
+    the defaults. Safe, but NOT because the two reconstruct identically — they do
+    not: a defaults render is reproduced exactly at params=None, and a PRE-SLICE
+    retried render's geometry is reproduced WRONGLY (design 2026-09-24 §2.1's
+    table). What makes both outcomes correct is that a caller receiving None must
+    still check the rebuilt plan against the frozen sidecars before trusting it —
+    probe._refuse_on_drift — so the second case is refused by name instead of read
+    as a measurement.
+
+    A path that is empty or names no file is also None — ReelEpisode.meta defaults
+    to "" and a hand-authored reel manifest may carry no sidecar, which is an
+    absence and not a fault. A sidecar that EXISTS and will not parse still raises
+    through PathMeta.from_json: machine-written content gone wrong is a fault, and
+    answering "the defaults, then" would hand the caller a plan built on a guess.
+
+    `is_file`, not `exists`: a Path("") is truthy like every Path and normalizes to
+    Path("."), which exists — so the falsy check alone lets a directory through to
+    a read that raises IsADirectoryError, which is neither of this function's two
+    documented answers. A path naming a directory is not a sidecar.
+
+    Keys the sidecar omits are filled from orch.DEFAULT_PARAMS and never from the
+    manifest's authored smooth_window_s. A recorded sidecar is a COMPLETE account
+    of what the render used, so an omitted key means the render used the default —
+    after a retry the authored value is exactly what the ladder overrode.
+    """
+    if not meta_json or not Path(meta_json).is_file():
+        return None
+    meta = PathMeta.from_json(meta_json)
+    if meta.max_speed is None and meta.smooth_window_s is None:
+        return None
+    p = dict(orch.DEFAULT_PARAMS)
+    if meta.max_speed is not None:
+        p["max_speed"] = meta.max_speed
+    if meta.smooth_window_s is not None:
+        p["smooth_window_s"] = meta.smooth_window_s
+    return p
+
+
+def _plan_parts(manifest_dict: dict, src: str, route: str | None,
+                params: dict | None = None) -> tuple[manifest_lib.Manifest, ReframeSpec,
+                                                     reframe.RenderPlan]:
     """The manifest -> (Manifest, ReframeSpec, RenderPlan) map, in ONE place.
 
     Private because every caller wants one of the two public shapes below; it
@@ -68,16 +111,27 @@ def _plan_parts(manifest_dict: dict, src: str,
     Manifest (its `stabilize` flag). Copying four lines to hand back a third
     field is exactly the field-by-field drift plan_for's own docstring is about:
     the copy read `orch.DEFAULT_PARAMS` and the smooth_window_s override
-    independently, so a change to either reached one geometry and not the other."""
+    independently, so a change to either reached one geometry and not the other.
+
+    `params`, when given, REPLACES the derivation rather than merging over it: it
+    is a complete account of what a past render used (see rendered_params), so the
+    manifest's authored smooth_window_s must not win over it — a retry is precisely
+    the case where the ladder overrode that value. Two independently-produced
+    mappings merged into one is also the shape the 2026-09-21 slice found reading
+    as a defect the day anything downstream discriminates on a shared key; there is
+    nothing to merge here.
+    """
     m = manifest_lib.Manifest.from_dict(manifest_dict)
-    params = dict(orch.DEFAULT_PARAMS)
-    if m.smooth_window_s is not None:
-        params["smooth_window_s"] = m.smooth_window_s
+    if params is None:
+        params = dict(orch.DEFAULT_PARAMS)
+        if m.smooth_window_s is not None:
+            params["smooth_window_s"] = m.smooth_window_s
     spec = build_reframe_spec(m, Delivery.from_spec(m.delivery), params)
     return m, spec, reframe.plan_render(spec, src, route)
 
 
-def plan_for(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
+def plan_for(manifest_dict: dict, src: str, route: str | None,
+             *, params: dict | None = None) -> reframe.RenderPlan:
     """The RenderPlan this manifest would render — the ONE manifest -> plan map.
 
     Lives here because build_reframe_spec does, and its docstring already names the
@@ -85,17 +139,30 @@ def plan_for(manifest_dict: dict, src: str, route: str | None) -> reframe.Render
     drifts field by field. Two callers used to have one each (color_measure's
     stripped variant and probe's graded one) and check_episode now needs a third.
 
-    Params come from orch.DEFAULT_PARAMS: this builds a plan from a manifest alone,
-    which is what a probe, a measurement and a check all want. The retry loop below
-    does NOT come through here — it carries the attempt's own adjusted params, and
-    reading defaults there would silently probe a different render than it ships."""
-    return _plan_parts(manifest_dict, src, route)[2]
+    With `params` omitted, params come from orch.DEFAULT_PARAMS plus the manifest's
+    authored smooth_window_s: a plan from a manifest ALONE, which is what a caller
+    with nothing rendered yet — probe's geometry mode, the match-grade conductor —
+    wants. The retry loop below still does not come through here; it carries the
+    attempt's own params into build_reframe_spec directly.
+
+    `params` is for reconstructing a PAST render: hand it
+    rendered_params(<the episode's path.meta.json>) and the plan is the geometry
+    that shipped, rather than the geometry the declaration describes. Before this
+    existed, an episode whose accepted attempt was not attempt 1 could not be
+    replanned at all — the recomputed path disagreed with the frozen one and every
+    reader either lost its reading or reported a wrong one (design 2026-09-24 §0.3).
+    """
+    return _plan_parts(manifest_dict, src, route, params)[2]
 
 
-def plan_ungraded(manifest_dict: dict, src: str, route: str | None) -> reframe.RenderPlan:
+def plan_ungraded(manifest_dict: dict, src: str, route: str | None,
+                  *, params: dict | None = None) -> reframe.RenderPlan:
     """`plan_for` with every colour knob at identity — the render a measurement reads
-    through, and the plain half of the damage sensor's pair."""
-    return plan_for(manifest_lib.strip_colour(manifest_dict), src, route)
+    through, and the plain half of the damage sensor's pair.
+
+    `params` must carry whatever the graded half carried, or the pair compares two
+    geometries and reports the difference as a grade."""
+    return plan_for(manifest_lib.strip_colour(manifest_dict), src, route, params=params)
 
 
 def plan_and_meta_ungraded(manifest_dict: dict, src: str,

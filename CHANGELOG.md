@@ -10,6 +10,45 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.13.0 — 2026-09-24
+
+### The retry loop's record
+
+A retry changes what shipped and the record did not follow it.
+
+- `path.meta.json` now records the `max_speed`/`smooth_window_s` the render
+  actually used. `max_speed` had no manifest field at all, and the retry ladder
+  rescales both without touching the declaration — one jitter step moves 74 of 95
+  crop-path samples by up to 5px, so a reader rebuilding from the manifest rebuilt
+  a different geometry. Emitted only when it differs from the default, so an
+  unauthored, un-retried episode's sidecar is byte-identical.
+- `build_reel._predict` and `probe grade` rebuild a retried episode's plan from
+  that record. Before this, the episode that had trouble was the episode that lost
+  its `grade_faithful` gate, and `probe grade` refused with a remedy that could not
+  restore the lost values.
+- `episode_qc`'s source reading was the one consumer with no drift oracle: it read
+  a retried episode's source through a crop the episode never shipped and reported
+  it to the judge as that episode's own. It now plans with the recorded params and
+  reports absence when the geometry cannot be shown to be the shipped one.
+- `build_reel`'s reprocess writes its sidecars beside the record `EPISODES.json`
+  names, instead of one level deeper under its own work dir. A re-pack after an
+  automatic retry was producing a mixed packet — fresh pixels, stale report,
+  storyboard, geometry and track record — invisible to the packet's `clip_digest`
+  binding, because the stale half is not the clip.
+- `episode_qc`'s evidence packet gains a third sidecar state, beside present and
+  absent: a `path.meta.json` / `route.meta.json` / `report.json` that exists but
+  will not parse — what a render that died mid-write leaves behind. It used to
+  raise out of `pack()`'s loop and cost every LATER episode its packet; it now
+  reads as `None`, exactly like an absent sidecar, with the reason carried in a
+  new optional `unreadable` map (emitted only when non-empty, so every packet
+  written before this stays byte-identical) — and the judge's template names it
+  at both of its sidecar placeholders, filled by the stage's own dispatch step,
+  because an unparseable sidecar is a reason to distrust the rest of that
+  render's evidence and an absent one is not. The same corrupt-sidecar
+  `RuntimeError` `rendered_params` raises by design no longer escapes
+  `_source_reading` either: one episode's unreadable geometry now costs that
+  episode a reading, not the whole packet run.
+
 ## 0.12.1 — 2026-09-21
 
 Three latent defects closed and one backlog row closed by measurement. A reader

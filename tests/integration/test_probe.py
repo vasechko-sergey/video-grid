@@ -473,3 +473,34 @@ def test_grade_damage_agrees_with_check_episode_at_a_non_default_frame_count_geo
     assert from_check["ratio"] < 0.05, from_check    # ground truth: the default N=3 reading
     assert rep["grade_damage"]["ratio"] == pytest.approx(from_check["ratio"], abs=0.05)
     assert rep["grade_damage"]["below"] is from_check["below"]
+
+
+# --- 2026-09-24 retry-record Task 3: probe_grade rebuilds the render that shipped ---
+
+def test_probe_grade_asks_for_the_recorded_params_of_the_episode_it_probes(
+        monkeypatch, tmp_path):
+    """The narrow claim this task owns: probe_grade consults the episode's OWN
+    sidecar. The claim that the resulting plan reproduces the shipped geometry is
+    Task 6's, proved against real pixels.
+
+    No real footage: `segment` names a file that is never created, so plan_for's
+    reframe.plan_render fails at its own first ffprobe call — before any route,
+    hero, or colour logic runs. That failure is a fine place to catch it, because
+    the wiring this task adds (rendered_params(ep.meta)) runs strictly BEFORE
+    plan_for is even called; asking for it and then failing later proves the ask
+    happened without needing a single real pixel."""
+    asked = []
+    monkeypatch.setattr(probe.process_episode, "rendered_params",
+                        lambda meta: asked.append(meta) or None)
+
+    md = {"segment": str(tmp_path / "missing.mp4"), "out_path": str(tmp_path / "ep0.mp4"),
+         "composition": "center", "grid": "thirds", "canvas": [9, 16], "target_dur": 3.0}
+    ep = ReelEpisode(manifest=md, clip=str(tmp_path / "ep0.mp4"), route=None,
+                     path=str(tmp_path / "path.json"),
+                     meta=str(tmp_path / "path.meta.json"))     # sidecar does not exist
+    ep_json = tmp_path / "EPISODES.json"
+    ReelManifest(episodes=[ep], target_dur=3.0).write(ep_json)
+
+    with pytest.raises(RuntimeError):
+        probe.probe_grade(str(ep_json), 0)
+    assert asked == [ep.meta]

@@ -38,17 +38,19 @@ def _predict(rm: ReelManifest) -> list:
     pre-stage's output, and planning against the raw segment would predict pixels
     the episode never shipped.
 
-    probe._refuse_on_drift, reused verbatim rather than a second oracle: plan_for
-    always builds from orch.DEFAULT_PARAMS (plus an AUTHORED smooth_window_s, never
-    a retry-adjusted one — process_episode.plan_for's own docstring says so). An
-    episode whose accepted attempt was not attempt 1 shipped with
-    orch.adjust_reframe_params's rescaled max_speed/smooth_window_s instead, which
-    nothing records — so the recomputed plan's crop trajectory (RenderPlan.path) can
-    disagree with the one frozen in path.json even though nothing about the
-    DECLARED colour changed. Without this check that disagreement would still
-    produce a profile, and grade_faithful would report it as a colour residual —
-    the wrong remedy (process-episode cannot fix a geometry mismatch by re-grading)
-    for a defect this whole slice exists to remove. `probe.probe_grade` guards the
+    probe._refuse_on_drift, reused verbatim rather than a second oracle: it is the
+    one check that the plan rebuilt here is the geometry that shipped. Since
+    2026-09-24 the rebuild carries the params the render RECORDED
+    (process_episode.rendered_params off this episode's path.meta.json), so an
+    episode whose accepted attempt was not attempt 1 rebuilds correctly instead of
+    drifting — before that, its rescaled max_speed/smooth_window_s existed nowhere
+    and the recomputed crop trajectory disagreed with the frozen one even though
+    nothing about the DECLARED colour had changed. The oracle stays, because a
+    sidecar written before the fields existed still records nothing, and because a
+    re-track or a swapped source drifts for reasons no params record can fix.
+    Without it that disagreement would still produce a profile and grade_faithful
+    would report it as a colour residual — the wrong remedy (process-episode
+    cannot fix a geometry mismatch by re-grading). `probe.probe_grade` guards the
     identical hazard the identical way, right after building the identical plan.
 
     An episode whose plan cannot be built, or whose recomputed geometry drifts from
@@ -60,7 +62,8 @@ def _predict(rm: ReelManifest) -> list:
         try:
             md = dict(e.manifest)
             src = probe.source_for(md, Path(e.path).parent)
-            plan = process_episode.plan_for(md, src, e.route)
+            plan = process_episode.plan_for(
+                md, src, e.route, params=process_episode.rendered_params(e.meta))
             probe._refuse_on_drift(plan, e.path, e.meta)
             out.append(color_measure.crop_percentiles(
                 plan, src, color.sample_times(plan.dur)))
@@ -91,7 +94,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     reprocessed: set[int] = set()          # design §8: which clips left the gate behind
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
     audio: str | None = None
-    geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]   # frozen sidecars — constant across rounds
+    geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]
+                # sidecar PATHS — constant across rounds; the FILES those paths
+                # NAME are not (final whole-branch review, Minor 1): a reprocess
+                # overwrites path.json/path.meta.json in place (design §2.4), so
+                # check_reel.run reads whichever version is on disk when THIS
+                # round calls it, not a copy frozen when this list was built.
                 if all(e.path and e.meta for e in rm.episodes) else None)
     # The convergence gate's per-episode half (design 2026-08-30 §5): which episodes are
     # BOUND to rm.tone_target. A parallel list, exactly like `geometry` above and for the
@@ -198,8 +206,28 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                                      # has little to bite on here. Parallelising loop-2
                                                      # is deferred — NOT because one process_episode
                                                      # saturates the box; measured, it takes three.
-            epdir = str(Path(work_dir) / f"ep{item.idx}")
-            manifest = rm.episodes[item.idx].manifest
+            ep = rm.episodes[item.idx]
+            # Beside the record it replaces, not under this driver's own work dir.
+            # ReelEpisode is frozen and nothing rewrites EPISODES.json, so its
+            # path/meta keep naming phase 1's directory — and a second directory is
+            # a second record with nothing keeping the two in step. The clip already
+            # has this property: it is overwritten in place, which is why a re-pack
+            # reads fresh pixels beside a stale report, storyboard, geometry and
+            # track record (design 2026-09-24 §0.7). Same derivation
+            # episode_qc._epdir already uses, so the packet and the render agree on
+            # where one episode's scratch lives.
+            #
+            # This deliberately writes OUTSIDE work_dir: in a two-phase run phase 1
+            # owns build/ep{i} and this driver is handed build/reel, so "beside the
+            # record" is always outside it, and a guard refusing that would refuse
+            # the only case that matters.
+            #
+            # The empty-path arm is not defensive padding: ReelEpisode.path defaults
+            # to "" and a hand-authored reel manifest may carry none, where
+            # Path("").parent is Path(".") — the current working directory, silently.
+            epdir = (str(Path(ep.path).parent) if ep.path
+                     else str(Path(work_dir) / f"ep{item.idx}"))
+            manifest = ep.manifest
             # A stabilized episode's frozen route was measured on loop-1's stabilized
             # pixels and would be safe to reuse — but process_episode refuses
             # stabilize + a supplied route (design 2026-07-20 §1) because nothing yet
@@ -209,7 +237,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # price of not having the provenance bit. ReelEpisode.route stays
             # populated regardless — check_reel reads it, and raises for a tracked
             # (pan=false) episode whose route is None.
-            route = None if manifest.get("stabilize") else rm.episodes[item.idx].route
+            route = None if manifest.get("stabilize") else ep.route
             res = process_episode.process_episode(manifest, epdir, route_path=route)
             # A REJECTED re-render is already on disk. reframe writes m.out_path before
             # check_episode.run reads it (process_episode.py), so this early return
