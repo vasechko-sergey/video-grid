@@ -485,6 +485,16 @@ an integration fixture that reprocesses an episode and then re-packs it —
 has ever been reprocessed, so design §4.6 ("the packet stops being mixed")
 is covered only structurally, by the unit-level reprocess-then-pack tests,
 never by an end-to-end one (retry-record design §4.6, plan self-review) ·
+retry-record design §2.3 still describes `_source_reading`'s drift guard as
+catching `RuntimeError`, which was true when it was written and is now
+incomplete: the whole-branch review found `probe._refuse_on_drift` opens a
+SECOND sidecar through `CropPath.from_json`'s bare `json.loads`, so the clause
+was widened to `(RuntimeError, OSError, ValueError, TypeError)` and the design
+was not re-worded to match. Factually true, materially incomplete — a reader
+implementing the same guard elsewhere would under-widen it, which is the harm
+that made that finding blocking in the first place. Parked rather than fixed
+because the protocol allows one fix wave and this surfaced in its re-review
+(retry-record whole-branch review, fix-wave re-review residual) ·
 `build_reel._predict` builds every episode's `grade_faithful` prediction ONCE,
 before the retry loop's first reprocess, and nothing rebuilds it afterward — so
 a reprocessed episode's entry in `predicted` can describe a render `build_reel`
