@@ -100,13 +100,24 @@ def _probe_reid() -> tuple[bool, str]:
     return (True, "installed") if _importable("torchreid") else (False, "not installed")
 
 
+def _read_json(path: Path) -> dict:
+    """Parse `path`, raising with the path NAMED. A JSONDecodeError carries only a
+    line and column, so an error from a corrupt file would otherwise be attributed
+    to whichever `try` block happened to catch it — which is how a broken clone
+    manifest came to be reported as an unreadable install record."""
+    try:
+        return json.loads(path.read_text())
+    except Exception as e:
+        raise RuntimeError(f"{path}: {e}") from e
+
+
 def _plugin_id() -> str:
     """`<plugin>@<marketplace>` — the key Claude Code files this install under.
     Derived from the clone's own two manifests rather than typed, so it cannot
     drift from them; the remedy string's copy is pinned to this by a test."""
     cp = _ROOT / ".claude-plugin"
-    plugin = json.loads((cp / "plugin.json").read_text())["name"]
-    market = json.loads((cp / "marketplace.json").read_text())["name"]
+    plugin = _read_json(cp / "plugin.json")["name"]
+    market = _read_json(cp / "marketplace.json")["name"]
     return f"{plugin}@{market}"
 
 
@@ -123,18 +134,18 @@ def _probe_plugin() -> tuple[bool, str]:
     cfg = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
     record = cfg / "plugins" / "installed_plugins.json"
     try:
-        clone_version = json.loads(
-            (_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+        clone_version = _read_json(_ROOT / ".claude-plugin" / "plugin.json")["version"]
+        plugin_id = _plugin_id()
     except Exception as e:
-        return False, f"cannot read the clone's plugin.json in {_ROOT}: {e}"
+        return False, f"cannot read the clone's plugin manifests: {e}"
     if not record.is_file():
         return True, "no install record — running from the clone"
     try:
-        data = json.loads(record.read_text())
+        data = _read_json(record)
         plugins = data["plugins"]
         if not isinstance(plugins, dict):
             raise TypeError(f"'plugins' is {type(plugins).__name__}, not a mapping")
-        entries = plugins.get(_plugin_id(), [])
+        entries = plugins.get(plugin_id, [])
         records = tuple((str(e["scope"]), str(e["version"])) for e in entries)
     except Exception as e:
         # Cannot-answer must not read as "nothing installed" — a blocking check

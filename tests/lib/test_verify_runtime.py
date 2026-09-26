@@ -161,10 +161,9 @@ def test_run_remedies_carry_their_own_cd_so_they_run_from_any_cwd(monkeypatch):
 def _install_record(tmp_path, entries):
     """Write a Claude Code installed_plugins.json carrying `entries` for this
     plugin, and point the probe's config dir at it."""
-    import json as _json
     cfg = tmp_path / "claude"
     (cfg / "plugins").mkdir(parents=True, exist_ok=True)
-    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+    (cfg / "plugins" / "installed_plugins.json").write_text(json.dumps(
         {"version": 2, "plugins": {verify_runtime._plugin_id(): entries}}))
     return cfg
 
@@ -176,12 +175,11 @@ def _clone_manifest(tmp_path, version):
     manifests the plugin and the marketplace share a name, so a fixture that
     copied that could not tell which file each half of the id came from, and a
     probe reading `name` twice out of plugin.json would pass."""
-    import json as _json
     cp = tmp_path / "clone" / ".claude-plugin"
     cp.mkdir(parents=True, exist_ok=True)
-    (cp / "plugin.json").write_text(_json.dumps(
+    (cp / "plugin.json").write_text(json.dumps(
         {"name": "video-grid", "version": version}))
-    (cp / "marketplace.json").write_text(_json.dumps({"name": "vg-market"}))
+    (cp / "marketplace.json").write_text(json.dumps({"name": "vg-market"}))
     return tmp_path / "clone"
 
 
@@ -215,11 +213,10 @@ def test_probe_plugin_fails_on_a_stale_install(monkeypatch, tmp_path):
 
 def test_probe_plugin_passes_when_the_record_lists_other_plugins_only(
         monkeypatch, tmp_path):
-    import json as _json
     monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
     cfg = tmp_path / "claude"
     (cfg / "plugins").mkdir(parents=True)
-    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+    (cfg / "plugins" / "installed_plugins.json").write_text(json.dumps(
         {"version": 2, "plugins": {"superpowers@elsewhere": [
             {"scope": "user", "version": "6.2.0"}]}}))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
@@ -235,8 +232,7 @@ def test_probe_plugin_defaults_to_the_home_config_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     cfg = tmp_path / "home" / ".claude"
     (cfg / "plugins").mkdir(parents=True)
-    import json as _json
-    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+    (cfg / "plugins" / "installed_plugins.json").write_text(json.dumps(
         {"version": 2, "plugins": {verify_runtime._plugin_id(): [
             {"scope": "user", "version": "0.2.1"}]}}))
     ok, detail = verify_runtime._probe_plugin()
@@ -302,3 +298,27 @@ def test_an_unreadable_clone_manifest_blocks_rather_than_raising(
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
     ok, detail = verify_runtime._probe_plugin()
     assert ok is False and "Traceback" not in detail
+
+
+def test_a_broken_marketplace_manifest_names_itself_not_the_install_record(
+        monkeypatch, tmp_path):
+    """Both manifests are the clone's, but only plugin.json used to be read in a
+    try that names the clone. A corrupt marketplace.json raised inside the record's
+    try instead and was reported as an unreadable install record — blocking
+    correctly, and sending the reader to the wrong file."""
+    cp = tmp_path / "clone" / ".claude-plugin"
+    cp.mkdir(parents=True)
+    (cp / "plugin.json").write_text(json.dumps(
+        {"name": "video-grid", "version": "9.9.9"}))
+    (cp / "marketplace.json").write_text("{ not json")
+    monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path / "clone")
+    cfg = tmp_path / "claude"
+    (cfg / "plugins").mkdir(parents=True)
+    (cfg / "plugins" / "installed_plugins.json").write_text(json.dumps(
+        {"version": 2, "plugins": {}}))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False
+    assert "marketplace.json" in detail
+    assert "installed_plugins.json" not in detail
+    assert "Traceback" not in detail
