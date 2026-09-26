@@ -92,7 +92,7 @@ _Last updated: 2026-09-26._
   | 18 | `SKILL.md` | drop `Tool index: references/tools.md.` | RED |
   | 19 | `verify_runtime.py` | `_read_json`: named `RuntimeError` → bare `raise` | RED — a corrupt clone manifest's message loses its own filename |
   | 20 | `verify_runtime.py` | move the `is_file()` short-circuit back below the clone-side `try` (the pre-round-2 shape) | RED — the round-2 regression test catches its own regression re-introduced |
-  | 21 | `verify_runtime.py` | route the record read through `_read_json` too | **GREEN — a real coverage hole, judged and left open (below)** |
+  | 21 | `verify_runtime.py` | route the record read through `_read_json` too | **GREEN — cosmetic, a documented non-discrimination (below)** |
   | 22 | `preflight.py` | `deps` row's remedy → not `bash setup.sh` | RED — 2 tests |
   | 23 | `preflight.py` | passing-with-version detail drops `clone_version` | RED |
 
