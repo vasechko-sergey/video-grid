@@ -123,3 +123,32 @@ def evaluate(raw: dict[str, tuple[bool, str]],
                      ok=raw[c.key][0], detail=raw[c.key][1], remedy=prefix + c.remedy)
         for c in CHECKS)
     return RuntimeReport(results=results)
+
+
+def plugin_staleness(records: tuple[tuple[str, str], ...] | None,
+                     clone_version: str) -> tuple[bool, str]:
+    """Does the INSTALLED plugin agree with the clone about to run?
+
+    `records` is one (scope, version) pair per install record, or None when there
+    is no install-record file at all. The two absences are reported separately
+    because they have different causes and the same conclusion: there is no
+    installed instruction set that could be stale, so both PASS.
+
+    A sequence — not one record — because installed_plugins.json maps a plugin id
+    to a LIST (user / project / local / managed scopes). Every record is compared
+    and every mismatch is named; `scope` is reported, never interpreted, since
+    nothing here knows which one Claude Code actually loaded (design §6).
+
+    The direction of a mismatch is deliberately not computed: the marketplace is
+    the clone itself, so one remedy resolves it either way, and a number that
+    changes no decision is not reported (design §4)."""
+    if records is None:
+        return True, "no install record — running from the clone"
+    if not records:
+        return True, "not installed as a plugin — running from the clone"
+    bad = [(scope, ver) for scope, ver in records if ver != clone_version]
+    if not bad:
+        return True, f"{clone_version} installed"
+    named = ", ".join(f"{scope} scope has {ver}" for scope, ver in bad)
+    return False, (f"{named}; the clone is {clone_version} — the installed "
+                   f"skills are not the ones this code expects")

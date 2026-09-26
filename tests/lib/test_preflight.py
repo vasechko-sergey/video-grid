@@ -139,3 +139,63 @@ def test_evaluate_root_shell_quotes_a_spaced_path():
     raw["reid"] = (False, "x")
     adv = preflight.evaluate(raw, root="/a b/clone").advisories[0]
     assert adv.remedy == "cd '/a b/clone' && bash setup.sh"
+
+
+# --- plugin staleness (design 2026-09-25 §2.2). Four states, each named: the
+# check must distinguish "there is no install to be stale" from "the install
+# agrees" from "the install disagrees", because only the last is a defect and the
+# first two are ordinary, legitimate configurations.
+
+def test_no_record_file_passes_and_says_so():
+    ok, detail = preflight.plugin_staleness(None, "0.14.0")
+    assert ok is True
+    assert "no install record" in detail
+
+
+def test_record_without_this_plugin_passes_with_a_different_reason():
+    """Distinct from None on purpose. Both mean 'nothing installed to be stale',
+    but one means Claude Code has installed no plugins at all and the other means
+    it has installed others and not this one. A single shared message would throw
+    away a distinction the inputs carry."""
+    ok, detail = preflight.plugin_staleness((), "0.14.0")
+    assert ok is True
+    assert "not installed as a plugin" in detail
+    assert "no install record" not in detail
+
+
+def test_matching_single_record_passes_and_names_the_version():
+    ok, detail = preflight.plugin_staleness((("user", "0.14.0"),), "0.14.0")
+    assert ok is True and "0.14.0" in detail
+
+
+def test_a_behind_record_fails_and_names_both_versions():
+    ok, detail = preflight.plugin_staleness((("user", "0.2.1"),), "0.14.0")
+    assert ok is False
+    assert "0.2.1" in detail and "0.14.0" in detail
+
+
+def test_an_ahead_record_fails_too():
+    """Direction is not interpreted (design §4) — a clone checked out behind its
+    own install is still two things that disagree, and the one remedy fixes it
+    either way because the marketplace IS the clone."""
+    ok, _ = preflight.plugin_staleness((("user", "0.14.0"),), "0.2.1")
+    assert ok is False
+
+
+def test_every_mismatching_scope_is_named_not_only_the_first():
+    """installed_plugins.json maps a plugin id to a LIST of records (user,
+    project, local, managed). Reading only the first is the unvalidated-shapes
+    defect: a reader defending itself with a guarantee the producer does not
+    make."""
+    ok, detail = preflight.plugin_staleness(
+        (("user", "0.2.1"), ("project", "0.9.2")), "0.14.0")
+    assert ok is False
+    assert "user" in detail and "project" in detail
+    assert "0.2.1" in detail and "0.9.2" in detail
+
+
+def test_one_matching_record_does_not_excuse_a_mismatching_sibling():
+    ok, detail = preflight.plugin_staleness(
+        (("user", "0.14.0"), ("project", "0.2.1")), "0.14.0")
+    assert ok is False
+    assert "project" in detail
