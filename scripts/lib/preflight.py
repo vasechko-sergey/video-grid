@@ -1,10 +1,19 @@
-"""Runtime-preflight registry (design docs/specs/2026-08-01-verify-runtime-design.md).
+"""Runtime-preflight registry (designs docs/specs/2026-08-01-verify-runtime-design.md
+and docs/specs/2026-09-25-plugin-staleness-design.md).
 
-The PURE half of the verify-runtime check: the CHECKS registry (what the setup.sh
-baseline contract is) and how a set of raw probe results becomes a RuntimeReport. No
-imports of the probed modules, no ffmpeg, no filesystem — the impure probing lives
-in scripts/verify_runtime.py. That split is what makes the report logic testable
-without a working install: feed evaluate() fabricated results.
+The PURE half of the verify-runtime check: the CHECKS registry and how a set of raw
+probe results becomes a RuntimeReport. No imports of the probed modules, no ffmpeg,
+no filesystem — the impure probing lives in scripts/verify_runtime.py. That split is
+what makes the report logic testable without a working install: feed evaluate()
+fabricated results.
+
+The registry covers TWO layers, not one. Seven rows are the `setup.sh` baseline
+contract — what the installer put in the clone — and their remedy is `bash setup.sh`.
+The `plugin` row is the other layer: whether the INSTALLED skills are the ones this
+code expects, which `setup.sh` neither installs nor can fix. Its remedy is
+`claude plugin update`. Leaving this docstring saying "the setup.sh baseline
+contract" would be the inert, now-false comment this repo deletes rather than
+qualifies.
 """
 import shlex
 from dataclasses import dataclass

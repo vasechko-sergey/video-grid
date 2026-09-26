@@ -348,3 +348,12 @@ def test_no_install_record_does_not_read_the_clone_manifests_at_all(
     ok, detail = verify_runtime._probe_plugin()
     assert ok is True
     assert "no install record" in detail
+
+
+def test_the_remedy_names_the_id_the_probe_actually_looks_up():
+    """The plugin id lives in two places: derived from the manifests by
+    _plugin_id(), and typed into the remedy a user is told to run. A remedy that
+    updates a different id than the check reads would 'fix' nothing and the check
+    would stay red with no way to clear it."""
+    remedy = next(c.remedy for c in preflight.CHECKS if c.key == "plugin")
+    assert remedy == f"claude plugin update {verify_runtime._plugin_id()}"
