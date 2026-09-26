@@ -1,8 +1,12 @@
-"""verify-runtime driver (design docs/specs/2026-08-01-verify-runtime-design.md).
+"""verify-runtime driver (design docs/specs/2026-08-01-verify-runtime-design.md,
+docs/specs/2026-09-25-plugin-staleness-design.md).
 
-Probes the setup.sh baseline contract and reports each gap with its remedy. The
-IMPURE half — it imports the probed modules, resolves ffmpeg, spawns `-filters`
-— so the report logic (scripts/lib/preflight.py) stays testable without an install.
+Probes two layers and reports each gap with its remedy: the `setup.sh` baseline
+contract (deps, ffmpeg, filters, font, weights, demucs) and whether the INSTALLED
+plugin agrees with the clone this code lives in. The IMPURE half — it imports the
+probed modules, resolves ffmpeg, spawns `-filters`, reads the installer's own
+record — so the report logic (scripts/lib/preflight.py) stays testable without an
+install.
 
 Read-only: it PRINTS remedies, never runs setup.sh (§4). It runs INSIDE the venv
 (via bin/vg), so it cannot report a missing venv or recorded-root — those are the
@@ -139,7 +143,7 @@ def _probe_plugin() -> tuple[bool, str]:
         # would let a broken marketplace.json block a run that has no installed
         # skills at all, which is a different question than the one this check
         # asks (design §2.2: a missing record is an unconditional pass).
-        return True, "no install record — running from the clone"
+        return True, preflight.NO_RECORD_DETAIL
     try:
         clone_version = _read_json(_ROOT / ".claude-plugin" / "plugin.json")["version"]
         plugin_id = _plugin_id()
@@ -193,7 +197,10 @@ def run() -> preflight.RuntimeReport:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description="verify the video-grid runtime is installed (design 2026-08-01)")
+        description="verify the video-grid runtime is installed: the setup.sh "
+                     "baseline (deps, ffmpeg, filters, font, weights, demucs) and "
+                     "whether the installed plugin matches this clone (design "
+                     "2026-08-01, 2026-09-25)")
     ap.add_argument("--json", action="store_true",
                     help="machine-readable report instead of the text table")
     return ap

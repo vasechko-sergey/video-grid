@@ -195,6 +195,21 @@ def test_probe_plugin_passes_when_there_is_no_record_file(monkeypatch, tmp_path)
     assert ok is True and "no install record" in detail
 
 
+def test_probe_plugin_no_record_returns_the_shared_constant_exactly(
+        monkeypatch, tmp_path):
+    """`plugin_staleness(None, …)` and `_probe_plugin`'s own early return must
+    say the IDENTICAL sentence — `preflight.NO_RECORD_DETAIL` is now the one
+    place it is spelled, so the two call sites cannot drift the way two
+    independently-typed copies of "no install record" already had. A substring
+    check (as the test above uses) would not catch that drift; only equality
+    against the shared constant does."""
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is True
+    assert detail == preflight.NO_RECORD_DETAIL
+
+
 def test_probe_plugin_passes_on_a_matching_install(monkeypatch, tmp_path):
     monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
     cfg = _install_record(tmp_path, [{"scope": "user", "version": "9.9.9"}])

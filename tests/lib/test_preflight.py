@@ -186,6 +186,20 @@ def test_a_behind_record_fails_and_names_both_versions():
     assert "0.2.1" in detail and "0.14.0" in detail
 
 
+def test_a_mismatch_detail_tells_the_reader_to_restart_claude_code():
+    """`claude plugin update` rewrites the cache; it does not reload the skills a
+    running session already has (design §0.8/§6). The router step that surfaces
+    this detail is the only OTHER place that says so — if this sentence were
+    dropped from the detail itself, nothing would notice on the code side."""
+    _, detail = preflight.plugin_staleness((("user", "0.2.1"),), "0.14.0")
+    assert detail.startswith(
+        "user scope has 0.2.1; the clone is 0.14.0 — the installed skills are "
+        "not the ones this code expects.")
+    assert detail.endswith(
+        "After updating, restart Claude Code: the update rewrites the cache, "
+        "it does not reload the skills a running session already holds.")
+
+
 def test_an_ahead_record_fails_too():
     """Direction is not interpreted (design §4) — a clone checked out behind its
     own install is still two things that disagree, and the one remedy fixes it

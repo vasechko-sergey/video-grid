@@ -33,6 +33,14 @@ class Check:
     remedy: str
 
 
+#: The detail `plugin_staleness` returns for `records is None`, and the exact
+#: string `verify_runtime._probe_plugin` returns from its own early return for
+#: the same case (no install-record file at all) without ever calling
+#: `plugin_staleness`. One constant so the two call sites cannot drift apart —
+#: they used to be two independently-typed copies of the same sentence.
+NO_RECORD_DETAIL = "no install record — running from the clone"
+
+
 CHECKS: tuple[Check, ...] = (
     Check("plugin", "installed plugin matches the clone", True,
           "claude plugin update video-grid@video-grid"),
@@ -155,7 +163,7 @@ def plugin_staleness(records: tuple[tuple[str, str], ...] | None,
     the clone itself, so one remedy resolves it either way, and a number that
     changes no decision is not reported (design §4)."""
     if records is None:
-        return True, "no install record — running from the clone"
+        return True, NO_RECORD_DETAIL
     if not records:
         return True, "not installed as a plugin — running from the clone"
     bad = [(scope, ver) for scope, ver in records if ver != clone_version]
@@ -163,4 +171,6 @@ def plugin_staleness(records: tuple[tuple[str, str], ...] | None,
         return True, f"{clone_version} installed"
     named = ", ".join(f"{scope} scope has {ver}" for scope, ver in bad)
     return False, (f"{named}; the clone is {clone_version} — the installed "
-                   f"skills are not the ones this code expects")
+                   f"skills are not the ones this code expects. After updating, "
+                   f"restart Claude Code: the update rewrites the cache, it does "
+                   f"not reload the skills a running session already holds.")
