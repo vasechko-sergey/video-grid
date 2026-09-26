@@ -246,11 +246,22 @@ longer describes how the probe gets there.
 **The two failure domains are attributed separately, on purpose — this is NOT
 "read with the same handling" (an earlier draft's phrase here, and now wrong).**
 Step 3's `except` names the clone's own manifests; step 4's names the install
-record's own path, by name. Both read through `_read_json`, a small helper that
-re-raises with the file path folded into the message, because a bare
-`JSONDecodeError` carries only a line and a column — attributing it to whichever
-`try` happened to catch it is how a corrupt `marketplace.json` first came to be
-reported as an unreadable install record.
+record's own path, by name. **The two do this differently, and the asymmetry is
+why `_read_json` exists at all.** Step 3's one `try` spans **two** files —
+`_plugin_id()` reads both `plugin.json` and `marketplace.json`, alongside the
+`clone_version` read of `plugin.json` itself — so nothing at that call site
+knows, unaided, which of the two broke; `_read_json` is the helper that folds
+each path into its own exception so step 3's `except` can still name the right
+one. Step 4's `try` spans exactly **one** file, and its `except` already
+interpolates `record` directly (`f"install record unreadable at {record}:
+{e}"`); routing it through `_read_json` too would fold that same path in a
+second time. A previous fix round measured exactly that doubling
+(`installed_plugins.json: installed_plugins.json: …`) and kept the record read
+on a plain `json.loads`, off the helper — so only step 3 goes through
+`_read_json`, not both. A bare `JSONDecodeError` carries only a line and a
+column — attributing it to whichever `try` happened to catch it is how a
+corrupt `marketplace.json` first came to be reported as an unreadable install
+record, and naming the file at the site that can otherwise not tell is the fix.
 `test_a_broken_marketplace_manifest_names_itself_not_the_install_record` pins
 the separation: a corrupt `marketplace.json` must name itself, never
 `installed_plugins.json`.
@@ -421,10 +432,16 @@ here pretends otherwise:
   the clone's manifests unconditionally let a broken one block a machine with
   nothing installed — a different question than the one this check asks.
   Reading the clone's manifests and reading the install record are now two
-  separately-attributed `try` blocks, through a shared `_read_json` helper that
-  names the file in its own exception, because a bare `JSONDecodeError` carries
-  only a line and a column — the earlier shape let a corrupt `marketplace.json`
-  be reported as an unreadable install record instead of naming itself.
+  separately-attributed `try` blocks — but not through a shared helper on both
+  sides: the clone-side block alone routes through `_read_json`, because it
+  spans **two** files (`_plugin_id()`'s `plugin.json` and `marketplace.json`)
+  under one `try` that cannot otherwise say which broke, while the
+  install-record block covers exactly one file and names it inline in its own
+  `except`, deliberately kept off `_read_json` because routing it through the
+  helper too would fold that one path into the message twice. A bare
+  `JSONDecodeError` carries only a line and a column — the earlier shape let a
+  corrupt `marketplace.json` be reported as an unreadable install record instead
+  of naming itself.
 - **§2.2**'s `None` row is reached by that early return now, not by a call into
   `plugin_staleness` — the pure function keeps its own total answer for `None`,
   exercised directly by its own unit test; it is simply no longer the path
