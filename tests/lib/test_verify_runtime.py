@@ -289,13 +289,22 @@ def test_an_unreadable_clone_manifest_blocks_rather_than_raising(
         monkeypatch, tmp_path):
     """The clone is the tree the probe executes from and test_plugin_manifests.py
     gates its shape, so this is not an expected state — but it must not escape as
-    a stack fragment through run()'s catch-all."""
+    a stack fragment through run()'s catch-all.
+
+    An install record must exist for this scenario to even reach the clone-side
+    read: a missing record short-circuits to an unconditional pass before either
+    of the clone's manifests is opened (design §2.2), so this fixture needs one —
+    same shape as test_a_broken_marketplace_manifest_names_itself_not_the_install_record."""
     cp = tmp_path / "clone" / ".claude-plugin"
     cp.mkdir(parents=True)
     (cp / "plugin.json").write_text("{ not json")
     (cp / "marketplace.json").write_text('{"name": "video-grid"}')
     monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path / "clone")
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
+    cfg = tmp_path / "claude"
+    (cfg / "plugins").mkdir(parents=True)
+    (cfg / "plugins" / "installed_plugins.json").write_text(json.dumps(
+        {"version": 2, "plugins": {}}))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
     ok, detail = verify_runtime._probe_plugin()
     assert ok is False and "Traceback" not in detail
 
@@ -322,3 +331,20 @@ def test_a_broken_marketplace_manifest_names_itself_not_the_install_record(
     assert "marketplace.json" in detail
     assert "installed_plugins.json" not in detail
     assert "Traceback" not in detail
+
+
+def test_no_install_record_does_not_read_the_clone_manifests_at_all(
+        monkeypatch, tmp_path):
+    """A missing record is an unconditional pass (design §2.2). The clone's own
+    manifests are irrelevant to it, so a broken one must not block a machine that
+    has no installed skills — and the boolean is the whole assertion here, because
+    the previous shape returned False with a perfectly accurate message."""
+    cp = tmp_path / "clone" / ".claude-plugin"
+    cp.mkdir(parents=True)
+    (cp / "plugin.json").write_text("{ not json")
+    (cp / "marketplace.json").write_text("{ not json")
+    monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path / "clone")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is True
+    assert "no install record" in detail

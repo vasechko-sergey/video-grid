@@ -133,15 +133,20 @@ def _probe_plugin() -> tuple[bool, str]:
     this check asks is whether that statement agrees with the clone."""
     cfg = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
     record = cfg / "plugins" / "installed_plugins.json"
+    if not record.is_file():
+        # Nothing is installed, so nothing can disagree with the clone — and the
+        # clone's own manifests are deliberately NOT consulted here. Reading them
+        # would let a broken marketplace.json block a run that has no installed
+        # skills at all, which is a different question than the one this check
+        # asks (design §2.2: a missing record is an unconditional pass).
+        return True, "no install record — running from the clone"
     try:
         clone_version = _read_json(_ROOT / ".claude-plugin" / "plugin.json")["version"]
         plugin_id = _plugin_id()
     except Exception as e:
         return False, f"cannot read the clone's plugin manifests: {e}"
-    if not record.is_file():
-        return True, "no install record — running from the clone"
     try:
-        data = _read_json(record)
+        data = json.loads(record.read_text())
         plugins = data["plugins"]
         if not isinstance(plugins, dict):
             raise TypeError(f"'plugins' is {type(plugins).__name__}, not a mapping")
