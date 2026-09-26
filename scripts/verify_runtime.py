@@ -14,6 +14,7 @@ _probe_deps, not crash this checker on import. models.MODELS pulls no numpy/cv2.
 import argparse
 import importlib
 import json
+import os
 from pathlib import Path
 
 from scripts.lib import ffbin, fonts, preflight
@@ -99,7 +100,51 @@ def _probe_reid() -> tuple[bool, str]:
     return (True, "installed") if _importable("torchreid") else (False, "not installed")
 
 
+def _plugin_id() -> str:
+    """`<plugin>@<marketplace>` — the key Claude Code files this install under.
+    Derived from the clone's own two manifests rather than typed, so it cannot
+    drift from them; the remedy string's copy is pinned to this by a test."""
+    cp = _ROOT / ".claude-plugin"
+    plugin = json.loads((cp / "plugin.json").read_text())["name"]
+    market = json.loads((cp / "marketplace.json").read_text())["name"]
+    return f"{plugin}@{market}"
+
+
+def _probe_plugin() -> tuple[bool, str]:
+    """Compare the INSTALLED plugin against the clone this code lives in.
+
+    The two are installed by different tools into different directories: the
+    skills come from Claude Code's version-keyed cache, the Python from the clone
+    the recorded root names. Nothing compared them before (design §0.2).
+
+    Read-only, and it reads the installer's own RECORD rather than the cache
+    directory — the record is the installer's statement of what it did, and what
+    this check asks is whether that statement agrees with the clone."""
+    cfg = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+    record = cfg / "plugins" / "installed_plugins.json"
+    try:
+        clone_version = json.loads(
+            (_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+    except Exception as e:
+        return False, f"cannot read the clone's plugin.json in {_ROOT}: {e}"
+    if not record.is_file():
+        return True, "no install record — running from the clone"
+    try:
+        data = json.loads(record.read_text())
+        plugins = data["plugins"]
+        if not isinstance(plugins, dict):
+            raise TypeError(f"'plugins' is {type(plugins).__name__}, not a mapping")
+        entries = plugins.get(_plugin_id(), [])
+        records = tuple((str(e["scope"]), str(e["version"])) for e in entries)
+    except Exception as e:
+        # Cannot-answer must not read as "nothing installed" — a blocking check
+        # that can silently turn itself off is the failure it exists to prevent.
+        return False, f"install record unreadable at {record}: {e}"
+    return preflight.plugin_staleness(records, clone_version)
+
+
 _PROBES = {
+    "plugin": _probe_plugin,
     "deps": _probe_deps,
     "ffmpeg_bin": _probe_ffmpeg_bin,
     "drawtext": _probe_drawtext,

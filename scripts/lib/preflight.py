@@ -24,6 +24,8 @@ class Check:
 
 
 CHECKS: tuple[Check, ...] = (
+    Check("plugin", "installed plugin matches the clone", True,
+          "claude plugin update video-grid@video-grid"),
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
     Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),

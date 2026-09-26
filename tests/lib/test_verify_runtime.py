@@ -126,7 +126,7 @@ def test_cli_json(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         verify_runtime.main()
     payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is True and payload["results"][0]["key"] == "deps"
+    assert payload["ok"] is True and payload["results"][0]["key"] == "plugin"
 
 
 def test_run_survives_a_raising_probe(monkeypatch):
@@ -156,3 +156,149 @@ def test_run_remedies_carry_their_own_cd_so_they_run_from_any_cwd(monkeypatch):
     dep = next(x for x in verify_runtime.run().results if x.key == "deps")
     assert dep.remedy.startswith("cd ") and dep.remedy.endswith("&& bash setup.sh")
     assert str(verify_runtime._ROOT) in dep.remedy
+
+
+def _install_record(tmp_path, entries):
+    """Write a Claude Code installed_plugins.json carrying `entries` for this
+    plugin, and point the probe's config dir at it."""
+    import json as _json
+    cfg = tmp_path / "claude"
+    (cfg / "plugins").mkdir(parents=True, exist_ok=True)
+    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+        {"version": 2, "plugins": {verify_runtime._plugin_id(): entries}}))
+    return cfg
+
+
+def _clone_manifest(tmp_path, version):
+    """Give the probe a clone root whose plugin.json carries `version`.
+
+    The fake marketplace is deliberately NOT named "video-grid": in the real
+    manifests the plugin and the marketplace share a name, so a fixture that
+    copied that could not tell which file each half of the id came from, and a
+    probe reading `name` twice out of plugin.json would pass."""
+    import json as _json
+    cp = tmp_path / "clone" / ".claude-plugin"
+    cp.mkdir(parents=True, exist_ok=True)
+    (cp / "plugin.json").write_text(_json.dumps(
+        {"name": "video-grid", "version": version}))
+    (cp / "marketplace.json").write_text(_json.dumps({"name": "vg-market"}))
+    return tmp_path / "clone"
+
+
+def test_plugin_id_is_derived_from_the_two_manifests(monkeypatch, tmp_path):
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    assert verify_runtime._plugin_id() == "video-grid@vg-market"
+
+
+def test_probe_plugin_passes_when_there_is_no_record_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is True and "no install record" in detail
+
+
+def test_probe_plugin_passes_on_a_matching_install(monkeypatch, tmp_path):
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    cfg = _install_record(tmp_path, [{"scope": "user", "version": "9.9.9"}])
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is True and "9.9.9" in detail
+
+
+def test_probe_plugin_fails_on_a_stale_install(monkeypatch, tmp_path):
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    cfg = _install_record(tmp_path, [{"scope": "user", "version": "0.2.1"}])
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False and "0.2.1" in detail and "9.9.9" in detail
+
+
+def test_probe_plugin_passes_when_the_record_lists_other_plugins_only(
+        monkeypatch, tmp_path):
+    import json as _json
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    cfg = tmp_path / "claude"
+    (cfg / "plugins").mkdir(parents=True)
+    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+        {"version": 2, "plugins": {"superpowers@elsewhere": [
+            {"scope": "user", "version": "6.2.0"}]}}))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is True and "not installed as a plugin" in detail
+
+
+def test_probe_plugin_defaults_to_the_home_config_dir(monkeypatch, tmp_path):
+    """Without CLAUDE_CONFIG_DIR the record lives under ~/.claude. Path.home()
+    honours HOME on posix, which is how this is reachable in a test at all."""
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    cfg = tmp_path / "home" / ".claude"
+    (cfg / "plugins").mkdir(parents=True)
+    import json as _json
+    (cfg / "plugins" / "installed_plugins.json").write_text(_json.dumps(
+        {"version": 2, "plugins": {verify_runtime._plugin_id(): [
+            {"scope": "user", "version": "0.2.1"}]}}))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False and "0.2.1" in detail
+
+
+@pytest.mark.parametrize("body,says", [
+    ("{ not json", "Expecting"),                      # json's own parse message
+    ('{"version": 2}', "plugins"),                    # the missing key, by name
+    ('{"version": 2, "plugins": []}', "not a mapping"),
+])
+def test_an_unreadable_record_blocks_and_never_reads_as_fine(
+        monkeypatch, tmp_path, body, says):
+    """Cannot-answer is not allowed to read as 'nothing installed' — that is the
+    silent-off this check exists to prevent — and it is not allowed to surface as
+    a bare traceback either. It blocks, the detail names the path, and it names
+    WHICH shape it could not read.
+
+    That last assertion is what makes the three cases distinguishable: all three
+    reach `ok is False`, two of them by a bare exception, so a test that only
+    checked the boolean could not see the `isinstance` guard being deleted — a
+    list with no `.get` raises anyway, just less legibly."""
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    cfg = tmp_path / "claude"
+    (cfg / "plugins").mkdir(parents=True)
+    rec = cfg / "plugins" / "installed_plugins.json"
+    rec.write_text(body)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False
+    assert str(rec) in detail
+    assert says in detail
+    assert "Traceback" not in detail
+
+
+def test_a_record_entry_without_a_version_is_unreadable_not_skipped(
+        monkeypatch, tmp_path):
+    """Dropping it would turn a shape the reader does not understand into
+    'nothing to compare', which passes."""
+    monkeypatch.setattr(verify_runtime, "_ROOT", _clone_manifest(tmp_path, "9.9.9"))
+    cfg = _install_record(tmp_path, [{"scope": "user"}])
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False
+    # The KIND of failure is the assertion that discriminates. A lenient
+    # projection (`e.get("version", "")`) also returns False — "" mismatches
+    # every clone version — so it would report a STALE install where the truth is
+    # a record shape the reader does not understand. Only the message separates
+    # the two.
+    assert "unreadable" in detail
+
+
+def test_an_unreadable_clone_manifest_blocks_rather_than_raising(
+        monkeypatch, tmp_path):
+    """The clone is the tree the probe executes from and test_plugin_manifests.py
+    gates its shape, so this is not an expected state — but it must not escape as
+    a stack fragment through run()'s catch-all."""
+    cp = tmp_path / "clone" / ".claude-plugin"
+    cp.mkdir(parents=True)
+    (cp / "plugin.json").write_text("{ not json")
+    (cp / "marketplace.json").write_text('{"name": "video-grid"}')
+    monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path / "clone")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty"))
+    ok, detail = verify_runtime._probe_plugin()
+    assert ok is False and "Traceback" not in detail

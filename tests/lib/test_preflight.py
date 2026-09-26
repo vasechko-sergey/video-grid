@@ -12,8 +12,16 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights", "demucs"]
+        "plugin", "deps", "ffmpeg_bin", "drawtext", "vidstab", "font",
+        "weights", "demucs"]
     assert [c.key for c in CHECKS if not c.required] == ["reid"]
+
+
+def test_the_plugin_check_is_first_so_a_stale_install_is_the_first_line():
+    """CHECKS's order is the report's order. The plugin question is outermost —
+    'are you running the instructions you think you are?' — and cheapest (two
+    file reads, no subprocess), so it leads."""
+    assert CHECKS[0].key == "plugin"
 
 
 def test_demucs_alone_blocks_the_run():
@@ -58,8 +66,9 @@ def test_to_dict_shape():
     d = RuntimeReport(results=results).to_dict()
     assert d["ok"] is True
     assert d["results"][0] == {
-        "key": "deps", "label": "Python runtime deps import", "required": True,
-        "ok": True, "detail": "ok", "remedy": "bash setup.sh"}
+        "key": "plugin", "label": "installed plugin matches the clone",
+        "required": True, "ok": True, "detail": "ok",
+        "remedy": "claude plugin update video-grid@video-grid"}
 
 
 def test_to_text_ready_header_when_ok():
@@ -122,8 +131,11 @@ def test_evaluate_orders_results_by_registry_not_raw():
 
 
 def test_evaluate_without_root_leaves_remedies_relative():
+    # Generic over the registry (not hardcoded to one check's remedy text) so a
+    # new row's own remedy string cannot make this test collateral damage: the
+    # invariant is "no cd prefix", not "every remedy says bash setup.sh".
     r = preflight.evaluate(_all_ok_raw())
-    assert all(x.remedy.startswith("bash setup.sh") for x in r.results)
+    assert all(x.remedy == c.remedy for x, c in zip(r.results, CHECKS))
 
 
 def test_evaluate_root_prefixes_cd_so_remedy_runs_from_any_cwd():
