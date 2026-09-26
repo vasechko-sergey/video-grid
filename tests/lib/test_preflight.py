@@ -211,3 +211,14 @@ def test_one_matching_record_does_not_excuse_a_mismatching_sibling():
         (("user", "0.14.0"), ("project", "0.2.1")), "0.14.0")
     assert ok is False
     assert "project" in detail
+
+
+def test_exactly_one_row_is_not_the_setup_contract_and_it_is_plugin():
+    """The module docstring says every row but one is the `setup.sh` baseline and
+    that `plugin` is the exception. Prose cannot hold that; this can. It also
+    stops the next row added from quietly making the docstring wrong again — the
+    defect that produced this test (the paragraph shipped saying "seven" against
+    a registry of eight)."""
+    others = [c.key for c in CHECKS if c.remedy != "bash setup.sh"]
+    assert others == ["plugin"]
+    assert all(c.remedy == "bash setup.sh" for c in CHECKS if c.key != "plugin")

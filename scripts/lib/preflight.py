@@ -7,13 +7,14 @@ no filesystem — the impure probing lives in scripts/verify_runtime.py. That sp
 what makes the report logic testable without a working install: feed evaluate()
 fabricated results.
 
-The registry covers TWO layers, not one. Seven rows are the `setup.sh` baseline
-contract — what the installer put in the clone — and their remedy is `bash setup.sh`.
-The `plugin` row is the other layer: whether the INSTALLED skills are the ones this
-code expects, which `setup.sh` neither installs nor can fix. Its remedy is
-`claude plugin update`. Leaving this docstring saying "the setup.sh baseline
-contract" would be the inert, now-false comment this repo deletes rather than
-qualifies.
+The registry covers TWO layers, not one. Every row but one is the `setup.sh`
+baseline contract — what the installer put in the clone — and its remedy is
+`bash setup.sh`. The `plugin` row is the other layer: whether the INSTALLED
+skills are the ones this code expects, which `setup.sh` neither installs nor can
+fix. Its remedy is `claude plugin update`. That partition is machine-checked by
+tests/lib/test_preflight.py, because a count here would be wrong again the next
+time a row is added — which is precisely the stale description this paragraph
+replaced.
 """
 import shlex
 from dataclasses import dataclass
