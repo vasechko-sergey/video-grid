@@ -73,5 +73,8 @@ guessing a path.
   install key.
 - **Cannot see the venv or the root record itself** — those are checked before it
   runs (the `cat` above and `bin/vg`). It reports everything *inside* the venv.
+- **Trusts the install record's shape**, which a third party (Claude Code) owns
+  and versions — a future change to it could block every run with no clearable
+  remedy, or pass silently, and only the `version` key is read today.
 - Reports **all** capabilities, not what one brief needs; the caller decides
   relevance.

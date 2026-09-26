@@ -665,11 +665,25 @@ nothing verifies the recorded root is a checkout of the marketplace it claims �
 `~/.config/video-grid/root` and `known_marketplaces.json`'s `installLocation` both
 name a directory and are never compared, so a `setup.sh` run from a second clone
 would point the skills at one tree while the plugin was installed from another,
-and every check would still pass (plugin-staleness §7) ·
+and every check would still pass (plugin-staleness §7). Same family, found by
+this branch's own review: `_plugin_id()` also trusts the clone's two manifests to
+name the marketplace correctly, so a plugin filed under a *different*
+marketplace name (`video-grid@anything-else`) reads as "not installed" and
+passes too — a wrong root and a wrong marketplace name are the same unchecked
+trust, reached from opposite ends (plugin-staleness §6) ·
 the `gitCommitSha` the installer records is unused — it resolves in the clone and
 yields an exact commit distance (392 on the machine 0.14.0 shipped from), strictly
 sharper than the version and strictly noisier, since any docs commit moves it
-(plugin-staleness §7)
+(plugin-staleness §7) ·
+the install record's shape is a third party's and versions itself —
+`installed_plugins.json`'s own `"version": 2` is deliberately not interpreted
+(§4's ruling stands), so a future Claude Code release that reshapes the record
+fails in one of two directions: a `plugins` no longer a mapping blocks every run
+with an unclearable remedy, or a moved id key reads as `()` and passes silently
+— the worse direction, because it is exactly the self-off this check exists to
+prevent. Worth acting on once one of those actually happens, or a second
+consumer of the same file needs the shape validated for its own reasons
+(plugin-staleness §6)
 
 **Contact sheets**
 a platform crop guide on each cell · a contact sheet of the delivered reel for CP3 · per-window multi-frame cells (contact-sheet §10)
