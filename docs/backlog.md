@@ -85,7 +85,6 @@ is still P3.
 | ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
 | ○ | **A masked `subject`, instead of the route's bbox.** A box over water contains water, which is exactly why design §0.3 measures the subject as the **worst** mid reference (sd 21.0, against the background's 14.4) and the best toe one. The seg model already runs at intake and its masks have been discarded since 2026-08-04. Costs a `CACHE_VERSION` bump or a fresh seg pass. **Sharpened 2026-09-16**: the dE00 grade description now reads the same box, so a **second** sensor is waiting on this mask, not only the tone stage. Closing the dE00 sampling-box row (sensor-provenance §0.2) made the box's SIZE and its fallback VISIBLE — it did not make the box a subject, which is this row and only this row. **Not a half of R2.1**: R2.1's two folded rows are the dE00 sampling box (closed 2026-09-16) and chroma agreement (closed 2026-09-17, by measurement, not a target — see the chroma-spread design); this is named-regions §7 row 2's own row and was never folded into R2.1. | M | [named regions](specs/2026-09-15-named-regions-design.md) §7 row 2, [sensor provenance](specs/2026-09-16-sensor-provenance-design.md) §5 |
 | ○ | **Re-extract the real run's segments through today's `extract` so the region-consistency table can be re-measured on SOURCE.** `plan_ungraded` refuses four of the eight (ep1, ep3, ep5, ep6) as `pc` — they predate the 0.3.1 segment range contract — which is why design §0.3's cross-episode spreads are measured on DELIVERED clips that already carry each episode's authored tone pair, saturation 0.92, `shadow_red` 0.1 and `mid_blue` 1.2. The toe's direction and magnitude do reproduce on the four readable sources; the spreads have no source-side reading at all. Same class as the `golden_ride.mp4` row above, on a run instead of a fixture. | S | [named regions](specs/2026-09-15-named-regions-design.md) §7 row 5, §0.6 |
-| ○ | **Nothing detects that the installed plugin is behind the repo.** The plugin cache held exactly one version, **0.2.1**, against a repo at 0.9.2 — seven minor versions, and nothing is corrupt: the install path is version-keyed and the user simply has not reinstalled. It bounds every claim any skill slice makes, because what ships reaches a run only after a reinstall. `verify_runtime` already asserts a runtime contract and is the natural home for comparing the recorded root's version against the cache's. | S | [reachable-instructions design](specs/2026-09-14-reachable-instructions-design.md) §0.7, §6 row 1 |
 | ○ | **Route `check_reel.run(chroma=...)` through one validator.** The chroma reader's comment now names both its inlets (design 2026-09-21 §2.3) — through `ReelEpisode`, `__post_init__`'s two arms; through `build_reel`'s plain list, every branch of `color_fidelity.shift_from_report`. Nothing *enforces* that a future third filler goes through the validator; it is documented, not gated. Closing it would mean constructing a throwaway `ReelEpisode` per reprocessed episode purely to validate a two-key dict — filed rather than built for that cost. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §5.5, §6 row 1 |
 | ○ | **A real `pix_fmt`-less camera source.** `color.refuse_ungradeable_plane`'s new third clause (design 2026-09-21 §2.2) is proven reachable only by a constructed fixture — the `stsd` fourcc of a segment built at test time from the committed `golden_ride.mp4`, patched from `avc1` to an unknown codec. No real proprietary or next-generation camera codec file exhibiting this property is on this machine, so the inference that such codecs are disproportionately the 10-/12-bit sources the depth guard exists for is marked as an inference, not a measurement (design §5.2). Would turn the constructed fixture into a measured one. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §5.2, §6 row 2; blocked on footage |
 | ○ | **A note on the other two two-producer merges.** `scripts/edit_plan.py:129` (`{**defaults, **editorial}`) and `scripts/lib/orchestration.py:194` (`{**DEFAULT_PARAMS, **params}`) are deliberate overrides today with no discriminator downstream — a sweep of `scripts/` found them alongside `check_episode._grade_damage`'s `d.update(...)` call (`check_episode.py:269`) as the only three merges of two independently-produced mappings (design 2026-09-21 §0.1). Neither is a defect; both become one the day a key is read as a discriminator after the merge. Worth a comment at each site, not a slice. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §6 row 3 |
@@ -656,7 +655,35 @@ provenance at scan time (an attestation lookup, or a digest check against `out/`
 which is a slice and not a guard (run-dir-separation §6) ·
 GitHub-remote marketplace (plugin-packaging §6) ·
 a leaner plugin root and relocating the ~12 MB of weights out of the tree (plugin-runtime-resolution §6) ·
-dependency **version** assertions in preflight (verify-runtime §9)
+dependency **version** assertions in preflight (verify-runtime §9) ·
+nothing gates that a run's instructions match its code at the CONTENT level —
+0.14.0's check reports a version disagreement, and the fourteen stale bodies it
+found are counted, not repaired; a content gate needs an answer to the cry-wolf
+problem first (the version is the install key precisely because this repo bumps
+once per slice) (plugin-staleness §7) ·
+nothing verifies the recorded root is a checkout of the marketplace it claims —
+`~/.config/video-grid/root` and `known_marketplaces.json`'s `installLocation` both
+name a directory and are never compared, so a `setup.sh` run from a second clone
+would point the skills at one tree while the plugin was installed from another,
+and every check would still pass (plugin-staleness §7). Same family, found by
+this branch's own review: `_plugin_id()` also trusts the clone's two manifests to
+name the marketplace correctly, so a plugin filed under a *different*
+marketplace name (`video-grid@anything-else`) reads as "not installed" and
+passes too — a wrong root and a wrong marketplace name are the same unchecked
+trust, reached from opposite ends (plugin-staleness §6) ·
+the `gitCommitSha` the installer records is unused — it resolves in the clone and
+yields an exact commit distance (392 on the machine 0.14.0 shipped from), strictly
+sharper than the version and strictly noisier, since any docs commit moves it
+(plugin-staleness §7) ·
+the install record's shape is a third party's and versions itself —
+`installed_plugins.json`'s own `"version": 2` is deliberately not interpreted
+(§4's ruling stands), so a future Claude Code release that reshapes the record
+fails in one of two directions: a `plugins` no longer a mapping blocks every run
+with an unclearable remedy, or a moved id key reads as `()` and passes silently
+— the worse direction, because it is exactly the self-off this check exists to
+prevent. Worth acting on once one of those actually happens, or a second
+consumer of the same file needs the shape validated for its own reasons
+(plugin-staleness §6)
 
 **Contact sheets**
 a platform crop guide on each cell · a contact sheet of the delivered reel for CP3 · per-window multi-frame cells (contact-sheet §10)

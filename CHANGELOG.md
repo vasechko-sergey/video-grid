@@ -10,6 +10,23 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.14.0 — 2026-09-26
+
+- `verify_runtime` now refuses a run whose **installed plugin disagrees with the
+  clone it is about to execute**. The code and the instructions come from two
+  different places — the Python from the clone the recorded root names, the skills
+  from Claude Code's version-keyed cache — and nothing compared them. Measured on
+  the machine this shipped from: the cache held 0.2.1 against a clone at 0.13.0,
+  392 commits, all fourteen skill bodies and all fourteen always-resident
+  descriptions stale, and a *required* conveyor stage (`episodes-geometry`, the
+  seam `match-grade` measures the shipped crop in) mentioned nowhere in the
+  instructions the agent actually reads.
+- The remedy is `claude plugin update video-grid@video-grid`, printed like every
+  other gap. **Restart Claude Code afterwards** — the update rewrites the cache,
+  it does not reload the skills a running session already holds.
+- Not installed as a plugin? Nothing changes: a missing install record reads as
+  "running from the clone" and passes.
+
 ## 0.13.0 — 2026-09-24
 
 ### The retry loop's record

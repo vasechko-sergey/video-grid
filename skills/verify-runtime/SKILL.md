@@ -1,15 +1,18 @@
 ---
 name: verify-runtime
-description: "Preflight — verify the video-grid runtime is fully installed and print the exact command to fix any gap: deps, ffmpeg, drawtext and vidstab filters, font, YOLO weights, demucs. Read-only, never installs. Required — step 0, before every stage. Tool index: references/tools.md."
+description: "Preflight — verify the video-grid runtime is fully installed and print the exact command to fix any gap: the installed plugin matching this clone, deps, ffmpeg, drawtext and vidstab filters, font, YOLO weights, demucs. Read-only, never installs. Required — step 0, before every stage. Tool index: references/tools.md."
 ---
 
 # verify-runtime
 
 ## Overview
 
-Assert the `setup.sh` **baseline contract** is intact and print each gap's remedy.
-Read-only: it names what to run, it never runs an installer. Design:
-`docs/specs/2026-08-01-verify-runtime-design.md`.
+Assert the runtime contract is intact and print each gap's remedy. Two layers: the
+`setup.sh` **baseline** (deps, ffmpeg, filters, font, weights, demucs) and the
+**installed plugin** — whether the skills Claude Code loaded are the ones this
+clone's code expects. Read-only: it names what to run, it never runs an installer.
+Designs: `docs/specs/2026-08-01-verify-runtime-design.md`,
+`docs/specs/2026-09-25-plugin-staleness-design.md`.
 
 ## When to Use
 
@@ -52,6 +55,11 @@ guessing a path.
      runs from **any** directory. Present it **verbatim in a ```bash block** (so the
      Run button works wherever the user's shell is), then have them re-check. Do
      **not** run `setup.sh` yourself — installers are the user's to run.
+   - A failing **`plugin`** check is the one gap whose remedy is not `bash setup.sh`:
+     the clone's code and the installed skills disagree about which version is
+     running. Relay `claude plugin update …` verbatim as above, and add that Claude
+     Code must be **restarted** afterwards — the update rewrites the cache, it does
+     not reload the skills this session already has in context.
    - **Optional (advisory) gaps** (e.g. `reid`): mention them as "only needed for
      X", not as blockers. `demucs` is **not** one of these — it moved to required
      on 2026-08-14 and blocks like any other required check.
@@ -59,7 +67,14 @@ guessing a path.
 ## Boundaries
 
 - **Read-only.** Never invoke `setup.sh` or any installer; print the remedy.
+- **Reports a version disagreement, never that the instructions are right.** A
+  matching install of a skill set with a wrong sentence in it passes, and a clone
+  edited without a version bump is invisible by design — the version is the
+  install key.
 - **Cannot see the venv or the root record itself** — those are checked before it
   runs (the `cat` above and `bin/vg`). It reports everything *inside* the venv.
+- **Trusts the install record's shape**, which a third party (Claude Code) owns
+  and versions — a future change to it could block every run with no clearable
+  remedy, or pass silently, and only the `version` key is read today.
 - Reports **all** capabilities, not what one brief needs; the caller decides
   relevance.

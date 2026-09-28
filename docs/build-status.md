@@ -4,13 +4,157 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — tick the plan's checkboxes and add/adjust the
 relevant bullet here in the same commit.
 
-_Last updated: 2026-09-24._
+_Last updated: 2026-09-26._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Plugin staleness — the installed instructions against the running code
+  (2026-09-26, 0.14.0)** — design
+  [2026-09-25-plugin-staleness-design.md](specs/2026-09-25-plugin-staleness-design.md),
+  plan [2026-09-25-plugin-staleness.md](plans/2026-09-25-plugin-staleness.md),
+  **Tasks 1–4** (branch `feat/plugin-staleness`). `verify_runtime` asserted one
+  layer of the runtime contract — the `setup.sh` baseline the installer puts in
+  the clone — and nothing compared it against the OTHER layer a run's
+  behaviour comes from: the instructions Claude Code loaded into its
+  version-keyed plugin cache. Measured on the machine this shipped from,
+  before any code was written: the cache held 0.2.1 against a clone 392
+  commits ahead, **zero of fourteen** skill bodies and **zero of fourteen**
+  always-resident descriptions identical, `geometry` absent from the installed
+  router (0 mentions against 7 in the clone's, so the *required*
+  `episodes-geometry` stage could not be invoked from the installed
+  instructions at all), and `reels/` (the 0.3.0 layout) present 101 times in
+  the clone's skills and 0 times in the installed ones.
+
+  `preflight.CHECKS` gains a `plugin` row, first — cheapest, outermost
+  question, no subprocess — `installed plugin matches the clone`, required,
+  remedy `claude plugin update video-grid@video-grid`. The pure half,
+  `preflight.plugin_staleness(records, clone_version)`, names four states: no
+  install-record file (`None`) and a record that lists other plugins but not
+  this one (`()`) both PASS, for different reasons, with different messages;
+  every version matching PASSES and names the version; any mismatch FAILS and
+  names every mismatching `(scope, version)` pair plus the clone's own
+  version. Direction (behind vs. ahead) is deliberately not computed — the
+  marketplace IS the clone, so one remedy fixes it either way, and a number
+  that changes no decision is not reported. The impure half,
+  `verify_runtime._probe_plugin`, resolves `$CLAUDE_CONFIG_DIR` (or
+  `~/.claude`), reads the installer's own `installed_plugins.json` record
+  rather than the cache directory, and treats an unreadable shape — not a
+  mapping, an entry with no `version` — as a BLOCKING, named failure rather
+  than a silent pass, because a check that can turn itself off on a
+  producer-side shape change is the failure it exists to prevent. The plugin
+  id (`<plugin>@<marketplace>`) is derived from the clone's own two manifests
+  and pinned to the remedy string by a test, so the two spellings cannot
+  drift apart. Three review-driven fix rounds across Tasks 2–3 hardened the
+  probe further: a corrupt clone manifest is now attributed to itself
+  (`plugin.json`/`marketplace.json` by name) instead of being reported as an
+  unreadable install record; a missing install record now short-circuits
+  before either clone manifest is opened, so a broken `marketplace.json`
+  cannot block a machine with nothing installed; and the registry's own
+  module docstring was rewritten to name the two-layer partition instead of a
+  hardcoded row count, with the partition itself machine-checked
+  (`tests/lib/test_preflight.py`) so the next row added cannot make the
+  docstring wrong again the way it already had once ("seven rows" against a
+  registry of eight).
+
+  **Task 4's mutation battery — roll-call.** The brief's own 18-row table was
+  written before Tasks 2–3's fix rounds landed; run first, unchanged, then
+  five more rows for the code those rounds actually shipped — **23 rows in
+  total**. One mutation at a time on an otherwise-clean tree under
+  `PYTHONDONTWRITEBYTECODE=1`, restored via `git show HEAD:<path> > <path>`
+  and re-checked with `git diff --stat` after each;
+  `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`
+  excluded from every selection (it is red throughout for a reason unrelated
+  to any mutation — see below).
+
+  | # | File | Mutation | Result |
+  |---|---|---|---|
+  | 1 | `preflight.py` | `plugin_staleness`: `records is None` → `not records` | RED — collapses the "no record" / "not this plugin" messages into one |
+  | 2 | `preflight.py` | drop the `if not records:` arm | RED — `()` reports as an installed match instead of "not installed as a plugin" |
+  | 3 | `preflight.py` | `bad = [...]` → first record only | RED — 2 tests; a second mismatching sibling goes unnamed, and one whose FIRST record matches wrongly passes |
+  | 4 | `preflight.py` | mismatch message drops `{scope}` | RED — neither scope name survives |
+  | 5 | `preflight.py` | mismatch message drops `the clone is {clone_version}` | RED — the clone's own version disappears from the detail |
+  | 6 | `preflight.py` | `ver != clone_version` → `ver > clone_version` | RED — `test_an_ahead_record_fails_too` (lexicographic `>` happens to still catch the behind-version fixture by coincidence) |
+  | 7 | `preflight.py` | `CHECKS`: move `plugin` from first to last | RED — 3 tests pin its position and its `to_dict`/`to_text` order |
+  | 8 | `preflight.py` | `plugin` row `required` True → False | RED |
+  | 9 | `preflight.py` | `plugin` row remedy id → `video-grid@marketplace` | RED |
+  | 10 | `verify_runtime.py` | `_plugin_id`: market half reads `plugin.json` | RED — 2 tests, only because the fixture names the fake marketplace `vg-market` (design's own point) |
+  | 11 | `verify_runtime.py` | record-read `except` returns `(True, …)` | RED — 4 tests |
+  | 12 | `verify_runtime.py` | drop the `isinstance(plugins, dict)` guard | RED — on the MESSAGE ("not a mapping" never appears), not the boolean, exactly as predicted |
+  | 13 | `verify_runtime.py` | `e["version"]` → `e.get("version", "")` | RED — on `"unreadable" in detail`, not `ok`, exactly as predicted |
+  | 14 | `verify_runtime.py` | `record.is_file()` → `record.exists()` | **GREEN, expected** — no test builds a directory at that path |
+  | 15 | `verify_runtime.py` | ignore `$CLAUDE_CONFIG_DIR` | RED — 8 tests; the real `~/.claude` leaks through and disagrees with the fixtures |
+  | 16 | `verify_runtime.py` | `os.environ["CLAUDE_CONFIG_DIR"]`, no default | RED — uncaught `KeyError` |
+  | 17 | `verify_runtime.py` | delete `_PROBES["plugin"]` | RED — 10 tests, `evaluate`'s keys-must-match invariant fires |
+  | 18 | `SKILL.md` | drop `Tool index: references/tools.md.` | RED |
+  | 19 | `verify_runtime.py` | `_read_json`: named `RuntimeError` → bare `raise` | RED — a corrupt clone manifest's message loses its own filename |
+  | 20 | `verify_runtime.py` | move the `is_file()` short-circuit back below the clone-side `try` (the pre-round-2 shape) | RED — the round-2 regression test catches its own regression re-introduced |
+  | 21 | `verify_runtime.py` | route the record read through `_read_json` too | **GREEN — cosmetic, a documented non-discrimination (below)** |
+  | 22 | `preflight.py` | `deps` row's remedy → not `bash setup.sh` | RED — 2 tests |
+  | 23 | `preflight.py` | passing-with-version detail drops `clone_version` | RED |
+
+  **Two GREENs, both judged, neither silently accepted.** Row 14 is the
+  brief's own predicted non-discrimination: no test builds a *directory*
+  named `installed_plugins.json`, and `is_file()`/`exists()` differ only
+  there — recorded as instructed, not closed. Row 21 is new, found by running
+  the shipped code rather than by inspecting the brief's table: routing the
+  install record's read through `_read_json` (the shape an earlier fix round
+  actually had, before round 2 changed it to plain `json.loads` because the
+  wrapper's own `except` already names the path) doubles the path inside the
+  "install record unreadable at …" message — confirmed directly:
+  `… installed_plugins.json: …installed_plugins.json: Expecting property
+  name…`. `ok` still lands `False`, `str(rec) in detail` still holds (the
+  path is repeated, not renamed away), and every `says` substring
+  (`"Expecting"`, `"plugins"`, `"not a mapping"`) still appears untouched, so
+  no existing assertion — and, on inspection, no assertion worth writing —
+  separates the two shapes. Judged cosmetic and left uncovered rather than
+  answered with a test built only to turn the row red, per the task's own
+  instruction not to manufacture one.
+
+  **Suite: 4026 passed, 1 skipped, 1 failed** (417s) — the one failure is the
+  sanctioned `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`,
+  whose message now reads `plugin: installed plugin matches the clone — user
+  scope has 0.2.1; the clone is 0.14.0 — the installed skills are not the
+  ones this code expects` (every other check — deps, ffmpeg, drawtext,
+  vidstab, font, weights, demucs, reid — passes on this machine). The version
+  moved from "0.13.0" to "0.14.0" in that message the moment the bump landed,
+  confirming it reached the probe. The test's own docstring sanctions exactly
+  this outcome: "the suite is telling the truth about the machine, not about
+  the code" — this machine's installed plugin genuinely is 0.2.1 against a
+  clone the slice just bumped to 0.14.0, and the fix is a
+  `claude plugin update` only the **user** can run, followed by a restart.
+
+  Three minors carried forward rather than fixed in this slice — all named in
+  `.superpowers/sdd/2026-09-25-plugin-staleness/progress.md` during Tasks
+  1–2's own reviews:
+  `test_every_mismatching_scope_is_named_not_only_the_first` asserts its four
+  tokens independently, not as the two pairs "user scope has 0.2.1" /
+  "project scope has 0.9.2", so a bug that decoupled a scope from its own
+  version while still emitting all four tokens would pass;
+  `test_exactly_one_row_is_not_the_setup_contract_and_it_is_plugin`'s two
+  assertions are logically redundant given key uniqueness — harmless today, a
+  latent trap only if a future edit keeps the second alone, which cannot see
+  the `plugin` row's remedy collapsing back into the baseline group; and
+  `verify_runtime._probe_plugin` reads the clone's `plugin.json` twice per
+  call (once directly for `clone_version`, once inside `_plugin_id()` for the
+  name) — not observable, since both reads see the same unmutated local file
+  within one call.
+
+  Archive re-counted by hand (not `grep -c`, which double-counts the
+  Housekeeping section and misses every P3 prose bullet): **70** closed
+  items, up from 69 — 64 table rows (23 P1 + 41 P2) plus the unchanged 6 P3
+  prose bullets. Three P3 deferrals filed from design §7: a content-level
+  instructions gate (blocked on an answer to the cry-wolf problem this
+  repo's version-as-install-key already solves at the version level),
+  verifying the recorded root is a checkout of the marketplace it claims, and
+  the unused `gitCommitSha` the installer records (392 commits on this
+  machine — sharper than the version and noisier, since any docs commit
+  moves it). Version bump is MINOR, not PATCH: a new *blocking* runtime check
+  is a behaviour change for anyone installing it, the same call the 0.12.0
+  chroma slice made for a new *advisory* one.
 
 - **The retry loop's record — a retry changes what shipped and the record did
   not follow it (2026-09-24, 0.13.0)** — design

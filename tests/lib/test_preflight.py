@@ -12,8 +12,16 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "deps", "ffmpeg_bin", "drawtext", "vidstab", "font", "weights", "demucs"]
+        "plugin", "deps", "ffmpeg_bin", "drawtext", "vidstab", "font",
+        "weights", "demucs"]
     assert [c.key for c in CHECKS if not c.required] == ["reid"]
+
+
+def test_the_plugin_check_is_first_so_a_stale_install_is_the_first_line():
+    """CHECKS's order is the report's order. The plugin question is outermost —
+    'are you running the instructions you think you are?' — and cheapest (two
+    file reads, no subprocess), so it leads."""
+    assert CHECKS[0].key == "plugin"
 
 
 def test_demucs_alone_blocks_the_run():
@@ -58,8 +66,9 @@ def test_to_dict_shape():
     d = RuntimeReport(results=results).to_dict()
     assert d["ok"] is True
     assert d["results"][0] == {
-        "key": "deps", "label": "Python runtime deps import", "required": True,
-        "ok": True, "detail": "ok", "remedy": "bash setup.sh"}
+        "key": "plugin", "label": "installed plugin matches the clone",
+        "required": True, "ok": True, "detail": "ok",
+        "remedy": "claude plugin update video-grid@video-grid"}
 
 
 def test_to_text_ready_header_when_ok():
@@ -122,8 +131,11 @@ def test_evaluate_orders_results_by_registry_not_raw():
 
 
 def test_evaluate_without_root_leaves_remedies_relative():
+    # Generic over the registry (not hardcoded to one check's remedy text) so a
+    # new row's own remedy string cannot make this test collateral damage: the
+    # invariant is "no cd prefix", not "every remedy says bash setup.sh".
     r = preflight.evaluate(_all_ok_raw())
-    assert all(x.remedy.startswith("bash setup.sh") for x in r.results)
+    assert all(x.remedy == c.remedy for x, c in zip(r.results, CHECKS))
 
 
 def test_evaluate_root_prefixes_cd_so_remedy_runs_from_any_cwd():
@@ -139,3 +151,88 @@ def test_evaluate_root_shell_quotes_a_spaced_path():
     raw["reid"] = (False, "x")
     adv = preflight.evaluate(raw, root="/a b/clone").advisories[0]
     assert adv.remedy == "cd '/a b/clone' && bash setup.sh"
+
+
+# --- plugin staleness (design 2026-09-25 §2.2). Four states, each named: the
+# check must distinguish "there is no install to be stale" from "the install
+# agrees" from "the install disagrees", because only the last is a defect and the
+# first two are ordinary, legitimate configurations.
+
+def test_no_record_file_passes_and_says_so():
+    ok, detail = preflight.plugin_staleness(None, "0.14.0")
+    assert ok is True
+    assert "no install record" in detail
+
+
+def test_record_without_this_plugin_passes_with_a_different_reason():
+    """Distinct from None on purpose. Both mean 'nothing installed to be stale',
+    but one means Claude Code has installed no plugins at all and the other means
+    it has installed others and not this one. A single shared message would throw
+    away a distinction the inputs carry."""
+    ok, detail = preflight.plugin_staleness((), "0.14.0")
+    assert ok is True
+    assert "not installed as a plugin" in detail
+    assert "no install record" not in detail
+
+
+def test_matching_single_record_passes_and_names_the_version():
+    ok, detail = preflight.plugin_staleness((("user", "0.14.0"),), "0.14.0")
+    assert ok is True and "0.14.0" in detail
+
+
+def test_a_behind_record_fails_and_names_both_versions():
+    ok, detail = preflight.plugin_staleness((("user", "0.2.1"),), "0.14.0")
+    assert ok is False
+    assert "0.2.1" in detail and "0.14.0" in detail
+
+
+def test_a_mismatch_detail_tells_the_reader_to_restart_claude_code():
+    """`claude plugin update` rewrites the cache; it does not reload the skills a
+    running session already has (design §0.8/§6). The router step that surfaces
+    this detail is the only OTHER place that says so — if this sentence were
+    dropped from the detail itself, nothing would notice on the code side."""
+    _, detail = preflight.plugin_staleness((("user", "0.2.1"),), "0.14.0")
+    assert detail.startswith(
+        "user scope has 0.2.1; the clone is 0.14.0 — the installed skills are "
+        "not the ones this code expects.")
+    assert detail.endswith(
+        "After updating, restart Claude Code: the update rewrites the cache, "
+        "it does not reload the skills a running session already holds.")
+
+
+def test_an_ahead_record_fails_too():
+    """Direction is not interpreted (design §4) — a clone checked out behind its
+    own install is still two things that disagree, and the one remedy fixes it
+    either way because the marketplace IS the clone."""
+    ok, _ = preflight.plugin_staleness((("user", "0.14.0"),), "0.2.1")
+    assert ok is False
+
+
+def test_every_mismatching_scope_is_named_not_only_the_first():
+    """installed_plugins.json maps a plugin id to a LIST of records (user,
+    project, local, managed). Reading only the first is the unvalidated-shapes
+    defect: a reader defending itself with a guarantee the producer does not
+    make."""
+    ok, detail = preflight.plugin_staleness(
+        (("user", "0.2.1"), ("project", "0.9.2")), "0.14.0")
+    assert ok is False
+    assert "user" in detail and "project" in detail
+    assert "0.2.1" in detail and "0.9.2" in detail
+
+
+def test_one_matching_record_does_not_excuse_a_mismatching_sibling():
+    ok, detail = preflight.plugin_staleness(
+        (("user", "0.14.0"), ("project", "0.2.1")), "0.14.0")
+    assert ok is False
+    assert "project" in detail
+
+
+def test_exactly_one_row_is_not_the_setup_contract_and_it_is_plugin():
+    """The module docstring says every row but one is the `setup.sh` baseline and
+    that `plugin` is the exception. Prose cannot hold that; this can. It also
+    stops the next row added from quietly making the docstring wrong again — the
+    defect that produced this test (the paragraph shipped saying "seven" against
+    a registry of eight)."""
+    others = [c.key for c in CHECKS if c.remedy != "bash setup.sh"]
+    assert others == ["plugin"]
+    assert all(c.remedy == "bash setup.sh" for c in CHECKS if c.key != "plugin")

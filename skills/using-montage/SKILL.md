@@ -170,14 +170,21 @@ only the next one.
 ## The steps
 
 0. **Verify the runtime (gate).** After resolving `$VG` (below), run
-   `"$VG" scripts.verify_runtime`. Exit 0 → the `setup.sh` baseline is intact,
-   proceed. Non-zero → surface each `BLOCKED` check with its remedy (almost always
-   `bash setup.sh`) and **stop** — do not run project-init against a broken
-   runtime, and never run `setup.sh` yourself. Advisory gaps (e.g. `reid`) are
-   named, not blocking (they only affect optional lanes — without `reid` intake
-   still produces windows, only cast identity is unavailable). `demucs` is **not**
-   advisory: it blocks, because the music in/out-point has no fallback sensor.
-   The venv and the recorded root are the
+   `"$VG" scripts.verify_runtime`. It checks **two** layers: the `setup.sh`
+   baseline (deps/ffmpeg/filters/font/weights/demucs) and, since 2026-09-25,
+   whether the **installed plugin** matches this clone. Exit 0 → proceed.
+   Non-zero → surface each `BLOCKED` check with its remedy and **stop** — do not
+   run project-init against a broken runtime, and never run an installer
+   yourself. A failing **`plugin`** check's remedy is
+   `claude plugin update video-grid@video-grid`, **not** `bash setup.sh` like
+   every other row's — relay it verbatim, then say Claude Code must be
+   **restarted** afterwards: the update rewrites the cache, it does not reload
+   the skills this session already holds, so a green re-check can still
+   describe a run still driven by the stale text. Advisory gaps (e.g. `reid`)
+   are named, not blocking (they only affect optional lanes — without `reid`
+   intake still produces windows, only cast identity is unavailable). `demucs`
+   is **not** advisory: it blocks, because the music in/out-point has no
+   fallback sensor. The venv and the recorded root are the
    pre-venv layer, checked by the launcher preamble and `bin/vg` before this runs.
    The dedicated `verify-runtime` skill runs the same check on demand.
 

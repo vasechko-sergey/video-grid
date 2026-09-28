@@ -1,10 +1,20 @@
-"""Runtime-preflight registry (design docs/specs/2026-08-01-verify-runtime-design.md).
+"""Runtime-preflight registry (designs docs/specs/2026-08-01-verify-runtime-design.md
+and docs/specs/2026-09-25-plugin-staleness-design.md).
 
-The PURE half of the verify-runtime check: the CHECKS registry (what the setup.sh
-baseline contract is) and how a set of raw probe results becomes a RuntimeReport. No
-imports of the probed modules, no ffmpeg, no filesystem — the impure probing lives
-in scripts/verify_runtime.py. That split is what makes the report logic testable
-without a working install: feed evaluate() fabricated results.
+The PURE half of the verify-runtime check: the CHECKS registry and how a set of raw
+probe results becomes a RuntimeReport. No imports of the probed modules, no ffmpeg,
+no filesystem — the impure probing lives in scripts/verify_runtime.py. That split is
+what makes the report logic testable without a working install: feed evaluate()
+fabricated results.
+
+The registry covers TWO layers, not one. Every row but one is the `setup.sh`
+baseline contract — what the installer put in the clone — and its remedy is
+`bash setup.sh`. The `plugin` row is the other layer: whether the INSTALLED
+skills are the ones this code expects, which `setup.sh` neither installs nor can
+fix. Its remedy is `claude plugin update`. That partition is machine-checked by
+tests/lib/test_preflight.py, because a count here would be wrong again the next
+time a row is added — which is precisely the stale description this paragraph
+replaced.
 """
 import shlex
 from dataclasses import dataclass
@@ -23,7 +33,17 @@ class Check:
     remedy: str
 
 
+#: The detail `plugin_staleness` returns for `records is None`, and the exact
+#: string `verify_runtime._probe_plugin` returns from its own early return for
+#: the same case (no install-record file at all) without ever calling
+#: `plugin_staleness`. One constant so the two call sites cannot drift apart —
+#: they used to be two independently-typed copies of the same sentence.
+NO_RECORD_DETAIL = "no install record — running from the clone"
+
+
 CHECKS: tuple[Check, ...] = (
+    Check("plugin", "installed plugin matches the clone", True,
+          "claude plugin update video-grid@video-grid"),
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
     Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),
@@ -123,3 +143,34 @@ def evaluate(raw: dict[str, tuple[bool, str]],
                      ok=raw[c.key][0], detail=raw[c.key][1], remedy=prefix + c.remedy)
         for c in CHECKS)
     return RuntimeReport(results=results)
+
+
+def plugin_staleness(records: tuple[tuple[str, str], ...] | None,
+                     clone_version: str) -> tuple[bool, str]:
+    """Does the INSTALLED plugin agree with the clone about to run?
+
+    `records` is one (scope, version) pair per install record, or None when there
+    is no install-record file at all. The two absences are reported separately
+    because they have different causes and the same conclusion: there is no
+    installed instruction set that could be stale, so both PASS.
+
+    A sequence — not one record — because installed_plugins.json maps a plugin id
+    to a LIST (user / project / local / managed scopes). Every record is compared
+    and every mismatch is named; `scope` is reported, never interpreted, since
+    nothing here knows which one Claude Code actually loaded (design §6).
+
+    The direction of a mismatch is deliberately not computed: the marketplace is
+    the clone itself, so one remedy resolves it either way, and a number that
+    changes no decision is not reported (design §4)."""
+    if records is None:
+        return True, NO_RECORD_DETAIL
+    if not records:
+        return True, "not installed as a plugin — running from the clone"
+    bad = [(scope, ver) for scope, ver in records if ver != clone_version]
+    if not bad:
+        return True, f"{clone_version} installed"
+    named = ", ".join(f"{scope} scope has {ver}" for scope, ver in bad)
+    return False, (f"{named}; the clone is {clone_version} — the installed "
+                   f"skills are not the ones this code expects. After updating, "
+                   f"restart Claude Code: the update rewrites the cache, it does "
+                   f"not reload the skills a running session already holds.")
