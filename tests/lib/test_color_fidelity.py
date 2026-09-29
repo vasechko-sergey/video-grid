@@ -4,6 +4,7 @@ for the entropy-ratio statistic that now votes)."""
 import pytest
 
 from scripts.lib import color_fidelity as cf
+from scripts.lib import models
 
 
 def test_an_identical_pair_is_zero():
@@ -145,3 +146,66 @@ def test_status_and_region_coexist_when_update_merges_them():
          "region": "subject", "delta_c": 9.0, "delta_h": 9.0,
          "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
     assert out == {"delta_c": -1.25, "delta_h": 0.5}
+
+
+def test_shift_from_report_validates_its_own_output():
+    """The producer is the chokepoint. build_reel's reprocess arm assigns this
+    function's return straight into the list check_reel reads, bypassing
+    ReelEpisode.__post_init__ entirely — so a shape this function can emit but the
+    carrier would refuse is a shape that reaches the consumer unchecked."""
+    good = cf.shift_from_report(
+        {"checks": {"grade_damage": {"region": "crop",
+                                     "delta_c": 1.0, "delta_h": -2.0}}})
+    assert good == {"delta_c": 1.0, "delta_h": -2.0}
+    absent = cf.shift_from_report({})
+    assert absent["status"] == "not-checked" and absent["reason"]
+
+
+def test_validate_chroma_accepts_none_and_both_good_shapes():
+    cf.validate_chroma(None)
+    cf.validate_chroma({"delta_c": 0.0, "delta_h": 0.0})
+    cf.validate_chroma({"status": "not-checked", "reason": "why"})
+
+
+@pytest.mark.parametrize("bad,says", [
+    ([], "must be a reading"),
+    ({"status": "not-checked"}, "non-empty 'reason'"),
+    ({"status": "not-checked", "reason": ""}, "non-empty 'reason'"),
+    ({"delta_c": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+    ({"delta_c": True, "delta_h": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+])
+def test_validate_chroma_refuses_each_bad_shape(bad, says):
+    with pytest.raises(ValueError, match=says):
+        cf.validate_chroma(bad)
+
+
+def test_the_carrier_and_the_producer_share_one_validator(monkeypatch):
+    """Not 'both validate' — both call the SAME function. Two validators that
+    agree today are two that can disagree tomorrow, which is the shape this slice
+    exists to remove: a rule kept by whoever remembers to keep it."""
+    seen = []
+    monkeypatch.setattr(cf, "validate_chroma",
+                        lambda c: seen.append(c))
+    models.ReelEpisode(manifest={}, clip="c.mp4",
+                       chroma={"delta_c": 1.0, "delta_h": 2.0})
+    cf.shift_from_report(
+        {"checks": {"grade_damage": {"region": "crop",
+                                     "delta_c": 3.0, "delta_h": 4.0}}})
+    assert seen == [{"delta_c": 1.0, "delta_h": 2.0},
+                    {"delta_c": 3.0, "delta_h": 4.0}]
+
+
+def test_shift_from_report_refuses_a_shape_the_carrier_would_refuse():
+    """The behavioural half of the chokepoint claim, beside the spy test above.
+
+    That test proves both callers reach the SAME validator; it cannot see whether
+    the producer lets the refusal OUT, because its stand-in never raises — so a
+    producer that caught and discarded the ValueError would leave it green while
+    the very shape this slice exists to stop reached check_reel. This drives the
+    real validator with a shape `_shift` genuinely emits: a `crop` block is copied
+    through untouched, so a null delta (say, a report read back from JSON) comes out
+    the other side as a reading with no number in it, and must stop here."""
+    report = {"checks": {"grade_damage": {"region": "crop",
+                                          "delta_c": None, "delta_h": 1.0}}}
+    with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
+        cf.shift_from_report(report)
