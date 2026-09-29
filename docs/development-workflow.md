@@ -126,8 +126,16 @@ exactly that way.
 - **Commit per task step** exactly as the plan specifies; the commit message says
   *why*. Co-author trailer:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- After finishing a task: tick its checkboxes in the plan and update
-  [build-status.md](./build-status.md); commit both.
+- After finishing a task: update [build-status.md](./build-status.md) and commit
+  it with the task's own code.
+- A **design** is corrected in place when the code moves under it. A **plan** is
+  the record of what was *planned*, and is not amended after its slice ships —
+  what was *done* is carried by that slice's per-task commits. (Until 2026-09-29
+  this file also asked for the plan's checkboxes to be ticked as each task
+  landed. Measured across 91 plans: 51 of 51 before 2026-08-06 complied and 10 of
+  40 after, because execution moved to subagents who are handed a plan as a
+  frozen brief and correctly decline to edit it. Two rules asked for opposite
+  treatment of one file; the unwritten one won, so it is the one written down.)
 
 ## Versioning
 

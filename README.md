@@ -74,7 +74,7 @@ Layout: engine code and CLIs in `scripts/` (run as modules: `bin/vg scripts.X �
 or `.venv/bin/python -m scripts.X` from the repo root); the interactive/editorial
 judgment in `skills/*/SKILL.md`; typed wire-contracts and config-specs in
 `scripts/lib/`. New work is design → plan → subagent-driven TDD; every change
-keeps the design spec, the plan checkboxes, and `docs/build-status.md` in sync.
+keeps the design spec and `docs/build-status.md` in sync.
 
 ```bash
 .venv/bin/python -m pytest -q            # the whole suite

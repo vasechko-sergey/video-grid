@@ -1,8 +1,8 @@
 # Build Status
 
 What is built, what is next, and the external assets the build depends on.
-**Update after every task** — tick the plan's checkboxes and add/adjust the
-relevant bullet here in the same commit.
+**Update after every task** — add/adjust the relevant bullet here in the same
+commit.
 
 _Last updated: 2026-09-26._
 

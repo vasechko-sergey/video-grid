@@ -203,8 +203,10 @@ a crash — so they must always be in context.
 - The design spec + core plan are the source of truth; **spec and plan stay in
   sync** — if they drift, fix **both**, not one.
 - Current status and the next action live in
-  [docs/build-status.md](docs/build-status.md); update it (and the plan's
-  checkboxes) in the same commit after every task.
+  [docs/build-status.md](docs/build-status.md); update it in the same commit
+  after every task. A plan is **not** amended after its slice ships — see
+  [development-workflow.md](docs/development-workflow.md) for why that rule
+  replaced the checkbox one.
 - How new work is built (brainstorm → plan → subagent-driven TDD, two-stage
   review) is in [development-workflow.md](docs/development-workflow.md).
 
