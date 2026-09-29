@@ -237,7 +237,7 @@ holds the `ReelEpisode.chroma` refusal tests — find it with
 - [ ] **Step 6: Run the whole suite**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q` in the background.
-Expected: fully green. Record the exact counts.
+Expected: exactly one failure, `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`, for the reason in Global Constraints — the user has not run the plugin update. Any other failure is this slice's. Record the exact counts.
 
 - [ ] **Step 7: Commit**
 
@@ -442,7 +442,7 @@ measurement and §0.4's two-sites-cannot-host finding.
 - [ ] **Step 5: Run the whole suite**
 
 Run: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q` in the background.
-Expected: fully green. Report exact counts.
+Expected: exactly one failure, `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`, for the reason in Global Constraints. Any other failure is this slice's. Report exact counts.
 
 - [ ] **Step 6: Commit**
 
