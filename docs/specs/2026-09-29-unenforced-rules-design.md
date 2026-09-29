@@ -50,11 +50,18 @@ No plan is dated 2026-08-20 to 08-24. The first three rows are the 51 plans that
 when `878a713` landed: the 27 it swept are the gap between their 24 fully ticked by
 their own slices and the 51 at HEAD.
 
+The five date bands are the re-review's cut, taken as given: this design did not fit
+them to the rates. The third edge is the sweep commit's date, so that the end-state
+column separates the plans it swept, and the fourth falls in the only gap in the plan
+dates (which is why the last band starts on 2026-08-25); no reason is recorded for the
+first two. Equal-count quintiles, which have no edges to choose, give the same shape
+(56, 50, 37, 28, 17 %, below).
+
 The boundary at 2026-08-06 is an artefact of the retracted instrument. Ten plans either
 side of it went from 2 of 10 fully ticked to 5 of 10, up, and equal-sized quintiles of
 the 91 (56, 50, 37, 28, 17 %) fall as steadily as the date bands do; the pooled 47 →
-25 % this design first reported was a decline spread across the period, read as a step
-at that date. The decline is real (Cochran–Armitage across the bands z = −2.72,
+25 % this design first reported was a decline visible on both sides of that date, read
+as a step at it. The decline is real (Cochran–Armitage across the bands z = −2.72,
 p = 0.006; Spearman ρ = −0.31 against plan date, p = 0.003), but 91 plans cannot say
 whether it was gradual or sudden: the five strongest single splits lie between
 2026-07-28 and 2026-08-17 (each p ≈ 0.002; the best, 2026-08-14, is 49 % → 16 %),
@@ -80,14 +87,14 @@ So the rule did not hold for fifty-one plans and then collapse. It was never rel
 honoured: the first plan its own slice did not fully tick appears on 2026-07-11, the
 eighth by birth (first commit, `music-spine`) and the seventh in filename order
 (`extract-spine`), and ticked and unticked plans interleave from there. Deleting the
-rule removes an instruction this repo has been failing for its whole life, not one it
-recently lost.
+rule removes an instruction this repo has never followed reliably — about half the
+plans at best, one in seven lately.
 
 (The 91 are the plans that had landed. A re-run over `docs/plans/` today finds 92
 files: this slice's own plan, `2026-09-29-unenforced-rules.md`, committed four
 minutes after this design, has no landing to measure and is left out.)
 
-### §0.2 The rule it lost to is not written down anywhere
+### §0.2 The rule the repo already acts on is not written down anywhere
 
 `grep -i 'historical record\|plans are history\|frozen'` across `CLAUDE.md` and
 `docs/development-workflow.md` returns nothing about plans. Yet this repo
@@ -100,11 +107,12 @@ real, load-bearing and unwritten. One commit is the exception, and it is the one
 but only the state of their checkboxes — 955 lines, no other change.
 
 So the collision is: a **written** rule that says amend the plan as you go, and
-an **unwritten** rule that says a plan is not amended. The unwritten one won,
-silently. One explanation for the written rule's failure was checked and refuted: that
-execution moved to subagents, who are handed a plan as a frozen brief, shortly before
-compliance fell. It had not moved. `docs/plans/2026-07-08-engine-dataclass-hardening.md:5`
-and `2026-07-09-project-init.md:5` already record "strict subagent-driven-development",
+an **unwritten** rule that says a plan is not amended. The repo already acts on the
+unwritten one, silently. One explanation for the written rule's failure was checked
+and refuted: that execution moved to subagents, who are handed a plan as a frozen
+brief, shortly before compliance fell. It had not moved.
+`docs/plans/2026-07-08-engine-dataclass-hardening.md:5` and
+`2026-07-09-project-init.md:5` already record "strict subagent-driven-development",
 the workflow doc's first version (`917c114`, 2026-07-09) already lists a fresh
 implementer subagent per task, and every plan header (92 of 92) names that skill from
 the first plan on, so it cannot explain a change. Whether it explains the *level* of
@@ -224,7 +232,7 @@ which one a given rule earns:
 2. **Machine-check it** — the rule stays a rule and a test holds it. (The four
    path conventions, the skill-description pins, the registry partition.)
 3. **Delete it** — when the thing it asks for is already carried elsewhere, or
-   when it contradicts a rule that beat it. (The checkbox sentence.)
+   when it contradicts a rule the repo already acts on. (The checkbox sentence.)
 
 A fourth option — restate it as a comment and hope harder — is the one this slice
 refuses for every row it closes (§0.5). It does not refuse it everywhere: the two
@@ -262,7 +270,7 @@ independently produced mappings whose result survives as a mapping and is later
 tested for a key's presence* — so a future reader can re-run it rather than
 re-derive it.
 
-### §2.3 The checkboxes: delete the sentence, write down the rule that won (remedy 3)
+### §2.3 The checkboxes: delete the sentence, write down the rule the repo already acts on (remedy 3)
 
 Remove the checkbox clause from `docs/development-workflow.md:129` and
 `CLAUDE.md:207` — and, per the §0.2 correction, from `docs/build-status.md:4`
@@ -284,19 +292,21 @@ test they are hopes with a good reputation, and this slice leaves them so.
 The first is already measured, on its most visible instance and before this
 section writes it down: the Status line. Of the 42 shipped designs that carry
 one (this slice's own design, still in flight, and the umbrella spec, which has no
-ship event of its own, are left out), 37 do not say their slice shipped — 35 still
-read as design-stage, `2026-07-20-stabilize-apply-design.md:5` saying "design
-approved, not yet built" for a shipped, fully ticked slice, and 2 say "landing" —
-and 5 say built or landed. The Status line is one part of the procedure, not all of
-it. The second procedure is not measured.
+same-topic plan, are left out), read whole, up to the next bold field label, 35 do
+not say their slice shipped: 8 assert a pre-ship state that is now false
+(`2026-07-20-stabilize-apply-design.md:5` says "design approved, not yet built" for a
+shipped, fully ticked slice; the others say "ready for a plan", "plan next",
+"pending … plan", "pre-implementation") and 27 carry only an authoring-time label
+("design", "design approved <date>"). 7 say built, landed or shipped. The Status line
+is one part of the procedure, not all of it. The second procedure is not measured.
 
-**Not machine-checked, deliberately.** A check on the checkbox rule would have to
-assert that no commit touches a plan outside its authoring slice, which is brittle
-(a typo fix, a dead link, a factual correction to a pointer) and would fire on
-legitimate edits, and what the rule asked for is carried by the per-task commits.
-So the checkbox rule earns remedy 3, not remedy 2. The two procedures that remain
-earn neither here: they are stated once, in prose, and the number above is where
-the first of them stood before anyone wrote it down.
+**Not machine-checked, deliberately.** The checkbox rule earns remedy 3, not remedy
+2, on one ground: what it asked for is carried by the per-task commits. (A check on
+the not-amended rule would have to assert that no commit touches a plan outside its
+authoring slice, which is brittle: a typo fix, a dead link or a factual correction
+to a pointer would all fire it.) The two procedures that remain earn neither here:
+they are stated once, in prose, and the number above is where the first of them
+stood before anyone wrote it down.
 
 ---
 
@@ -331,10 +341,11 @@ the first of them stood before anyone wrote it down.
 - **What survives the deletion is not immune (§2.3).** One description and two
   procedures: the description cannot decay, the procedures can, and nothing checks
   either. Design correction is the measured one, on its Status-line instance and
-  before this design writes it down: 37 of the 42 shipped designs that carry a Status
-  line do not say their slice shipped (35 design-stage wording, 2 "landing"). The
-  Status line is one part of the procedure, not all of it. Spec-and-plan sync is
-  unmeasured. This slice adds no check to either.
+  before this design writes it down: of the 42 shipped designs that carry a Status
+  line, 35 do not say their slice shipped (8 assert a pre-ship state that is now
+  false, 27 carry only an authoring-time label) and 7 do. The Status line is one part
+  of the procedure, not all of it. Spec-and-plan sync is unmeasured. This slice adds
+  no check to either.
 - **§0.1's first instrument measured the wrong thing, and its replacement repeated
   the error.** It counted `[x]` at HEAD and bucketed plans by filename date, which is
   the end state, and it mistook one retroactive commit (`878a713`) for a behavioural
@@ -366,3 +377,17 @@ To the backlog:
 - **P3 — the merge predicate has no machine check.** §2.2 records it in prose so
   it can be re-run by hand. Whether an AST check for it is worth its false
   positives is unmeasured; today there would be zero true positives to find.
+- **P3 — designs are not moved off their authoring-time Status when a slice ships.**
+  §2.3 measures it: of 42 shipped designs that carry a Status statement (44 specs do
+  in their first 40 lines; the umbrella spec has no same-topic plan, and this slice's
+  own design was in flight), 35 do not say their slice shipped and 7 do. Of the 35, 8
+  assert a pre-ship state that is now false ("not yet built", "ready for a plan",
+  "plan next", "pending … plan", "pre-implementation") and 27 carry only an
+  authoring-time label ("design", "design approved <date>"); counting only the bold
+  `**Status:**` form it is 33 of 40. The classifier reads the whole Status paragraph,
+  from `Status:` to the next bold field label or blank line, and not the first line
+  alone: `path-quality` and `track-stitch` open "landing the parked hot-patch" and end
+  "landed <date>". Whether to machine-check it (a Status that still reads
+  design-stage once a same-topic plan has shipped) or to flip it in the slice's own
+  version-bump commit is open. This design's own Status is flipped by Task 3, the
+  first application.

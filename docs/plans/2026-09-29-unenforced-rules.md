@@ -59,8 +59,9 @@ gains the convention that actually governs, stated once, and `CLAUDE.md` points 
 | `scripts/lib/color_fidelity.py` | **Modify.** New module-level `validate_chroma(c)`; `shift_from_report` calls it on its return. Stays a leaf — imports only `statistics` and `colordiff`. |
 | `scripts/lib/models.py` | **Modify.** `ReelEpisode.__post_init__`'s three inline `chroma` refusals become one call to `color_fidelity.validate_chroma`. `models` already depends on four `lib` leaves; this is the fifth. |
 | `tests/lib/test_color_fidelity.py` | **Modify.** Tests that the producer's own output is validated, and that the validator is the same one the dataclass uses. |
-| `docs/development-workflow.md`, `CLAUDE.md` | **Modify.** The checkbox clause out, the governing convention in. |
-| `docs/backlog.md`, `docs/backlog-closed.md`, `docs/build-status.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json` | **Modify.** Three closures, one P1 promotion, one P3 deferral, 0.14.1. |
+| `docs/development-workflow.md`, `CLAUDE.md` | **Modify.** The checkbox clause out, the governing convention in (stated once, in the workflow doc; `CLAUDE.md` points at it). |
+| `docs/build-status.md` (header), `README.md` (Develop section) | **Modify.** The two further copies of the checkbox instruction, found by Task 2 Step 3's whole-tree search. |
+| `docs/backlog.md`, `docs/backlog-closed.md`, `docs/build-status.md`, `CLAUDE.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json`, `docs/specs/2026-09-29-unenforced-rules-design.md` (its Status line) | **Modify.** Three closures, one P1 promotion, two P3 deferrals, 0.14.1, and the design's own Status flipped. |
 
 ---
 
@@ -249,7 +250,7 @@ git commit -m "fix(chroma): one validator for both inlets, at the producer"
 
 ---
 
-## Task 2: Delete a written rule, write down the one that beat it
+## Task 2: Delete a written rule, write down the one the repo already acts on
 
 **Files:**
 - Modify: `docs/development-workflow.md`
@@ -402,7 +403,8 @@ git commit -m "docs: a plan is not amended after its slice ships"
 
 **Files:**
 - Modify: `docs/backlog.md`, `docs/backlog-closed.md`, `docs/build-status.md`,
-  `CHANGELOG.md`, `.claude-plugin/plugin.json`
+  `CLAUDE.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json`
+- Modify: `docs/specs/2026-09-29-unenforced-rules-design.md` (its Status line only)
 - Test: whichever file a GREEN battery row forces
 
 **Interfaces:** consumes Tasks 1–2.
@@ -424,7 +426,7 @@ next row.
 | 7 | `ReelEpisode.__post_init__`: drop the `validate_chroma` call | whichever file `grep -rln 'ReelEpisode.chroma' tests/` names, plus `tests/lib/test_color_fidelity.py` | RED |
 | 8 | `models.py`: `__post_init__` re-inlines a *copy* of the refusals instead of calling the shared function | `tests/lib/test_color_fidelity.py` | RED via `test_the_carrier_and_the_producer_share_one_validator` — the point is one validator, not two that agree |
 | 9 | `validate_chroma`: reword the first refusal's message | `tests/` (run the two files the message is asserted in; find them with `grep -rln 'must be a reading' tests/`) | RED |
-| 10 | `docs/development-workflow.md`: restore the deleted checkbox bullet | — | **expected GREEN, and that is the finding.** Nothing machine-checks either version of this rule, which is precisely why it was never reliably honoured; record the non-discrimination and do NOT manufacture a check (design §2.3 rules that this rule earns deletion, not a test). |
+| 10 | `docs/development-workflow.md`: restore the deleted checkbox bullet | — | **expected GREEN, and that is the finding.** Nothing machine-checks either version of this rule, in either direction; record the non-discrimination and do NOT manufacture a check (design §2.3 rules that this rule earns deletion, not a test). |
 
 Every GREEN that is not row 10 is a coverage hole: close it with a test confirmed
 red under the mutation and green without, and say so in the report.
@@ -461,12 +463,29 @@ Add to the top of `CHANGELOG.md`, under the intro paragraphs (heading shape
   planned; what was *done* is carried by each slice's per-task commits.
 ```
 
+Then flip this design's own Status line, here, where the slice ships. The design
+measures that a design's Status is not moved off its authoring-time wording when the
+slice ships (35 of 42, §2.3); left alone it would join the 35. In
+`docs/specs/2026-09-29-unenforced-rules-design.md`, replace:
+
+```markdown
+**Status:** design. Version 0.14.1 (PATCH — one extracted validator, four documents
+corrected, no contract change).
+```
+
+with:
+
+```markdown
+**Status:** shipped 2026-09-29 as 0.14.1 (PATCH — one extracted validator, four documents
+corrected, no contract change).
+```
+
 ### Step 4: Sync the docs
 
 **`docs/backlog.md`** — remove three P2 rows: the `check_reel.run(chroma=…)`
-validator row, the two-producer-merges row, and the plan-checkbox row. Add one
-P3 bullet under **Docs / test scaffolding** (`·`-terminated unless it is the
-group's last):
+validator row, the two-producer-merges row, and the plan-checkbox row. Add two
+P3 bullets under **Docs / test scaffolding** (`·`-terminated unless it is the
+group's last). The first:
 
 ```markdown
 the two-producer merge predicate has no machine check — a merge of two
@@ -476,6 +495,10 @@ tested for a key's presence. The 2026-09-21 sweep found three sites by hand and
 check would find zero true positives today; whether it is worth its false
 positives is unmeasured (unenforced-rules §2.2/§5)
 ```
+
+The second is the stale-Status row, filed from design §5's second P3 bullet in the
+group's format with its figure (35 of 42), its population and its classifier kept:
+it is the only place the queue records them.
 
 **Promote R2.4 to P1**, replacing the "P1 is empty" paragraph with a table
 carrying one row: the twelve unreachable thresholds. Its text must carry the
@@ -520,7 +543,7 @@ Expected: exactly one failure, `tests/integration/test_verify_runtime.py::test_r
 - [ ] **Step 6: Commit**
 
 ```bash
-git add .claude-plugin/plugin.json CHANGELOG.md CLAUDE.md docs/backlog.md docs/backlog-closed.md docs/build-status.md
+git add .claude-plugin/plugin.json CHANGELOG.md CLAUDE.md docs/backlog.md docs/backlog-closed.md docs/build-status.md docs/specs/2026-09-29-unenforced-rules-design.md
 git commit -m "docs: close three unenforced-rule rows, promote the threshold-surface row to P1, bump to 0.14.1"
 ```
 
@@ -559,5 +582,7 @@ deletion buys only the removal of a contradiction. What survives is one descript
 and two procedures — a design is corrected in place when the code moves under it;
 spec and plan are kept in sync until the slice ships — and this plan checks
 neither. The first is already measured, before it is written down, on its
-Status-line instance: 37 of the 42 shipped designs that carry one do not say their
-slice shipped (design §2.3).
+Status-line instance: of 42 shipped designs, 35 do not say their slice shipped (8
+assert a pre-ship state that is now false, 27 carry only an authoring-time label)
+and 7 do (design §2.3). Task 3 Step 3 flips this design's own line so that it
+does not join the 35.
