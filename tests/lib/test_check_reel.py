@@ -1053,10 +1053,13 @@ def test_a_clean_reading_still_reaches_per_episode():
 def test_a_reprocessed_episodes_reading_reaches_the_reel_check_without_a_reelepisode(monkeypatch, tmp_path):
     """build_reel builds `chroma` as a plain list and overwrites one entry with
     shift_from_report's output before handing it to check_reel.run — so one of the
-    reader's two inlets never touches ReelEpisode.__post_init__ (design §0.3). The
-    reader's comment claims that validator as its guarantee; this drives the real
-    run() wiring with exactly the value that path produces, so the inlet the
-    validator does not cover is covered by a test instead.
+    reader's two inlets never touches ReelEpisode.__post_init__ (design 2026-09-21
+    §0.3). Since design 2026-09-29 §2.1 that inlet is gated anyway, at the
+    producer: shift_from_report validates what it returns through the same
+    color_fidelity.validate_chroma the carrier calls. This drives the real run()
+    wiring with exactly the value that path produces, so the seam itself — a
+    producer's output reaching the reader with no carrier between them — is pinned
+    end to end, not only each half.
 
     Not a build_reel integration test: it pins the shape contract at the seam
     build_reel writes to, not build_reel's own indexing. The driver's wiring is

@@ -246,11 +246,18 @@ procedures the checkbox deletion leaves are restated in prose and left unchecked
 ### §2.1 Chroma: one validator, both inlets (remedy 1)
 
 Extract `ReelEpisode.__post_init__`'s three `chroma` refusals into a module-level
-`models.validate_chroma(c) -> None`, raising the same `ValueError`s with the same
-messages. `__post_init__` calls it. `color_fidelity.shift_from_report` calls it on
-its own return value, which covers **both** fillers — `edl_to_reel`'s phase 1 and
+`color_fidelity.validate_chroma(c) -> None`, raising the same `ValueError`s with the
+same messages. `__post_init__` calls it. `color_fidelity.shift_from_report` calls it
+on its own return value, which covers **both** fillers — `edl_to_reel`'s phase 1 and
 `build_reel`'s reprocess arm — because both go through that one function, and the
 JSON route continues to go through `__post_init__`.
+
+The function lives in `color_fidelity`, not in `models` (this section first named
+`models.validate_chroma`; the plan placed it where the import can only run one way):
+`models → color_fidelity`, never the reverse. `color_fidelity` is a leaf that imports
+only `statistics` and `colordiff`, and a validator in `models` would have made the
+sensor depend on the contract module, so a later `models` import inside it would be
+a cycle.
 
 No message changes: `check_reel` and the mutation battery assert on their text.
 
