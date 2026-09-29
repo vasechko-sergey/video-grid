@@ -148,11 +148,17 @@ def test_status_and_region_coexist_when_update_merges_them():
     assert out == {"delta_c": -1.25, "delta_h": 0.5}
 
 
-def test_shift_from_report_validates_its_own_output():
+def test_shift_from_report_emits_the_two_shapes_the_carrier_accepts():
     """The producer is the chokepoint. build_reel's reprocess arm assigns this
     function's return straight into the list check_reel reads, bypassing
     ReelEpisode.__post_init__ entirely — so a shape this function can emit but the
-    carrier would refuse is a shape that reaches the consumer unchecked."""
+    carrier would refuse is a shape that reaches the consumer unchecked.
+
+    This test holds only what the producer EMITS for good input: a reading, and a
+    named absence with a reason. It cannot fail if the validation is removed — that
+    is held by `test_the_carrier_and_the_producer_share_one_validator` and
+    `test_shift_from_report_refuses_a_shape_the_carrier_would_refuse`, not by this
+    one."""
     good = cf.shift_from_report(
         {"checks": {"grade_damage": {"region": "crop",
                                      "delta_c": 1.0, "delta_h": -2.0}}})
@@ -203,9 +209,54 @@ def test_shift_from_report_refuses_a_shape_the_carrier_would_refuse():
     producer that caught and discarded the ValueError would leave it green while
     the very shape this slice exists to stop reached check_reel. This drives the
     real validator with a shape `_shift` genuinely emits: a `crop` block is copied
-    through untouched, so a null delta (say, a report read back from JSON) comes out
-    the other side as a reading with no number in it, and must stop here."""
+    through untouched, so a null delta comes out the other side as a reading with
+    no number in it, and must stop here. The `None` is constructed by this test,
+    not observed in production, where real readings are floats: it is the right
+    SHAPE to test (a value `_shift` passes through untouched), not a claim that any
+    producer emits it."""
     report = {"checks": {"grade_damage": {"region": "crop",
                                           "delta_c": None, "delta_h": 1.0}}}
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         cf.shift_from_report(report)
+
+
+_CHROMA_REFUSALS = (
+    "ReelEpisode.chroma must be a reading "
+    "{delta_c, delta_h} or an absence {status, reason}, "
+    "got list — build it with "
+    "color_fidelity.shift_from_report(report)",
+    "ReelEpisode.chroma: a not-checked chroma must carry a "
+    "non-empty 'reason' naming the absence, got {'status': 'not-checked'}",
+    "ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
+    "(signed CIEDE2000 components), got {'delta_c': 1.0} — build it with "
+    "color_fidelity.shift_from_report(report)",
+)
+
+
+@pytest.mark.parametrize("bad,want", list(zip(
+    ([], {"status": "not-checked"}, {"delta_c": 1.0}), _CHROMA_REFUSALS,
+    strict=True)))
+def test_each_refusal_message_is_pinned_whole_not_by_fragment(bad, want):
+    """`validate_chroma`'s docstring used to say these messages were asserted
+    verbatim. That was false: every other assertion matches a fragment, so the
+    `— build it with …` tail could be rewritten to name a module that does not
+    exist and the whole non-integration suite (3,733 tests, measured 2026-09-29)
+    stayed green. That is this slice's own subject appearing in its own diff — a
+    rule stated in a comment with nothing holding it — so the claim is made true
+    rather than withdrawn.
+
+    The expected strings are what the refusals printed when this was written
+    (identical to the pre-move `ReelEpisode.__post_init__`'s output), copied from
+    that output rather than typed from the source."""
+    with pytest.raises(ValueError) as e:
+        cf.validate_chroma(bad)
+    assert str(e.value) == want
+
+
+def test_the_validators_docstring_names_the_test_that_pins_its_messages():
+    """`validate_chroma`'s docstring points at the test that pins its messages, and
+    a pointer is a claim too: rename that test and the docstring names nothing.
+    Reading the name off the function object makes that rename fail here instead of
+    rotting quietly."""
+    pin = test_each_refusal_message_is_pinned_whole_not_by_fragment
+    assert pin.__name__ in cf.validate_chroma.__doc__

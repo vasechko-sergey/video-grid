@@ -77,7 +77,9 @@ def validate_chroma(c: dict | None) -> None:
     2026-09-29 §0.3/§2.1).
 
     Messages name `ReelEpisode.chroma` because that is the contract being
-    enforced, not the module enforcing it; existing tests assert them verbatim."""
+    enforced, not the module enforcing it. They are pinned whole by
+    `test_each_refusal_message_is_pinned_whole_not_by_fragment`; they are part of
+    the contract, not commentary."""
     if c is None:
         return
     if not isinstance(c, dict):
