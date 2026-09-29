@@ -165,16 +165,18 @@ _Last updated: 2026-09-29._
   (below), and four P3 rows — the merge predicate has no machine check, 35 of 42
   designs are not moved off their authoring-time Status, no check that a `test_…`
   name cited in `scripts/` resolves (26 names, all resolving today), and
-  `build-status.md` is touched by 16 of 208 code-bearing commits since 2026-09-01.
+  `build-status.md` is touched by 16 of 209 code-bearing commits since 2026-09-01.
 
   **Two figures re-derived rather than transcribed, and one row pinned by
   running.** The Task 1 re-review's hand scan, which found 13 test-name pointers
   resolving and none dangling, is 13 citations of 12 test functions, and another
   14 cited names are test modules — which a generic check must resolve as files,
-  not defs. The "16 of 208" that Task 2's review reported reproduces only under one
+  not defs. The "16 of 209" (first reported as 208) reproduces only under one
   definition of code-bearing (`scripts/`, `tests/`, `skills/`, `references/` or
-  `bin/`); counting `scripts/` and `tests/` alone it is 12 of 193, and `scripts/`
-  alone 4 of 123. And the P2 weights row names its two tests because the unit tier
+  `bin/`); counting `scripts/` and `tests/` alone it is 12 of 194, and `scripts/`
+  alone 4 of 124, all three at `464d7ef` with the boundary spelled out — the first
+  denominators, 208/193/123, were themselves a wall-clock artifact (the fix wave,
+  below). And the P2 weights row names its two tests because the unit tier
   was run on a `git archive` export — which has no gitignored weights — with the
   network denied at the process level, so that nothing was fetched: 5 failed, 3732
   passed, 306 deselected, of which two are
@@ -201,8 +203,11 @@ _Last updated: 2026-09-29._
   IDs of `test_each_refusal_message_is_pinned_whole_not_by_fragment` are 256, 220 and
   273 characters long, because each embeds its message; `ids=[...]` would shorten
   them. Task 2's M-3 and M-4 landed as the backlog rows for the 35-of-42 Status defect
-  and the 16-of-208 `build-status.md` rate; its M-5 was absorbed into design §0.2,
-  above.
+  and the 16-of-209 `build-status.md` rate; its M-5 was absorbed into design §0.2,
+  above. Task 1's M-2 and M-3, the two with an actionable remedy, are now P3 rows in
+  [backlog.md](backlog.md) under Reel / QC / delivery (whole-branch review, Minor 5);
+  this paragraph stays as the record of when they were found, and the node-ID
+  cosmetic is recorded here only.
 
   **Suite: 4046 passed, 1 skipped, 1 failed** (444 s, whole suite, after fix round 1;
   4043 at the version-bump commit `b512678`, and 4041 at the Task 2 review) — the
@@ -217,6 +222,64 @@ _Last updated: 2026-09-29._
   and restarts Claude Code — the remedy is nobody else's to run. Every other
   check the probe makes (deps, ffmpeg, drawtext, vidstab, font, weights, demucs,
   reid) passes on this machine.
+
+  **Whole-branch review and its one fix wave** (base `03c484a`). Approved for merge:
+  0 Critical, 0 Important, 5 Minor, all documentation accuracy, plus one observation;
+  no production code touched. Every figure below was re-derived, not transcribed.
+
+  1. *The design named a guard that is not one.* §2.1 said `check_reel` and the
+     mutation battery assert on the validator's messages. An AST scan of the 257 `.py`
+     files under `tests/` and `scripts/` at `1c21655` finds their text asserted in
+     two files — `tests/lib/test_models.py` (7 fragment matches) and
+     `tests/lib/test_color_fidelity.py` (8 fragment matches and the 3 whole-message
+     pins) — and in neither `scripts/check_reel.py` nor `tests/lib/test_check_reel.py`:
+     the validator docstring's false pointer, surviving one file over.
+  2. *The design called itself in flight.* §2.3's classifier, rebuilt from the
+     design's own description (every spec with a Status statement in its first 40
+     lines, read to the next bold label or blank line), reads 35 of 42 as of `464d7ef`
+     and 35 of 43 at `1c21655`, where this design's own Status, flipped in `b512678`,
+     says shipped; the 8 pre-ship and 27 authoring-label arms do not move. It also
+     reproduces both earlier answers as sensitivities — 37 reading only the first
+     physical line, 34 without the bold-label cut — so it is the instrument the
+     earlier reviews used.
+  3. *The denominators were a clock.* The backlog row said 208/193/123 and the review
+     measured 206/191/121; neither was a miscount. A bare `--since=2026-09-01`
+     resolves to that date at the wall-clock time the command runs (`git rev-parse
+     --since=2026-09-01` prints the instant), and sweeping the boundary reproduces
+     both: 208/193/123 when it falls at about 06:00 to 08:00 UTC, 206/191/121 at about
+     09:00. With the boundary spelled out, every whole-day reading — UTC, IST and WITA
+     midnight, and the author-date calendar day — gives 209/194/124 at `464d7ef`, and
+     the numerators (16, 12, 4) never move. The backlog row now carries the exact
+     commands, and this entry's own mentions of the rate are corrected in place.
+  4. *The band series is stated as a sentence eleven times in seven files*, five of
+     them in the frozen plan, which the rule this slice wrote leaves uncorrectable. It
+     is not deduplicated (judged not worth a round); §0.1 now names the design as the
+     single source and lists where the copies live, so a fifth correction knows its
+     blast radius before it starts.
+  5. *Two actionable remedies were in this log, not the queue.* Task 1's M-2 and M-3
+     are now two P3 rows under Reel / QC / delivery, each with its evidence. M-2 was
+     re-run on `git archive` exports of `1c21655` (weights, ffmpeg config and venv
+     linked in): with `build_reel.py:255` wrapped in `try/except ValueError: pass` the
+     whole suite reads 4045 passed, 1 skipped, 2 failed — the sanctioned
+     `test_real_runtime_is_ready` and `test_engine_stamp_on_this_repo_reports_a_sha`,
+     which needs the `.git` an export lacks, both failing identically on the
+     unmutated export — so the swallow turns nothing red; the row's remedy test is
+     GREEN on the unmutated export and RED (`DID NOT RAISE`) under the swallow. M-3's
+     message is quoted from a real call, and its `add_note` remedy was checked to
+     leave `str(e)` byte-identical.
+
+  The observation: `development-workflow.md` said a design is corrected in place "when
+  the code moves under it", narrower than this slice's own conduct — after the version
+  bump it corrected §0.1 for a re-derived measurement, not a code move. It now says a
+  design is corrected in place when what it asserts stops being true, and design §2.3's
+  restatement of that trigger was brought into step.
+
+  **Suite after the fix wave: 4046 passed, 1 skipped, 1 failed** (422 s, whole suite) —
+  unchanged from fix round 1, as a wave that touches no code and no test must leave it.
+  The one failure is the same sanctioned `test_real_runtime_is_ready`, still reading
+  "the clone is 0.14.1"; the five contract files (`test_skills_contract`,
+  `test_tool_index`, `test_plugin_manifests`, `test_skill_convention`, `test_cli_help`)
+  pass, 197 tests.
 
 - **Plugin staleness — the installed instructions against the running code
   (2026-09-26, 0.14.0)** — design

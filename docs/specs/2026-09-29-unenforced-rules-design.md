@@ -57,6 +57,15 @@ plan dates (five days; the next longest is three), which is why the last band st
 on 2026-08-25; no reason is recorded for the first two. Equal-count quintiles, which
 have no edges to choose, give the same shape (56, 50, 37, 28, 17 %, below).
 
+This table is the single source of the five percentages; at `1c21655` they are also
+stated as a sentence eleven times in seven files — §1 below, `CHANGELOG.md`,
+`CLAUDE.md` (this design's registry row), `docs/backlog-closed.md`,
+`docs/build-status.md`, `docs/development-workflow.md`, and five times in this
+slice's plan, which is not amended once shipped (§0.2) — so correcting the series
+here means correcting it in six other places and leaving the plan's five to disagree;
+`git grep -c -e '37 and 14 [%]'` lists them (the bracket keeps this sentence out of
+its own count).
+
 The boundary at 2026-08-06 is an artefact of the retracted instrument. Ten plans either
 side of it went from 2 of 10 fully ticked to 5 of 10, up, and equal-sized quintiles of
 the 91 (56, 50, 37, 28, 17 %) fall as steadily as the date bands do; the pooled 47 →
@@ -283,7 +292,13 @@ only `statistics` and `colordiff`, and a validator in `models` would have made t
 sensor depend on the contract module, so a later `models` import inside it would be
 a cycle.
 
-No message changes: `check_reel` and the mutation battery assert on their text.
+No message changes. Their text is asserted in `tests/lib/test_models.py` (seven
+fragment matches, through `ReelEpisode(...)`) and `tests/lib/test_color_fidelity.py`
+(eight fragment matches and one whole-message pin per refusal), counted at `1c21655`.
+This section first said `check_reel` and the mutation battery assert on it; neither
+`scripts/check_reel.py` nor `tests/lib/test_check_reel.py` asserts on any of the
+three. It is the false pointer the validator's docstring carried ("existing tests
+assert them verbatim"), surviving one file over.
 
 This is remedy 1 and not remedy 2: after it, a filler that skips the validator has
 to construct the dict some *other* way, which is a visible act rather than a
@@ -315,21 +330,24 @@ This is not surrender, and it is not immunity. Deletion removes a contradiction 
 two rules, one written and one not, asking for opposite treatment of the same
 file — and that is the whole of what it buys. What survives is one description and
 two procedures. The description, what a plan is once its slice has shipped, has
-nothing in it to decay. The procedures, correcting a design in place when the code
-moves under it and keeping spec and plan in sync until the slice ships, are steps
-someone must remember to perform, and neither is machine-checked. By §1's own
+nothing in it to decay. The procedures, correcting a design in place when what it
+asserts stops being true and keeping spec and plan in sync until the slice ships, are
+steps someone must remember to perform, and neither is machine-checked. By §1's own
 test they are hopes with a good reputation, and this slice leaves them so.
 
 The first is already measured, on its most visible instance and before this
-section writes it down: the Status line. Of the 42 shipped designs that carry
-one (this slice's own design, still in flight, and the umbrella spec, which has no
-ship event of its own, are left out), read whole, up to the next bold field label,
-35 do not say their slice shipped: 8 assert a pre-ship state that is now false
-(`2026-07-20-stabilize-apply-design.md:5` says "design approved, not yet built" for a
-shipped, fully ticked slice; the others say "ready for a plan", "plan next",
-"pending … plan", "pre-implementation") and 27 carry only an authoring-time label
-("design", "design approved <date>"). 7 say built, landed or shipped. The Status line
-is one part of the procedure, not all of it. The second procedure is not measured.
+section writes it down: the Status line. As of `464d7ef`, of the 42 shipped designs
+that carry one (the umbrella spec, which has no ship event of its own, and this
+slice's own design, which had not shipped yet, are left out), read whole, up to the
+next bold field label, 35 do not say their slice shipped: 8 assert a pre-ship state
+that is now false (`2026-07-20-stabilize-apply-design.md:5` says "design approved,
+not yet built" for a shipped, fully ticked slice; the others say "ready for a plan",
+"plan next", "pending … plan", "pre-implementation") and 27 carry only an
+authoring-time label ("design", "design approved <date>"). 7 say built, landed or
+shipped. At `1c21655` this design's own Status, flipped in the version-bump commit
+`b512678`, says it shipped, so the same classifier reads 35 of 43: the 35 does not
+move and 8 say built, landed or shipped (§4 and §5 quote the 42). The Status line is
+one part of the procedure, not all of it. The second procedure is not measured.
 
 **Not machine-checked, deliberately.** The checkbox rule earns remedy 3, not remedy
 2, on one ground: what it asked for is carried by the per-task commits. (A check on
@@ -373,10 +391,10 @@ stood before anyone wrote it down.
   procedures: the description cannot decay, the procedures can, and nothing checks
   either. Design correction is the measured one, on its Status-line instance and
   before this design writes it down: of the 42 shipped designs that carry a Status
-  line, 35 do not say their slice shipped (8 assert a pre-ship state that is now
-  false, 27 carry only an authoring-time label) and 7 do. The Status line is one part
-  of the procedure, not all of it. Spec-and-plan sync is unmeasured. This slice adds
-  no check to either.
+  line as of `464d7ef` (§2.3 has the count at `1c21655`), 35 do not say their slice
+  shipped (8 assert a pre-ship state that is now false, 27 carry only an
+  authoring-time label) and 7 do. The Status line is one part of the procedure, not
+  all of it. Spec-and-plan sync is unmeasured. This slice adds no check to either.
 - **§0.1's first instrument measured the wrong thing, and its replacement repeated
   the error.** It counted `[x]` at HEAD and bucketed plans by filename date, which is
   the end state, and it mistook one retroactive commit (`878a713`) for a behavioural
@@ -420,4 +438,4 @@ To the backlog:
   `track-stitch` open "landing the parked hot-patch" and end "landed <date>". Whether to
   machine-check it (a Status that still reads design-stage once its slice has shipped)
   or to flip it in the slice's own version-bump commit is open. This design's own Status
-  is flipped by Task 3, the first application.
+  was flipped in its version-bump commit (`b512678`), the first application.

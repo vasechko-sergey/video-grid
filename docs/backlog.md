@@ -507,7 +507,45 @@ retried episode's rebuilt plan disagreed with the frozen sidecars and
 that a LATER reprocess in the SAME round can go on to invalidate.
 `grade_faithful` is blocking at a 4.0 ceiling, so a stale prediction can pass a
 reel that should have stopped, or stop one that would have passed (retry-record,
-whole-branch review Minor 1)
+whole-branch review Minor 1) ·
+nothing holds the chroma validator's refusal at `build_reel`'s reprocess arm:
+`shift_from_report` raises `ValueError` on a malformed reading, but `build_reel.py:255`
+— the arm's `chroma[item.idx] = …`, an assignment into the plain list `check_reel`
+reads, never through a `ReelEpisode` — can be wrapped in `try: … except ValueError:
+pass` (phase 1's stale value stays, the reel delivers) and the whole suite does not
+notice. Measured 2026-09-29 on a `git archive` export of `1c21655` with the weights,
+ffmpeg config and venv linked in: 4045 passed, 1 skipped, 2 failed, the two failures
+being `test_real_runtime_is_ready` (the sanctioned one) and
+`test_engine_stamp_on_this_repo_reports_a_sha` (an export has no `.git`); both fail
+identically on the unmutated export, so the swallow turns nothing red. Remedy, run on
+the mutated and the unmutated export: one `tests/lib/test_build_reel.py` test on the
+`_wire` fixture, beside `test_a_rejected_reprocess_never_relabels_the_episodes_chroma`,
+whose reprocess result carries a `grade_damage` block `{"region": "crop", "delta_c":
+None, "delta_h": 1.0}` and which asserts `pytest.raises(ValueError, match="numeric
+'delta_c' and 'delta_h'")` and `seen["deliver"] == []` — GREEN unmutated, RED (`DID NOT
+RAISE`) under the swallow. It pins one visible circumvention, not the class
+(unenforced-rules design §4); phase 1's fill (`edl_to_reel.py:267`) is an argument to
+`ReelEpisode(...)`, whose `__post_init__` validates it a second time, so only the
+reprocess arm has this gap (unenforced-rules Task 1 review, M-2; whole-branch review,
+Minor 5) ·
+a refusal raised from inside `shift_from_report` advises the repair that just failed and
+names no episode. Handed a `grade_damage` block `{"region": "crop", "delta_c": None,
+"delta_h": 1.0}` — the shape
+`test_shift_from_report_refuses_a_shape_the_carrier_would_refuse` drives — it raises
+"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' (signed CIEDE2000
+components), got {'delta_c': None, 'delta_h': 1.0} — build it with
+color_fidelity.shift_from_report(report)", from a traceback that does not say which
+episode's report it was reading (the advice suits a caller building a `ReelEpisode` by
+hand — the reader the contract's message was written for — and is circular for this
+producer). The text is the contract's, frozen and pinned whole by
+`test_each_refusal_message_is_pinned_whole_not_by_fragment`, so it is not where to fix
+it. Remedy: `e.add_note(...)` carrying the episode index at the two call sites,
+`build_reel.py:255` and `edl_to_reel.py:267`, where the second sits inside
+`_reel_manifest`'s comprehension and needs a small helper because a `try` cannot sit in
+one. Checked: a note leaves `str(e)` byte-identical, so no pinned message moves, and it
+prints under the traceback; `edl_to_reel.py:238` already does this for a worker's
+exception ("raised while processing episode {i} (segment …)") (unenforced-rules Task 1
+review, M-3; whole-branch review, Minor 5)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -611,15 +649,26 @@ would subsume it. Re-derived 2026-09-29: 26 distinct names are cited — 12 test
 functions in 13 citations and 14 test modules — and all 26 resolve, so there is
 no rot yet and this is the guard placed before there is (unenforced-rules Task 1
 re-review) ·
-`docs/build-status.md` is updated by 16 of the 208 commits since 2026-09-01 that
+`docs/build-status.md` is updated by 16 of the 209 commits since 2026-09-01 that
 touch `scripts/`, `tests/`, `skills/`, `references/` or `bin/` (measured at
-`464d7ef`; 12 of 193 counting only `scripts/` and `tests/`, 4 of 123 counting only
+`464d7ef`; 12 of 194 counting only `scripts/` and `tests/`, 4 of 124 counting only
 `scripts/`), against a standing instruction to update it in the same commit as
-each task ([development-workflow.md](development-workflow.md), `CLAUDE.md`). It
-is the other half of the sentence unenforced-rules deleted the checkbox clause
-from, and it is honoured about as rarely as the clause was; that slice deleted the
-one and left this one. Filed, not acted on: whether the instruction or the
-practice is what is wrong is unmeasured (unenforced-rules Task 2 review)
+each task ([development-workflow.md](development-workflow.md), `CLAUDE.md`). Re-run:
+the denominator is `git log 464d7ef --since='2026-09-01 00:00:00 +0000' --format=%H
+-- scripts tests skills references bin | wc -l`, and the numerator is `comm -12` over
+that list and the same command ending `-- docs/build-status.md`, both sorted; the
+narrower two swap the pathspec for `scripts tests` and for `scripts`. The time of day
+is part of the instrument: a bare `--since=2026-09-01` resolves to that date at the
+wall-clock time the command is run (`git rev-parse --since=2026-09-01` prints the
+instant), and this row's first denominators, 208/193/123, and its review's re-run,
+206/191/121, are what that form gives when the instant it resolves to falls at about
+07:00 UTC and at about 09:00 UTC. UTC, IST and WITA midnight and the author-date
+calendar day all give 209/194/124, and the numerators (16, 12, 4) do not move at any
+of them. It is the other half of the sentence unenforced-rules deleted the checkbox
+clause from, and it is honoured about as rarely as the clause was; that slice deleted
+the one and left this one. Filed, not acted on: whether the instruction or the
+practice is what is wrong is unmeasured (unenforced-rules Task 2 review; denominators
+re-derived in the whole-branch review's fix wave)
 
 **CLI / tool index**
 `Stage.runner` names a tool and nothing checks the tool exists — `trend-scan`'s
