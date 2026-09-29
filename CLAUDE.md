@@ -200,14 +200,13 @@ a crash — so they must always be in context.
 
 ## Source of truth
 
-- The design spec + core plan are the source of truth; **spec and plan stay in
-  sync** — if they drift, fix **both**, not one — until the slice ships. After
-  that only the design is corrected in place; the plan stays as written.
+- The design spec is the source of truth; a plan is the record of what was
+  planned. **Spec and plan stay in sync** until the slice ships — the
+  version-bump commit. What changes then, and why the checkbox rule is gone, is
+  in [development-workflow.md](docs/development-workflow.md#branches--commits).
 - Current status and the next action live in
   [docs/build-status.md](docs/build-status.md); update it in the same commit
-  after every task. A plan is **not** amended after its slice ships — see
-  [development-workflow.md](docs/development-workflow.md) for why that rule
-  replaced the checkbox one.
+  after every task.
 - How new work is built (brainstorm → plan → subagent-driven TDD, two-stage
   review) is in [development-workflow.md](docs/development-workflow.md).
 

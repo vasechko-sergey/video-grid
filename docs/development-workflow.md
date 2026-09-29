@@ -91,11 +91,10 @@ New work follows the superpowers pipeline — one subsystem per cycle:
    pass. Continuous — no check-ins between tasks. A whole-slice review closes the
    cycle.
 
-Spec and plan are kept **in sync** — if they drift, fix both, not one. That
-holds while a slice is being authored. Once it ships the two part ways on
-purpose: the design is corrected in place when the code moves under it, and the
-plan, being the record of what was planned, is not (see
-[Branches & Commits](#branches--commits)).
+Until the slice ships — the version-bump commit ([Versioning](#versioning)) —
+spec and plan are kept **in sync**: if they drift, fix both, not one. What
+changes after that is stated once, under
+[Branches & Commits](#branches--commits).
 
 ### Closing a slice — the deferral rule
 
@@ -133,14 +132,16 @@ exactly that way.
 - After finishing a task: update [build-status.md](./build-status.md) and commit
   it with the task's own code.
 - A **design** is corrected in place when the code moves under it. A **plan** is
-  the record of what was *planned*, and is not amended after its slice ships —
-  what was *done* is carried by that slice's per-task commits. (Until 2026-09-29
+  the record of what was *planned*: once the slice ships — the version-bump
+  commit — it is not amended in substance. Its account of what was planned
+  stands, while a typo, a dead link or a factual correction to a pointer is fine.
+  What was *done* is carried by that slice's per-task commits. (Until 2026-09-29
   this file also asked for the plan's checkboxes to be ticked as each task
-  landed. Measured across 91 plans: 51 of 51 before 2026-08-06 complied and 10 of
-  40 after, coinciding with execution moving to subagents, who are handed a plan
-  as a frozen brief and decline to edit it — a correlation, not a measured
-  cause. Two rules asked for opposite treatment of one file; the unwritten one
-  won, so it is the one written down.)
+  landed. It was followed task by task exactly once, by the first plan. Counting
+  only the commits of each plan's own slice, 24 of the 51 plans before 2026-08-06
+  were fully ticked and 10 of the 40 after; the other 27 of those 51 were ticked
+  retroactively, in one commit (`878a713`, 2026-08-06), which is why the end
+  state reads 51 of 51. Measured 2026-09-29 over the 91 plans that had landed.)
 
 ## Versioning
 
