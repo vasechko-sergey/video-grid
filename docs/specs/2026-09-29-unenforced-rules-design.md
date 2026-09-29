@@ -63,14 +63,24 @@ The written rule appears in **four** places (line numbers as of `8136999`), not 
 two this section first counted: `docs/development-workflow.md:129`, `CLAUDE.md:207`,
 `docs/build-status.md:4` ("tick the plan's checkboxes") and `README.md:77-78`
 ("keeps the design spec, the plan checkboxes, and `docs/build-status.md` in
-sync"). The first count was made without a whole-tree search, and it was wrong:
-`docs/build-status.md` sits under `docs/`, so even
-`grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/` surfaces it, and
-`README.md` is outside all four of those paths, so only a search of every
-tracked file finds it. (One method trap from that search: macOS ERE does not
-support `\b`, so the first widened sweep silently matched nothing on its `tick`
-alternatives, and an empty result against text known to exist exposed it — use
-`-w`, with a control that must hit.)
+sync"). The first count came from
+`grep -n -i 'checkbox' CLAUDE.md docs/development-workflow.md`: two file names,
+not a directory, run to confirm the two locations the backlog row already named.
+That one cause produced both misses. `docs/build-status.md` sits under `docs/`, so
+any directory sweep finds it, including the one the plan later prescribed
+(`grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/`), which did.
+`README.md` is outside all four of that sweep's paths as well and would have
+survived it too; only a search of every tracked file finds it.
+
+The failure mode, plainly: the first count confirmed the locations the row named
+instead of searching for the locations that exist, and a grep given the answer
+cannot find a third instance. That is a check narrower than the claim it was taken
+to support, which is this slice's own subject one layer up. The corrected count
+says what it counted over: every tracked file, for `checkbox`, `tick` and
+`check off`. (One method trap from that search: macOS ERE does not support `\b`, so
+the first widened sweep silently matched nothing on its `tick` alternatives, and
+an empty result against text known to exist exposed it — use `-w`, with a control
+that must hit.)
 
 ### §0.3 The cost that deferred the chroma row is an artifact of one imagined remedy
 
