@@ -38,8 +38,15 @@ governs.
 - **These five strings are asserted on by existing tests and must not change:**
   the three `ReelEpisode.chroma` refusal messages, verbatim; `"not-checked"`; and
   `"the report carries no grade_damage block"`.
-- **The whole suite must be GREEN after every task.** Unlike the previous slice,
-  no test is expected to fail here. The suite takes ~7 minutes — run it in the
+- **Exactly one test is expected to fail, and it is not this slice's:**
+  `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`. The
+  0.14.0 slice added a blocking check that refuses a run whose installed plugin
+  disagrees with the clone, and this machine's plugin is still 0.2.1 — the remedy
+  (`claude plugin update video-grid@video-grid` plus a restart) is the user's to
+  run and nobody else's. It stays red until they do, exactly as that test's own
+  docstring prescribes. **Any OTHER failing test is this slice's regression.**
+  (Corrected mid-slice: this plan's first draft said "fully green", which was
+  wrong the moment it was written.) The suite takes ~7 minutes — run it in the
   background and wait for the real result.
 
 ---
