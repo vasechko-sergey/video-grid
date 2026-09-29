@@ -185,6 +185,38 @@ def test_validate_chroma_refuses_each_bad_shape(bad, says):
         cf.validate_chroma(bad)
 
 
+def test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does():
+    """Which arm a dict lands in is decided by the VALUE `"not-checked"`, never by
+    the mere presence of a `status` key — the same predicate
+    `check_reel._chroma_spread_check` uses to file it as an absence (design
+    2026-09-21 §0.3: the reader and its validator must key on the same thing). A
+    validator keyed on presence would demand a `reason` of a reading that merely
+    carries some other `status`, refusing what the reader reads as a reading.
+
+    The last case is a behaviour `check_reel`'s comments and its own test
+    (`test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences`)
+    state as fact: the absence arm returns once it has a reason, so a stray numeric
+    component beside it is admitted. That test hands the dict to the READER
+    directly and never routes it through this validator, so nothing held the claim
+    until now. The `status` value `"measured"` is constructed by this test, not
+    observed in production: it is the right SHAPE for the property (a `status` that
+    is not `not-checked`), not a claim that any producer emits one."""
+    cf.validate_chroma({"status": "measured", "delta_c": 1.0, "delta_h": 2.0})
+    with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
+        cf.validate_chroma({"status": "measured"})
+    cf.validate_chroma({"status": "not-checked", "reason": "why", "delta_c": 1.0})
+
+
+def test_an_integer_component_is_numeric():
+    """The numeric clause admits an int as well as a float — the `bool` exclusion
+    beside it exists because a bool IS an int, which needs saying only if ints are
+    otherwise legal. Nothing else in the suite hands either validator an int, so a
+    clause narrowed to `float` passed every test while refusing
+    `{"delta_c": 2, "delta_h": 0}`, which the pre-extraction
+    `ReelEpisode.__post_init__` accepted."""
+    cf.validate_chroma({"delta_c": 2, "delta_h": 0})
+
+
 def test_the_carrier_and_the_producer_share_one_validator(monkeypatch):
     """Not 'both validate' — both call the SAME function. Two validators that
     agree today are two that can disagree tomorrow, which is the shape this slice
@@ -240,10 +272,10 @@ def test_each_refusal_message_is_pinned_whole_not_by_fragment(bad, want):
     """`validate_chroma`'s docstring used to say these messages were asserted
     verbatim. That was false: every other assertion matches a fragment, so the
     `— build it with …` tail could be rewritten to name a module that does not
-    exist and the whole non-integration suite (3,733 tests, measured 2026-09-29)
-    stayed green. That is this slice's own subject appearing in its own diff — a
-    rule stated in a comment with nothing holding it — so the claim is made true
-    rather than withdrawn.
+    exist and the whole non-integration suite stayed green (measured 2026-09-29).
+    That is this slice's own subject appearing in its own diff — a rule stated in
+    a comment with nothing holding it — so the claim is made true rather than
+    withdrawn.
 
     The expected strings are what the refusals printed when this was written
     (identical to the pre-move `ReelEpisode.__post_init__`'s output), copied from
