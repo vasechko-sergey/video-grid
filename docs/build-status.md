@@ -4,13 +4,182 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — add/adjust the relevant bullet here in the same
 commit.
 
-_Last updated: 2026-09-26._
+_Last updated: 2026-09-29._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Unenforced rules — a convention nothing can check is not a convention
+  (2026-09-29, 0.14.1)** — design
+  [2026-09-29-unenforced-rules-design.md](specs/2026-09-29-unenforced-rules-design.md),
+  plan [2026-09-29-unenforced-rules.md](plans/2026-09-29-unenforced-rules.md),
+  **Tasks 1–3** (branch `feat/unenforced-rules`). Three P2 rows filed under one
+  impression — a rule that lives in prose and nothing holds it — and **all three
+  overturned their own premise when measured**, so each closed by the remedy its
+  measurement earned rather than the one the row proposed: make the structure
+  enforce it, close it by measurement with no code, or delete the rule. PATCH:
+  one validator moved, no contract field, no new check, and no behaviour a
+  caller can observe beyond a refusal that was already the carrier's.
+
+  **Task 1 — one validator, both inlets** (`69ac825`, `8136999`).
+  `color_fidelity.validate_chroma(c)` is the single validator for the
+  `ReelEpisode.chroma` shape. `ReelEpisode.__post_init__` calls it, and so does
+  `shift_from_report` on its own return (the body moved to `_shift`, so every
+  return arm is covered without each having to remember). The unvalidated inlet
+  was precise: `build_reel` builds `chroma = [e.chroma for e in rm.episodes]` —
+  every element validated, because it came off a `ReelEpisode` — and then
+  replaces one entry per reprocessed episode with `shift_from_report(...)`, a
+  fresh dict that passed through no validator. It lives in `color_fidelity`, not
+  `models`, so the import runs `models → color_fidelity` and never the reverse.
+  Beside the plan's four tests a fifth was forced: a spy proving both callers
+  reach the SAME function cannot see a producer that catches and discards the
+  `ValueError`, so a behavioural test drives the real validator with a shape
+  `_shift` genuinely passes through. And the validator's docstring first said
+  "existing tests assert them verbatim", which was false — every assertion matched
+  a fragment, and a message tail could be rewritten to name a module that does not
+  exist with the whole unit tier green — so all three are now pinned whole.
+
+  **Task 2 — delete a written rule, write down the one the repo acts on**
+  (`4aa55a7` … `464d7ef`, five fix rounds). The instruction to tick a plan's
+  checkboxes was in **four** places, not the two the design counted
+  (`development-workflow.md`, `CLAUDE.md`, `build-status.md`, `README.md`): the
+  design's first count was a two-file `grep` run to confirm the two locations the
+  backlog row already named, and a grep handed the answer cannot find a third
+  instance. The measurement behind the deletion was wrong twice before it stood.
+  The first re-count read the END STATE (61 of 91 plans fully ticked), which one
+  retroactive commit, `878a713` (2026-08-06, 955 boxes on 27 plans), had
+  produced; its date was then inherited as the boundary of every series. Re-derived
+  at each plan's own landing, the share fully ticked by its own slice's commits is
+  **53, 52, 31, 37 and 14 %** across five date bands (34 of 91), and task by task —
+  what the rule literally required — one plan of 91 did it, the first. There is no
+  step at 2026-08-06, and 91 plans cannot say whether the decline was gradual or
+  sudden. `development-workflow.md#spec-and-plan` now states the governing
+  convention once (a design is corrected in place; a plan is the record of what
+  was planned; spec and plan are kept in sync until the slice ships, the
+  version-bump commit), and `CLAUDE.md` points there. Deletion buys the removal of
+  a contradiction and nothing more: what survives is one description and two
+  procedures nothing checks, and the first is already measured at 35 of 42 shipped
+  designs whose Status does not say their slice shipped.
+
+  **Task 3 — the battery, the closures, the bump.** One mutation at a time on an
+  otherwise-clean tree under `PYTHONDONTWRITEBYTECODE=1`, every selection written
+  literally, restored via `git show HEAD:<path> > <path>` and re-checked with
+  `git diff --stat` after each. The plan's ten rows were written before Task 1's
+  fix round and before Task 2, so they were run unchanged and then fourteen more
+  were added for the shipped code the table could not name — 24 rows, row 10 run in
+  both directions.
+
+  | # | File | Mutation | Result |
+  |---|---|---|---|
+  | 1 | `color_fidelity.py` | `validate_chroma`: `if c is None: return` → `return` unconditionally | RED — 9 tests |
+  | 2 | `color_fidelity.py` | drop the `isinstance(c, dict)` refusal | RED — 2 |
+  | 3 | `color_fidelity.py` | drop the empty-`reason` half of the not-checked refusal | RED — 1 (`bad2`) |
+  | 4 | `color_fidelity.py` | drop `and not isinstance(c.get(k), bool)` | RED — 1 (`bad4`) |
+  | 5 | `color_fidelity.py` | `for k in ("delta_c", "delta_h")` → `("delta_c",)` | RED — 2 |
+  | 6 | `color_fidelity.py` | `shift_from_report` drops `validate_chroma(out)` | RED — 2, the spy and the behavioural test; the row the slice exists for |
+  | 7 | `models.py` | `__post_init__` drops the `validate_chroma` call | RED — 8 across `test_models.py` and the spy |
+  | 8 | `models.py` | `__post_init__` re-inlines a COPY of the three refusals | RED — exactly one, `test_the_carrier_and_the_producer_share_one_validator`; the other 526 stay green, as they must, since a copy that agrees is invisible to every behavioural test |
+  | 9 | `color_fidelity.py` | reword message 1's head | RED — 3, in two files |
+  | 10a | `development-workflow.md` | restore the deleted checkbox bullet | **GREEN, expected** — 3737 passed, 306 deselected |
+  | 10b | `development-workflow.md` | delete the new governing paragraph instead | **GREEN, expected** — 3737 passed, 306 deselected |
+  | E1 | `color_fidelity.py` | reword message 2's head | RED — the whole-message pin only |
+  | E2 | `color_fidelity.py` | reword message 3's tail (`build it with …`) | RED — the pin only; every fragment test stays green |
+  | E3 | `color_fidelity.py` | reword message 1's tail | RED — the pin only |
+  | E4 | `color_fidelity.py` | absence arm keyed on `"status" in c`, not `== "not-checked"` | **GREEN** — closed, below |
+  | E5 | `color_fidelity.py` | drop the `isinstance(reason, str)` half | RED — one test, `test_models.py`'s carrier test; `test_color_fidelity.py` alone is GREEN, so the validator's own file leans on the carrier's — covered, not closed |
+  | E6 | `color_fidelity.py` | numeric types `(int, float)` → `(float,)` | **GREEN** — closed, below |
+  | E7 | `color_fidelity.py` | `all(...)` → `any(...)` | RED — 8 |
+  | E8 | `color_fidelity.py` | `for k in …` → `("delta_h",)` | RED — 4 |
+  | E9 | `color_fidelity.py` | absence arm loses its trailing `return` | RED — 6 |
+  | E10 | `color_fidelity.py` | docstring stops naming the test that pins the messages | RED — 1 |
+  | E11 | `color_fidelity.py` | `shift_from_report` validates `report`, not its return | RED — 9 |
+  | E12 | `color_fidelity.py` | `shift_from_report` swallows the `ValueError` | RED — 1, the behavioural test only |
+  | E13 | `models.py` | the carrier validates `None`, not its own `chroma` | RED — 8 |
+  | E14 | `color_fidelity.py` | absence arm refuses a stray numeric component | **GREEN** — closed, below |
+
+  **Row 10's GREEN is the finding, and it is not closed.** No test reads
+  `development-workflow.md`, `CLAUDE.md`, `build-status.md`, `README.md` or the
+  backlog — the only hits for those names under `tests/` and `scripts/` are prose
+  in docstrings and comments — so nothing machine-checks either version of the
+  checkbox rule, in either direction: restoring the retired instruction and
+  deleting the new convention are equally invisible to the whole unit tier. That is
+  the design's own §2.3 ruling made concrete (this rule earns deletion, not a
+  test), and no check was manufactured to turn the row red.
+
+  **Three GREENs beyond row 10, all closed.** E4, E6 and E14 each passed the whole
+  unit tier (3737 passed, 306 deselected) with the pre-closure tests: the
+  discriminator by the presence of a `status` key rather than its value, ints
+  refused, and the validator's admission of a not-checked dict that carries a
+  stray numeric component — a behaviour `check_reel`'s comments and its own test
+  state as fact, but which that test only ever hands to the reader. Two tests
+  close them (`test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does`
+  for E4 and E14, `test_an_integer_component_is_numeric` for E6), each watched RED
+  under its mutation and GREEN without (`36f660a`). The driver-level mutant — a
+  `try/except ValueError` around `build_reel`'s reprocess-arm assignment — is not
+  held by any test either (Task 1 review, M-2, in
+  `.superpowers/sdd/2026-09-29-unenforced-rules/progress.md`): parked, since design
+  §4 names circumvention by a visible act as this validator's limit, and not re-run
+  here.
+
+  **Three stale statements, found by sweeping every tracked file and corrected
+  before the version bump** (`e8a1e76`): `check_reel._chroma_spread_check`'s
+  comments described two inlets with the carrier's validator guarding one of them
+  (comment-only; the module's AST is identical to `HEAD`'s), a `test_check_reel.py`
+  docstring said "the inlet the validator does not cover is covered by a test
+  instead", and the design's own §2.1 named `models.validate_chroma`. The design
+  is corrected in place — the slice had not shipped, so spec and plan were still
+  kept in sync.
+
+  **Queue.** Closed to the archive: the chroma-validator row (the cost that
+  deferred it was one imagined remedy's), the two-merges row (`⊘` — closed by
+  measurement with no code: neither site can host the defect, and the proposed
+  comment was the defect class), and the checkbox row (its premise was false). The
+  archive was re-counted by hand — 23 + 44 = 67 table rows plus 6 P3 entries = **73**
+  closure entries, up from 70, and 74 rows because one entry closes two — not by
+  `grep -c`. **R2.4 is promoted to P1** as the twelve unreachable thresholds,
+  re-derived from the code rather than transcribed from the design:
+  `ReelManifest.check_spec` is `ReelCheckSpec(self.target_dur, self.variety_min)`
+  (2 of 11 fields), `process_episode` builds `CheckSpec` from 3 of its 7 fields
+  plus `attempt`, and a walk over the parsers of `edl_to_reel`, `build_reel`,
+  `check_reel` and `check_episode` finds no threshold flag — so 12 of 18 fields can
+  only ever hold their default and `spec_overrides`, called once on the reel's spec
+  with `target_dur` exempt, can only ever report `variety_min`. R2.4 folds into that
+  row and its own P2 row is removed. Filed: a P2 row for the weights download
+  (below), and four P3 rows — the merge predicate has no machine check, 35 of 42
+  designs are not moved off their authoring-time Status, no check that a `test_…`
+  name cited in `scripts/` resolves (26 names, all resolving today), and
+  `build-status.md` is touched by 16 of 208 code-bearing commits since 2026-09-01.
+
+  **Two figures re-derived rather than transcribed, and one row pinned by
+  running.** The Task 1 re-review's hand scan, which found 13 test-name pointers
+  resolving and none dangling, is 13 citations of 12 test functions, and another
+  14 cited names are test modules — which a generic check must resolve as files,
+  not defs. The "16 of
+  208" that Task 2's review reported reproduces only under one definition of
+  code-bearing (`scripts/`, `tests/`, `skills/`, `references/` or `bin/`); counting
+  `scripts/` and `tests/` alone it is 12 of 193, and `scripts/` alone 4 of 123. And
+  the P2 weights row names its two
+  tests because the unit tier was run on a `git archive` export — which has no
+  gitignored weights — with the network denied at the process level, so that
+  nothing was fetched: 5 failed, 3732 passed, 306 deselected, of which two are
+  `test_intake_records_the_band_it_carved_with` and
+  `test_intake_records_the_default_band_when_none_is_given`, and three are export
+  artefacts (no `.git`, no `.venv` symlink).
+
+  **Suite: 4043 passed, 1 skipped, 1 failed** (426 s, whole suite, run after the
+  version bump) — two more than the 4041 the Task 2 review recorded, which are the
+  two tests above. The one failure is the sanctioned
+  `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`, whose
+  message now reads `plugin: installed plugin matches the clone — user scope has
+  0.2.1; the clone is 0.14.1 …`: the version moved from 0.14.0 to 0.14.1 the moment
+  the bump landed, confirming it reached the probe. It predates this slice and
+  stays red until the **user** runs `claude plugin update video-grid@video-grid`
+  and restarts Claude Code — the remedy is nobody else's to run. Every other
+  check the probe makes (deps, ffmpeg, drawtext, vidstab, font, weights, demucs,
+  reid) passes on this machine.
 
 - **Plugin staleness — the installed instructions against the running code
   (2026-09-26, 0.14.0)** — design
@@ -6582,6 +6751,14 @@ _Last updated: 2026-09-26._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **The P1 table is populated again as of 2026-09-29 ("Unenforced rules",
+> 0.14.1)** — see the Done entry above. R2.4 was promoted and merged into a
+> wider row: twelve of the eighteen fields of `ReelCheckSpec` and `CheckSpec`
+> are unreachable from any authoring surface, so `provenance.spec_overrides` can
+> only ever report `variety_min`. The blockquote below says P1 is EMPTY; that was
+> true from 2026-09-17 and is not any more — read `docs/backlog.md`, not this
+> narrative, for what is actually next.
 
 > **R2.1, the only P1 row, is closed 2026-09-17 by "Chroma spread"** (see the
 > Done entry above) — `docs/backlog.md`'s P1 table is now EMPTY. The

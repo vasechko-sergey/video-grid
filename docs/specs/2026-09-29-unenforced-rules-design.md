@@ -6,7 +6,7 @@
 > - the two remaining two-producer dict merges (`edit_plan.py`, `orchestration.py`).
 > - the plan-checkbox convention `CLAUDE.md` and `development-workflow.md` mandate.
 
-**Status:** design. Version 0.14.1 (PATCH — one extracted validator, four documents
+**Status:** shipped 2026-09-29 as 0.14.1 (PATCH — one extracted validator, four documents
 corrected, no contract change).
 
 ---
@@ -199,10 +199,13 @@ per-episode `CheckSpec` is the same shape: `process_episode` builds it from
 three manifest fields plus `attempt`, and `check_episode --help` offers the same
 four.
 
-**Twelve of the eighteen threshold fields across both classes are unreachable
-from any authoring surface** — including `entropy_floor`, the blocking
-grade-damage bar, and `grade_residual_max`, `loudness_target`, `layout_jump_max`.
-Every one is a first cut on a single shoot.
+**Twelve of the eighteen fields across both classes are unreachable from any
+authoring surface** — every threshold and tolerance in them but `variety_min`,
+including `entropy_floor`, the blocking grade-damage bar, and `grade_residual_max`,
+`loudness_target`, `layout_jump_max`. Every one is a first cut on a single shoot.
+(The other six fields are `variety_min` and five inputs the manifest supplies:
+`target_dur` on each class, `composition`, `grid` and `attempt`. Of the 13
+thresholds, `variety_min` is the only one reachable.)
 
 So `provenance.spec_overrides` — a diff machine written to catch any loosened
 gate — can only ever report one field, `variety_min`; and the mechanism the row
