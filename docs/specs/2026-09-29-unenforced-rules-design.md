@@ -52,10 +52,10 @@ their own slices and the 51 at HEAD.
 
 The five date bands are the re-review's cut, taken as given: this design did not fit
 them to the rates. The third edge is the sweep commit's date, so that the end-state
-column separates the plans it swept, and the fourth falls in the only gap in the plan
-dates (which is why the last band starts on 2026-08-25); no reason is recorded for the
-first two. Equal-count quintiles, which have no edges to choose, give the same shape
-(56, 50, 37, 28, 17 %, below).
+column separates the plans it swept, and the fourth falls in the longest gap in the
+plan dates (five days; the next longest is three), which is why the last band starts
+on 2026-08-25; no reason is recorded for the first two. Equal-count quintiles, which
+have no edges to choose, give the same shape (56, 50, 37, 28, 17 %, below).
 
 The boundary at 2026-08-06 is an artefact of the retracted instrument. Ten plans either
 side of it went from 2 of 10 fully ticked to 5 of 10, up, and equal-sized quintiles of
@@ -292,8 +292,8 @@ test they are hopes with a good reputation, and this slice leaves them so.
 The first is already measured, on its most visible instance and before this
 section writes it down: the Status line. Of the 42 shipped designs that carry
 one (this slice's own design, still in flight, and the umbrella spec, which has no
-same-topic plan, are left out), read whole, up to the next bold field label, 35 do
-not say their slice shipped: 8 assert a pre-ship state that is now false
+ship event of its own, are left out), read whole, up to the next bold field label,
+35 do not say their slice shipped: 8 assert a pre-ship state that is now false
 (`2026-07-20-stabilize-apply-design.md:5` says "design approved, not yet built" for a
 shipped, fully ticked slice; the others say "ready for a plan", "plan next",
 "pending … plan", "pre-implementation") and 27 carry only an authoring-time label
@@ -378,16 +378,15 @@ To the backlog:
   it can be re-run by hand. Whether an AST check for it is worth its false
   positives is unmeasured; today there would be zero true positives to find.
 - **P3 — designs are not moved off their authoring-time Status when a slice ships.**
-  §2.3 measures it: of 42 shipped designs that carry a Status statement (44 specs do
-  in their first 40 lines; the umbrella spec has no same-topic plan, and this slice's
+  §2.3 measures it: of 42 shipped designs that carry a Status statement (44 specs do in
+  their first 40 lines; the umbrella spec has no ship event of its own, and this slice's
   own design was in flight), 35 do not say their slice shipped and 7 do. Of the 35, 8
-  assert a pre-ship state that is now false ("not yet built", "ready for a plan",
-  "plan next", "pending … plan", "pre-implementation") and 27 carry only an
-  authoring-time label ("design", "design approved <date>"); counting only the bold
-  `**Status:**` form it is 33 of 40. The classifier reads the whole Status paragraph,
-  from `Status:` to the next bold field label or blank line, and not the first line
-  alone: `path-quality` and `track-stitch` open "landing the parked hot-patch" and end
-  "landed <date>". Whether to machine-check it (a Status that still reads
-  design-stage once a same-topic plan has shipped) or to flip it in the slice's own
-  version-bump commit is open. This design's own Status is flipped by Task 3, the
-  first application.
+  assert a pre-ship state that is now false ("not yet built", "ready for a plan", "plan
+  next", "pending … plan", "pre-implementation") and 27 carry only an authoring-time
+  label ("design", "design approved <date>"); counting only the bold `**Status:**` form
+  it is 33 of 40. The classifier reads the whole Status paragraph, from `Status:` to the
+  next bold field label or blank line, and not the first line alone: `path-quality` and
+  `track-stitch` open "landing the parked hot-patch" and end "landed <date>". Whether to
+  machine-check it (a Status that still reads design-stage once its slice has shipped)
+  or to flip it in the slice's own version-bump commit is open. This design's own Status
+  is flipped by Task 3, the first application.
