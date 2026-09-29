@@ -3,14 +3,15 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** close three P2 rows — one by making the structure enforce a rule, one by
-measurement alone, one by deleting a written rule that lost to an unwritten one.
+measurement alone, one by deleting a written rule that was never reliably honoured.
 
 **Architecture:** `color_fidelity.validate_chroma` becomes the single validator for
 the `ReelEpisode.chroma` shape, called both by the dataclass's `__post_init__` and
 by `shift_from_report` on its own return, so the one producer cannot emit an
-unvalidated dict. Nothing else in code changes. The two documents that mandate
-ticking a plan's checkboxes lose that clause and gain the convention that actually
-governs.
+unvalidated dict. Nothing else in code changes. The four documents that told an
+implementer to tick a plan's checkboxes (`development-workflow.md`, `CLAUDE.md`,
+`build-status.md`, `README.md`) lose that instruction; `development-workflow.md`
+gains the convention that actually governs, stated once, and `CLAUDE.md` points at it.
 
 **Tech Stack:** Python 3, stdlib only, pytest.
 
@@ -253,19 +254,52 @@ git commit -m "fix(chroma): one validator for both inlets, at the producer"
 **Files:**
 - Modify: `docs/development-workflow.md`
 - Modify: `CLAUDE.md`
+- Modify: `docs/build-status.md` (its header) and `README.md` (its Develop section): the
+  two further copies of the instruction, which Step 3's whole-tree search finds
 
 **Interfaces:** none — documentation only, no code, no tests.
 
-The checkbox rule was honoured by 51 of 51 plans before 2026-08-06 and 10 of 40
-after (design §0.1). It did not fail to take; it lost to an unwritten rule — a
-plan is the record of what was *planned* and is not amended after its slice ships
-— which is why implementers handed a plan as a frozen brief stopped ticking. This
-task removes the contradiction by deleting the written rule and writing the
-governing one.
+The checkbox rule was met task by task once in 91 plans and fully ticked by its own
+slice's commits in 34 of them: 53, 52, 31, 37 and 14 % across five date bands (design
+§0.1). The 51-of-51 end state of the older plans is one retroactive commit, `878a713`,
+and the 2026-08-06 boundary an earlier reading of it drew does not survive. The rule was
+never reliably honoured, and beside it the repo already acts on an unwritten one: a plan
+is the record of what was *planned* and is not amended in substance once its slice
+ships. This task removes the contradiction by deleting the written rule and writing the
+governing one, once.
 
 - [ ] **Step 1: `docs/development-workflow.md`**
 
-Replace this bullet (currently at line 129, verify by content not by number):
+The convention is stated **once**, under one heading, so that `CLAUDE.md` can point at a
+single anchor. Replace this paragraph in *Execution Protocol* (after the numbered list;
+locate it by content):
+
+```markdown
+Spec and plan are kept **in sync** — if they drift, fix both, not one.
+```
+
+with:
+
+```markdown
+### Spec and plan
+
+Until the slice ships — the version-bump commit ([Versioning](#versioning)) —
+spec and plan are kept **in sync**: if they drift, fix both, not one. After that
+the two part ways on purpose. A **design** is corrected in place when the code
+moves under it. A **plan** is the record of what was *planned*, and is not amended
+in substance: its account of what was planned stands, while a typo, a dead link or
+a factual correction to a pointer is fine. What was *done* is carried by that
+slice's per-task commits.
+
+(Until 2026-09-29 this file also asked for the plan's checkboxes to be ticked as
+each task landed. It was followed task by task exactly once, by the first plan. At
+the close of their own slices, 53, 52, 31, 37 and 14 % of the 91 plans that had
+landed were fully ticked, across five date bands from 2026-07-05 to 2026-09-25; the
+end state reads 61 of 91 because one commit (`878a713`, 2026-08-06) ticked 27 of the
+older ones retroactively. Measured 2026-09-29.)
+```
+
+Then, in *Branches & Commits*, replace:
 
 ```markdown
 - After finishing a task: tick its checkboxes in the plan and update
@@ -277,14 +311,6 @@ with:
 ```markdown
 - After finishing a task: update [build-status.md](./build-status.md) and commit
   it with the task's own code.
-- A **design** is corrected in place when the code moves under it. A **plan** is
-  the record of what was *planned*, and is not amended after its slice ships —
-  what was *done* is carried by that slice's per-task commits. (Until 2026-09-29
-  this file also asked for the plan's checkboxes to be ticked as each task
-  landed. Measured across 91 plans: 51 of 51 before 2026-08-06 complied and 10 of
-  40 after, because execution moved to subagents who are handed a plan as a
-  frozen brief and correctly decline to edit it. Two rules asked for opposite
-  treatment of one file; the unwritten one won, so it is the one written down.)
 ```
 
 - [ ] **Step 2: `CLAUDE.md`**
@@ -292,33 +318,70 @@ with:
 In the **Source of truth** section, replace:
 
 ```markdown
+- The design spec + core plan are the source of truth; **spec and plan stay in
+  sync** — if they drift, fix **both**, not one.
 - Current status and the next action live in
   [docs/build-status.md](docs/build-status.md); update it (and the plan's
   checkboxes) in the same commit after every task.
 ```
 
+with a pointer only. The rule is stated in Step 1 and nowhere else, and the pointer names
+the deleted checkbox rule in half a clause, because nothing else in this always-loaded
+file says there ever was one:
+
+```markdown
+- The design spec is the source of truth; a plan is the record of what was
+  planned. The rule for keeping the two in step, for when a plan stops being
+  amended, and for why its checkboxes are no longer ticked as tasks land (this
+  file used to say to) is in
+  [development-workflow.md](docs/development-workflow.md#spec-and-plan).
+- Current status and the next action live in
+  [docs/build-status.md](docs/build-status.md); update it in the same commit
+  after every task.
+```
+
+- [ ] **Step 3: Search the whole tree, and close the two further copies**
+
+Search every tracked file, not the four paths (`CLAUDE.md docs/ skills/ references/`)
+this step was first written with: `README.md` sits outside all four and would have
+survived them.
+
+```bash
+git grep -n -i -E 'checkbox|check(ed|ing)? off' -- .
+git grep -n -i -w -E 'tick|ticked|ticking|ticks' -- .
+```
+
+(`git grep -E` here does not support `\b`: it silently matches nothing. Use `-w`, and keep
+a control that must hit.) Expected: four standing instructions to tick a plan's
+checkboxes — the two Steps 1–2 remove, `docs/build-status.md`'s header and `README.md`'s
+Develop section. Everything else is a plan header, a plan's own step, a description of the
+deleted rule, or an unrelated idiom. Close the two further copies.
+
+`docs/build-status.md`, header. Replace:
+
+```markdown
+**Update after every task** — tick the plan's checkboxes and add/adjust the
+relevant bullet here in the same commit.
+```
+
 with:
 
 ```markdown
-- Current status and the next action live in
-  [docs/build-status.md](docs/build-status.md); update it in the same commit
-  after every task. A plan is **not** amended after its slice ships — see
-  [development-workflow.md](docs/development-workflow.md) for why that rule
-  replaced the checkbox one.
+**Update after every task** — add/adjust the relevant bullet here in the same
+commit.
 ```
 
-- [ ] **Step 3: Confirm no third copy**
+`README.md`, Develop section. Replace, on the last line of the paragraph:
 
-Run, literally:
-
-```bash
-grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/
+```markdown
+keeps the design spec, the plan checkboxes, and `docs/build-status.md` in sync.
 ```
 
-Expected: only the plan-template mention inside
-`docs/plans/*.md` headers (`Steps use checkbox (\`- [ ]\`) syntax for tracking`),
-which is a statement about a plan's own syntax and stays. Report anything else
-you find — a third copy is a finding this task must close, not leave.
+with:
+
+```markdown
+keeps the design spec and `docs/build-status.md` in sync.
+```
 
 - [ ] **Step 4: Run the doc-shaped checks**
 
@@ -329,7 +392,7 @@ Expected: green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CLAUDE.md docs/development-workflow.md
+git add CLAUDE.md README.md docs/build-status.md docs/development-workflow.md
 git commit -m "docs: a plan is not amended after its slice ships"
 ```
 
@@ -361,7 +424,7 @@ next row.
 | 7 | `ReelEpisode.__post_init__`: drop the `validate_chroma` call | whichever file `grep -rln 'ReelEpisode.chroma' tests/` names, plus `tests/lib/test_color_fidelity.py` | RED |
 | 8 | `models.py`: `__post_init__` re-inlines a *copy* of the refusals instead of calling the shared function | `tests/lib/test_color_fidelity.py` | RED via `test_the_carrier_and_the_producer_share_one_validator` — the point is one validator, not two that agree |
 | 9 | `validate_chroma`: reword the first refusal's message | `tests/` (run the two files the message is asserted in; find them with `grep -rln 'must be a reading' tests/`) | RED |
-| 10 | `docs/development-workflow.md`: restore the deleted checkbox bullet | — | **expected GREEN, and that is the finding.** Nothing machine-checks either version of this rule, which is precisely why it decayed; record the non-discrimination and do NOT manufacture a check (design §2.3 rules that this rule earns deletion, not a test). |
+| 10 | `docs/development-workflow.md`: restore the deleted checkbox bullet | — | **expected GREEN, and that is the finding.** Nothing machine-checks either version of this rule, which is precisely why it was never reliably honoured; record the non-discrimination and do NOT manufacture a check (design §2.3 rules that this rule earns deletion, not a test). |
 
 Every GREEN that is not row 10 is a coverage hole: close it with a test confirmed
 red under the mutation and green without, and say so in the report.
@@ -385,12 +448,17 @@ Add to the top of `CHANGELOG.md`, under the intro paragraphs (heading shape
   reprocess arm of `build_reel` assigns that return straight into the list
   `check_reel` reads without ever constructing a `ReelEpisode`, so one of the two
   inlets was ungated.
-- **A plan is no longer amended after its slice ships.** `CLAUDE.md` and
-  `development-workflow.md` asked for its checkboxes to be ticked as each task
-  landed; measured across 91 plans, 51 of 51 before 2026-08-06 complied and 10 of
-  40 after. That rule collided with an unwritten one — a plan is the record of
-  what was planned — which had quietly won. The unwritten rule is now the written
-  one, and what was *done* is carried by each slice's per-task commits.
+- **The instruction to tick a plan's checkboxes is gone, and a plan is not amended in
+  substance once its slice ships.** Four documents told an implementer to tick them
+  as each task landed — `CLAUDE.md`, `development-workflow.md`, `build-status.md`
+  and `README.md` — and the instruction is deleted, not repaired. It was followed
+  task by task once, by the first plan; at the close of their own slices, 53, 52, 31,
+  37 and 14 % of the 91 plans that had landed were fully ticked, across five date
+  bands, and the end state reads 61 of 91 only because one commit ticked 27 of the
+  older ones retroactively. `development-workflow.md` now states, once, that spec and
+  plan are kept in sync until the slice ships — the version-bump commit — and that
+  after it a design is corrected in place while its plan stays the record of what was
+  planned; what was *done* is carried by each slice's per-task commits.
 ```
 
 ### Step 4: Sync the docs
@@ -424,8 +492,12 @@ closure note its measurement earned:
 - the two merges: closed by measurement with **no code change**, naming why
   neither site can host the defect and that the proposed comment was the defect
   class;
-- the checkboxes: the row's premise was false by 51, and the rule was deleted
-  because it contradicted an unwritten rule that had already won.
+- the checkboxes: the row's premise ("no shipped plan has a single `[x]`") was false —
+  at landing, 34 of 91 plans were fully ticked by their own slice's commits, one of
+  them task by task; at HEAD, 61 of 91, the 27 older plans `878a713` ticked
+  retroactively being the difference. The rule was deleted because it was never
+  reliably honoured (53, 52, 31, 37 and 14 % across five date bands, design §0.1),
+  and it contradicted an unwritten rule the repo already acts on.
 
 Update `CLAUDE.md`'s archive parenthetical: **70 → 73** closure entries, and the
 row count behind it **71 → 74**. Count the table rows yourself rather than
@@ -436,8 +508,9 @@ with row 10's expected GREEN and its reason, the suite counts, and the P1
 promotion.
 
 Also add two Quick Reference rows to `CLAUDE.md` after the *Plugin staleness plan*
-row, in the established design/plan pair idiom, carrying §0.1's 51/51-then-10/40
-measurement and §0.4's two-sites-cannot-host finding.
+row, in the established design/plan pair idiom, carrying §0.1's at-landing date bands
+(53, 52, 31, 37 and 14 %, with `878a713` explaining the 51-of-51 end state) and
+§0.4's two-sites-cannot-host finding.
 
 - [ ] **Step 5: Run the whole suite**
 

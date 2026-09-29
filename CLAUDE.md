@@ -201,9 +201,10 @@ a crash — so they must always be in context.
 ## Source of truth
 
 - The design spec is the source of truth; a plan is the record of what was
-  planned. **Spec and plan stay in sync** until the slice ships — the
-  version-bump commit. What changes then, and why the checkbox rule is gone, is
-  in [development-workflow.md](docs/development-workflow.md#branches--commits).
+  planned. The rule for keeping the two in step, for when a plan stops being
+  amended, and for why its checkboxes are no longer ticked as tasks land (this
+  file used to say to) is in
+  [development-workflow.md](docs/development-workflow.md#spec-and-plan).
 - Current status and the next action live in
   [docs/build-status.md](docs/build-status.md); update it in the same commit
   after every task.

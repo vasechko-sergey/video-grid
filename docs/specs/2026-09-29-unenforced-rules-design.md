@@ -24,39 +24,64 @@ rule is not lagging, it has never once been applied."*
 
 That is false. But so was this design's first reading of it, which counted `[x]` at
 HEAD and bucketed the plans by the date in their filename. That is the **end state**,
-not whether the rule was followed when each slice landed, and the boundary it drew is
-one retroactive commit: `878a713` (2026-08-06), "tick the 955 step checkboxes on 27
-landed plans", whose own message records that "23 landed plans were fully ticked, 27
-carried 955 boxes still `- [ ]`". Re-derived from git (every commit that touches a
-plan, `878a713` set aside, checkbox lines inside fenced blocks not counted), the
-series is:
+not whether the rule was followed when each slice landed, and one commit explains why
+it misled: `878a713` (2026-08-06), "tick the 955 step checkboxes on 27 landed plans".
+Its own message records that "23 landed plans were fully ticked, 27 carried 955 boxes
+still `- [ ]`", which is 50 plans; the 51st, `2026-08-05-footage-contact-sheet`, was
+ticked by `2cc5a52`, the sweep's own parent, 3 min 47 s earlier, which is how that 23
+becomes the 24 counted below. The commit is what produces the end state's 51 of 51 for
+the older plans. Its date was then inherited as the boundary of every series this
+design drew, and that boundary does not survive (below).
 
-| era (by filename date) | plans | fully ticked at HEAD (end state) | fully ticked by its own slice's commits |
+Re-derived from git (every commit that touches a plan, `878a713` set aside, checkbox
+lines inside fenced blocks not counted), the share of plans fully ticked by their own
+slice's commits, by the date in the plan's filename:
+
+| plan dates | plans | fully ticked by its own slice | at HEAD (end state) |
 |---|---|---|---|
-| before 2026-08-06 | 51 | 51 (100 %) | **24 (47 %)** |
-| 2026-08-06 onward | 40 | 10 (25 %) | **10 (25 %)** |
+| 2026-07-05 … 07-13 | 17 | 9 (53 %) | 17 |
+| 2026-07-14 … 07-25 | 21 | 11 (52 %) | 21 |
+| 2026-07-26 … 08-05 | 13 | 4 (31 %) | 13 |
+| 2026-08-06 … 08-19 | 19 | 7 (37 %) | 7 |
+| 2026-08-25 … 09-25 | 21 | 3 (14 %) | 3 |
+| all 91 that had landed | 91 | 34 (37 %) | 61 |
 
-`878a713` is what produces the 51: the 27 plans between 24 and 51 are exactly the 27
-it swept. Five of them were one box short before it, missing the same last step each
-time, the final review of the whole slice, which by construction happens after the
-closing commit; 22 had not been ticked at all. Counting the five, 29 of 51 (57 %) had
-been ticked by their own slices.
+No plan is dated 2026-08-20 to 08-24. The first three rows are the 51 plans that existed
+when `878a713` landed: the 27 it swept are the gap between their 24 fully ticked by
+their own slices and the 51 at HEAD.
 
-The rule asked for something narrower than that: *after finishing a task*, tick its
-checkboxes. Task by task means at least three commits that tick boxes, none carrying
-more than half of them. One plan of 91 met that: the core plan, in 13 per-task
-commits (eleven titled `docs: tick Task N checkboxes`), none over 11 % of its boxes.
-Every other plan that its own slice ticked at all was ticked in one commit (35 plans)
-or in two, one of them small (4); 51 of the 91 were not ticked by their own slice at
-all.
+The boundary at 2026-08-06 is an artefact of the retracted instrument. Ten plans either
+side of it went from 2 of 10 fully ticked to 5 of 10, up, and equal-sized quintiles of
+the 91 (56, 50, 37, 28, 17 %) fall as steadily as the date bands do; the pooled 47 →
+25 % this design first reported was a decline spread across the period, read as a step
+at that date. The decline is real (Cochran–Armitage across the bands z = −2.72,
+p = 0.006; Spearman ρ = −0.31 against plan date, p = 0.003), but 91 plans cannot say
+whether it was gradual or sudden: the five strongest single splits lie between
+2026-07-28 and 2026-08-17 (each p ≈ 0.002; the best, 2026-08-14, is 49 % → 16 %),
+and a straight line fits as well as one late step. Why it declined is not measured
+here, and nothing on disk can test it: the SDD ledgers that would record how each slice
+was executed are gitignored, and only this slice's is on disk.
+
+Five of the 27 swept plans were one box short before the sweep, each missing its final
+review step ("Final whole-slice review" in four, "Final review" in `titles`), and 22
+had not been ticked at all. That is a habit, not a structural limit: nine other plans
+ticked a step of that name in the same commit as the rest. Counting the five as ticked
+would read 65, 62 and 38 % for the first three bands and leave the last two as they are.
+
+The rule asked for something narrower: *after finishing a task*, tick its checkboxes.
+Task by task means at least three commits that tick boxes, none carrying more than half
+of them. One plan of 91 met that, the first one: the core plan, in 13 per-task commits
+(eleven titled `docs: tick Task N checkboxes`), none over 11 % of its boxes; none has
+since. Every other plan that its own slice ticked at all was ticked in one commit (35
+plans) or in two, one of them small (4); 51 of the 91 were not ticked by their own
+slice at all.
 
 So the rule did not hold for fifty-one plans and then collapse. It was never reliably
-honoured: the first plan not fully ticked by its own slice is the seventh of 91
-(`2026-07-11-extract-spine`), ticked and unticked plans interleave from there, and the
-rate at the close of a slice was about half before the sweep (47 %, or 57 % counting
-the five one box short) and a quarter after it. Deleting the rule removes an
-instruction this repo has been failing for its whole life, not one it recently lost.
-That the rate fell across 2026-08-06 is measured here and not explained.
+honoured: the first plan its own slice did not fully tick appears on 2026-07-11, the
+eighth by birth (first commit, `music-spine`) and the seventh in filename order
+(`extract-spine`), and ticked and unticked plans interleave from there. Deleting the
+rule removes an instruction this repo has been failing for its whole life, not one it
+recently lost.
 
 (The 91 are the plans that had landed. A re-run over `docs/plans/` today finds 92
 files: this slice's own plan, `2026-09-29-unenforced-rules.md`, committed four
@@ -76,13 +101,14 @@ but only the state of their checkboxes — 955 lines, no other change.
 
 So the collision is: a **written** rule that says amend the plan as you go, and
 an **unwritten** rule that says a plan is not amended. The unwritten one won,
-silently. One explanation for that was checked and refuted: that execution moved to
-subagents, who are handed a plan as a frozen brief, around 2026-08-06. It had moved a
-month earlier. `docs/plans/2026-07-08-engine-dataclass-hardening.md:5` and
-`2026-07-09-project-init.md:5` already record "strict subagent-driven-development",
+silently. One explanation for the written rule's failure was checked and refuted: that
+execution moved to subagents, who are handed a plan as a frozen brief, shortly before
+compliance fell. It had not moved. `docs/plans/2026-07-08-engine-dataclass-hardening.md:5`
+and `2026-07-09-project-init.md:5` already record "strict subagent-driven-development",
 the workflow doc's first version (`917c114`, 2026-07-09) already lists a fresh
 implementer subagent per task, and every plan header (92 of 92) names that skill from
-the first plan on.
+the first plan on, so it cannot explain a change. Whether it explains the *level* of
+compliance nothing on disk can test (§0.1).
 
 The written rule appears in **four** places (line numbers as of `8136999`), not the
 two this section first counted: `docs/development-workflow.md:129`, `CLAUDE.md:207`,
@@ -92,8 +118,8 @@ sync"). The first count came from
 `grep -n -i 'checkbox' CLAUDE.md docs/development-workflow.md`: two file names,
 not a directory, run to confirm the two locations the backlog row already named.
 That one cause produced both misses. `docs/build-status.md` sits under `docs/`, so
-any directory sweep finds it, including the one the plan later prescribed
-(`grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/`), which did.
+any directory sweep finds it, including the one this slice's plan was first written
+with (`grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/`), which did.
 `README.md` is outside all four of that sweep's paths as well and would have
 survived it too; only a search of every tracked file finds it.
 
@@ -186,8 +212,9 @@ good reputation.**
 
 The measurement that makes this more than a slogan is §0.1: the same rule, by the
 same author, in the same repo, was met task by task once in 91 plans and fully ticked
-by its own slice in 34 of them (47 % before 2026-08-06, 25 % after), and one
-retroactive commit is all that made the end state read 51 of 51. Nothing checked it.
+by its own slice in 34 of them (53, 52, 31, 37 and 14 % across five date bands), and
+one retroactive commit is all that made the end state read 51 of 51 for the older
+plans. Nothing checked it.
 
 Three remedies exist, and this repo already uses all three. The measurement picks
 which one a given rule earns:
@@ -238,12 +265,10 @@ re-derive it.
 Remove the checkbox clause from `docs/development-workflow.md:129` and
 `CLAUDE.md:207` — and, per the §0.2 correction, from `docs/build-status.md:4`
 and `README.md:76-77`, which carried the same instruction. In its place, state
-the convention that actually governs (once, in `development-workflow.md`, with
-`CLAUDE.md` pointing there; the other two simply lose the clause):
-
-> A **design** is corrected in place when the code moves under it. A **plan** is
-> the record of what was planned, and is not amended in substance after its slice
-> ships — what was *done* is carried by that slice's per-task commits.
+the convention that actually governs once, in `development-workflow.md` under
+*Spec and plan*, with `CLAUDE.md` pointing there and the other two simply losing
+the clause. This design does not quote that section: a third rendering of a rule
+is how it drifts, and the design that names the pattern should not supply one.
 
 This is not surrender. It removes a contradiction: two rules, one written and one
 not, asking for opposite treatment of the same file. Deleting the written one and
@@ -252,8 +277,8 @@ document *is* rather than a step anyone must remember to perform — so there is
 nothing left to decay.
 
 **Not machine-checked, deliberately.** A check would have to assert that no commit
-touches a plan outside its authoring slice, which is brittle (a typo fix, a stale
-pointer, a correction like this slice's own) and would fire on legitimate edits.
+touches a plan outside its authoring slice, which is brittle (a typo fix, a dead
+link, a factual correction to a pointer) and would fire on legitimate edits.
 The rule earns remedy 3, not remedy 2, because after the deletion there is no
 procedure left to enforce.
 
@@ -284,19 +309,23 @@ procedure left to enforce.
 - **Deleting the checkbox rule loses a real record.** The per-task commits carry
   *what was done*, but not against which planned step — a plan with 53 unticked
   boxes and six commits does not say which box each commit closed. The judgement
-  is that the SDD ledger and the commit messages already carry enough, and that a
-  rule ticked task by task once in 91 plans, and fully by its own slice in 34,
-  carries less.
-- **§0.1's first instrument measured the wrong thing.** It counted `[x]` at HEAD and
-  bucketed plans by filename date, which is the end state, and it mistook one
-  retroactive commit (`878a713`) for a behavioural cliff, then explained the cliff with
-  a move to subagent-driven execution that §0.2 shows had happened a month earlier.
-  The error was found by a reviewer going to git history, not to the working tree. The
-  at-landing series that replaced it approximates "at landing" by "by the plan's own
-  commits": it counts a plan one box short as not fully ticked, and it lets through two
-  plans completed one and seventeen minutes after their own version-bump commit
+  is that the commit messages already carry enough (the SDD ledger would too, but it
+  is gitignored and only this slice's is on disk), and that a rule ticked task by
+  task once in 91 plans, and fully by its own slice in 34, carries less.
+- **§0.1's first instrument measured the wrong thing, and its replacement repeated
+  the error.** It counted `[x]` at HEAD and bucketed plans by filename date, which is
+  the end state, and it mistook one retroactive commit (`878a713`) for a behavioural
+  cliff, then explained the cliff with a move to subagent-driven execution that §0.2
+  shows had not happened. The at-landing series that replaced it first kept the
+  sweep's date as its era boundary, a second reading of the same artefact, and that
+  does not survive either (§0.1). A reviewer found the first error by going to git
+  history, not to the working tree, and the second by cutting the series by date. The
+  series that stands approximates "at landing" by "by the plan's own commits": it
+  counts a plan one box short as not fully ticked, and it lets through two plans
+  completed one and seventeen minutes after their own version-bump commit
   (`2026-09-15-named-regions`, `2026-09-02-fake-render-fixture`); for slices before the
-  rule that every slice bumps, there is no such event to measure against.
+  rule that every slice bumps, there is no such event to measure against. It does not
+  say why the rate fell, or on which date.
 - **None of the three makes a reel better.** They make the next slice's mistakes
   louder.
 
