@@ -10,6 +10,25 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.14.1 — 2026-09-29
+
+- The `ReelEpisode.chroma` shape now has **one** validator, called both by the
+  carrier and by `color_fidelity.shift_from_report` on its own return. The
+  reprocess arm of `build_reel` assigns that return straight into the list
+  `check_reel` reads without ever constructing a `ReelEpisode`, so one of the
+  two inlets was ungated.
+- **The instruction to tick a plan's checkboxes is gone, and a plan is not amended in
+  substance once its slice ships.** Four documents told an implementer to tick them
+  as each task landed — `CLAUDE.md`, `development-workflow.md`, `build-status.md`
+  and `README.md` — and the instruction is deleted, not repaired. It was followed
+  task by task once, by the first plan; at the close of their own slices, 53, 52, 31,
+  37 and 14 % of the 91 plans that had landed were fully ticked, across five date
+  bands, and the end state reads 61 of 91 only because one commit ticked 27 of the
+  older ones retroactively. `development-workflow.md` now states, once, that spec and
+  plan are kept in sync until the slice ships — the version-bump commit — and that
+  after it a design is corrected in place while its plan stays the record of what was
+  planned; what was *done* is carried by each slice's per-task commits.
+
 ## 0.14.0 — 2026-09-26
 
 - `verify_runtime` now refuses a run whose **installed plugin disagrees with the

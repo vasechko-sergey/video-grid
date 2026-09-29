@@ -91,7 +91,23 @@ New work follows the superpowers pipeline — one subsystem per cycle:
    pass. Continuous — no check-ins between tasks. A whole-slice review closes the
    cycle.
 
-Spec and plan are kept **in sync** — if they drift, fix both, not one.
+### Spec and plan
+
+Until the slice ships — the version-bump commit ([Versioning](#versioning)) —
+spec and plan are kept **in sync**: if they drift, fix both, not one. After that
+the two part ways on purpose. A **design** is corrected in place when what it
+asserts stops being true — whether the code moved, a measurement was re-derived, or
+a claim was found false. A **plan** is the record of what was *planned*, and is not
+amended in substance: its account of what was planned stands, while a typo, a dead
+link or a factual correction to a pointer is fine. What was *done* is carried by
+that slice's per-task commits.
+
+(Until 2026-09-29 this file also asked for the plan's checkboxes to be ticked as
+each task landed. It was followed task by task exactly once, by the first plan. At
+the close of their own slices, 53, 52, 31, 37 and 14 % of the 91 plans that had
+landed were fully ticked, across five date bands from 2026-07-05 to 2026-09-25; the
+end state reads 61 of 91 because one commit (`878a713`, 2026-08-06) ticked 27 of the
+older ones retroactively. Measured 2026-09-29.)
 
 ### Closing a slice — the deferral rule
 
@@ -126,8 +142,8 @@ exactly that way.
 - **Commit per task step** exactly as the plan specifies; the commit message says
   *why*. Co-author trailer:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- After finishing a task: tick its checkboxes in the plan and update
-  [build-status.md](./build-status.md); commit both.
+- After finishing a task: update [build-status.md](./build-status.md) and commit
+  it with the task's own code.
 
 ## Versioning
 

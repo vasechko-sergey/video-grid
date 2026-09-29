@@ -66,6 +66,42 @@ def evaluate(pairs: list[tuple]) -> dict:
             "samples": len(rows)}
 
 
+def validate_chroma(c: dict | None) -> None:
+    """Refuse any shape `ReelEpisode.chroma` does not carry. `None` is legal.
+
+    One validator, two callers: the dataclass's own `__post_init__` and
+    `shift_from_report`, which validates what it is about to return. The second
+    is the load-bearing one — `build_reel`'s reprocess arm assigns that return
+    straight into the list `check_reel` reads, never constructing a `ReelEpisode`,
+    so before this the carrier's refusals guarded one of the two inlets (design
+    2026-09-29 §0.3/§2.1).
+
+    Messages name `ReelEpisode.chroma` because that is the contract being
+    enforced, not the module enforcing it. They are pinned whole by
+    `test_each_refusal_message_is_pinned_whole_not_by_fragment`; they are part of
+    the contract, not commentary."""
+    if c is None:
+        return
+    if not isinstance(c, dict):
+        raise ValueError(
+            f"ReelEpisode.chroma must be a reading "
+            f"{{delta_c, delta_h}} or an absence {{status, reason}}, "
+            f"got {type(c).__name__} — build it with "
+            f"color_fidelity.shift_from_report(report)")
+    if c.get("status") == "not-checked":
+        if not (isinstance(c.get("reason"), str) and c["reason"]):
+            raise ValueError(
+                f"ReelEpisode.chroma: a not-checked chroma must carry a "
+                f"non-empty 'reason' naming the absence, got {c!r}")
+        return
+    if not all(isinstance(c.get(k), (int, float)) and not isinstance(c.get(k), bool)
+               for k in ("delta_c", "delta_h")):
+        raise ValueError(
+            f"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
+            f"(signed CIEDE2000 components), got {c!r} — build it with "
+            f"color_fidelity.shift_from_report(report)")
+
+
 def shift_from_report(report: dict) -> dict:
     """The episode's chroma displacement, in the shape ReelEpisode.chroma carries.
 
@@ -102,7 +138,23 @@ def shift_from_report(report: dict) -> dict:
     that history: `region` is the key that says which arm produced the numbers,
     independent of whichever half of the merge a `status` key might come from,
     now or after some future advisory gains one.
+
+    Validates what it returns, through `validate_chroma` — the same function the
+    carrier's own `__post_init__` calls. A shape `ReelEpisode.chroma` would refuse
+    therefore raises `ValueError` here, at the producer, instead of reaching
+    `check_reel` unchecked through `build_reel`'s plain list (design 2026-09-29
+    §2.1).
     """
+    out = _shift(report)
+    validate_chroma(out)
+    return out
+
+
+def _shift(report: dict) -> dict:
+    """The unvalidated shift. `shift_from_report` is its only caller and validates
+    what it returns, so every return below is covered without each one having to
+    remember to call `validate_chroma` — a return added here later cannot skip it.
+    What is read, and why, is documented on `shift_from_report`."""
     checks = report.get("checks") if isinstance(report, dict) else None
     d = checks.get("grade_damage") if isinstance(checks, dict) else None
     if not isinstance(d, dict):

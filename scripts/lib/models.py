@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scripts.lib import color
+from scripts.lib import color, color_fidelity
 from scripts.lib.geometry import even
 from scripts.lib.look import LookSpec
 from scripts.lib.outro import OutroFit
@@ -1448,27 +1448,7 @@ class ReelEpisode:
     chroma: dict | None = None
 
     def __post_init__(self) -> None:
-        if self.chroma is None:
-            return
-        c = self.chroma
-        if not isinstance(c, dict):
-            raise ValueError(
-                f"ReelEpisode.chroma must be a reading "
-                f"{{delta_c, delta_h}} or an absence {{status, reason}}, "
-                f"got {type(c).__name__} — build it with "
-                f"color_fidelity.shift_from_report(report)")
-        if c.get("status") == "not-checked":
-            if not (isinstance(c.get("reason"), str) and c["reason"]):
-                raise ValueError(
-                    f"ReelEpisode.chroma: a not-checked chroma must carry a "
-                    f"non-empty 'reason' naming the absence, got {c!r}")
-            return
-        if not all(isinstance(c.get(k), (int, float)) and not isinstance(c.get(k), bool)
-                   for k in ("delta_c", "delta_h")):
-            raise ValueError(
-                f"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
-                f"(signed CIEDE2000 components), got {c!r} — build it with "
-                f"color_fidelity.shift_from_report(report)")
+        color_fidelity.validate_chroma(self.chroma)
 
     def to_dict(self) -> dict:
         """The shape from_dict reads back. `manifest` is emitted INLINE even when it

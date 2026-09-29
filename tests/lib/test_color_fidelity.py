@@ -4,6 +4,7 @@ for the entropy-ratio statistic that now votes)."""
 import pytest
 
 from scripts.lib import color_fidelity as cf
+from scripts.lib import models
 
 
 def test_an_identical_pair_is_zero():
@@ -145,3 +146,164 @@ def test_status_and_region_coexist_when_update_merges_them():
          "region": "subject", "delta_c": 9.0, "delta_h": 9.0,
          "crop_delta_c": -1.25, "crop_delta_h": 0.5, "pass": True}))
     assert out == {"delta_c": -1.25, "delta_h": 0.5}
+
+
+def test_shift_from_report_emits_the_two_shapes_the_carrier_accepts():
+    """The producer is the chokepoint. build_reel's reprocess arm assigns this
+    function's return straight into the list check_reel reads, bypassing
+    ReelEpisode.__post_init__ entirely — so a shape this function can emit but the
+    carrier would refuse is a shape that reaches the consumer unchecked.
+
+    This test holds only what the producer EMITS for good input: a reading, and a
+    named absence with a reason. It cannot fail if the validation is removed — that
+    is held by `test_the_carrier_and_the_producer_share_one_validator` and
+    `test_shift_from_report_refuses_a_shape_the_carrier_would_refuse`, not by this
+    one."""
+    good = cf.shift_from_report(
+        {"checks": {"grade_damage": {"region": "crop",
+                                     "delta_c": 1.0, "delta_h": -2.0}}})
+    assert good == {"delta_c": 1.0, "delta_h": -2.0}
+    absent = cf.shift_from_report({})
+    assert absent["status"] == "not-checked" and absent["reason"]
+
+
+def test_validate_chroma_accepts_none_and_both_good_shapes():
+    cf.validate_chroma(None)
+    cf.validate_chroma({"delta_c": 0.0, "delta_h": 0.0})
+    cf.validate_chroma({"status": "not-checked", "reason": "why"})
+
+
+@pytest.mark.parametrize("bad,says", [
+    ([], "must be a reading"),
+    ({"status": "not-checked"}, "non-empty 'reason'"),
+    ({"status": "not-checked", "reason": ""}, "non-empty 'reason'"),
+    ({"delta_c": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+    # A bool IS an int, so each slot has to be refused on its own: a bool
+    # exclusion hardcoded to `delta_c` passed the whole unit tier while `delta_h`
+    # went unchecked, because the only bool case used to be the first of these two.
+    ({"delta_c": True, "delta_h": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+    ({"delta_c": 1.0, "delta_h": True}, "numeric 'delta_c' and 'delta_h'"),
+])
+def test_validate_chroma_refuses_each_bad_shape(bad, says):
+    with pytest.raises(ValueError, match=says):
+        cf.validate_chroma(bad)
+
+
+def test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does():
+    """Which arm a dict lands in is decided by the VALUE `"not-checked"`, never by
+    the mere presence of a `status` key — the same predicate
+    `check_reel._chroma_spread_check` uses to file it as an absence (design
+    2026-09-21 §0.3: the reader and its validator must key on the same thing). A
+    validator keyed on presence would demand a `reason` of a reading that merely
+    carries some other `status`, refusing what the reader reads as a reading.
+
+    The `status` value `"measured"` is constructed by this test, not observed in
+    production: it is the right SHAPE for the property (a `status` that is not
+    `not-checked`), not a claim that any producer emits one."""
+    cf.validate_chroma({"status": "measured", "delta_c": 1.0, "delta_h": 2.0})
+    with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
+        cf.validate_chroma({"status": "measured"})
+
+
+@pytest.mark.parametrize("carried", [
+    pytest.param({"delta_c": 1.0}, id="one-stray-component"),
+    pytest.param({"delta_c": 1.0, "delta_h": 2.0}, id="both-components"),
+])
+def test_a_not_checked_dict_with_a_reason_is_admitted_whatever_else_it_carries(carried):
+    """The absence arm returns as soon as it has a reason, so numeric components
+    beside it — one or both — are admitted rather than refused. `check_reel`'s
+    comments and its own test
+    (`test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences`)
+    state that admission as fact, and the reader files the both-components shape as
+    an absence because the validator already does. That test hands the dict to the
+    READER directly and never routes it through this validator, so nothing held the
+    claim until now. The two cases are two different regressions (refuse any stray
+    component; refuse only a full pair), each failing under its own id."""
+    cf.validate_chroma({"status": "not-checked", "reason": "why", **carried})
+
+
+def test_an_integer_component_is_numeric():
+    """The numeric clause admits an int as well as a float — the `bool` exclusion
+    beside it exists because a bool IS an int, which needs saying only if ints are
+    otherwise legal. Nothing else in the suite hands either validator an int, so a
+    clause narrowed to `float` passed every test while refusing
+    `{"delta_c": 2, "delta_h": 0}`, which the pre-extraction
+    `ReelEpisode.__post_init__` accepted."""
+    cf.validate_chroma({"delta_c": 2, "delta_h": 0})
+
+
+def test_the_carrier_and_the_producer_share_one_validator(monkeypatch):
+    """Not 'both validate' — both call the SAME function. Two validators that
+    agree today are two that can disagree tomorrow, which is the shape this slice
+    exists to remove: a rule kept by whoever remembers to keep it."""
+    seen = []
+    monkeypatch.setattr(cf, "validate_chroma",
+                        lambda c: seen.append(c))
+    models.ReelEpisode(manifest={}, clip="c.mp4",
+                       chroma={"delta_c": 1.0, "delta_h": 2.0})
+    cf.shift_from_report(
+        {"checks": {"grade_damage": {"region": "crop",
+                                     "delta_c": 3.0, "delta_h": 4.0}}})
+    assert seen == [{"delta_c": 1.0, "delta_h": 2.0},
+                    {"delta_c": 3.0, "delta_h": 4.0}]
+
+
+def test_shift_from_report_refuses_a_shape_the_carrier_would_refuse():
+    """The behavioural half of the chokepoint claim, beside the spy test above.
+
+    That test proves both callers reach the SAME validator; it cannot see whether
+    the producer lets the refusal OUT, because its stand-in never raises — so a
+    producer that caught and discarded the ValueError would leave it green while
+    the very shape this slice exists to stop reached check_reel. This drives the
+    real validator with a shape `_shift` genuinely emits: a `crop` block is copied
+    through untouched, so a null delta comes out the other side as a reading with
+    no number in it, and must stop here. The `None` is constructed by this test,
+    not observed in production, where real readings are floats: it is the right
+    SHAPE to test (a value `_shift` passes through untouched), not a claim that any
+    producer emits it."""
+    report = {"checks": {"grade_damage": {"region": "crop",
+                                          "delta_c": None, "delta_h": 1.0}}}
+    with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
+        cf.shift_from_report(report)
+
+
+_CHROMA_REFUSALS = (
+    "ReelEpisode.chroma must be a reading "
+    "{delta_c, delta_h} or an absence {status, reason}, "
+    "got list — build it with "
+    "color_fidelity.shift_from_report(report)",
+    "ReelEpisode.chroma: a not-checked chroma must carry a "
+    "non-empty 'reason' naming the absence, got {'status': 'not-checked'}",
+    "ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' "
+    "(signed CIEDE2000 components), got {'delta_c': 1.0} — build it with "
+    "color_fidelity.shift_from_report(report)",
+)
+
+
+@pytest.mark.parametrize("bad,want", list(zip(
+    ([], {"status": "not-checked"}, {"delta_c": 1.0}), _CHROMA_REFUSALS,
+    strict=True)))
+def test_each_refusal_message_is_pinned_whole_not_by_fragment(bad, want):
+    """`validate_chroma`'s docstring used to say these messages were asserted
+    verbatim. That was false: every other assertion matches a fragment, so the
+    `— build it with …` tail could be rewritten to name a module that does not
+    exist and the whole non-integration suite stayed green (measured 2026-09-29).
+    That is this slice's own subject appearing in its own diff — a rule stated in
+    a comment with nothing holding it — so the claim is made true rather than
+    withdrawn.
+
+    The expected strings are what the refusals printed when this was written
+    (identical to the pre-move `ReelEpisode.__post_init__`'s output), copied from
+    that output rather than typed from the source."""
+    with pytest.raises(ValueError) as e:
+        cf.validate_chroma(bad)
+    assert str(e.value) == want
+
+
+def test_the_validators_docstring_names_the_test_that_pins_its_messages():
+    """`validate_chroma`'s docstring points at the test that pins its messages, and
+    a pointer is a claim too: rename that test and the docstring names nothing.
+    Reading the name off the function object makes that rename fail here instead of
+    rotting quietly."""
+    pin = test_each_refusal_message_is_pinned_whole_not_by_fragment
+    assert pin.__name__ in cf.validate_chroma.__doc__

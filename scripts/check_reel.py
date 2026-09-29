@@ -353,32 +353,31 @@ def _chroma_spread_check(chroma: list | None, bar: float) -> CheckResult:
     per: dict[str, list] = {}
     missing: dict[str, str] = {}
     for i, c in enumerate(chroma):
-        # Keyed on `status` — the SAME discriminator ReelEpisode.__post_init__
-        # uses. Keying on `"delta_c" in c` instead made the reader disagree with
-        # its own validator: that validator returns early at status ==
-        # "not-checked" once it has a non-empty reason, so it admits a dict
-        # carrying BOTH a not-checked status and a stray numeric component, and
-        # the reading branch then subscripted c["delta_h"] and raised KeyError
-        # (design 2026-09-21 §0.3).
+        # Keyed on `status` — the SAME discriminator color_fidelity.validate_chroma
+        # uses (ReelEpisode.__post_init__ calls it). Keying on `"delta_c" in c`
+        # instead made the reader disagree with its own validator: that validator
+        # returns early at status == "not-checked" once it has a non-empty reason,
+        # so it admits a dict carrying BOTH a not-checked status and a stray
+        # numeric component, and the reading branch then subscripted c["delta_h"]
+        # and raised KeyError (design 2026-09-21 §0.3).
         if isinstance(c, dict) and c.get("status") == "not-checked":
             # A bare subscript, never .get, and this reader has TWO inlets, so
-            # both are named. Through ReelEpisode, __post_init__ refuses a
-            # not-checked chroma whose 'reason' is missing or empty. Through
-            # build_reel's plain list, every absence branch of
-            # color_fidelity.shift_from_report returns a non-empty literal
-            # reason — "the report carries no grade_damage block", or the
-            # merged dict's own `reason` with a literal fallback when that is
-            # itself missing — never a missing or empty one.
+            # both are named. Both are gated by ONE function,
+            # color_fidelity.validate_chroma, which refuses a not-checked chroma
+            # whose 'reason' is missing, empty or not a string: through
+            # ReelEpisode, __post_init__ calls it; through build_reel's plain
+            # list, shift_from_report calls it on its own return (design
+            # 2026-09-29 §2.1). A dict some third filler builds literally is
+            # outside that guarantee, and visibly so (design §4).
             missing[str(i)] = c["reason"]
         elif isinstance(c, dict):
             # Bare subscripts again, and this reader has TWO inlets, so both are
-            # named. Through ReelEpisode, __post_init__'s numeric clause requires
-            # delta_c and delta_h together. Through build_reel — which builds a
-            # plain list and overwrites one entry per reprocessed episode, never
-            # constructing a ReelEpisode — every branch of
-            # color_fidelity.shift_from_report returns a clean two-key reading or
-            # a clean two-key absence. The second inlet is the one the comment
-            # here used to omit.
+            # named. validate_chroma's numeric clause requires delta_c and
+            # delta_h together, and both inlets pass through it: ReelEpisode's
+            # __post_init__ calls it, and shift_from_report calls it on what it
+            # returns — which is what build_reel's reprocess arm assigns into the
+            # plain list this reader gets, never constructing a ReelEpisode
+            # (design 2026-09-29 §2.1).
             per[str(i)] = [c["delta_c"], c["delta_h"]]
         else:
             missing[str(i)] = ("the reel manifest is older than this field — "

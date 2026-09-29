@@ -52,7 +52,9 @@ is still P3.
 
 ## P1 — next
 
-**P1 is empty.** R2.1 was the only row; it closed 2026-09-17 by chroma spread — [the archive](backlog-closed.md) carries the closure note. Unlike an empty P0, an empty P1 is not the resting state (P1 is supposed to hold *next*) — it means nothing has been promoted since the last row closed. Read P2 below for what the queue actually continues with.
+| | Item | Size | Source |
+|---|------|------|--------|
+| ○ | **Every threshold but `variety_min` — twelve of the eighteen fields of `ReelCheckSpec` and `CheckSpec` — is unreachable from any authoring surface, and R2.4 (a threshold widened by hand needs a reason attached) folds into this row.** `ReelManifest.check_spec` is `ReelCheckSpec(self.target_dur, self.variety_min)`: 2 of the class's 11 fields arrive from the manifest. `process_episode` builds `CheckSpec` from 3 of its 7 fields (all from the manifest) plus `attempt`, a retry counter. No CLI sets a threshold — `edl_to_reel`, `check_reel`, `build_reel` and `check_episode` offer none — so **12 of the 18 fields can only ever hold their default**: `beat_tol`, `loudness_target`, `loudness_tol`, `clip_tol`, `bar_symmetry_tol`, `layout_jump_max`, `length_retime_max`, `grade_residual_max` and `chroma_spread_max` on `ReelCheckSpec`; `black_floor`, `black_rel` and `entropy_floor` — the blocking grade-damage bar — on `CheckSpec`. Every one is a first cut on a single shoot. `provenance.spec_overrides`, the diff machine written to catch any loosened gate, is called once, on `ReelManifest.check_spec`, with `target_dur` exempt — so it can only ever report **`variety_min`**, and the mechanism R2.4 was filed against has exactly one reachable knob. The defect for a general tool is therefore the opposite of the one R2.4 named: not "widened silently" but "cannot be set at all". Two halves, one slice: give `ReelCheckSpec` and `CheckSpec` an authoring surface, and make `spec_overrides` meaningful by requiring a reason at the point of authoring — because a loosenable gate without a recorded reason is exactly the cry-wolf mechanism R2.4 was filed against (`color_delta_max`: 12 → 44 → **56** across the first real run, each widening silencing a complaint that was correct; that knob is deleted, colour-convergence-retire 2026-08-29). **R2.4's own row is removed and its correction carried here:** the example it first named, `grade_delta_max`, was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) and fixed in the 2026-09-03 audit. | M | [unenforced-rules](specs/2026-09-29-unenforced-rules-design.md) §0.6, §5; [retro](retro/2026-08-25-first-real-run.md) R2 |
 
 ## P2 — soon
 
@@ -67,7 +69,6 @@ is still P3.
 | ○ | **R8.2 · The pool was never widened after day 1.** The delivered reel uses 8 windows out of 1508, and the required contact-sheet "look at the pixels" stage ran **once**, for 177 seconds, on day 1, and was never re-run against a revised cut. | S | [retro](retro/2026-08-25-first-real-run.md) R8 |
 | ○ | **R10.11 · "(silent reel)" in the pre-mix loudness check made the agent conclude the music had been lost.** A diagnostic message that reads as a failure. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.12 · Eight of 22 `AskUserQuestion` turns were the human arbitrating a per-episode sensor failure** — the clearest measure of where a person's attention was actually spent. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
-| ○ | **R2.4 · A threshold widened by hand needs a reason attached, not just a bigger number.** Concretely, this was `color_delta_max`: 12 → 44 → **56** across the run, each widening silencing a complaint that was correct. That specific knob is deleted (colour-convergence-retire, 2026-08-29), but the mechanism that let it happen silently is generic, not particular to it: `provenance.spec_overrides` records that a `ReelCheckSpec`/`CheckSpec` field changed from its default, never why. Nothing today stops the same pattern on `variety_min`, `entropy_floor`, or any other threshold. **Example corrected by this session's audit, 2026-09-03**: this row named `grade_delta_max`, which was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) — the stale field name is fixed above; the mechanism (`spec_overrides` still records no reason) is unchanged and this row stays open. | S | [retro](retro/2026-08-25-first-real-run.md) R2 |
 | ○ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. **Measured and named, 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §0.1/§4) is the number this row was missing — the largest weight, `W_PRESENT` at 0.44, separated **3 of 1508** windows on the only real pool: not that the score was ignored, but that 44% of it had nothing to say. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
 | ○ | **R10.3 · 95% of conveyor calls were piped through `tail`/`grep`/`head`**, twice losing the answer — once costing a 173-second re-render to read output already produced. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
 | ○ | **R10.5 · QC has no "judge only what changed" and no memory between rounds** — ~14 rounds, **97 judges, 160 MB, 8 episodes**, two blocking verdicts, one of them a false alarm from a stale evidence packet. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
@@ -85,10 +86,8 @@ is still P3.
 | ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
 | ○ | **A masked `subject`, instead of the route's bbox.** A box over water contains water, which is exactly why design §0.3 measures the subject as the **worst** mid reference (sd 21.0, against the background's 14.4) and the best toe one. The seg model already runs at intake and its masks have been discarded since 2026-08-04. Costs a `CACHE_VERSION` bump or a fresh seg pass. **Sharpened 2026-09-16**: the dE00 grade description now reads the same box, so a **second** sensor is waiting on this mask, not only the tone stage. Closing the dE00 sampling-box row (sensor-provenance §0.2) made the box's SIZE and its fallback VISIBLE — it did not make the box a subject, which is this row and only this row. **Not a half of R2.1**: R2.1's two folded rows are the dE00 sampling box (closed 2026-09-16) and chroma agreement (closed 2026-09-17, by measurement, not a target — see the chroma-spread design); this is named-regions §7 row 2's own row and was never folded into R2.1. | M | [named regions](specs/2026-09-15-named-regions-design.md) §7 row 2, [sensor provenance](specs/2026-09-16-sensor-provenance-design.md) §5 |
 | ○ | **Re-extract the real run's segments through today's `extract` so the region-consistency table can be re-measured on SOURCE.** `plan_ungraded` refuses four of the eight (ep1, ep3, ep5, ep6) as `pc` — they predate the 0.3.1 segment range contract — which is why design §0.3's cross-episode spreads are measured on DELIVERED clips that already carry each episode's authored tone pair, saturation 0.92, `shadow_red` 0.1 and `mid_blue` 1.2. The toe's direction and magnitude do reproduce on the four readable sources; the spreads have no source-side reading at all. Same class as the `golden_ride.mp4` row above, on a run instead of a fixture. | S | [named regions](specs/2026-09-15-named-regions-design.md) §7 row 5, §0.6 |
-| ○ | **Route `check_reel.run(chroma=...)` through one validator.** The chroma reader's comment now names both its inlets (design 2026-09-21 §2.3) — through `ReelEpisode`, `__post_init__`'s two arms; through `build_reel`'s plain list, every branch of `color_fidelity.shift_from_report`. Nothing *enforces* that a future third filler goes through the validator; it is documented, not gated. Closing it would mean constructing a throwaway `ReelEpisode` per reprocessed episode purely to validate a two-key dict — filed rather than built for that cost. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §5.5, §6 row 1 |
 | ○ | **A real `pix_fmt`-less camera source.** `color.refuse_ungradeable_plane`'s new third clause (design 2026-09-21 §2.2) is proven reachable only by a constructed fixture — the `stsd` fourcc of a segment built at test time from the committed `golden_ride.mp4`, patched from `avc1` to an unknown codec. No real proprietary or next-generation camera codec file exhibiting this property is on this machine, so the inference that such codecs are disproportionately the 10-/12-bit sources the depth guard exists for is marked as an inference, not a measurement (design §5.2). Would turn the constructed fixture into a measured one. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §5.2, §6 row 2; blocked on footage |
-| ○ | **A note on the other two two-producer merges.** `scripts/edit_plan.py:129` (`{**defaults, **editorial}`) and `scripts/lib/orchestration.py:194` (`{**DEFAULT_PARAMS, **params}`) are deliberate overrides today with no discriminator downstream — a sweep of `scripts/` found them alongside `check_episode._grade_damage`'s `d.update(...)` call (`check_episode.py:269`) as the only three merges of two independently-produced mappings (design 2026-09-21 §0.1). Neither is a defect; both become one the day a key is read as a discriminator after the merge. Worth a comment at each site, not a slice. | S | [unvalidated-shapes](specs/2026-09-21-unvalidated-shapes-design.md) §6 row 3 |
-| ○ | **A convention nothing has ever followed: ticking a plan's checkboxes.** `CLAUDE.md`'s Source-of-truth section and [development-workflow.md](development-workflow.md) both say to update the plan's checkboxes in the same commit as each task. Measured 2026-09-21 while closing the unvalidated-shapes slice: **no shipped plan in `docs/plans/` has a single `[x]`** — checked against a fully released plan, not merely an in-progress one. So the rule is not lagging, it has never once been applied, and the SDD ledger plus `git log` carry the per-task record it describes. Two honest closures: delete the sentence from both documents, or machine-check it the way the four path conventions are checked. Leaving it is the inert surface this repo deletes (design 2026-09-16 §1.4) — an instruction every reader must decide to ignore. | S | unvalidated-shapes, Task 5 report |
+| ○ | **Two unit-tier tests download `yolo11n-seg.pt` when the weights are absent, so an offline `-m "not integration"` run is not offline.** `tests/lib/test_intake.py::test_intake_records_the_band_it_carved_with` and `::test_intake_records_the_default_band_when_none_is_given` call the real `intake.intake()` on the ffmpeg-built `sample_clip` without the `ensure_model` stub their neighbours install (in the test, or through the shared `_stub_cache` helper), so with no `yolo11n-seg.pt` in the working directory ultralytics fetches the 6,182,636-byte file from GitHub. Measured 2026-09-29 on a `git archive` export (the weights are gitignored, so an export never has them), run under `sandbox-exec` with the network denied so that nothing was actually fetched: `-m "not integration"` gave 5 failed, 3732 passed, 306 deselected. Two of the five are these, each a `ConnectionError` naming `github.com/ultralytics/assets/releases/download/…/yolo11n-seg.pt`; the other three are export artefacts unrelated to the weights (`test_engine_stamp_on_this_repo_reports_a_sha` needs `.git`, and both `test_launcher.py` failures need the `.venv` symlink). `pytest.ini` documents the `integration` marker as "requires ffmpeg and/or model weights", so these two are either mismarked or should be cut off from the detector. **Stubbing `ensure_model` alone is not the fix, and it passes for the wrong reason** — reproduced 2026-09-29 in a weight-less export with the network denied: both tests pass, but only because `intake()` quarantines the clip. `intake_report.json` records `scanned: 0` and the download failure for `sample.mp4`, `FOOTAGE.json` has `clips: []`, and each test asserts only the `band` the run recorded from its own parameter (the second from the default), which survives an empty pool. On an online machine the worker's own `YOLO(model_path)` in `_iter_seg` would still fetch. The fix is either to stub `ensure_model` **and** cut the detector off as the neighbours do — `_process_clip` itself, as `test_pool_reaches_the_cap_and_never_exceeds_it` and eleven others do, or the seams beneath it, as `test_intake_builds_footage_and_writes` does — or to mark the two tests `integration`. | S | first seen in five reviewer scratch exports during unenforced-rules; pinned to these two tests in its Task 3; remedy corrected in its fix round 1 (the review found that an `ensure_model`-only stub passes for the wrong reason, and this reproduces it) |
 
 ## P3 — someday
 
@@ -227,9 +226,9 @@ re-taking it — nobody has shown 3 is right,
 only that it is stated (grade-delta-sensors §9.5, sensor-provenance §5) ·
 a second calibration shoot for the **retired 5.0 dE00 bar** — the field this row
 opened by naming, `CheckSpec.grade_delta_max`, does not exist anywhere in the tree:
-it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (R2.4's row above records the
-same correction), which measures an entropy ratio and not a colour distance, so the
-dE00 has had no bar of its own since. Every number
+it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (the P1 row above, which R2.4
+folded into, records the same correction), which measures an entropy ratio and not
+a colour distance, so the dE00 has had no bar of its own since. Every number
 behind the 5.0 dE00 bar comes from one shoot, one grade, and simulated
 damage, and the whole healthy-to-damage gap is **0.75 dE00**. And those
 artifacts were rendered by an engine that no longer exists: they predate the
@@ -463,7 +462,8 @@ against the shipped `tone_drift(decisions, pairs)`) — corrected in both
 places; the rest of this row stays open. The natural first instalment of the
 existing open row on `grade_damage`/`grade_faithful` naming the same shape
 of absence in different words (bound-reports, whole-branch review) ·
-this slice's near-miss looked like R2.4 above but is a different mechanism —
+this slice's near-miss looked like R2.4 (folded into the P1 row above on
+2026-09-29) but is a different mechanism —
 a RENDERED value (`max_speed`) with no manifest field at all, not a THRESHOLD
 widened by hand with no reason recorded — so R2.4 stays open, unmerged and
 untouched by this row (retry-record §6) ·
@@ -507,7 +507,45 @@ retried episode's rebuilt plan disagreed with the frozen sidecars and
 that a LATER reprocess in the SAME round can go on to invalidate.
 `grade_faithful` is blocking at a 4.0 ceiling, so a stale prediction can pass a
 reel that should have stopped, or stop one that would have passed (retry-record,
-whole-branch review Minor 1)
+whole-branch review Minor 1) ·
+nothing holds the chroma validator's refusal at `build_reel`'s reprocess arm:
+`shift_from_report` raises `ValueError` on a malformed reading, but `build_reel.py:255`
+— the arm's `chroma[item.idx] = …`, an assignment into the plain list `check_reel`
+reads, never through a `ReelEpisode` — can be wrapped in `try: … except ValueError:
+pass` (phase 1's stale value stays, the reel delivers) and the whole suite does not
+notice. Measured 2026-09-29 on a `git archive` export of `1c21655` with the weights,
+ffmpeg config and venv linked in: 4045 passed, 1 skipped, 2 failed, the two failures
+being `test_real_runtime_is_ready` (the sanctioned one) and
+`test_engine_stamp_on_this_repo_reports_a_sha` (an export has no `.git`); both fail
+identically on the unmutated export, so the swallow turns nothing red. Remedy, run on
+the mutated and the unmutated export: one `tests/lib/test_build_reel.py` test on the
+`_wire` fixture, beside `test_a_rejected_reprocess_never_relabels_the_episodes_chroma`,
+whose reprocess result carries a `grade_damage` block `{"region": "crop", "delta_c":
+None, "delta_h": 1.0}` and which asserts `pytest.raises(ValueError, match="numeric
+'delta_c' and 'delta_h'")` and `seen["deliver"] == []` — GREEN unmutated, RED (`DID NOT
+RAISE`) under the swallow. It pins one visible circumvention, not the class
+(unenforced-rules design §4); phase 1's fill (`edl_to_reel.py:267`) is an argument to
+`ReelEpisode(...)`, whose `__post_init__` validates it a second time, so only the
+reprocess arm has this gap (unenforced-rules Task 1 review, M-2; whole-branch review,
+Minor 5) ·
+a refusal raised from inside `shift_from_report` advises the repair that just failed and
+names no episode. Handed a `grade_damage` block `{"region": "crop", "delta_c": None,
+"delta_h": 1.0}` — the shape
+`test_shift_from_report_refuses_a_shape_the_carrier_would_refuse` drives — it raises
+"ReelEpisode.chroma must carry numeric 'delta_c' and 'delta_h' (signed CIEDE2000
+components), got {'delta_c': None, 'delta_h': 1.0} — build it with
+color_fidelity.shift_from_report(report)", from a traceback that does not say which
+episode's report it was reading (the advice suits a caller building a `ReelEpisode` by
+hand — the reader the contract's message was written for — and is circular for this
+producer). The text is the contract's, frozen and pinned whole by
+`test_each_refusal_message_is_pinned_whole_not_by_fragment`, so it is not where to fix
+it. Remedy: `e.add_note(...)` carrying the episode index at the two call sites,
+`build_reel.py:255` and `edl_to_reel.py:267`, where the second sits inside
+`_reel_manifest`'s comprehension and needs a small helper because a `try` cannot sit in
+one. Checked: a note leaves `str(e)` byte-identical, so no pinned message moves, and it
+prints under the traceback; `edl_to_reel.py:238` already does this for a worker's
+exception ("raised while processing episode {i} (segment …)") (unenforced-rules Task 1
+review, M-3; whole-branch review, Minor 5)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -579,7 +617,58 @@ discriminates SOLELY via its `source_for` call-spy: raw and stabilized
 assertion alone would pass a `_predict` wired to the wrong file too
 (grade-sensor-references Task 7, same shape as Task 5's own finding on the
 preflight-probe test; mis-attributed to `tests/test_episode_qc.py` until
-corrected by the whole-branch final review, M-2)
+corrected by the whole-branch final review, M-2) ·
+the two-producer merge predicate has no machine check — a merge of two
+independently produced mappings whose result survives AS a mapping and is later
+tested for a key's presence. The 2026-09-21 sweep found three sites by hand and
+2026-09-29 measured that none of the two survivors can host the defect, so an AST
+check would find zero true positives today; whether it is worth its false
+positives is unmeasured (unenforced-rules §2.2/§5) ·
+designs are not moved off their authoring-time Status when a slice ships — of the
+42 shipped designs that carry a Status statement (44 specs do in their first 40
+lines; the umbrella spec has no ship event of its own, and this slice's own
+design was in flight), 35 do not say their slice shipped and 7 do. Of the 35, 8
+assert a pre-ship state that is now false ("not yet built", "ready for a plan",
+"plan next", "pending … plan", "pre-implementation") and 27 carry only an
+authoring-time label ("design", "design approved <date>"); counting only the bold
+`**Status:**` form it is 33 of 40. The classifier reads the whole Status
+paragraph, from `Status:` to the next bold field label or blank line, and not the
+first line alone: `path-quality` and `track-stitch` open "landing the parked
+hot-patch" and end "landed <date>". Whether to machine-check it (a Status that
+still reads design-stage once its slice has shipped) or to flip it in the slice's
+own version-bump commit is open; this design's own Status was flipped in its
+version-bump commit, the first application (unenforced-rules §2.3/§5) ·
+a `test_…` name cited in a `scripts/` docstring or comment is not checked to
+resolve — and a pointer is a claim: rename the test and the text names nothing.
+`color_fidelity.validate_chroma`'s docstring cites the test that pins its
+messages, and unenforced-rules Task 1 added one guard for that one pointer
+(`test_the_validators_docstring_names_the_test_that_pins_its_messages`). One
+generic check (~15 lines: collect every `test_\w+` token under `scripts/`, resolve
+each against the `def test_…` names and the `test_*.py` files under `tests/`)
+would subsume it. Re-derived 2026-09-29: 26 distinct names are cited — 12 test
+functions in 13 citations and 14 test modules — and all 26 resolve, so there is
+no rot yet and this is the guard placed before there is (unenforced-rules Task 1
+re-review) ·
+`docs/build-status.md` is updated by 16 of the 209 commits since 2026-09-01 that
+touch `scripts/`, `tests/`, `skills/`, `references/` or `bin/` (measured at
+`464d7ef`; 12 of 194 counting only `scripts/` and `tests/`, 4 of 124 counting only
+`scripts/`), against a standing instruction to update it in the same commit as
+each task ([development-workflow.md](development-workflow.md), `CLAUDE.md`). Re-run:
+the denominator is `git log 464d7ef --since='2026-09-01 00:00:00 +0000' --format=%H
+-- scripts tests skills references bin | wc -l`, and the numerator is `comm -12` over
+that list and the same command ending `-- docs/build-status.md`, both sorted; the
+narrower two swap the pathspec for `scripts tests` and for `scripts`. The time of day
+is part of the instrument: a bare `--since=2026-09-01` resolves to that date at the
+wall-clock time the command is run (`git rev-parse --since=2026-09-01` prints the
+instant), and this row's first denominators, 208/193/123, and its review's re-run,
+206/191/121, are what that form gives when the instant it resolves to falls at about
+07:00 UTC and at about 09:00 UTC. UTC, IST and WITA midnight and the author-date
+calendar day all give 209/194/124, and the numerators (16, 12, 4) do not move at any
+of them. It is the other half of the sentence unenforced-rules deleted the checkbox
+clause from, and it is honoured about as rarely as the clause was; that slice deleted
+the one and left this one. Filed, not acted on: whether the instruction or the
+practice is what is wrong is unmeasured (unenforced-rules Task 2 review; denominators
+re-derived in the whole-branch review's fix wave)
 
 **CLI / tool index**
 `Stage.runner` names a tool and nothing checks the tool exists — `trend-scan`'s
