@@ -178,7 +178,11 @@ def test_validate_chroma_accepts_none_and_both_good_shapes():
     ({"status": "not-checked"}, "non-empty 'reason'"),
     ({"status": "not-checked", "reason": ""}, "non-empty 'reason'"),
     ({"delta_c": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+    # A bool IS an int, so each slot has to be refused on its own: a bool
+    # exclusion hardcoded to `delta_c` passed the whole unit tier while `delta_h`
+    # went unchecked, because the only bool case used to be the first of these two.
     ({"delta_c": True, "delta_h": 1.0}, "numeric 'delta_c' and 'delta_h'"),
+    ({"delta_c": 1.0, "delta_h": True}, "numeric 'delta_c' and 'delta_h'"),
 ])
 def test_validate_chroma_refuses_each_bad_shape(bad, says):
     with pytest.raises(ValueError, match=says):
@@ -193,18 +197,29 @@ def test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does():
     validator keyed on presence would demand a `reason` of a reading that merely
     carries some other `status`, refusing what the reader reads as a reading.
 
-    The last case is a behaviour `check_reel`'s comments and its own test
-    (`test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences`)
-    state as fact: the absence arm returns once it has a reason, so a stray numeric
-    component beside it is admitted. That test hands the dict to the READER
-    directly and never routes it through this validator, so nothing held the claim
-    until now. The `status` value `"measured"` is constructed by this test, not
-    observed in production: it is the right SHAPE for the property (a `status` that
-    is not `not-checked`), not a claim that any producer emits one."""
+    The `status` value `"measured"` is constructed by this test, not observed in
+    production: it is the right SHAPE for the property (a `status` that is not
+    `not-checked`), not a claim that any producer emits one."""
     cf.validate_chroma({"status": "measured", "delta_c": 1.0, "delta_h": 2.0})
     with pytest.raises(ValueError, match="numeric 'delta_c' and 'delta_h'"):
         cf.validate_chroma({"status": "measured"})
-    cf.validate_chroma({"status": "not-checked", "reason": "why", "delta_c": 1.0})
+
+
+@pytest.mark.parametrize("carried", [
+    pytest.param({"delta_c": 1.0}, id="one-stray-component"),
+    pytest.param({"delta_c": 1.0, "delta_h": 2.0}, id="both-components"),
+])
+def test_a_not_checked_dict_with_a_reason_is_admitted_whatever_else_it_carries(carried):
+    """The absence arm returns as soon as it has a reason, so numeric components
+    beside it — one or both — are admitted rather than refused. `check_reel`'s
+    comments and its own test
+    (`test_a_not_checked_chroma_carrying_a_stray_component_lands_among_the_absences`)
+    state that admission as fact, and the reader files the both-components shape as
+    an absence because the validator already does. That test hands the dict to the
+    READER directly and never routes it through this validator, so nothing held the
+    claim until now. The two cases are two different regressions (refuse any stray
+    component; refuse only a full pair), each failing under its own id."""
+    cf.validate_chroma({"status": "not-checked", "reason": "why", **carried})
 
 
 def test_an_integer_component_is_numeric():

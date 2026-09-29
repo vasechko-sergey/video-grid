@@ -142,6 +142,25 @@ silently matches nothing for `\b` and `\<` — no error, exit 1 — while `-w`, 
 sweep's `tick` alternatives matched nothing for that reason, and an empty result
 against text known to exist exposed it — use `-w`, with a control that must hit.)
 
+**Four is a classification, not a count.** The sweep returns far more than four lines,
+and the four are what a reader kept. Run at `8136999`, the tree before Task 2, two
+commands return **186** distinct lines in 113 files, each with `8136999` as its last
+argument: `git grep -n -i -e checkbox` (a substring, so it also matches "checkboxes",
+which `CLAUDE.md` and `README.md` both say and `-w` would miss) and
+`git grep -n -i -w -E 'tick|ticked|ticking|ticks|check off|checked off|checking off'`.
+164 are in plans and designs: 136 in shipped ones, which record what a slice planned or
+did (93 of the 145 plan hits carry the standard header phrase, "Steps use checkbox
+(`- [ ]`) syntax for tracking"), and 28 in this slice's own two documents. 14 are the
+same words in another sense — a green tick, a 1 kHz tick in a beat-detector fixture, a
+router tick, "switch this check off" — in `scripts/`, `tests/` and one skill. The last 8
+sit in documents read as current guidance or as the queue and the log, and reading them
+produced the four: `CLAUDE.md:207`, `README.md:76-77`, `build-status.md:4` and
+`development-workflow.md:129` instruct an implementer to tick a plan's boxes, while
+`pipeline-map.md`'s two lines are about that document's own status checkboxes, the
+`build-status.md` Done entry that says "ticked" records what a slice did, and the
+backlog row is the one this slice closes. The 186 is reproducible from the two commands;
+the split of the last eight is a judgement, and it is the part that made the count four.
+
 ### §0.3 The cost that deferred the chroma row is an artifact of one imagined remedy
 
 The row: *"Closing it would mean constructing a throwaway `ReelEpisode` per
@@ -193,19 +212,21 @@ R2.4 ("a threshold widened by hand needs a reason attached") was to be the
 fourth. Measuring it moved it:
 
 `ReelManifest.check_spec` is `ReelCheckSpec(self.target_dur, self.variety_min)`.
-Of the class's **11** fields, two arrive from the manifest. No CLI anywhere sets
-a threshold — `edl_to_reel`, `check_reel` and `build_reel` expose none. The
-per-episode `CheckSpec` is the same shape: `process_episode` builds it from
-three manifest fields plus `attempt`, and `check_episode --help` offers the same
-four.
+Of the class's **11** fields, two arrive from the manifest. No CLI sets a field of
+either check-spec class — `edl_to_reel`, `check_reel` and `build_reel` expose none
+(other stages carry thresholds of their own: `match_grade build --eps`,
+`intake --win-min` and `--win-max`). The per-episode `CheckSpec` is the same shape:
+`process_episode` builds it from three manifest fields plus `attempt`, and
+`check_episode --help` offers the same four.
 
 **Twelve of the eighteen fields across both classes are unreachable from any
 authoring surface** — every threshold and tolerance in them but `variety_min`,
 including `entropy_floor`, the blocking grade-damage bar, and `grade_residual_max`,
 `loudness_target`, `layout_jump_max`. Every one is a first cut on a single shoot.
-(The other six fields are `variety_min` and five inputs the manifest supplies:
-`target_dur` on each class, `composition`, `grid` and `attempt`. Of the 13
-thresholds, `variety_min` is the only one reachable.)
+(The other six fields are `variety_min`; four inputs the manifest supplies,
+`target_dur` on each class, `composition` and `grid`; and `attempt`, the retry counter
+`process_episode` passes. Of the 13 thresholds, `variety_min` is the only one
+reachable.)
 
 So `provenance.spec_overrides` — a diff machine written to catch any loosened
 gate — can only ever report one field, `variety_min`; and the mechanism the row

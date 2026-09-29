@@ -62,15 +62,20 @@ _Last updated: 2026-09-29._
   version-bump commit), and `CLAUDE.md` points there. Deletion buys the removal of
   a contradiction and nothing more: what survives is one description and two
   procedures nothing checks, and the first is already measured at 35 of 42 shipped
-  designs whose Status does not say their slice shipped.
+  designs whose Status does not say their slice shipped. The "four" is itself a
+  classification, not a count: the sweep returns 186 raw lines at `8136999`, and
+  design §0.2 now says how the four were read out of them (Task 2's review, M-5,
+  absorbed there in Task 3's fix round 1 rather than filed as a row: the gap was one
+  missing clause in the design, cheaper to write than to queue).
 
   **Task 3 — the battery, the closures, the bump.** One mutation at a time on an
   otherwise-clean tree under `PYTHONDONTWRITEBYTECODE=1`, every selection written
   literally, restored via `git show HEAD:<path> > <path>` and re-checked with
   `git diff --stat` after each. The plan's ten rows were written before Task 1's
   fix round and before Task 2, so they were run unchanged and then fourteen more
-  were added for the shipped code the table could not name — 24 rows, row 10 run in
-  both directions.
+  were added for the shipped code the table could not name. The task's review then
+  found a twenty-fifth the battery had missed, and probing its neighbours added three
+  more — 28 rows, row 10 run in both directions.
 
   | # | File | Mutation | Result |
   |---|---|---|---|
@@ -99,6 +104,10 @@ _Last updated: 2026-09-29._
   | E12 | `color_fidelity.py` | `shift_from_report` swallows the `ValueError` | RED — 1, the behavioural test only |
   | E13 | `models.py` | the carrier validates `None`, not its own `chroma` | RED — 8 |
   | E14 | `color_fidelity.py` | absence arm refuses a stray numeric component | **GREEN** — closed, below |
+  | 25 | `color_fidelity.py` | the `bool` exclusion hardcoded to `delta_c` (`not isinstance(c.get("delta_c"), bool)`) | **GREEN, found by the task's review, not the battery** — 3739 passed on the whole unit tier, because the only bool cases used `delta_c=True`; `{"delta_c": 1.0, "delta_h": True}` was accepted as a numeric reading. Closed in fix round 1: RED, exactly one test, once `delta_h=True` joined the bad-shape parametrization |
+  | 26 | `color_fidelity.py` | absence arm refuses a not-checked dict only when BOTH numeric components ride beside it (E14's sibling) | **GREEN, found while splitting the E4/E14 test** — 529 passed, and no test asserts that shape is admitted although an archived closure note documents it. Closed: RED on the `both-components` case only |
+  | 27 | `color_fidelity.py` | numeric type clause hardcoded to `delta_c` | RED — 4 |
+  | 28 | `color_fidelity.py` | numeric type clause hardcoded to `delta_h` | RED — 2 |
 
   **Row 10's GREEN is the finding, and it is not closed.** No test reads
   `development-workflow.md`, `CLAUDE.md`, `build-status.md`, `README.md` or the
@@ -114,10 +123,15 @@ _Last updated: 2026-09-29._
   discriminator by the presence of a `status` key rather than its value, ints
   refused, and the validator's admission of a not-checked dict that carries a
   stray numeric component — a behaviour `check_reel`'s comments and its own test
-  state as fact, but which that test only ever hands to the reader. Two tests
-  close them (`test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does`
-  for E4 and E14, `test_an_integer_component_is_numeric` for E6), each watched RED
-  under its mutation and GREEN without (`36f660a`). The driver-level mutant — a
+  state as fact, but which that test only ever hands to the reader. Tests close
+  them (`36f660a`, split in fix round 1 so that each mutation fails under its own
+  name): `test_the_validator_files_a_dict_by_the_value_of_status_as_the_reader_does`
+  for E4, `test_a_not_checked_dict_with_a_reason_is_admitted_whatever_else_it_carries`
+  for E14 (parametrized `one-stray-component` and `both-components`, the second being
+  row 26), and `test_an_integer_component_is_numeric` for E6, each watched RED under
+  its mutation and GREEN without. Row 25 closes as a case, `delta_h=True`, added to
+  `test_validate_chroma_refuses_each_bad_shape`: a bool is an int, so each slot has
+  to be refused on its own. The driver-level mutant — a
   `try/except ValueError` around `build_reel`'s reprocess-arm assignment — is not
   held by any test either (Task 1 review, M-2, in
   `.superpowers/sdd/2026-09-29-unenforced-rules/progress.md`): parked, since design
@@ -157,21 +171,44 @@ _Last updated: 2026-09-29._
   running.** The Task 1 re-review's hand scan, which found 13 test-name pointers
   resolving and none dangling, is 13 citations of 12 test functions, and another
   14 cited names are test modules — which a generic check must resolve as files,
-  not defs. The "16 of
-  208" that Task 2's review reported reproduces only under one definition of
-  code-bearing (`scripts/`, `tests/`, `skills/`, `references/` or `bin/`); counting
-  `scripts/` and `tests/` alone it is 12 of 193, and `scripts/` alone 4 of 123. And
-  the P2 weights row names its two
-  tests because the unit tier was run on a `git archive` export — which has no
-  gitignored weights — with the network denied at the process level, so that
-  nothing was fetched: 5 failed, 3732 passed, 306 deselected, of which two are
+  not defs. The "16 of 208" that Task 2's review reported reproduces only under one
+  definition of code-bearing (`scripts/`, `tests/`, `skills/`, `references/` or
+  `bin/`); counting `scripts/` and `tests/` alone it is 12 of 193, and `scripts/`
+  alone 4 of 123. And the P2 weights row names its two tests because the unit tier
+  was run on a `git archive` export — which has no gitignored weights — with the
+  network denied at the process level, so that nothing was fetched: 5 failed, 3732
+  passed, 306 deselected, of which two are
   `test_intake_records_the_band_it_carved_with` and
   `test_intake_records_the_default_band_when_none_is_given`, and three are export
-  artefacts (no `.git`, no `.venv` symlink).
+  artefacts (no `.git`, no `.venv` symlink). The row's first remedy, stubbing
+  `ensure_model` like the neighbours, was wrong, and the task's review proved it:
+  with only that stub both tests pass for the wrong reason, because `intake()`
+  quarantines the clip (reproduced in fix round 1: `intake_report.json` records the
+  download failure, `scanned: 0`, and `FOOTAGE.json` has `clips: []`), and on an
+  online machine the worker's own `YOLO(model_path)` would still fetch. The row now
+  says to cut the detector off as well, as 12 of the neighbours cut off
+  `_process_clip`, or to mark the two tests `integration`.
 
-  **Suite: 4043 passed, 1 skipped, 1 failed** (426 s, whole suite, run after the
-  version bump) — two more than the 4041 the Task 2 review recorded, which are the
-  two tests above. The one failure is the sanctioned
+  **Minors carried forward rather than fixed in this slice** — named in
+  `.superpowers/sdd/2026-09-29-unenforced-rules/progress.md` during Task 1's review,
+  which is gitignored and does not survive the workspace being deleted. Besides the
+  driver-level swallow above (Task 1's M-2): a refusal raised from inside
+  `shift_from_report` still advises the caller to "build it with
+  `color_fidelity.shift_from_report(report)`", the function that just raised, and
+  names no episode (Task 1's M-3). The message is frozen by the contract and pinned
+  whole, so the option is `e.add_note(...)` carrying the episode index at the two call
+  sites, `edl_to_reel`'s phase 1 and `build_reel`'s reprocess arm. And the three node
+  IDs of `test_each_refusal_message_is_pinned_whole_not_by_fragment` are 256, 220 and
+  273 characters long, because each embeds its message; `ids=[...]` would shorten
+  them. Task 2's M-3 and M-4 landed as the backlog rows for the 35-of-42 Status defect
+  and the 16-of-208 `build-status.md` rate; its M-5 was absorbed into design §0.2,
+  above.
+
+  **Suite: 4046 passed, 1 skipped, 1 failed** (444 s, whole suite, after fix round 1;
+  4043 at the version-bump commit `b512678`, and 4041 at the Task 2 review) — the
+  difference from the bump is the three items fix round 1 added: the `delta_h=True`
+  case and the two `admitted-whatever-else-it-carries` ids. The one failure is the
+  sanctioned
   `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`, whose
   message now reads `plugin: installed plugin matches the clone — user scope has
   0.2.1; the clone is 0.14.1 …`: the version moved from 0.14.0 to 0.14.1 the moment
