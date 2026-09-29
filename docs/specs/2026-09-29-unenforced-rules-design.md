@@ -227,7 +227,9 @@ which one a given rule earns:
    when it contradicts a rule that beat it. (The checkbox sentence.)
 
 A fourth option — restate it as a comment and hope harder — is the one this slice
-refuses, including for itself (§0.5).
+refuses for every row it closes (§0.5). It does not refuse it everywhere: the two
+procedures the checkbox deletion leaves are restated in prose and left unchecked, and
+§2.3 says what that has cost so far.
 
 ---
 
@@ -270,17 +272,31 @@ the convention that actually governs once, in `development-workflow.md` under
 the clause. This design does not quote that section: a third rendering of a rule
 is how it drifts, and the design that names the pattern should not supply one.
 
-This is not surrender. It removes a contradiction: two rules, one written and one
-not, asking for opposite treatment of the same file. Deleting the written one and
-writing the unwritten one leaves exactly one rule, and it describes what a
-document *is* rather than a step anyone must remember to perform — so there is
-nothing left to decay.
+This is not surrender, and it is not immunity. Deletion removes a contradiction —
+two rules, one written and one not, asking for opposite treatment of the same
+file — and that is the whole of what it buys. What survives is one description and
+two procedures. The description, what a plan is once its slice has shipped, has
+nothing in it to decay. The procedures, correcting a design in place when the code
+moves under it and keeping spec and plan in sync until the slice ships, are steps
+someone must remember to perform, and neither is machine-checked. By §1's own
+test they are hopes with a good reputation, and this slice leaves them so.
 
-**Not machine-checked, deliberately.** A check would have to assert that no commit
-touches a plan outside its authoring slice, which is brittle (a typo fix, a dead
-link, a factual correction to a pointer) and would fire on legitimate edits.
-The rule earns remedy 3, not remedy 2, because after the deletion there is no
-procedure left to enforce.
+The first is already measured, on its most visible instance and before this
+section writes it down: the Status line. Of the 42 shipped designs that carry
+one (this slice's own design, still in flight, and the umbrella spec, which has no
+ship event of its own, are left out), 37 do not say their slice shipped — 35 still
+read as design-stage, `2026-07-20-stabilize-apply-design.md:5` saying "design
+approved, not yet built" for a shipped, fully ticked slice, and 2 say "landing" —
+and 5 say built or landed. The Status line is one part of the procedure, not all of
+it. The second procedure is not measured.
+
+**Not machine-checked, deliberately.** A check on the checkbox rule would have to
+assert that no commit touches a plan outside its authoring slice, which is brittle
+(a typo fix, a dead link, a factual correction to a pointer) and would fire on
+legitimate edits, and what the rule asked for is carried by the per-task commits.
+So the checkbox rule earns remedy 3, not remedy 2. The two procedures that remain
+earn neither here: they are stated once, in prose, and the number above is where
+the first of them stood before anyone wrote it down.
 
 ---
 
@@ -312,6 +328,13 @@ procedure left to enforce.
   is that the commit messages already carry enough (the SDD ledger would too, but it
   is gitignored and only this slice's is on disk), and that a rule ticked task by
   task once in 91 plans, and fully by its own slice in 34, carries less.
+- **What survives the deletion is not immune (§2.3).** One description and two
+  procedures: the description cannot decay, the procedures can, and nothing checks
+  either. Design correction is the measured one, on its Status-line instance and
+  before this design writes it down: 37 of the 42 shipped designs that carry a Status
+  line do not say their slice shipped (35 design-stage wording, 2 "landing"). The
+  Status line is one part of the procedure, not all of it. Spec-and-plan sync is
+  unmeasured. This slice adds no check to either.
 - **§0.1's first instrument measured the wrong thing, and its replacement repeated
   the error.** It counted `[x]` at HEAD and bucketed plans by filename date, which is
   the end state, and it mistook one retroactive commit (`878a713`) for a behavioural

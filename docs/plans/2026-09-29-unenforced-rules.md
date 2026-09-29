@@ -554,6 +554,10 @@ the implementer must diff the moved body to confirm no comment was dropped in th
 move. A lost comment here is a lost finding.
 
 **One thing this plan does NOT check, deliberately.** Row 10 proves nothing holds
-the checkbox rule in either direction. That is the slice's own thesis applied to
-itself: the rule is deleted rather than tested, because after the deletion there
-is no procedure left to enforce — only a description of what a plan is.
+the checkbox rule in either direction: the rule is deleted rather than tested, and
+deletion buys only the removal of a contradiction. What survives is one description
+and two procedures — a design is corrected in place when the code moves under it;
+spec and plan are kept in sync until the slice ships — and this plan checks
+neither. The first is already measured, before it is written down, on its
+Status-line instance: 37 of the 42 shipped designs that carry one do not say their
+slice shipped (design §2.3).
