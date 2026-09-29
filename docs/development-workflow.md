@@ -91,7 +91,11 @@ New work follows the superpowers pipeline — one subsystem per cycle:
    pass. Continuous — no check-ins between tasks. A whole-slice review closes the
    cycle.
 
-Spec and plan are kept **in sync** — if they drift, fix both, not one.
+Spec and plan are kept **in sync** — if they drift, fix both, not one. That
+holds while a slice is being authored. Once it ships the two part ways on
+purpose: the design is corrected in place when the code moves under it, and the
+plan, being the record of what was planned, is not (see
+[Branches & Commits](#branches--commits)).
 
 ### Closing a slice — the deferral rule
 
@@ -133,9 +137,10 @@ exactly that way.
   what was *done* is carried by that slice's per-task commits. (Until 2026-09-29
   this file also asked for the plan's checkboxes to be ticked as each task
   landed. Measured across 91 plans: 51 of 51 before 2026-08-06 complied and 10 of
-  40 after, because execution moved to subagents who are handed a plan as a
-  frozen brief and correctly decline to edit it. Two rules asked for opposite
-  treatment of one file; the unwritten one won, so it is the one written down.)
+  40 after, coinciding with execution moving to subagents, who are handed a plan
+  as a frozen brief and decline to edit it — a correlation, not a measured
+  cause. Two rules asked for opposite treatment of one file; the unwritten one
+  won, so it is the one written down.)
 
 ## Versioning
 

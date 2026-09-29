@@ -6,7 +6,7 @@
 > - the two remaining two-producer dict merges (`edit_plan.py`, `orchestration.py`).
 > - the plan-checkbox convention `CLAUDE.md` and `development-workflow.md` mandate.
 
-**Status:** design. Version 0.14.1 (PATCH — one extracted validator, two documents
+**Status:** design. Version 0.14.1 (PATCH — one extracted validator, four documents
 corrected, no contract change).
 
 ---
@@ -34,6 +34,12 @@ twelve most recent, eleven are unticked and one (`2026-09-15-named-regions`) is
 complete. The rule did not fail to take. It held perfectly for fifty-one
 consecutive plans and then became a coin flip.
 
+(A re-run of this count today gives 92 plans, not 91: 41 in the second row, of
+which 30 are fully unticked. The extra plan is this slice's own,
+`2026-09-29-unenforced-rules.md`, committed four minutes after this design and so
+absent from the count above. The figures above were right when written and are left
+as written.)
+
 The transition is not a clean cutover — from 2026-08-06 the record alternates
 ticked/unticked slice by slice. That is the signature of a rule nothing checks:
 it survives exactly as long as whoever is executing happens to remember it.
@@ -50,11 +56,21 @@ real, load-bearing and unwritten.
 
 So the collision is: a **written** rule that says amend the plan as you go, and
 an **unwritten** rule that says a plan is not amended. The unwritten one won,
-silently, at the point execution moved to subagents who are handed a plan as a
-frozen brief.
+silently, coinciding with execution moving to subagents, who are handed a plan
+as a frozen brief — a correlation, not a measured cause (§4).
 
-The written rule appears in exactly two places — `docs/development-workflow.md:129`
-and `CLAUDE.md:207`.
+The written rule appears in **four** places (line numbers as of `8136999`), not the
+two this section first counted: `docs/development-workflow.md:129`, `CLAUDE.md:207`,
+`docs/build-status.md:4` ("tick the plan's checkboxes") and `README.md:77-78`
+("keeps the design spec, the plan checkboxes, and `docs/build-status.md` in
+sync"). The first count was made without a whole-tree search, and it was wrong:
+`docs/build-status.md` sits under `docs/`, so even
+`grep -rn -i 'checkbox' CLAUDE.md docs/ skills/ references/` surfaces it, and
+`README.md` is outside all four of those paths, so only a search of every
+tracked file finds it. (One method trap from that search: macOS ERE does not
+support `\b`, so the first widened sweep silently matched nothing on its `tick`
+alternatives, and an empty result against text known to exist exposed it — use
+`-w`, with a control that must hit.)
 
 ### §0.3 The cost that deferred the chroma row is an artifact of one imagined remedy
 
@@ -183,7 +199,10 @@ re-derive it.
 ### §2.3 The checkboxes: delete the sentence, write down the rule that won (remedy 3)
 
 Remove the checkbox clause from `docs/development-workflow.md:129` and
-`CLAUDE.md:207`. In its place, state the convention that actually governs:
+`CLAUDE.md:207` — and, per the §0.2 correction, from `docs/build-status.md:4`
+and `README.md:77-78`, which carried the same instruction. In its place, state
+the convention that actually governs (once, in `development-workflow.md`, with
+`CLAUDE.md` pointing there; the other two simply lose the clause):
 
 > A **design** is corrected in place when the code moves under it. A **plan** is
 > the record of what was planned, and is not amended after its slice ships — what

@@ -201,7 +201,8 @@ a crash — so they must always be in context.
 ## Source of truth
 
 - The design spec + core plan are the source of truth; **spec and plan stay in
-  sync** — if they drift, fix **both**, not one.
+  sync** — if they drift, fix **both**, not one — until the slice ships. After
+  that only the design is corrected in place; the plan stays as written.
 - Current status and the next action live in
   [docs/build-status.md](docs/build-status.md); update it in the same commit
   after every task. A plan is **not** amended after its slice ships — see
