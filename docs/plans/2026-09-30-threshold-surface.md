@@ -1123,7 +1123,7 @@ cannot defer and why (the one in `check_spec` is the model).
 
 - [ ] **Step 2: Sweep the tree for statements this slice made false**
 
-`grep` for text asserting that a threshold is unreachable, that `spec_overrides` can report only `variety_min`, or that `check_spec` takes two fields. Check at minimum: `docs/specs/2026-09-29-unenforced-rules-design.md` §0.6 (the row that promoted this), `scripts/lib/provenance.py:99`'s docstring, `scripts/lib/models.py`'s `check_spec`, and every skill page naming `CONSTRAINTS.json` or `REGIONS.json` as "the convention files" — there are now three. Correct each in place.
+`grep` for text asserting that a threshold is unreachable, that `spec_overrides` can report only `variety_min`, or that `check_spec` takes two fields. **Also confirm one sentence that shipped one task early on purpose:** `check_episode --gates`'s help text says `edl_to_reel` finds the file itself, which Task 3 landed and Task 4 Step 3 makes true. Re-read it against what Task 4 actually built. Check at minimum: `docs/specs/2026-09-29-unenforced-rules-design.md` §0.6 (the row that promoted this), `scripts/lib/provenance.py:99`'s docstring, `scripts/lib/models.py`'s `check_spec`, and every skill page naming `CONSTRAINTS.json` or `REGIONS.json` as "the convention files" — there are now three. Correct each in place.
 
 - [ ] **Step 3: Skills**
 
