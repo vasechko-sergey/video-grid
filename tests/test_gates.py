@@ -175,6 +175,13 @@ def test_every_name_authored_elsewhere_is_refused_not_ignored(name):
     assert name in msg
     assert gates.AUTHORED_ELSEWHERE[name] in msg
     assert f"Remove the {name!r} entry from GATES.json" in msg
+    # The remedy names the document a second time, so it has to name the RIGHT one: gates
+    # that came from an EPISODES.json block must not be told to go and edit a GATES.json
+    # that may not exist. Under the default label the two are the same string, so only a
+    # custom `where` can tell a remedy that follows it from one that hardcodes it.
+    with pytest.raises(ValueError) as e2:
+        gates.Gates.from_dict({name: {"value": 1, "why": "x"}}, where="ReelManifest.gates")
+    assert f"Remove the {name!r} entry from ReelManifest.gates" in str(e2.value)
 
 
 @pytest.mark.parametrize("doc", [
@@ -242,8 +249,9 @@ def test_a_threshold_or_an_advisory_check_added_upstream_reaches_the_vocabulary(
     # thing, so a tuple of twelve literals passes it today and rots the day a thirteenth
     # lands. Here the INPUTS move instead: a fresh interpreter widens ReelCheckSpec AND
     # CheckSpec by one field each, and the advisory registry by one check, BEFORE importing
-    # gates, and the module has to follow all three. Widening only one class let a vocabulary
-    # whose other half was hand-typed pass every test (measured, fix round 1).
+    # gates, and the module has to follow all three. Widening only one class would let a
+    # vocabulary whose other half was hand-typed pass every test (design §0.6: derived, not
+    # typed).
     run = _probe("""
         import dataclasses, json
         from scripts.lib import models
@@ -294,7 +302,7 @@ def test_a_name_on_both_spec_classes_has_no_single_owner_and_the_import_fails_lo
         assert needle in run.stderr, run.stderr
 
 
-# ---- The three invariants that lived in comments (fix round 1, M1) ------------------------
+# ---- Three invariants the derived vocabulary rests on (design §0.6, §2.4) ------------------
 
 
 def test_every_probe_base_key_is_authored_elsewhere():
@@ -326,7 +334,7 @@ def test_the_record_reports_the_owning_dataclass_default_for_every_gateable_fiel
                    "scope": scope, "blocking": name in gates.BLOCKING, "why": "x"}
 
 
-# ---- The check names OF_CHECK asserts, against the drivers that write them (M2) -----------
+# ---- The check names OF_CHECK asserts, against the drivers that write them (design §0.1) ---
 
 
 def _checks_written(driver: str) -> set[str]:
@@ -343,9 +351,10 @@ def _checks_written(driver: str) -> set[str]:
 @pytest.mark.parametrize("field", sorted(gates.OF_CHECK))
 def test_every_check_of_check_names_is_written_by_the_driver_of_its_scope(field):
     # For an episode-scope field the check's NAME does not feed BLOCKING at all (only a reel
-    # registry exists), so it is documentation, and documentation rots: the first draft named
-    # `black` — a REEL check that reads no threshold — for the episode gate `black_frames`,
-    # and every test stayed green. Checked here against the driver that owns the scope.
+    # registry exists), so it is documentation, and documentation rots: design §0.1 records
+    # that its own first draft named `black` — a REEL check that reads no threshold — for the
+    # episode gate `black_frames`, and nothing else would have noticed, since the name cannot
+    # change BLOCKING. Checked here against the driver that owns the scope.
     reel = field in {f.name for f in dc_fields(ReelCheckSpec)}
     driver = "check_reel.py" if reel else "check_episode.py"
     written = _checks_written(driver)
@@ -354,7 +363,7 @@ def test_every_check_of_check_names_is_written_by_the_driver_of_its_scope(field)
         f"{field} -> {gates.OF_CHECK[field]!r}, but {driver} writes only {sorted(written)}")
 
 
-# ---- for_spec refuses a class that owns no gate (M5) ---------------------------------------
+# ---- for_spec refuses a class that owns no gate (design §2.2: never stores-and-ignores) ----
 
 
 @pytest.mark.parametrize("not_a_spec", [dict, gates.Gate, ReelCheckSpec(target_dur=1.0), None,
