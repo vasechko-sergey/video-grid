@@ -269,8 +269,19 @@ already broken.
 
 ### §2.3 Where the values are read
 
-`edl_to_reel` finds the file beside the `project_path` it already holds, once, in
-`_phase_one_setup`, and threads it two ways:
+`edl_to_reel` finds the file beside the `project_path` it already holds and
+threads it to every arm that renders.
+
+**There are THREE such arms, not the two this design first named** (found by
+Task 4, verified: `_run_pool` is called from `edl_to_reel.py:367`, `:460` and
+`:609`). The third is `render_from_geometry` — phase 1b, `--from-geometry` — and
+it does **not** go through `_phase_one_setup`. It is also the arm the router
+actually renders through, and the only one where `check_episode` runs at all:
+phase 1a stops at the geometry boundary before any `CheckSpec` exists. Wiring
+only the two arms this design originally named would have shipped the whole
+slice **inert on the real path**, passing every test that did not drive phase 1b.
+The discovery is therefore factored as `gates.beside_project(path)` and called
+from both entry points.
 
 `ReelManifest.gates` is **one new dict field carrying the whole authored set**,
 both scopes together, not the reel subset. That single decision removes the second
@@ -297,9 +308,24 @@ it by constructing `Gates` from the loaded dict rather than trusting it — the
 hand-edited or truncated `EPISODES.json` is one of the two live inlets to
 `build_reel` and does not pass through `edl_to_reel`'s loader.
 
-`check_episode`'s own CLI gains `--gates PATH`: it is the standalone judge and has
-no project to derive from. An explicit path is right there and wrong in
-`edl_to_reel`, which does have one.
+Two CLIs get an explicit `--gates PATH` instead, because they have no project to
+derive from: `check_episode`, the standalone episode judge, and `check_reel`,
+which builds a `ReelCheckSpec` directly at `check_reel.py:608`. A third,
+`process_episode`'s own CLI — the hand-driven path
+`skills/process-episode/SKILL.md` documents — already takes `--project`, so it
+gets the convention lookup like the drivers do. An explicit path is right in the
+first two and wrong in anything holding a project, which is the same asymmetry,
+applied by what the entry point already knows.
+
+**`probe.py` is a fourth consumer this design's §0.3 census missed**, because the
+census grepped for `CheckSpec(` and `probe` does not construct one: it reads
+`CheckSpec.__dataclass_fields__["entropy_floor"].default` directly, at
+`probe.py:245` and `:338`, to predict `grade_damage` without a reel re-render.
+A prediction made against a different bar than the gate will use is worse than no
+prediction — it is the cry-wolf mechanism with the sign flipped, a tool that says
+"this will fail" about a render that will pass. `probe_grade` holds `rm.gates`;
+`probe_geometry` holds only `geo.project`, which may not resolve, and there it
+reports a **named absence** rather than silently predicting against the default.
 
 ### §2.4 The price of a blocking gate is visibility, and it is paid in three places
 
@@ -400,6 +426,18 @@ authored value with a recorded reason, which is what makes it reviewable.
   looked.
 - **Deleting `GATES.json` passes everything at default.** No silent bypass, not no
   bypass — the `CONSTRAINTS.json` ruling (design 2026-08-07 §10), unchanged.
+- **Phase 2 carries the set frozen at phase 1b and never re-reads the file, and
+  that is correct rather than a limitation.** `assemble_reel` takes an
+  `EPISODES.json` path and no project path at all, so it structurally cannot look
+  beside one — but it should not want to. The set in `EPISODES.json` is the record
+  of *which bars judged these clips*, and re-reading the file in phase 2 would let
+  a bar change between the judging and the attestation that binds it, which is the
+  drift the attested-run design (2026-08-04) exists to prevent. The real cost is a
+  surprise, not a defect: an operator who edits `GATES.json` between phases sees no
+  effect until phase 1b is re-run, and for a reel-scope bar that means re-rendering
+  every episode to change a number applied at `check_reel` time. The remedy is
+  **visibility, not freshness** — `montage status` shows the authored set and says
+  which phase froze it (§2.4 item 3).
 - **Gates are reel-wide, not per-episode.** One episode's legitimate grade widens
   `entropy_floor` for every episode in the reel. Per-episode gating needs an
   episode identity that survives a re-cut, and the EDL's indices do not — a re-cut

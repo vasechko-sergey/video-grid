@@ -976,11 +976,28 @@ Attach in `_loudness_check` (`loudness_target`, `loudness_tol`), `_grade_faithfu
 def authored_rows(spec, reasons: dict, *names) -> list[dict]: ...
 ```
 
-Thread the reasons at **four** sites, not three. `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is the same shape once Task 4 Step 3b gives it `--gates`. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
+Thread the reasons at **five** sites, not three. `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is the fifth — Task 4 Step 3b gave it `--gates` and it now holds a loaded `Gates` too. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
 
 `Attestation` gains `gates: list[dict] = field(default_factory=list)` with `to_dict`/`from_dict` entries beside `look_checks`, plus a docstring line. `deliver` fills it from the manifest it already holds.
 
-`montage._gates` mirrors `montage._constraints` exactly — including catching the load refusal *in the inspector only*, with that function's own reasoning quoted for why an unreadable file must not read as "no gates". Wire it into `status`'s output beside `constraints`.
+**`probe.py` is a fourth consumer and it must predict against the bar the gate
+will use.** `probe.py:245` and `:338` read
+`CheckSpec.__dataclass_fields__["entropy_floor"].default` to predict
+`grade_damage` without a reel re-render. Design §0.3's census missed them because
+it grepped for `CheckSpec(` and these construct nothing. A prediction against a
+different bar than the gate is worse than no prediction. `probe_grade` holds
+`rm.gates`; `probe_geometry` holds only `geo.project`, which may not resolve —
+there, report a **named absence** (the repo's own doctrine, design 2026-09-07)
+rather than silently predicting against the default.
+
+`montage._gates` mirrors `montage._constraints` exactly — including catching the load refusal *in the inspector only*, with that function's own reasoning quoted for why an unreadable file must not read as "no gates". Wire it into `status`'s output beside `constraints`. **It must also say which
+phase froze the set.** Phase 2 (`--from-episodes`) carries what phase 1b wrote
+into `EPISODES.json` and never re-reads `GATES.json` — correctly, since that set
+is the record of which bars judged these clips and re-reading it would let a bar
+move between the judging and the attestation that binds it (design §6). But an
+operator editing the file between phases sees no effect, so when an
+`EPISODES.json` exists, compare its `gates` block against the file on disk and
+say plainly when they differ and what that means.
 
 - [ ] **Step 4: Run the tests**
 
@@ -1007,6 +1024,17 @@ git commit -m "feat: an authored bar is named beside the verdict it bought, in t
 - Create: `tests/integration/test_threshold_surface.py`
 
 **Interfaces:** consumes everything above; produces no new production code.
+
+**Drive phase 1b, not only phase 1a.** `render_from_geometry` (`--from-geometry`)
+is the arm the router renders through and the only one where `check_episode` runs
+at all — phase 1a stops at the geometry boundary before a `CheckSpec` exists. A
+proof that never reaches phase 1b would have passed against a slice that was
+inert on the real path, which is exactly what Task 4 found and fixed.
+`tests/integration/test_grade_shipped_pixels.py` has `_run`, `_geometry` and
+`_render` helpers to reuse. Note also that `provenance.overrides` is no longer
+`[]` once a reel-scope gate is authored, so the control proof's "byte-identical"
+claim holds only for the **no-gates** run; with gates authored, `EPISODES.json`
+differs in exactly `gates` and `overrides`, which is §2.4 item 2 working.
 
 Use the suite's existing real-footage fixtures (`golden_ride_segment`, the `fake_render` conftest factory) rather than building new ones. Read `tests/conftest.py` and one neighbouring integration module (`tests/integration/test_front_spine.py` is the closest shape) before writing.
 
@@ -1126,6 +1154,10 @@ cannot defer and why (the one in `check_spec` is the model).
 `grep` for text asserting that a threshold is unreachable, that `spec_overrides` can report only `variety_min`, or that `check_spec` takes two fields. **Also confirm one sentence that shipped one task early on purpose:** `check_episode --gates`'s help text says `edl_to_reel` finds the file itself, which Task 3 landed and Task 4 Step 3 makes true. Re-read it against what Task 4 actually built. Check at minimum: `docs/specs/2026-09-29-unenforced-rules-design.md` §0.6 (the row that promoted this), `scripts/lib/provenance.py:99`'s docstring, `scripts/lib/models.py`'s `check_spec`, and every skill page naming `CONSTRAINTS.json` or `REGIONS.json` as "the convention files" — there are now three. Correct each in place.
 
 - [ ] **Step 3: Skills**
+
+`skills/process-episode/SKILL.md` (~line 71) documents the hand-driven CLI path;
+add one sentence that it now reads `GATES.json` beside `--project`. Battery row
+14's mutation site moved to `gates.beside_project`; its named test still kills it.
 
 The stage page that documents `edl_to_reel` gains `GATES.json`: where it lives, that the reason is required, and that a blocking bar's reason lands in the attestation. Keep it short — the body-size budget from the reachable-instructions slice is machine-checked (no body over 26 KB); if a page is near it, put the detail on a `references/` page and link it.
 
