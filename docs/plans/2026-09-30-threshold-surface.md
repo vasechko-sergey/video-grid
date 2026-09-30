@@ -1171,7 +1171,14 @@ The stage page that documents `edl_to_reel` gains `GATES.json`: where it lives, 
 
 - [ ] **Step 4: Backlog and build status**
 
-Close the P1 row to `docs/backlog-closed.md` with the closure note this slice earned: **the row filed twelve thresholds as one population, and the partition is the design** — seven blocking, five advisory, with `length_retime_max` blocking through the driver rather than through the advisory check that reads it; and `loudness_target`'s platform table is not worth building because all four platforms want −14. Fold R2.4 into the same note: the instrument it asked for existed and had nothing to report. File the three §7 deferrals as new rows. **Re-count the archive by hand** — `grep -c '^| [✅⊘]'` is wrong in two directions (registry note). The last hand count was **73 entries / 74 rows at 2026-09-29**.
+Close the P1 row to `docs/backlog-closed.md` with the closure note this slice earned. **The row filed twelve thresholds as one population, and the partition is the design — but the counts it states are wrong twice over, and the note must carry the measured ones:**
+
+- **Eleven authorable, not twelve.** `loudness_target` left the vocabulary: it is a rendered set-point, not a bar — `mix.py:16` bakes `_TARGET_LUFS = -14.0` into the `loudnorm` filter and `mix.mix` takes no target, so authoring it alone moves the ruler and not the thing measured, and fails every reel (design §0.2a).
+- **Six blocking, five advisory**, with `length_retime_max` blocking through the driver's shortfall absorb rather than through the advisory check that also reads it.
+- The row's claim that `spec_overrides` "can only ever report `variety_min`" is generous: it cannot report even that, because it runs once in phase 1 on the manifest phase 1 just built, so a hand-edited `EPISODES.json` is invisible to it (§0.4). `Attestation.overrides` has been `[]` on every delivery, by construction.
+- The platform-loudness table is **not** dismissed as "four identical rows": §0.2a makes it the only shape that can move the mixer and the gate together, and it is filed P2 for that reason.
+
+Fold R2.4 into the same note: the instrument it asked for existed and had nothing to report. File the three §7 deferrals as new rows. **Re-count the archive by hand** — `grep -c '^| [✅⊘]'` is wrong in two directions (registry note). The last hand count was **73 entries / 74 rows at 2026-09-29**.
 
 - [ ] **Step 4b: File the rows the review loop turned up, which no §7 deferral covers**
 
