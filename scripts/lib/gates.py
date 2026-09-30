@@ -38,20 +38,28 @@ from pathlib import Path
 # that uses it.
 from scripts.lib.models import CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
 
-#: Names that sit on a check spec but are authored somewhere else entirely.
-#: Refused by name rather than ignored: a value silently dropped here would read
-#: as authored, which is the worse of the two failures.
+#: Names that sit on a check spec but are authored somewhere else entirely. Each value
+#: completes "it is authored in ..." in the refusal, so it has to be true of the tree as
+#: it is: variety_min was once described as authored in the EDL, and nothing in edl.py or
+#: edl_to_reel.py mentions it. Refused by name rather than ignored: a value silently
+#: dropped here would read as authored, which is the worse of the two failures.
 AUTHORED_ELSEWHERE: dict[str, str] = {
     "target_dur": "the EDL — EDL.target_dur, which edit_plan._back_edge_target "
                   "computes from the footage",
-    "variety_min": "the EDL, carried to the gate as ReelManifest.variety_min",
+    "variety_min": "the reel manifest — ReelManifest.variety_min, which is the "
+                   "'variety_min' key of EPISODES.json. No producer sets it today",
     "composition": "each episode's own manifest (Manifest.composition)",
     "grid": "each episode's own manifest (Manifest.grid)",
-    "attempt": "the retry loop's own counter — it is not an author's value",
+    "attempt": "the retry loop, which counts attempts itself",
 }
 
-#: field -> the check whose bar it sets. Not documentation: BLOCKING is derived
-#: from it, so the advisory/blocking partition has exactly one source.
+#: field -> the check whose bar it sets. BLOCKING is derived from this table, so for a
+#: reel-scope field the name IS the advisory/blocking partition: a wrong name silently
+#: moves a bar across it. For an episode-scope field the name cannot change the answer
+#: (episode checks have no advisory registry, since Report.overall lets every failing
+#: check block, so they are blocking by absence from _ADVISORY_CHECKS rather than by
+#: membership in anything). That makes it documentation, and documentation rots, so
+#: tests/test_gates.py checks every entry against the driver that writes the check.
 OF_CHECK: dict[str, str] = {
     "beat_tol": "beat",
     "clip_tol": "key_action",
@@ -67,21 +75,32 @@ OF_CHECK: dict[str, str] = {
     # converts a blocking length failure into a silent re-target. The blast radius
     # is the driver's, and "length" is the name that carries it.
     "length_retime_max": "length",
-    "black_floor": "black",
-    "black_rel": "black",
+    # "black_frames", NOT "black": the episode gate writes checks["black_frames"] in
+    # check_episode, and `black` is a REEL check in check_reel that reads no threshold.
+    "black_floor": "black_frames",
+    "black_rel": "black_frames",
     "entropy_floor": "grade_damage",
 }
 
 _OWNER: dict[str, type] = {}
 for _cls in (ReelCheckSpec, CheckSpec):
     for _f in fields(_cls):
-        if _f.name not in AUTHORED_ELSEWHERE:
-            _OWNER[_f.name] = _cls
+        if _f.name in AUTHORED_ELSEWHERE:
+            continue
+        if _f.name in _OWNER:
+            raise ValueError(
+                f"{_f.name!r} is a field of both {_OWNER[_f.name].__name__} and "
+                f"{_cls.__name__}, so a gate for it has no single owner and would reach "
+                f"only one of them, silently. Rename one of the fields, or add "
+                f"{_f.name!r} to AUTHORED_ELSEWHERE with where it is really authored")
+        _OWNER[_f.name] = _cls
 
-#: The twelve, derived (design §0.6).
+#: The gateable thresholds, derived (design §0.6).
 FIELDS: tuple[str, ...] = tuple(sorted(_OWNER))
 
-#: The seven whose bar can stop a delivery.
+#: The thresholds whose bar can stop a delivery. _ADVISORY_CHECKS is a REEL registry, so an
+#: episode-scope field is blocking by absence from it: an episode check that ever turned
+#: advisory would be classed blocking here until it gains a registry of its own.
 BLOCKING: frozenset[str] = frozenset(
     n for n, c in OF_CHECK.items() if c not in _ADVISORY_CHECKS)
 
@@ -126,23 +145,29 @@ class Gates:
             if name in AUTHORED_ELSEWHERE:
                 raise ValueError(
                     f"{where} cannot set {name!r} — it is authored in "
-                    f"{AUTHORED_ELSEWHERE[name]}. Setting it here would give it two "
-                    f"homes and make one of them silent")
+                    f"{AUTHORED_ELSEWHERE[name]}. Remove the {name!r} entry from "
+                    f"{where}: setting it here would give it two homes and make one "
+                    f"of them silent")
             if name not in _OWNER:
                 raise ValueError(
                     f"{where} names {name!r}, which is not a gate threshold. The "
                     f"gate thresholds are: {', '.join(FIELDS)}")
-            if not isinstance(entry, dict) or set(entry) != {"value", "why"}:
+            if not isinstance(entry, dict):
                 raise ValueError(
                     f"{where} entry {name!r} must be an object with exactly 'value' "
-                    f"and 'why', got {entry!r}. A bare number is refused: moving a "
+                    f"and 'why', got {entry!r}. A bare value is refused: moving a "
                     f"bar without recording why is what this file exists to prevent")
-            why = entry["why"]
+            why = entry.get("why")
             if not (isinstance(why, str) and why.strip()):
                 raise ValueError(
-                    f"{where} entry {name!r} needs a non-empty 'why' — the reason a "
-                    f"bar was moved is the record a later reader has to judge the "
-                    f"delivery by, and it is required, not encouraged")
+                    f"{where} entry {name!r} needs a non-empty 'why', got {entry!r} — "
+                    f"the reason a bar was moved is the record a later reader has to "
+                    f"judge the delivery by, and it is required, not encouraged")
+            if set(entry) != {"value", "why"}:
+                raise ValueError(
+                    f"{where} entry {name!r} must have exactly the keys 'value' and "
+                    f"'why', got {list(entry)} — add the missing one or remove the "
+                    f"extra")
             owner = _OWNER[name]
             try:
                 owner(**{**_PROBE_BASE[owner], name: entry["value"]})
@@ -168,6 +193,11 @@ class Gates:
 
     def for_spec(self, spec_cls: type) -> dict:
         """The kwargs subset `spec_cls` owns — the call site never partitions."""
+        if not (isinstance(spec_cls, type) and spec_cls in _SCOPE):
+            raise ValueError(
+                f"Gates.for_spec takes {' or '.join(c.__name__ for c in _SCOPE)}, got "
+                f"{spec_cls!r} — any other class owns none of the gates, so it would "
+                f"silently get {{}} and every authored bar would be dropped")
         return {g.field: g.value for g in self.gates if _OWNER[g.field] is spec_cls}
 
     def reasons(self) -> dict[str, str]:
