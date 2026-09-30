@@ -1110,6 +1110,34 @@ The stage page that documents `edl_to_reel` gains `GATES.json`: where it lives, 
 
 Close the P1 row to `docs/backlog-closed.md` with the closure note this slice earned: **the row filed twelve thresholds as one population, and the partition is the design** — seven blocking, five advisory, with `length_retime_max` blocking through the driver rather than through the advisory check that reads it; and `loudness_target`'s platform table is not worth building because all four platforms want −14. Fold R2.4 into the same note: the instrument it asked for existed and had nothing to report. File the three §7 deferrals as new rows. **Re-count the archive by hand** — `grep -c '^| [✅⊘]'` is wrong in two directions (registry note). The last hand count was **73 entries / 74 rows at 2026-09-29**.
 
+- [ ] **Step 4b: File the rows the review loop turned up, which no §7 deferral covers**
+
+These came out of the task reviews, not the design, so they are not in §7 and
+would otherwise leave every list — the deferral rule's own failure mode:
+
+- `json.loads` raises a bare `ValueError: Exceeds the limit (4300 digits)` on an
+  integer over 4300 digits, and `Gates.from_json` catches only `JSONDecodeError`,
+  so the message names no file. Same class as the deferred non-UTF-8 item; the
+  400-digit case is clean. **P3, S.**
+- `target_dur` on `ReelCheckSpec`, `CheckSpec` **and** `EDL.target_dur` accepts
+  `nan`, `inf` and `True`. Not reachable through `GATES.json` — it is exempt — but
+  reachable three other ways: `check_episode --target-dur nan` and
+  `check_reel --target-dur nan` (argparse `type=float` accepts it), a hand-edited
+  `EDL.json`, and a hand-edited `EPISODES.json` (`NaN`/`Infinity`/`true` all load).
+  It fails **closed** — `checks.length` and `check_reel`'s length gate both compute
+  `abs(x - target) <= tol`, which is `False` for `nan` — so it is a gap, not a live
+  defect. **P3, S.**
+- `loudness_tol == 0` is untested; the same boundary on the other five `> 0` bars
+  is pinned by pre-existing tests. **P4, XS.**
+- `gates.py`'s `_OWNER` loop resolves a name present on BOTH spec classes by
+  raising (Task 1 fix round 1) — but `Gates` validation still lives only in
+  `from_dict`, so a directly constructed `Gate("bogus", 1, "")` bypasses all six
+  refusals and dies later as a bare `KeyError`. No sanctioned caller does it.
+  **P4, XS.**
+- A duplicate key in `GATES.json` silently keeps the last entry and the first
+  entry's reason vanishes; a non-UTF-8 `GATES.json` raises `UnicodeDecodeError`
+  with no path. **P4, XS.**
+
 - [ ] **Step 5: Version**
 
 MINOR — new contract fields (`ReelManifest.gates`, `Attestation.gates`), a new CLI flag, no breaking change: **0.15.0**. Bump `.claude-plugin/plugin.json` and add the `CHANGELOG.md` entry. The heading must be `## X.Y.Z — YYYY-MM-DD` (`tests/test_plugin_manifests.py` enforces both the format and that the top entry matches the manifest).

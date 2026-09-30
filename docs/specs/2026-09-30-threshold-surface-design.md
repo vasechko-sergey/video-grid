@@ -79,13 +79,19 @@ Recorded here so the next reader does not re-derive it. **Deferred, §7.**
 
 ### §0.3 Three of the twelve are not merely flagless — they have nowhere to be written
 
-`ReelCheckSpec` reaches the checks through `ReelManifest.check_spec()`
+`ReelCheckSpec` reaches the checks through `ReelManifest.check_spec`
 (`models.py:1716`), which is two lines:
 
 ```python
+@property
 def check_spec(self) -> ReelCheckSpec:
     return ReelCheckSpec(self.target_dur, self.variety_min)
 ```
+
+(A `@property`, not a method — both real callers, `edl_to_reel.py:307` and
+`build_reel.py:95`, read it as an attribute. Recorded because this design's first
+draft and the plan both wrote `check_spec()` and would have handed five
+uncallable test snippets to later tasks.)
 
 So its nine remaining fields have no carrier: the manifest has no field to hold
 them. `CheckSpec` is worse. It is built at two sites —
@@ -108,7 +114,7 @@ deleted with its check in 0.5.0.
 `provenance.spec_overrides` (`provenance.py:99`) diffs a spec against a
 default-constructed one of its own class and is called once, from
 `edl_to_reel.py:307`, on `rm.check_spec` with `target_dur` exempt. Since
-`check_spec()` sets only `target_dur` and `variety_min`, the diff can report
+`check_spec` sets only `target_dur` and `variety_min`, the diff can report
 **exactly one field** — `variety_min`.
 
 **And it cannot report even that one on a sanctioned run.** `variety_min` occurs
@@ -270,7 +276,7 @@ already broken.
 both scopes together, not the reel subset. That single decision removes the second
 carrier:
 
-- `ReelManifest.check_spec()` applies the subset `ReelCheckSpec` owns and ignores
+- `ReelManifest.check_spec` applies the subset `ReelCheckSpec` owns and ignores
   the rest.
 - Phase 1's pool passes the subset `CheckSpec` owns into
   `process_episode(..., gates=…)` — a parameter, not a `Manifest` field, which
