@@ -304,10 +304,10 @@ def _frozen_episode(tmp_path: Path,
     return _episode_manifest(tmp_path), str(route), calls
 
 
-def _checked_spec(md: dict, **over: float) -> models.CheckSpec:
-    """The CheckSpec a first-attempt run of `md` builds, with `over` authored on top."""
+def _checked_spec(md: dict, attempt: int = 1, **over: float) -> models.CheckSpec:
+    """The CheckSpec the run of `md` builds for `attempt`, with `over` authored on top."""
     return models.CheckSpec(composition=md["composition"], grid=md["grid"],
-                            target_dur=md["target_dur"], attempt=1, **over)
+                            target_dur=md["target_dur"], attempt=attempt, **over)
 
 
 def test_an_authored_entropy_floor_reaches_the_check_spec(tmp_path, monkeypatch):
@@ -349,16 +349,50 @@ def test_a_reel_scope_gate_handed_to_process_episode_is_ignored_not_crashed(
     assert calls["check_spec"] == _checked_spec(md)
 
 
-def test_a_malformed_gate_set_is_refused_before_any_encode(tmp_path, monkeypatch):
-    """The set is parsed once at the top of the run, not where the CheckSpec is built —
-    that sits inside the retry loop, after tracking and an encode. Nothing ran: no
-    reframe, no check."""
+@pytest.mark.parametrize("stop_after", [None, "geometry"], ids=["full-run", "geometry-run"])
+def test_a_malformed_gate_set_is_refused_before_any_encode(tmp_path, monkeypatch, stop_after):
+    """The set is parsed once at the very top of the run, not where the CheckSpec is built —
+    that sits inside the retry loop, after tracking and an encode. Nothing ran: no reframe,
+    no check, and not even the scratch directory. A geometry run never builds a CheckSpec at
+    all, so only a parse placed before its seam refuses it there. A parse moved below the
+    mkdir, below tracking, below the geometry return or into the loop body is refused too
+    late, and fails here."""
     md, route, calls = _frozen_episode(tmp_path, monkeypatch)
     with pytest.raises(ValueError,
                        match=r"^the gates passed to process_episode entry 'entropy_floor'"):
         process_episode.process_episode(md, tmp_path / "ep0", route_path=route,
+                                        stop_after=stop_after,
                                         gates={"entropy_floor": 0.85})      # no reason
     assert calls == {}
+    assert not (tmp_path / "ep0").exists()
+
+
+def test_the_authored_bar_rides_every_retry_attempt_not_only_the_first(tmp_path, monkeypatch):
+    """Design §2.3 exists because a bar that silently differs between attempts, or between
+    siblings, is the defect. A lone failing jitter on attempt 1 is retried, and the CheckSpec
+    the second attempt is judged against must carry the authored value as well."""
+    md, route, _ = _frozen_episode(tmp_path, monkeypatch)
+    passing_run = process_episode.check_episode.run      # the faked check _frozen_episode installed
+    specs = []
+
+    def fail_once(clip, route_path, path_path, spec, out, source=None, plans=None):
+        specs.append(spec)
+        if len(specs) > 1:
+            return passing_run(clip, route_path, path_path, spec, out,
+                               source=source, plans=plans)
+        report = models.Report(checks={"jitter": models.CheckResult("jitter", False, {})},
+                               attempt=spec.attempt)
+        report.write(out)
+        return report
+    monkeypatch.setattr(process_episode.check_episode, "run", fail_once)
+
+    res = process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"entropy_floor": {"value": 0.85, "why": "log profile"}})
+
+    assert res["status"] == "mechanical_pass" and res["attempt"] == 2
+    assert specs == [_checked_spec(md, attempt=1, entropy_floor=0.85),
+                     _checked_spec(md, attempt=2, entropy_floor=0.85)]
 
 
 def test_a_falsy_wrong_typed_gate_set_is_refused_not_read_as_no_gates(tmp_path, monkeypatch):

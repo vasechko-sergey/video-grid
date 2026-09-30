@@ -564,6 +564,9 @@ def test_the_gates_flag_moves_the_bar_the_standalone_judge_uses(tmp_path, monkey
 
 
 def test_without_the_gates_flag_every_bar_is_its_default(monkeypatch):
+    """A control, green before `--gates` existed and the first test to drive `main()` at all:
+    it pins that the flag is optional and that an absent flag builds the spec `main` built
+    before this slice."""
     assert _judge(monkeypatch) == CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
 
 
@@ -573,6 +576,26 @@ def test_an_empty_gates_path_is_refused_not_read_as_no_gates(monkeypatch):
     design §4 rejects per-threshold flags for."""
     with pytest.raises(OSError):
         _judge(monkeypatch, "--gates", "")
+
+
+def test_a_gates_path_that_does_not_exist_is_refused_not_read_as_no_gates(tmp_path, monkeypatch):
+    """"Absent means defaults" is true of the convention file beside project.json and must not
+    leak onto an explicit flag: a typo'd path is the likeliest real silent revert. The empty-path
+    test above cannot see a swallow of FileNotFoundError alone — `Path("")` is a directory."""
+    with pytest.raises(FileNotFoundError):
+        _judge(monkeypatch, "--gates", str(tmp_path / "GATE.json"))
+
+
+def test_the_standalone_judge_never_goes_looking_for_a_gates_file(tmp_path, monkeypatch):
+    """The flag-versus-convention asymmetry is deliberate (design §2.3, §6): this judge has no
+    project.json to look beside, and guessing a file from the working directory would be a second,
+    silent way to move a bar. A GATES.json sitting exactly where a lookup would try — the cwd, which
+    is also beside the clip, path and report the relative argv names — changes nothing without
+    the flag."""
+    (tmp_path / "GATES.json").write_text(json.dumps(
+        {"black_floor": {"value": 2.0, "why": "moves the bar if anything reads this file"}}))
+    monkeypatch.chdir(tmp_path)
+    assert _judge(monkeypatch) == CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
 
 
 def test_a_gates_file_the_loader_refuses_stops_the_judge_and_names_the_file(
