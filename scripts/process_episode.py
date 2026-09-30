@@ -13,6 +13,9 @@ import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import gates as gates_lib   # aliased: `gates` is a parameter of
+                                             # process_episode below, and a bare module
+                                             # import would be shadowed by it.
 from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
@@ -199,7 +202,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                     project: ProjectConfig | str | Path | None = None,
                     keyframes_path: str | None = None,
                     stop_after: str | None = None,
-                    prepared_source: str | None = None) -> dict:
+                    prepared_source: str | None = None,
+                    gates: dict | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
@@ -215,9 +219,27 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     frozen route in route_path was measured on THIS file", which is the one thing
     the stabilize refusal below cannot know. Not on the CLI: only a driver that
     produced both halves can honestly assert it.
+
+    `gates` is the authored threshold set (GATES.json, design 2026-09-30) as a
+    plain dict, the WHOLE set — for_spec takes the subset CheckSpec owns and
+    ignores the rest, so a caller never partitions. A parameter and not a Manifest
+    field on purpose: a gate is a run policy the operator authors, not a value an
+    agent can write into an EDL. None means every threshold at its default. It is
+    validated here, before any tracking or encode, and a malformed set raises
+    ValueError naming this call: only None means "no gates", so a wrong-typed
+    `[]` or `0` is refused rather than read as defaults.
     """
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    # Parsed HERE, once, and not where the CheckSpec it feeds is built: that sits inside
+    # the retry loop, after tracking and a real encode, so a malformed set would be refused
+    # an encode late and re-parsed on every attempt. A hard raise like max_attempts above —
+    # a caller handing over a bad gate set is a caller bug, not a manifest problem a human
+    # answers. Only None is "absent": `gates or {}` would read a wiped `[]` or `0` as
+    # defaults and put every authored bar silently back (ReelManifest.from_dict refuses
+    # the same shape for the same reason).
+    authored = gates_lib.Gates.from_dict({} if gates is None else gates,
+                                         where="the gates passed to process_episode")
     if stop_after not in (None, "geometry"):
         return {"status": "needs_input", "attempt": 0, "problems": [
             f"stop_after must be None or 'geometry', got {stop_after!r} — 'geometry' "
@@ -563,7 +585,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         plans = (reframe.plan_render(rspec, src, rp),
                  reframe.plan_render(plain_spec, src, rp))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
-                          attempt=attempt)
+                          attempt=attempt, **authored.for_spec(CheckSpec))
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
             source=src, plans=plans))

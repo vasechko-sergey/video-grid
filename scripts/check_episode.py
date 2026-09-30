@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image, ImageStat
 from scripts import reframe
 from scripts.lib import (checks as checks_mod, color, color_fidelity, ffbin,
-                         geometry, gradedamage, proc, regions)
+                         gates as gates_lib, geometry, gradedamage, proc, regions)
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify, travel_direction
 
@@ -439,13 +439,22 @@ def build_parser() -> argparse.ArgumentParser:
                     help="the length this episode was cut to, seconds")
     ap.add_argument("--attempt", type=int, default=1,
                     help="which retry attempt this is, 1-based — recorded in the report")
+    ap.add_argument("--gates", default=None,
+                    help="GATES.json — authored thresholds with the reason each was "
+                         "moved (design 2026-09-30). A flag here and not a convention "
+                         "because the standalone judge has no project.json to look "
+                         "beside; a run through edl_to_reel finds the file itself")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
+    # `is not None`, not truthiness: `--gates ""` is what an unset shell variable
+    # produces, and reading it as "no gates" would put every authored bar silently back
+    # at its default — the dropped-flag defect design 2026-09-30 §4 exists to avoid.
+    g = gates_lib.Gates.from_json(a.gates) if a.gates is not None else gates_lib.Gates()
     spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
-                     attempt=a.attempt)
+                     attempt=a.attempt, **g.for_spec(CheckSpec))
     run(a.clip, a.route, a.path, spec, a.out)
 
 

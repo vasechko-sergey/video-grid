@@ -14,7 +14,12 @@ The `grade_damage` section below (design 2026-08-31 §3) is a different shape �
 it needs a real (graded, plain) RenderPlan pair, which needs a real manifest and
 a real render, so it goes through `golden_ride_segment` + the committed
 `tests/fixtures/golden_route.json` rather than a synthetic numpy frame.
+
+The last section is the CLI's (design 2026-09-30 §2.3): which bars `main` builds from
+`--gates`, with the judge itself faked, so it needs neither ffmpeg nor a fixture.
 """
+import json
+
 import numpy as np
 import pytest
 
@@ -530,3 +535,50 @@ def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
                                                 target_dur=1.5))
     assert res.passed is False          # the entropy verdict, not the advisory's status
     assert res.detail["below"] is True
+
+
+# --- 2026-09-30 threshold surface Task 3: `--gates` on the standalone judge -----
+# (design 2026-09-30 §2.3/§6.) A flag here and a convention in edl_to_reel, because this
+# judge has no project.json to look beside.
+
+def _judge(monkeypatch: pytest.MonkeyPatch, *argv: str) -> CheckSpec:
+    """Run check_episode.main() over `argv` with the judge itself faked, and return the
+    CheckSpec it would have judged against. The clip, path and report never exist: what is
+    under test is which bars the CLI built, and run() is the only thing that needs files."""
+    seen = {}
+    monkeypatch.setattr(
+        check_episode, "run",
+        lambda clip, route, path, spec, out, **kw: seen.setdefault("spec", spec))
+    monkeypatch.setattr("sys.argv", ["check_episode", "c.mp4", "p.json", "o.json",
+                                     "--target-dur", "3", *argv])
+    check_episode.main()
+    return seen["spec"]
+
+
+def test_the_gates_flag_moves_the_bar_the_standalone_judge_uses(tmp_path, monkeypatch):
+    gates = tmp_path / "GATES.json"
+    gates.write_text(json.dumps(
+        {"black_floor": {"value": 2.0, "why": "night shoot, legitimately dark"}}))
+    assert _judge(monkeypatch, "--gates", str(gates)) == CheckSpec(
+        composition="lead", grid="thirds", target_dur=3.0, black_floor=2.0)
+
+
+def test_without_the_gates_flag_every_bar_is_its_default(monkeypatch):
+    assert _judge(monkeypatch) == CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+
+
+def test_an_empty_gates_path_is_refused_not_read_as_no_gates(monkeypatch):
+    """`--gates ""` is what an unset shell variable produces, and reading it as "no gates"
+    would put every authored bar back at its default in silence — the dropped-flag defect
+    design §4 rejects per-threshold flags for."""
+    with pytest.raises(OSError):
+        _judge(monkeypatch, "--gates", "")
+
+
+def test_a_gates_file_the_loader_refuses_stops_the_judge_and_names_the_file(
+        tmp_path, monkeypatch):
+    gates = tmp_path / "GATES.json"
+    gates.write_text(json.dumps({"black_floor": 2.0}))                 # a bare value: no reason
+    with pytest.raises(ValueError) as e:
+        _judge(monkeypatch, "--gates", str(gates))
+    assert str(gates) in str(e.value)
