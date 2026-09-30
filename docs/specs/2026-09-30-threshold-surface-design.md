@@ -276,8 +276,11 @@ threads it to every arm that renders.
 Task 4, verified: `_run_pool` is called from `edl_to_reel.py:367`, `:460` and
 `:609`). The third is `render_from_geometry` — phase 1b, `--from-geometry` — and
 it does **not** go through `_phase_one_setup`. It is also the arm the router
-actually renders through, and the only one where `check_episode` runs at all:
-phase 1a stops at the geometry boundary before any `CheckSpec` exists. Wiring
+actually renders through. Phase 1a is the one arm where `check_episode` does
+**not** run: it stops at the geometry boundary before any `CheckSpec` exists.
+(The single-pass arm runs the check in full too — an earlier draft of this
+sentence said phase 1b was "the only one where `check_episode` runs at all",
+which is false.) Wiring
 only the two arms this design originally named would have shipped the whole
 slice **inert on the real path**, passing every test that did not drive phase 1b.
 The discovery is therefore factored as `gates.beside_project(path)` and called
@@ -308,9 +311,8 @@ it by constructing `Gates` from the loaded dict rather than trusting it — the
 hand-edited or truncated `EPISODES.json` is one of the two live inlets to
 `build_reel` and does not pass through `edl_to_reel`'s loader.
 
-Two CLIs get an explicit `--gates PATH` instead, because they have no project to
-derive from: `check_episode`, the standalone episode judge, and `check_reel`,
-which builds a `ReelCheckSpec` directly at `check_reel.py:608`. A third,
+One CLI gets an explicit `--gates PATH` instead, because it has no project to
+derive from: `check_episode`, the standalone episode judge. A second,
 `process_episode`'s own CLI — the hand-driven path
 `skills/process-episode/SKILL.md` documents — already takes `--project`, so it
 gets the convention lookup like the drivers do. An explicit path is right in the
@@ -426,6 +428,27 @@ authored value with a recorded reason, which is what makes it reviewable.
   looked.
 - **Deleting `GATES.json` passes everything at default.** No silent bypass, not no
   bypass — the `CONSTRAINTS.json` ruling (design 2026-08-07 §10), unchanged.
+- **`check_reel`'s own CLI is not an authoring surface, and giving it a flag was
+  a mistake this design made and then measured.** Task 4 added `--gates` there on
+  the reasoning that the CLI builds a `ReelCheckSpec` directly and so must be
+  reachable. It is inert: `check_reel.main` calls `run(master, episodes, spec,
+  report)` and supplies no music, audio, geometry, prediction, chroma or
+  `brief_len`, and **every one of the nine reel-scope thresholds is read only
+  behind one of those inputs** — `beat_tol` behind music, the loudness pair behind
+  audio, the three geometry tolerances behind geometry, `length_retime_max` behind
+  `brief_len`, `grade_residual_max` behind the prediction (whose own remedy text
+  already says "the CLI cannot"), `chroma_spread_max` behind chroma. Measured: with
+  all nine authored at extreme values the report and the exit code are
+  byte-identical to a run with no file at all. That is precisely the knob §0.2
+  rejects for reading as configurable while being inert, and the store-and-ignore
+  §2.2 forbids. **The flag is deleted.** `check_reel`'s reel-scope bars are reached
+  through the drivers, which supply those inputs; its standalone CLI is a
+  master-and-clips checker and cannot apply a threshold whatever surface it is
+  given.
+  The same lens, applied to `check_episode --gates`, leaves it standing but
+  partial: it is live for `black_floor` and `black_rel` (`black_frames` really
+  flips) and inert for `entropy_floor`, because that CLI passes no source or plans
+  and `grade_damage` is `not-checked` there for reasons that predate this slice.
 - **Phase 2 carries the set frozen at phase 1b and never re-reads the file, and
   that is correct rather than a limitation.** `assemble_reel` takes an
   `EPISODES.json` path and no project path at all, so it structurally cannot look

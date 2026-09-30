@@ -855,10 +855,15 @@ leaving them so would make this slice's own acceptance false:
   Factor the two-line discovery into one helper rather than writing it twice —
   `scripts/lib/gates.py` is the natural home (`gates.beside_project(path)`
   returning a `Gates`), and both call sites use it.
-- **`check_reel`'s own CLI** (`check_reel.py:608`) builds
-  `ReelCheckSpec(target_dur=a.target_dur)` directly. It has no project path, so it
-  gets **`--gates PATH`**, the same asymmetry design §6 already records for
-  `check_episode` and for the same reason.
+- ~~**`check_reel`'s own CLI**~~ — **retracted after Task 4's review measured it.**
+  This step told Task 4 to give `check_reel` a `--gates PATH`, and it did, and the
+  flag is **inert**: `main` calls `run(master, episodes, spec, report)` with no
+  music, audio, geometry, prediction, chroma or `brief_len`, and every one of the
+  nine reel-scope thresholds is read only behind one of those. With all nine
+  authored at extremes the report and exit code are byte-identical to no file at
+  all. That is the knob design §0.2 rejects. **The flag is deleted in the fix
+  round.** `check_reel`'s bars are reached through the drivers, which supply those
+  inputs. Design §6 now records why its CLI cannot be an authoring surface.
 
 One test each, driven through `main()` with a patched `sys.argv`, asserting the
 authored value reaches the constructed spec.
@@ -976,7 +981,7 @@ Attach in `_loudness_check` (`loudness_target`, `loudness_tol`), `_grade_faithfu
 def authored_rows(spec, reasons: dict, *names) -> list[dict]: ...
 ```
 
-Thread the reasons at **five** sites, not three. `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is the fifth — Task 4 Step 3b gave it `--gates` and it now holds a loaded `Gates` too. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
+Thread the reasons at **four** sites, not three. `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is **not** one of them: Task 4's review measured its `--gates` flag inert and the fix round deleted it, so there is no loaded `Gates` there to take reasons from. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
 
 `Attestation` gains `gates: list[dict] = field(default_factory=list)` with `to_dict`/`from_dict` entries beside `look_checks`, plus a docstring line. `deliver` fills it from the manifest it already holds.
 
@@ -1026,8 +1031,9 @@ git commit -m "feat: an authored bar is named beside the verdict it bought, in t
 **Interfaces:** consumes everything above; produces no new production code.
 
 **Drive phase 1b, not only phase 1a.** `render_from_geometry` (`--from-geometry`)
-is the arm the router renders through and the only one where `check_episode` runs
-at all — phase 1a stops at the geometry boundary before a `CheckSpec` exists. A
+is the arm the router renders through, and phase 1a is the one arm where
+`check_episode` does NOT run — it stops at the geometry boundary before a
+`CheckSpec` exists. (The single-pass arm runs the check in full too.) A
 proof that never reaches phase 1b would have passed against a slice that was
 inert on the real path, which is exactly what Task 4 found and fixed.
 `tests/integration/test_grade_shipped_pixels.py` has `_run`, `_geometry` and
