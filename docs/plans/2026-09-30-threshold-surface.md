@@ -35,7 +35,7 @@
 | `scripts/check_episode.py` | `--gates PATH` on the standalone judge; the `black_frames`/`grade_damage` details name an authored bar. |
 | `scripts/check_reel.py` | The `loudness`, `grade_faithful` and length details name an authored bar. |
 | `scripts/edl_to_reel.py` | The one finder (beside `project_path`), threaded into the pool and onto the manifest. |
-| `scripts/build_reel.py` | The reprocess arm reads the episode subset off `rm.gates`. |
+| `scripts/build_reel.py` | The reprocess arm passes `rm.gates` through unfiltered. |
 | `scripts/lib/provenance.py` | `Attestation.gates`. |
 | `scripts/deliver.py` | Fills it. |
 | `scripts/montage.py` | `_gates`, the three-state inspector row. |
@@ -809,23 +809,20 @@ In `_phase_one_setup`, beside the existing `ProjectConfig.from_json(project_path
 Widen the return tuple to carry `authored` and update both callers (`_build_manifest`, `build_geometry`). Thread it into the pool's per-episode `kw`, keeping the "only when it carries something" shape:
 
 ```python
-        ep_gates = authored.for_spec_dict(CheckSpec)   # see note below
-        if ep_gates:
-            kw["gates"] = ep_gates
+        if authored.gates:
+            kw["gates"] = authored.to_dict()
 ```
 
-**Note for the implementer:** Task 1 gives `Gates.for_spec(cls)` returning *kwargs* (`{name: value}`), but `process_episode(gates=…)` takes the *document* shape (`{name: {value, why}}`) because it re-validates. Rather than converting at three call sites, add one small method to `gates.py` in this task and test it in `tests/test_gates.py`:
-
-```python
-    def subset(self, spec_cls) -> dict:
-        """The authored DOCUMENT restricted to what `spec_cls` owns — what a driver
-        hands to another stage, which re-validates it. `for_spec` is the kwargs form,
-        for a call that constructs the spec itself."""
-        return {g.field: {"value": g.value, "why": g.why}
-                for g in self.gates if _OWNER[g.field] is spec_cls}
-```
-
-and use `authored.subset(CheckSpec)` above. Report this addition explicitly — it is a deviation from Task 1's stated interface, made here because this is where the need is visible.
+**Correction, made after Task 3 landed: there is no `Gates.subset`, and there
+must not be.** This plan originally told you to add one — a document-shaped
+subset — so each driver could hand `process_episode` only the episode half. That
+is redundant work at every call site: `process_episode` already partitions
+internally with `for_spec`, and `ReelManifest.gates` already holds the whole set.
+So the rule is one line: **every caller hands the whole authored document; the
+one place a spec is constructed partitions.** The pool passes
+`authored.to_dict()`, `build_reel`'s reprocess passes `rm.gates`, and neither
+filters. This also makes true the docstring Task 3 already landed on
+`process_episode`, which says a caller never partitions.
 
 On the manifest, fill the existing `extra` seam rather than adding a new keyword:
 
@@ -842,13 +839,33 @@ In `build_reel`'s reprocess arm:
 ```python
             res = process_episode.process_episode(
                 manifest, epdir, route_path=route,
-                gates=gates_lib.Gates.from_dict(
-                    rm.gates, where="ReelManifest.gates").subset(CheckSpec) or None)
+                gates=rm.gates or None)
 ```
+
+- [ ] **Step 3b: Close the two authoring surfaces Task 3's report found still unreachable**
+
+The row this slice closes says the twelve are "unreachable from any authoring
+surface". Two documented entry points are still unreachable after Task 3, and
+leaving them so would make this slice's own acceptance false:
+
+- **`process_episode`'s own CLI** — the hand-driven path
+  `skills/process-episode/SKILL.md:71` documents. It already takes `--project`, so
+  it gets the **convention lookup**, not a flag: resolve `GATES.json` beside the
+  project exactly as `_phase_one_setup` does, and pass it to `process_episode`.
+  Factor the two-line discovery into one helper rather than writing it twice —
+  `scripts/lib/gates.py` is the natural home (`gates.beside_project(path)`
+  returning a `Gates`), and both call sites use it.
+- **`check_reel`'s own CLI** (`check_reel.py:608`) builds
+  `ReelCheckSpec(target_dur=a.target_dur)` directly. It has no project path, so it
+  gets **`--gates PATH`**, the same asymmetry design §6 already records for
+  `check_episode` and for the same reason.
+
+One test each, driven through `main()` with a patched `sys.argv`, asserting the
+authored value reaches the constructed spec.
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -q`
+Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py tests/lib/test_process_episode.py tests/lib/test_check_reel.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
