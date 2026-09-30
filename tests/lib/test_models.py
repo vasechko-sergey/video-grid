@@ -1,6 +1,11 @@
 import dataclasses
 import json
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+from scripts.lib import gates
 from scripts.lib import manifest
 from scripts.lib import models as m
 from scripts.lib import orchestration as orch
@@ -2293,3 +2298,227 @@ def test_reel_check_spec_refuses_a_bad_chroma_spread_max(bad):
     ordinary positive-number guard."""
     with pytest.raises(ValueError, match="chroma_spread_max"):
         ReelCheckSpec(target_dur=10.0, chroma_spread_max=bad)
+
+
+# --- threshold-surface Task 2: the reel manifest carries the authored gate set (design
+# docs/specs/2026-09-30-threshold-surface-design.md §2.3), and the two spec classes
+# validate their own fields (§2.2a) ---
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _reel_with(**over):
+    """The minimal ReelManifest the neighbouring tests build inline, with `over` applied."""
+    kw = dict(episodes=[m.ReelEpisode(manifest={}, clip="c.mp4", route="r.json")],
+              target_dur=10.0)
+    kw.update(over)
+    return m.ReelManifest(**kw)
+
+
+def test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec():
+    rm = _reel_with(gates={"loudness_tol": {"value": 2.0, "why": "live room"}})
+    # The whole object: the authored field moved and no other did, and target_dur and
+    # variety_min still arrive from the manifest.
+    assert rm.check_spec == ReelCheckSpec(target_dur=10.0, loudness_tol=2.0)
+
+
+def test_a_reel_manifest_carries_episode_gates_without_applying_them():
+    # The whole set rides here so build_reel's reprocess arm has somewhere to read the
+    # episode subset from (design §2.3); check_spec takes only what ReelCheckSpec owns.
+    doc = {"entropy_floor": {"value": 0.85, "why": "log profile"}}
+    rm = _reel_with(gates=doc)
+    assert rm.gates == doc
+    assert rm.check_spec == ReelCheckSpec(target_dur=10.0)
+    assert not hasattr(rm.check_spec, "entropy_floor")           # it is not a reel field
+
+
+def test_gates_round_trip_through_to_dict_and_from_dict(tmp_path):
+    doc = {"black_rel": {"value": 0.2, "why": "night shoot"}}
+    rm = _reel_with(gates=doc)
+    assert m.ReelManifest.from_dict(rm.to_dict()).gates == doc
+    # ...and through the file EPISODES.json actually is: build_reel's phase-2 inlet.
+    p = tmp_path / "EPISODES.json"
+    rm.write(p)
+    back = m.ReelManifest.from_json(p)
+    assert back.gates == doc
+    assert back.to_dict() == rm.to_dict()
+
+
+def test_a_corrupt_gates_block_in_episodes_json_is_refused_not_trusted():
+    # build_reel's plain-list inlet does not pass through edl_to_reel's loader, so the
+    # carrier re-validates rather than trusting what it was handed. The message must name
+    # THIS document: telling someone to fix a GATES.json that is fine sends them to the
+    # wrong file.
+    d = _reel_with().to_dict()
+    d["gates"] = {"entropy_floor": 0.85}                         # a bare number
+    with pytest.raises(ValueError, match=r"^ReelManifest\.gates entry 'entropy_floor'"):
+        m.ReelManifest.from_dict(d)
+
+
+@pytest.mark.parametrize("bad", [[], None, "x", 1], ids=["list", "None", "str", "int"])
+def test_gates_must_be_an_object_when_a_manifest_is_built_directly(bad):
+    # from_dict reads a JSON null as "absent"; a caller constructing the manifest itself
+    # gets no such coercion, and an empty list is not an empty gate set.
+    with pytest.raises(ValueError, match=r"^ReelManifest\.gates must be an object"):
+        _reel_with(gates=bad)
+
+
+@pytest.mark.parametrize("name, value, needle", [
+    ("black_floor", 300, "black_floor must be a finite luma code"),       # episode scope
+    ("beat_tol", float("nan"), "beat_tol must be a finite positive"),     # reel scope
+], ids=["episode-scope", "reel-scope"])
+def test_the_carrier_refuses_a_value_the_owning_class_refuses_in_either_scope(
+        name, value, needle):
+    # An episode-scope value is never applied to the ReelCheckSpec, so only the carrier's
+    # validation of the WHOLE set can refuse it here — and build_reel's reprocess arm reads
+    # exactly that subset later, so it has to be refused at load and not at reprocess time.
+    with pytest.raises(ValueError) as e:
+        _reel_with(gates={name: {"value": value, "why": "night shoot"}})
+    msg = str(e.value)
+    assert msg.startswith(f"ReelManifest.gates entry {name!r}")
+    assert needle in msg
+
+
+def test_a_manifest_with_no_gates_carries_none_and_writes_no_gates_key():
+    # An unauthored run's EPISODES.json is byte-identical to one written before this field
+    # existed (design §3), so the key is omitted when empty and present when not — the
+    # round-trip test above is the other half of that.
+    rm = _reel_with()
+    assert rm.gates == {}
+    assert "gates" not in rm.to_dict()
+
+
+def test_an_episodes_json_written_before_this_field_loads_with_no_gates():
+    rm = m.ReelManifest.from_dict(_reel_dict())        # _reel_dict() has no "gates" key
+    assert rm.gates == {}
+    assert rm.check_spec == ReelCheckSpec(target_dur=6.0, variety_min=4)
+
+
+def test_importing_models_alone_does_not_load_gates():
+    # gates imports models at module scope (it derives its vocabulary from the two spec
+    # classes), so models may import gates only inside the property that needs it. A
+    # module-scope import works when gates is imported first and dies when models is, which
+    # is the order any script touching only models produces. This process already has both
+    # modules loaded, so only a FRESH interpreter can see the difference.
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys, scripts.lib.models; "
+         "sys.exit(7 if 'scripts.lib.gates' in sys.modules else 0)"],
+        cwd=_ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, (r.returncode, r.stderr)
+
+
+# --- ...and the spec classes validate their own fields (design §2.2a). Before this slice
+# nothing could reach these values, so nobody noticed black_floor/black_rel had no guard
+# at all and that `nan <= 0` is False, so every `... or v <= 0` guard passes nan. ---
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "6", None, -1, 300])
+def test_check_spec_refuses_a_black_floor_that_is_not_a_luma_code(bad):
+    with pytest.raises(ValueError, match="black_floor must be a finite"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_floor=bad)
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "6", None, -1, 1.5])
+def test_check_spec_refuses_a_black_rel_that_is_not_a_fraction(bad):
+    with pytest.raises(ValueError, match="black_rel must be a finite"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_rel=bad)
+
+
+@pytest.mark.parametrize("good", [0, 0.0, 6, 6.0, 255, 255.0])
+def test_check_spec_accepts_a_black_floor_anywhere_in_its_range_edges_included(good):
+    assert m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0,
+                       black_floor=good).black_floor == good
+
+
+@pytest.mark.parametrize("good", [0, 0.0, 0.35, 1, 1.0])
+def test_check_spec_accepts_a_black_rel_anywhere_in_its_range_edges_included(good):
+    assert m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0,
+                       black_rel=good).black_rel == good
+
+
+@pytest.mark.parametrize("name", ["beat_tol", "loudness_target", "loudness_tol",
+                                  "layout_jump_max", "length_retime_max",
+                                  "grade_residual_max", "chroma_spread_max"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_no_reel_threshold_accepts_a_non_finite_number(name, bad):
+    # `nan <= 0` is False, so every "or v <= 0" guard in this class passed nan.
+    with pytest.raises(ValueError, match=f"{name} must be a finite"):
+        ReelCheckSpec(target_dur=1.0, **{name: bad})
+
+
+@pytest.mark.parametrize("name", ["beat_tol", "loudness_target", "loudness_tol",
+                                  "layout_jump_max", "length_retime_max"])
+def test_no_reel_threshold_accepts_a_bool(name):
+    # bool is an int, so True passes every numeric guard as 1.
+    with pytest.raises(ValueError, match=f"{name} must be a finite"):
+        ReelCheckSpec(target_dur=1.0, **{name: True})
+
+
+def test_a_reel_threshold_still_accepts_an_ordinary_authored_number():
+    # The guards refuse the broken and nothing else. -23 is the broadcast LUFS figure and
+    # exactly what an author would write, and it is an int, and it is negative.
+    s = ReelCheckSpec(target_dur=1.0, loudness_target=-23, loudness_tol=0.5, beat_tol=0.08,
+                      layout_jump_max=1, length_retime_max=2, grade_residual_max=6,
+                      chroma_spread_max=8)
+    assert (s.loudness_target, s.loudness_tol, s.beat_tol) == (-23, 0.5, 0.08)
+    assert (s.layout_jump_max, s.length_retime_max) == (1, 2)
+
+
+def test_every_default_still_constructs():
+    # The control: widening the guards must refuse only values that were already
+    # broken. No default moves in this slice.
+    ReelCheckSpec(target_dur=1.0)
+    m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0)
+
+
+# What a threshold must never hold. Each is a value a guard once let through: bool is an int;
+# every comparison with nan is False; a string or a list is not a number; and 10**400 is what
+# a JSON file can hold that math.isfinite cannot even be asked about — it raises OverflowError
+# rather than answering, so a guard routed through it would leak an exception naming no file.
+_NOT_A_FINITE_NUMBER = [
+    pytest.param(True, id="True"), pytest.param(False, id="False"),
+    pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+    pytest.param(float("-inf"), id="-inf"), pytest.param("6", id="str"),
+    pytest.param(None, id="None"), pytest.param([], id="list"),
+    pytest.param(10**400, id="10**400"), pytest.param(-10**400, id="-10**400"),
+]
+
+_REEL_FIELDS = {f.name for f in dataclasses.fields(m.ReelCheckSpec)}
+
+
+def _spec_with(name, value):
+    """Build the class that owns threshold `name`, with only `name` moved."""
+    if name in _REEL_FIELDS:
+        return m.ReelCheckSpec(target_dur=1.0, **{name: value})
+    return m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, **{name: value})
+
+
+@pytest.mark.parametrize("bad", _NOT_A_FINITE_NUMBER)
+@pytest.mark.parametrize("name", gates.FIELDS)
+def test_no_gateable_threshold_accepts_a_value_that_is_not_a_finite_number(name, bad):
+    # Quantified over the DERIVED vocabulary, so a thirteenth threshold that lands without a
+    # guard fails here the day it lands. A ValueError and not an OverflowError or a TypeError:
+    # pytest.raises(ValueError) does not catch either of those.
+    with pytest.raises(ValueError, match=name):
+        _spec_with(name, bad)
+
+
+@pytest.mark.parametrize("bad", _NOT_A_FINITE_NUMBER)
+@pytest.mark.parametrize("name", gates.FIELDS)
+def test_no_authored_gate_can_hold_a_value_that_is_not_a_finite_number(name, bad):
+    # Refusal 6 through the front door, the way a GATES.json reaches it: the owning class's
+    # own guard, re-raised with the document named. Vacuous for eleven of the twelve before
+    # this slice widened the guards (design §2.2a).
+    with pytest.raises(ValueError) as e:
+        gates.Gates.from_dict({name: {"value": bad, "why": "x"}}, where="GATES.json")
+    assert str(e.value).startswith("GATES.json ") and repr(name) in str(e.value)
+
+
+def test_a_400_digit_integer_is_a_value_error_and_not_an_overflow():
+    huge = 10**400
+    with pytest.raises(ValueError, match="black_floor"):
+        m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_floor=huge)
+    with pytest.raises(ValueError, match="beat_tol"):
+        ReelCheckSpec(target_dur=1.0, beat_tol=huge)
+    with pytest.raises(ValueError, match=r"^ReelManifest\.gates entry 'loudness_tol'"):
+        _reel_with(gates={"loudness_tol": {"value": huge, "why": "x"}})
