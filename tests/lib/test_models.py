@@ -2394,6 +2394,16 @@ def test_an_episodes_json_written_before_this_field_loads_with_no_gates():
     assert rm.check_spec == ReelCheckSpec(target_dur=6.0, variety_min=4)
 
 
+def test_a_null_gates_key_reads_as_no_gates():
+    # null is this dict's spelling of "absent" (look, outro, tone_target and brief_len are all
+    # written as null when unset), so a null here is the same as a missing key and is not a
+    # corrupt object. Only null is pinned: any other wrong-typed value that happens to be falsy
+    # also reads as {}, which loses nothing (it carries no gates) and is not a promise.
+    rm = m.ReelManifest.from_dict(_reel_dict(gates=None))
+    assert rm.gates == {}
+    assert rm.check_spec == ReelCheckSpec(target_dur=6.0, variety_min=4)
+
+
 def test_importing_models_alone_does_not_load_gates():
     # gates imports models at module scope (it derives its vocabulary from the two spec
     # classes), so models may import gates only inside the property that needs it. A
